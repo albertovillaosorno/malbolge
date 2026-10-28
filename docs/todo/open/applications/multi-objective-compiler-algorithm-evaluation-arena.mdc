@@ -101,6 +101,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   and matches every reported workload digest to the regenerated C source.
   This confirms generator provenance only, not guest verifier replay or an
   observed benchmark run.
+- Optional same-accelerator admission retains per-run declared device
+  identities and rejects mixed cohorts where a controlled same-device
+  comparison is required; device declarations remain source-reported, not
+  hardware attestation or utilization measurement.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

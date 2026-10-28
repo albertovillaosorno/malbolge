@@ -338,3 +338,20 @@ The generator and its oracle can share a common-mode defect, and byte-exact
 replay does not establish that the compiler used the retained source, that the
 named verifier executed, or that a measured candidate was correct. This
 checks **workload provenance**, not measured performance or guest semantics.
+
+## Optional accelerator cohort agreement
+
+The governed experiment run manifests include a reported `accelerator`
+identity, which may differ across algorithms even when the study host and
+toolchain strings agree. To require the same **declared** accelerator for
+every run in a comparison, add `--require-matched-accelerator` to the arena
+evidence command. This opt-in mode emits `declared_run_accelerators`, keyed by
+canonical manifest path, and rejects mixed accelerator declarations before
+publishing any capacity or Pareto result.
+
+The default mode continues to admit cross-device studies (e.g., CPU versus
+GPU algorithms), which may be scientifically useful when the experiment
+protocol explicitly controls and attributes heterogeneous resources. A common
+recorded accelerator string alone does not authenticate physical hardware,
+resource utilization, power consumption or actual execution; even matching
+labels remain source-reported provenance rather than independent attestation.

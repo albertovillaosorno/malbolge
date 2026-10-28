@@ -199,6 +199,7 @@ class EvidencePolicy:
     require_trial_run_identity: bool = False
     require_budget_agreement: bool = False
     challenge_root: str | None = None
+    require_matched_accelerator: bool = False
 
 
 DEFAULT_EVIDENCE_POLICY = EvidencePolicy()
@@ -369,6 +370,34 @@ def _bundle_inspection(
     return results
 
 
+def _matched_accelerators(
+    context: _EvidenceContext,
+) -> dict[str, str] | None:
+    if not context.policy.require_matched_accelerator:
+        return None
+    declared = {}
+    for path, link in sorted(context.manifests.items()):
+        run = link.manifest.run
+        if run is None:
+            _fail("accelerator comparison requires a recorded experiment run")
+        declared[path] = run.accelerator
+    if len(set(declared.values())) != 1:
+        _fail("comparison runs declare different accelerator identities")
+    return declared
+
+
+def _report_accelerators(
+    report: dict[str, Any],
+    accelerators: dict[str, str] | None,
+) -> None:
+    if accelerators is not None:
+        report["declared_run_accelerators"] = accelerators
+        report["scope"] += (
+            " Reported accelerator identities agree across run manifests; "
+            "no physical device attestation."
+        )
+
+
 def _report_links(
     context: _EvidenceContext,
     document: dict[str, Any],
@@ -376,6 +405,7 @@ def _report_links(
     *,
     bundle_sources: dict[str, str] | None,
 ) -> dict[str, Any]:
+    accelerators = _matched_accelerators(context)
     report = {
         "manifest_links_checked": len(context.manifests),
         "raw_sample_paths_checked": len(context.samples),
@@ -405,6 +435,7 @@ def _report_links(
             " Exact declared run time/memory budgets agree with study; "
             "no physical budget enforcement."
         )
+    _report_accelerators(report, accelerators)
     if bundle_sources is not None:
         report["regenerated_challenge_bundles"] = len(bundle_sources)
         report["challenge_source_sha256"] = bundle_sources
@@ -481,6 +512,7 @@ def main() -> int:
     parser.add_argument("--require-trial-run-identity", action="store_true")
     parser.add_argument("--require-budget-agreement", action="store_true")
     parser.add_argument("--challenge-root")
+    parser.add_argument("--require-matched-accelerator", action="store_true")
     args = parser.parse_args()
     try:
         document = analyze.parse_document(analyze.read_input(args.study))
@@ -492,6 +524,7 @@ def main() -> int:
                 require_trial_run_identity=args.require_trial_run_identity,
                 require_budget_agreement=args.require_budget_agreement,
                 challenge_root=args.challenge_root,
+                require_matched_accelerator=args.require_matched_accelerator,
             ),
         )
         report = analyze.analyze(document)

@@ -136,6 +136,13 @@ be ordinary, canonical, unlinked and bounded, and the profile fingerprint
 remains under the generator's existing authority. No compiler or verifier is
 run; this does not prove the optimizer consumed the retained challenge.
 
+The optional `--require-matched-accelerator` check additionally requires all
+linked experiment runs to name the same recorded accelerator and retains the
+canonical manifest-path-to-device identity map in the output. This protects
+same-device comparison claims against silent heterogeneous arms while leaving
+explicit cross-accelerator comparisons permitted without this mode. Even
+matching declarations do not attest actual hardware or accelerator utilization.
+
 A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.
 The test fixtures establish only evidence linkage, not performance results.
@@ -219,6 +226,10 @@ The original study records remain the result authority.
   challenge bundle, binding workload digests to reproducible C source. Synthetic
   regressions cover missing and altered files, canonical profile and difficulty
   identities, unsafe paths, repeated-trial digest drift and fail-closed CLI.
+- An additional opt-in accelerator identity gate rejects mixed declared
+  devices in studies that require hardware-matched arms, while preserving
+  heterogeneous studies when that policy is not requested. Synthetic tests
+  cover both cases and fail-closed CLI output.
 - `benchmarks/arena/budget_links.py` optionally requires exact resource
   budget declarations from each linked run, rejecting missing/forged integers,
   unit mismatches, and one-unit study drift with fail-closed CLI regressions.

@@ -437,3 +437,90 @@ def test_budget_cli_drift_omits_entire_capacity_report(
     result = capsys.readouterr()
     assert not result.out
     assert BUDGET_DIAGNOSTIC in result.err
+
+
+ACCELERATOR_DIAGNOSTIC = "different accelerator identities"
+DEVICE_UNATTESTED = "no physical device attestation"
+CUDA_BACKEND = "CUDA-registered-device"
+
+
+def _accelerator_preflight(doc: dict[str, Any], root: Path) -> dict[str, Any]:
+    admitted = analyze.parse_document(json.dumps(doc))
+    return evidence.validate_links(
+        admitted,
+        root,
+        policy=evidence.EvidencePolicy(require_matched_accelerator=True),
+    )
+
+
+def test_optional_accelerator_cohort_agreement_is_source_reported(
+    tmp_path: Path,
+) -> None:
+    """Every admitted run must name the same accelerator in strict mode."""
+    doc = sample_study(tmp_path)
+    checked = _accelerator_preflight(doc, tmp_path)
+    assert checked["declared_run_accelerators"] == {
+        row["experiment_manifest"]: "none" for row in doc["observations"]
+    }
+    assert DEVICE_UNATTESTED in checked["scope"]
+    for row in doc["observations"]:
+        _modify_manifest(
+            tmp_path,
+            row["algorithm"],
+            old='accelerator = "none"',
+            new=f'accelerator = "{CUDA_BACKEND}"',
+        )
+    checked = _accelerator_preflight(doc, tmp_path)
+    assert set(checked["declared_run_accelerators"].values()) == {CUDA_BACKEND}
+
+
+def test_mixed_accelerators_remain_allowed_when_not_requiring_parity(
+    tmp_path: Path,
+) -> None:
+    """Heterogeneous research is still available without strict opt-in."""
+    doc = sample_study(tmp_path)
+    _modify_manifest(
+        tmp_path,
+        "candidate",
+        old='accelerator = "none"',
+        new=f'accelerator = "{CUDA_BACKEND}"',
+    )
+    assert _admit(doc, tmp_path)["reported_trials_checked"] == ALGORITHM_COUNT
+    with pytest.raises(evidence.EvidenceError, match=ACCELERATOR_DIAGNOSTIC):
+        _accelerator_preflight(doc, tmp_path)
+
+
+def test_accelerator_cli_mismatch_never_emits_partial_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An incompatible run device fails before printing capacity metrics."""
+    doc = sample_study(tmp_path)
+    study_file = tmp_path / "study.json"
+    _ = study_file.write_text(json.dumps(doc), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(study_file),
+            "--root",
+            str(tmp_path),
+            "--require-matched-accelerator",
+        ],
+    )
+    assert evidence.main() == 0
+    checked = json.loads(capsys.readouterr().out)
+    assert DEVICE_UNATTESTED in checked["evidence_preflight"]["scope"]
+    _modify_manifest(
+        tmp_path,
+        "baseline",
+        old='accelerator = "none"',
+        new=f'accelerator = "{CUDA_BACKEND}"',
+    )
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    failure = capsys.readouterr()
+    assert not failure.out
+    assert ACCELERATOR_DIAGNOSTIC in failure.err
