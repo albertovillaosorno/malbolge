@@ -131,6 +131,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   difficulties in exact rational arithmetic, preserving raw p-values. The
   correction refuses missing paired-test opt-in and never claims to repair
   dependence, invalid sampling or unauthenticated measurements.
+- Both standalone and evidence-aware arena JSON input now admit a bounded
+  regular descriptor with before/after inode identity and timestamp checks,
+  plus nonblocking/no-follow opens on capable hosts. Synthetic regular-file,
+  FIFO, symlink, short-read and mid-read mutations fail before publishing
+  report JSON; filesystem atomicity and source authenticity remain unproven.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

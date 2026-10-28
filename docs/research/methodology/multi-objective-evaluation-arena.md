@@ -156,6 +156,14 @@ same-device comparison claims against silent heterogeneous arms while leaving
 explicit cross-accelerator comparisons permitted without this mode. Even
 matching declarations do not attest actual hardware or accelerator utilization.
 
+Both the default analyzer and evidence-aware CLI now also use one bounded
+study-file input reader: source path and opened descriptor must retain exact
+regular-file inode identity, byte size, modification/change times, and a
+complete read. POSIX nonblocking/no-follow open flags reject raced FIFO and
+linked leaves; injected regular-file replacements and mid-read writes fail
+before either CLI emits partial JSON. This narrows the initial study-file
+admission race without proving an atomic filesystem snapshot or record origin.
+
 The shared evidence-file reader now checks the admitted regular file against
 its opened descriptor and verifies device/inode identity, byte length and
 nanosecond modification/change timestamps through read completion. It also
@@ -276,6 +284,11 @@ The original study records remain the result authority.
   identity, exact resource declarations, v2 energy CSV, matched reported
   accelerator identity, and deterministic challenge regeneration. Independent
   negative oracle and raw-digest mutations fail before report publication.
+- `benchmarks/arena/study_file.py` guards bounded study JSON input with
+  before/after descriptor and pathname identity, and nonblocking/no-follow
+  open flags when available. Deterministic race regressions check ordinary
+  replacement, FIFO/link substitution, file rewrite, short reads and both
+  fail-closed CLI paths.
 - `benchmarks/arena/multiplicity.py` optionally applies exact study-wide
   Holm-Bonferroni multiplicity correction, preserving every raw probability
   and excluding null hypotheses from the family count. Synthetic reference,

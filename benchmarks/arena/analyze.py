@@ -40,7 +40,6 @@ from dataclasses import dataclass
 from fractions import Fraction
 import json
 from pathlib import Path
-import stat
 import sys
 from typing import Any
 from typing import Never
@@ -48,6 +47,7 @@ from typing import Never
 from benchmarks.arena import median_intervals
 from benchmarks.arena import multiplicity
 from benchmarks.arena import paired_exact_tests
+from benchmarks.arena import study_file
 
 SCHEMA_VERSION = 1
 SHA256_HEX_LENGTH = 64
@@ -787,16 +787,14 @@ def read_input(path: Path) -> str:
     Returns:
         A UTF-8 study document bounded to the declared input limit.
 
+    Raises:
+        ArenaError: The input file was replaced or exceeded its limits.
+
     """
-    info = path.lstat()
-    if not stat.S_ISREG(info.st_mode):
-        _fail("arena input must be a regular file, not a link or device")
-    if info.st_size > MAX_INPUT_BYTES:
-        _fail("arena input exceeds 16 MiB limit")
-    with path.open("rb") as stream:
-        data = stream.read(MAX_INPUT_BYTES + 1)
-    if len(data) > MAX_INPUT_BYTES:
-        _fail("arena input exceeds 16 MiB limit")
+    try:
+        data = study_file.read_study_bytes(path, limit=MAX_INPUT_BYTES)
+    except study_file.StudyFileError as error:
+        raise ArenaError(str(error)) from error
     return data.decode("utf-8")
 
 

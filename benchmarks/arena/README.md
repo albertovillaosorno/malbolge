@@ -91,6 +91,16 @@ against the arena record. Only bounded regular manifest files and existing,
 nonempty raw samples under the supplied root are admitted; symlink hops,
 missing artifacts, and identity drift fail closed.
 
+Both arena CLI entrypoints now read the caller's study JSON through a
+bounded descriptor-owner. It checks the initial regular-file metadata against
+the opened descriptor, then rechecks device/inode/size and nanosecond
+modification/change timestamps before and after the read. Where available,
+nonblocking/no-follow open flags prevent a raced FIFO or linked leaf from
+turning a previously admitted regular path into a blocking or redirected read.
+A replaced input or short read fails before publishing any report. These
+are observed race defenses, not a filesystem snapshot or source-authenticity
+proof; the caller must still supply trustworthy provenance separately.
+
 Arena evidence file readers now check regular-path and opened-descriptor
 identity, size, and modification/change timestamps before and after
 bounded reads, including a post-read ancestor-link admission. A replaced
