@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-import json
 import os
 from pathlib import Path
 import stat
@@ -54,6 +53,7 @@ from benchmarks.arena import analyze
 from benchmarks.arena import budget_links
 from benchmarks.arena import challenge_bundles
 from benchmarks.arena import raw_samples
+from benchmarks.arena import report_output
 from benchmarks.arena import trial_runs
 
 MAX_MANIFEST_BYTES = 1 * 1024 * 1024
@@ -555,6 +555,16 @@ def validate_links(
     )
 
 
+def _publish_cli_report(
+    report: dict[str, Any],
+    parser: argparse.ArgumentParser,
+) -> None:
+    try:
+        report_output.publish(report, sys.stdout)
+    except report_output.ReportOutputError as error:
+        parser.exit(2, f"arena evidence: {error}\n")
+
+
 def main() -> int:
     """Analyze a study only after its local evidence identity preflight.
 
@@ -599,7 +609,7 @@ def main() -> int:
     except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena evidence: {error}\n")
     report["evidence_preflight"] = checked
-    _ = sys.stdout.write(json.dumps(report, sort_keys=True, indent=2) + "\n")
+    _publish_cli_report(report, parser)
     return 0
 
 

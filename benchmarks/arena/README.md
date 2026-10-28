@@ -91,6 +91,14 @@ against the arena record. Only bounded regular manifest files and existing,
 nonempty raw samples under the supplied root are admitted; symlink hops,
 missing artifacts, and identity drift fail closed.
 
+Both arena CLI entrypoints publish completed JSON reports through a
+single-record checked text writer. A valid `write()` must return the exact
+character count, not a boolean, absent value, short count or overstated count,
+and a successful `flush()` must follow before the command returns zero. Writer
+and flush failures now produce nonzero operator exits with a diagnostic.
+An already-emitted prefix on a failed output stream **cannot be rolled back**;
+this is a reliable success/failure signal, not atomic stdout publication.
+
 Both arena CLI entrypoints now read the caller's study JSON through a
 bounded descriptor-owner. It checks the initial regular-file metadata against
 the opened descriptor, then rechecks device/inode/size and nanosecond

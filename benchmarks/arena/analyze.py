@@ -47,6 +47,7 @@ from typing import Never
 from benchmarks.arena import median_intervals
 from benchmarks.arena import multiplicity
 from benchmarks.arena import paired_exact_tests
+from benchmarks.arena import report_output
 from benchmarks.arena import study_file
 from benchmarks.arena import success_intervals
 
@@ -851,7 +852,10 @@ def main() -> int:
             annotate_success_intervals(report)
     except (ArenaError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena: {error}\n")
-    _ = sys.stdout.write(json.dumps(report, sort_keys=True, indent=2) + "\n")
+    try:
+        report_output.publish(report, sys.stdout)
+    except report_output.ReportOutputError as error:
+        parser.exit(2, f"arena: {error}\n")
     return 0
 
 

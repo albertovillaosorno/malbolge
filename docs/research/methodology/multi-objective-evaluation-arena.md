@@ -169,6 +169,13 @@ same-device comparison claims against silent heterogeneous arms while leaving
 explicit cross-accelerator comparisons permitted without this mode. Even
 matching declarations do not attest actual hardware or accelerator utilization.
 
+Both arena CLI commands also share a checked JSON stdout publisher: the
+complete report is serialized before one text write, whose returned character
+count must be exact, then explicitly flushed before successful command exit.
+Short, absent, boolean or overstated write counts and write/flush exceptions
+return nonzero. Already emitted prefixes cannot be rolled back after stream
+failure; this boundary guards reported publication status, not atomic stdout.
+
 Both the default analyzer and evidence-aware CLI now also use one bounded
 study-file input reader: source path and opened descriptor must retain exact
 regular-file inode identity, byte size, modification/change times, and a
@@ -297,6 +304,10 @@ The original study records remain the result authority.
   identity, exact resource declarations, v2 energy CSV, matched reported
   accelerator identity, and deterministic challenge regeneration. Independent
   negative oracle and raw-digest mutations fail before report publication.
+- `benchmarks/arena/report_output.py` checks exact text-write character
+  counts and flush status on both arena CLI reports. Deterministic broken
+  writer fixtures reject short/overstated/malformed counts and flush errors,
+  distinguishing nonzero operator failure from impossible stdout rollback.
 - `benchmarks/arena/study_file.py` guards bounded study JSON input with
   before/after descriptor and pathname identity, and nonblocking/no-follow
   open flags when available. Deterministic race regressions check ordinary

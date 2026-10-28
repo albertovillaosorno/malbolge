@@ -141,6 +141,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   bounds. It rejects empty and over-limit sample populations instead of
   fabricating inference, while documenting the unverified iid Bernoulli and
   verifier assumptions. Independent exact reference and both-CLI tests pass.
+- Operator report output now requires exact text write counts and an explicit
+  successful stdout flush across both arena CLI routes, rejecting malformed
+  return values, truncation, and injected stream errors as nonzero exits.
+  Already emitted bytes cannot be rolled back on a broken stdout stream.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real
