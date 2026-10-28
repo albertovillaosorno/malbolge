@@ -323,8 +323,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   exact constant bits of every supported scalar materialization without
   re-lowering its program. Seven independently admitted scalar substitutions
   (`bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`) fail direct and product
-  inspector-backed source checks while unrestricted restoration remains valid;
-  nonconstant operation semantics are not yet compared.
+  inspector-backed source checks while unrestricted restoration remains valid.
+  The same source-bound stage now binds every admitted signed/unsigned 32-bit
+  binary operation type, opcode, and three SSA identities without rerunning
+  lowering. Two independently admitted changed-opcode/operand checkpoints
+  reject through direct and product inspector selectors, and all twenty
+  unchanged binary shapes pass their positive inspector-backed matrix.
+  Remaining nonconstant operations are not yet fully bound.
 
   Its new `composition/progress_inspector.rs`
   limits the direct inspector child to 60 seconds, 64 MiB stdout, and 8 KiB

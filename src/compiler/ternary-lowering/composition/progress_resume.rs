@@ -49,6 +49,8 @@ use super::model::{TernaryFunction, TernaryOperation, TernaryProgram, TernarySou
 use super::program_codec::{TERNARY_PROGRAM_CODEC_ID, operation_span};
 use super::stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
 
+type BinaryValues = (u32, u32, u32);
+
 /// Product compiler selection for entering the ternary-lowering stage.
 #[derive(Clone, Copy, Debug)]
 pub enum TernaryCompilerStageInput<'input> {
@@ -219,8 +221,7 @@ const fn matches_source_span(
 
 // Scalar constants are copied unchanged by the fresh lowerer. Match their
 // exact bits, signedness and upstream SSA identity without reconstructing
-// operations or walking a second SSA lowering state. Other instructions still
-// depend on the separate structural/source-span checks.
+// operations or walking a second SSA lowering state.
 fn matches_expected_constant(
     instruction: &InputInstruction,
     saved: &TernaryOperation,
@@ -267,6 +268,107 @@ fn matches_expected_constant(
     }
 }
 
+// Bind projected binary semantics without re-running SSA lowering. The
+// independently admitted checkpoint already proves each operand is defined;
+// exact operation kind, signedness, and SSA identities remain source-bound.
+const fn expected_binary_values(instruction: &InputInstruction) -> Option<BinaryValues> {
+    let (
+        InputInstruction::BinaryAdd { left, result, right, .. }
+        | InputInstruction::BinaryAnd { left, result, right, .. }
+        | InputInstruction::BinaryDivideSigned { left, result, right, .. }
+        | InputInstruction::BinaryDivideUnsigned { left, result, right, .. }
+        | InputInstruction::BinaryMultiply { left, result, right, .. }
+        | InputInstruction::BinaryOr { left, result, right, .. }
+        | InputInstruction::BinaryRemainderSigned { left, result, right, .. }
+        | InputInstruction::BinaryRemainderUnsigned { left, result, right, .. }
+        | InputInstruction::BinaryShiftLeft { left, result, right, .. }
+        | InputInstruction::BinaryShiftRightArithmetic { left, result, right, .. }
+        | InputInstruction::BinaryShiftRightLogical { left, result, right, .. }
+        | InputInstruction::BinarySubtract { left, result, right, .. }
+        | InputInstruction::BinaryXor { left, result, right, .. }) = instruction else {
+        return None;
+    };
+    Some((*left, *result, *right))
+}
+
+const fn saved_binary_values(operation: &TernaryOperation) -> Option<BinaryValues> {
+    let (
+        TernaryOperation::AddI32 { left, result, right, .. }
+        | TernaryOperation::AddU32 { left, result, right, .. }
+        | TernaryOperation::AndI32 { left, result, right, .. }
+        | TernaryOperation::AndU32 { left, result, right, .. }
+        | TernaryOperation::DivideI32 { left, result, right, .. }
+        | TernaryOperation::DivideU32 { left, result, right, .. }
+        | TernaryOperation::MultiplyI32 { left, result, right, .. }
+        | TernaryOperation::MultiplyU32 { left, result, right, .. }
+        | TernaryOperation::OrI32 { left, result, right, .. }
+        | TernaryOperation::OrU32 { left, result, right, .. }
+        | TernaryOperation::RemainderI32 { left, result, right, .. }
+        | TernaryOperation::RemainderU32 { left, result, right, .. }
+        | TernaryOperation::ShiftLeftI32 { left, result, right, .. }
+        | TernaryOperation::ShiftLeftU32 { left, result, right, .. }
+        | TernaryOperation::ShiftRightArithmeticI32 { left, result, right, .. }
+        | TernaryOperation::ShiftRightLogicalU32 { left, result, right, .. }
+        | TernaryOperation::SubtractI32 { left, result, right, .. }
+        | TernaryOperation::SubtractU32 { left, result, right, .. }
+        | TernaryOperation::XorI32 { left, result, right, .. }
+        | TernaryOperation::XorU32 { left, result, right, .. }) = operation else {
+        return None;
+    };
+    Some((*left, *result, *right))
+}
+
+fn matches_expected_binary(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    let Some(expected) = expected_binary_values(instruction) else {
+        return true;
+    };
+    matches!((instruction, saved),
+        (InputInstruction::BinaryAdd { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::AddI32 { .. })
+        | (InputInstruction::BinaryAdd { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::AddU32 { .. })
+        | (InputInstruction::BinaryAnd { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::AndI32 { .. })
+        | (InputInstruction::BinaryAnd { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::AndU32 { .. })
+        | (InputInstruction::BinaryDivideSigned { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::DivideI32 { .. })
+        | (InputInstruction::BinaryDivideUnsigned { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::DivideU32 { .. })
+        | (InputInstruction::BinaryMultiply { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::MultiplyI32 { .. })
+        | (InputInstruction::BinaryMultiply { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::MultiplyU32 { .. })
+        | (InputInstruction::BinaryOr { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::OrI32 { .. })
+        | (InputInstruction::BinaryOr { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::OrU32 { .. })
+        | (InputInstruction::BinaryRemainderSigned { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::RemainderI32 { .. })
+        | (InputInstruction::BinaryRemainderUnsigned { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::RemainderU32 { .. })
+        | (InputInstruction::BinaryShiftLeft { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::ShiftLeftI32 { .. })
+        | (InputInstruction::BinaryShiftLeft { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::ShiftLeftU32 { .. })
+        | (InputInstruction::BinaryShiftRightArithmetic { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::ShiftRightArithmeticI32 { .. })
+        | (InputInstruction::BinaryShiftRightLogical { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::ShiftRightLogicalU32 { .. })
+        | (InputInstruction::BinarySubtract { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::SubtractI32 { .. })
+        | (InputInstruction::BinarySubtract { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::SubtractU32 { .. })
+        | (InputInstruction::BinaryXor { type_kind: InputScalarType::I32, .. },
+            TernaryOperation::XorI32 { .. })
+        | (InputInstruction::BinaryXor { type_kind: InputScalarType::U32, .. },
+            TernaryOperation::XorU32 { .. })
+    ) && saved_binary_values(saved) == Some(expected)
+}
+
 fn matches_expected_operation_spans(
     current: &InputFunction,
     saved: &TernaryFunction,
@@ -286,6 +388,7 @@ fn matches_expected_operation_spans(
         && saved_instructions.iter().zip(&block.instructions).all(
             |(saved_op, current_op)| {
                 matches_expected_constant(current_op, saved_op)
+                    && matches_expected_binary(current_op, saved_op)
                     && projected_instruction_span(current_op).is_some_and(
                         |span| matches_source_span(span, operation_span(*saved_op)),
                     )
@@ -294,10 +397,10 @@ fn matches_expected_operation_spans(
         && matches_source_span(return_span, operation_span(*saved_return))
 }
 
-// This comparison is deliberately structural rather than a fresh lowering:
-// resuming a large job must not re-run the work stored in its checkpoint.
-// It binds function identity and exact source spans in addition to module
-// provenance, while the upstream source digest remains caller-authenticated.
+// This comparison reuses scalar/binary identity without re-lowering: resuming
+// a large job must not repeat the work stored in its checkpoint. Remaining
+// nonconstant operations still have structural/source-span admission, while
+// the upstream source digest remains caller-authenticated.
 fn matches_expected_functions(
     program: &TernaryProgram,
     expected: &TypedIrInput,
@@ -338,7 +441,7 @@ fn matches_expected_functions(
 /// and canonical stage admission validates the extracted ternary program.
 /// This additional check binds that program to separately supplied expected
 /// module and function provenance; it does not authenticate the source digest,
-/// compare operation semantics, or substitute for toolchain/revision policy.
+/// establish full operation-level equivalence, or replace toolchain policy.
 ///
 /// # Errors
 ///

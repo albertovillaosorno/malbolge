@@ -938,8 +938,13 @@ is otherwise unchanged. Scalar materializations additionally require exact
 upstream SSA IDs, signed or unsigned types, and source constant bits for all
 seven admitted `bool`/`i8`/`u8`/`i16`/`u16`/`i32`/`u32` forms. An independently
 valid altered scalar checkpoint fails both inspector-backed source-matched
-selectors while unrestricted recovery remains valid. The check does not
-re-lower the projection or cover nonconstant instruction semantics. An explicit
+selectors while unrestricted recovery remains valid. All twenty admitted
+signed/unsigned 32-bit binary forms also bind the exact operation kind,
+signedness, and left/result/right SSA identities to the caller projection;
+an independently valid opcode or operand substitution now rejects through both
+source-bound selectors. A separate inspector-backed matrix admits unchanged
+checkpoints across all twenty binary forms. The checks do not re-lower the
+projection or cover remaining nonconstant instruction semantics. An explicit
 `InputInstruction::Unsupported` sentinel in the expected projection also fails
 source-matched resume, as it does on fresh lowerer admission. The
 source-bound route also matches each saved instruction and return source span

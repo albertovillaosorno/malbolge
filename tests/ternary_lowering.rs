@@ -12581,64 +12581,40 @@ fn flipped_scalar_bits(operation: TernaryOperation) -> Option<TernaryOperation> 
         Some(TernaryOperation::MaterializeBool {
             result, value: !value, span,
         })
-    } else if let TernaryOperation::MaterializeI8 {
-        result, scalar, span,
-    } = operation {
+    } else if let TernaryOperation::MaterializeI8 { result, scalar, span } = operation {
         Some(TernaryOperation::MaterializeI8 {
             result,
-            scalar: ternary_lowering::TernaryU8Scalar::from_bits(
-                scalar.bits() ^ 1,
-            ),
+            scalar: ternary_lowering::TernaryU8Scalar::from_bits(scalar.bits() ^ 1),
             span,
         })
-    } else if let TernaryOperation::MaterializeU8 {
-        result, scalar, span,
-    } = operation {
+    } else if let TernaryOperation::MaterializeU8 { result, scalar, span } = operation {
         Some(TernaryOperation::MaterializeU8 {
             result,
-            scalar: ternary_lowering::TernaryU8Scalar::from_bits(
-                scalar.bits() ^ 1,
-            ),
+            scalar: ternary_lowering::TernaryU8Scalar::from_bits(scalar.bits() ^ 1),
             span,
         })
-    } else if let TernaryOperation::MaterializeI16 {
-        result, scalar, span,
-    } = operation {
+    } else if let TernaryOperation::MaterializeI16 { result, scalar, span } = operation {
         Some(TernaryOperation::MaterializeI16 {
             result,
-            scalar: ternary_lowering::TernaryU16Scalar::from_bits(
-                scalar.bits() ^ 1,
-            ),
+            scalar: ternary_lowering::TernaryU16Scalar::from_bits(scalar.bits() ^ 1),
             span,
         })
-    } else if let TernaryOperation::MaterializeU16 {
-        result, scalar, span,
-    } = operation {
+    } else if let TernaryOperation::MaterializeU16 { result, scalar, span } = operation {
         Some(TernaryOperation::MaterializeU16 {
             result,
-            scalar: ternary_lowering::TernaryU16Scalar::from_bits(
-                scalar.bits() ^ 1,
-            ),
+            scalar: ternary_lowering::TernaryU16Scalar::from_bits(scalar.bits() ^ 1),
             span,
         })
-    } else if let TernaryOperation::MaterializeI32 {
-        result, scalar, span,
-    } = operation {
+    } else if let TernaryOperation::MaterializeI32 { result, scalar, span } = operation {
         Some(TernaryOperation::MaterializeI32 {
             result,
-            scalar: ternary_lowering::TernaryI32Scalar::from_bits(
-                scalar.bits() ^ 1,
-            ),
+            scalar: ternary_lowering::TernaryI32Scalar::from_bits(scalar.bits() ^ 1),
             span,
         })
-    } else if let TernaryOperation::MaterializeU32 {
-        result, scalar, span,
-    } = operation {
+    } else if let TernaryOperation::MaterializeU32 { result, scalar, span } = operation {
         Some(TernaryOperation::MaterializeU32 {
             result,
-            scalar: ternary_lowering::TernaryI32Scalar::from_bits(
-                scalar.bits() ^ 1,
-            ),
+            scalar: ternary_lowering::TernaryI32Scalar::from_bits(scalar.bits() ^ 1),
             span,
         })
     } else {
@@ -12646,7 +12622,7 @@ fn flipped_scalar_bits(operation: TernaryOperation) -> Option<TernaryOperation> 
     }
 }
 
-fn assert_source_bound_scalar_roundtrip(
+fn assert_source_bound_program_roundtrip(
     label: &str,
     expected: &TypedIrInput,
     original: &ternary_lowering::TernaryProgram,
@@ -12654,7 +12630,7 @@ fn assert_source_bound_scalar_roundtrip(
     let bytes = canonical_ternary_bytes(original)
         .map_err(|error| format!("encode {label} scalar: {error:?}"))?;
     let (progress, directory) = publish_ternary_progress_fixture(
-        &format!("matched-{label}-scalar-bits"), &bytes,
+        &format!("matched-{label}-source"), &bytes,
     )?;
     let result = assert_source_matched_ternary_success(
         expected, original, &progress_inspector(),
@@ -12685,7 +12661,7 @@ fn ternary_progress_for_source_binds_constant_scalar_bits()
         let original = enter_ternary_stage(
             TernaryStageInput::Projection(&expected),
         ).map_err(|error| format!("lower {label} scalar: {error:?}"))?;
-        assert_source_bound_scalar_roundtrip(label, &expected, &original)?;
+        assert_source_bound_program_roundtrip(label, &expected, &original)?;
         let mut foreign = original.clone();
         let first = foreign.functions.first_mut()
             .and_then(|function| function.operations.first_mut())
@@ -12719,6 +12695,92 @@ fn ternary_progress_for_source_binds_constant_scalar_bits()
             .map_err(|error| format!("clean {label} scalar fixture: {error}"));
         result?;
         cleanup?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_for_source_binds_binary_opcode_and_ssa_operands()
+-> Result<(), String> {
+    let (original, expected) =
+        lowered_arithmetic_fixture(false, BinaryOp::Add)?;
+    let op = original.functions.first()
+        .and_then(|function| function.operations.get(2))
+        .ok_or_else(|| String::from("missing unsigned binary operation"))?;
+    let TernaryOperation::AddU32 { left, result: ssa_result, right, span } = *op else {
+        return Err(String::from("expected unsigned source addition"));
+    };
+    let changes = [
+        ("changed-binary-opcode", TernaryOperation::SubtractU32 {
+            left, result: ssa_result, right, span,
+        }),
+        ("changed-binary-operand", TernaryOperation::AddU32 {
+            left: right, result: ssa_result, right, span,
+        }),
+    ];
+    for (label, changed) in changes {
+        let mut foreign = original.clone();
+        let operation = foreign.functions.first_mut()
+            .and_then(|function| function.operations.get_mut(2))
+            .ok_or_else(|| String::from("missing saved binary operation"))?;
+        *operation = changed;
+        if foreign.source_sha256 != original.source_sha256 {
+            return Err(format!("{label} changed source digest"));
+        }
+        ternary_lowering::validate_ternary_program(&foreign)
+            .map_err(|error| format!("admit {label}: {error:?}"))?;
+        let bytes = canonical_ternary_bytes(&foreign)
+            .map_err(|error| format!("encode {label}: {error:?}"))?;
+        let (progress, directory) =
+            publish_ternary_progress_fixture(label, &bytes)?;
+        let result = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            if resume_ternary_from_progress(
+                &interpreter, &inspector, &progress,
+            ) != Ok(foreign) {
+                return Err(format!("valid {label} was not restored"));
+            }
+            assert_source_matched_ternary_failure(
+                &expected, &inspector, (&interpreter, &progress),
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean {label}: {error}"));
+        result?;
+        cleanup?;
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_for_source_accepts_all_supported_binary_kinds()
+-> Result<(), String> {
+    for (signed, operation) in arithmetic_cases() {
+        let (original, expected) =
+            lowered_arithmetic_fixture(signed, operation)?;
+        assert_source_bound_program_roundtrip(
+            &format!("arithmetic-{signed}-{operation:?}"),
+            &expected, &original,
+        )?;
+    }
+    for (signed, operation) in shift_cases() {
+        let (original, expected) = lowered_shift_fixture(signed, operation)?;
+        assert_source_bound_program_roundtrip(
+            &format!("shift-{signed}-{operation:?}"),
+            &expected, &original,
+        )?;
+    }
+    for signed in [true, false] {
+        for operation in [BinaryOp::And, BinaryOp::Or, BinaryOp::Xor] {
+            let (original, expected) =
+                lowered_arithmetic_fixture(signed, operation)?;
+            assert_source_bound_program_roundtrip(
+                &format!("bitwise-{signed}-{operation:?}"),
+                &expected, &original,
+            )?;
+        }
     }
     Ok(())
 }
