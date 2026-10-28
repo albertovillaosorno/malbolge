@@ -1,6 +1,6 @@
 ---
 id: "multi-objective-compiler-algorithm-evaluation-arena"
-status: "pending"
+status: "active"
 lane: "8"
 priority: "p2"
 area: "applications"
@@ -61,6 +61,18 @@ appearing equally "perfect" after crossing an arbitrary threshold.
 
 - Expected durable artifact surface: `benchmarks/arena/`,
   `docs/research/methodology/`, `algorithms/`.
+- `benchmarks/arena/analyze.py` now admits version-one reported trial records,
+  matches algorithms on exact challenge seed/hash/trial cohorts, retains failure
+  rates, and computes conditional-cost Pareto sets and capacity curves with
+  exact integer-rational medians, reported fixed-budget overage rejection, and
+  no fabricated solved thresholds. The
+  synthetic-only test suite lives under `benchmarks/arena/tests/`.
+- The analyzer is not an independent verifier and does not authenticate raw
+  samples or linked experiment manifests. Required next evidence includes
+  actual protocol-validated run manifests, verifier outcome admission, raw
+  multidimensional samples, budget enforcement, and published stage comparisons
+  on reproducible real challenges. Later verified `.malbolge` measurements
+  remain dependent on the final compiler backend.
 - Required evidence: reproducible run commands, retained challenge and
   algorithm identities, raw multidimensional samples, and independent verifier
   outcomes for every measured stage.

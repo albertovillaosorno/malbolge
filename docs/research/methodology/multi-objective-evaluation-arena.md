@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active. Initial offline analyzer implemented; performance evidence pending.
 
 ## Research Question
 
@@ -20,10 +20,10 @@ fixed budgets. Preserve raw evidence so an algorithm that is faster at easy
 instances but scales worse than another remains distinguishable instead of both
 appearing equally "perfect" after crossing an arbitrary threshold.
 
-- Status: Proposed
+- Status: Active (offline evidence analysis only)
 - Record type: Methodology
 - Planning identity: `multi-objective-compiler-algorithm-evaluation-arena`
-- Last reviewed: 2026-07-26
+- Last reviewed: 2026-10-28
 
 ## Prior Work
 
@@ -54,6 +54,39 @@ Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`.
 
+`benchmarks/arena/analyze.py` now implements one deterministic offline input
+boundary, documented under `benchmarks/arena/README.md`. Its version-one JSON
+keeps one explicit study question, hypothesis, baseline, falsification
+observation, compiler/execution stage, target and host/toolchain identities,
+positive time/memory budgets, and ordered cost objectives. Per-trial records
+retain algorithm, challenge family/version/difficulty/seed, workload SHA-256,
+trial number, outcome, named external verifier, verdict, exact paths to
+experiment identity and raw sample, and measured cost dimensions. Claimed
+verified timings above the study time budget, or reported resident memory
+above its budget, fail admission without authorizing unmeasured resource use.
+
+The analyzer compares only cohorts with identical seeds, workload digests, and
+trial numbers at each challenge difficulty. Unmatched or duplicate trials
+fail closed. Every comparison requires the declared baseline. An independently
+named verifier and an accepted verdict are required to *report* success;
+rejection, exhaustion, no-solution, and tool failures remain visible.
+
+The analyzer does not replay that verifier or authenticate the references yet.
+
+Curves retain trial counts, exact success fractions, per-outcome counts, and
+cost medians conditional on verified success. Medians are exact integer
+fractions, including even-sized and very large samples. The Pareto relation
+minimizes declared costs and maximizes verified trial count inside each matched
+cohort; zero-success algorithms remain in curves but are omitted from the
+conditional frontier. The reported highest verified difficulty is observed,
+not extrapolated, and there is no single aggregate performance score.
+
+This first slice intentionally does not require an executable final `.malbolge`
+backend; the study's `stage` can describe available compiler or execution
+boundaries. All results from real studies must separately pass experiment
+manifest validation, benchmark protocol, independent semantic verification,
+and raw evidence review before any performance conclusion is published.
+
 ## Evidence
 
 - Expected durable artifact surface: `benchmarks/arena/`,
@@ -61,27 +94,43 @@ results. Source claims resolve through `docs/bibliography/`.
 - Required evidence: reproducible run commands, retained challenge and
   algorithm identities, raw multidimensional samples, and independent verifier
   outcomes for every measured stage.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- `benchmarks/arena/analyze.py` admits and compares version-one JSON studies.
+  The synthetic regressions under `benchmarks/arena/tests/test_analyze.py`
+  exercise exact cohorts, conditional Pareto fronts, failed-trial retention,
+  huge exact medians, deterministic ordering, forged verifier status, invalid
+  objective data, and fail-closed CLI output.
+- Research evidence pending: linked manifest admission, raw sample content
+  authentication, bibliography-backed context, real experiment configurations,
+  retained negative/null results, and a reviewed conclusion with threats to
+  validity.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
 
 ## Results
 
-No completed research result or implementation claim is made by this proposed
-record.
+The offline comparison implementation and synthetic regression evidence
+exist. These tests establish **analysis behavior only**. They are not run
+samples or performance results from compiler algorithms, hosts, or target
+profiles. No real result or capacity claim is made here.
 
 ## Threats to Validity
 
-The record is proposed; implementation bias, workload selection, hardware
-effects, and incomplete replication remain threats until measured.
+The analyzer verifies structure, cohort matching, and reported outcome
+consistency, but cannot yet establish that the named verifier ran, that raw
+samples and experiment manifests exist or agree with their contents, or that
+resource budgets were actually enforced (only reported overages fail
+admission). Median costs conditional on success can hide
+how long failed runs took; verified counts remain a separate Pareto objective.
+For real experiments, implementation bias, workload selection, hardware
+variation, truncated trials, and insufficient replication remain threats.
 
 ## Conclusion
 
-Open. No technique is promoted to product architecture until the declared
-evidence supports it.
+Open. The offline comparison slice is implemented; authentic evidence intake,
+real stage measurements, protocol-level resource accounting, and reviewed
+research conclusions remain. No technique is promoted to product architecture
+until independently admitted evidence supports it.
 
 ## References
 

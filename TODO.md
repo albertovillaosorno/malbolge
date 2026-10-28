@@ -19,6 +19,14 @@ labels belong here.
 
 ## P2 — Compiler, runtime, and accelerator core
 
+### TODO - Multi-objective compiler algorithm evaluation arena
+
+Evaluate compiler and execution algorithms over scalable challenge families and
+produce capacity curves and Pareto frontiers rather than one pass/fail score.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc](docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc)
+
 ### TODO - Native x86-64 and AArch64 backends
 
 Implement native-code emitters for x86-64 and AArch64 behind one execution-IR
@@ -78,13 +86,6 @@ emission.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc](docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc)
 
-### TODO - Multi-objective compiler algorithm evaluation arena
-
-Evaluate compiler and execution algorithms over scalable challenge families and
-produce capacity curves and Pareto frontiers rather than one pass/fail score.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc](docs/todo/open/applications/multi-objective-compiler-algorithm-evaluation-arena.mdc)
 
 ## P3 — Optimization, proof, and reusable scale
 
