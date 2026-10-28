@@ -12307,6 +12307,57 @@ fn ternary_progress_for_source_rejects_invalid_expected_operation_spans()
 }
 
 #[test]
+fn ternary_progress_for_source_binds_operation_count_without_relowering()
+-> Result<(), String> {
+    let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let original = enter_ternary_stage(TernaryStageInput::Projection(&expected))
+        .map_err(|error| format!("lower count source: {error:?}"))?;
+    let mut foreign = original.clone();
+    let operations = &mut foreign.functions.first_mut()
+        .ok_or_else(|| String::from("count function missing"))?
+        .operations;
+    let Some(&TernaryOperation::MaterializeI32 { scalar, span, .. }) =
+        operations.first() else {
+        return Err(String::from("count fixture lost its materialization"));
+    };
+    operations.insert(1, TernaryOperation::MaterializeI32 {
+        result: 1, scalar, span,
+    });
+    ternary_lowering::validate_ternary_program(&foreign)
+        .map_err(|error| format!("admit foreign count: {error:?}"))?;
+    if original.source_sha256 != foreign.source_sha256
+        || original.functions.len() != foreign.functions.len()
+        || original.functions.iter().zip(&foreign.functions).any(
+            |(left, right)| left.span != right.span
+                || left.name != right.name || left.id != right.id,
+        )
+    {
+        return Err(String::from("count forgery changed provenance"));
+    }
+    let bytes = canonical_ternary_bytes(&foreign)
+        .map_err(|error| format!("encode foreign count: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("foreign-operation-count", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+            != Ok(foreign)
+        {
+            return Err(String::from("valid extra operation was rejected"));
+        }
+        assert_source_matched_ternary_failure(
+            &expected, &inspector, (&interpreter, &progress),
+            TernaryProgressCheckpointError::IdentityMismatch,
+        )
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean count fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
 fn ternary_progress_for_source_rejects_valid_changed_return_category()
 -> Result<(), String> {
     let (original, expected) = lowered_unsigned_return_fixture(u32::MAX)?;

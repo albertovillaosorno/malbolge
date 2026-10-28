@@ -931,8 +931,11 @@ phi-free shape and a return terminator consistent with their declared result
 category. It reuses the fresh lowerer's source-span admission for the
 expected function and its projected instructions and return terminator, so
 invalid or out-of-function expected spans cannot qualify for source-matched
-recovery. This structural admission does not re-lower instructions or compare
-saved operation semantics.
+recovery. The source-bound selector also checks the current one-to-one
+instruction/operation count plus final return against the saved function,
+rejecting independently valid extra operations whose module/function identity
+is otherwise unchanged. This structural admission does not re-lower
+instructions or compare saved operation semantics.
 The ordinary progress route remains available but does not bind an expected
 source. The source-matched route rejects an independently valid checkpoint
 with changed function identity despite a matching module digest, as well as

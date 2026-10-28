@@ -156,15 +156,24 @@ const fn matches_expected_return(
 }
 
 // Source-bound resume must not accept an expected function shape that fresh
-// lowering cannot represent. Checking this small control-flow envelope does
-// not redo the typed instruction lowering stored in the checkpoint.
-const fn matches_supported_function_shape(function: &InputFunction) -> bool {
+// lowering cannot represent. Fresh lowering emits one operation per projected
+// instruction plus a return; this count and control-flow envelope do not redo
+// typed instruction lowering stored in the checkpoint.
+const fn matches_supported_function_shape(
+    function: &InputFunction,
+    saved_operation_count: usize,
+) -> bool {
     let [block] = function.blocks.as_slice() else {
+        return false;
+    };
+    let Some(saved_instruction_count) = saved_operation_count.checked_sub(1)
+    else {
         return false;
     };
     if function.parameter_count != 0
         || block.id != function.entry
         || block.phi_count != 0
+        || saved_instruction_count != block.instructions.len()
     {
         return false;
     }
@@ -189,7 +198,7 @@ fn matches_expected_functions(
     program.functions.len() == expected.functions.len()
         && program.functions.iter().zip(&expected.functions).all(
             |(saved, current)| {
-                matches_supported_function_shape(current)
+                matches_supported_function_shape(current, saved.operations.len())
                     && validate_projection_spans(current).is_ok()
                     && saved.id == current.id
                     && saved.name == current.name

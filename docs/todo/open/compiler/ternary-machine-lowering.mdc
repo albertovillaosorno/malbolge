@@ -616,6 +616,9 @@ instruction.
   Source-bound recovery additionally shares the fresh lowerer's span validation
   for expected instruction and terminator provenance: four independently
   malformed expected spans reject while the saved checkpoint remains valid.
+  Another production-inspector regression rejects an independently valid
+  checkpoint with an extra unused operation and identical source/function
+  provenance, using the fresh lowerer's one-operation-per-instruction count.
   Source-identical checkpoints with a different but independently valid
   function identity, or mismatched caller function metadata, fail closed; this
   does not claim operation-level equivalence or source-digest authenticity.
