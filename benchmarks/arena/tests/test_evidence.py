@@ -55,6 +55,8 @@ REPLACE_AFTER_LSTAT_COUNT = 3
 SECOND_FSTAT_CALL = 2
 PAIRED_TEST_METHOD = "two-sided-exact-conditional-binomial"
 VERIFICATION_ASYMMETRY_FIELD = "verification_asymmetry_test"
+HOLM_METHOD = "Holm-Bonferroni"
+HOLM_REQUIREMENT_ERROR = "requires --paired-exact-tests"
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE = (
@@ -717,3 +719,63 @@ def test_evidence_cli_opt_in_paired_tests_preserve_evidence_preflight(
     assert (
         VERIFICATION_ASYMMETRY_FIELD in report["paired_baseline_comparisons"][0]
     )
+
+
+def test_evidence_cli_rejects_holm_without_paired_hypotheses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Missing mandatory inference option never emits a capacity summary."""
+    document = sample_study(tmp_path)
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(path),
+            "--root",
+            str(tmp_path),
+            "--adjust-paired-tests",
+        ],
+    )
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    result = capsys.readouterr()
+    assert not result.out
+    assert HOLM_REQUIREMENT_ERROR in result.err
+
+
+def test_evidence_cli_retains_source_linkage_during_holm_inference(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Inference remains downstream of reported manifest admission."""
+    document = sample_study(tmp_path)
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(path),
+            "--root",
+            str(tmp_path),
+            "--paired-exact-tests",
+            "--adjust-paired-tests",
+        ],
+    )
+    assert evidence.main() == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["evidence_preflight"]["reported_trials_checked"] == (
+        ALGORITHM_COUNT
+    )
+    assert (
+        report["paired_exact_test_policy"]["multiple_testing_adjustment"]
+        == HOLM_METHOD
+    )
+    assert report["paired_exact_test_policy"]["adjustment_family_size"] == 0

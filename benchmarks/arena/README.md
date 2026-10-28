@@ -214,6 +214,22 @@ capacity claims. Its `paired_exact_test_policy` block records these limits;
 the default version-one output remains byte-for-byte unchanged without the
 opt-in flag.
 
+An additional `--adjust-paired-tests` flag, **requiring**
+`--paired-exact-tests`, applies a study-wide exact Holm-Bonferroni step-down
+family-wise correction to **all available** paired verification-asymmetry and
+cost-sign hypotheses from every candidate, objective, and difficulty. It
+reports the exact reduced `p_holm_adjusted` rational alongside each unadjusted
+`p_two_sided`; null tests do not count toward the family size. The
+`paired_exact_test_policy` then records the exact number of tested hypotheses
+and the defined study-wide family. The correction uses exact integer fractions
+and remains monotone for tied probabilities. Holm can control family-wise
+error under arbitrary dependence **provided each individual p-value is valid**.
+It does not fix unverified independent-pair assumptions, questionable physical
+measurements, or selectively chosen studies. Adjusted probabilities still do
+not certify statistical significance or change any Pareto, capacity, or tier
+promotion decision. With no opt-in adjustment, the previous unadjusted view
+remains byte-identical.
+
 The `highest_observed_verified_difficulty` is a measured maximum, not an
 interpolated difficulty threshold or a proof of monotonic capacity.
 

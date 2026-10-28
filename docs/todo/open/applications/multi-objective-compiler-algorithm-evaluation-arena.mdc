@@ -126,6 +126,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   retain null on zero or over-limit discordant samples; test hypotheses rely
   on independent pairs and remain unadjusted across multiple comparisons.
   Neither verifier authority nor automatic significance is inferred.
+- Explicit study-wide Holm-Bonferroni correction now adjusts nonnull paired
+  asymmetry and non-tied cost-sign probabilities across all comparisons and
+  difficulties in exact rational arithmetic, preserving raw p-values. The
+  correction refuses missing paired-test opt-in and never claims to repair
+  dependence, invalid sampling or unauthenticated measurements.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

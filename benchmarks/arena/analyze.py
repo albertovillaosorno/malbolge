@@ -46,6 +46,7 @@ from typing import Any
 from typing import Never
 
 from benchmarks.arena import median_intervals
+from benchmarks.arena import multiplicity
 from benchmarks.arena import paired_exact_tests
 
 SCHEMA_VERSION = 1
@@ -625,11 +626,94 @@ def _validate_comparison(
         _fail(f"no comparison algorithm for declared baseline in {key}")
 
 
+def _paired_test_records(
+    comparisons: list[dict[str, Any]],
+    objectives: list[str],
+) -> list[dict[str, Any]]:
+    records = []
+    for comparison in comparisons:
+        outcome = comparison["verification_asymmetry_test"]
+        if outcome is not None:
+            records.append(outcome)
+        for name in objectives:
+            cost = comparison["cost_differences"][name]["paired_sign_test"]
+            if cost is not None:
+                records.append(cost)
+    return records
+
+
+def _adjust_paired_tests(
+    comparisons: list[dict[str, Any]],
+    objectives: list[str],
+) -> int:
+    records = _paired_test_records(comparisons, objectives)
+    raw = [Fraction(*record["p_two_sided"]) for record in records]
+    adjusted = multiplicity.holm_adjusted(raw)
+    for record, probability in zip(records, adjusted, strict=True):
+        record["p_holm_adjusted"] = _exact_pair(probability)
+    return len(records)
+
+
+def _statistical_report_policy(
+    report: dict[str, Any],
+    policy: _AnalysisPolicy,
+    *,
+    adjust_paired_tests: bool,
+) -> None:
+    if adjust_paired_tests and not policy.paired_exact_tests:
+        _fail("Holm adjustment requires --paired-exact-tests")
+    if policy.median_intervals_95:
+        report["median_interval_policy"] = {
+            "method": "exact-symmetric-binomial-order-statistics",
+            "requested_confidence": [19, 20],
+            "minimum_samples": median_intervals.MIN_SAMPLES,
+            "maximum_samples": median_intervals.MAX_SAMPLES,
+            "assumptions": (
+                "Independent identically distributed trials; bounds are "
+                "conservative under ties. Conditional success-only and "
+                "both-success paired intervals do not generalize to failures. "
+                "Sample independence and physical measurements are not "
+                "established by this analyzer."
+            ),
+            "pareto_uses_intervals": False,
+        }
+    if policy.paired_exact_tests:
+        report["paired_exact_test_policy"] = {
+            "method": "two-sided-exact-conditional-binomial",
+            "maximum_discordant_pairs": paired_exact_tests.MAX_DISCORDANT_PAIRS,
+            "multiple_testing_adjustment": "none",
+            "assumptions": (
+                "Independent matched pairs, symmetric discordant signs under "
+                "the null. Outcome asymmetry conditions on one verified arm, "
+                "while cost signs condition on both verified and exclude ties. "
+                "Source-reported verification, sampling independence and "
+                "physical measurements are not authenticated. Unadjusted "
+                "p-values do not establish statistical significance after "
+                "multiple comparisons."
+            ),
+            "pareto_uses_tests": False,
+        }
+    if adjust_paired_tests:
+        tested = _adjust_paired_tests(
+            report["paired_baseline_comparisons"],
+            policy.objectives,
+        )
+        report["paired_exact_test_policy"].update({
+            "multiple_testing_adjustment": "Holm-Bonferroni",
+            "adjustment_family": (
+                "all paired outcome and cost tests in this study"
+            ),
+            "adjustment_family_size": tested,
+            "adjusted_p_values_are_significance_decisions": False,
+        })
+
+
 def analyze(
     document: dict[str, Any],
     *,
     median_intervals_95: bool = False,
     paired_exact_tests_enabled: bool = False,
+    adjust_paired_tests: bool = False,
 ) -> dict[str, Any]:
     """Summarize exact trial counts and matched Pareto sets.
 
@@ -689,37 +773,11 @@ def analyze(
             "confidence interval."
         ),
     }
-    if median_intervals_95:
-        report["median_interval_policy"] = {
-            "method": "exact-symmetric-binomial-order-statistics",
-            "requested_confidence": [19, 20],
-            "minimum_samples": median_intervals.MIN_SAMPLES,
-            "maximum_samples": median_intervals.MAX_SAMPLES,
-            "assumptions": (
-                "Independent identically distributed trials; bounds are "
-                "conservative under ties. Conditional success-only and "
-                "both-success paired intervals do not generalize to failures. "
-                "Sample independence and physical measurements are not "
-                "established by this analyzer."
-            ),
-            "pareto_uses_intervals": False,
-        }
-    if paired_exact_tests_enabled:
-        report["paired_exact_test_policy"] = {
-            "method": "two-sided-exact-conditional-binomial",
-            "maximum_discordant_pairs": paired_exact_tests.MAX_DISCORDANT_PAIRS,
-            "multiple_testing_adjustment": "none",
-            "assumptions": (
-                "Independent matched pairs, symmetric discordant signs under "
-                "the null. Outcome asymmetry conditions on one verified arm, "
-                "while cost signs condition on both verified and exclude ties. "
-                "Source-reported verification, sampling independence and "
-                "physical measurements are not authenticated. Unadjusted "
-                "p-values do not establish statistical significance after "
-                "multiple comparisons."
-            ),
-            "pareto_uses_tests": False,
-        }
+    _statistical_report_policy(
+        report,
+        policy,
+        adjust_paired_tests=adjust_paired_tests,
+    )
     return report
 
 
@@ -753,6 +811,7 @@ def main() -> int:
     parser.add_argument("input", type=Path)
     parser.add_argument("--median-intervals-95", action="store_true")
     parser.add_argument("--paired-exact-tests", action="store_true")
+    parser.add_argument("--adjust-paired-tests", action="store_true")
     args = parser.parse_args()
     try:
         document = parse_document(read_input(args.input))
@@ -760,6 +819,7 @@ def main() -> int:
             document,
             median_intervals_95=args.median_intervals_95,
             paired_exact_tests_enabled=args.paired_exact_tests,
+            adjust_paired_tests=args.adjust_paired_tests,
         )
     except (ArenaError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena: {error}\n")

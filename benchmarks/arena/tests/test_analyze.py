@@ -77,6 +77,10 @@ DISCORDANT_HALVES = 6
 NO_ADJUSTMENT = "none"
 PAIRED_SIGN_TEST = "paired_sign_test"
 VERIFICATION_ASYMMETRY_TEST = "verification_asymmetry_test"
+HOLM_METHOD = "Holm-Bonferroni"
+HOLM_FIELD = "p_holm_adjusted"
+HOLM_ERROR = "requires --paired-exact-tests"
+MULTI_HYPOTHESIS_COUNT = 4
 
 
 def _observation(
@@ -928,3 +932,125 @@ def test_standalone_cli_accepts_paired_exact_test_option(
     assert analyze.main() == 0
     report = json.loads(capsys.readouterr().out)
     assert report == _paired_exact_report(document)
+
+
+def _adjusted_paired_report(document: dict[str, Any]) -> dict[str, Any]:
+    admitted = analyze.parse_document(json.dumps(document))
+    return analyze.analyze(
+        admitted,
+        paired_exact_tests_enabled=True,
+        adjust_paired_tests=True,
+    )
+
+
+def test_holm_correction_applies_to_all_available_tests_in_one_study() -> None:
+    """Even simple single-cohort costs require family-wise multiplicity."""
+    document = _repeated_success_study(12)
+    ordinary = _paired_exact_report(document)
+    adjusted = _adjusted_paired_report(document)
+    assert adjusted["pareto_frontiers"] == ordinary["pareto_frontiers"]
+    policy = adjusted["paired_exact_test_policy"]
+    assert policy["multiple_testing_adjustment"] == HOLM_METHOD
+    assert policy["adjustment_family_size"] == 1
+    assert not policy["adjusted_p_values_are_significance_decisions"]
+    comparison = adjusted["paired_baseline_comparisons"][0]
+    cost = comparison["cost_differences"]["elapsed_ns"]["paired_sign_test"]
+    assert cost["p_two_sided"] == [1, 2048]
+    assert cost["p_holm_adjusted"] == [1, 2048]
+    assert comparison["verification_asymmetry_test"] is None
+    assert (
+        comparison["cost_differences"]["artifact_bytes"]["paired_sign_test"]
+        is None
+    )
+    assert (
+        HOLM_FIELD
+        not in ordinary["paired_baseline_comparisons"][0]["cost_differences"][
+            "elapsed_ns"
+        ]["paired_sign_test"]
+    )
+
+
+def _two_difficulty_cost_study() -> dict[str, Any]:
+    document = _repeated_success_study(12)
+    new_rows = []
+    for row in document["observations"]:
+        other = copy.deepcopy(row)
+        other["case"]["difficulty"] = SECOND_DIFFICULTY
+        other["case"]["workload_sha256"] = HASH_B
+        new_rows.append(other)
+    document["observations"].extend(new_rows)
+    for row in document["observations"]:
+        if row["algorithm"] == CANDIDATE:
+            row["metrics"]["artifact_bytes"] = 30
+    return document
+
+
+def test_holm_correction_spans_difficulty_levels_and_cost_objectives() -> None:
+    """Global family size is not silently reset per cohort or cost metric."""
+    adjusted = _adjusted_paired_report(_two_difficulty_cost_study())
+    policy = adjusted["paired_exact_test_policy"]
+    assert policy["adjustment_family_size"] == MULTI_HYPOTHESIS_COUNT
+    for comparison in adjusted["paired_baseline_comparisons"]:
+        assert comparison["verification_asymmetry_test"] is None
+        for name in ("elapsed_ns", "artifact_bytes"):
+            test = comparison["cost_differences"][name]["paired_sign_test"]
+            assert test["p_two_sided"] == [1, 2048]
+            assert test["p_holm_adjusted"] == [1, 512]
+
+
+def test_empty_paired_family_emits_zero_adjusted_tests() -> None:
+    """All tied results produce no p-values and no invented adjustments."""
+    document = _repeated_success_study(12)
+    for row in document["observations"]:
+        row["metrics"]["elapsed_ns"] = 100
+    report = _adjusted_paired_report(document)
+    assert report["paired_exact_test_policy"]["adjustment_family_size"] == 0
+    comparison = report["paired_baseline_comparisons"][0]
+    assert comparison["verification_asymmetry_test"] is None
+    for test in comparison["cost_differences"].values():
+        assert test["paired_sign_test"] is None
+
+
+def test_adjustment_without_paired_tests_is_rejected_before_report() -> None:
+    """A caller cannot silently enable a different inferential policy."""
+    document = _repeated_success_study(12)
+    admitted = analyze.parse_document(json.dumps(document))
+    with pytest.raises(
+        analyze.ArenaError, match="requires --paired-exact-tests"
+    ):
+        analyze.analyze(admitted, adjust_paired_tests=True)
+
+
+def test_holm_cli_rejects_missing_requirement_and_outputs_no_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Strong inference is explicit and misconfigured options fail closed."""
+    document = _repeated_success_study(12)
+    path = tmp_path / "samples.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["arena", str(path), "--adjust-paired-tests"],
+    )
+    with pytest.raises(SystemExit, match="2"):
+        analyze.main()
+    result = capsys.readouterr()
+    assert not result.out
+    assert HOLM_ERROR in result.err
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena",
+            str(path),
+            "--paired-exact-tests",
+            "--adjust-paired-tests",
+        ],
+    )
+    assert analyze.main() == 0
+    assert json.loads(capsys.readouterr().out) == _adjusted_paired_report(
+        document
+    )

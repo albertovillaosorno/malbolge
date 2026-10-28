@@ -191,6 +191,17 @@ cohorts, the probabilities are unadjusted for multiplicity and are not
 significance or performance-promotion verdicts. This view does not change
 nominal Pareto rankings or existing reports by default.
 
+A further explicit `--adjust-paired-tests` option requires the paired test
+view, then applies exact step-down Holm-Bonferroni correction across the
+complete study-wide family of nonnull paired outcome and cost-sign tests,
+including different algorithms, objective dimensions and difficulty levels.
+It retains unadjusted fractions alongside exact adjusted fractions, reports
+the total family size, and treats tied p-values consistently. Holm controls
+family-wise error under arbitrary test dependence *only when* its marginal
+p-values are valid. It does not establish pair independence, honest verifier
+execution, representative workload selection, or physical timing validity;
+no significance or performance promotion decision follows automatically.
+
 This first slice intentionally does not require an executable final `.malbolge`
 backend; the study's `stage` can describe available compiler or execution
 boundaries. All results from real studies must separately pass experiment
@@ -265,6 +276,10 @@ The original study records remain the result authority.
   identity, exact resource declarations, v2 energy CSV, matched reported
   accelerator identity, and deterministic challenge regeneration. Independent
   negative oracle and raw-digest mutations fail before report publication.
+- `benchmarks/arena/multiplicity.py` optionally applies exact study-wide
+  Holm-Bonferroni multiplicity correction, preserving every raw probability
+  and excluding null hypotheses from the family count. Synthetic reference,
+  cross-difficulty, tie-order, and fail-closed CLI tests validate this policy.
 - `benchmarks/arena/paired_exact_tests.py` computes unadjusted exact
   two-sided conditional-binomial p-values for the distinct verified-outcome
   and both-success cost-sign hypotheses. Independent `math.comb` references

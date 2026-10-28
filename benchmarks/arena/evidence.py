@@ -572,6 +572,7 @@ def main() -> int:
     parser.add_argument("--require-matched-accelerator", action="store_true")
     parser.add_argument("--median-intervals-95", action="store_true")
     parser.add_argument("--paired-exact-tests", action="store_true")
+    parser.add_argument("--adjust-paired-tests", action="store_true")
     args = parser.parse_args()
     try:
         document = analyze.parse_document(analyze.read_input(args.study))
@@ -590,6 +591,7 @@ def main() -> int:
             document,
             median_intervals_95=args.median_intervals_95,
             paired_exact_tests_enabled=args.paired_exact_tests,
+            adjust_paired_tests=args.adjust_paired_tests,
         )
     except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena evidence: {error}\n")
