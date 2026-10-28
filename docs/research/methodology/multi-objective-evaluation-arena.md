@@ -143,6 +143,13 @@ same-device comparison claims against silent heterogeneous arms while leaving
 explicit cross-accelerator comparisons permitted without this mode. Even
 matching declarations do not attest actual hardware or accelerator utilization.
 
+The shared evidence-file reader now checks the admitted regular file against
+its opened descriptor and verifies device/inode identity, byte length and
+nanosecond modification/change timestamps through read completion. It also
+rechecks the canonical nonlinked path after read. Deterministic replacement and
+in-place rewrite regressions prove rejection of observed file drift. This is
+not an atomic snapshot guarantee against an adversarial filesystem scheduler.
+
 A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.
 The test fixtures establish only evidence linkage, not performance results.
@@ -234,6 +241,9 @@ The original study records remain the result authority.
   devices in studies that require hardware-matched arms, while preserving
   heterogeneous studies when that policy is not requested. Synthetic tests
   cover both cases and fail-closed CLI output.
+- A shared bounded file reader now compares path and descriptor identity,
+  size and timestamps around manifest/raw/challenge/historical evidence reads.
+  Synthetic tests reject an opened-file substitution and an in-place rewrite.
 - `benchmarks/arena/budget_links.py` optionally requires exact resource
   budget declarations from each linked run, rejecting missing/forged integers,
   unit mismatches, and one-unit study drift with fail-closed CLI regressions.

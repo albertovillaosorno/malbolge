@@ -91,6 +91,13 @@ against the arena record. Only bounded regular manifest files and existing,
 nonempty raw samples under the supplied root are admitted; symlink hops,
 missing artifacts, and identity drift fail closed.
 
+Arena evidence file readers now check regular-path and opened-descriptor
+identity, size, and modification/change timestamps before and after bounded reads,
+including a post-read ancestor-link admission. A replaced path, a substituted
+inode, or an observed same-inode rewrite fails before an aggregate report is
+published. These are observable race defenses, **not** a promise of an atomic
+filesystem snapshot or authenticated source provenance.
+
 The identity-only output includes `evidence_preflight` counts. A stronger,
 optional raw-row check is documented below; neither mode runs the independent
 semantic verifier.

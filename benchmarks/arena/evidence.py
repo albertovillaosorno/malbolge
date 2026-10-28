@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import stat
 import sys
@@ -115,6 +116,45 @@ def regular_path(
     return current
 
 
+def _file_identity(details: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        details.st_dev,
+        details.st_ino,
+        details.st_size,
+        details.st_mtime_ns,
+        details.st_ctime_ns,
+    )
+
+
+def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
+    """Read bounded ordinary evidence with before/after file identity checks.
+
+    Returns:
+        Source bytes from one matching opened descriptor and retained path.
+
+    """
+    path = regular_path(root, relative, limit=limit)
+    original = path.lstat()
+    with path.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        if not stat.S_ISREG(opened.st_mode) or (
+            _file_identity(original) != _file_identity(opened)
+        ):
+            _fail(
+                f"evidence opened file changed after path admission: {relative}"
+            )
+        data = stream.read(limit + 1)
+        completed = os.fstat(stream.fileno())
+        if _file_identity(completed) != _file_identity(opened):
+            _fail(f"evidence file changed during read: {relative}")
+    final_path = regular_path(root, relative, limit=limit)
+    if _file_identity(final_path.lstat()) != _file_identity(opened):
+        _fail(f"evidence path changed during read: {relative}")
+    if len(data) > limit:
+        _fail(f"evidence exceeds byte limit: {relative}")
+    return data
+
+
 def _manifest(
     root: Path,
     relative: str,
@@ -122,11 +162,7 @@ def _manifest(
     require_trial: bool,
     require_budgets: bool,
 ) -> _ManifestLink:
-    path = regular_path(root, relative, limit=MAX_MANIFEST_BYTES)
-    with path.open("rb") as stream:
-        data = stream.read(MAX_MANIFEST_BYTES + 1)
-    if len(data) > MAX_MANIFEST_BYTES:
-        _fail(f"evidence exceeds byte limit: {relative}")
+    data = read_bounded_regular(root, relative, limit=MAX_MANIFEST_BYTES)
     text = data.decode("utf-8")
     return _ManifestLink(
         manifest=experiment_manifest.parse_manifest(text),
@@ -282,9 +318,11 @@ def _raw_contents(
         groups.setdefault(row["raw_sample"], []).append(row)
     contents = {}
     for relative, rows in sorted(groups.items()):
-        path = regular_path(root, relative, limit=raw_samples.MAX_RAW_BYTES)
-        with path.open("rb") as stream:
-            raw = stream.read(raw_samples.MAX_RAW_BYTES + 1)
+        raw = read_bounded_regular(
+            root,
+            relative,
+            limit=raw_samples.MAX_RAW_BYTES,
+        )
         contents[relative] = raw_samples.check_rows(raw, rows, relative)
     return contents
 
@@ -310,12 +348,7 @@ def _bundle_source(
     *,
     limit: int,
 ) -> bytes:
-    path = regular_path(root, relative, limit=limit)
-    with path.open("rb") as stream:
-        data = stream.read(limit + 1)
-    if len(data) > limit:
-        _fail(f"challenge bundle exceeds byte limit: {relative}")
-    return data
+    return read_bounded_regular(root, relative, limit=limit)
 
 
 def _bundle_directory(case: dict[str, Any], relative_root: str) -> str:

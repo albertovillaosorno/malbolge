@@ -118,11 +118,11 @@ def _fail(message: str) -> Never:
 
 
 def _source(root: Path, relative: str) -> tuple[str, str]:
-    path = evidence.regular_path(root, relative, limit=MAX_SOURCE_BYTES)
-    with path.open("rb") as stream:
-        raw = stream.read(MAX_SOURCE_BYTES + 1)
-    if len(raw) > MAX_SOURCE_BYTES:
-        _fail(f"historical evidence exceeds 4 MiB: {relative}")
+    raw = evidence.read_bounded_regular(
+        root,
+        relative,
+        limit=MAX_SOURCE_BYTES,
+    )
     return raw.decode("utf-8"), sha256(raw).hexdigest()
 
 

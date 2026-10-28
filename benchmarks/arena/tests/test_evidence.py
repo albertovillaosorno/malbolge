@@ -41,11 +41,18 @@ import json
 from pathlib import Path
 import sys
 from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
 
 from benchmarks.arena import analyze
 from benchmarks.arena import evidence
+
+if TYPE_CHECKING:
+    from os import stat_result
+
+REPLACE_AFTER_LSTAT_COUNT = 3
+SECOND_FSTAT_CALL = 2
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE = (
@@ -524,3 +531,77 @@ def test_accelerator_cli_mismatch_never_emits_partial_report(
     failure = capsys.readouterr()
     assert not failure.out
     assert ACCELERATOR_DIAGNOSTIC in failure.err
+
+
+def test_bounded_reader_rejects_file_replacement_between_check_and_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The opened descriptor must match the inode admitted at path lookup."""
+    doc = sample_study(tmp_path)
+    target = tmp_path / doc["observations"][0]["raw_sample"]
+    staged = tmp_path / "replacement.csv"
+    _ = staged.write_bytes(b"replaced-with-other-evidence\n")
+    real_lstat = Path.lstat
+    file_lookups = 0
+
+    def swap_after_admitted_stat(path: Path) -> stat_result:
+        nonlocal file_lookups
+        details = real_lstat(path)
+        if path == target:
+            file_lookups += 1
+            if file_lookups == REPLACE_AFTER_LSTAT_COUNT:
+                _ = staged.replace(target)
+        return details
+
+    monkeypatch.setattr(Path, "lstat", swap_after_admitted_stat)
+    with pytest.raises(evidence.EvidenceError, match="opened file changed"):
+        evidence.read_bounded_regular(
+            tmp_path,
+            doc["observations"][0]["raw_sample"],
+            limit=1024,
+        )
+
+
+def test_bounded_reader_rejects_in_place_change_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-read descriptor size and change-time detect an observed rewrite."""
+    doc = sample_study(tmp_path)
+    path = tmp_path / doc["observations"][0]["raw_sample"]
+    real_fstat = evidence.os.fstat
+    calls = 0
+
+    def rewrite_before_second_stat(fd: int) -> stat_result:
+        nonlocal calls
+        calls += 1
+        if calls == SECOND_FSTAT_CALL:
+            with path.open("ab") as stream:
+                _ = stream.write(b"x")
+        return real_fstat(fd)
+
+    monkeypatch.setattr(evidence.os, "fstat", rewrite_before_second_stat)
+    with pytest.raises(evidence.EvidenceError, match="changed during read"):
+        evidence.read_bounded_regular(
+            tmp_path,
+            doc["observations"][0]["raw_sample"],
+            limit=1024,
+        )
+
+
+def test_bounded_reader_returns_original_bytes_for_ordinary_file(
+    tmp_path: Path,
+) -> None:
+    """Stable ordinary file identity passes the same no-link boundary."""
+    doc = sample_study(tmp_path)
+    row = doc["observations"][0]
+    original = (tmp_path / row["raw_sample"]).read_bytes()
+    assert (
+        evidence.read_bounded_regular(
+            tmp_path,
+            row["raw_sample"],
+            limit=1024,
+        )
+        == original
+    )
