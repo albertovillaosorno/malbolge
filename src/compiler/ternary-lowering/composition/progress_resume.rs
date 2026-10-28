@@ -217,6 +217,56 @@ const fn matches_source_span(
         && expected.end.column == saved.end.column
 }
 
+// Scalar constants are copied unchanged by the fresh lowerer. Match their
+// exact bits, signedness and upstream SSA identity without reconstructing
+// operations or walking a second SSA lowering state. Other instructions still
+// depend on the separate structural/source-span checks.
+fn matches_expected_constant(
+    instruction: &InputInstruction,
+    saved: &TernaryOperation,
+) -> bool {
+    let InputInstruction::ConstantInteger {
+        bit_width, little_endian, result, type_kind, ..
+    } = instruction else {
+        return true;
+    };
+    match (*bit_width, *type_kind, saved) {
+        (1, InputScalarType::Bool,
+            TernaryOperation::MaterializeBool {
+                result: observed, value, ..
+            }) => *observed == *result
+                && little_endian.as_slice() == [u8::from(*value)],
+        (8, InputScalarType::I8,
+            TernaryOperation::MaterializeI8 {
+                result: observed, scalar, ..
+            })
+        | (8, InputScalarType::U8,
+            TernaryOperation::MaterializeU8 {
+                result: observed, scalar, ..
+            }) => *observed == *result
+                && little_endian.as_slice() == [scalar.bits()],
+        (16, InputScalarType::I16,
+            TernaryOperation::MaterializeI16 {
+                result: observed, scalar, ..
+            })
+        | (16, InputScalarType::U16,
+            TernaryOperation::MaterializeU16 {
+                result: observed, scalar, ..
+            }) => *observed == *result
+                && little_endian.as_slice() == scalar.bits().to_le_bytes(),
+        (32, InputScalarType::I32,
+            TernaryOperation::MaterializeI32 {
+                result: observed, scalar, ..
+            })
+        | (32, InputScalarType::U32,
+            TernaryOperation::MaterializeU32 {
+                result: observed, scalar, ..
+            }) => *observed == *result
+                && little_endian.as_slice() == scalar.bits().to_le_bytes(),
+        _ => false,
+    }
+}
+
 fn matches_expected_operation_spans(
     current: &InputFunction,
     saved: &TernaryFunction,
@@ -235,9 +285,10 @@ fn matches_expected_operation_spans(
     saved_instructions.len() == block.instructions.len()
         && saved_instructions.iter().zip(&block.instructions).all(
             |(saved_op, current_op)| {
-                projected_instruction_span(current_op).is_some_and(
-                    |span| matches_source_span(span, operation_span(*saved_op)),
-                )
+                matches_expected_constant(current_op, saved_op)
+                    && projected_instruction_span(current_op).is_some_and(
+                        |span| matches_source_span(span, operation_span(*saved_op)),
+                    )
             },
         )
         && matches_source_span(return_span, operation_span(*saved_return))

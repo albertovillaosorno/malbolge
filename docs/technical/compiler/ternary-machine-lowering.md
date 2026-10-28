@@ -934,8 +934,12 @@ invalid or out-of-function expected spans cannot qualify for source-matched
 recovery. The source-bound selector also checks the current one-to-one
 instruction/operation count plus final return against the saved function,
 rejecting independently valid extra operations whose module/function identity
-is otherwise unchanged. This structural admission does not re-lower
-instructions or compare saved operation semantics. An explicit
+is otherwise unchanged. Scalar materializations additionally require exact
+upstream SSA IDs, signed or unsigned types, and source constant bits for all
+seven admitted `bool`/`i8`/`u8`/`i16`/`u16`/`i32`/`u32` forms. An independently
+valid altered scalar checkpoint fails both inspector-backed source-matched
+selectors while unrestricted recovery remains valid. The check does not
+re-lower the projection or cover nonconstant instruction semantics. An explicit
 `InputInstruction::Unsupported` sentinel in the expected projection also fails
 source-matched resume, as it does on fresh lowerer admission. The
 source-bound route also matches each saved instruction and return source span
@@ -951,7 +955,8 @@ with changed function identity despite a matching module digest, as well as
 caller function-name/span/count drift, using `IdentityMismatch` without
 re-running lowering. Inspector and codec failures remain distinct. This checks
 provenance equality, **not** the authenticity of the supplied source digest,
-operation-level semantic equivalence, or external toolchain/revision policy.
+full operation-level semantic equivalence, or external toolchain/revision
+policy.
 Production-inspector recovery for the source-matched route now covers all ten
 atomic checkpoint/pointer crash boundaries with matching first and foreign
 second generations: pre-pointer crashes retain the matching predecessor, while

@@ -12576,6 +12576,153 @@ fn ternary_progress_for_source_binds_return_value_identity()
     cleanup
 }
 
+fn flipped_scalar_bits(operation: TernaryOperation) -> Option<TernaryOperation> {
+    if let TernaryOperation::MaterializeBool { result, value, span } = operation {
+        Some(TernaryOperation::MaterializeBool {
+            result, value: !value, span,
+        })
+    } else if let TernaryOperation::MaterializeI8 {
+        result, scalar, span,
+    } = operation {
+        Some(TernaryOperation::MaterializeI8 {
+            result,
+            scalar: ternary_lowering::TernaryU8Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
+            span,
+        })
+    } else if let TernaryOperation::MaterializeU8 {
+        result, scalar, span,
+    } = operation {
+        Some(TernaryOperation::MaterializeU8 {
+            result,
+            scalar: ternary_lowering::TernaryU8Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
+            span,
+        })
+    } else if let TernaryOperation::MaterializeI16 {
+        result, scalar, span,
+    } = operation {
+        Some(TernaryOperation::MaterializeI16 {
+            result,
+            scalar: ternary_lowering::TernaryU16Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
+            span,
+        })
+    } else if let TernaryOperation::MaterializeU16 {
+        result, scalar, span,
+    } = operation {
+        Some(TernaryOperation::MaterializeU16 {
+            result,
+            scalar: ternary_lowering::TernaryU16Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
+            span,
+        })
+    } else if let TernaryOperation::MaterializeI32 {
+        result, scalar, span,
+    } = operation {
+        Some(TernaryOperation::MaterializeI32 {
+            result,
+            scalar: ternary_lowering::TernaryI32Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
+            span,
+        })
+    } else if let TernaryOperation::MaterializeU32 {
+        result, scalar, span,
+    } = operation {
+        Some(TernaryOperation::MaterializeU32 {
+            result,
+            scalar: ternary_lowering::TernaryI32Scalar::from_bits(
+                scalar.bits() ^ 1,
+            ),
+            span,
+        })
+    } else {
+        None
+    }
+}
+
+fn assert_source_bound_scalar_roundtrip(
+    label: &str,
+    expected: &TypedIrInput,
+    original: &ternary_lowering::TernaryProgram,
+) -> Result<(), String> {
+    let bytes = canonical_ternary_bytes(original)
+        .map_err(|error| format!("encode {label} scalar: {error:?}"))?;
+    let (progress, directory) = publish_ternary_progress_fixture(
+        &format!("matched-{label}-scalar-bits"), &bytes,
+    )?;
+    let result = assert_source_matched_ternary_success(
+        expected, original, &progress_inspector(),
+        (&repository_python(), &progress),
+    );
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean {label} matched scalar: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
+fn ternary_progress_for_source_binds_constant_scalar_bits()
+-> Result<(), String> {
+    let modules = [
+        ("bool", boolean_constant_module(1, false)),
+        ("i8", typed_i8_return_module(0x80)),
+        ("u8", byte_return_module(Some(0xff))),
+        ("i16", halfword_return_module(0x8000, true)),
+        ("u16", halfword_return_module(0xffff, false)),
+        ("i32", admitted_golden(RETURN_GOLDEN)?),
+        ("u32", unsigned_return_module(u32::MAX)),
+    ];
+    for (label, module) in modules {
+        validate_module(&module)
+            .map_err(|error| format!("admit {label} scalar: {error:?}"))?;
+        let expected = project_typed_ir(&module)?;
+        let original = enter_ternary_stage(
+            TernaryStageInput::Projection(&expected),
+        ).map_err(|error| format!("lower {label} scalar: {error:?}"))?;
+        assert_source_bound_scalar_roundtrip(label, &expected, &original)?;
+        let mut foreign = original.clone();
+        let first = foreign.functions.first_mut()
+            .and_then(|function| function.operations.first_mut())
+            .ok_or_else(|| format!("missing {label} scalar"))?;
+        *first = flipped_scalar_bits(*first)
+            .ok_or_else(|| format!("{label} first operation is not scalar"))?;
+        if foreign.source_sha256 != original.source_sha256 {
+            return Err(format!("{label} scalar forgery altered source digest"));
+        }
+        ternary_lowering::validate_ternary_program(&foreign)
+            .map_err(|error| format!("admit {label} scalar forgery: {error:?}"))?;
+        let bytes = canonical_ternary_bytes(&foreign)
+            .map_err(|error| format!("encode {label} scalar forgery: {error:?}"))?;
+        let (progress, directory) = publish_ternary_progress_fixture(
+            &format!("foreign-{label}-scalar-bits"), &bytes,
+        )?;
+        let result = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            if resume_ternary_from_progress(
+                &interpreter, &inspector, &progress,
+            ) != Ok(foreign) {
+                return Err(format!("valid {label} scalar was not restored"));
+            }
+            assert_source_matched_ternary_failure(
+                &expected, &inspector, (&interpreter, &progress),
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean {label} scalar fixture: {error}"));
+        result?;
+        cleanup?;
+    }
+    Ok(())
+}
+
 #[test]
 fn progress_resume_for_source_rejects_other_valid_checkpoint()
 -> Result<(), String> {

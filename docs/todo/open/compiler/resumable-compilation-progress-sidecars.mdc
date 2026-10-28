@@ -319,6 +319,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   routes. The source-matched selector also preserves launch, diagnostics,
   and canonical checkpoint codec failure classes independently of provenance
   mismatch, with both direct and product regression assertions.
+  Ternary source-bound resume now also binds the signedness, result SSA ID and
+  exact constant bits of every supported scalar materialization without
+  re-lowering its program. Seven independently admitted scalar substitutions
+  (`bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`) fail direct and product
+  inspector-backed source checks while unrestricted restoration remains valid;
+  nonconstant operation semantics are not yet compared.
 
   Its new `composition/progress_inspector.rs`
   limits the direct inspector child to 60 seconds, 64 MiB stdout, and 8 KiB
