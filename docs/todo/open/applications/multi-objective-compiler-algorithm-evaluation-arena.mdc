@@ -89,6 +89,9 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   and MiB budget declarations to agree exactly with the arena study's
   nanosecond and byte limits, rejecting stale or unequal research budgets.
   This is not evidence of actual resource monitoring or enforcement.
+- A package-local BasedPyright project now checks the independent arena
+  implementation and test files without modifying repository-wide tooling
+  selection; the imported historical CSV header is typed as a sequence.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

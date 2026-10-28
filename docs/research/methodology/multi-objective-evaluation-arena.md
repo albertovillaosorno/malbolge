@@ -197,6 +197,10 @@ The original study records remain the result authority.
   five-pair research sources into arena reports. Source-backed regressions
   assert exact observed medians, paired results, fingerprints, and rejection
   of corrupted raw timing, verifier counts, or preregistered identities.
+- `benchmarks/arena/pyrightconfig.json` runs a separate standard-level
+  BasedPyright check over the arena package, which is not part of the root
+  repository's selected strict Pyright source roots. This complements pinned
+  Ruff checks without changing shared tooling policy.
 - Research evidence pending: raw sample content authentication,
   protocol-level manifest linkage, bibliography-backed context, real experiment
   configurations, retained negative/null results, and a reviewed conclusion

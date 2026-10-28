@@ -46,6 +46,10 @@ import sys
 import tomllib
 from typing import Any
 from typing import Never
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 from scripts.validate import benchmark_protocol
 from scripts.validate import experiment_manifest
@@ -134,7 +138,7 @@ def _integer(text: object, field: str) -> int:
 
 
 def _csv_shape(
-    fields: list[str],
+    fields: Sequence[str],
     records: list[dict[str, str]],
     *,
     registered_fields: frozenset[str],

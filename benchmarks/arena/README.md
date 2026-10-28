@@ -262,3 +262,19 @@ It does **not** prove that the runner enforced either limit or accurately
 reported resource use. Neither the ordinary identity-only mode nor legacy
 aggregate research evidence is required to carry both budget fields until
 this stronger agreement check is requested.
+
+## Scoped type checking
+
+The repository-wide Pyright project currently selects `src/`, `tests/`, and
+`verifier/` but not this independent benchmark package. To check the arena's
+Python implementation and synthetic regressions without changing that shared
+selection, run the pinned checker with the local standard-level policy:
+
+```sh
+.dependencies/python/3.14.7/bin/basedpyright \
+  --project benchmarks/arena/pyrightconfig.json --threads 1
+```
+
+The scoped check covers this package and imports the repository's governed
+experiment/benchmark validators. It complements, rather than replaces, the
+pinned Ruff checks, synthetic/replayed evidence tests, and Jig validation.

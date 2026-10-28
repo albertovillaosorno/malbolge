@@ -1,0 +1,9 @@
+{
+  "include": ["./"],
+  "exclude": ["../../.dependencies", "../../.cache", "../../target"],
+  "extraPaths": ["../..", "../../src/automation/repository/composition"],
+  "pythonVersion": "3.14",
+  "pythonPlatform": "Windows",
+  "typeCheckingMode": "standard",
+  "useLibraryCodeForTypes": false
+}
