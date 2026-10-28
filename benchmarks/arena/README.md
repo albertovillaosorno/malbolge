@@ -334,6 +334,15 @@ include `regenerated_challenge_bundles` and the checked C source digests in
 challenge producers and workloads with a different digest definition, remains
 available without this option.
 
+The synthetic integration regression under
+`benchmarks/arena/tests/test_challenge_bundles.py` composes **all** optional
+preflights on one reproducibly generated source/oracle: full v2 CSV energy
+rows, per-trial source-reported raw SHA-256, exact declared run budgets, common
+reported accelerator identity, and regenerated challenge workload digest. It
+also proves that a mutated oracle or a modified-but-self-consistent raw report
+cannot pass the full gate without their corresponding source declarations.
+This is a fixture integration test, not a real compiler performance run.
+
 The generator and its oracle can share a common-mode defect, and byte-exact
 replay does not establish that the compiler used the retained source, that the
 named verifier executed, or that a measured candidate was correct. This

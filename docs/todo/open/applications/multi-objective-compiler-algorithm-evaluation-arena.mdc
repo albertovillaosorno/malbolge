@@ -105,6 +105,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   identities and rejects mixed cohorts where a controlled same-device
   comparison is required; device declarations remain source-reported, not
   hardware attestation or utilization measurement.
+- A synthetic all-checks integration fixture combines generated challenge
+  provenance with versioned energy CSV, raw hashes, individual trial runs,
+  exact budget agreement and matched accelerator labels. It proves admission
+  consistency, not source execution or independent verification.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

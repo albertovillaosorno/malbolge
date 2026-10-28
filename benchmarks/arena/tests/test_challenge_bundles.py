@@ -37,7 +37,9 @@
 from __future__ import annotations
 
 import copy
+import csv
 from hashlib import sha256
+from io import StringIO
 import json
 import sys
 from typing import TYPE_CHECKING
@@ -47,6 +49,7 @@ import pytest
 from benchmarks.arena import analyze
 from benchmarks.arena import challenge_bundles
 from benchmarks.arena import evidence
+from benchmarks.arena import raw_samples
 from benchmarks.arena.tests.test_evidence import sample_study
 from benchmarks.challenges import generate
 
@@ -64,6 +67,9 @@ MATCH_SCOPE = "Deterministic challenge bundle replay"
 CHALLENGE_MISMATCH = "deterministic regeneration"
 ALGORITHM_COUNT = 2
 DIFFICULTY_COUNT = 2
+BASELINE = "baseline"
+VERIFICATION_NOTE = "verification_note"
+ORACLE_KIND = "oracle"
 LINKED = "symlink"
 MISSING = "missing"
 
@@ -377,3 +383,112 @@ def test_challenge_root_with_embedded_nul_is_typed_rejection(
             tmp_path,
             policy=evidence.EvidencePolicy(challenge_root="bundle\x00escape"),
         )
+
+
+def _integrated_csv(row: dict[str, Any]) -> bytes:
+    case = row["case"]
+    values = {
+        "schema_version": "2",
+        "algorithm": row["algorithm"],
+        "family": case["family"],
+        "version": str(case["version"]),
+        "difficulty": str(case["difficulty"]),
+        "seed": str(case["seed"]),
+        "workload_sha256": case["workload_sha256"],
+        "trial": str(row["trial"]),
+        "outcome": row["outcome"],
+        "verifier": row["verifier"],
+        "verifier_verdict": row["verifier_verdict"],
+        **{key: str(value) for key, value in row["metrics"].items()},
+    }
+    output = StringIO(newline="")
+    writer = csv.DictWriter(
+        output,
+        raw_samples.HEADER_2,
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    writer.writerow(values)
+    return output.getvalue().encode("utf-8")
+
+
+def _integrated_study(root: Path) -> dict[str, Any]:
+    """Build a fully linked synthetic v2 study from a real source generator.
+
+    Returns:
+        Two synthetic reported runs with canonical challenge provenance.
+
+    """
+    document = _study(root)
+    document["study"]["budget"] = {
+        "time_ns": 1_000_000_000,
+        "memory_bytes": 128 * 1_048_576,
+    }
+    document["study"]["objectives"].append("energy_uj")
+    for row in document["observations"]:
+        candidate = row["algorithm"] != BASELINE
+        row["metrics"]["energy_uj"] = 20 if candidate else 10
+        row["metrics"]["elapsed_ns"] = 8 if candidate else 10
+        raw = _integrated_csv(row)
+        _ = (root / row["raw_sample"]).write_bytes(raw)
+        manifest = root / row["experiment_manifest"]
+        content = manifest.read_text(encoding="utf-8").replace(
+            "seconds = 1",
+            "seconds = 1\nmemory_mib = 128",
+        )
+        content += (
+            "\n[arena_trial]\nschema_version = 1\ntrial = 0\n"
+            f'raw_sha256 = "{sha256(raw).hexdigest()}"\n'
+        )
+        _ = manifest.write_text(content, encoding="utf-8")
+    return document
+
+
+def _all_policy() -> evidence.EvidencePolicy:
+    return evidence.EvidencePolicy(
+        challenge_root=BUNDLE_ROOT,
+        require_raw_rows=True,
+        require_trial_run_identity=True,
+        require_budget_agreement=True,
+        require_matched_accelerator=True,
+    )
+
+
+def test_all_opt_in_evidence_checks_compose_without_measurement_claim(
+    tmp_path: Path,
+) -> None:
+    """One reproducible generated workload exercises all strict interfaces."""
+    document = _integrated_study(tmp_path)
+    admitted = analyze.parse_document(json.dumps(document))
+    checked = evidence.validate_links(admitted, tmp_path, policy=_all_policy())
+    assert checked["regenerated_challenge_bundles"] == 1
+    assert checked["raw_rows_matched"] == ALGORITHM_COUNT
+    assert checked["trial_run_links_checked"] == ALGORITHM_COUNT
+    assert checked["run_budget_links_checked"] == ALGORITHM_COUNT
+    assert len(checked["declared_run_accelerators"]) == ALGORITHM_COUNT
+    report = analyze.analyze(admitted)
+    assert report["pareto_frontiers"][0]["algorithms"] == [
+        "baseline",
+        "candidate",
+    ]
+    assert VERIFICATION_NOTE in report
+
+
+@pytest.mark.parametrize("tamper", ["oracle", "raw"])
+def test_full_evidence_pipeline_rejects_oracle_or_raw_drift(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    """Neither an oracle change nor a CSV change bypasses strict preflight."""
+    document = _integrated_study(tmp_path)
+    if tamper == ORACLE_KIND:
+        oracle = tmp_path / PREFIX / "oracle.bin"
+        _ = oracle.write_bytes(b"xxxx")
+    else:
+        row = document["observations"][0]
+        raw = tmp_path / row["raw_sample"]
+        row["metrics"]["energy_uj"] += 1
+        _ = raw.write_bytes(_integrated_csv(row))
+    admitted = analyze.parse_document(json.dumps(document))
+    with pytest.raises(evidence.EvidenceError, match=r"bundle|raw SHA-256"):
+        evidence.validate_links(admitted, tmp_path, policy=_all_policy())

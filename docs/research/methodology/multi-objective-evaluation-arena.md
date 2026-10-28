@@ -226,6 +226,10 @@ The original study records remain the result authority.
   challenge bundle, binding workload digests to reproducible C source. Synthetic
   regressions cover missing and altered files, canonical profile and difficulty
   identities, unsafe paths, repeated-trial digest drift and fail-closed CLI.
+- One end-to-end synthetic admission test composes strict per-trial run
+  identity, exact resource declarations, v2 energy CSV, matched reported
+  accelerator identity, and deterministic challenge regeneration. Independent
+  negative oracle and raw-digest mutations fail before report publication.
 - An additional opt-in accelerator identity gate rejects mixed declared
   devices in studies that require hardware-matched arms, while preserving
   heterogeneous studies when that policy is not requested. Synthetic tests
