@@ -12514,6 +12514,69 @@ fn ternary_progress_for_source_rejects_valid_changed_return_category()
 }
 
 #[test]
+fn ternary_progress_for_source_binds_return_value_identity()
+-> Result<(), String> {
+    let u32_type = TypeId::new(0);
+    let module = unsigned_module(
+        [0u32, 1u32].into_iter().map(|index| {
+            LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(
+                        32, (index + 7).to_le_bytes().to_vec(),
+                    ),
+                    result: ValueId::new(index),
+                    type_id: u32_type,
+                },
+                fixture_span(index, index + 1),
+            )
+        }).collect(),
+        1, 3,
+    );
+    validate_module(&module)
+        .map_err(|error| format!("validate two-return-source: {error:?}"))?;
+    let expected = project_typed_ir(&module)?;
+    let original = enter_ternary_stage(TernaryStageInput::Projection(&expected))
+        .map_err(|error| format!("lower return identity source: {error:?}"))?;
+    let mut foreign = original.clone();
+    let last = foreign.functions.first_mut()
+        .and_then(|function| function.operations.last_mut())
+        .ok_or_else(|| String::from("missing return operation"))?;
+    let TernaryOperation::ReturnU32 { span, value: 1 } = *last else {
+        return Err(String::from("expected unsigned return of value 1"));
+    };
+    *last = TernaryOperation::ReturnU32 { span, value: 0 };
+    ternary_lowering::validate_ternary_program(&foreign)
+        .map_err(|error| format!("admit alternate return: {error:?}"))?;
+    if foreign.source_sha256 != original.source_sha256
+        || foreign.functions.first().map(|function| &function.span)
+            != original.functions.first().map(|function| &function.span)
+    {
+        return Err(String::from("alternate return changed source identity"));
+    }
+    let bytes = canonical_ternary_bytes(&foreign)
+        .map_err(|error| format!("encode alternate return: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("foreign-return-value", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress(
+            &interpreter, &inspector, &progress,
+        ) != Ok(foreign.clone()) {
+            return Err(String::from("independently valid return rejected"));
+        }
+        assert_source_matched_ternary_failure(
+            &expected, &inspector, (&interpreter, &progress),
+            TernaryProgressCheckpointError::IdentityMismatch,
+        )
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean return-value fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
 fn progress_resume_for_source_rejects_other_valid_checkpoint()
 -> Result<(), String> {
     let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;

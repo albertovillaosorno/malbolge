@@ -138,24 +138,30 @@ pub fn resume_ternary_from_progress(
         .map_err(Into::into)
 }
 
-// The target model encodes its return category in the final operation.
-// Checking it against the source signature prevents same-provenance state
-// from silently changing the caller-visible function result type.
-const fn matches_expected_return(
+// The target model encodes return category and source SSA operand in its
+// final operation. Bind both to the caller projection: a different already-
+// defined return value is independently valid but is not the same function.
+fn matches_expected_return(
     expected: InputScalarType,
+    expected_value: Option<u32>,
     last: Option<&TernaryOperation>,
 ) -> bool {
-    matches!(
-        (expected, last),
-        (InputScalarType::Bool, Some(TernaryOperation::ReturnBool { .. }))
-            | (InputScalarType::I8, Some(TernaryOperation::ReturnI8 { .. }))
-            | (InputScalarType::I16, Some(TernaryOperation::ReturnI16 { .. }))
-            | (InputScalarType::I32, Some(TernaryOperation::Return { .. }))
-            | (InputScalarType::U8, Some(TernaryOperation::ReturnU8 { .. }))
-            | (InputScalarType::U16, Some(TernaryOperation::ReturnU16 { .. }))
-            | (InputScalarType::U32, Some(TernaryOperation::ReturnU32 { .. }))
-            | (InputScalarType::Void, Some(TernaryOperation::ReturnVoid { .. }))
-    )
+    let observed_value = match (expected, last) {
+        (InputScalarType::Bool, Some(TernaryOperation::ReturnBool { value, .. }))
+        | (InputScalarType::I8, Some(TernaryOperation::ReturnI8 { value, .. }))
+        | (InputScalarType::I16, Some(TernaryOperation::ReturnI16 { value, .. }))
+        | (InputScalarType::I32, Some(TernaryOperation::Return { value, .. }))
+        | (InputScalarType::U8, Some(TernaryOperation::ReturnU8 { value, .. }))
+        | (InputScalarType::U16, Some(TernaryOperation::ReturnU16 { value, .. }))
+        | (InputScalarType::U32, Some(TernaryOperation::ReturnU32 { value, .. })) => {
+            Some(*value)
+        },
+        (InputScalarType::Void, Some(TernaryOperation::ReturnVoid { .. })) => {
+            None
+        },
+        _ => return false,
+    };
+    observed_value == expected_value
 }
 
 // Source-bound resume must not accept an expected function shape that fresh
@@ -258,9 +264,18 @@ fn matches_expected_functions(
                     && saved.span.end.byte == current.span.end.byte
                     && saved.span.end.column == current.span.end.column
                     && saved.span.end.line == current.span.end.line
-                    && matches_expected_return(
-                        current.return_kind, saved.operations.last(),
-                    )
+                    && current.blocks.first().is_some_and(|block| {
+                        match block.terminator {
+                            InputTerminator::Return { value, .. } => {
+                                matches_expected_return(
+                                    current.return_kind,
+                                    value,
+                                    saved.operations.last(),
+                                )
+                            },
+                            InputTerminator::Unsupported => false,
+                        }
+                    })
                     && matches_expected_operation_spans(current, saved)
             },
         )

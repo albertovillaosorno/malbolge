@@ -624,7 +624,10 @@ instruction.
   product inspector-backed regression evidence.
   The source-bound inspector route now binds every saved operation and return
   span to the caller projection, rejecting two independently valid source-map
-  forgeries with unchanged module/function identity and digest.
+  forgeries with unchanged module/function identity and digest. The source-
+  bound return check now also binds the upstream SSA result identity across all
+  typed return categories, rejecting an independently valid alternative `u32`
+  return through the real inspector in both direct and product selectors.
   Source-identical checkpoints with a different but independently valid
   function identity, or mismatched caller function metadata, fail closed; this
   does not claim operation-level equivalence or source-digest authenticity.

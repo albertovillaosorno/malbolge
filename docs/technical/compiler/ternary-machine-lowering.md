@@ -939,9 +939,12 @@ instructions or compare saved operation semantics. An explicit
 `InputInstruction::Unsupported` sentinel in the expected projection also fails
 source-matched resume, as it does on fresh lowerer admission. The
 source-bound route also matches each saved instruction and return source span
-against its expected projected span. Independently admitted checkpoints with
-changed operation provenance but unchanged module/function identity fail
-without repeating semantic lowering.
+against its expected projected span. It also matches the final return's
+upstream SSA operand identity (or the absence of one for a void return),
+rejecting an independently valid checkpoint that returns a different already-
+defined value of the same type. Independently admitted checkpoints with
+changed operation provenance or return operand but unchanged module/function
+identity fail without repeating semantic lowering.
 The ordinary progress route remains available but does not bind an expected
 source. The source-matched route rejects an independently valid checkpoint
 with changed function identity despite a matching module digest, as well as
