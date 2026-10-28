@@ -116,6 +116,15 @@ the study's declared `time_ns` and `memory_bytes`, without rounding or allowing
 one algorithm a different recorded resource budget. This is a reporting
 consistency check only, not physical runtime or peak-memory enforcement.
 
+Version-two `arena-raw-v2` evidence adds an optional exact integer `energy_uj`
+(microjoules) cost to the six preexisting dimensions. Its CSV schema marker is
+`2` and its fixed header adds one column without changing version-one bytes.
+Source-reported energy cannot silently appear in a version-one file, and a
+verified observation cannot omit energy when the study declares it as an
+objective. This is *representation* support only: energy samples, meter
+calibration, host attribution, uncertainty and physical validity remain
+unproven until real measurement evidence is admitted and reviewed.
+
 A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.
 The test fixtures establish only evidence linkage, not performance results.
@@ -190,6 +199,10 @@ The original study records remain the result authority.
   extension under strict opt-in preflight. Synthetic regressions check
   distinct trial-run bindings, raw-file digests, complete shared CSVs, malformed
   trial/schema metadata, aggregate-manifest reuse, and fail-closed CLI output.
+- Version-two `arena-raw-v2` optionally carries per-trial `energy_uj`
+  without changing v1 headers. Synthetic tests prove exact energy Pareto
+  comparison and rejection of cross-version omissions, forged costs and
+  impossible signed energy reports, not measured energy savings.
 - `benchmarks/arena/budget_links.py` optionally requires exact resource
   budget declarations from each linked run, rejecting missing/forged integers,
   unit mismatches, and one-unit study drift with fail-closed CLI regressions.

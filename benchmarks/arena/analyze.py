@@ -61,6 +61,7 @@ ELAPSED = "elapsed_ns"
 COST_METRICS = frozenset({
     ELAPSED,
     "artifact_bytes",
+    "energy_uj",
     "runtime_steps",
     "peak_rss_bytes",
     "peak_vram_bytes",

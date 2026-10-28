@@ -92,6 +92,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
 - A package-local BasedPyright project now checks the independent arena
   implementation and test files without modifying repository-wide tooling
   selection; the imported historical CSV header is typed as a sequence.
+- An optional exact `energy_uj` cost and version-two `arena-raw-v2` CSV
+  admit microjoule observations without changing v1 bytes, rejecting lost
+  energy fields or inconsistent trial costs. No real energy measurements,
+  calibration or physical consumption claim is yet available.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

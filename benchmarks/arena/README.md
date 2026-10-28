@@ -64,7 +64,9 @@ noncanonical paths, unsupported outcomes, malformed JSON, and an algorithm
 claiming to have verified its own successful output are rejected.
 
 Currently recognized costs are `elapsed_ns`, `artifact_bytes`, `runtime_steps`,
-`peak_rss_bytes`, `peak_vram_bytes`, and `verifier_ns`. All cost objectives are
+`peak_rss_bytes`, `peak_vram_bytes`, `verifier_ns`, and optional `energy_uj`.
+The energy metric is an exact nonnegative integer number of microjoules,
+recorded only when a trustworthy measurement is available. All costs are
 minimized; the number of verified trials is maximized. A claimed `verified`
 outcome needs a separately named verifier and an `accepted` verdict. Failures
 retain their own outcomes (`verifier_rejected`, `no_solution`,
@@ -107,6 +109,17 @@ and exact reported identity and metric values. Missing optional metrics use
 empty cells, distinct from zero. All referenced rows must be present exactly
 once, with no extra rows, even when several trials share one file. Each CSV
 is limited to 16 MiB. The report adds a SHA-256 digest per inspected raw file.
+
+A separate `arena-raw-v2` schema adds the `energy_uj` CSV column in the
+alphabetical metrics sequence (after `artifact_bytes` and before `elapsed_ns`),
+with `schema_version` set to the literal `2`. The complete version-one header
+and spellings remain unchanged. A v1 raw file **cannot** support an energy
+measurement even if JSON claims one: such a link fails closed rather than
+dropping the extra metric. Version-two files may omit an unmeasured energy
+metric using an empty cell; a declared `energy_uj` study objective requires a
+value for every verified result. Trials with unknown energy must not acquire
+invented zeroes or estimates. Both formats use the same 16 MiB file limit,
+complete-row matching, and SHA-256 source-byte evidence checks.
 
 This strengthens **report-to-file consistency**, not the trust in the file's
 producer. It does not replay a verifier, prove hardware measurements, or

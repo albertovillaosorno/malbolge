@@ -9,7 +9,7 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Exact arena-raw-v1 CSV identity and measurement cross-checks.
+#   - Exact versioned arena CSV identity and measurement cross-checks.
 # - Must-Not:
 #   - Certify raw measurements, execute verifiers, or alter trial outcomes.
 # - Allows:
@@ -17,20 +17,20 @@
 #   - Outputs: source-byte SHA-256 and exact row-match evidence.
 #   - Side effects: none.
 # - Split-When:
-#   - A separately versioned raw evidence format requires new admission.
+#   - Further raw metric vocabularies require independent version admission.
 # - Merge-When:
 #   - The benchmark protocol owns this exact raw-row schema directly.
 # - Summary:
 #   - Prevents detached arena metrics from claiming unrelated raw samples.
 # - Description:
-#   - Binds all reported trials and costs to canonical version-one CSV rows.
+#   - Binds all reported trials and costs to canonical v1/v2 CSV rows.
 # - Usage:
 #   - Invoked by the optional arena evidence preflight.
 # - Defaults:
 #   - Unexpected, duplicate, absent, or mismatched rows fail closed.
 #
 
-"""Exact version-one CSV row admission for reported arena measurements."""
+"""Exact versioned CSV row admission for reported arena measurements."""
 
 from __future__ import annotations
 
@@ -45,6 +45,8 @@ from typing import Never
 from benchmarks.arena import analyze
 
 RAW_SCHEMA_VERSION: Final = "1"
+RAW_SCHEMA_VERSION_2: Final = "2"
+ENERGY: Final = "energy_uj"
 MAX_RAW_BYTES: Final = 16 * 1024 * 1024
 IDENTITY_FIELDS: Final = (
     "schema_version",
@@ -59,8 +61,11 @@ IDENTITY_FIELDS: Final = (
     "verifier",
     "verifier_verdict",
 )
-METRIC_FIELDS: Final = tuple(sorted(analyze.COST_METRICS))
+# V1 must remain byte-for-byte compatible with retained raw observations.
+METRIC_FIELDS: Final = tuple(sorted(analyze.COST_METRICS - {ENERGY}))
 HEADER: Final = (*IDENTITY_FIELDS, *METRIC_FIELDS)
+METRIC_FIELDS_2: Final = tuple(sorted(analyze.COST_METRICS))
+HEADER_2: Final = (*IDENTITY_FIELDS, *METRIC_FIELDS_2)
 
 
 class RawSampleError(ValueError):
@@ -71,10 +76,14 @@ def _fail(message: str) -> Never:
     raise RawSampleError(message)
 
 
-def _row_values(observation: dict[str, Any]) -> tuple[str, ...]:
+def _row_values(
+    observation: dict[str, Any],
+    version: str,
+    metrics: tuple[str, ...],
+) -> tuple[str, ...]:
     case = observation["case"]
     identity = (
-        RAW_SCHEMA_VERSION,
+        version,
         observation["algorithm"],
         case["family"],
         str(case["version"]),
@@ -86,23 +95,34 @@ def _row_values(observation: dict[str, Any]) -> tuple[str, ...]:
         observation["verifier"],
         observation["verifier_verdict"],
     )
-    metrics = observation["metrics"]
+    values = observation["metrics"]
+    if not set(values) <= set(metrics):
+        _fail("raw CSV schema cannot omit reported energy_uj metric")
     return (
         *identity,
-        *(
-            str(metrics[name]) if name in metrics else ""
-            for name in METRIC_FIELDS
-        ),
+        *(str(values[name]) if name in values else "" for name in metrics),
     )
 
 
-def _csv_rows(text: str, label: str) -> list[tuple[str, ...]]:
+def _header_schema(
+    header: list[str] | None, label: str
+) -> tuple[str, tuple[str, ...]]:
+    if header == list(HEADER):
+        return RAW_SCHEMA_VERSION, METRIC_FIELDS
+    if header == list(HEADER_2):
+        return RAW_SCHEMA_VERSION_2, METRIC_FIELDS_2
+    _fail(f"{label}: invalid arena-raw-v1/v2 CSV header")
+
+
+def _csv_rows(
+    text: str,
+    label: str,
+) -> tuple[str, tuple[str, ...], list[tuple[str, ...]]]:
     try:
         reader = csv.reader(StringIO(text, newline=""), strict=True)
         header = next(reader, None)
-        if header != list(HEADER):
-            _fail(f"{label}: invalid arena-raw-v1 CSV header")
-        return [tuple(row) for row in reader]
+        version, metrics = _header_schema(header, label)
+        return version, metrics, [tuple(row) for row in reader]
     except csv.Error as error:
         message = f"{label}: invalid arena raw CSV quotes: {error}"
         raise RawSampleError(message) from error
@@ -133,10 +153,14 @@ def check_rows(
 
     """
     text = _decode_raw(raw, label)
-    actual_rows = _csv_rows(text, label)
-    if any(len(row) != len(HEADER) for row in actual_rows):
+    version, metrics, actual_rows = _csv_rows(text, label)
+    if any(
+        len(row) != len(IDENTITY_FIELDS) + len(metrics) for row in actual_rows
+    ):
         _fail(f"{label}: malformed arena raw CSV row")
-    expected = Counter(_row_values(item) for item in observations)
+    expected = Counter(
+        _row_values(item, version, metrics) for item in observations
+    )
     if Counter(actual_rows) != expected:
         _fail(f"{label}: raw CSV trial/metric rows differ from arena report")
     return sha256(raw).hexdigest()

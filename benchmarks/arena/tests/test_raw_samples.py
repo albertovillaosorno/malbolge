@@ -75,6 +75,11 @@ EMPTY = "empty"
 OVERSIZED = "oversized"
 ALGORITHM_COUNT = 2
 ROW_MISMATCH = "raw CSV trial/metric rows differ"
+ENERGY_METRIC = "energy_uj"
+BASELINE_NAME = "baseline"
+MISSING_ENERGY = "missing"
+WRONG_ENERGY = "wrong"
+NEGATIVE_ENERGY = "negative"
 
 
 def _render(records: list[dict[str, Any]]) -> bytes:
@@ -640,3 +645,170 @@ def test_strict_trial_run_can_also_require_exact_run_budget_agreement(
     )
     with pytest.raises(evidence.EvidenceError, match="declared budget differs"):
         evidence.validate_links(admitted, tmp_path, policy=policy)
+
+
+def _render_v2(records: list[dict[str, Any]]) -> bytes:
+    """Build synthetic v2 rows independently of the production CSV renderer.
+
+    Returns:
+        A complete version-two CSV retaining the additional energy column.
+
+    """
+    previous = list(csv.reader(StringIO(_render(records).decode("utf-8"))))
+    output = StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\n")
+    _ = writer.writerow(raw_samples.HEADER_2)
+    for row, record in zip(previous[1:], records, strict=True):
+        fields = dict(zip(previous[0], row, strict=True))
+        fields["schema_version"] = "2"
+        if ENERGY_METRIC in record["metrics"]:
+            fields[ENERGY_METRIC] = str(record["metrics"][ENERGY_METRIC])
+        _ = writer.writerow([
+            fields.get(name, "") for name in raw_samples.HEADER_2
+        ])
+    return output.getvalue().encode("utf-8")
+
+
+def _energy_study(root: Path) -> dict[str, Any]:
+    document = _setup(root)
+    document["study"]["objectives"].append(ENERGY_METRIC)
+    for record in document["observations"]:
+        record["metrics"][ENERGY_METRIC] = (
+            10 if record["algorithm"] == BASELINE_NAME else 20
+        )
+        if record["algorithm"] != BASELINE_NAME:
+            record["metrics"]["elapsed_ns"] = 8
+        _ = (root / record["raw_sample"]).write_bytes(_render_v2([record]))
+    return document
+
+
+def test_version_two_energy_cost_enters_exact_pareto_and_raw_digest(
+    tmp_path: Path,
+) -> None:
+    """A real energy objective remains cost-minimized, never estimated."""
+    document = _energy_study(tmp_path)
+    report = analyze.analyze(analyze.parse_document(json.dumps(document)))
+    assert report["pareto_frontiers"][0]["algorithms"] == [
+        BASELINE_NAME,
+        "candidate",
+    ]
+    points = {point["algorithm"]: point for point in report["capacity_curve"]}
+    assert points["baseline"]["medians"]["energy_uj"] == [10, 1]
+    assert points["candidate"]["medians"]["energy_uj"] == [20, 1]
+    checked = _check(document, tmp_path)
+    assert checked["raw_rows_matched"] == ALGORITHM_COUNT
+    assert checked["raw_file_sha256"] == {
+        row["raw_sample"]: sha256(_render_v2([row])).hexdigest()
+        for row in document["observations"]
+    }
+
+
+def test_v1_csv_header_and_rows_remain_byte_exact_after_v2_admission(
+    tmp_path: Path,
+) -> None:
+    """The old wire header and byte identity never acquire an energy cell."""
+    document = _setup(tmp_path)
+    assert ENERGY_METRIC not in raw_samples.HEADER
+    assert ENERGY_METRIC in raw_samples.HEADER_2
+    assert (
+        *raw_samples.IDENTITY_FIELDS,
+        "artifact_bytes",
+        "elapsed_ns",
+        "peak_rss_bytes",
+        "peak_vram_bytes",
+        "runtime_steps",
+        "verifier_ns",
+    ) == (raw_samples.HEADER)
+    checked = _check(document, tmp_path)
+    assert checked["raw_rows_matched"] == ALGORITHM_COUNT
+
+
+def test_v1_csv_cannot_silently_discard_reported_energy(
+    tmp_path: Path,
+) -> None:
+    """An energy value carried in JSON must not vanish from a v1 raw file."""
+    document = _setup(tmp_path)
+    document["observations"][0]["metrics"][ENERGY_METRIC] = 11
+    with pytest.raises(evidence.EvidenceError, match="omit reported energy_uj"):
+        _check(document, tmp_path)
+
+
+@pytest.mark.parametrize("change", ["missing", "wrong", "negative", "header"])
+def test_energy_raw_drift_and_cross_version_substitution_rejected(
+    tmp_path: Path,
+    change: str,
+) -> None:
+    """V2 must preserve every declared microjoule and the schema marker."""
+    document = _energy_study(tmp_path)
+    record = document["observations"][0]
+    raw_path = tmp_path / record["raw_sample"]
+    if change == MISSING_ENERGY:
+        record["metrics"][ENERGY_METRIC] = 14
+    elif change == WRONG_ENERGY:
+        raw = raw_path.read_bytes()
+        raw_path.write_bytes(raw.replace(b",10,", b",11,", 1))
+    elif change == NEGATIVE_ENERGY:
+        record["metrics"][ENERGY_METRIC] = -1
+    else:
+        raw_path.write_bytes(_render([record]))
+    if change == NEGATIVE_ENERGY:
+        with pytest.raises(analyze.ArenaError, match="nonnegative integer"):
+            _check(document, tmp_path)
+    else:
+        with pytest.raises(evidence.EvidenceError, match=r"energy|raw CSV"):
+            _check(document, tmp_path)
+
+
+def test_undeclared_energy_metric_is_allowed_but_retained_in_v2(
+    tmp_path: Path,
+) -> None:
+    """Optional observed energy remains raw evidence even when not scored."""
+    document = _energy_study(tmp_path)
+    document["study"]["objectives"].remove(ENERGY_METRIC)
+    assert _check(document, tmp_path)["raw_rows_matched"] == ALGORITHM_COUNT
+    report = analyze.analyze(analyze.parse_document(json.dumps(document)))
+    assert ENERGY_METRIC not in report["objectives"]
+
+
+def test_verified_energy_objective_without_value_fails_before_raw_check(
+    tmp_path: Path,
+) -> None:
+    """The analyzer refuses an absent declared energy metric on success."""
+    document = _energy_study(tmp_path)
+    del document["observations"][0]["metrics"][ENERGY_METRIC]
+    with pytest.raises(analyze.ArenaError, match="missing declared objective"):
+        _check(document, tmp_path)
+
+
+def test_version_two_energy_raw_can_bind_distinct_trial_run_digests(
+    tmp_path: Path,
+) -> None:
+    """The stronger run manifest digest covers the additional energy bytes."""
+    document = _energy_study(tmp_path)
+    _bind_trial_extensions(document, tmp_path)
+    assert _strict_check(document, tmp_path)["trial_run_links_checked"] == (
+        ALGORITHM_COUNT
+    )
+    record = document["observations"][0]
+    record["metrics"][ENERGY_METRIC] += 1
+    _ = (tmp_path / record["raw_sample"]).write_bytes(_render_v2([record]))
+    with pytest.raises(evidence.EvidenceError, match="raw SHA-256"):
+        _strict_check(document, tmp_path)
+
+
+def test_version_two_reports_unknown_energy_as_empty_cell_not_zero(
+    tmp_path: Path,
+) -> None:
+    """Unmeasured energy remains absent while elapsed is still objective."""
+    document = _energy_study(tmp_path)
+    document["study"]["objectives"].remove(ENERGY_METRIC)
+    for record in document["observations"]:
+        del record["metrics"][ENERGY_METRIC]
+        _ = (tmp_path / record["raw_sample"]).write_bytes(
+            _render_v2([record]),
+        )
+    assert _check(document, tmp_path)["raw_rows_matched"] == ALGORITHM_COUNT
+    for row in document["observations"]:
+        raw = (tmp_path / row["raw_sample"]).read_text(encoding="utf-8")
+        line = next(iter(csv.DictReader(StringIO(raw))))
+        assert not line[ENERGY_METRIC]
