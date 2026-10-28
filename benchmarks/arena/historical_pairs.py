@@ -55,6 +55,7 @@ from benchmarks.arena import evidence
 
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
 ASCII_DIGITS = frozenset(string.digits)
+HEX_DIGITS = frozenset(string.hexdigits.lower())
 ELAPSED_SOURCE_FIELD = "elapsed_nanoseconds"
 DISCHARGED = "structurally_discharged_candidates"
 RUN_SUCCEEDED = "success"
@@ -132,18 +133,12 @@ def _integer(text: object, field: str) -> int:
     return value
 
 
-def _csv_rows(
-    text: str,
+def _csv_shape(
+    fields: list[str],
+    records: list[dict[str, str]],
     *,
     registered_fields: frozenset[str],
-) -> list[dict[str, str]]:
-    try:
-        reader = csv.DictReader(StringIO(text, newline=""), strict=True)
-        records = list(reader)
-        fields = reader.fieldnames or []
-    except csv.Error as error:
-        message = f"malformed historical raw CSV: {error}"
-        raise HistoricalEvidenceError(message) from error
+) -> None:
     if set(fields) != registered_fields:
         _fail("historical raw CSV columns differ from registered format")
     if len(set(fields)) != len(fields):
@@ -154,6 +149,23 @@ def _csv_rows(
         for row in records
     ):
         _fail("historical raw CSV contains incomplete rows")
+
+
+def _csv_rows(
+    text: str,
+    *,
+    registered_fields: frozenset[str],
+) -> list[dict[str, str]]:
+    if analyze.NUL in text:
+        _fail("historical raw CSV cannot contain NUL")
+    try:
+        reader = csv.DictReader(StringIO(text, newline=""), strict=True)
+        records = list(reader)
+        fields = reader.fieldnames or []
+    except csv.Error as error:
+        message = f"malformed historical raw CSV: {error}"
+        raise HistoricalEvidenceError(message) from error
+    _csv_shape(fields, records, registered_fields=registered_fields)
     return records
 
 
@@ -291,6 +303,14 @@ def _registered_count(section: dict[str, Any], name: str) -> int:
     return value
 
 
+def _quality_digest(extension: dict[str, Any]) -> None:
+    value = extension["quality_map_sha256"]
+    if not isinstance(value, str) or len(value) != analyze.SHA256_HEX_LENGTH:
+        _fail("historical quality-map fingerprint is not SHA-256")
+    if not set(value) <= HEX_DIGITS:
+        _fail("historical quality-map fingerprint is not lowercase SHA-256")
+
+
 def _quality_row(
     row: dict[str, str],
     extension: dict[str, Any],
@@ -413,6 +433,7 @@ def _declared_strategies(sources: _StudySources) -> tuple[str, str]:
     ) = _extension(sources.manifest_data)
     baseline = sources.benchmark_data["study"]["baseline"]
     candidate = extension[candidate_key]
+    _quality_digest(extension)
     _require(
         baseline == extension["baseline_strategy"],
         "historical baseline disagrees with measurement",

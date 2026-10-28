@@ -38,7 +38,9 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import json
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -266,3 +268,55 @@ def test_unsupported_source_root_rejected(tmp_path: Path) -> None:
         historical_pairs.HistoricalEvidenceError, match="research evidence"
     ):
         historical_pairs.build_report(tmp_path, "untrusted/samples")
+
+
+def test_incomplete_quality_fingerprint_rejected(tmp_path: Path) -> None:
+    """A matching row is insufficient without valid registered SHA-256."""
+    directory = _copy_source(tmp_path, PREFIX)
+    source = (directory / "experiment.toml").read_text(encoding="utf-8")
+    section = source.split("[prefix_decomposition_measurement]", 1)
+    original = section[1]
+    fingerprint = original.split('quality_map_sha256 = "', 1)[1].split('"', 1)[
+        0
+    ]
+    original = original.replace(
+        'quality_map_sha256 = "' + fingerprint + '"',
+        'quality_map_sha256 = "not-a-digest"',
+    )
+    _ = (directory / "experiment.toml").write_text(
+        section[0] + "[prefix_decomposition_measurement]" + original,
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError,
+        match="quality-map fingerprint",
+    ):
+        historical_pairs.build_report(tmp_path, TEMP)
+
+
+def test_historical_cli_prints_no_partial_result_on_bad_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Historical replay prints an entire arena report or no JSON at all."""
+    directory = _copy_source(tmp_path, PREFIX)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["historical-pairs", TEMP, "--root", str(tmp_path)],
+    )
+    assert historical_pairs.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["historical_evidence"]["evidence_status"] == SOURCE_REPORTED
+    _alter(
+        directory,
+        "raw.csv",
+        before="831921051",
+        after="9999999999999999999",
+    )
+    with pytest.raises(SystemExit, match="2"):
+        historical_pairs.main()
+    rejected = capsys.readouterr()
+    assert not rejected.out
+    assert rejected.err.startswith("arena historical evidence:")
