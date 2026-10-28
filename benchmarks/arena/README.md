@@ -131,6 +131,16 @@ the separate benchmark protocol before any research conclusion is accepted.
 within an exactly matched difficulty cohort. Algorithms without a verified
 trial remain in the curve but cannot enter the conditional frontier.
 
+The secondary `paired_baseline_comparisons` reports each candidate against
+only the declared baseline for every difficulty cohort. It counts trials where
+both verified, only the baseline verified, only the candidate verified, or
+neither verified. For each declared cost, it reports candidate-lower, tied,
+and candidate-higher counts and the exact median of *candidate minus baseline*
+over trials where **both** were verified. A negative signed difference means
+lower candidate cost; if there were no mutually verified trials, that median
+is null. Paired differences are descriptive and do not replace the Pareto
+frontier or establish statistical significance.
+
 The `highest_observed_verified_difficulty` is a measured maximum, not an
 interpolated difficulty threshold or a proof of monotonic capacity.
 

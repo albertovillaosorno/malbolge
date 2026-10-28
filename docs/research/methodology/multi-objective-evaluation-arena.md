@@ -105,6 +105,15 @@ A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.
 The test fixtures establish only evidence linkage, not performance results.
 
+A secondary paired baseline view now reports each candidate against the
+predeclared baseline on exactly matched trials. Verification outcomes retain
+four categories: both solved, baseline-only, candidate-only, and neither.
+Cost wins/losses and exact median signed differences are computed only from
+pairs where both solutions passed the named independent verifier. This avoids
+pretending that a failed run has a successful solution size or cost. The paired
+view does not replace the authoritative multidimensional frontier or supply
+an inferential confidence bound.
+
 This first slice intentionally does not require an executable final `.malbolge`
 backend; the study's `stage` can describe available compiler or execution
 boundaries. All results from real studies must separately pass experiment
@@ -122,8 +131,9 @@ and raw evidence review before any performance conclusion is published.
   The synthetic regressions under `benchmarks/arena/tests/test_analyze.py`
   exercise exact cohorts, conditional Pareto fronts, failed-trial retention,
   huge exact medians, descriptive dispersion, failure-inclusive elapsed costs,
-  deterministic ordering, forged verifier status, mismatched verifier cohorts,
-  invalid objective data, and fail-closed CLI output.
+  deterministic ordering, paired baseline win/loss and failure categories,
+  forged verifier status, mismatched verifier cohorts, invalid objective data,
+  and fail-closed CLI output.
 - `benchmarks/arena/evidence.py` binds reported observations to the governed
   experiment-manifest run parser and to nonempty repository-local raw files.
   Synthetic regressions reject forged profile, challenge, oracle, algorithm,

@@ -374,11 +374,12 @@ def _dominates(
     )
 
 
+def _workload_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    return (row["case"]["seed"], row["case"]["workload_sha256"], row["trial"])
+
+
 def _cohort(rows: list[dict[str, Any]]) -> set[tuple[Any, ...]]:
-    return {
-        (row["case"]["seed"], row["case"]["workload_sha256"], row["trial"])
-        for row in rows
-    }
+    return {_workload_key(row) for row in rows}
 
 
 def _verifier_cohort(rows: list[dict[str, Any]]) -> set[tuple[Any, ...]]:
@@ -391,6 +392,78 @@ def _verifier_cohort(rows: list[dict[str, Any]]) -> set[tuple[Any, ...]]:
         )
         for row in rows
     }
+
+
+def _paired_outcomes(
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> dict[str, int]:
+    names = {
+        (True, True): "both_verified",
+        (True, False): "baseline_only_verified",
+        (False, True): "candidate_only_verified",
+        (False, False): "neither_verified",
+    }
+    counts = dict.fromkeys(names.values(), 0)
+    for baseline, candidate in pairs:
+        state = (
+            baseline["outcome"] == VERIFIED,
+            candidate["outcome"] == VERIFIED,
+        )
+        counts[names[state]] += 1
+    return counts
+
+
+def _paired_cost(
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]],
+    name: str,
+) -> dict[str, Any]:
+    differences = [
+        candidate["metrics"][name] - baseline["metrics"][name]
+        for baseline, candidate in pairs
+        if baseline["outcome"] == VERIFIED and candidate["outcome"] == VERIFIED
+    ]
+    return {
+        "candidate_lower": sum(diff < 0 for diff in differences),
+        "candidate_equal": sum(diff == 0 for diff in differences),
+        "candidate_higher": sum(diff > 0 for diff in differences),
+        "median_candidate_minus_baseline": (
+            _exact_median(differences) if differences else None
+        ),
+    }
+
+
+def _paired_per_cohort(
+    key: tuple[Any, ...],
+    algorithms: dict[str, list[dict[str, Any]]],
+    baseline: str,
+    *,
+    objectives: list[str],
+) -> list[dict[str, Any]]:
+    baseline_rows = sorted(algorithms[baseline], key=_workload_key)
+    result = []
+    for algorithm, candidate in sorted(algorithms.items()):
+        if algorithm == baseline:
+            continue
+        paired = list(
+            zip(
+                baseline_rows,
+                sorted(candidate, key=_workload_key),
+                strict=True,
+            )
+        )
+        result.append({
+            "family": key[0],
+            "version": key[1],
+            "difficulty": key[2],
+            "baseline": baseline,
+            "algorithm": algorithm,
+            "paired_trials": len(paired),
+            "outcomes": _paired_outcomes(paired),
+            "cost_differences": {
+                name: _paired_cost(paired, name) for name in objectives
+            },
+        })
+    return result
 
 
 def _point(
@@ -518,6 +591,7 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
         grouped[_case_key(row)][row["algorithm"]].append(row)
     capacity = []
     frontiers = []
+    paired_comparisons = []
     for key, algorithms in sorted(grouped.items()):
         _validate_comparison(key, algorithms, study["baseline"])
         points = [
@@ -526,6 +600,14 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
         ]
         capacity.extend(points)
         frontiers.append(_frontier(key, points, objectives))
+        paired_comparisons.extend(
+            _paired_per_cohort(
+                key,
+                algorithms,
+                study["baseline"],
+                objectives=objectives,
+            )
+        )
     return {
         "schema_version": SCHEMA_VERSION,
         "study_id": study["id"],
@@ -534,6 +616,7 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
         "capacity_curve": capacity,
         "highest_observed_verified_difficulty": _capacities(capacity),
         "pareto_frontiers": frontiers,
+        "paired_baseline_comparisons": paired_comparisons,
         "verification_note": (
             "Outcomes are reported, not independently certified by this "
             "analyzer. Pareto costs are exact rational medians conditional "

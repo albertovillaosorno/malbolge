@@ -68,6 +68,8 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   no fabricated solved thresholds. Exact median absolute deviations and
   observed ranges describe successful costs; a separate all-attempt elapsed
   summary preserves failure costs. Named verifiers must agree per matched case.
+  A secondary paired baseline view retains both-success and asymmetric failure
+  outcomes, plus signed per-cost differences only for mutually verified trials.
   Synthetic-only regressions live under `benchmarks/arena/tests/`.
 - An optional `benchmarks/arena/evidence.py` entrypoint now cross-checks the
   reported algorithm, challenge, profile, host/toolchain, oracle, workload,

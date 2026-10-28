@@ -56,6 +56,8 @@ BASELINE = "baseline"
 FIRST_DIFFICULTY = 1
 SECOND_DIFFICULTY = 2
 SECOND_SEED = 4
+FIRST_SEED = 3
+PAIRED_TRIAL_COUNT = 2
 TIME_DIMENSION = "time"
 LARGE_INPUT_DIAGNOSTIC = "exceeds 16 MiB"
 NON_FILE_DIAGNOSTIC = "regular file"
@@ -520,3 +522,108 @@ def test_distinct_per_instance_oracles_are_allowed_when_matched() -> None:
             row["verifier"] = "oracle-for-second-instance"
     report = _run(document)
     assert report["pareto_frontiers"][0]["algorithms"] == [BASELINE, CANDIDATE]
+
+
+def test_paired_comparison_retains_wins_losses_and_time_differences() -> None:
+    """Matched observations expose paired costs obscured by simple medians."""
+    document = _document()
+    for row in document["observations"]:
+        if row["algorithm"] == CANDIDATE and row["case"]["difficulty"] == 1:
+            row["metrics"]["elapsed_ns"] = (
+                8 if row["case"]["seed"] == FIRST_SEED else 15
+            )
+    report = _run(document)
+    pairs = report["paired_baseline_comparisons"]
+    assert len(pairs) == PAIRED_TRIAL_COUNT
+    easy = pairs[0]
+    assert easy["baseline"] == BASELINE
+    assert easy["algorithm"] == CANDIDATE
+    assert easy["paired_trials"] == PAIRED_TRIAL_COUNT
+    assert easy["outcomes"] == {
+        "both_verified": 2,
+        "baseline_only_verified": 0,
+        "candidate_only_verified": 0,
+        "neither_verified": 0,
+    }
+    assert easy["cost_differences"]["elapsed_ns"] == {
+        "candidate_lower": 1,
+        "candidate_equal": 0,
+        "candidate_higher": 1,
+        "median_candidate_minus_baseline": [3, 2],
+    }
+    assert pairs[1]["outcomes"]["baseline_only_verified"] == 1
+    assert pairs[1]["outcomes"]["both_verified"] == 1
+
+
+def test_unpaired_failures_do_not_create_fake_cost_differences() -> None:
+    """Paired metrics stay null when no trial was verified by both sides."""
+    document = _document()
+    for row in document["observations"]:
+        if (
+            row["algorithm"] == BASELINE
+            and row["case"]["difficulty"] == SECOND_DIFFICULTY
+            and row["case"]["seed"] == FIRST_SEED
+        ):
+            row["outcome"] = "no_solution"
+            row["verifier_verdict"] = analyze.NOT_RUN
+            row["metrics"] = {"elapsed_ns": 75}
+    report = _run(document)
+    hard = report["paired_baseline_comparisons"][1]
+    assert hard["outcomes"] == {
+        "both_verified": 0,
+        "baseline_only_verified": 1,
+        "candidate_only_verified": 1,
+        "neither_verified": 0,
+    }
+    assert hard["cost_differences"]["elapsed_ns"] == {
+        "candidate_lower": 0,
+        "candidate_equal": 0,
+        "candidate_higher": 0,
+        "median_candidate_minus_baseline": None,
+    }
+
+
+def test_pairing_keeps_neither_verified_trials_in_outcome_population() -> None:
+    """A failed pair is not dropped from the denominator of comparisons."""
+    document = _document()
+    for row in document["observations"]:
+        if (
+            row["case"]["difficulty"] == SECOND_DIFFICULTY
+            and row["case"]["seed"] == SECOND_SEED
+        ):
+            row["outcome"] = "resource_exhausted"
+            row["verifier_verdict"] = analyze.NOT_RUN
+            row["metrics"] = {"elapsed_ns": 75}
+    paired = _run(document)["paired_baseline_comparisons"][1]
+    assert paired["outcomes"]["both_verified"] == 1
+    assert paired["outcomes"]["neither_verified"] == 1
+    assert paired["paired_trials"] == PAIRED_TRIAL_COUNT
+    assert paired["cost_differences"]["artifact_bytes"][
+        "median_candidate_minus_baseline"
+    ] == [0, 1]
+
+
+def test_multiple_candidates_are_compared_to_same_declared_baseline() -> None:
+    """Adding one candidate never changes the reference for earlier results."""
+    document = _document()
+    extra = [
+        copy.deepcopy(row)
+        for row in document["observations"]
+        if row["algorithm"] == CANDIDATE
+    ]
+    for row in extra:
+        row["algorithm"] = "additional-algorithm"
+        row["metrics"]["elapsed_ns"] = 9
+    document["observations"].extend(extra)
+    report = _run(document)
+    paired = report["paired_baseline_comparisons"]
+    assert len(paired) == 2 * PAIRED_TRIAL_COUNT
+    assert all(pair["baseline"] == BASELINE for pair in paired)
+    assert [pair["algorithm"] for pair in paired[:2]] == [
+        "additional-algorithm",
+        CANDIDATE,
+    ]
+    assert [pair["algorithm"] for pair in paired[2:]] == [
+        "additional-algorithm",
+        CANDIDATE,
+    ]
