@@ -641,3 +641,44 @@ def test_bounded_reader_never_blocks_on_raced_fifo_leaf(
             document["observations"][0]["raw_sample"],
             limit=1024,
         )
+
+
+def test_evidence_cli_passes_opt_in_median_intervals_without_replacing_links(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Evidence-aware CLI retains its link checks and honest small-n nulls."""
+    document = sample_study(tmp_path)
+    input_path = tmp_path / "study.json"
+    _ = input_path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(input_path),
+            "--root",
+            str(tmp_path),
+            "--median-intervals-95",
+        ],
+    )
+    assert evidence.main() == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["evidence_preflight"]["reported_trials_checked"] == (
+        ALGORITHM_COUNT
+    )
+    assert report["median_interval_policy"]["requested_confidence"] == [19, 20]
+    for point in report["capacity_curve"]:
+        assert point["median_confidence_intervals_95"]["elapsed_ns"] is None
+        assert (
+            point["all_attempt_elapsed_ns"]["median_confidence_interval_95"]
+            is None
+        )
+    for pair in report["paired_baseline_comparisons"]:
+        assert (
+            pair["cost_differences"]["elapsed_ns"][
+                "median_confidence_interval_95"
+            ]
+            is None
+        )

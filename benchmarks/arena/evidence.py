@@ -570,6 +570,7 @@ def main() -> int:
     parser.add_argument("--require-budget-agreement", action="store_true")
     parser.add_argument("--challenge-root")
     parser.add_argument("--require-matched-accelerator", action="store_true")
+    parser.add_argument("--median-intervals-95", action="store_true")
     args = parser.parse_args()
     try:
         document = analyze.parse_document(analyze.read_input(args.study))
@@ -584,7 +585,10 @@ def main() -> int:
                 require_matched_accelerator=args.require_matched_accelerator,
             ),
         )
-        report = analyze.analyze(document)
+        report = analyze.analyze(
+            document,
+            median_intervals_95=args.median_intervals_95,
+        )
     except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena evidence: {error}\n")
     report["evidence_preflight"] = checked

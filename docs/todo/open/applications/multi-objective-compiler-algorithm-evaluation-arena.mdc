@@ -114,6 +114,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   observed inode drift, with synthetic substitution/rewrite regressions and
   nonblocking/no-follow opens on supporting hosts. Raced FIFO leaf admission
   also rejects without hanging. This is not immutable filesystem snapshot proof.
+- Optional exact 95%-or-higher finite-sample median intervals now describe
+  uncertainty in successful costs, all-attempt elapsed time, and paired
+  both-success differences. They require iid sampling for inferential use,
+  leave the default Pareto ranking unchanged and refuse insufficient or
+  over-budget sample counts; independence and physical measurements remain
+  unverified. Independent binomial-reference and CLI regressions are retained.
 - The analyzer is not an independent verifier. Even a matching raw CSV is
   only a producer report, not trusted measurement or verifier replay evidence.
   Required next evidence includes protocol-validated run manifests with real

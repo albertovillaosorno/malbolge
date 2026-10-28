@@ -93,8 +93,9 @@ missing artifacts, and identity drift fail closed.
 
 Arena evidence file readers now check regular-path and opened-descriptor
 identity, size, and modification/change timestamps before and after
-bounded reads, including a post-read ancestor-link admission. A replaced path, a substituted
-inode, or an observed same-inode rewrite fails before an aggregate report is
+bounded reads, including a post-read ancestor-link admission. A replaced
+path, a substituted inode, or an observed same-inode rewrite fails before an
+aggregate report is
 published. POSIX descriptor opens use nonblocking and no-follow flags when
 available, so a raced FIFO or leaf symlink cannot hang the source reader.
 These are observable race defenses, **not** a promise of an atomic filesystem
@@ -146,9 +147,34 @@ cost, conditional on verified success. Missing successes yield null
 conditional statistics, not fabricated zeroes. The `all_attempt_elapsed_ns`
 record reports exact median, median absolute deviation, and observed range
 across **every** attempt, including rejection, exhaustion, and no solution.
-These are descriptive statistics, not confidence intervals or proof of
-independent trials. Statistical uncertainty and replication are governed by
-the separate benchmark protocol before any research conclusion is accepted.
+These statistics alone are descriptive, not confidence intervals or proof of
+independent trials. For a separate optional inferential view, run the analyzer
+or the evidence-aware CLI with `--median-intervals-95`. It adds exact
+nonparametric order-statistic intervals to each conditional successful cost
+median, the all-attempt elapsed median, and each paired baseline cost-difference
+median when at least six and at most 4096 observations are present. Smaller or
+larger samples produce `null`, never fabricated bounds or extrapolated data.
+
+Each available interval reports integer `lower`/`upper` sample endpoints,
+`sample_count`, and achieved two-sided binomial coverage as an exact rational
+`[numerator, denominator]`. The target is at least 19/20 (95%); coverage can
+exceed 95% because finite-sample order statistics have discrete ranks. The
+chosen ranks are the narrowest *symmetric-rank* interval meeting that target,
+without any floating-point approximation. For distributions with ties, the
+reported coverage is a conservative lower bound rather than an exact achieved
+probability. The calculation requires **independent, identically distributed**
+replicates for inferential interpretation. The arena cannot establish that
+assumption from trial labels, seeds, reported digests, or a matching verifier.
+An all-success subset targets the **conditional** cost median of successful
+trials only; paired differences require **both** arms to verify. None of these
+intervals measures algorithm success probability or covers failure cost
+without such qualification. They do not change the exact descriptive medians,
+Pareto frontier, success counts, or capacity maxima, and do not establish
+statistical significance, verifier execution or physical measurements. The
+`median_interval_policy` report object records the assumptions and bounds;
+without the opt-in flag, all earlier version-one report fields and values stay
+unchanged. Statistical uncertainty and replication remain governed by the
+benchmark protocol before any research conclusion is accepted.
 `pareto_frontiers` compares verified-count and successful-only median costs
 within an exactly matched difficulty cohort. Algorithms without a verified
 trial remain in the curve but cannot enter the conditional frontier.
@@ -160,8 +186,10 @@ neither verified. For each declared cost, it reports candidate-lower, tied,
 and candidate-higher counts and the exact median of *candidate minus baseline*
 over trials where **both** were verified. A negative signed difference means
 lower candidate cost; if there were no mutually verified trials, that median
-is null. Paired differences are descriptive and do not replace the Pareto
-frontier or establish statistical significance.
+is null. In the optional interval view, only these *both-success* paired
+signed differences contribute to their own conditional median interval.
+Paired differences are descriptive and do not replace the Pareto frontier or
+establish statistical significance.
 
 The `highest_observed_verified_difficulty` is a measured maximum, not an
 interpolated difficulty threshold or a proof of monotonic capacity.

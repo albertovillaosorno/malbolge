@@ -63,6 +63,13 @@ LARGE_INPUT_DIAGNOSTIC = "exceeds 16 MiB"
 NON_FILE_DIAGNOSTIC = "regular file"
 HASH_A = "a" * analyze.SHA256_HEX_LENGTH
 HASH_B = "b" * analyze.SHA256_HEX_LENGTH
+INTERVAL_PAIRS = 10
+FAILED_PAIRS = 5
+FAILURE_SEED_BOUND = 8
+INDEPENDENT_NOTE = "Independent identically distributed"
+INTERVAL_POLICY = "median_interval_policy"
+INTERVALS_KEY = "median_confidence_intervals_95"
+INTERVAL_KEY = "median_confidence_interval_95"
 
 
 def _observation(
@@ -627,3 +634,142 @@ def test_multiple_candidates_are_compared_to_same_declared_baseline() -> None:
         "additional-algorithm",
         CANDIDATE,
     ]
+
+
+def _repeated_success_study(sample_count: int) -> dict[str, Any]:
+    """Build independent-label synthetic pairs for statistical shape tests.
+
+    Returns:
+        Report-only samples; no physical independence or timing is asserted.
+
+    """
+    document = _document()
+    rows = []
+    for trial in range(sample_count):
+        for algorithm in (BASELINE, CANDIDATE):
+            row = _observation(algorithm, FIRST_DIFFICULTY, trial)
+            row["metrics"]["elapsed_ns"] = (
+                100 + trial if algorithm == BASELINE else 90 + trial
+            )
+            rows.append(row)
+    document["observations"] = rows
+    return document
+
+
+def _interval_report(document: dict[str, Any]) -> dict[str, Any]:
+    admitted = analyze.parse_document(json.dumps(document))
+    return analyze.analyze(admitted, median_intervals_95=True)
+
+
+def test_opt_in_median_intervals_report_exact_ranks_and_paired_deltas() -> None:
+    """Exact coverage extends descriptive data without changing its frontier."""
+    document = _repeated_success_study(10)
+    base_report = _run(document)
+    report = _interval_report(document)
+    assert report["pareto_frontiers"] == base_report["pareto_frontiers"]
+    assert (
+        report["highest_observed_verified_difficulty"]
+        == (base_report["highest_observed_verified_difficulty"])
+    )
+    baseline = _point(report, BASELINE, FIRST_DIFFICULTY)
+    candidate = _point(report, CANDIDATE, FIRST_DIFFICULTY)
+    assert baseline["median_confidence_intervals_95"]["elapsed_ns"] == {
+        "lower": 101,
+        "upper": 108,
+        "coverage": [501, 512],
+        "sample_count": 10,
+    }
+    assert candidate["median_confidence_intervals_95"]["elapsed_ns"] == {
+        "lower": 91,
+        "upper": 98,
+        "coverage": [501, 512],
+        "sample_count": 10,
+    }
+    assert (
+        candidate["all_attempt_elapsed_ns"]["median_confidence_interval_95"][
+            "sample_count"
+        ]
+        == INTERVAL_PAIRS
+    )
+    pair = report["paired_baseline_comparisons"][0]
+    assert pair["cost_differences"]["elapsed_ns"][
+        "median_confidence_interval_95"
+    ] == {
+        "lower": -10,
+        "upper": -10,
+        "coverage": [501, 512],
+        "sample_count": 10,
+    }
+    policy = report["median_interval_policy"]
+    assert policy["requested_confidence"] == [19, 20]
+    assert not policy["pareto_uses_intervals"]
+    assert INDEPENDENT_NOTE in policy["assumptions"]
+
+
+def test_failed_pairs_have_conditional_null_but_all_attempt_interval() -> None:
+    """Failed results never create imaginary successful costs or paired wins."""
+    document = _repeated_success_study(10)
+    for row in document["observations"]:
+        if (
+            row["algorithm"] == CANDIDATE
+            and row["case"]["seed"] < FAILURE_SEED_BOUND
+        ):
+            row["outcome"] = "resource_exhausted"
+            row["verifier_verdict"] = analyze.NOT_RUN
+            row["metrics"] = {"elapsed_ns": 90}
+    report = _interval_report(document)
+    point = _point(report, CANDIDATE, FIRST_DIFFICULTY)
+    assert point["verified"] == FAILED_PAIRS
+    assert point["median_confidence_intervals_95"]["elapsed_ns"] is None
+    assert point["all_attempt_elapsed_ns"]["median_confidence_interval_95"]
+    comparison = report["paired_baseline_comparisons"][0]
+    assert comparison["outcomes"]["both_verified"] == FAILED_PAIRS
+    assert (
+        comparison["cost_differences"]["elapsed_ns"][
+            "median_confidence_interval_95"
+        ]
+        is None
+    )
+    assert comparison["cost_differences"]["elapsed_ns"][
+        "median_candidate_minus_baseline"
+    ] == [-10, 1]
+
+
+def test_opt_in_statistical_shape_order_invariant_and_default_unchanged() -> (
+    None
+):
+    """No flag means exact legacy JSON; row shuffling changes no intervals."""
+    document = _repeated_success_study(10)
+    without = _run(document)
+    assert INTERVAL_POLICY not in without
+    for point in without["capacity_curve"]:
+        assert INTERVALS_KEY not in point
+        assert INTERVAL_KEY not in point["all_attempt_elapsed_ns"]
+    for comparison in without["paired_baseline_comparisons"]:
+        for metric in comparison["cost_differences"].values():
+            assert INTERVAL_KEY not in metric
+    expected = _interval_report(document)
+    document["observations"].reverse()
+    assert _run(document) == without
+    assert _interval_report(document) == expected
+
+
+def test_cli_opt_in_intervals_and_default_json_compatibility(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Statistical uncertainty is opt-in and both CLI routes are stable."""
+    document = _repeated_success_study(10)
+    path = tmp_path / "samples.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["arena", str(path)])
+    assert analyze.main() == 0
+    assert json.loads(capsys.readouterr().out) == _run(document)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["arena", str(path), "--median-intervals-95"],
+    )
+    assert analyze.main() == 0
+    assert json.loads(capsys.readouterr().out) == _interval_report(document)

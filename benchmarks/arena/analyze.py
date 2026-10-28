@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+from dataclasses import dataclass
 from fractions import Fraction
 import json
 from pathlib import Path
@@ -43,6 +44,8 @@ import stat
 import sys
 from typing import Any
 from typing import Never
+
+from benchmarks.arena import median_intervals
 
 SCHEMA_VERSION = 1
 SHA256_HEX_LENGTH = 64
@@ -417,13 +420,15 @@ def _paired_outcomes(
 def _paired_cost(
     pairs: list[tuple[dict[str, Any], dict[str, Any]]],
     name: str,
+    *,
+    median_intervals_95: bool = False,
 ) -> dict[str, Any]:
     differences = [
         candidate["metrics"][name] - baseline["metrics"][name]
         for baseline, candidate in pairs
         if baseline["outcome"] == VERIFIED and candidate["outcome"] == VERIFIED
     ]
-    return {
+    result = {
         "candidate_lower": sum(diff < 0 for diff in differences),
         "candidate_equal": sum(diff == 0 for diff in differences),
         "candidate_higher": sum(diff > 0 for diff in differences),
@@ -431,6 +436,17 @@ def _paired_cost(
             _exact_median(differences) if differences else None
         ),
     }
+    if median_intervals_95:
+        result["median_confidence_interval_95"] = (
+            median_intervals.median_interval_95(differences)
+        )
+    return result
+
+
+@dataclass(frozen=True, slots=True)
+class _AnalysisPolicy:
+    objectives: list[str]
+    median_intervals_95: bool
 
 
 def _paired_per_cohort(
@@ -438,7 +454,7 @@ def _paired_per_cohort(
     algorithms: dict[str, list[dict[str, Any]]],
     baseline: str,
     *,
-    objectives: list[str],
+    policy: _AnalysisPolicy,
 ) -> list[dict[str, Any]]:
     baseline_rows = sorted(algorithms[baseline], key=_workload_key)
     result = []
@@ -461,7 +477,12 @@ def _paired_per_cohort(
             "paired_trials": len(paired),
             "outcomes": _paired_outcomes(paired),
             "cost_differences": {
-                name: _paired_cost(paired, name) for name in objectives
+                name: _paired_cost(
+                    paired,
+                    name,
+                    median_intervals_95=policy.median_intervals_95,
+                )
+                for name in policy.objectives
             },
         })
     return result
@@ -472,14 +493,15 @@ def _point(
     key: tuple[Any, ...],
     rows: list[dict[str, Any]],
     *,
-    objectives: list[str],
+    policy: _AnalysisPolicy,
 ) -> dict[str, Any]:
     successes = [row for row in rows if row["outcome"] == VERIFIED]
     success_values = {
-        name: [row["metrics"][name] for row in successes] for name in objectives
+        name: [row["metrics"][name] for row in successes]
+        for name in policy.objectives
     }
     all_elapsed = [row["metrics"][ELAPSED] for row in rows]
-    return {
+    point = {
         "algorithm": algorithm,
         "family": key[0],
         "version": key[1],
@@ -509,6 +531,15 @@ def _point(
             "range": [min(all_elapsed), max(all_elapsed)],
         },
     }
+    if policy.median_intervals_95:
+        point["median_confidence_intervals_95"] = {
+            name: median_intervals.median_interval_95(values)
+            for name, values in success_values.items()
+        }
+        point["all_attempt_elapsed_ns"]["median_confidence_interval_95"] = (
+            median_intervals.median_interval_95(all_elapsed)
+        )
+    return point
 
 
 def _frontier(
@@ -576,7 +607,11 @@ def _validate_comparison(
         _fail(f"no comparison algorithm for declared baseline in {key}")
 
 
-def analyze(document: dict[str, Any]) -> dict[str, Any]:
+def analyze(
+    document: dict[str, Any],
+    *,
+    median_intervals_95: bool = False,
+) -> dict[str, Any]:
     """Summarize exact trial counts and matched Pareto sets.
 
     Returns:
@@ -585,6 +620,7 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
     """
     study = document["study"]
     objectives: list[str] = study["objectives"]
+    policy = _AnalysisPolicy(objectives, median_intervals_95)
     grouped: dict[tuple[Any, ...], dict[str, list[dict[str, Any]]]] = (
         defaultdict(lambda: defaultdict(list))
     )
@@ -596,7 +632,12 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
     for key, algorithms in sorted(grouped.items()):
         _validate_comparison(key, algorithms, study["baseline"])
         points = [
-            _point(name, key, rows, objectives=objectives)
+            _point(
+                name,
+                key,
+                rows,
+                policy=policy,
+            )
             for name, rows in sorted(algorithms.items())
         ]
         capacity.extend(points)
@@ -606,10 +647,10 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
                 key,
                 algorithms,
                 study["baseline"],
-                objectives=objectives,
+                policy=policy,
             )
         )
-    return {
+    report = {
         "schema_version": SCHEMA_VERSION,
         "study_id": study["id"],
         "stage": study["stage"],
@@ -625,6 +666,22 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
             "confidence interval."
         ),
     }
+    if median_intervals_95:
+        report["median_interval_policy"] = {
+            "method": "exact-symmetric-binomial-order-statistics",
+            "requested_confidence": [19, 20],
+            "minimum_samples": median_intervals.MIN_SAMPLES,
+            "maximum_samples": median_intervals.MAX_SAMPLES,
+            "assumptions": (
+                "Independent identically distributed trials; bounds are "
+                "conservative under ties. Conditional success-only and "
+                "both-success paired intervals do not generalize to failures. "
+                "Sample independence and physical measurements are not "
+                "established by this analyzer."
+            ),
+            "pareto_uses_intervals": False,
+        }
+    return report
 
 
 def read_input(path: Path) -> str:
@@ -655,10 +712,11 @@ def main() -> int:
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path)
+    parser.add_argument("--median-intervals-95", action="store_true")
     args = parser.parse_args()
     try:
         document = parse_document(read_input(args.input))
-        report = analyze(document)
+        report = analyze(document, median_intervals_95=args.median_intervals_95)
     except (ArenaError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena: {error}\n")
     _ = sys.stdout.write(json.dumps(report, sort_keys=True, indent=2) + "\n")

@@ -80,7 +80,20 @@ cost medians conditional on verified success. Medians are exact integer
 fractions, including even-sized and very large samples. Observed ranges
 and exact median absolute deviations describe successful-cost dispersion,
 while an all-attempt elapsed-time summary exposes failed-run cost. These
-statistics are descriptive, not confidence intervals or inferential evidence.
+statistics are descriptive by default, not confidence intervals or
+inferential evidence. An optional `--median-intervals-95` analysis adds exact
+finite-sample distribution-free order-statistic 95%-or-higher intervals for
+successful-cost medians, all-attempt elapsed medians, and candidate-minus-
+baseline *both-success* paired cost medians. A two-sided binomial recurrence
+finds the narrowest qualifying symmetric observed ranks without floating-point
+arithmetic; reports include exact coverage fractions, integer rank endpoints
+and sample counts. Fewer than six or more than 4096 observations give null
+intervals. Ties may only improve the conservative lower bound on coverage.
+This is inferential **only** under unverified independent identically
+distributed sampling assumptions. Neither independence, physical timing,
+randomization, nor verifier replay follows from the labels or this estimator;
+selection on success changes the population being estimated. The default JSON
+and nominal Pareto selection remain unchanged by the opt-in calculation.
 
 The Pareto relation
 minimizes declared costs and maximizes verified trial count inside each matched
@@ -150,7 +163,8 @@ rechecks the canonical nonlinked path after read. Nonblocking/no-follow open
 flags where available prevent a replaced FIFO or linked leaf from becoming an
 indefinite blocking read. Deterministic replacement, in-place rewrite, and
 POSIX FIFO substitution regressions prove rejection of observed file drift.
-This is not an atomic snapshot guarantee against an adversarial filesystem scheduler.
+This is not an atomic snapshot guarantee against an adversarial filesystem
+scheduler.
 
 A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.
@@ -239,6 +253,11 @@ The original study records remain the result authority.
   identity, exact resource declarations, v2 energy CSV, matched reported
   accelerator identity, and deterministic challenge regeneration. Independent
   negative oracle and raw-digest mutations fail before report publication.
+- `benchmarks/arena/median_intervals.py` computes exact 95%-or-higher
+  symmetric-rank intervals using binomial coverage, with independent reference
+  tests for small/large samples, ties, negative costs and sample bounds.
+  Both analyzer CLIs expose this as an optional view only; default reports and
+  existing frontier rankings remain unchanged.
 - An additional opt-in accelerator identity gate rejects mixed declared
   devices in studies that require hardware-matched arms, while preserving
   heterogeneous studies when that policy is not requested. Synthetic tests
