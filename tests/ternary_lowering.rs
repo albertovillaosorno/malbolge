@@ -12174,6 +12174,65 @@ fn ternary_progress_for_source_rejects_unsupported_expected_module()
 }
 
 #[test]
+fn ternary_progress_for_source_rejects_unsupported_expected_function_shape()
+-> Result<(), String> {
+    let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let saved = enter_ternary_stage(TernaryStageInput::Projection(&expected))
+        .map_err(|error| format!("lower supported source: {error:?}"))?;
+    let bytes = canonical_ternary_bytes(&saved)
+        .map_err(|error| format!("encode supported source: {error:?}"))?;
+    let (progress, directory) =
+        publish_ternary_progress_fixture("unsupported-function-shape", &bytes)?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+            != Ok(saved.clone())
+        {
+            return Err(String::from("supported checkpoint not admitted"));
+        }
+        assert_source_matched_ternary_success(
+            &expected, &saved, &inspector, (&interpreter, &progress),
+        )?;
+        for field in 0u8..6 {
+            let mut changed = expected.clone();
+            let function = changed.functions.first_mut()
+                .ok_or_else(|| String::from("expected function missing"))?;
+            match field {
+                0 => function.parameter_count = 1,
+                1 => function.blocks.clear(),
+                2 => {
+                    let block = function.blocks.first()
+                        .ok_or_else(|| String::from("source block missing"))?
+                        .clone();
+                    function.blocks.push(block);
+                },
+                3 => function.entry = u32::MAX,
+                4 => function.blocks.first_mut()
+                    .ok_or_else(|| String::from("source block missing"))?
+                    .phi_count = 1,
+                5 => function.blocks.first_mut()
+                    .ok_or_else(|| String::from("source block missing"))?
+                    .terminator = InputTerminator::Unsupported,
+                _ => return Err(String::from("unknown function-shape mutation")),
+            }
+            if lower_typed_ir(&changed).is_ok() {
+                return Err(format!("unsupported function shape {field} lowered"));
+            }
+            assert_source_matched_ternary_failure(
+                &changed, &inspector, (&interpreter, &progress),
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )?;
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean function-shape fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
 fn ternary_progress_for_source_rejects_valid_changed_return_category()
 -> Result<(), String> {
     let (original, expected) = lowered_unsigned_return_fixture(u32::MAX)?;

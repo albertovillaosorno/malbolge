@@ -609,7 +609,10 @@ instruction.
   not external source authentication or toolchain revision binding.
   The source-matched route now additionally matches ordered function count,
   names, IDs, complete spans, and return categories without re-lowering the
-  expected program.
+  expected program. Expected functions must also retain the fresh lowerer's
+  supported no-parameter, one-entry-block, phi-free shape and consistent
+  return terminator. Production-inspector tests reject six independently
+  unsupported expected function shapes while admitting unchanged checkpoints.
   Source-identical checkpoints with a different but independently valid
   function identity, or mismatched caller function metadata, fail closed; this
   does not claim operation-level equivalence or source-digest authenticity.

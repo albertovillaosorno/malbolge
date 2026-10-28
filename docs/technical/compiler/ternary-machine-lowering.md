@@ -925,7 +925,11 @@ projection for exact source path/digest, ABI, typed-IR version, target
 profile, ordered function count/IDs/names, complete function source spans, and
 function return category derived from the last admitted ternary operation.
 It rejects expected typed-IR modules containing globals or proof obligations,
-which the fresh lowerer cannot represent in this target-model slice.
+which the fresh lowerer cannot represent in this target-model slice. Expected
+functions must also have the supported no-parameter, single-entry-block,
+phi-free shape and a return terminator consistent with their declared result
+category. This structural admission does not re-lower instructions or compare
+saved operation semantics.
 The ordinary progress route remains available but does not bind an expected
 source. The source-matched route rejects an independently valid checkpoint
 with changed function identity despite a matching module digest, as well as

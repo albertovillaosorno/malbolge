@@ -40,7 +40,7 @@ use std::path::Path;
 
 use inspector_transport::{TransportError, extract_ternary_checkpoint};
 
-use super::input::{InputScalarType, TypedIrInput};
+use super::input::{InputFunction, InputScalarType, InputTerminator, TypedIrInput};
 use super::model::{TernaryOperation, TernaryProgram};
 use super::program_codec::TERNARY_PROGRAM_CODEC_ID;
 use super::stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
@@ -154,6 +154,29 @@ const fn matches_expected_return(
     )
 }
 
+// Source-bound resume must not accept an expected function shape that fresh
+// lowering cannot represent. Checking this small control-flow envelope does
+// not redo the typed instruction lowering stored in the checkpoint.
+const fn matches_supported_function_shape(function: &InputFunction) -> bool {
+    let [block] = function.blocks.as_slice() else {
+        return false;
+    };
+    if function.parameter_count != 0
+        || block.id != function.entry
+        || block.phi_count != 0
+    {
+        return false;
+    }
+    match (function.return_kind, block.terminator) {
+        (InputScalarType::Void, InputTerminator::Return { value: None, .. }) => {
+            true
+        },
+        (InputScalarType::Void, _) => false,
+        (_, InputTerminator::Return { value: Some(_), .. }) => true,
+        _ => false,
+    }
+}
+
 // This comparison is deliberately structural rather than a fresh lowering:
 // resuming a large job must not re-run the work stored in its checkpoint.
 // It binds function identity and exact source spans in addition to module
@@ -165,7 +188,8 @@ fn matches_expected_functions(
     program.functions.len() == expected.functions.len()
         && program.functions.iter().zip(&expected.functions).all(
             |(saved, current)| {
-                saved.id == current.id
+                matches_supported_function_shape(current)
+                    && saved.id == current.id
                     && saved.name == current.name
                     && saved.span.begin.byte == current.span.begin.byte
                     && saved.span.begin.column == current.span.begin.column
