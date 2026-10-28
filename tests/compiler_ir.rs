@@ -1822,6 +1822,60 @@ fn assert_source_bound_rejects_admitted_module(
     directory_cleanup
 }
 
+#[test]
+fn typed_ir_source_bound_resume_preserves_signed_constant_boundaries()
+-> Result<(), String> {
+    let directory = compiler_crash_directory("signed-source-bound")?;
+    let inspector = temporary_inspector(
+        "signed-source-bound", INSPECTOR_SUCCESS_SCRIPT,
+    )?;
+    let result = (|| {
+        let interpreter = repository_python();
+        for (index, decimal) in [
+            (0u8, "-2147483648"),
+            (1, "-1"),
+            (2, "0"),
+            (3, "2147483647"),
+        ] {
+            let expected = frontend_artifact(
+                "malbolge-c-frontend-v1",
+                vec![frontend_function("fn()->i32", "i32", decimal)],
+            );
+            let fresh = lower_frontend_artifact(&expected)
+                .map_err(|error| format!("lower {decimal}: {error:?}"))?;
+            let progress = directory.join(format!("constant-{index}.hex"));
+            let text = canonical_debug_text(&fresh)
+                .map_err(|error| format!("encode {decimal}: {error:?}"))?;
+            write(&progress, text)
+                .map_err(|error| format!("write {decimal}: {error}"))?;
+            let direct = resume_typed_ir_from_progress_for_source(
+                &interpreter, &inspector, &progress, &expected,
+            );
+            let selected = enter_typed_ir_compiler_stage(
+                TypedIrCompilerStageInput::ProgressForSource {
+                    expected: &expected,
+                    inspector: &inspector,
+                    interpreter: &interpreter,
+                    progress: &progress,
+                },
+            );
+            if direct != Ok(fresh.clone()) || selected != Ok(fresh) {
+                return Err(format!(
+                    "signed constant {decimal} resume: {direct:?}; {selected:?}",
+                ));
+            }
+        }
+        Ok(())
+    })();
+    let script_cleanup = remove_file(&inspector)
+        .map_err(|error| format!("remove signed inspector: {error}"));
+    let directory_cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("remove signed fixture: {error}"));
+    result?;
+    script_cleanup?;
+    directory_cleanup
+}
+
 fn altered_frontend_block(
     block: &BasicBlock,
     field: u8,

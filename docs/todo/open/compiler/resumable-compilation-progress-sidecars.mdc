@@ -298,8 +298,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and returned SSA identity without rebuilding IR. Child-inspector regressions
   reject three independently valid internal span forgeries, one extra unused
   instruction, and a changed valid constant with matching source metadata,
-  while preserving unrestricted restoration. This exact semantic match is
-  limited to the admitted constant-return frontend slice. Source-matched
+  while preserving unrestricted restoration. The same source-bound route
+  accepts freshly lowered signed `i32` boundary constants including both
+  extrema, negative one, and zero through direct and product selectors.
+  This exact semantic match is limited to the admitted constant-return
+  frontend slice. Source-matched
   selection also rejects a valid empty-function checkpoint paired with an empty expected
   frontend, which fresh lowering cannot admit. A valid checkpoint with an
   extra global or retained proof obligation is rejected as well, since the
