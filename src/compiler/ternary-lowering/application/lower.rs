@@ -147,7 +147,7 @@ const fn projection_span_contains(
     parent.begin.byte <= child.begin.byte && child.end.byte <= parent.end.byte
 }
 
-const fn projected_instruction_span(
+pub(super) const fn projected_instruction_span(
     instruction: &InputInstruction,
 ) -> Option<InputSourceSpan> {
     match instruction {

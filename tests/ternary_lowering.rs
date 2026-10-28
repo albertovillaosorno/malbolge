@@ -12394,6 +12394,67 @@ fn ternary_progress_for_source_rejects_unsupported_expected_instruction()
     cleanup
 }
 
+fn change_saved_ternary_span(
+    program: &mut ternary_lowering::TernaryProgram,
+    position: usize,
+) -> Result<(), String> {
+    let operation = program.functions.first_mut()
+        .and_then(|function| function.operations.get_mut(position))
+        .ok_or_else(|| String::from("saved operation missing"))?;
+    if let TernaryOperation::MaterializeI32 { result, scalar, mut span } =
+        *operation
+    {
+        span.begin.column = span.begin.column.saturating_add(1);
+        *operation = TernaryOperation::MaterializeI32 { result, scalar, span };
+    } else if let TernaryOperation::Return { value, mut span } = *operation {
+        span.begin.column = span.begin.column.saturating_add(1);
+        *operation = TernaryOperation::Return { value, span };
+    } else {
+        return Err(String::from("unexpected target operation"));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_progress_for_source_checks_each_saved_operation_span()
+-> Result<(), String> {
+    let expected = project_typed_ir(&admitted_golden(RETURN_GOLDEN)?)?;
+    let original = enter_ternary_stage(TernaryStageInput::Projection(&expected))
+        .map_err(|error| format!("lower span source: {error:?}"))?;
+    for index in 0usize..2 {
+        let mut foreign = original.clone();
+        change_saved_ternary_span(&mut foreign, index)?;
+        if foreign.source_sha256 != original.source_sha256 {
+            return Err(String::from("span forgery changed source digest"));
+        }
+        ternary_lowering::validate_ternary_program(&foreign)
+            .map_err(|error| format!("validate span forgery: {error:?}"))?;
+        let bytes = canonical_ternary_bytes(&foreign)
+            .map_err(|error| format!("encode span forgery: {error:?}"))?;
+        let (progress, directory) = publish_ternary_progress_fixture(
+            &format!("foreign-operation-span-{index}"), &bytes,
+        )?;
+        let result = (|| {
+            let interpreter = repository_python();
+            let inspector = progress_inspector();
+            if resume_ternary_from_progress(&interpreter, &inspector, &progress)
+                != Ok(foreign)
+            {
+                return Err(String::from("valid changed span was rejected"));
+            }
+            assert_source_matched_ternary_failure(
+                &expected, &inspector, (&interpreter, &progress),
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )
+        })();
+        let cleanup = remove_dir_all(&directory)
+            .map_err(|error| format!("clean span fixture: {error}"));
+        result?;
+        cleanup?;
+    }
+    Ok(())
+}
+
 #[test]
 fn ternary_progress_for_source_rejects_valid_changed_return_category()
 -> Result<(), String> {

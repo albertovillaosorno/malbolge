@@ -622,6 +622,9 @@ instruction.
   Source-bound selection additionally rejects an expected `Unsupported`
   instruction sentinel that fresh lowering cannot lower, with direct and
   product inspector-backed regression evidence.
+  The source-bound inspector route now binds every saved operation and return
+  span to the caller projection, rejecting two independently valid source-map
+  forgeries with unchanged module/function identity and digest.
   Source-identical checkpoints with a different but independently valid
   function identity, or mismatched caller function metadata, fail closed; this
   does not claim operation-level equivalence or source-digest authenticity.

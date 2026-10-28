@@ -937,7 +937,11 @@ rejecting independently valid extra operations whose module/function identity
 is otherwise unchanged. This structural admission does not re-lower
 instructions or compare saved operation semantics. An explicit
 `InputInstruction::Unsupported` sentinel in the expected projection also fails
-source-matched resume, as it does on fresh lowerer admission.
+source-matched resume, as it does on fresh lowerer admission. The
+source-bound route also matches each saved instruction and return source span
+against its expected projected span. Independently admitted checkpoints with
+changed operation provenance but unchanged module/function identity fail
+without repeating semantic lowering.
 The ordinary progress route remains available but does not bind an expected
 source. The source-matched route rejects an independently valid checkpoint
 with changed function identity despite a matching module digest, as well as

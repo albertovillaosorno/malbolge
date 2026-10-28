@@ -40,10 +40,13 @@ use std::path::Path;
 
 use inspector_transport::{TransportError, extract_ternary_checkpoint};
 
-use super::input::{InputFunction, InputInstruction, InputScalarType, InputTerminator, TypedIrInput};
-use super::lower::validate_projection_spans;
-use super::model::{TernaryOperation, TernaryProgram};
-use super::program_codec::TERNARY_PROGRAM_CODEC_ID;
+use super::input::{
+    InputFunction, InputInstruction, InputScalarType, InputSourceSpan,
+    InputTerminator, TypedIrInput,
+};
+use super::lower::{projected_instruction_span, validate_projection_spans};
+use super::model::{TernaryFunction, TernaryOperation, TernaryProgram, TernarySourceSpan};
+use super::program_codec::{TERNARY_PROGRAM_CODEC_ID, operation_span};
 use super::stage::{TernaryStageError, TernaryStageInput, enter_ternary_stage};
 
 /// Product compiler selection for entering the ternary-lowering stage.
@@ -191,6 +194,49 @@ fn matches_supported_function_shape(
     }
 }
 
+// The source map is part of source-bound checkpoint identity, even when the
+// saved program is independently valid and its function span still matches.
+const fn matches_source_span(
+    expected: InputSourceSpan,
+    observed: Option<TernarySourceSpan>,
+) -> bool {
+    let Some(saved) = observed else {
+        return false;
+    };
+    expected.begin.byte == saved.begin.byte
+        && expected.begin.line == saved.begin.line
+        && expected.begin.column == saved.begin.column
+        && expected.end.byte == saved.end.byte
+        && expected.end.line == saved.end.line
+        && expected.end.column == saved.end.column
+}
+
+fn matches_expected_operation_spans(
+    current: &InputFunction,
+    saved: &TernaryFunction,
+) -> bool {
+    let [block] = current.blocks.as_slice() else {
+        return false;
+    };
+    let Some((saved_return, saved_instructions)) = saved.operations.split_last()
+    else {
+        return false;
+    };
+    let InputTerminator::Return { span: return_span, .. } = block.terminator
+    else {
+        return false;
+    };
+    saved_instructions.len() == block.instructions.len()
+        && saved_instructions.iter().zip(&block.instructions).all(
+            |(saved_op, current_op)| {
+                projected_instruction_span(current_op).is_some_and(
+                    |span| matches_source_span(span, operation_span(*saved_op)),
+                )
+            },
+        )
+        && matches_source_span(return_span, operation_span(*saved_return))
+}
+
 // This comparison is deliberately structural rather than a fresh lowering:
 // resuming a large job must not re-run the work stored in its checkpoint.
 // It binds function identity and exact source spans in addition to module
@@ -215,6 +261,7 @@ fn matches_expected_functions(
                     && matches_expected_return(
                         current.return_kind, saved.operations.last(),
                     )
+                    && matches_expected_operation_spans(current, saved)
             },
         )
 }

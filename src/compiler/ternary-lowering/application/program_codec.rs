@@ -1839,7 +1839,7 @@ fn insert_value(
     Ok(())
 }
 
-const fn operation_span(
+pub(super) const fn operation_span(
     operation: TernaryOperation,
 ) -> Option<TernarySourceSpan> {
     if let Some(span) = operation_span_primary(operation) {
