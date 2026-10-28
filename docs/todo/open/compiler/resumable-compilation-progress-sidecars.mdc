@@ -279,10 +279,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   rejects launch/status/diagnostic failures, and revalidates extracted bytes
   through the stage entrypoint. The opt-in typed-IR `ProgressForSource` selector
   now also matches an admitted frontend's ABI, source identity/digest, profile,
-  and ordered function count/names/full source spans after canonical checkpoint
-  admission. Real inspector-backed checks reject valid foreign-source state and
-  caller provenance drift without changing unrestricted resume. This is an
-  equality check, not source authentication or semantic re-lowering.
+  ordered function count/names/full spans, and the current `fn()->i32`
+  result-signature type-table identity after canonical checkpoint admission.
+  Real inspector-backed checks reject valid foreign-source state and caller
+  provenance drift without changing unrestricted resume. An independently
+  admitted unsigned-return checkpoint also rejects despite identical source
+  provenance. This is equality admission, not source authentication or full
+  semantic re-lowering.
 
   Its new `composition/progress_inspector.rs`
   limits the direct inspector child to 60 seconds, 64 MiB stdout, and 8 KiB

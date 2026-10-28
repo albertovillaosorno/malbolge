@@ -44,13 +44,15 @@ use inspector_transport::{InspectorFailure, extract_checkpoint};
 
 use super::encode::TYPED_IR_CODEC_ID;
 use super::frontend_semantics::{
-    FrontendArtifact, FrontendPosition, FrontendSpan,
+    FrontendArtifact, FrontendPosition, FrontendReturnIntegerFunction,
+    FrontendSpan,
 };
-use super::module::Module;
+use super::module::{Function, Module};
 use super::source::{SourcePosition, SourceSpan};
 use super::stage::{
     TypedIrStageError, TypedIrStageInput, enter_typed_ir_stage,
 };
+use super::types::{TypeDef, TypeEntry};
 
 /// Product compiler selection for entering the typed-IR stage.
 #[derive(Clone, Copy, Debug)]
@@ -151,6 +153,32 @@ const fn matches_span(saved: SourceSpan, expected: FrontendSpan) -> bool {
         && matches_position(saved.end(), expected.end())
 }
 
+// The current frontend-lowering slice admits only a no-argument `i32`
+// return. Resolve the signature through the independently validated type
+// table rather than trusting that a matching name/span implies the ABI.
+fn matches_expected_function_signature(
+    saved: &Module,
+    function: &Function,
+    source: &FrontendReturnIntegerFunction,
+) -> bool {
+    if source.signature() != "fn()->i32" || source.value_type() != "i32" {
+        return false;
+    }
+    let function_type = saved.types().iter().find(|entry| {
+        entry.id() == function.signature()
+    });
+    let Some(TypeDef::Function {
+        parameters,
+        result: Some(result),
+        variadic: false,
+    }) = function_type.map(TypeEntry::definition) else {
+        return false;
+    };
+    parameters.is_empty() && saved.types().iter().any(|entry| {
+        entry.id() == *result && matches!(entry.definition(), TypeDef::I32)
+    })
+}
+
 fn matches_expected_frontend(
     saved: &Module,
     expected: &FrontendArtifact,
@@ -164,6 +192,9 @@ fn matches_expected_frontend(
             |(function, source)| {
                 function.name() == source.name()
                     && matches_span(function.span(), source.function_span())
+                    && matches_expected_function_signature(
+                        saved, function, source,
+                    )
             },
         )
 }
@@ -171,9 +202,9 @@ fn matches_expected_frontend(
 /// Restores a typed checkpoint only for the caller's expected frontend source.
 ///
 /// This check matches module and ordered function provenance after complete
-/// checkpoint admission, without re-running frontend lowering. It does not
-/// authenticate the supplied source digest, compare function instructions,
-/// or replace the caller's revision/toolchain compatibility policy.
+/// checkpoint admission, including the declared function return ABI, without
+/// re-running frontend lowering. It does not authenticate the source digest,
+/// compare function instructions, or replace revision/toolchain policy.
 ///
 /// # Errors
 ///

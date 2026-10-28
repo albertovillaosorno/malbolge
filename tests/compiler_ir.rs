@@ -38,6 +38,7 @@
 pub mod typed_ir;
 
 use std::env::temp_dir;
+use std::fmt::Write as _;
 use std::fs::{
     copy, create_dir_all, read_to_string, remove_dir_all, remove_file, write,
 };
@@ -1533,29 +1534,37 @@ fn compiler_stage_selector_converges_fresh_and_progress() -> Result<(), String>
 
 fn changed_frontend_function(
     function: &FrontendReturnIntegerFunction,
-    change_span: bool,
+    field: u8,
 ) -> FrontendReturnIntegerFunction {
     FrontendReturnIntegerFunction::new(FrontendReturnIntegerFunctionSpec {
         body_span: function.body_span(),
         constant_decimal: String::from(function.constant_decimal()),
         definition: String::from(function.definition()),
-        function_span: if change_span {
+        function_span: if field == 7 {
             frontend_span(1207, 1, 1235, 28)
         } else {
             function.function_span()
         },
         inline_specified: function.inline_specified(),
         linkage: String::from(function.linkage()),
-        name: if change_span {
-            String::from(function.name())
-        } else {
+        name: if field == 6 {
             format!("{}-foreign", function.name())
+        } else {
+            String::from(function.name())
         },
         return_span: function.return_span(),
-        signature: String::from(function.signature()),
+        signature: if field == 8 {
+            String::from("fn()->u32")
+        } else {
+            String::from(function.signature())
+        },
         storage_class: String::from(function.storage_class()),
         value_span: function.value_span(),
-        value_type: String::from(function.value_type()),
+        value_type: if field == 9 {
+            String::from("u32")
+        } else {
+            String::from(function.value_type())
+        },
     })
 }
 
@@ -1584,10 +1593,10 @@ fn different_frontend_provenance(
         5 => spec.functions.push(frontend_function(
             "fn()->i32", "i32", "7",
         )),
-        6 | 7 => {
+        6..=9 => {
             let original = spec.functions.first()
                 .ok_or_else(|| String::from("frontend function missing"))?;
-            let changed = changed_frontend_function(original, field == 7);
+            let changed = changed_frontend_function(original, field);
             spec.functions.clear();
             spec.functions.push(changed);
         },
@@ -1602,7 +1611,7 @@ fn assert_foreign_frontend_rejected(
     inspector: &Path,
     golden: &Path,
 ) -> Result<(), String> {
-    for field in 0u8..8u8 {
+    for field in 0u8..10u8 {
         let foreign = different_frontend_provenance(expected, field)?;
         let direct = resume_typed_ir_from_progress_for_source(
             interpreter, inspector, golden, &foreign,
@@ -1701,6 +1710,70 @@ fn typed_ir_progress_for_source_rejects_other_valid_checkpoint()
         .map_err(|error| format!("remove source fixture: {error}"));
     result?;
     cleanup
+}
+
+#[test]
+fn typed_ir_progress_for_source_rejects_foreign_result_signature()
+-> Result<(), String> {
+    let expected = frontend_return_projection();
+    let original = lower_frontend_artifact(&expected)
+        .map_err(|error| format!("lower signature source: {error:?}"))?;
+    let swapped_types = original.types().iter().map(|entry| {
+        if matches!(entry.definition(), TypeDef::I32) {
+            TypeEntry::new(entry.id(), TypeDef::U32)
+        } else {
+            entry.clone()
+        }
+    }).collect();
+    let forged = Module::new(ModuleSpec {
+        abi_id: String::from(original.abi_id()),
+        format_version: original.format_version(),
+        functions: original.functions().to_vec(),
+        globals: original.globals().to_vec(),
+        proof_obligations: original.proof_obligations().to_vec(),
+        source_id: String::from(original.source_id()),
+        source_sha256: *original.source_sha256(),
+        target_profile: String::from(original.target_profile()),
+        types: swapped_types,
+    });
+    validate_module(&forged)
+        .map_err(|error| format!("u32 forgery rejected: {error:?}"))?;
+    let wire = canonical_bytes(&forged)
+        .map_err(|error| format!("encode u32 forgery: {error:?}"))?;
+    let encoded = wire.iter().fold(String::new(), |mut encoded, byte| {
+        let _written = write!(encoded, "{byte:02x}");
+        encoded
+    });
+    let directory = compiler_crash_directory("forged-signature")?;
+    let golden = directory.join("changed-signature.hex");
+    write(&golden, format!("{TYPED_IR_CODEC_ID}:{encoded}"))
+        .map_err(|error| format!("publish signature fixture: {error}"))?;
+    let inspector = temporary_inspector(
+        "forged-signature", INSPECTOR_SUCCESS_SCRIPT,
+    )?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let admitted = resume_typed_ir_from_progress(
+            &interpreter, &inspector, &golden,
+        );
+        if admitted != Ok(forged) {
+            return Err(format!("valid u32 checkpoint rejected: {admitted:?}"));
+        }
+        let checked = resume_typed_ir_from_progress_for_source(
+            &interpreter, &inspector, &golden, &expected,
+        );
+        if checked != Err(ProgressCheckpointError::IdentityMismatch) {
+            return Err(format!("u32 checkpoint admitted: {checked:?}"));
+        }
+        Ok(())
+    })();
+    let cleanup_script = remove_file(&inspector)
+        .map_err(|error| format!("remove forgery inspector: {error}"));
+    let cleanup_directory = remove_dir_all(&directory)
+        .map_err(|error| format!("remove forgery directory: {error}"));
+    result?;
+    cleanup_script?;
+    cleanup_directory
 }
 
 #[test]
