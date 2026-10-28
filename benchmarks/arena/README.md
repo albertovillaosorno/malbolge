@@ -163,3 +163,47 @@ Run the self-contained regression suite:
 PYTHONPATH=src/automation/repository/composition python3.14 -B -m pytest \
   benchmarks/arena/tests/ -q
 ```
+
+## Existing retained classic timing studies
+
+Two source-pinned September 4, 2026 research comparisons already contain five
+paired repetitions, declared hypotheses, registered verifier identities,
+quality-map fingerprints, and nonempty raw timing samples. The read-only
+`historical_pairs` adapter admits those two recorded formats as **historical,
+source-reported evidence** without executing a candidate or verifier:
+
+```sh
+export PYTHONPATH=src/automation/repository/composition
+python3.14 -B -m benchmarks.arena.historical_pairs \
+  benchmarks/research/evidence/2026-09-04-classic-prefix-decomposition-linux
+python3.14 -B -m benchmarks.arena.historical_pairs \
+  benchmarks/research/evidence/2026-09-04-classic-verified-block-reuse-linux
+```
+
+The adapter reads only canonical, non-symlink research files under the selected
+root, with an individual 4 MiB input cap. It reuses the version-one experiment
+and benchmark-protocol parsers, requires the exact paired trial population,
+checks preregistered baselines, matched workload/host/profile identities,
+and compares retained quality-map and structural counts against the recorded
+measurement declarations. Only the registered full CSV column sets for those
+two formats are admitted. It fingerprints the exact experiment, benchmark,
+and raw source bytes in `historical_evidence.source_sha256`.
+
+The prefix-decomposition record has a baseline timing median of 831,921,051 ns
+and a candidate timing median of 835,180,632 ns. Prefix decomposition reports
+2 of 5 paired timing wins and 8,742 verifier calls instead of 8,836; the
+reported timing comparison does not support a speedup claim.
+
+The verified-block-reuse record has a baseline timing median of 1,617,672,749 ns
+and a candidate timing median of 851,323,429 ns. Reuse reports 5 of 5 paired
+timing wins and 8,836 verifier calls instead of 17,672. Those observations
+apply to the frozen corpus and recorded Linux host, not arbitrary workloads.
+
+The two research studies have *different challenge families and difficulty
+identities*. They are never pooled into a joint arena frontier. The adapter
+compares elapsed time only; it retains the reported verifier-call counts as
+separate structural metadata rather than relabeling them as a timing cost.
+Every projected trial is **reported verified** from the source manifest and
+quality-map identity, not independently re-verified by this adapter. Reports
+mark the evidence as `source-reported-not-reverified`. No new
+measurements, semantic proof, or capacity scaling claim is created.

@@ -120,6 +120,34 @@ boundaries. All results from real studies must separately pass experiment
 manifest validation, benchmark protocol, independent semantic verification,
 and raw evidence review before any performance conclusion is published.
 
+## Retained historical comparisons
+
+The read-only `benchmarks/arena/historical_pairs.py` adapter now admits two
+existing September 4, 2026 source-pinned classic research records through the
+same arena analysis engine. It requires the registered experiment run and
+benchmark protocol to agree on challenge, host, raw path, outcome, target
+profile, and pairing. It checks complete repeated strategy pairs, registered
+quality-map fingerprints, complete registered raw CSV schemas, exact
+structural counts, and source-byte hashes. An explicit evidence-status marker
+states `source-reported-not-reverified`.
+
+The prefix-decomposition study reports 8,836 versus 8,742 verifier calls,
+with baseline/candidate timing medians of 831,921,051 and 835,180,632 ns.
+Only two of five retained timing pairs favor the candidate; the observed
+median speedup hypothesis is not supported on that host.
+
+The verified-block-reuse study reports 17,672 versus 8,836 verifier calls,
+with medians of 1,617,672,749 and 851,323,429 ns. All five retained pairs
+favor reuse. This is a within-corpus, recorded-host result, not a generalized
+performance or difficulty-scaling conclusion.
+
+These are separate challenge families with different difficulty settings, so
+their trials never share a comparison frontier. Only elapsed-time costs enter
+the imported Pareto projection; registered verifier-call counts are presented
+as a separate structural evidence field. The adapter cannot reproduce the
+original host measurements or replay the independently recorded verifier.
+The original study records remain the result authority.
+
 ## Evidence
 
 - Expected durable artifact surface: `benchmarks/arena/`,
@@ -142,6 +170,10 @@ and raw evidence review before any performance conclusion is published.
 - `benchmarks/arena/raw_samples.py` optionally matches retained CSV content
   exactly against the reported trial set. Synthetic regressions cover missing,
   extra, duplicate and mismatched rows, plus malformed CSV inputs.
+- `benchmarks/arena/historical_pairs.py` replays the two retained classic
+  five-pair research sources into arena reports. Source-backed regressions
+  assert exact observed medians, paired results, fingerprints, and rejection
+  of corrupted raw timing, verifier counts, or preregistered identities.
 - Research evidence pending: raw sample content authentication,
   protocol-level manifest linkage, bibliography-backed context, real experiment
   configurations, retained negative/null results, and a reviewed conclusion
@@ -153,9 +185,10 @@ and raw evidence review before any performance conclusion is published.
 ## Results
 
 The offline comparison implementation and synthetic regression evidence
-exist. These tests establish **analysis behavior only**. They are not run
-samples or performance results from compiler algorithms, hosts, or target
-profiles. No real result or capacity claim is made here.
+exist. The historical adapter additionally projects already-retained host
+measurements from the two classic research records above without generating
+new samples. Its tests establish replay and cross-record consistency, not
+original semantic correctness. No new capacity-scaling result is claimed.
 
 ## Threats to Validity
 

@@ -82,7 +82,7 @@ def _segments(relative: str) -> list[str]:
     return parts
 
 
-def _regular_path(
+def regular_path(
     root: Path,
     relative: str,
     *,
@@ -112,7 +112,7 @@ def _manifest(
     root: Path,
     relative: str,
 ) -> experiment_manifest.ExperimentManifest:
-    path = _regular_path(root, relative, limit=MAX_MANIFEST_BYTES)
+    path = regular_path(root, relative, limit=MAX_MANIFEST_BYTES)
     with path.open("rb") as stream:
         data = stream.read(MAX_MANIFEST_BYTES + 1)
     if len(data) > MAX_MANIFEST_BYTES:
@@ -183,7 +183,7 @@ def _admit_observation(row: dict[str, Any], context: _EvidenceContext) -> None:
         )
     _compare_identity(row, context.study, context.manifests[manifest_path])
     sample = row["raw_sample"]
-    _ = _regular_path(context.root, sample)
+    _ = regular_path(context.root, sample)
     context.samples.add(sample)
 
 
@@ -196,7 +196,7 @@ def _raw_contents(
         groups.setdefault(row["raw_sample"], []).append(row)
     contents = {}
     for relative, rows in sorted(groups.items()):
-        path = _regular_path(root, relative, limit=raw_samples.MAX_RAW_BYTES)
+        path = regular_path(root, relative, limit=raw_samples.MAX_RAW_BYTES)
         with path.open("rb") as stream:
             raw = stream.read(raw_samples.MAX_RAW_BYTES + 1)
         contents[relative] = raw_samples.check_rows(raw, rows, relative)

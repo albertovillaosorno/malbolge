@@ -87,6 +87,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   published stage comparisons
   on reproducible real challenges. Later verified `.malbolge` measurements
   remain dependent on the final compiler backend.
+- A read-only `benchmarks/arena/historical_pairs.py` adapter now projects two
+  existing classic September 4, 2026 paired timing records through the arena.
+  It links governed run/protocol identities, complete paired trials, registered
+  quality maps and structural verifier counts, with source byte fingerprints.
+  The original research records remain the evidence authority; no new runs,
+  verifier replay, or multi-difficulty scaling conclusion is asserted.
 - Required evidence: reproducible run commands, retained challenge and
   algorithm identities, raw multidimensional samples, and independent verifier
   outcomes for every measured stage.
