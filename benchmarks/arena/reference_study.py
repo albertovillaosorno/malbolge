@@ -566,6 +566,15 @@ def _run_study(root: Path, plan: StudyPlan) -> dict[str, Any]:
         + "\n",
         encoding="utf-8",
     )
+    _ = (root / "resource-controls.json").write_text(
+        json.dumps(
+            host_c_oracle.resource_controls_record(),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     _ = (root / "artifacts.json").write_text(
         json.dumps(artifacts, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -588,6 +597,11 @@ def _validate_plan_shape(plan: StudyPlan) -> None:
 
 def _validate_plan(plan: StudyPlan) -> None:
     _validate_plan_shape(plan)
+    try:
+        host_c_oracle.require_child_resource_controls()
+    except host_c_oracle.HostOracleError as error:
+        message = f"host-C reference requires enforced child limits: {error}"
+        raise ReferenceStudyError(message) from error
     for nodes in plan.difficulties:
         _ = generate.ChallengeIdentity(
             plan.family,

@@ -143,7 +143,9 @@ def test_audit_can_replay_only_canonical_challenge_oracle(
     """Optional native execution is a source oracle check, not target replay."""
     directory, relative = live_pilot
     hashes_before = _file_hashes(directory)
-    observed = reference_audit.audit(relative, replay_oracles=True)
+    observed = reference_audit.audit(
+        relative, options=reference_audit.AuditOptions(replay_oracles=True)
+    )
     preflight = observed["evidence_preflight"]
     assert preflight["host_c_challenge_oracles_replayed"] == LEVEL_COUNT
     assert preflight["host_c_replay_modes"] == ["O0", "O2"]
@@ -294,7 +296,9 @@ def test_independent_rebuild_matches_all_retained_host_reference_binaries(
     """Fresh native output reproduces each recorded binary byte-for-byte."""
     directory, relative = live_pilot
     before = _file_hashes(directory)
-    report = reference_audit.audit(relative, rebuild_binaries=True)
+    report = reference_audit.audit(
+        relative, options=reference_audit.AuditOptions(rebuild_binaries=True)
+    )
     assert report["host_c_binaries_checked"] == OBSERVED_PAIRS * 2
     assert report["host_c_reference_builds_reproduced"] == OBSERVED_PAIRS
     assert before == _file_hashes(directory)
@@ -321,7 +325,10 @@ def test_forged_binary_and_updated_digest_cannot_pass_rebuild_audit(
         reference_audit.ReferenceAuditError,
         match="canonical rebuilt C",
     ):
-        reference_audit.audit(relative, rebuild_binaries=True)
+        reference_audit.audit(
+            relative,
+            options=reference_audit.AuditOptions(rebuild_binaries=True),
+        )
 
 
 def test_source_rebuild_failure_is_a_report_failure_not_a_passing_check(
@@ -344,7 +351,10 @@ def test_source_rebuild_failure_is_a_report_failure_not_a_passing_check(
         reference_audit.ReferenceAuditError,
         match="compiler failure",
     ):
-        reference_audit.audit(relative, rebuild_binaries=True)
+        reference_audit.audit(
+            relative,
+            options=reference_audit.AuditOptions(rebuild_binaries=True),
+        )
 
 
 def test_cli_rebuild_output_checks_native_artifact_reproducibility(
@@ -383,6 +393,9 @@ def test_native_rebuild_refuses_unsupported_compiler_mode(mode: str) -> None:
 
 
 GIT_HASH_WIDTH = 40
+MISSING_RECORD_FIELD = "no-field"
+LINKED_RECORD = "symlink"
+RESOURCE_RECORD_ERROR = "resource-control record"
 FAKE_SOURCE_COMMIT = "f" * GIT_HASH_WIDTH
 OPTIMIZED_MODE = "-O2"
 INJECTED_SANITIZED = "injected linker?failed?with nonascii ?"
@@ -444,7 +457,12 @@ def test_opt_in_git_object_check_rejects_missing_recorded_commit(
         reference_audit.ReferenceAuditError,
         match="local Git commit object",
     ):
-        reference_audit.audit(relative, require_source_commit_object=True)
+        reference_audit.audit(
+            relative,
+            options=reference_audit.AuditOptions(
+                require_source_commit_object=True
+            ),
+        )
 
 
 def test_opt_in_git_object_check_admits_original_real_source_commit(
@@ -452,7 +470,10 @@ def test_opt_in_git_object_check_admits_original_real_source_commit(
 ) -> None:
     """An existing real source revision remains admissible after HEAD moves."""
     _, relative = live_pilot
-    checked = reference_audit.audit(relative, require_source_commit_object=True)
+    checked = reference_audit.audit(
+        relative,
+        options=reference_audit.AuditOptions(require_source_commit_object=True),
+    )
     assert checked["source_commit_object_verified"]
     assert len(checked["recorded_source_commit"]) == GIT_HASH_WIDTH
 
@@ -468,7 +489,12 @@ def test_source_commit_object_check_requires_installed_git(
         reference_audit.ReferenceAuditError,
         match="requires local Git",
     ):
-        reference_audit.audit(relative, require_source_commit_object=True)
+        reference_audit.audit(
+            relative,
+            options=reference_audit.AuditOptions(
+                require_source_commit_object=True
+            ),
+        )
 
 
 def test_cli_source_commit_object_flag_emits_checked_provenance(
@@ -602,3 +628,114 @@ def test_failure_diagnostic_drift_fails_cli_without_reporting_pareto(
     capture = capsys.readouterr()
     assert not capture.out
     assert INVALID_STUDY in capture.err
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "virtual-memory",
+        "cpu",
+        "wall",
+        "bool-version",
+        "extra-field",
+        "no-field",
+        "symlink",
+        "invalid-json",
+    ],
+)
+def test_host_child_resource_record_tampering_is_rejected(
+    live_pilot: tuple[Path, str],
+    tamper: str,
+) -> None:
+    """A declared Linux resource policy cannot silently change after a run."""
+    directory, relative = live_pilot
+    path = directory / "resource-controls.json"
+    record = json.loads(path.read_text())
+    changes: dict[str, tuple[str, object]] = {
+        "virtual-memory": ("virtual_address_space_bytes", 123),
+        "cpu": ("cpu_seconds", 20),
+        "wall": ("wall_timeout_seconds", 25),
+        "bool-version": ("schema_version", True),
+        "extra-field": ("forged", True),
+    }
+    if tamper in changes:
+        key, value = changes[tamper]
+        record[key] = value
+        _ = path.write_text(json.dumps(record), encoding="utf-8")
+    elif tamper == MISSING_RECORD_FIELD:
+        _ = record.pop("limiter")
+        _ = path.write_text(json.dumps(record), encoding="utf-8")
+    elif tamper == LINKED_RECORD:
+        other = directory / "forged.json"
+        _ = other.write_text(json.dumps(record), encoding="utf-8")
+        path.unlink()
+        path.symlink_to(other)
+    else:
+        _ = path.write_bytes(b"bad-json")
+    with pytest.raises(reference_audit.ReferenceAuditError, match="host-C"):
+        reference_audit.audit(relative)
+
+
+def test_new_study_retains_versioned_resource_controls_receipt(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """A current native study records its declared per-child Linux policy."""
+    directory, relative = live_pilot
+    recorded = json.loads((directory / "resource-controls.json").read_text())
+    assert recorded == host_c_oracle.resource_controls_record()
+    report = reference_audit.audit(
+        relative,
+        options=reference_audit.AuditOptions(
+            require_resource_controls_record=True,
+        ),
+    )
+    assert report["resource_controls_record_checked"]
+    assert report["host_c_binaries_checked"] == OBSERVED_PAIRS * 2
+
+
+def test_missing_child_controls_are_explicitly_legacy_not_attested(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """An older study without this sidecar never gains a policy assertion."""
+    directory, relative = live_pilot
+    (directory / "resource-controls.json").unlink()
+    old_report = reference_audit.audit(relative)
+    assert not old_report["resource_controls_record_checked"]
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="resource-control record",
+    ):
+        reference_audit.audit(
+            relative,
+            options=reference_audit.AuditOptions(
+                require_resource_controls_record=True,
+            ),
+        )
+
+
+def test_cli_requires_child_resource_controls_when_requested(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Strict CLI policy checks recorded local child-control metadata."""
+    directory, relative = live_pilot
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "reference-audit",
+            relative,
+            "--require-resource-controls-record",
+        ],
+    )
+    assert reference_audit.main() == 0
+    assert json.loads(capsys.readouterr().out)[
+        "resource_controls_record_checked"
+    ]
+    (directory / "resource-controls.json").unlink()
+    with pytest.raises(SystemExit, match="2"):
+        reference_audit.main()
+    result = capsys.readouterr()
+    assert not result.out
+    assert RESOURCE_RECORD_ERROR in result.err

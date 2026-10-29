@@ -278,7 +278,20 @@ CPU time (`RLIMIT_CPU`), and 8 MiB per output file (`RLIMIT_FSIZE`). Each
 stage also has a parent-enforced 15-second wall deadline; the runner attempts
 to terminate the entire session's original process group after each child,
 including on timeout. Missing Linux/prlimit refuses to launch an unbounded
-fallback. Linux process-group cleanup and inherited rlimits are not cgroup
+fallback. Newly produced studies also retain a version-one
+`resource-controls.json` declaring those exact per-child ceilings, Linux
+`prlimit` launcher, process-group cleanup mode and local wall deadline.
+The producer refuses to create a new study if the launcher is unavailable.
+The post-run auditor reads this bounded nonlinked JSON and requires exact
+field names, value types and policy equality; it reports
+`resource_controls_record_checked` as `true` or `false`. Add
+`--require-resource-controls-record` to reject older studies with no such
+receipt. The original ignored pilot predates enforcement and remains readable,
+but cannot claim this receipt, even if newly rebuilt reference binaries use
+the current child limits. A matching producer-reported receipt is **not**
+independent proof that a historical process stayed inside those limits.
+
+Linux process-group cleanup and inherited rlimits are not cgroup
 isolation: escaped process groups, aggregate multi-process RSS/CPU budgets,
 the Python producer's work, and actual peak physical memory remain unaccounted
 for. The declared 60-second/1024-MiB study budget is **not** an aggregate

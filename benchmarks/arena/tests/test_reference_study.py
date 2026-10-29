@@ -303,3 +303,16 @@ def test_reference_cli_rejects_unflushed_or_truncated_operator_report(
     result = capsys.readouterr()
     assert not result.out
     assert OUTPUT_FAULT in result.err
+
+
+def test_reference_study_refuses_missing_kernel_limit_launcher(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No purportedly protected host study can start without prlimit."""
+    monkeypatch.setattr(host_c_oracle.shutil, "which", lambda _: None)
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="child limits"
+    ):
+        reference_study.run_study(
+            reference_study.StudyPlan(FAMILY, (4,), 7, 1),
+        )

@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from itertools import starmap
 import json
 from pathlib import Path
@@ -62,6 +63,8 @@ UNDERSCORE = "_"
 STUDY_LEAF = "study.json"
 ARTIFACT_LEAF = "artifacts.json"
 FAILURES_LEAF = "failures.json"
+RESOURCE_CONTROLS_LEAF = "resource-controls.json"
+MAX_RESOURCE_CONTROLS_BYTES = 4096
 MAX_FAILURES_BYTES = 64 * 1024
 RUN_PREFIX = "arena-host-c-study-"
 STAGE = "host-c-reference-not-malbolge"
@@ -71,6 +74,30 @@ REQUIRED_ALGORITHMS = frozenset({
     reference_study.BASELINE,
     reference_study.CANDIDATE,
 })
+
+
+@dataclass(frozen=True, slots=True)
+class AuditOptions:
+    """Optional admission and replay gates for retained host-C evidence."""
+
+    replay_oracles: bool = False
+    rebuild_binaries: bool = False
+    require_source_commit_object: bool = False
+    require_resource_controls_record: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _AuditData:
+    document: dict[str, Any]
+    checked: dict[str, Any]
+    artifacts: dict[str, dict[str, str]]
+    verified_binaries: int
+    failed_diagnostics: int
+    commit: str
+    resource_record: bool
+
+
+DEFAULT_AUDIT_OPTIONS = AuditOptions()
 
 
 class ReferenceAuditError(ValueError):
@@ -287,20 +314,34 @@ def _check_retained_failures(
     return reference_study.check_retained_failures(document, failures)
 
 
+def _check_resource_controls(
+    prefix: str,
+    *,
+    required: bool,
+) -> bool:
+    relative = f"{prefix}/{RESOURCE_CONTROLS_LEAF}"
+    path = _ROOT / relative
+    if not path.exists() and not path.is_symlink():
+        if required:
+            _fail("host-C reference resource-control record is missing")
+        return False  # Legacy measurements predate controlled child launches.
+    recorded = _read_json(relative, limit=MAX_RESOURCE_CONTROLS_BYTES)
+    expected = host_c_oracle.resource_controls_record()
+    if not isinstance(recorded, dict) or set(recorded) != set(expected):
+        _fail("host-C reference child resource-control policy differs")
+    if any(
+        type(recorded[name]) is not type(value) or recorded[name] != value
+        for name, value in expected.items()
+    ):
+        _fail("host-C reference child resource-control policy differs")
+    return True
+
+
 def _admit_data(
     relative_study: str,
     prefix: str,
-    *,
-    replay_oracles: bool,
-    require_git_object: bool,
-) -> tuple[
-    dict[str, Any],
-    dict[str, Any],
-    dict[str, dict[str, str]],
-    int,
-    int,
-    str,
-]:
+    options: AuditOptions,
+) -> _AuditData:
     document = _load_study(relative_study)
     _check_stage(document, prefix)
     checked = evidence.validate_links(
@@ -310,12 +351,12 @@ def _admit_data(
             require_trial_run_identity=True,
             require_budget_agreement=True,
             challenge_root=f"{prefix}/bundles",
-            require_host_c_challenge_oracle=replay_oracles,
+            require_host_c_challenge_oracle=options.replay_oracles,
         ),
     )
     commit = _recorded_source_commit(
         document,
-        require_git_object=require_git_object,
+        require_git_object=options.require_source_commit_object,
     )
     artifacts = _check_artifact_index(
         _read_json(
@@ -329,13 +370,18 @@ def _admit_data(
         artifacts,
     )
     failed_diagnostics = _check_retained_failures(document, prefix)
-    return (
+    resource_record = _check_resource_controls(
+        prefix,
+        required=options.require_resource_controls_record,
+    )
+    return _AuditData(
         document,
         checked,
         artifacts,
         verified_binaries,
         failed_diagnostics,
         commit,
+        resource_record,
     )
 
 
@@ -378,9 +424,7 @@ def _rebuild_reference_binaries(
 def audit(
     relative_study: str,
     *,
-    replay_oracles: bool = False,
-    rebuild_binaries: bool = False,
-    require_source_commit_object: bool = False,
+    options: AuditOptions = DEFAULT_AUDIT_OPTIONS,
 ) -> dict[str, Any]:
     """Reopen and validate all retained host-C reference evidence.
 
@@ -397,25 +441,13 @@ def audit(
     """
     prefix = _prefix(relative_study)
     try:
-        (
-            document,
-            checked,
-            artifacts,
-            verified_binaries,
-            failed_diagnostics,
-            commit,
-        ) = _admit_data(
-            relative_study,
-            prefix,
-            replay_oracles=replay_oracles,
-            require_git_object=require_source_commit_object,
-        )
+        data = _admit_data(relative_study, prefix, options)
         rebuilt = (
-            _rebuild_reference_binaries(document, artifacts)
-            if rebuild_binaries
+            _rebuild_reference_binaries(data.document, data.artifacts)
+            if options.rebuild_binaries
             else 0
         )
-        report = analyze.analyze(document)
+        report = analyze.analyze(data.document)
     except (
         analyze.ArenaError,
         evidence.EvidenceError,
@@ -435,13 +467,14 @@ def audit(
             "or physical budget attestation."
         ),
         "study": relative_study,
-        "host_c_binaries_checked": verified_binaries,
-        "host_c_failure_diagnostics_checked": failed_diagnostics,
-        "recorded_source_commit": commit,
-        "source_commit_object_verified": require_source_commit_object,
-        "host_c_oracle_replayed": replay_oracles,
+        "host_c_binaries_checked": data.verified_binaries,
+        "host_c_failure_diagnostics_checked": data.failed_diagnostics,
+        "recorded_source_commit": data.commit,
+        "source_commit_object_verified": options.require_source_commit_object,
+        "resource_controls_record_checked": data.resource_record,
+        "host_c_oracle_replayed": options.replay_oracles,
         "host_c_reference_builds_reproduced": rebuilt,
-        "evidence_preflight": checked,
+        "evidence_preflight": data.checked,
         "capacity_curve": report["capacity_curve"],
         "pareto_frontiers": report["pareto_frontiers"],
     }
@@ -459,13 +492,19 @@ def main() -> int:
     parser.add_argument("--replay-oracles", action="store_true")
     parser.add_argument("--rebuild-binaries", action="store_true")
     parser.add_argument("--require-source-commit-object", action="store_true")
+    parser.add_argument(
+        "--require-resource-controls-record", action="store_true"
+    )
     args = parser.parse_args()
     try:
         report = audit(
             args.study,
-            replay_oracles=args.replay_oracles,
-            rebuild_binaries=args.rebuild_binaries,
-            require_source_commit_object=args.require_source_commit_object,
+            options=AuditOptions(
+                replay_oracles=args.replay_oracles,
+                rebuild_binaries=args.rebuild_binaries,
+                require_source_commit_object=args.require_source_commit_object,
+                require_resource_controls_record=args.require_resource_controls_record,
+            ),
         )
         report_output.publish(report, sys.stdout)
     except (ReferenceAuditError, report_output.ReportOutputError) as error:

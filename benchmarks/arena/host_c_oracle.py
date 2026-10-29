@@ -94,6 +94,26 @@ def _harness(oracle: bytes) -> bytes:
     ).encode("ascii")
 
 
+def resource_controls_record() -> dict[str, str | int]:
+    """Describe configured Linux child limits, not observed resource use.
+
+    Returns:
+        Stable version-one producer policy record for post-run audit.
+
+    """
+    return {
+        "schema_version": 1,
+        "platform": LINUX_PLATFORM,
+        "limiter": RESOURCE_LIMIT_TOOL,
+        "scope": "per-child-inherited-not-aggregate",
+        "virtual_address_space_bytes": CHILD_VIRTUAL_MEMORY_MIB * MIB_BYTES,
+        "cpu_seconds": CHILD_CPU_SECONDS,
+        "output_file_bytes": CHILD_FILE_BYTES,
+        "wall_timeout_seconds": SUBPROCESS_TIMEOUT_SECONDS,
+        "cleanup": "new-session-best-effort-original-process-group",
+    }
+
+
 def _limited_command(command: list[str]) -> list[str]:
     if sys.platform != LINUX_PLATFORM:
         _fail("host-C child resource controls require Linux")
@@ -109,6 +129,11 @@ def _limited_command(command: list[str]) -> list[str]:
         "--",
         *command,
     ]
+
+
+def require_child_resource_controls() -> None:
+    """Refuse reference-study creation if the Linux limiter is absent."""
+    _ = _limited_command([])
 
 
 def _kill_child_group(child: sp.Popen[bytes]) -> None:

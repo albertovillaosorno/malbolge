@@ -137,6 +137,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   claims. Missing, extra, linked or altered binaries fail instead of silently
   entering local stage comparisons. Candidate Malbolge verification remains
   unimplemented.
+- Newly produced host-C studies also retain version-one
+  `resource-controls.json` describing configured per-child Linux limits.
+  The producer refuses to create evidence when `prlimit` is missing;
+  post-run audit checks exact metadata and provides an opt-in flag rejecting
+  legacy runs lacking a receipt. Sidecar consistency is not independent
+  historical OS enforcement or an actual peak-resource measurement.
 - Linux host-C reference compile/link/oracle children now require
   util-linux `prlimit`, inherit kernel per-process limits on virtual address
   space, CPU seconds, and output-file size, and execute in separate sessions

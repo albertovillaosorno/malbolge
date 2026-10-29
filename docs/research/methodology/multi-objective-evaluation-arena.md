@@ -200,6 +200,15 @@ stage and best-effort original-process-group cleanup after success or timeout.
 The runner fails closed if Linux or `prlimit` is unavailable. Live regression
 children inspect actual inherited kernel rlimits, exhaust the CPU/file-size
 limits, and verify normal descendant shutdown in both success/timeout paths.
+Each new host-C study now writes `resource-controls.json` with the exact
+versioned Linux per-child policy and refuses to begin if `prlimit` is absent.
+The offline auditor admits the bounded normal-file receipt with strict field
+names, types and policy values; `--require-resource-controls-record` rejects
+legacy study directories with no receipt, while default mode reports them as
+unverified for resource-control provenance. A matching sidecar establishes
+consistency with current configured controls, not independently authenticated
+historical enforcement, measured peak physical memory or a study-wide cgroup.
+
 These are **per-child** limits, not physical peak-RSS measurements, cgroup
 restrictions, escape-proof sandboxing, or study-wide enforcement of the declared
 60-second/1024-MiB budget. Historical host-C pilots predate this boundary,
@@ -417,6 +426,12 @@ The original study records remain the result authority.
   across multiple canonical difficulties and matched `-O0`/`-O2` arms.
   Live and injected-failure tests verify complete run/raw/challenge identity
   linkage and preserve failed attempts; this is not Malbolge performance.
+- The host-C reference producer now retains version-one Linux child-limit
+  policy metadata and blocks new studies when its limiter is unavailable.
+  The offline auditor strictly compares the resource-control sidecar to the
+  configured process limits; the opt-in required mode rejects old pilots
+  missing that metadata and tampering tests cover changes, missing fields,
+  linked leaves, schema type drift and corrupted JSON.
 - Linux host-C children now inherit kernel-enforced `RLIMIT_AS`,
   `RLIMIT_CPU`, and `RLIMIT_FSIZE` under util-linux `prlimit`, with separate
   process-group wall-timeout cleanup. Real subprocess tests exercise limits,
