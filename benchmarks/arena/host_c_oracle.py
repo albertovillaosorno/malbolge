@@ -34,10 +34,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import tempfile
+import time
 from typing import Any
 from typing import Never
 
@@ -51,6 +53,14 @@ OPTIMIZATION_MODES = ("-O0", "-O2")
 _ROOT = Path(__file__).resolve().parents[2]
 _PINNED_CLANG = _ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 _TEMP = _ROOT / ".temp"
+
+
+@dataclass(frozen=True, slots=True)
+class ReferenceMeasurement:
+    """One measured canonical host-C compile/link/oracle execution."""
+
+    elapsed_ns: int
+    executable: bytes
 
 
 class HostOracleError(ValueError):
@@ -178,3 +188,47 @@ def replay_one(
         for mode in OPTIMIZATION_MODES:
             _replay_mode(directory, mode)
     return source_sha256
+
+
+def measure_reference(
+    identity: generate.ChallengeIdentity,
+    mode: str,
+) -> ReferenceMeasurement:
+    """Measure canonical host-C reference compilation through oracle replay.
+
+    This is a measured HOST-C reference stage, not a Malbolge artifact or
+    a certified external optimizer result. Wall time includes native compile,
+    link, process startup and the independent return-value harness execution.
+
+    Returns:
+        Exact observed elapsed nanoseconds and successful executable bytes.
+
+    Raises:
+        HostOracleError: The bounded canonical host-C replay failed.
+
+    """
+    if mode not in OPTIMIZATION_MODES:
+        _fail("unsupported host-C reference optimization mode")
+    if identity.nodes > MAX_REPLAY_NODES:
+        _fail("host-C reference exceeds 512-node limit")
+    if not _PINNED_CLANG.is_file() or not _TEMP.is_dir():
+        _fail("pinned host-C compiler or local temporary directory unavailable")
+    try:
+        generated = generate.generate(identity)
+    except generate.ChallengeError as error:
+        message = f"host-C reference identity cannot regenerate: {error}"
+        raise HostOracleError(message) from error
+    with tempfile.TemporaryDirectory(
+        prefix="arena-host-c-measure-",
+        dir=_TEMP,
+    ) as temporary:
+        directory = Path(temporary)
+        _ = (directory / "program.c").write_bytes(generated.source)
+        _ = (directory / "oracle-harness.c").write_bytes(
+            _harness(generated.oracle)
+        )
+        started = time.perf_counter_ns()
+        _replay_mode(directory, mode)
+        elapsed = time.perf_counter_ns() - started
+        artifact = (directory / "oracle-check").read_bytes()
+    return ReferenceMeasurement(elapsed_ns=elapsed, executable=artifact)

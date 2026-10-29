@@ -96,6 +96,15 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   admit microjoule observations without changing v1 bytes, rejecting lost
   energy fields or inconsistent trial costs. No real energy measurements,
   calibration or physical consumption claim is yet available.
+- A bounded real host-C reference-study producer now measures pinned Clang
+  `-O0` and `-O2` compile/link/oracle-run wall time and executable size on
+  matched canonical challenge cases and difficulties. It retains actual native
+  binaries, hashes, per-trial TOML manifests, v1 CSV data, failure outcomes,
+  challenge bundles and JSON study in unique ignored local directories, then
+  revalidates the full reporting identity with strict arena preflight. It is
+  explicitly a host-C reference stage: physical memory/budget enforcement,
+  candidate Malbolge verification and reproducible cross-host performance
+  conclusions remain pending.
 - An opt-in host-C challenge oracle replay now requires canonical challenge
   bundle preflight, re-generates the checked C source, compiles it at `-O0`
   and `-O2` with pinned Clang 22.1.8, and independently compares the native

@@ -165,6 +165,46 @@ compilation and execution are not an OS-enforced sandbox, so operators must
 keep the trusted checked-in generator and pinned compiler within their trust
 policy. Full compiler-candidate verification remains open.
 
+## Actual host-C reference study (not Malbolge performance)
+
+For a small **real measured host-C baseline** over at least two parametric
+challenge difficulty levels, use this opt-in runner:
+
+```sh
+export PYTHONPATH=src/automation/repository/composition
+python3.14 -B -m benchmarks.arena.reference_study arithmetic-dag \
+  --difficulties 4 8 32 --seed 7 --trials 3
+```
+
+The tool runs repository-pinned Clang 22.1.8 at `-O0` and `-O2` for each
+matched case/replicate, compiling the canonical regenerated C, linking the
+independent entry-return harness, and executing the native program. It records
+actual `perf_counter_ns` elapsed time for compile + link + oracle execution,
+plus the resulting native executable byte length, retaining failures rather
+than synthesizing costs or treating a failed run as verified. It saves
+`study.json`, one `arena-raw-v1` CSV and run TOML per trial, all three canonical
+challenge bundle files, an `artifacts.json` map, and the exact compiled
+executables and their SHA-256 identities in a unique **Git-ignored**
+`.temp/arena-host-c-study-*/` directory. The tool's JSON stdout reports the
+study path and the number of observations, not an authoritative conclusion.
+The run manifest records the current Git commit, host, toolchain, target-profile
+fingerprint, source digest, raw-data SHA-256, explicit budget declarations, and
+exact trial number. The producer rechecks every emitted trial with the arena's
+strict raw-row, run-identity, budget and challenge-bundle preflights.
+
+The limits are one to four positive distinct difficulties, 512 nodes per case,
+and one to five paired repetitions. Native child compile/link/execute each have
+a 15-second deadline; per-run declared budget is 60 seconds and 1024 MiB.
+Actual peak memory usage is **not** measured or enforced, so the memory budget
+is a declared limit only. Generated source and the reference oracle use the
+canonical `malbolge-2026.3` profile identity, but native execution targets the
+host C ABI. The recorded study stage is explicitly
+`host-c-reference-not-malbolge`; do **not** treat it as Malbolge compiler
+output, verified Malbolge semantics, independent optimizer correctness,
+resource enforcement, or evidence that one strategy is generally faster.
+The study files stay local/ignored and require host-specific review before
+publication. Unverified independence assumptions preclude inferential claims.
+
 ## Optional version-one raw CSV check
 
 Add `--require-raw-rows` to the `benchmarks.arena.evidence` command to verify

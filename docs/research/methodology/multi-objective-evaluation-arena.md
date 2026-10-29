@@ -179,6 +179,21 @@ and not authentication of any producer-reported elapsed time or memory use.
 There is no OS sandbox or physical budget enforcement. The final candidate
 verifier and real multi-difficulty compiler comparison remain outstanding.
 
+The bounded host-C *reference study* runner now measures actual compiler,
+linker and native oracle-check wall time plus executable size for pinned
+Clang `-O0` versus `-O2` on exactly paired generator cases. It writes an
+ignored local output tree containing reproducible canonical challenge bundles,
+per-trial versioned run manifests, retained `arena-raw-v1` CSV rows, a study
+JSON file and SHA-256-identified native executables. Its publisher reruns the
+strict trial-run/raw-row, declared budget and source-bundle identity preflights.
+The runner and the optional host-C challenge-oracle replay are deliberately
+**different**: reference runs measure compiled host C, whereas the existing
+arena analyzer accepts producer-reported data. The stage is labeled
+`host-c-reference-not-malbolge`; the actual host measurements are not evidence
+of Malbolge compiler performance. Independent optimizer candidate verification,
+peak-memory/energy measurement, physical resource-budget enforcement and a
+reviewed generalizable scaling conclusion remain absent.
+
 The optional `--require-matched-accelerator` check additionally requires all
 linked experiment runs to name the same recorded accelerator and retains the
 canonical manifest-path-to-device identity map in the output. This protects
@@ -312,6 +327,11 @@ The original study records remain the result authority.
   without changing v1 headers. Synthetic tests prove exact energy Pareto
   comparison and rejection of cross-version omissions, forged costs and
   impossible signed energy reports, not measured energy savings.
+- `benchmarks/arena/reference_study.py` records real pinned host-C reference
+  time, native executable sizes, exact binary hashes and versioned trial files
+  across multiple canonical difficulties and matched `-O0`/`-O2` arms.
+  Live and injected-failure tests verify complete run/raw/challenge identity
+  linkage and preserve failed attempts; this is not Malbolge performance.
 - `benchmarks/arena/host_c_oracle.py` optionally compiles canonical
   generated C through pinned Clang at `-O0` and `-O2` and independently checks
   the native entry return against its regenerated four-byte oracle. All 16
