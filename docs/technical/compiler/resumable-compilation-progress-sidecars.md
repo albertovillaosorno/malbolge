@@ -357,9 +357,11 @@ consume the limiter window, so a prepublication failure can retry immediately.
 A limiter is caller-local to one job: after its first committed sidecar, its
 output progress path, operation ID, and job start timestamp stay fixed. Reusing
 it for a second job fails before rate suppression can hide a missing first
-publication; a separate job must create a separate limiter. A failed
-post-commit clock sample retains committed-path evidence, falls back to the
-pre-write sample for throttling, and cannot mask an earlier durability failure.
+publication; a separate job must create a separate limiter.
+
+A failed post-commit clock sample retains committed-path evidence, falls back to
+the pre-write sample for throttling, and cannot mask an earlier durability
+failure.
 
 `malbolge-checkpoint-v1` now supplies a canonical backend-neutral envelope for
 opaque resumable state. The envelope binds the sidecar compatibility
@@ -771,15 +773,15 @@ these selectors once a product C-to-Malbolge pipeline exists.
   interval so checkpointing does not become an unmeasured dominant cost. The
   first routine write is eligible immediately; queued-to-running, any
   checkpoint-sequence advance, checkpointed, and terminal states bypass
-  suppression. A suspicious transition compared with the last committed
-  sidecar reaches the authoritative writer instead of being ignored, even
-  when another process has since advanced the pointer. Only attempts that
-  cross publication commit start a new rate window. Suppressed writes still
-  advance the limiter's
-  monotonic observation floor; a later regressed sample is rejected without
-  permitting an unnecessary write. Mandatory checkpoint and terminal
-  publications also require nonregressed clock samples, even though they
-  bypass rate suppression.
+  suppression.
+- A suspicious transition compared with the last committed sidecar reaches
+  the authoritative writer instead of being ignored, even when another
+  process has since advanced the pointer.
+- Only attempts that cross publication commit start a new rate window.
+  Suppressed writes still advance the limiter's monotonic observation floor;
+  a later regressed sample is rejected without permitting an unnecessary
+  write. Mandatory checkpoint and terminal publications also require
+  nonregressed clock samples, even though they bypass rate suppression.
 
 ## Failure Behavior
 
