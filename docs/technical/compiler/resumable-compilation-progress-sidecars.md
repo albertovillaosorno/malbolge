@@ -336,25 +336,30 @@ uses an injectable monotonic nanosecond clock and exclusive active, paused,
 verification, serialization, and checkpoint phases to construct the exact timing
 fields without UTC arithmetic.
 
-`ProgressWriteLimiter` accepts one explicit
-positive monotonic interval: repeated queued/running updates are suppressed
-until that interval passes. The first queued-to-running transition is always
-published, because eliding it would prevent a strict queued-to-completed or
-queued-to-checkpointed writer transition. Checkpointed and terminal evidence
-also bypass suppression. Potentially invalid lifecycle transitions are never
-silently throttled; they reach the durable writer, which checks the current
-pointer even when other processes have advanced it. The interval begins at
-the post-publication sample,
-not at the start of a potentially slow write. Only successful or
-post-commit-failing writes consume the limiter window, so a prepublication
-failure can retry immediately. A limiter is caller-local to one job: after
-its first committed sidecar (even when a later durability operation fails), its
+`ProgressWriteLimiter` accepts one explicit positive monotonic interval.
+Repeated valid queued/running updates may be suppressed until it passes. The
+first queued-to-running transition is always published, because eliding it
+would prevent a strict queued-to-completed or queued-to-checkpointed writer
+transition. Any checkpoint-generation advance bypasses suppression even if
+its status is still `running`, as do checkpointed and terminal snapshots.
+
+The limiter retains the last committed immutable sidecar, including after a
+post-commit durability failure, so a routine candidate that violates its
+monotonic transition rules cannot be silently discarded. Instead, the
+serialized durable writer checks the current pointer and decides admissibility:
+other processes may have advanced the job since the local last commit. Valid
+routine updates remain rate-limited; status, sequence, partial-reference, or
+counter regressions never receive false success from the suppression path.
+
+The interval begins at the post-publication monotonic sample, not at the start
+of a potentially slow write. Only successful or post-commit-failing writes
+consume the limiter window, so a prepublication failure can retry immediately.
+A limiter is caller-local to one job: after its first committed sidecar, its
 output progress path, operation ID, and job start timestamp stay fixed. Reusing
-the limiter for a second job fails before routine rate suppression can hide a
-missing first publication; a separate job must create a separate limiter.
-A failed post-commit clock sample retains
-committed-path evidence, falls back to the pre-write sample for throttling, and
-cannot mask an earlier committed durability failure.
+it for a second job fails before rate suppression can hide a missing first
+publication; a separate job must create a separate limiter. A failed
+post-commit clock sample retains committed-path evidence, falls back to the
+pre-write sample for throttling, and cannot mask an earlier durability failure.
 
 `malbolge-checkpoint-v1` now supplies a canonical backend-neutral envelope for
 opaque resumable state. The envelope binds the sidecar compatibility
@@ -764,10 +769,13 @@ these selectors once a product C-to-Malbolge pipeline exists.
   target profile, compiler, verifier, and accepted artifact determine meaning.
 - Routine progress writes are rate-limited by an explicit positive monotonic
   interval so checkpointing does not become an unmeasured dominant cost. The
-  first routine write is eligible immediately; the first durable transition
-  from queued to running, checkpointed, and terminal states bypass suppression,
-  and only attempts that cross publication commit start a
-  new rate window. Suppressed publications still advance the limiter's
+  first routine write is eligible immediately; queued-to-running, any
+  checkpoint-sequence advance, checkpointed, and terminal states bypass
+  suppression. A suspicious transition compared with the last committed
+  sidecar reaches the authoritative writer instead of being ignored, even
+  when another process has since advanced the pointer. Only attempts that
+  cross publication commit start a new rate window. Suppressed writes still
+  advance the limiter's
   monotonic observation floor; a later regressed sample is rejected without
   permitting an unnecessary write. Mandatory checkpoint and terminal
   publications also require nonregressed clock samples, even though they

@@ -406,8 +406,7 @@ class ProgressWriteLimiter:
     _started_ns: int
     _last_committed_write_ns: int | None = None
     _last_observed_ns: int | None = None
-    _last_committed_status: ProgressStatus | None = None
-    _last_committed_identity: tuple[str, str, str] | None = None
+    _last_committed_sidecar: ProgressSidecar | None = None
 
     @classmethod
     def start(
@@ -431,26 +430,14 @@ class ProgressWriteLimiter:
             _last_observed_ns=now,
         )
 
-    def _validate_committed_status(self) -> None:
-        if self._last_committed_status is not None and (
-            type(self._last_committed_status) is not ProgressStatus
-            or self._last_committed_write_ns is None
-        ):
-            _fail("progress write last committed status is invalid")
-
-    def _validate_committed_identity(self) -> None:
-        identity = self._last_committed_identity
-        if identity is None:
+    def _validate_committed_sidecar(self) -> None:
+        if self._last_committed_sidecar is None:
             return
         if (
-            type(identity) is not tuple
-            or len(identity) != _JOB_IDENTITY_FIELD_COUNT
+            type(self._last_committed_sidecar) is not ProgressSidecar
+            or self._last_committed_write_ns is None
         ):
-            _fail("progress write last committed identity is invalid")
-        if any(type(part) is not str for part in identity) or (
-            self._last_committed_write_ns is None
-        ):
-            _fail("progress write last committed identity is invalid")
+            _fail("progress write last committed sidecar is invalid")
 
     def _validate_state(self) -> None:
         if not callable(self._clock):
@@ -464,8 +451,7 @@ class ProgressWriteLimiter:
         _validate_observed_sample(
             self._last_observed_ns, self._started_ns, "progress write"
         )
-        self._validate_committed_status()
-        self._validate_committed_identity()
+        self._validate_committed_sidecar()
         if self._last_committed_write_ns is None:
             return
         _ = _nonnegative_integer(
@@ -505,8 +491,7 @@ class ProgressWriteLimiter:
         self, path: Path, fallback_ns: int, sidecar: ProgressSidecar
     ) -> None:
         self._last_committed_write_ns = fallback_ns
-        self._last_committed_status = sidecar.status
-        self._last_committed_identity = self._job_identity(sidecar)
+        self._last_committed_sidecar = sidecar
         try:
             self._last_committed_write_ns = self._sample()
         except ProgressSidecarError as error:
@@ -516,30 +501,36 @@ class ProgressWriteLimiter:
             )
             raise ProgressSidecarCommittedError(message, path) from error
 
-    def _needs_lifecycle_admission(self, status: ProgressStatus) -> bool:
-        previous = self._last_committed_status
+    def _needs_durable_admission(self, candidate: ProgressSidecar) -> bool:
+        previous = self._last_committed_sidecar
         if previous is None:
             return False
-        if (
-            previous is ProgressStatus.QUEUED
-            and status is ProgressStatus.RUNNING
-        ):
-            return True
-        # Do not silently suppress a potential lifecycle violation. The
-        # durable writer decides against the actual current pointer, because
-        # another process may have advanced it since our last publication.
-        return status not in _ALLOWED_TRANSITIONS.get(previous, frozenset())
+        mandatory = (
+            (
+                previous.status is ProgressStatus.QUEUED
+                and candidate.status is ProgressStatus.RUNNING
+            )
+            or candidate.checkpoint_sequence != previous.checkpoint_sequence
+        )
+        if not mandatory:
+            try:
+                _ = validate_transition(previous, candidate)
+            except ProgressSidecarError:
+                # A peer may have advanced the pointer. Let the serialized
+                # writer, not our cached snapshot, decide admissibility.
+                mandatory = True
+        return mandatory
 
     def publish(self, sidecar: ProgressSidecar) -> Path | None:
         """Publish one sidecar only when its lifecycle requires or permits it.
 
         Routine queued/running updates are suppressed until the configured
         interval has elapsed since the previous committed write. A durable
-        queued-to-running transition, checkpointed status, terminal states,
-        and possibly invalid lifecycle transitions always attempt publication.
-        The durable pointer remains authoritative for cross-process changes.
-        A limiter is bound to its first committed job and rejects reuse for
-        another output, operation, or job start before suppression.
+        queued-to-running transition, checkpoint-generation advance, terminal
+        states, and possibly invalid transitions always attempt publication.
+        A cached committed sidecar guards skipped changes, but the durable
+        pointer remains authoritative for cross-process changes. A limiter
+        cannot be reused for a different committed job.
 
         Returns:
             Canonical progress path when published, otherwise ``None``.
@@ -550,15 +541,14 @@ class ProgressWriteLimiter:
         validated = validate(sidecar)
         now = self._sample()
         identity = self._job_identity(validated)
-        if (
-            self._last_committed_identity is not None
-            and identity != self._last_committed_identity
+        if self._last_committed_sidecar is not None and (
+            identity != self._job_identity(self._last_committed_sidecar)
         ):
             _fail("progress write limiter job identity changed")
         mandatory = (
             validated.status is ProgressStatus.CHECKPOINTED
             or validated.status.value in TERMINAL_STATUSES
-            or self._needs_lifecycle_admission(validated.status)
+            or self._needs_durable_admission(validated)
         )
         if (
             self._last_committed_write_ns is not None

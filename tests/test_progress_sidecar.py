@@ -8136,6 +8136,141 @@ def test_progress_write_limiter_always_admits_checkpoint(
     assert progress.read(destination) == checkpointed
 
 
+@pytest.mark.parametrize("prior_sequence", [0, 1])
+def test_progress_write_limiter_always_admits_running_checkpoint_advance(
+    tmp_path: Path,
+    prior_sequence: int,
+) -> None:
+    """A durable checkpoint cannot be hidden by a RUNNING status or cadence."""
+    limiter = progress.ProgressWriteLimiter.start(
+        1_000, clock=SequenceClock([100, 100, 100, 101, 102])
+    )
+    running = _sidecar(tmp_path)
+    if prior_sequence:
+        prior_payload = b"earlier-checkpoint"
+        running = replace(
+            _checkpointed(running, checkpoint=prior_payload, partial=None),
+            status=progress.ProgressStatus.RUNNING,
+        )
+        _ = Path(running.checkpoint_path or "").write_bytes(prior_payload)
+    destination = Path(running.progress_path)
+    assert limiter.publish(running) == destination
+
+    next_payload = b"new-checkpoint"
+    next_checkpoint = _checkpointed(
+        running,
+        sequence=prior_sequence + 1,
+        checkpoint=next_payload,
+        partial=None,
+    )
+    advanced = replace(next_checkpoint, status=progress.ProgressStatus.RUNNING)
+    _ = Path(advanced.checkpoint_path or "").write_bytes(next_payload)
+    assert limiter.publish(advanced) == destination
+    assert progress.read(destination) == advanced
+
+
+def test_progress_write_limiter_rejects_throttled_unit_regression(
+    tmp_path: Path,
+) -> None:
+    """A broken RUNNING counter cannot disappear inside the rate window."""
+    limiter = progress.ProgressWriteLimiter.start(
+        1_000, clock=SequenceClock([100, 100, 100, 101])
+    )
+    running = _sidecar(tmp_path)
+    destination = Path(running.progress_path)
+    assert limiter.publish(running) == destination
+    invalid = replace(
+        running,
+        units_completed=running.units_completed - 1,
+        updated_at="2026-08-06T14:00:03Z",
+    )
+    with pytest.raises(ERROR, match="units_completed moved backward"):
+        _ = limiter.publish(invalid)
+    assert progress.read(destination) == running
+
+
+def test_progress_write_limiter_rejects_throttled_generation_skip(
+    tmp_path: Path,
+) -> None:
+    """Skipped durable sequences must reach authoritative pointer admission."""
+    limiter = progress.ProgressWriteLimiter.start(
+        1_000, clock=SequenceClock([100, 100, 100, 101])
+    )
+    running = _sidecar(tmp_path)
+    destination = Path(running.progress_path)
+    assert limiter.publish(running) == destination
+    payload = b"incorrect-generation"
+    invalid = replace(
+        _checkpointed(
+            running, sequence=2, checkpoint=payload, partial=None
+        ),
+        status=progress.ProgressStatus.RUNNING,
+    )
+    _ = Path(invalid.checkpoint_path or "").write_bytes(payload)
+    with pytest.raises(ERROR, match="checkpoint sequence skipped"):
+        _ = limiter.publish(invalid)
+    assert progress.read(destination) == running
+
+
+def test_progress_write_limiter_rejects_throttled_partial_drift(
+    tmp_path: Path,
+) -> None:
+    """Same-generation payload-reference corruption is not a routine poll."""
+    limiter = progress.ProgressWriteLimiter.start(
+        1_000, clock=SequenceClock([100, 100, 100, 101])
+    )
+    checkpoint = b"existing-checkpoint"
+    partial = b"existing-partial"
+    running = replace(
+        _checkpointed(
+            _sidecar(tmp_path), checkpoint=checkpoint, partial=partial
+        ),
+        status=progress.ProgressStatus.RUNNING,
+    )
+    destination = Path(running.progress_path)
+    _ = Path(running.checkpoint_path or "").write_bytes(checkpoint)
+    _ = Path(running.partial_path or "").write_bytes(partial)
+    assert limiter.publish(running) == destination
+    invalid = replace(
+        running,
+        partial_sha256=_digest(b"foreign-partial"),
+        updated_at="2026-08-06T14:00:03Z",
+    )
+    with pytest.raises(ERROR, match="partial generation changed"):
+        _ = limiter.publish(invalid)
+    assert progress.read(destination) == running
+
+
+def test_progress_write_limiter_admits_peer_advanced_generation(
+    tmp_path: Path,
+) -> None:
+    """Cached generations never override the newer durable pointer."""
+    limiter = progress.ProgressWriteLimiter.start(
+        1_000, clock=SequenceClock([100, 100, 100, 101, 102])
+    )
+    running = _sidecar(tmp_path)
+    destination = Path(running.progress_path)
+    assert limiter.publish(running) == destination
+    middle_payload = b"middle-checkpoint"
+    middle = _checkpointed(
+        running, sequence=1, checkpoint=middle_payload, partial=None
+    )
+    assert (
+        progress.write_checkpoint_generation(middle, middle_payload)
+        == destination
+    )
+    final_payload = b"next-checkpoint"
+    final = replace(
+        _checkpointed(
+            middle, sequence=2, checkpoint=final_payload, partial=None
+        ),
+        status=progress.ProgressStatus.RUNNING,
+    )
+    _ = Path(final.checkpoint_path or "").write_bytes(final_payload)
+    assert limiter.publish(final) == destination
+    assert progress.read(destination) == final
+
+
 def test_progress_write_limiter_counts_committed_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

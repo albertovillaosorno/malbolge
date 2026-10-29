@@ -209,6 +209,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   plus rejection of otherwise suppressed invalid lifecycle transitions,
   caller-local limiter binding to committed job output/operation/start identity
   so a second job cannot silently lose its initial progress publication,
+  full cached committed-sidecar transition preflight before routine suppression
+  without replacing the durable pointer's authority, mandatory publication of
+  a new checkpoint sequence while still running, and regression coverage of
+  skipped sequences, stale payload references, invalid unit counters, and an
+  intervening writer's valid generation advance,
   backend-neutral checkpoint round trips plus outer-digest,
   identity/position/codec/canonical-payload rejection, crash-boundary recovery
   using real portable envelopes for both search-labelled state and tracked
