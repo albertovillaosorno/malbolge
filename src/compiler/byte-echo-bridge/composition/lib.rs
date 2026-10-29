@@ -9,13 +9,13 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - The bounded successful-byte-echo bridge between validated ternary IR
+//   - Bounded successful-byte-I/O effect traces between validated ternary IR
 //     and independently admitted position-sensitive Malbolge code.
 // - Must-Not:
 //   - Impersonate EOF, failed byte I/O, general guest computation, or a C ABI.
 // - Allows:
 //   - Inputs: canonical pre-layout ternary program and selected profile.
-//   - Outputs: verified linear Malbolge source for exact byte-echo pairs.
+//   - Outputs: verified linear source for echo or latest-read byte I/O traces.
 //   - Side effects: none.
 // - Split-When:
 //   - More general guest byte flow requires runtime linkage and allocation.
@@ -24,8 +24,8 @@
 // - Summary:
 //   - Connects a closed typed-IR effect trace to actual executable code.
 // - Description:
-//   - Requires one void function whose only operations are adjacent successful
-//     byte-input/byte-output pairs that reuse the identical SSA value.
+//   - Proves adjacent byte echoes and latest-successful-read I/O replay traces
+//     while retaining the original adjacent-echo admission unchanged.
 // - Usage:
 //   - First lower typed IR, then call encode_successful_byte_echo.
 // - Defaults:
@@ -110,6 +110,64 @@ pub fn encode_successful_byte_echo(
         }
         operations.push(LinearOpcode::InputWord);
         operations.push(LinearOpcode::OutputByte);
+    }
+    operations.push(LinearOpcode::Halt);
+    encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
+}
+
+/// Emits a bounded successful-byte I/O trace using the VM accumulator itself.
+///
+/// Every source operation is one successful `ByteInput` or `ByteOutput`, with
+/// one final `ReturnVoid`. An output must name **exactly the most recent**
+/// successful input's SSA result; the input may be output repeatedly or not
+/// at all. Reading a later byte overwrites the accumulator, so an earlier
+/// byte's SSA identity cannot be replayed after that read. No guest work is
+/// delegated to a host callback; the linear code contains only raw VM input,
+/// output and halt instructions.
+///
+/// This is deliberately distinct from [`encode_successful_byte_echo`]: the
+/// old API retains its strict adjacent-pair contract. The caller must enforce
+/// successful byte reads (never EOF) and successful writes. Return/ABI state
+/// is unobserved. This function does not realize arbitrary byte dataflow,
+/// constants, arithmetic, guest heap or control-flow operations.
+///
+/// # Errors
+///
+/// Rejects malformed or profile-mismatched ternary state, absent successful
+/// input, any non-I/O effect, stale/undefined SSA output and unsafe layout.
+pub fn encode_successful_latest_byte_trace(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id() {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let Some((TernaryOperation::ReturnVoid { .. }, instructions)) =
+        function.operations.split_last()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let mut last_input = None;
+    let mut operations = Vec::with_capacity(function.operations.len());
+    for instruction in instructions {
+        if let TernaryOperation::ByteInput { result, .. } = instruction {
+            last_input = Some(*result);
+            operations.push(LinearOpcode::InputWord);
+        } else if let TernaryOperation::ByteOutput { value, .. } = instruction {
+            if last_input != Some(*value) {
+                return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+            }
+            operations.push(LinearOpcode::OutputByte);
+        } else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    if last_input.is_none() {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     operations.push(LinearOpcode::Halt);
     encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)

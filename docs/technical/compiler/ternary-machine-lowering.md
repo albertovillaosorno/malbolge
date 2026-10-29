@@ -967,9 +967,10 @@ while both source-bound selectors reject it; unchanged casts recover under
 both selectors. No re-lowering of checkpoint state is performed.
 
 An explicit `InputInstruction::Unsupported` sentinel in the expected
-projection also fails source-matched resume, as it does on fresh lowerer admission. The
-source-bound route also matches each saved instruction and return source span
-against its expected projected span. It also matches the final return's
+projection also fails source-matched resume, as it does on fresh
+lowerer admission. The source-bound route also matches every saved instruction
+and return source span against its expected projected span. It also
+matches the final return's
 upstream SSA operand identity (or the absence of one for a void return),
 rejecting an independently valid checkpoint that returns a different already-
 defined value of the same type. Independently admitted checkpoints with
@@ -1068,6 +1069,29 @@ order, including zero and 255, with exact machine input consumption.
 An over-4096-cell trace is rejected by final layout admission.
 This does not implement EOF/error status handling, arbitrary computation, a
 callable guest function, or a general C-to-Malbolge pipeline.
+
+### Bounded Latest-Read Guest Byte I/O
+
+`byte-echo-bridge` now exposes an **opt-in**
+`encode_successful_latest_byte_trace` alongside its unchanged strict adjacent
+byte-echo entrypoint. It independently admits a complete canonical ternary
+one-function void program with only `ByteInput`/`ByteOutput` operations. One
+or more successful inputs are required; any output must name the most recent
+input's SSA identity. Consecutive outputs can replay one input arbitrarily
+within the 4096-cell layout bound, and some inputs may be consumed without
+output. A later input overwrites the VM accumulator, so using an earlier
+SSA identity after that read rejects even if the earlier byte is still a
+valid typed-IR SSA value. No target-side guest storage is claimed.
+
+An independent canonical MCTR/VM integration suite checks exact output and
+input-consumption traces, duplicate outputs for all 256 successful byte
+values, old strict echo byte-for-byte compatibility, and the 4096-cell maximum
+(one read and 4094 repeats). It rejects stale SSA, unsupported scalar/return
+operations, profile drift, malformed canonical state and excess code length.
+No host callback performs I/O; the graphical code executes on the normative
+profile VM. The guarantee remains conditional on successful input bytes and
+outputs, unobserved guest ABI/return, and absent EOF/error behavior. The
+existing typed-IR adapter and artifact publisher are still strict echo-only.
 
 ### Canonical Typed-IR Byte-Echo Adapter
 

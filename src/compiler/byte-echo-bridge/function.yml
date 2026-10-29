@@ -32,9 +32,9 @@ architecture:
     - port-inbound
     - port-outbound
   boundary:
-    owns: verified successful-byte-echo ternary-to-layout composition
+    owns: verified successful-byte-I/O traces from ternary IR to layout
     must_not: claim arbitrary C lowering, EOF handling or guest ABI realization
-    split_when: more general effect streams need runtime linkage and proof
+    split_when: general SSA byte dataflow needs guest memory and runtime linkage
     merge_when: a complete target linker covers this exact bounded subset
 language_manifest: byte-echo-bridge.jig
 parts:
@@ -42,7 +42,7 @@ parts:
     path: composition/lib.rs
     kind: composition
     language: rust
-    responsibility: Admit exact byte-echo target effects and emit verified code.
+    responsibility: Admit bounded byte-I/O target effects and emit verified code.
 projects: []
 tests: []
 graph:

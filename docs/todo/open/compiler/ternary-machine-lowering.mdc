@@ -660,11 +660,20 @@ instruction.
   current-profile VM echoes exact input for 1, 2, 3, 7, and 64 pairs after
   canonical target round trips. A canonical typed-IR module also reaches the
   same executable subset, all 256 successful byte values execute in one
-  independently encoded VM trace, and too-long traces reject at layout admission;
+  independently encoded VM trace; too-long traces reject at layout admission.
   alternate profile, non-echo dataflow,
   arithmetic and value returns fail closed. This proves only successful byte
   I/O traces with unobserved ABI/return; EOF, error behavior, and general
   target realization remain unimplemented.
+- A separate opt-in `encode_successful_latest_byte_trace` backend now emits
+  verified Malbolge code for a bounded canonical ternary successful-byte I/O
+  trace beyond adjacent echo pairs. Each output must use the most recent
+  input's exact SSA byte identity; repeated outputs and consumed-but-unused
+  inputs work, while replay after another read is unsupported. The normative
+  VM executes all 256 successful values with duplicate outputs and the full
+  4096-cell boundary. Exact previous echo source/semantics remain unchanged;
+  invalid source state, stale SSA, scalar work and profile drift reject.
+  No guest byte storage, EOF, failed I/O or general target lowering is implied.
 - A separate `typed-echo-adapter` now accepts independently admitted
   canonical typed-IR module **bytes** rather than a caller-fabricated
   projection. It converts a complete zero-argument void successful-byte echo
