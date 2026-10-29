@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active
 
 ## Purpose
 
@@ -20,16 +20,36 @@ This document governs the following declared TODO scope:
 
 ## Current Behavior
 
-### Proposed Model
+### Implemented linear code-layout slice
 
-This record defines the contract that implementation must satisfy for
-`malbolge-layout-and-encoding-backend`. The implementation may change internal
-representation or language choices without changing the observable behavior,
-trust boundary, or ownership rules stated by its governing decisions.
+`src/compiler/malbolge-layout/composition/lib.rs` owns an initial bounded
+position-sensitive source encoder for exact profile `InputWord`, `OutputByte`,
+`NoOperation`, and terminal `Halt` instructions. The encoder assigns code
+addresses from zero, inverts the canonical VM instruction decoder over all 94
+printable graphical cells for every target address, requires one unambiguous
+encoding, and re-admits the entire byte stream independently before returning
+it. The result preserves the immutable selected profile ID and fingerprint.
 
-### Implementation Status
+This slice admits 2..4096 code cells, one final halt, no earlier halts, and no
+jumps, mutable code-state revisits, data placement, guest helper invocation,
+or arbitrary ternary-IR scalar realization. Ordinary VM post-instruction code
+encryption remains part of the normal execution semantics; these straight-line
+instructions never revisit an earlier code address. There is no claim of
+C-to-`.malbolge` compilation or general self-modifying layout yet.
 
-Not implemented. This proposed contract does not claim executable support yet.
+`tests/malbolge_layout.rs` checks both current and historical profile decoders
+across all 94 code-position phases, runs the resulting byte streams through
+the normative `ProfileMachine` with real guest byte I/O and halt, and rejects
+short, oversized, nonterminal, premature-halt, wrong-profile, truncated, and
+modified source evidence.
+
+### Remaining implementation
+
+Map admitted typed ternary operations and runtime/heap helpers onto real target
+instructions, solve data and code placement with self-modification constraints,
+handle jumps/calls and control-flow labels, prove admissibility and runtime
+behavior of complete code-state transitions, and publish verified final capsule
+or raw `.malbolge` artifacts with source maps. This work remains active.
 
 ## Invariants
 

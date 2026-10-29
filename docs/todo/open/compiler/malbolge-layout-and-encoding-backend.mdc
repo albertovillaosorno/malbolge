@@ -47,6 +47,21 @@ emission.
 
 ## Evidence
 
+- First executable source-emission slice now lives under
+  `src/compiler/malbolge-layout/`. It accepts only closed straight-line
+  profile-bound sequences of no-op, machine byte I/O and halt operations,
+  assigns exact code addresses starting at zero, and inverts the canonical
+  VM decoder at every position without duplicating `XLAT1`. It requires a
+  unique graphical source cell, a single final halt, two to 4096 cells, and
+  independently re-admits the complete result against canonical profile ID,
+  fingerprint and decoded operations before publication.
+- Real `ProfileMachine` integration checks source admission, input/output,
+  exact-step halt and all 94 encoding phases under both historical and current
+  profiles. Tampered bytes/profile identities, missing/early halts and invalid
+  lengths reject explicitly. This is valid machine code but **not** C-to-
+  Malbolge lowering: data placement, nonlinear control flow, code-state
+  transitions, guest runtime linkage and general ternary-IR realization remain
+  unsupported.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

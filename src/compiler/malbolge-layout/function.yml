@@ -1,0 +1,71 @@
+schema: jig-function/v3
+identity:
+  id: malbolge-layout
+  node: function:malbolge-layout
+  path: src/compiler/malbolge-layout
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-compiler/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: compiler
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: position-sensitive graphical target code encoding
+    must_not: claim arbitrary ternary IR lowering or guest-runtime execution
+    split_when: nonlinear code/data layout needs independent invariants
+    merge_when: the full target backend subsumes this linear subset
+language_manifest: malbolge-layout.jig
+parts:
+  - id: part-0001
+    path: composition/lib.rs
+    kind: composition
+    language: rust
+    responsibility: Admit and encode exact-profile bounded linear machine code.
+projects: []
+tests: []
+graph:
+  node: function:malbolge-layout
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:compiler
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:malbolge-layout
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal
