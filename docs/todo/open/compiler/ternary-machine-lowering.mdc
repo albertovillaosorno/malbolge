@@ -684,6 +684,13 @@ instruction.
   verify successful byte output; generated MCTR bytes are consumable by the
   existing `malbolge_layout` publisher. It does not supply general typed IR
   lowering, guest EOF/error semantics or source authentication.
+- The canonical `typed-echo-adapter` now also offers an opt-in latest-read
+  successful-byte trace path. It projects directly from canonical MCTI bytes,
+  preserves complete source/SSA identities through independently admitted
+  MCTR bytes and real Malbolge source, and handles repeated outputs and
+  consumed-but-unused inputs. Typed SSA replay after a later input rejects,
+  and the original strict echo API remains byte-identical. Normative VM tests
+  cover the 4096-cell boundary; the file publisher remains echo-only.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

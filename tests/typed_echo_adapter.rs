@@ -43,6 +43,7 @@ use adapter::typed::{
 use adapter::{TypedEchoAdapterError, compile_canonical_typed_echo};
 use malbolge::{ProfileMachine, RunOutcome, current_profile, historical_profile};
 use std::fs;
+use std::iter::repeat_n;
 use std::path::{Path, PathBuf};
 use std::process::{Command, id};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -523,5 +524,173 @@ fn typed_ir_projection_binds_every_operation_ssa_and_source_span() -> Result<(),
         assert!(exact_source_span(typed_read.span(), *read_span));
         assert!(exact_source_span(typed_write.span(), *write_span));
     }
+    Ok(())
+}
+
+fn latest_typed_fixture(steps: &[(bool, u32)]) -> Result<Module, String> {
+    let mut instructions = Vec::with_capacity(steps.len());
+    for (index, (read, value)) in steps.iter().enumerate() {
+        let begin = u32::try_from(index).map_err(|error| format!("source offset: {error}"))?;
+        let instruction = if *read {
+            Instruction::ByteInput {
+                result: ValueId::new(*value),
+                type_id: TypeId::new(0),
+            }
+        } else {
+            Instruction::ByteOutput {
+                value: ValueId::new(*value),
+            }
+        };
+        instructions.push(LocatedInstruction::new(
+            instruction,
+            span(begin, begin.saturating_add(1)),
+        ));
+    }
+    fixture_with_instructions(instructions, "fixtures/typed-echo.c")
+}
+
+fn verify_latest_typed_execution(
+    steps: &[(bool, u32)],
+    input: &[u8],
+    expected: &[u8],
+) -> Result<(), String> {
+    let original = latest_typed_fixture(steps)?;
+    let compiled =
+        adapter::compile_canonical_typed_latest_byte_trace(&wire(&original)?, current_profile())
+            .map_err(|error| format!("typed latest-read compile: {error:?}"))?;
+    let decoded = canonical_ternary_program(compiled.ternary_bytes())
+        .map_err(|error| format!("ternary restoration: {error:?}"))?;
+    if decoded.source_id != original.source_id()
+        || decoded.source_sha256 != *original.source_sha256()
+        || compiled.layout().source().len() != steps.len().saturating_add(1)
+        || decoded
+            .functions
+            .first()
+            .is_none_or(|function| function.operations.len() != steps.len().saturating_add(1))
+    {
+        return Err(String::from("typed latest-read stage provenance mismatch"));
+    }
+    let mut vm = ProfileMachine::from_source(
+        current_profile(),
+        compiled.layout().source(),
+        input.to_vec(),
+    )
+    .map_err(|error| format!("latest-read real VM load: {error:?}"))?;
+    let execution_steps = steps.len().saturating_add(1);
+    if !matches!(vm.run(execution_steps),
+        Ok(RunOutcome::Terminated { steps: executed, .. }) if executed == execution_steps)
+        || vm.input_consumed() != input.len()
+        || vm.output() != expected
+    {
+        return Err(String::from(
+            "typed latest-read VM output or consumption mismatch",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_latest_byte_trace_executes_mixed_uses() -> Result<(), String> {
+    verify_latest_typed_execution(&[(true, 0)], &[0], &[])?;
+    verify_latest_typed_execution(
+        &[
+            (true, 0),
+            (false, 0),
+            (false, 0),
+            (true, 1),
+            (false, 1),
+            (false, 1),
+        ],
+        &[0, 255],
+        &[0, 0, 255, 255],
+    )?;
+    verify_latest_typed_execution(
+        &[(true, 0), (true, 1), (false, 1), (true, 2), (false, 2)],
+        &[13, 128, 42],
+        &[128, 42],
+    )?;
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "legacy echo and new semantic boundary"
+)]
+fn canonical_typed_latest_byte_trace_keeps_strict_echo_distinct() -> Result<(), String> {
+    let steps = [(true, 0), (false, 0), (false, 0)];
+    let canonical = wire(&latest_typed_fixture(&steps)?)?;
+    let compiled =
+        adapter::compile_canonical_typed_latest_byte_trace(&canonical, current_profile())
+            .map_err(|error| format!("repeat-byte compile: {error:?}"))?;
+    assert_eq!(compiled.layout().source().len(), 4);
+    assert_eq!(
+        compile_canonical_typed_echo(&canonical, current_profile()),
+        Err(TypedEchoAdapterError::UnsupportedTypedIr),
+    );
+    let traditional = wire(&fixture(7)?)?;
+    let older = compile_canonical_typed_echo(&traditional, current_profile())
+        .map_err(|error| format!("strict old echo: {error:?}"))?;
+    let newer = adapter::compile_canonical_typed_latest_byte_trace(&traditional, current_profile())
+        .map_err(|error| format!("latest-read ordinary echo: {error:?}"))?;
+    assert_eq!(older, newer);
+    Ok(())
+}
+
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "stale SSA and profile forgeries")]
+fn canonical_typed_latest_byte_trace_rejects_stale_ssa_and_wrong_profile() -> Result<(), String> {
+    let valid_typed = latest_typed_fixture(&[(true, 0), (true, 1), (false, 0)])?;
+    let encoded = wire(&valid_typed)?;
+    assert_eq!(
+        adapter::compile_canonical_typed_latest_byte_trace(&encoded, current_profile()),
+        Err(TypedEchoAdapterError::UnsupportedTypedIr),
+    );
+    let source = wire(&latest_typed_fixture(&[(true, 0), (false, 0)])?)?;
+    assert!(matches!(
+        adapter::compile_canonical_typed_latest_byte_trace(&source, historical_profile()),
+        Err(TypedEchoAdapterError::Layout(_)),
+    ));
+    assert!(matches!(
+        adapter::compile_canonical_typed_latest_byte_trace(
+            source.get(..1).ok_or("missing prefix")?,
+            current_profile()
+        ),
+        Err(TypedEchoAdapterError::InvalidTypedIr(_)),
+    ));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "maximum real guest trace boundary"
+)]
+fn canonical_typed_latest_byte_trace_reaches_4096_cells_and_rejects_4097() -> Result<(), String> {
+    let mut steps = Vec::with_capacity(4096);
+    steps.push((true, 0));
+    steps.extend(repeat_n((false, 0), 4094));
+    let original = latest_typed_fixture(&steps)?;
+    let compiled =
+        adapter::compile_canonical_typed_latest_byte_trace(&wire(&original)?, current_profile())
+            .map_err(|error| format!("maximum typed trace: {error:?}"))?;
+    assert_eq!(compiled.layout().source().len(), 4096);
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), compiled.layout().source(), vec![255])
+            .map_err(|error| format!("maximum real VM load: {error:?}"))?;
+    assert!(matches!(
+        vm.run(4096),
+        Ok(RunOutcome::Terminated { steps: 4096, .. })
+    ));
+    assert_eq!(vm.input_consumed(), 1);
+    assert_eq!(vm.output(), vec![255; 4094]);
+    steps.push((false, 0));
+    assert_eq!(
+        adapter::compile_canonical_typed_latest_byte_trace(
+            &wire(&latest_typed_fixture(&steps)?)?,
+            current_profile(),
+        ),
+        Err(TypedEchoAdapterError::UnsupportedTypedIr),
+    );
     Ok(())
 }

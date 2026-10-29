@@ -32,9 +32,9 @@ architecture:
     - port-inbound
     - port-outbound
   boundary:
-    owns: admitted canonical typed-IR to ternary successful-byte echo projection
-    must_not: claim general C lowering or guest ABI and EOF semantics
-    split_when: full typed-IR compilation expands beyond one byte echo trace
+    owns: admitted canonical typed-IR to ternary successful-byte I/O projections
+    must_not: claim general C lowering or guest ABI, EOF and stored SSA bytes
+    split_when: general typed computations need executable dataflow and storage
     merge_when: a general typed-IR adapter verifies the same exact sublanguage
 language_manifest: typed-echo-adapter.jig
 parts:
@@ -42,7 +42,7 @@ parts:
     path: composition/lib.rs
     kind: composition
     language: rust
-    responsibility: Read canonical typed IR and lower checked byte effects to code.
+    responsibility: Read canonical typed IR and lower verified byte I/O to code.
 projects: []
 tests: []
 graph:

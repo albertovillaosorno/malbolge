@@ -1091,7 +1091,8 @@ operations, profile drift, malformed canonical state and excess code length.
 No host callback performs I/O; the graphical code executes on the normative
 profile VM. The guarantee remains conditional on successful input bytes and
 outputs, unobserved guest ABI/return, and absent EOF/error behavior. The
-existing typed-IR adapter and artifact publisher are still strict echo-only.
+the artifact publisher remains strict echo-only; the typed-IR adapter now
+has a separately opt-in latest-read path, but that mode is not yet published.
 
 ### Canonical Typed-IR Byte-Echo Adapter
 
@@ -1114,6 +1115,17 @@ integration suite tests exact typed/ternary provenance and real VM byte
 output; it remains limited to successful byte I/O, not general typed-C,
 EOF/error behavior, guest calls, or ABI observable returns. Source SHA-256
 is still copied provenance rather than independent source authentication.
+
+The typed-IR compiler adapter now separately exposes
+`compile_canonical_typed_latest_byte_trace` for the same exact latest-read
+subdomain as the ternary bridge, while the old `compile_canonical_typed_echo`
+remains byte-exact and strict. This producer derives each byte effect from
+independently admitted canonical typed IR, binds SSA and source provenance,
+round-trips canonical MCTR and emits the independently admitted graphical
+layout. Tests demonstrate duplicate output, unused consumed input, rejection
+of stale typed SSA, equal output for the ordinary echo subset, and exact
+4096-cell VM execution. The CLI's `--ternary-file` path still accepts only
+strict adjacent echo; publishing the broader path remains separate work.
 
 ### Authoritative Inputs
 
