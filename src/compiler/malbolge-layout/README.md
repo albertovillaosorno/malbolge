@@ -147,8 +147,12 @@ machine-token mode remains unchanged and still requires `jump:TARGET`.
 The real external-process regressions compare symbolic output byte-for-byte
 against the original concrete-token publisher, reload both profiles' files
 in their independent VMs, and verify input/output, XLAT2 jump behavior and
-relocated rotate/crazy data writes. Unsupported paths, malformed options,
-unsafe data moves and occupied output paths reject before publication.
+relocated rotate/crazy data writes. A separate process-level round trip
+executes a generated historical raw source and modern profile capsule through
+`malbolge <path> --input-stdin`; the general runner must return the exact
+binary bytes `0x00 0xff` from two successful input/output pairs.
+Unsupported paths, malformed options, unsafe data moves and occupied
+output paths reject before publication.
 Neither mode provides conditional branching, loops, guest storage, EOF
 semantics, or source-C lowering.
 

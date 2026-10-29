@@ -184,7 +184,11 @@ External-process regressions compare raw/capsule output against the original
 manual concrete layout for a first forward jump, a two-hop encrypted-data
 operand plus `j`, and automatically placed `j` with real rotate/crazy.
 Both 1998 and 2026 profile VMs replay the published source and check
-successful I/O or data-pointer relocation. Unsupported symbolic shapes,
+successful I/O or data-pointer relocation.
+
+An additional process-level test runs the actual general `malbolge --input-stdin` command on the generated
+historical raw source and modern version-one capsule, requiring exact
+`0x00 0xff` output for two non-EOF guest inputs. Unsupported symbolic shapes,
 invalid arguments, and occupied paths fail without accepted new artifacts.
 This is source layout for a closed machine subset, not general control flow,
 source-C compilation, guest ABI, or total I/O equivalence.

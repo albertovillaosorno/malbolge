@@ -122,8 +122,11 @@ emission.
   existing no-clobber raw/capsule path. Process-level current/historical
   profile tests prove byte-identical concrete/auto layout, VM I/O and
   relocated arithmetic, including two forward jumps and encrypted data
-  operands. Malformed grammar, numeric jump tokens in symbolic mode and
-  unsafe plans fail without a final file. Conditional branches, guest heap,
+  operands. The separate real `malbolge --input-stdin` runner also replays
+  generated historical raw and modern capsule output for successful input
+  bytes `0x00`/`0xff`, without implying EOF or full guest ABI support.
+  Malformed grammar, numeric jump tokens in symbolic mode and unsafe plans
+  fail without a final file. Conditional branches, guest heap,
   runtime linkage and general C compilation remain open.
 - A first real explicit-profile source publisher, `malbolge_layout`, now
   converts a bounded closed machine-op token list into **new** graphical

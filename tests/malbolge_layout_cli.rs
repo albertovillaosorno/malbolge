@@ -34,9 +34,10 @@
 
 use std::ffi::OsString;
 use std::fs;
+use std::io::Write as _;
 use std::iter::{repeat_n, repeat_with};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, id};
+use std::process::{Command, Output, Stdio, id};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use malbolge::{
@@ -1068,6 +1069,50 @@ fn automatic_layout_preserves_ordinary_machine_source_bytes() -> Result<(), Stri
         return Err(String::from(
             "opt-in planner changed non-symbolic machine source",
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn automatic_layout_artifacts_execute_binary_stdin_in_general_runner() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let tokens = ["jump", "input", "output", "input", "output", "halt"];
+    for (profile_id, capsule) in [("malbolge-1998", false), ("malbolge-2026", true)] {
+        let target = fixture.path(&format!("{profile_id}-general-runner.malbolge"));
+        let result = emit_auto(profile_id, &target, &tokens, capsule)?;
+        if !result.status.success() {
+            return Err(format!(
+                "symbolic input artifact refused: {}",
+                String::from_utf8_lossy(&result.stderr)
+            ));
+        }
+        let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(&target)
+            .arg("--input-stdin")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("launch general Malbolge runner: {error}"))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or("general runner lacks stdin pipe")?;
+        stdin
+            .write_all(&[0, 255])
+            .map_err(|error| format!("feed binary guest stdin: {error}"))?;
+        drop(stdin);
+        let execution = child
+            .wait_with_output()
+            .map_err(|error| format!("collect guest execution: {error}"))?;
+        if !execution.status.success()
+            || execution.stdout != [0, 255]
+            || !execution.stderr.is_empty()
+        {
+            return Err(format!(
+                "auto-generated {profile_id} artifact execution mismatch: {execution:?}"
+            ));
+        }
     }
     Ok(())
 }
