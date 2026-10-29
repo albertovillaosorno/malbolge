@@ -344,6 +344,73 @@ fn current_capsule_consumes_explicit_binary_input_before_eof()
 }
 
 #[test]
+fn historical_capsule_consumes_exact_high_bit_byte() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = read(root.join(
+        "tests/compatibility/specification/interpreter-io-roundtrip.malbolge",
+    ))
+    .map_err(|error| format!("read historical capsule fixture: {error}"))?;
+    let encoded = build_capsule(historical_profile(), &source)
+        .map_err(|error| format!("build historical input capsule: {error}"))?;
+    let capsule = TemporaryCapsule::from_bytes("historical-stdin", &encoded)?;
+    let mut child = clean_cli_command()
+        .arg(&capsule.path)
+        .arg("--input-stdin")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("launch historical input capsule: {error}"))?;
+    let mut stdin = child.stdin.take().ok_or("missing capsule stdin pipe")?;
+    stdin
+        .write_all(&[0xff])
+        .map_err(|error| format!("send historical input byte: {error}"))?;
+    drop(stdin);
+    let output = child.wait_with_output().map_err(|error| {
+        format!("receive historical input capsule output: {error}")
+    })?;
+    if !output.status.success()
+        || output.stdout != [0xff]
+        || !output.stderr.is_empty()
+    {
+        return Err(format!("historical capsule input mismatch: {output:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn default_current_capsule_ignores_ambient_stdin() -> Result<(), String> {
+    let source = source_backed_jump_code_io_chain()?;
+    let encoded = build_capsule(current_profile(), &source)
+        .map_err(|error| format!("build current no-input capsule: {error}"))?;
+    let capsule =
+        TemporaryCapsule::from_bytes("current-ignore-stdin", &encoded)?;
+    let mut child = clean_cli_command()
+        .arg(&capsule.path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("launch default current capsule: {error}"))?;
+    let mut stdin = child.stdin.take().ok_or("missing capsule stdin pipe")?;
+    stdin
+        .write_all(&[0x00, 0xff])
+        .map_err(|error| format!("send unused guest bytes: {error}"))?;
+    drop(stdin);
+    let output = child.wait_with_output().map_err(|error| {
+        format!("receive default current capsule output: {error}")
+    })?;
+    let expected = [EXPECTED_EOF_OUTPUT, EXPECTED_EOF_OUTPUT].concat();
+    if !output.status.success()
+        || output.stdout != expected
+        || !output.stderr.is_empty()
+    {
+        return Err(format!("default capsule stdin leaked: {output:?}"));
+    }
+    Ok(())
+}
+
+#[test]
 fn configured_worker_is_not_used_for_historical_profile() -> Result<(), String>
 {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
