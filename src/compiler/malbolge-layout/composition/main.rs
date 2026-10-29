@@ -33,7 +33,6 @@
 //! Explicit-profile source emitter for the bounded verified machine subset.
 
 #[expect(
-    clippy::too_many_lines,
     clippy::duplicate_mod,
     reason = "existing independently validated bridge includes ternary decoder and layout"
 )]

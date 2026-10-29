@@ -131,11 +131,16 @@ VM load/halt check and either raw or version-one capsule publication with
 independently validated identity/payload and atomic no-overwrite behavior.
 End-to-end tests invoke the real binary with a serialized canonical ternary
 program, reopen both types of output under the normative VM, and compare
-an actual multi-byte echo trace (including zero and 255). Forged profiles,
-corrupted wire bytes, valid but unsupported SSA output and oversized inputs
-reject without a final artifact. The source hash in MCTR is copied provenance,
-not independent source authentication; VM preflight on empty input verifies
-termination, **not** total successful byte-I/O equivalence including EOF.
+an actual multi-byte echo trace (including zero and 255). For this ternary
+subset the publisher also replays two fixed successful-byte input patterns
+on the normative VM, requiring byte-exact output, consumed-byte count and
+witness-length termination before publication. Forged profiles, corrupted
+wire bytes, valid but unsupported SSA output, missing or oversized inputs,
+extra operands and existing targets fail without a new final artifact.
+The source hash in MCTR is copied provenance, not independent source
+authentication; VM preflight with empty input verifies
+termination, and two chosen successful-byte traces are only bounded evidence,
+**not** total successful byte-I/O equivalence including EOF.
 
 This is a **bounded, working ternary-stage-to-file path**, but it does not
 admit arbitrary ternary operations, source-C programs, guest heap, ABI return

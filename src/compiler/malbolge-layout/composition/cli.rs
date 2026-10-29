@@ -41,7 +41,10 @@ use std::process::{ExitCode, id};
 
 use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile};
 
-use crate::bridge::{encode_successful_byte_echo, ternary::canonical_ternary_program};
+use crate::bridge::{
+    encode_successful_byte_echo,
+    ternary::{TernaryOperation, canonical_ternary_program},
+};
 use crate::layout::{
     LinearOpcode, LinearProfileIdentity, admit_linear_layout, encode_linear_layout,
 };
@@ -72,6 +75,7 @@ struct CommandSpec {
 struct VerifiedSource {
     source: Vec<u8>,
     steps: usize,
+    successful_byte_echo_pairs: Option<usize>,
 }
 
 fn parse_operation(token: &str) -> Result<LinearOpcode, String> {
@@ -235,6 +239,7 @@ fn verified_source(
             Ok(VerifiedSource {
                 source: admitted.source().to_vec(),
                 steps: admitted.executed_code_positions().len(),
+                successful_byte_echo_pairs: None,
             })
         }
         SourceSpec::CanonicalTernaryFile(path) => {
@@ -250,12 +255,51 @@ fn verified_source(
                     "ternary source profile mismatch after admission",
                 ));
             }
+            let pair_count = program
+                .functions
+                .first()
+                .ok_or("bridge accepted no ternary function")?
+                .operations
+                .iter()
+                .filter(|operation| matches!(operation, TernaryOperation::ByteInput { .. }))
+                .count();
             Ok(VerifiedSource {
                 source: layout.source().to_vec(),
                 steps: layout.executed_code_positions().len(),
+                successful_byte_echo_pairs: Some(pair_count),
             })
         }
     }
+}
+
+fn verify_successful_byte_echo(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    pairs: usize,
+) -> Result<(), String> {
+    let patterns: [[u8; 8]; 2] = [
+        [0, 255, 173, 128, 1, 254, 10, 65],
+        [255, 0, 82, 127, 254, 1, 42, 13],
+    ];
+    if pairs == 0 || pairs.checked_mul(2).and_then(|n| n.checked_add(1)) != Some(artifact.steps) {
+        return Err(String::from(
+            "ternary bridge emitted an unexpected effect geometry",
+        ));
+    }
+    for pattern in patterns {
+        let input: Vec<u8> = pattern.into_iter().cycle().take(pairs).collect();
+        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input.clone())
+            .map_err(|error| format!("successful-byte VM load failed: {error:?}"))?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps: count, .. }) if count == artifact.steps)
+        {
+            return Err(String::from("successful-byte VM trace did not terminate"));
+        }
+        if vm.output() != input || vm.input_consumed() != pairs {
+            return Err(String::from("successful-byte VM echo trace mismatch"));
+        }
+    }
+    Ok(())
 }
 
 fn execute(spec: &CommandSpec) -> Result<(), String> {
@@ -268,6 +312,9 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
         return Err(String::from(
             "normative VM did not halt at the proven code step",
         ));
+    }
+    if let Some(pairs) = artifact.successful_byte_echo_pairs {
+        verify_successful_byte_echo(profile, &artifact, pairs)?;
     }
     let publication = if spec.capsule {
         let bytes = build_capsule(profile, &artifact.source)

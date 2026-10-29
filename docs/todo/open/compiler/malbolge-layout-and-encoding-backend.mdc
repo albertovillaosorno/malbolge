@@ -101,9 +101,12 @@ emission.
   publisher. A real external-process integration fixture confirms a
   three-byte trace including `0x00` and `0xff`, while profile mismatch,
   modified wire, an independently canonical but unsupported SSA trace and
-  oversized files fail without a published artifact. Empty-input VM
-  preflight proves reachability/termination only; it does not realize EOF,
-  guest ABI or arbitrary C execution.
+  oversized files fail without a published artifact. The publisher now
+  replays two successful-byte patterns in the real VM before publication,
+  requiring exact output, input consumption and termination; empty-input
+  preflight separately proves reachability only. Missing/empty input files,
+  extra operands and existing targets reject. Neither preflight realizes
+  EOF, failed I/O, guest ABI or arbitrary C execution.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

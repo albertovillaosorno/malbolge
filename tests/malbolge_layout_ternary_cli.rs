@@ -31,10 +31,6 @@
 //
 //! Real executable artifact evidence for the bounded ternary byte-echo bridge.
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "pre-existing canonical ternary codec is reused, not duplicated"
-)]
 #[path = "../src/compiler/byte-echo-bridge/composition/lib.rs"]
 pub mod bridge;
 
@@ -272,5 +268,58 @@ fn oversized_ternary_wire_is_rejected_without_creating_output() -> TestResult<()
     let refused = invoke("malbolge-2026", &target, &wire, true)?;
     assert!(!refused.status.success());
     assert!(!target.exists());
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real CLI refusal preserves owned target"
+)]
+fn missing_empty_extra_argument_and_existing_target_fail_closed() -> TestResult<()> {
+    let fixture = Fixture::new()?;
+    let wire = fixture.path("valid.mctr");
+    let _bytes = save_wire(&wire, &echoed_program(1)?)?;
+    let missing = fixture.path("missing.mctr");
+    let new_target = fixture.path("new.malbolge");
+    let absent = invoke("malbolge-2026", &new_target, &missing, true)?;
+    assert!(!absent.status.success());
+    assert!(!new_target.exists());
+
+    let empty = fixture.path("empty.mctr");
+    fs::write(&empty, b"").map_err(|error| error.to_string())?;
+    let empty_result = invoke("malbolge-2026", &new_target, &empty, false)?;
+    assert!(!empty_result.status.success());
+    assert!(!new_target.exists());
+
+    let extra = Command::new(EXECUTABLE)
+        .arg("--profile")
+        .arg("malbolge-2026")
+        .arg("--output")
+        .arg(&new_target)
+        .arg("--")
+        .arg("--ternary-file")
+        .arg(&wire)
+        .arg("nop")
+        .output()
+        .map_err(|error| error.to_string())?;
+    assert!(!extra.status.success());
+    assert!(!new_target.exists());
+
+    let protected = fixture.path("existing.malbolge");
+    let sentinel = b"owner-existing-artifact";
+    fs::write(&protected, sentinel).map_err(|error| error.to_string())?;
+    let result = invoke("malbolge-2026", &protected, &wire, true)?;
+    assert!(!result.status.success());
+    assert_eq!(
+        fs::read(&protected).map_err(|error| error.to_string())?,
+        sentinel
+    );
+    assert_eq!(
+        fs::read_dir(&fixture.root)
+            .map_err(|error| error.to_string())?
+            .count(),
+        3
+    );
     Ok(())
 }

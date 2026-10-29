@@ -101,12 +101,19 @@ profile VM at its declared execution-witness step count and then published
 through exactly the same raw/capsule and no-clobber file path as machine-op
 mode. Real external-process tests validate a successful three-byte trace
 (including `0x00`/`0xff`) and reject canonical but semantically unsupported
-SSA output, profile drift, corrupted wire and oversized files.
+SSA output, profile drift, corrupted wire and oversized files. Before any
+publication, the emitter additionally runs two deterministic *successful*
+input-byte patterns through the real normative VM and checks exact output,
+consumed-input count, and terminal instruction step. This is a bounded
+execution regression, not a proof of all possible input traces or I/O errors.
+Missing/empty input files, extra operands, and existing target paths also
+fail without changing the output directory.
 
 The source contains exactly the successful-input-byte interpretation of the
 admitted ternary operations; it does **not** encode the source-C runtime ABI,
-EOF or failed-I/O behavior, and the empty-input emitter preflight checks VM
-reachability/termination only. `MCTR` metadata including its source hash is
+EOF or failed-I/O behavior, and the empty-input preflight checks VM
+reachability/termination only; the additional successful-byte preflight checks
+two concrete effect traces. `MCTR` metadata including its source hash is
 copied provenance, not independent cryptographic source authentication.
 A full C-to-Malbolge frontend and general guest-runtime realization remain
 out of scope.
