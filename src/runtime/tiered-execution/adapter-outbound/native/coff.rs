@@ -429,7 +429,8 @@ fn parse_coff(object: &[u8]) -> Result<ParsedCoff, CoffAdmissionError> {
         checked_add(string_table, 4)?,
         string_bytes.saturating_sub(4),
     )?;
-    let _: &str = from_utf8(string_data).map_err(|_error| CoffAdmissionError::Bounds)?;
+    let _: &str =
+        from_utf8(string_data).map_err(|_error| CoffAdmissionError::Bounds)?;
     // The table contains NUL-terminated names, including unreferenced
     // entries. A declared trailing fragment cannot remain unterminated.
     if string_bytes > 4
