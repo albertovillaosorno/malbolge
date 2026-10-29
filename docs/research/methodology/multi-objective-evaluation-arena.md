@@ -322,6 +322,11 @@ complete read. POSIX nonblocking/no-follow open flags reject raced FIFO and
 linked leaves; injected regular-file replacements and mid-read writes fail
 before either CLI emits partial JSON. This narrows the initial study-file
 admission race without proving an atomic filesystem snapshot or record origin.
+The study input reader now consumes the admitted inode size across bounded
+short chunks rather than interpreting one short read as a complete file.
+Premature EOF, nonbyte or overlong chunks, and five injected read-stream
+exception classes reject through a typed arena error, with the original stream
+failure preserved as its cause. Both arena CLI routes share this reader.
 
 The shared evidence-file reader now checks the admitted regular file against
 its opened descriptor and verifies device/inode identity, byte length and

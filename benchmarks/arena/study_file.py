@@ -86,6 +86,38 @@ def _open_study(path: Path) -> BinaryIO:
         raise
 
 
+def _read_complete(stream: BinaryIO, *, size: int) -> bytes:
+    """Read the admitted file length across bounded, valid byte chunks.
+
+    Returns:
+        Exact bytes from the already-opened regular file.
+
+    Raises:
+        StudyFileError: A read fails or stops before the admitted file size.
+
+    """
+    data = bytearray()
+    while len(data) < size:
+        requested = min(size - len(data), 1024 * 1024)
+        try:
+            chunk = stream.read(requested)
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            TypeError,
+            AttributeError,
+        ) as error:
+            message = "arena input stream read failed"
+            raise StudyFileError(message) from error
+        if type(chunk) is not bytes or len(chunk) > requested:
+            _fail("arena input stream read returned invalid bytes")
+        if not chunk:
+            _fail("arena input read ended before declared file size")
+        data.extend(chunk)
+    return bytes(data)
+
+
 def _read_descriptor(
     path: Path,
     before: os.stat_result,
@@ -98,7 +130,9 @@ def _read_descriptor(
             before
         ):
             _fail("arena input changed between path and open")
-        data = stream.read(limit + 1)
+        if opened.st_size > limit:
+            _fail("arena input exceeds 16 MiB limit")
+        data = _read_complete(stream, size=opened.st_size)
         completed = os.fstat(stream.fileno())
         if _identity(completed) != _identity(opened):
             _fail("arena input changed during read")

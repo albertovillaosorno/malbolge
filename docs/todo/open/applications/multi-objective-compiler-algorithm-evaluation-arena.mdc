@@ -234,6 +234,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   plus nonblocking/no-follow opens on capable hosts. Synthetic regular-file,
   FIFO, symlink, short-read and mid-read mutations fail before publishing
   report JSON; filesystem atomicity and source authenticity remain unproven.
+  Study JSON now reads exactly the admitted inode size across bounded short
+  chunks, accepting legitimate partial reads and rejecting premature EOF,
+  nonbinary/overlong chunks, and five injected I/O fault types with preserved
+  typed error causes before either CLI can publish a comparison.
   Linked evidence now also consumes the complete admitted inode size across
   bounded short chunks; truncated streams fail rather than authenticating a
   valid-looking CSV/manifest prefix under otherwise stable file metadata.

@@ -36,6 +36,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import sys
 from typing import TYPE_CHECKING
@@ -48,6 +49,7 @@ from benchmarks.arena import study_file
 from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
     from typing import BinaryIO
 
@@ -77,6 +79,123 @@ def test_unchanged_regular_study_retains_original_json_bytes(
         path,
         limit=analyze.MAX_INPUT_BYTES,
     ) == original.encode("utf-8")
+
+
+class _FragmentedStudyStream:
+    def __init__(self, stream: BinaryIO, *, premature_eof: bool) -> None:
+        self.stream = stream
+        self.premature_eof = premature_eof
+        self.read_calls = 0
+
+    def fileno(self) -> int:
+        return self.stream.fileno()
+
+    def read(self, count: int) -> bytes:
+        self.read_calls += 1
+        if self.premature_eof and self.read_calls > 1:
+            return b""
+        return self.stream.read(min(count, 7))
+
+
+@pytest.mark.parametrize("premature_eof", [False, True])
+def test_fragmented_study_reads_are_complete_or_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    premature_eof: bool,
+) -> None:
+    """An ordinary short read cannot become a silently truncated study."""
+    path = tmp_path / STABLE_INPUT
+    expected = _study(path)
+    original_open = study_file._open_study
+
+    @contextmanager
+    def fragmented_open(target: Path) -> Iterator[_FragmentedStudyStream]:
+        with original_open(target) as stream:
+            yield _FragmentedStudyStream(stream, premature_eof=premature_eof)
+
+    monkeypatch.setattr(study_file, "_open_study", fragmented_open)
+    if premature_eof:
+        with pytest.raises(analyze.ArenaError, match=SHORT_READ):
+            analyze.read_input(path)
+    else:
+        assert analyze.read_input(path) == expected
+
+
+class _FaultyStudyStream:
+    def __init__(
+        self,
+        stream: BinaryIO,
+        *,
+        error: type[Exception] | None,
+        invalid: str | None,
+    ) -> None:
+        self.stream = stream
+        self.error = error
+        self.invalid = invalid
+
+    def fileno(self) -> int:
+        return self.stream.fileno()
+
+    def read(self, count: int) -> object:
+        if self.error is not None:
+            message = "injected stream fault"
+            raise self.error(message)
+        if self.invalid == NONBINARY_CHUNK:
+            return "forged text bytes"
+        return b"x" * (count + 1)
+
+
+NONBINARY_CHUNK = "text"
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [OSError, ValueError, RuntimeError, TypeError, AttributeError],
+)
+def test_study_stream_read_fault_preserves_typed_failure_and_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """A broken descriptor stream cannot escape arena's typed input boundary."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file._open_study
+
+    @contextmanager
+    def faulty_open(target: Path) -> Iterator[_FaultyStudyStream]:
+        with original_open(target) as stream:
+            yield _FaultyStudyStream(stream, error=fault, invalid=None)
+
+    monkeypatch.setattr(study_file, "_open_study", faulty_open)
+    with pytest.raises(
+        analyze.ArenaError, match="stream read failed"
+    ) as result:
+        analyze.read_input(path)
+    assert isinstance(result.value.__cause__, study_file.StudyFileError)
+    assert isinstance(result.value.__cause__.__cause__, fault)
+
+
+@pytest.mark.parametrize("invalid", [NONBINARY_CHUNK, "oversized"])
+def test_study_reader_rejects_nonbyte_or_overlong_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: str,
+) -> None:
+    """A malicious reader cannot exceed its requested count or forge bytes."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file._open_study
+
+    @contextmanager
+    def invalid_open(target: Path) -> Iterator[_FaultyStudyStream]:
+        with original_open(target) as stream:
+            yield _FaultyStudyStream(stream, error=None, invalid=invalid)
+
+    monkeypatch.setattr(study_file, "_open_study", invalid_open)
+    with pytest.raises(analyze.ArenaError, match="invalid bytes"):
+        analyze.read_input(path)
 
 
 def test_file_replaced_between_lstat_and_descriptor_open_fails_closed(

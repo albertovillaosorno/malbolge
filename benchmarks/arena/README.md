@@ -105,9 +105,11 @@ the opened descriptor, then rechecks device/inode/size and nanosecond
 modification/change timestamps before and after the read. Where available,
 nonblocking/no-follow open flags prevent a raced FIFO or linked leaf from
 turning a previously admitted regular path into a blocking or redirected read.
-A replaced input or short read fails before publishing any report. These
-are observed race defenses, not a filesystem snapshot or source-authenticity
-proof; the caller must still supply trustworthy provenance separately.
+A replaced input or prematurely ended read fails before publishing any report.
+Legitimate partial reads are accumulated to the inode's admitted byte length;
+nonbinary/overlong chunks and read-stream failures reject without a report.
+These checks defend against observed races but do not provide a filesystem
+snapshot or authenticate the source. The caller must establish provenance.
 
 Arena evidence file readers now check regular-path and opened-descriptor
 identity, size, and modification/change timestamps before and after
