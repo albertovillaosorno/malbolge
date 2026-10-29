@@ -7958,6 +7958,38 @@ def test_progress_write_limiter_queued_commit_failure_preserves_status(
     assert progress.read(destination) == running
 
 
+@pytest.mark.parametrize(
+    ("previous_status", "invalid_next"),
+    [
+        (progress.ProgressStatus.RUNNING, progress.ProgressStatus.QUEUED),
+        (progress.ProgressStatus.COMPLETED, progress.ProgressStatus.RUNNING),
+        (progress.ProgressStatus.CANCELLED, progress.ProgressStatus.RUNNING),
+        (progress.ProgressStatus.FAILED, progress.ProgressStatus.RUNNING),
+    ],
+)
+def test_progress_write_limiter_cannot_hide_invalid_lifecycle(
+    tmp_path: Path,
+    previous_status: progress.ProgressStatus,
+    invalid_next: progress.ProgressStatus,
+) -> None:
+    """Throttled state regressions must reach strict durable admission."""
+    limiter = progress.ProgressWriteLimiter.start(
+        1_000, clock=SequenceClock([100, 100, 100, 101])
+    )
+    previous = _sidecar(tmp_path, status=previous_status)
+    destination = Path(previous.progress_path)
+    assert limiter.publish(previous) == destination
+    invalid = replace(
+        _sidecar(tmp_path, status=invalid_next),
+        active_elapsed_ns=previous.active_elapsed_ns + 1,
+        updated_at="2026-08-06T14:00:03Z",
+        wall_elapsed_ns=previous.wall_elapsed_ns + 1,
+    )
+    with pytest.raises(ERROR, match="invalid progress transition"):
+        _ = limiter.publish(invalid)
+    assert progress.read(destination) == previous
+
+
 def test_progress_write_limiter_anchors_to_publication_completion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

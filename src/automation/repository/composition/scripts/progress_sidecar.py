@@ -494,13 +494,28 @@ class ProgressWriteLimiter:
             )
             raise ProgressSidecarCommittedError(message, path) from error
 
+    def _needs_lifecycle_admission(self, status: ProgressStatus) -> bool:
+        previous = self._last_committed_status
+        if previous is None:
+            return False
+        if (
+            previous is ProgressStatus.QUEUED
+            and status is ProgressStatus.RUNNING
+        ):
+            return True
+        # Do not silently suppress a potential lifecycle violation. The
+        # durable writer decides against the actual current pointer, because
+        # another process may have advanced it since our last publication.
+        return status not in _ALLOWED_TRANSITIONS.get(previous, frozenset())
+
     def publish(self, sidecar: ProgressSidecar) -> Path | None:
         """Publish one sidecar only when its lifecycle requires or permits it.
 
         Routine queued/running updates are suppressed until the configured
         interval has elapsed since the previous committed write. A durable
-        queued-to-running transition, checkpointed status, and terminal states
-        always attempt publication, preserving strict writer transitions.
+        queued-to-running transition, checkpointed status, terminal states,
+        and possibly invalid lifecycle transitions always attempt publication.
+        The durable pointer remains authoritative for cross-process changes.
 
         Returns:
             Canonical progress path when published, otherwise ``None``.
@@ -513,10 +528,7 @@ class ProgressWriteLimiter:
         mandatory = (
             validated.status is ProgressStatus.CHECKPOINTED
             or validated.status.value in TERMINAL_STATUSES
-            or (
-                self._last_committed_status is ProgressStatus.QUEUED
-                and validated.status is ProgressStatus.RUNNING
-            )
+            or self._needs_lifecycle_admission(validated.status)
         )
         if (
             self._last_committed_write_ns is not None

@@ -341,7 +341,10 @@ positive monotonic interval: repeated queued/running updates are suppressed
 until that interval passes. The first queued-to-running transition is always
 published, because eliding it would prevent a strict queued-to-completed or
 queued-to-checkpointed writer transition. Checkpointed and terminal evidence
-also bypass suppression. The interval begins at the post-publication sample,
+also bypass suppression. Potentially invalid lifecycle transitions are never
+silently throttled; they reach the durable writer, which checks the current
+pointer even when other processes have advanced it. The interval begins at
+the post-publication sample,
 not at the start of a potentially slow write. Only successful or
 post-commit-failing writes consume the limiter window, so a prepublication
 failure can retry immediately. A failed post-commit clock sample retains
