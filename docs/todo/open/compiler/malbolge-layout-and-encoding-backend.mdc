@@ -81,8 +81,11 @@ emission.
   and historical VMs execute 2- and 3-jump programs including operand reads
   encrypted during a prior skip **or** normal code execution, with byte I/O
   through the jumps. The independently admitted
-  layout now returns exact ordered code, data and encryption positions for
-  every step; VM tests compare all three and post-step XLAT2 code-cell values.
+  layout now returns exact ordered code, data and encryption positions plus
+  optional planned rotate/crazy data-write addresses for every reached step.
+  The data-write witness requires addresses outside all source cells; real
+  normative VM traces check those semantic data reads and changed-cell deltas
+  (including unchanged-value writes), and post-step XLAT2 code-cell values.
   New real VM cases admit a jump followed by relocated rotate/crazy when
   the *actual* data-pointer operand proves code/data separation, including
   one operand previously encrypted by the first jump. Extending source

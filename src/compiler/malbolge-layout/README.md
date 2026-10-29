@@ -60,13 +60,16 @@ regression verifies that a later jump may also read an already *executed*
 no-op that has since been XLAT2-encrypted; the original code-cell byte is not
 a trustworthy jump operand after execution.
 
-Every admitted layout returns deterministic, step-indexed witnesses for **all
-three** relevant facts: reachable code pointer, data pointer at the start of
-each step, and code cell encrypted after each nonhalt step. The VM tests check
-all three against actual per-step behavior and XLAT2 memory updates under both
-profiles. Data-memory *content* writes by rotate/crazy are not part of this
-witness; those remain constrained by the proved code/data separation, and no
-arbitrary guest semantic equivalence is claimed.
+Every admitted layout returns deterministic, step-indexed witnesses for
+**four** facts: reachable code pointer, data pointer at the start of each
+step, code cell encrypted after each nonhalt step, and the *planned guest
+data-write address* for each rotate/crazy step (none otherwise, including
+halt). The data-write address must be outside the entire emitted source.
+Current/historical normative VM tests compare all four against actual
+per-step control state, XLAT2 memory changes, and data-cell reads/writes
+from the independent transition trace. Actual data-write **values** depend
+on guest input and earlier arithmetic, so these layout witnesses do not
+claim to predict values or arbitrary guest semantic equivalence.
 
 The source has two to 4096 cells (with a stricter bound for relocated data),
 contains exactly one final halt, and carries the canonical selected profile

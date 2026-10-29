@@ -44,11 +44,60 @@ use malbolge::{
     historical_profile,
 };
 
+fn verify_data_write_witness(
+    machine: &ProfileMachine,
+    layout: &LinearLayout,
+    step: usize,
+    trace: &malbolge::ProfileStepTrace,
+) -> Result<(), String> {
+    let Some(address) = layout
+        .data_write_positions()
+        .get(step)
+        .copied()
+        .ok_or("missing planned guest data-write witness")?
+    else {
+        if trace.memory_delta.data.is_some() {
+            return Err(String::from("unexpected guest data write"));
+        }
+        return Ok(());
+    };
+    let source_end =
+        u32::try_from(layout.source().len()).map_err(|error| format!("source length: {error}"))?;
+    if address < source_end {
+        return Err(String::from("arithmetic data write aliases source"));
+    }
+    let read = trace
+        .memory_reads
+        .data
+        .ok_or("missing arithmetic data read")?;
+    if read.address != address {
+        return Err(String::from("runtime data read address differs from proof"));
+    }
+    if trace
+        .memory_delta
+        .data
+        .is_some_and(|write| write.address != address || write.before != read.value)
+    {
+        return Err(String::from("runtime data mutation differs from proof"));
+    }
+    if trace.memory_delta.data.is_none()
+        && machine
+            .memory_word(address)
+            .map_err(|error| format!("unchanged data word: {error:?}"))?
+            != read.value
+    {
+        return Err(String::from("undisclosed runtime data mutation"));
+    }
+    Ok(())
+}
+
 fn verify_execution_witness(
     machine: &mut ProfileMachine,
     layout: &LinearLayout,
 ) -> Result<(), String> {
-    if layout.data_pointer_positions().len() != layout.executed_code_positions().len() {
+    if layout.data_pointer_positions().len() != layout.executed_code_positions().len()
+        || layout.data_write_positions().len() != layout.executed_code_positions().len()
+    {
         return Err(String::from("layout data witness cardinality mismatch"));
     }
     for (step, &code) in layout.executed_code_positions().iter().enumerate() {
@@ -70,9 +119,12 @@ fn verify_execution_witness(
             .map(|address| machine.memory_word(address))
             .transpose()
             .map_err(|error| format!("before encryption: {error:?}"))?;
+        let mut observation: Option<malbolge::ProfileStepTrace> = None;
         let _outcome: malbolge::StepOutcome = machine
-            .step()
+            .step_traced(&mut |trace| observation = Some(*trace))
             .map_err(|error| format!("layout execution: {error:?}"))?;
+        let trace = observation.ok_or("missing normative transition trace")?;
+        verify_data_write_witness(machine, layout, step, &trace)?;
         if let (Some(address), Some(value)) = (target, before) {
             let expected =
                 encrypt_profile_cell(value).ok_or("encryption source must be graphical")?;
@@ -197,6 +249,7 @@ fn emitted_source_runs_on_normative_vm_without_guest_host_callbacks() -> Result<
             .map_err(|error| format!("VM layout: {error:?}"))?;
         assert_eq!(layout.executed_code_positions(), &[0, 1, 2, 3]);
         assert_eq!(layout.encrypted_code_positions(), &[0, 1, 2]);
+        assert_eq!(layout.data_write_positions(), &[None; 4]);
         let mut machine = ProfileMachine::from_source(profile, layout.source(), vec![b'Q'])
             .map_err(|error| format!("VM load: {error:?}"))?;
         assert!(matches!(
@@ -240,6 +293,15 @@ fn real_rotate_and_crazy_instructions_execute_without_jumps() -> Result<(), Stri
         );
         assert_eq!(layout.executed_code_positions(), &[0, 1, 2, 3]);
         assert_eq!(layout.encrypted_code_positions(), &[0, 1, 2]);
+        assert_eq!(
+            layout.data_write_positions(),
+            &[
+                None,
+                layout.data_pointer_positions().get(1).copied(),
+                layout.data_pointer_positions().get(2).copied(),
+                None,
+            ]
+        );
         let mut machine = ProfileMachine::from_source(profile, layout.source(), vec![])
             .map_err(|error| format!("arithmetic VM load: {error:?}"))?;
         verify_execution_witness(&mut machine, &layout)?;
@@ -1232,6 +1294,15 @@ fn two_forward_jumps_then_relocation_consume_prior_xlat2_data() -> Result<(), St
         assert_eq!(
             artifact.data_pointer_positions().get(relocation + 1),
             Some(&121)
+        );
+        assert_eq!(artifact.data_write_positions().get(relocation), Some(&None));
+        assert_eq!(
+            artifact.data_write_positions().get(relocation + 1),
+            Some(&Some(121))
+        );
+        assert_eq!(
+            artifact.data_write_positions().get(relocation + 2),
+            Some(&Some(122))
         );
         let mut vm = ProfileMachine::from_source(profile, artifact.source(), vec![0x7d])
             .map_err(|error| format!("chained jump-relocation VM: {error:?}"))?;

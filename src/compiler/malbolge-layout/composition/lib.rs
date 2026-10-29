@@ -91,6 +91,7 @@ impl LinearOpcode {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LinearLayout {
     data_pointer_positions: Vec<u32>,
+    data_write_positions: Vec<Option<u32>>,
     encrypted_code_positions: Vec<u32>,
     executed_code_positions: Vec<u32>,
     profile_fingerprint: &'static str,
@@ -104,6 +105,15 @@ impl LinearLayout {
     #[must_use]
     pub fn data_pointer_positions(&self) -> &[u32] {
         &self.data_pointer_positions
+    }
+
+    /// Returns each reached step's planned guest data-write address.
+    /// Rotate/crazy write the current D word; all other steps write none.
+    /// The final halt has no write, and every admitted address is outside
+    /// the graphical source region. This does not predict the written value.
+    #[must_use]
+    pub fn data_write_positions(&self) -> &[Option<u32>] {
+        &self.data_write_positions
     }
 
     /// Returns the ordered code addresses encrypted after each nonhalt step.
@@ -197,6 +207,7 @@ struct DerivedExecutionPositions {
     data: Vec<u32>,
     encrypted: Vec<u32>,
     executed: Vec<u32>,
+    writes: Vec<Option<u32>>,
 }
 
 struct JumpSuccessor {
@@ -318,6 +329,24 @@ fn jump_successor(
     })
 }
 
+fn planned_data_write(
+    operation: LinearOpcode,
+    data_address: u32,
+    source_length: usize,
+) -> Result<Option<u32>, LinearLayoutError> {
+    if !matches!(
+        operation,
+        LinearOpcode::CrazyData | LinearOpcode::RotateData
+    ) {
+        return Ok(None);
+    }
+    let code_end = u32::try_from(source_length).map_err(|_error| LinearLayoutError::TooLong)?;
+    if data_address < code_end {
+        return Err(LinearLayoutError::UnsafeDataPlacement);
+    }
+    Ok(Some(data_address))
+}
+
 fn derive_execution_positions(
     operations: &[LinearOpcode],
     source: &[u8],
@@ -325,6 +354,7 @@ fn derive_execution_positions(
     let mut data = Vec::new();
     let mut executed = Vec::new();
     let mut encrypted = Vec::new();
+    let mut writes = Vec::new();
     // Every jump and the sole relocation read a source-addressed data cell.
     // After relocation all further operations are linear and never inspect
     // memory contents for code control flow. Arithmetic cannot alias source.
@@ -334,7 +364,10 @@ fn derive_execution_positions(
     while let Some(operation) = operations.get(position) {
         let code = u32::try_from(position).map_err(|_error| LinearLayoutError::TooLong)?;
         executed.push(code);
-        data.push(u32::try_from(data_pointer).map_err(|_error| LinearLayoutError::TooLong)?);
+        let data_address =
+            u32::try_from(data_pointer).map_err(|_error| LinearLayoutError::TooLong)?;
+        data.push(data_address);
+        writes.push(planned_data_write(*operation, data_address, source.len())?);
         if *operation == LinearOpcode::Halt {
             break;
         }
@@ -379,6 +412,7 @@ fn derive_execution_positions(
         data,
         encrypted,
         executed,
+        writes,
     })
 }
 
@@ -410,6 +444,7 @@ pub fn admit_linear_layout(
     let path = derive_execution_positions(operations, source)?;
     Ok(LinearLayout {
         data_pointer_positions: path.data,
+        data_write_positions: path.writes,
         encrypted_code_positions: path.encrypted,
         executed_code_positions: path.executed,
         profile_fingerprint: profile.fingerprint(),

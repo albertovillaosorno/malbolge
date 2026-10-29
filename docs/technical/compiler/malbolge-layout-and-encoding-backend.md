@@ -63,10 +63,14 @@ that exact **current** data word plus one matches; targets must be forward and
 inside the output source. All skipped code cells must be no-op padding, so no
 future instruction is silently lost, and executed code is never revisited.
 
-The admitted artifact retains three aligned deterministic execution witnesses:
-code-pointer positions, data-pointer positions and post-step code encryption
-addresses. The VM regression checks those positions step by step plus the
-actual encrypted memory word, including relocated rotate/crazy geometry.
+The admitted artifact retains four aligned deterministic execution witnesses:
+code-pointer positions, data-pointer positions, post-step code encryption
+addresses and optional rotate/crazy guest data-write addresses. The static
+checker rejects each data-write address inside the emitted source region.
+Normative traced VM steps independently check the write address against its
+actual semantic data read and any changed-cell delta, including when a
+write commits an unchanged value, as well as code XLAT2 encryption. This
+proves the bounded address separation, **not** input-dependent guest values.
 Real current/historical VM programs prove two forward jumps whose second
 target is read from skipped no-op data, then three jumps where the final
 target reads a **previously encrypted** no-op operand. Adversarial tests
