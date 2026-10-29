@@ -41,8 +41,8 @@ use layout::{
     encode_linear_layout,
 };
 use malbolge::{
-    ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, encrypt_profile_cell,
-    historical_profile,
+    ProfileMachine, ProfileRegisters, RunOutcome, current_profile, decode_profile_instruction,
+    encrypt_profile_cell, historical_profile,
 };
 
 fn verify_data_write_witness(
@@ -1794,6 +1794,10 @@ fn scalar_crazy_reference(mut data: u32, mut accumulator: u32, trits: u8) -> u32
     clippy::integer_division_remainder_used,
     reason = "independent ternary rotate and low-byte oracle requires exact integer math"
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "exact VM/data/byte outputs are compared across both profiles and 40 inputs"
+)]
 fn auto_relocation_guest_crazy_and_rotate_compute_independent_output() -> Result<(), String> {
     use PaddedForwardStep::{AutoRelocate, Instruction};
     let logical = [
@@ -1815,9 +1819,22 @@ fn auto_relocation_guest_crazy_and_rotate_compute_independent_output() -> Result
             layout.data_write_positions(),
             &[None, None, Some(40), None, Some(42), None, None,]
         );
-        for input in [0u8, 1, 2, 13, 127, 255] {
-            let mut vm = ProfileMachine::from_source(profile, layout.source(), vec![input])
-                .map_err(|error| format!("guest ternary VM load: {error:?}"))?;
+        let pristine = ProfileMachine::from_source(profile, layout.source(), Vec::new())
+            .map_err(|error| format!("guest ternary VM initial load: {error:?}"))?;
+        // A canonical source image is input-independent. Rebuild each fresh
+        // VM through its checked full-state constructor rather than repeat
+        // the large ternary memory recurrence for each input byte.
+        // Exercise the low five bits exhaustively and both sides of the
+        // byte sign/high-bit boundaries without 512 full-state VM rebuilds.
+        let cases = (0u8..=31).chain([63, 64, 127, 128, 191, 192, 254, 255]);
+        for input in cases {
+            let mut vm = ProfileMachine::from_state(
+                profile,
+                pristine.memory().to_vec(),
+                vec![input],
+                ProfileRegisters::default(),
+            )
+            .map_err(|error| format!("guest ternary VM state load: {error:?}"))?;
             let initial_crazy_word = vm
                 .memory_word(40)
                 .map_err(|error| format!("initial crazy data: {error:?}"))?;
