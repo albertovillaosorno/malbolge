@@ -36,8 +36,8 @@
 pub mod layout;
 
 use layout::{
-    LinearLayout, LinearLayoutError, LinearOpcode, LinearProfileIdentity, admit_linear_layout,
-    encode_linear_layout,
+    LinearLayout, LinearLayoutError, LinearOpcode, LinearProfileIdentity, PaddedForwardStep,
+    admit_linear_layout, encode_auto_padded_forward_layout, encode_linear_layout,
 };
 use malbolge::{
     ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, encrypt_profile_cell,
@@ -1310,6 +1310,264 @@ fn two_forward_jumps_then_relocation_consume_prior_xlat2_data() -> Result<(), St
         assert_eq!(vm.input_consumed(), 1);
         assert!(vm.output().is_empty());
         assert_eq!(vm.registers().data_pointer, 123);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "automatic destination and skipped no-ops are checked by normative VM"
+)]
+fn auto_padding_first_forward_jump_produces_exact_vm_jump_path() -> Result<(), String> {
+    use PaddedForwardStep::{Instruction, Jump};
+    let logical = [
+        Jump,
+        Instruction(LinearOpcode::InputWord),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ];
+    for profile in [current_profile(), historical_profile()] {
+        let expanded = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("auto first jump: {error:?}"))?;
+        let dest = jump_target(0)?;
+        assert_eq!(
+            expanded.logical_code_positions(),
+            &[0, dest, dest.saturating_add(1), dest.saturating_add(2)]
+        );
+        assert_eq!(
+            expanded.operations().len(),
+            usize::try_from(dest).unwrap_or_default().saturating_add(3)
+        );
+        assert_eq!(
+            expanded.operations().first(),
+            Some(&LinearOpcode::JumpForward { target: dest })
+        );
+        let skipped = expanded
+            .operations()
+            .get(1..usize::try_from(dest).unwrap_or_default())
+            .ok_or("missing auto-generated gap")?;
+        assert!(
+            skipped
+                .iter()
+                .all(|operation| *operation == LinearOpcode::NoOperation)
+        );
+        let independent = encode_linear_layout(profile, expanded.operations())
+            .map_err(|error| format!("independent auto re-admission: {error:?}"))?;
+        assert_eq!(expanded.layout(), &independent);
+        let mut vm = ProfileMachine::from_source(profile, independent.source(), vec![0xe1])
+            .map_err(|error| format!("auto first jump VM: {error:?}"))?;
+        verify_execution_witness(&mut vm, &independent)?;
+        assert_eq!(vm.output(), &[0xe1]);
+        assert_eq!(vm.input_consumed(), 1);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "two jumps and relocated arithmetic are independently checked"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "multiple code/data transitions require exact physical address assertions"
+)]
+fn auto_padding_two_hop_jump_then_relocation_matches_manual_vm_source() -> Result<(), String> {
+    use PaddedForwardStep::{Instruction, Jump};
+    let mut logical = vec![Instruction(LinearOpcode::InputWord)];
+    logical.resize(48, Instruction(LinearOpcode::NoOperation));
+    logical.extend([
+        Jump,
+        Instruction(LinearOpcode::NoOperation),
+        Jump,
+        Instruction(LinearOpcode::RelocateDataPointer),
+        Instruction(LinearOpcode::RotateData),
+        Instruction(LinearOpcode::CrazyData),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    for profile in [current_profile(), historical_profile()] {
+        let expanded = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("two-jump automatic planning: {error:?}"))?;
+        assert_eq!(expanded.logical_code_positions().get(48), Some(&48));
+        assert_eq!(expanded.logical_code_positions().get(49), Some(&51));
+        assert_eq!(expanded.logical_code_positions().get(50), Some(&52));
+        assert_eq!(expanded.logical_code_positions().get(51), Some(&69));
+        assert_eq!(expanded.logical_code_positions().last(), Some(&72));
+        assert_eq!(expanded.operations(), two_jump_then_relocation_operations());
+        let expected = encode_linear_layout(profile, &two_jump_then_relocation_operations())
+            .map_err(|error| format!("manual fixture re-encoding: {error:?}"))?;
+        assert_eq!(expanded.layout(), &expected);
+        let mut vm = ProfileMachine::from_source(profile, expanded.layout().source(), vec![0x5f])
+            .map_err(|error| format!("auto double-jump real VM: {error:?}"))?;
+        verify_execution_witness(&mut vm, expanded.layout())?;
+        assert_eq!(vm.input_consumed(), 1);
+        assert_eq!(vm.registers().data_pointer, 123);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "self-modified triple-jump source is compared against the real VM"
+)]
+fn auto_padding_three_hops_reuses_xlat2_encrypted_operands() -> Result<(), String> {
+    use PaddedForwardStep::{Instruction, Jump};
+    let mut logical = vec![Instruction(LinearOpcode::InputWord)];
+    logical.resize(26, Instruction(LinearOpcode::NoOperation));
+    logical.push(Jump);
+    logical.resize(
+        logical.len().saturating_add(29),
+        Instruction(LinearOpcode::NoOperation),
+    );
+    logical.push(Jump);
+    logical.resize(
+        logical.len().saturating_add(15),
+        Instruction(LinearOpcode::NoOperation),
+    );
+    logical.extend([
+        Jump,
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    for profile in [current_profile(), historical_profile()] {
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("three jumps auto layout: {error:?}"))?;
+        assert_eq!(artifact.operations().len(), 127);
+        let explicit = encode_linear_layout(profile, &{
+            (0..127usize)
+                .map(|position| match position {
+                    0 => LinearOpcode::InputWord,
+                    26 => LinearOpcode::JumpForward { target: 73 },
+                    102 => LinearOpcode::JumpForward { target: 107 },
+                    122 => LinearOpcode::JumpForward { target: 125 },
+                    125 => LinearOpcode::OutputByte,
+                    126 => LinearOpcode::Halt,
+                    _ => LinearOpcode::NoOperation,
+                })
+                .collect::<Vec<_>>()
+        })
+        .map_err(|error| format!("three-jump manual plan: {error:?}"))?;
+        assert_eq!(artifact.layout(), &explicit);
+        let mut vm = ProfileMachine::from_source(profile, artifact.layout().source(), vec![0x91])
+            .map_err(|error| format!("three-jump auto VM: {error:?}"))?;
+        verify_execution_witness(&mut vm, artifact.layout())?;
+        assert_eq!(vm.output(), &[0x91]);
+    }
+    Ok(())
+}
+
+#[test]
+fn auto_padding_rejects_nonforward_and_hostile_logical_plans() {
+    use PaddedForwardStep::{Instruction, Jump};
+    let profile = current_profile();
+    assert_eq!(
+        encode_auto_padded_forward_layout(profile, &[Jump]),
+        Err(LinearLayoutError::TooShort)
+    );
+    assert_eq!(
+        encode_auto_padded_forward_layout(profile, &[Instruction(LinearOpcode::InputWord), Jump,]),
+        Err(LinearLayoutError::MissingHalt)
+    );
+    assert_eq!(
+        encode_auto_padded_forward_layout(
+            profile,
+            &[
+                Instruction(LinearOpcode::JumpForward { target: 100 }),
+                Instruction(LinearOpcode::Halt),
+            ]
+        ),
+        Err(LinearLayoutError::JumpPathUnsupported)
+    );
+    assert_eq!(
+        encode_auto_padded_forward_layout(
+            profile,
+            &[
+                Instruction(LinearOpcode::RelocateDataPointer),
+                Jump,
+                Instruction(LinearOpcode::Halt),
+            ]
+        ),
+        Err(LinearLayoutError::JumpPathUnsupported)
+    );
+    assert_eq!(
+        encode_auto_padded_forward_layout(
+            profile,
+            &[
+                Instruction(LinearOpcode::Halt),
+                Instruction(LinearOpcode::NoOperation),
+                Instruction(LinearOpcode::Halt),
+            ]
+        ),
+        Err(LinearLayoutError::EarlyHalt { position: 0 })
+    );
+    let mut plan = vec![Instruction(LinearOpcode::NoOperation); 127];
+    plan.extend([Jump, Instruction(LinearOpcode::Halt)]);
+    assert_eq!(
+        encode_auto_padded_forward_layout(profile, &plan),
+        Err(LinearLayoutError::JumpPathUnsupported)
+    );
+    let oversized = vec![Instruction(LinearOpcode::NoOperation); 4097];
+    assert_eq!(
+        encode_auto_padded_forward_layout(profile, &oversized),
+        Err(LinearLayoutError::TooLong)
+    );
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "all 94 graphical phases are independently inverted and checked"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "exhaustive expected success/failure and re-admission matrix"
+)]
+fn auto_padding_matches_all_first_jump_decoder_phases() -> Result<(), String> {
+    use PaddedForwardStep::{Instruction, Jump};
+    for profile in [current_profile(), historical_profile()] {
+        let mut admitted = 0usize;
+        let mut rejected = 0usize;
+        for phase in 0..94usize {
+            let mut logical = vec![Instruction(LinearOpcode::NoOperation); phase];
+            logical.extend([
+                Jump,
+                Instruction(LinearOpcode::OutputByte),
+                Instruction(LinearOpcode::Halt),
+            ]);
+            let jump_pos = u32::try_from(phase).map_err(|error| error.to_string())?;
+            let target = jump_target(jump_pos)?;
+            let result = encode_auto_padded_forward_layout(profile, &logical);
+            if target <= jump_pos.saturating_add(1) {
+                assert_eq!(result, Err(LinearLayoutError::JumpPathUnsupported));
+                rejected = rejected.saturating_add(1);
+                continue;
+            }
+            let admitted_layout =
+                result.map_err(|error| format!("expected phase {phase} to admit: {error:?}"))?;
+            assert_eq!(
+                admitted_layout.logical_code_positions().get(phase),
+                Some(&jump_pos)
+            );
+            assert_eq!(
+                admitted_layout.logical_code_positions().get(phase + 1),
+                Some(&target)
+            );
+            assert_eq!(
+                admitted_layout.logical_code_positions().last(),
+                Some(&target.saturating_add(1))
+            );
+            assert_eq!(
+                admitted_layout.layout(),
+                &encode_linear_layout(profile, admitted_layout.operations())
+                    .map_err(|error| format!("phase {phase} admission: {error:?}"))?
+            );
+            admitted = admitted.saturating_add(1);
+        }
+        assert!(admitted > 0);
+        assert!(rejected > 0);
+        assert_eq!(admitted.saturating_add(rejected), 94);
     }
     Ok(())
 }
