@@ -210,6 +210,8 @@ pub enum LinearLayoutError {
 /// Unreachable graphical no-op source cells are inserted by the planner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaddedForwardStep {
+    /// Emit reached no-op phases until a `j` safely relocates future data.
+    AutoRelocate,
     /// A reached machine instruction other than explicit `JumpForward`.
     Instruction(LinearOpcode),
     /// Emit a strictly forward code jump and pad its skipped source cells.
@@ -255,6 +257,46 @@ struct ForwardPaddingBuilder<'profile> {
 }
 
 impl ForwardPaddingBuilder<'_> {
+    fn auto_relocate(&mut self, remaining: usize) -> Result<usize, LinearLayoutError> {
+        if self.relocated {
+            return Err(LinearLayoutError::UnsafeDataPlacement);
+        }
+        // The address-sensitive decoder cycles over 94 graphical phases.
+        // Search only this bounded first cycle and never invent a source-
+        // overlapping data base just to make a layout admissible.
+        for _phase in 0..94usize {
+            let position = self.operations.len();
+            let planned_length = position
+                .checked_add(1)
+                .and_then(|size| size.checked_add(remaining))
+                .ok_or(LinearLayoutError::TooLong)?;
+            if planned_length > MAX_LINEAR_CELLS {
+                return Err(LinearLayoutError::TooLong);
+            }
+            let data_word = if self.data_pointer == position {
+                u32::from(unique_graphical_cell(
+                    self.profile,
+                    LinearOpcode::RelocateDataPointer,
+                    position,
+                )?)
+            } else {
+                *self
+                    .shadow
+                    .get(self.data_pointer)
+                    .ok_or(LinearLayoutError::UnsafeDataPlacement)?
+            };
+            if usize::try_from(data_word)
+                .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
+                >= planned_length
+            {
+                return self.instruction(LinearOpcode::RelocateDataPointer);
+            }
+            let _filler = self.instruction(LinearOpcode::NoOperation)?;
+            self.data_pointer = self.data_pointer.saturating_add(1);
+        }
+        Err(LinearLayoutError::UnsafeDataPlacement)
+    }
+
     fn instruction(&mut self, operation: LinearOpcode) -> Result<usize, LinearLayoutError> {
         if matches!(operation, LinearOpcode::JumpForward { .. }) {
             return Err(LinearLayoutError::JumpPathUnsupported);
@@ -643,7 +685,7 @@ fn encrypt_padded_cell(shadow: &mut [u32], address: usize) -> Result<(), LinearL
 /// # Errors
 ///
 /// Rejects a jump with no skipped forward cell, malformed/oversized plans,
-/// post-relocation jumps, unsupported explicit jump targets, or any fully
+/// unplaceable safe relocation, post-relocation jumps, explicit targets, or any fully
 /// expanded source rejected by the independent `encode_linear_layout` check.
 pub fn encode_auto_padded_forward_layout(
     profile: &'static ProfileDescriptor,
@@ -663,8 +705,14 @@ pub fn encode_auto_padded_forward_layout(
         relocated: false,
         shadow: Vec::with_capacity(logical.len()),
     };
-    for step in logical {
+    for (logical_index, step) in logical.iter().enumerate() {
         let position = match step {
+            PaddedForwardStep::AutoRelocate => {
+                let remaining = logical
+                    .len()
+                    .saturating_sub(logical_index.saturating_add(1));
+                builder.auto_relocate(remaining)?
+            }
             PaddedForwardStep::Jump => builder.jump()?,
             PaddedForwardStep::Instruction(operation) => builder.instruction(*operation)?,
         };

@@ -1571,3 +1571,119 @@ fn auto_padding_matches_all_first_jump_decoder_phases() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "auto-chosen safe relocation and real data mutations are independently checked"
+)]
+fn auto_relocation_finds_first_safe_decoder_phase_for_long_tail() -> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction};
+    let mut logical = vec![AutoRelocate];
+    logical.resize(45, Instruction(LinearOpcode::NoOperation));
+    logical.extend([
+        Instruction(LinearOpcode::RotateData),
+        Instruction(LinearOpcode::CrazyData),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    for profile in [current_profile(), historical_profile()] {
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("automatic data relocation: {error:?}"))?;
+        assert_eq!(artifact.logical_code_positions().first(), Some(&8));
+        assert_eq!(artifact.logical_code_positions().last(), Some(&55));
+        assert_eq!(artifact.operations().len(), 56);
+        assert!(
+            artifact
+                .operations()
+                .get(..8)
+                .ok_or("missing prefix")?
+                .iter()
+                .all(|operation| *operation == LinearOpcode::NoOperation)
+        );
+        assert_eq!(
+            artifact.operations().get(8),
+            Some(&LinearOpcode::RelocateDataPointer)
+        );
+        assert_eq!(artifact.layout().source().get(8).copied(), Some(126));
+        assert_eq!(
+            artifact
+                .layout()
+                .data_write_positions()
+                .iter()
+                .filter(|address| address.is_some())
+                .count(),
+            2
+        );
+        let manual = encode_linear_layout(profile, artifact.operations())
+            .map_err(|error| format!("manual relocation re-admission: {error:?}"))?;
+        assert_eq!(artifact.layout(), &manual);
+        let mut vm = ProfileMachine::from_source(profile, manual.source(), Vec::new())
+            .map_err(|error| format!("real auto relocation loader: {error:?}"))?;
+        verify_execution_witness(&mut vm, &manual)?;
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "auto relocation after two self-modifying jumps exactly matches VM"
+)]
+fn auto_relocation_after_two_jumps_uses_modified_data_operand() -> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    let mut logical = vec![Instruction(LinearOpcode::InputWord)];
+    logical.resize(48, Instruction(LinearOpcode::NoOperation));
+    logical.extend([
+        Jump,
+        Instruction(LinearOpcode::NoOperation),
+        Jump,
+        AutoRelocate,
+        Instruction(LinearOpcode::RotateData),
+        Instruction(LinearOpcode::CrazyData),
+        Instruction(LinearOpcode::Halt),
+    ]);
+    for profile in [current_profile(), historical_profile()] {
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("automatic jump+relocation: {error:?}"))?;
+        assert_eq!(artifact.logical_code_positions().get(51), Some(&69));
+        let explicit = encode_linear_layout(profile, &two_jump_then_relocation_operations())
+            .map_err(|error| format!("manual two jump relocate: {error:?}"))?;
+        assert_eq!(artifact.layout(), &explicit);
+        let mut vm = ProfileMachine::from_source(profile, artifact.layout().source(), vec![0x5a])
+            .map_err(|error| format!("auto jump+relocation VM: {error:?}"))?;
+        verify_execution_witness(&mut vm, artifact.layout())?;
+        assert_eq!(vm.input_consumed(), 1);
+    }
+    Ok(())
+}
+
+#[test]
+fn auto_relocation_rejects_unsafe_capacity_and_duplicate_data_moves() {
+    use PaddedForwardStep::{AutoRelocate, Instruction, Jump};
+    let profile = current_profile();
+    let mut insufficient = vec![AutoRelocate];
+    insufficient.resize(127, Instruction(LinearOpcode::NoOperation));
+    insufficient.push(Instruction(LinearOpcode::Halt));
+    assert_eq!(
+        encode_auto_padded_forward_layout(profile, &insufficient),
+        Err(LinearLayoutError::UnsafeDataPlacement)
+    );
+    assert_eq!(
+        encode_auto_padded_forward_layout(
+            profile,
+            &[
+                Instruction(LinearOpcode::RelocateDataPointer),
+                AutoRelocate,
+                Instruction(LinearOpcode::Halt),
+            ]
+        ),
+        Err(LinearLayoutError::UnsafeDataPlacement)
+    );
+    assert_eq!(
+        encode_auto_padded_forward_layout(
+            profile,
+            &[AutoRelocate, Jump, Instruction(LinearOpcode::Halt),]
+        ),
+        Err(LinearLayoutError::JumpPathUnsupported)
+    );
+}
