@@ -665,6 +665,16 @@ instruction.
   arithmetic and value returns fail closed. This proves only successful byte
   I/O traces with unobserved ABI/return; EOF, error behavior, and general
   target realization remain unimplemented.
+- A separate `typed-echo-adapter` now accepts independently admitted
+  canonical typed-IR module **bytes** rather than a caller-fabricated
+  projection. It converts a complete zero-argument void successful-byte echo
+  function into exact typed-source-bound ternary IR, re-admits canonical
+  MCTR bytes, and emits verified code for the current profile.
+  It rejects unsupported function shapes/SSA dataflow before emission and
+  preserves ABI/source/profile/SSA/span identity. Real normative VM regressions
+  verify successful byte output; generated MCTR bytes are consumable by the
+  existing `malbolge_layout` publisher. It does not supply general typed IR
+  lowering, guest EOF/error semantics or source authentication.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

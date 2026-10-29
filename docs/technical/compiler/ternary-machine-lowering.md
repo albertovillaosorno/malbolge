@@ -1069,6 +1069,28 @@ An over-4096-cell trace is rejected by final layout admission.
 This does not implement EOF/error status handling, arbitrary computation, a
 callable guest function, or a general C-to-Malbolge pipeline.
 
+### Canonical Typed-IR Byte-Echo Adapter
+
+The separate `typed-echo-adapter` now closes the earlier gap where a caller
+had to create the inbound ternary semantic projection by hand. It parses and
+revalidates complete **canonical** `malbolge-typed-ir-v1` bytes first, then
+projects every admitted `ByteInput`/`ByteOutput` effect, original SSA ID and
+source span directly from the independently admitted typed module. It supports
+exactly one non-variadic zero-argument void function, a single phi-free entry
+block, one or more adjacent identical-SSA successful `u8` input/output pairs,
+and no globals/proof obligations. Maximum 2047 pairs fit the bounded direct
+4095-cell layout. Unsupported types, functions, returns, source provenance,
+nonadjacent/reused SSA dataflow and profile drift reject before emission.
+
+Its output contains separately validated canonical `MCTR` bytes and the
+previously verified graphical target layout. Those MCTR bytes can be handed
+to the existing real `malbolge_layout --ternary-file` CLI to publish a raw
+source or profile capsule without adding a second file publisher. The new
+integration suite tests exact typed/ternary provenance and real VM byte
+output; it remains limited to successful byte I/O, not general typed-C,
+EOF/error behavior, guest calls, or ABI observable returns. Source SHA-256
+is still copied provenance rather than independent source authentication.
+
 ### Authoritative Inputs
 
 The first implementation must consume existing identities without renaming or

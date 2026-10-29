@@ -1,0 +1,71 @@
+schema: jig-function/v3
+identity:
+  id: typed-echo-adapter
+  node: function:typed-echo-adapter
+  path: src/compiler/typed-echo-adapter
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-compiler/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: compiler
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: admitted canonical typed-IR to ternary successful-byte echo projection
+    must_not: claim general C lowering or guest ABI and EOF semantics
+    split_when: full typed-IR compilation expands beyond one byte echo trace
+    merge_when: a general typed-IR adapter verifies the same exact sublanguage
+language_manifest: typed-echo-adapter.jig
+parts:
+  - id: part-0001
+    path: composition/lib.rs
+    kind: composition
+    language: rust
+    responsibility: Read canonical typed IR and lower checked byte effects to code.
+projects: []
+tests: []
+graph:
+  node: function:typed-echo-adapter
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:compiler
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:typed-echo-adapter
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal
