@@ -171,6 +171,10 @@ fn compare_published_direct_baseline(pairs: usize) -> Result<(), String> {
         .map_err(|error| format!("candidate: {error:?}"))?;
     let independently_expanded = admit_echo_macro(&original, current_profile(), &macro_bytes)
         .map_err(|error| format!("expanded candidate: {error:?}"))?;
+    let bound = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound candidate: {error:?}"))?;
+    let bound_expanded = admit_bound_echo_macro(&original, current_profile(), &bound)
+        .map_err(|error| format!("expanded bound candidate: {error:?}"))?;
     let wire = canonical_ternary_bytes(&original)
         .map_err(|error| format!("canonical source: {error:?}"))?;
     let input_path = fixture.path("source.mctr");
@@ -194,9 +198,9 @@ fn compare_published_direct_baseline(pairs: usize) -> Result<(), String> {
     }
     let actual =
         fs::read(&output_path).map_err(|error| format!("read published source: {error}"))?;
-    if actual != independently_expanded.source() {
+    if actual != independently_expanded.source() || actual != bound_expanded.source() {
         return Err(format!(
-            "published and independently expanded source diverge for {pairs} pairs"
+            "published, CEB1 and independently bound CEB2 source diverge for {pairs} pairs"
         ));
     }
     Ok(())
@@ -640,4 +644,35 @@ fn versioned_bound_pilot_documented_costs_remain_reproducible() {
     ] {
         assert_eq!(maximum_bound_runtime_cells(direct), allowance);
     }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent Python SHA-256 wire golden"
+)]
+fn bound_envelope_digest_matches_independent_canonical_wire_golden() -> Result<(), String> {
+    let original = program(7)?;
+    let encoded = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("encode bound golden: {error:?}"))?;
+    // Independently generated using Python hashlib.sha256 over:
+    // b"CEB2-ternary-profile-v1\0" + selected fingerprint UTF-8 + b"\0" +
+    // 587 exact bytes of canonical MCTR for the fixed seven-pair source().
+    // The vector tests not only SHA-256 rounds but also envelope framing.
+    assert_eq!(
+        current_profile().fingerprint(),
+        "malbolge-profile-v1:sha256:8a93ad8fee1d3be48c432c23a74cff5ed50d85e07444dcecece103e4fe22c16e",
+    );
+    let canonical = canonical_ternary_bytes(&original)
+        .map_err(|error| format!("canonical golden source: {error:?}"))?;
+    assert_eq!(canonical.len(), 587);
+    assert_eq!(
+        encoded[6..].iter().fold(String::new(), |mut text, byte| {
+            use std::fmt::Write as _;
+            assert!(write!(&mut text, "{byte:02x}").is_ok());
+            text
+        }),
+        "5b65a62d87e7a3a3e9c938065ff4f258e4b12be3ff2932891e93523a5f1e7ebc",
+    );
+    Ok(())
 }

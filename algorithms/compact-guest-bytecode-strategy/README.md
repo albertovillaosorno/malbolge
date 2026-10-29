@@ -90,6 +90,14 @@ anchor, source availability, or any real interpreter. It also does not reduce
 execution time. The CEB2 envelope is expanded **on the host** to the exact
 same executable **direct** source, never interpreted by a guest bytecode VM.
 
+The exact v1 digest framing also has a cross-language golden vector: Python
+`hashlib.sha256` independently hashes the profile fingerprint and the 587-byte
+canonical MCTR for seven pairs. The regression pins the 32-byte result and
+profile identity, preventing Rust encoder/checker co-drift. For 1, 7, 64 and
+256 pairs, the real external `malbolge_layout --ternary-file` publisher now
+also yields bytes identical to *both* CEB1 and CEB2 host expansions. This
+still publishes only direct programs, not resident guest bytecode.
+
 ## Status
 
 No VM-resident bytecode runtime has been implemented. No guest-interpreted

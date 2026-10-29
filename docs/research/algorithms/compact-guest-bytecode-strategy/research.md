@@ -180,6 +180,14 @@ byte-binding test. No Malbolge-resident SHA-256, compact-bytecode interpreter,
 or authentic source anchor is available; verified runtime benefits remain
 unknown. CEB2 remains a non-executable proposal.
 
+A fixed seven-pair wire framing vector was independently recalculated with
+Python's standard-library SHA-256 (587 canonical MCTR bytes and selected
+profile fingerprint); the Rust regression pins its exact digest, preventing a
+matching encoder/decoder bug from silently changing this research format.
+Across four bounded sizes, the actual external `malbolge_layout` publisher
+also emits the same direct source as both candidate expanders. The comparison
+is byte-for-byte but still offers **no** resident guest-bytecode execution.
+
 ## Threats to Validity
 
 The pilot has no guest interpreter, no real bytecode loader, no linked data

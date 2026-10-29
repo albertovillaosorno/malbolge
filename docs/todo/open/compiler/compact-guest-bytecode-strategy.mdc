@@ -80,6 +80,9 @@ code-size explosion or compilation cost.
   Its 38-byte optimistic size cost leaves a two-cell missing-runtime allowance
   at 20 echo pairs, but does not prove physical memory-cell packing, source
   authenticity, guest execution, or any overall compilation benefit.
+  Independent Python SHA-256 framing yields an exact pinned seven-pair digest;
+  the actual external source publisher matches both CEB1 and CEB2 host
+  expansion for 1, 7, 64, and 256 pairs, without guest bytecode execution.
 
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
