@@ -32,14 +32,19 @@ requires exactly one encoding at each address, and independently re-admits
 the emitted source with canonical profile ID and fingerprint.
 
 This slice requires two to 4096 code cells and one final halt. It admits at
-most one strictly forward code jump before a terminal halt. Rotate/crazy
-are admitted only when a `j` data-pointer relocation is at code position
-zero and the encoded cell-zero value is at
-least the emitted source length. The VM normally increments code and data
-pointers together, so unplaced rotate/crazy could overwrite the current
-instruction before its post-step encryption. After the prologue, the checked
-address offset ensures all subsequent data-cell mutations remain outside
-emitted code. Missing, late, or potentially aliasing relocation fails closed.
+most one strictly forward code jump before a terminal halt. Rotate/crazy are
+admitted only after one `j` data-pointer relocation; earlier instructions
+may perform no-op or raw machine I/O, but no jump or data mutation. Before
+that relocation `D == C`, so the originally encoded graphical code cell at
+the relocation's chosen address becomes the new data base. The exact cell
+value must be at least the complete emitted source length. The checked
+offset keeps all later data mutations disjoint from source-code cells.
+Missing, duplicate, or potentially overlapping relocations fail closed.
+
+A real VM boundary regression selects a later inverse-decode phase with a
+greater encoded data address than position zero, admits a longer safe layout
+including rotate/crazy, compares every code-position/encryption witness, and
+rejects an otherwise identical layout extended one cell past the bound.
 
 The forward jump (`i`) is admitted only without data-pointer relocation: at
 that moment the data pointer still equals the code pointer, so the jump reads
@@ -62,10 +67,10 @@ jump and relocated arithmetic paths. This witness is **not** a proof of
 arbitrary input/output equivalence or all runtime memory mutations.
 
 `tests/malbolge_layout.rs` exercises 94 decode phases for profile byte I/O,
-executes real byte I/O, relocated rotate/crazy, and first forward-jump skip
-programs under both the historical and current normative `ProfileMachine`,
-and rejects malformed
-lengths, halts, profile identity, altered source and aliasing placements.
+executes real byte I/O, early and later-phase relocated rotate/crazy, and
+first forward-jump skip programs under the current and historical normative
+`ProfileMachine`. It rejects malformed lengths, halts, profile identity,
+altered source and aliasing placements.
 
 This is a *first machine-code slice*, not C-to-`.malbolge` compilation:
 no guest data/global layout, general IR lowering, backward code jumps,

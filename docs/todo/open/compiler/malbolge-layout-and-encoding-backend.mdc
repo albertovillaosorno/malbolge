@@ -52,13 +52,17 @@ emission.
   normative graphical decoding over all 94 source-cell phases, preserves the
   immutable profile ID/fingerprint, and independently admits each emitted
   byte. Accepted operations are no-op, machine I/O, rotate/crazy, a single
-  optional data-pointer relocation (`j`) at code position zero, and final
-  halt. Two to 4096 code cells are admitted; early/missing halts reject.
+  optional data-pointer relocation (`j`) before arithmetic, and final halt.
+  Two to 4096 code cells are admitted; early/missing halts reject.
 - Crucial alias evidence: data and code pointers normally advance together,
   so an unplaced rotate/crazy can modify its own code cell and trigger a VM
-  encryption error. Relocated arithmetic requires the original encoded code
-  cell zero to address data beyond the complete emitted source length.
-  Nonrelocated, late-relocated or potentially overlapping layouts fail closed.
+  encryption error. Relocated arithmetic requires the original encoded `j`
+  cell at its chosen phase to address data beyond the complete emitted
+  source length; it can follow an unmodified prefix of no-op or raw byte I/O.
+  A later-phase VM regression admits a larger safe code/data layout than
+  phase zero, proves code-pointer/encryption state stepwise, and rejects a
+  one-cell extension. Missing, duplicate, early-arithmetic or overlapping
+  relocations fail closed.
 - `tests/malbolge_layout.rs` checks all 94 decode phases for both canonical
   profile byte-I/O operations, executes actual byte I/O and relocated ternary
   rotate/crazy instructions through the current and historical profile VMs,

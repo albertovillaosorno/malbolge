@@ -66,7 +66,7 @@ pub enum LinearOpcode {
     NoOperation,
     /// Emit one byte using the profile's output instruction.
     OutputByte,
-    /// Redirect the data pointer through memory word zero at code position 0.
+    /// Redirect the data pointer from the original graphical code cell.
     RelocateDataPointer,
     /// Rotate the data-pointer word one trit to the right.
     RotateData,
@@ -213,16 +213,20 @@ fn validate_shape(
     {
         return Err(LinearLayoutError::EarlyHalt { position });
     }
-    let relocated = operations.first() == Some(&LinearOpcode::RelocateDataPointer);
-    let late_relocation = operations
+    let relocation = operations
         .iter()
-        .skip(1)
-        .any(|op| *op == LinearOpcode::RelocateDataPointer);
-    let unplaced_arithmetic = !relocated
-        && operations
+        .position(|op| *op == LinearOpcode::RelocateDataPointer);
+    let second_relocation = relocation.is_some_and(|position| {
+        operations
             .iter()
-            .any(|op| matches!(op, LinearOpcode::CrazyData | LinearOpcode::RotateData));
-    if late_relocation || unplaced_arithmetic {
+            .skip(position.saturating_add(1))
+            .any(|op| *op == LinearOpcode::RelocateDataPointer)
+    });
+    let unplaced_arithmetic = operations.iter().enumerate().any(|(position, op)| {
+        matches!(op, LinearOpcode::CrazyData | LinearOpcode::RotateData)
+            && relocation.is_none_or(|base| position <= base)
+    });
+    if second_relocation || unplaced_arithmetic {
         return Err(LinearLayoutError::UnsafeDataPlacement);
     }
     validate_jump_shape(operations)
@@ -234,7 +238,7 @@ fn validate_jump_shape(operations: &[LinearOpcode]) -> Result<(), LinearLayoutEr
         let LinearOpcode::JumpForward { target } = operation else {
             continue;
         };
-        if first.is_some() || operations.first() == Some(&LinearOpcode::RelocateDataPointer) {
+        if first.is_some() || operations.contains(&LinearOpcode::RelocateDataPointer) {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
         let target_position =
@@ -348,9 +352,11 @@ pub fn admit_linear_layout(
     if source.len() != operations.len() {
         return Err(LinearLayoutError::SourceLengthMismatch);
     }
-    if operations.first() == Some(&LinearOpcode::RelocateDataPointer)
+    if let Some(position) = operations
+        .iter()
+        .position(|op| *op == LinearOpcode::RelocateDataPointer)
         && source
-            .first()
+            .get(position)
             .is_none_or(|byte| source.len() > usize::from(*byte))
     {
         return Err(LinearLayoutError::UnsafeDataPlacement);

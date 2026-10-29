@@ -333,6 +333,19 @@ fn relocation_proofs_reject_aliases_and_unplaced_arithmetic() {
             profile,
             &[
                 LinearOpcode::NoOperation,
+                LinearOpcode::CrazyData,
+                LinearOpcode::RelocateDataPointer,
+                LinearOpcode::Halt,
+            ]
+        ),
+        Err(LinearLayoutError::UnsafeDataPlacement),
+    );
+    assert_eq!(
+        encode_linear_layout(
+            profile,
+            &[
+                LinearOpcode::NoOperation,
+                LinearOpcode::RelocateDataPointer,
                 LinearOpcode::RelocateDataPointer,
                 LinearOpcode::Halt,
             ]
@@ -601,5 +614,60 @@ fn forward_jump_cannot_mix_with_data_relocation() -> Result<(), String> {
         encode_linear_layout(current_profile(), &ops),
         Err(LinearLayoutError::JumpPathUnsupported),
     );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "relocation capacity and complete VM execution are asserted"
+)]
+fn later_relocation_uses_its_own_code_phase_for_larger_data_safe_layout() -> Result<(), String> {
+    for profile in [current_profile(), historical_profile()] {
+        let selected = (1u32..94u32)
+            .find_map(|position| {
+                let byte = (33u32..=126u32)
+                    .find(|&byte| decode_profile_instruction(byte, position) == Some(b'j'))?;
+                (byte >= 80 && byte > position).then_some((position, byte))
+            })
+            .ok_or("no later relocation phase with larger code-data separation")?;
+        let (position, data_address) = selected;
+        let capacity = usize::try_from(data_address).map_err(|error| error.to_string())?;
+        let position_usize = usize::try_from(position).map_err(|error| error.to_string())?;
+        let mut operations = vec![LinearOpcode::NoOperation; capacity];
+        *operations
+            .get_mut(position_usize)
+            .ok_or("relocation slot")? = LinearOpcode::RelocateDataPointer;
+        *operations
+            .get_mut(position_usize.saturating_add(1))
+            .ok_or("rotate slot")? = LinearOpcode::RotateData;
+        *operations
+            .get_mut(position_usize.saturating_add(2))
+            .ok_or("crazy slot")? = LinearOpcode::CrazyData;
+        *operations.last_mut().ok_or("halt slot")? = LinearOpcode::Halt;
+        let artifact = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("later data relocation: {error:?}"))?;
+        assert_eq!(
+            artifact
+                .source()
+                .get(position_usize)
+                .copied()
+                .ok_or("source relocation")?,
+            u8::try_from(data_address).map_err(|error| error.to_string())?,
+        );
+        assert!(artifact.source().len() > 40);
+        let mut machine = ProfileMachine::from_source(profile, artifact.source(), vec![])
+            .map_err(|error| format!("later relocation loader: {error:?}"))?;
+        verify_execution_witness(&mut machine, &artifact)?;
+        assert!(machine.registers().data_pointer > data_address);
+        assert!(machine.output().is_empty());
+        // Source position is unchanged, so one more code cell crosses the
+        // exact same encoded graphical data base and is rejected.
+        operations.insert(position_usize.saturating_add(1), LinearOpcode::NoOperation);
+        assert_eq!(
+            encode_linear_layout(profile, &operations),
+            Err(LinearLayoutError::UnsafeDataPlacement),
+        );
+    }
     Ok(())
 }
