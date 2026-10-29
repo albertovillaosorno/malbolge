@@ -27,7 +27,7 @@
 // - Usage:
 //   - `cargo test --test malbolge_layout` from repository root.
 // - Defaults:
-//   - No claims about full ternary IR, jumps, or live self-modifying code.
+//   - No claims about full ternary IR or revisitable mutable code.
 //
 
 //! Independent verifier and executable VM evidence for linear Malbolge code.
@@ -48,7 +48,20 @@ fn verify_execution_witness(
     machine: &mut ProfileMachine,
     layout: &LinearLayout,
 ) -> Result<(), String> {
+    if layout.data_pointer_positions().len() != layout.executed_code_positions().len() {
+        return Err(String::from("layout data witness cardinality mismatch"));
+    }
     for (step, &code) in layout.executed_code_positions().iter().enumerate() {
+        if machine.registers().data_pointer
+            != *layout
+                .data_pointer_positions()
+                .get(step)
+                .ok_or("missing data witness")?
+        {
+            return Err(String::from(
+                "runtime data pointer differs from layout proof",
+            ));
+        }
         if machine.registers().code_pointer != code {
             return Err(String::from("runtime code path differs from layout proof"));
         }
@@ -796,6 +809,193 @@ fn every_addressable_forward_jump_phase_has_exact_static_path() -> Result<(), St
             );
         }
         assert!(admitted >= 45);
+    }
+    Ok(())
+}
+
+/// Prove two true nonconsecutive jumps where the second derives its target
+/// from a skipped no-op *data* cell, not from the jump's own source cell.
+fn two_forward_jump_fixture() -> Vec<LinearOpcode> {
+    (0..128usize)
+        .map(|position| match position {
+            0 => LinearOpcode::InputWord,
+            36 => LinearOpcode::JumpForward { target: 63 },
+            63 => LinearOpcode::JumpForward { target: 126 },
+            126 => LinearOpcode::OutputByte,
+            127 => LinearOpcode::Halt,
+            _ => LinearOpcode::NoOperation,
+        })
+        .collect()
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "two real VM control transfers have exact witness assertions"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "stepwise code and data pointers, encryption, and I/O are checked"
+)]
+fn two_forward_jumps_read_evolving_data_pointer_cells_under_both_profiles() -> Result<(), String> {
+    let ops = two_forward_jump_fixture();
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &ops)
+            .map_err(|error| format!("two-jump encoding: {error:?}"))?;
+        assert_eq!(layout.source().len(), 128);
+        assert_eq!(layout.source().get(36).copied(), Some(62));
+        assert_eq!(layout.source().get(37).copied(), Some(125));
+        assert_ne!(layout.source().get(63).copied(), Some(125));
+        let expected_path: Vec<u32> = (0..=36).chain([63, 126, 127]).collect();
+        assert_eq!(layout.executed_code_positions(), expected_path);
+        assert_eq!(layout.encrypted_code_positions().last(), Some(&126));
+        assert!(layout.encrypted_code_positions().contains(&62));
+        assert!(layout.encrypted_code_positions().contains(&125));
+        let mut vm = ProfileMachine::from_source(profile, layout.source(), vec![0xe7])
+            .map_err(|error| format!("two-jump VM load: {error:?}"))?;
+        verify_execution_witness(&mut vm, &layout)?;
+        assert_eq!(vm.input_consumed(), 1);
+        assert_eq!(vm.output(), &[0xe7]);
+        assert_eq!(vm.registers().code_pointer, 127);
+        assert_eq!(vm.registers().data_pointer, 39);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "post-encryption data read is checked on both real VMs"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "two control transfers and operand encryption are checked against the VM"
+)]
+fn second_forward_jump_reads_previous_encrypted_padding_as_data() -> Result<(), String> {
+    let mut operations = vec![LinearOpcode::NoOperation; 127];
+    for (position, operation) in operations.iter_mut().enumerate() {
+        *operation = match position {
+            0 => LinearOpcode::InputWord,
+            26 => LinearOpcode::JumpForward { target: 73 },
+            118 => LinearOpcode::JumpForward { target: 125 },
+            125 => LinearOpcode::OutputByte,
+            126 => LinearOpcode::Halt,
+            _ => LinearOpcode::NoOperation,
+        };
+    }
+    for profile in [current_profile(), historical_profile()] {
+        let artifact = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("encrypted operand: {error:?}"))?;
+        assert_eq!(artifact.source().get(72).copied(), Some(90));
+        assert_eq!(encrypt_profile_cell(90), Some(124));
+        assert_eq!(artifact.data_pointer_positions().get(72), Some(&72));
+        assert_eq!(artifact.executed_code_positions().last(), Some(&126));
+        assert!(artifact.encrypted_code_positions().contains(&72));
+        assert!(artifact.encrypted_code_positions().contains(&124));
+        let mut vm = ProfileMachine::from_source(profile, artifact.source(), vec![0x91])
+            .map_err(|error| format!("encrypted operand VM load: {error:?}"))?;
+        verify_execution_witness(&mut vm, &artifact)?;
+        assert_eq!(vm.input_consumed(), 1);
+        assert_eq!(vm.output(), &[0x91]);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent source admission must reject forged jump geometry"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "distinct forged target, effectful gaps, and backward motion reject"
+)]
+fn second_jump_rejects_forged_data_target_and_effectful_padding() -> Result<(), String> {
+    let profile = current_profile();
+    let mut operations = two_forward_jump_fixture();
+    let original = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("original jump layout: {error:?}"))?;
+    let identity = LinearProfileIdentity {
+        fingerprint: original.profile_fingerprint(),
+        id: original.profile_id(),
+    };
+    if let Some(operation) = operations.get_mut(63) {
+        *operation = LinearOpcode::JumpForward { target: 125 };
+    }
+    assert_eq!(
+        admit_linear_layout(profile, &operations, original.source(), identity),
+        Err(LinearLayoutError::JumpTargetMismatch { position: 63 }),
+    );
+    assert_eq!(
+        encode_linear_layout(profile, &operations),
+        Err(LinearLayoutError::JumpTargetMismatch { position: 63 }),
+    );
+    if let Some(operation) = operations.get_mut(63) {
+        *operation = LinearOpcode::JumpForward { target: 126 };
+    }
+    for skipped in [37usize, 100usize, 125usize] {
+        if let Some(operation) = operations.get_mut(skipped) {
+            *operation = LinearOpcode::OutputByte;
+        }
+        assert_eq!(
+            encode_linear_layout(profile, &operations),
+            Err(LinearLayoutError::JumpPathUnsupported),
+        );
+        if let Some(operation) = operations.get_mut(skipped) {
+            *operation = LinearOpcode::NoOperation;
+        }
+    }
+    if let Some(operation) = operations.get_mut(63) {
+        *operation = LinearOpcode::JumpForward { target: 62 };
+    }
+    assert_eq!(
+        encode_linear_layout(profile, &operations),
+        Err(LinearLayoutError::JumpPathUnsupported),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "three jumps are validated against actual C/D/memory observations"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "exact three-jump VM witness and byte-effect assertions"
+)]
+fn three_forward_jumps_reuse_an_earlier_encrypted_operand() -> Result<(), String> {
+    let operations: Vec<LinearOpcode> = (0..127usize)
+        .map(|position| match position {
+            0 => LinearOpcode::InputWord,
+            26 => LinearOpcode::JumpForward { target: 73 },
+            102 => LinearOpcode::JumpForward { target: 107 },
+            122 => LinearOpcode::JumpForward { target: 125 },
+            125 => LinearOpcode::OutputByte,
+            126 => LinearOpcode::Halt,
+            _ => LinearOpcode::NoOperation,
+        })
+        .collect();
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("three jump layout: {error:?}"))?;
+        assert_eq!(layout.source().get(72).copied(), Some(90));
+        assert_eq!(encrypt_profile_cell(90), Some(124));
+        assert!(layout.encrypted_code_positions().contains(&72));
+        assert!(layout.encrypted_code_positions().contains(&106));
+        assert!(layout.encrypted_code_positions().contains(&124));
+        let third_index = layout
+            .executed_code_positions()
+            .iter()
+            .position(|position| *position == 122)
+            .ok_or("missing third jump in witness")?;
+        assert_eq!(layout.data_pointer_positions().get(third_index), Some(&72));
+        assert_eq!(layout.executed_code_positions().last(), Some(&126));
+        let mut vm = ProfileMachine::from_source(profile, layout.source(), vec![0xaf])
+            .map_err(|error| format!("three jump VM: {error:?}"))?;
+        verify_execution_witness(&mut vm, &layout)?;
+        assert_eq!(vm.output(), &[0xaf]);
+        assert_eq!(vm.input_consumed(), 1);
     }
     Ok(())
 }

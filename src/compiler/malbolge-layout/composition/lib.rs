@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Implement host guest computation, arbitrary jumps or claim C lowering.
 // - Allows:
-//   - Inputs: canonical profile, bounded opcodes, one safe forward jump.
+//   - Inputs: canonical profile, bounded opcodes, proven forward jump chain.
 //   - Outputs: graphical target bytes with exact decode/profile admission.
 //   - Side effects: none.
 // - Split-When:
@@ -36,8 +36,8 @@
 //! It proves an executable subset for which the code pointer advances by one
 //! position after every ordinary step, and stops inside the emitted source.
 //! Crazy/rotate may mutate memory only after a data-pointer relocation to
-//! an address beyond all emitted code. One forward code jump is admitted when
-//! its exact encoded source-cell target and skipped region can be proven.
+//! an address beyond all emitted code. Forward code jumps are admitted only
+//! when the exact evolving data-pointer cells and skipped padding prove them.
 
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
 
@@ -57,7 +57,7 @@ pub enum LinearOpcode {
     Halt,
     /// Read one raw profile word using the profile's input instruction.
     InputWord,
-    /// Jump to the exact forward code position derived from the current cell.
+    /// Jump to a forward address read from the current data-pointer cell.
     JumpForward {
         /// Required code address after the VM's automatic increment.
         target: u32,
@@ -90,6 +90,7 @@ impl LinearOpcode {
 /// One fully admitted graphical source with exact canonical profile identity.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LinearLayout {
+    data_pointer_positions: Vec<u32>,
     encrypted_code_positions: Vec<u32>,
     executed_code_positions: Vec<u32>,
     profile_fingerprint: &'static str,
@@ -98,6 +99,13 @@ pub struct LinearLayout {
 }
 
 impl LinearLayout {
+    /// Returns the data-pointer address read by each statically reachable step.
+    /// A jump reads its data-pointer cell even when code and data have diverged.
+    #[must_use]
+    pub fn data_pointer_positions(&self) -> &[u32] {
+        &self.data_pointer_positions
+    }
+
     /// Returns the ordered code addresses encrypted after each nonhalt step.
     /// Jumps encrypt the target-minus-one cell rather than the fetched cell.
     /// Data-memory writes by rotate/crazy are not included here.
@@ -186,8 +194,14 @@ pub enum LinearLayoutError {
 }
 
 struct DerivedExecutionPositions {
+    data: Vec<u32>,
     encrypted: Vec<u32>,
     executed: Vec<u32>,
+}
+
+struct JumpSuccessor {
+    encryption: usize,
+    position: usize,
 }
 
 fn validate_shape(
@@ -233,48 +247,30 @@ fn validate_shape(
 }
 
 fn validate_jump_shape(operations: &[LinearOpcode]) -> Result<(), LinearLayoutError> {
-    let mut first = None;
+    if operations.contains(&LinearOpcode::RelocateDataPointer)
+        && operations
+            .iter()
+            .any(|operation| matches!(operation, LinearOpcode::JumpForward { .. }))
+    {
+        return Err(LinearLayoutError::JumpPathUnsupported);
+    }
     for (position, operation) in operations.iter().enumerate() {
         let LinearOpcode::JumpForward { target } = operation else {
             continue;
         };
-        if first.is_some() || operations.contains(&LinearOpcode::RelocateDataPointer) {
-            return Err(LinearLayoutError::JumpPathUnsupported);
-        }
         let target_position =
             usize::try_from(*target).map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
         if target_position <= position || target_position >= operations.len() {
             return Err(LinearLayoutError::JumpPathUnsupported);
         }
-        first = Some((position, target_position));
-    }
-    if let Some((jump, target)) = first {
-        let skip_begin = jump.saturating_add(1);
+        let skip_begin = position.saturating_add(1);
         if operations
             .iter()
             .skip(skip_begin)
-            .take(target.saturating_sub(skip_begin))
-            .any(|operation| *operation != LinearOpcode::NoOperation)
+            .take(target_position.saturating_sub(skip_begin))
+            .any(|skipped| *skipped != LinearOpcode::NoOperation)
         {
             return Err(LinearLayoutError::JumpPathUnsupported);
-        }
-    }
-    Ok(())
-}
-
-fn validate_jump_source(
-    operations: &[LinearOpcode],
-    source: &[u8],
-) -> Result<(), LinearLayoutError> {
-    for (position, operation) in operations.iter().enumerate() {
-        let LinearOpcode::JumpForward { target } = operation else {
-            continue;
-        };
-        let Some(source_byte) = source.get(position).copied() else {
-            return Err(LinearLayoutError::SourceLengthMismatch);
-        };
-        if u32::from(source_byte).saturating_add(1) != *target {
-            return Err(LinearLayoutError::JumpTargetMismatch { position });
         }
     }
     Ok(())
@@ -299,34 +295,83 @@ fn unique_graphical_cell(
     candidate.ok_or(LinearLayoutError::NoEncoding { position })
 }
 
+fn jump_successor(
+    code_cells: &[u32],
+    data_pointer: usize,
+    position: usize,
+    target: u32,
+) -> Result<JumpSuccessor, LinearLayoutError> {
+    let data_cell = code_cells
+        .get(data_pointer)
+        .ok_or(LinearLayoutError::JumpPathUnsupported)?;
+    if data_cell.saturating_add(1) != target {
+        return Err(LinearLayoutError::JumpTargetMismatch { position });
+    }
+    let encryption = usize::try_from(target.saturating_sub(1))
+        .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
+    let successor =
+        usize::try_from(target).map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
+    Ok(JumpSuccessor {
+        encryption,
+        position: successor,
+    })
+}
+
 fn derive_execution_positions(
     operations: &[LinearOpcode],
+    source: &[u8],
 ) -> Result<DerivedExecutionPositions, LinearLayoutError> {
+    let mut data = Vec::new();
     let mut executed = Vec::new();
     let mut encrypted = Vec::new();
+    // Only source-addressed code cells are needed: jumps cannot coexist with
+    // relocation or arithmetic, and every data-pointer read is in this range.
+    let mut code_cells: Vec<u32> = source.iter().copied().map(u32::from).collect();
+    let mut data_pointer = 0usize;
     let mut position = 0usize;
     while let Some(operation) = operations.get(position) {
         let code = u32::try_from(position).map_err(|_error| LinearLayoutError::TooLong)?;
         executed.push(code);
-        match operation {
-            LinearOpcode::Halt => break,
+        data.push(u32::try_from(data_pointer).map_err(|_error| LinearLayoutError::TooLong)?);
+        if *operation == LinearOpcode::Halt {
+            break;
+        }
+        let (encryption_address, next_position) = match operation {
             LinearOpcode::JumpForward { target } => {
-                encrypted.push(target.saturating_sub(1));
-                position = usize::try_from(*target)
-                    .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
+                let next = jump_successor(&code_cells, data_pointer, position, *target)?;
+                (next.encryption, next.position)
             }
             LinearOpcode::CrazyData
             | LinearOpcode::InputWord
             | LinearOpcode::NoOperation
             | LinearOpcode::OutputByte
             | LinearOpcode::RelocateDataPointer
-            | LinearOpcode::RotateData => {
-                encrypted.push(code);
-                position = position.saturating_add(1);
-            }
-        }
+            | LinearOpcode::RotateData => (position, position.saturating_add(1)),
+            LinearOpcode::Halt => return Err(LinearLayoutError::EarlyHalt { position }),
+        };
+        let next_data_pointer = if *operation == LinearOpcode::RelocateDataPointer {
+            usize::try_from(
+                *code_cells
+                    .get(data_pointer)
+                    .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
+            )
+            .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
+            .saturating_add(1)
+        } else {
+            data_pointer.saturating_add(1)
+        };
+        let code_cell = code_cells
+            .get_mut(encryption_address)
+            .ok_or(LinearLayoutError::JumpPathUnsupported)?;
+        *code_cell = malbolge::encrypt_profile_cell(*code_cell)
+            .ok_or(LinearLayoutError::JumpPathUnsupported)?;
+        encrypted
+            .push(u32::try_from(encryption_address).map_err(|_error| LinearLayoutError::TooLong)?);
+        position = next_position;
+        data_pointer = next_data_pointer;
     }
     Ok(DerivedExecutionPositions {
+        data,
         encrypted,
         executed,
     })
@@ -366,9 +411,9 @@ pub fn admit_linear_layout(
             return Err(LinearLayoutError::DecodeMismatch { position });
         }
     }
-    validate_jump_source(operations, source)?;
-    let path = derive_execution_positions(operations)?;
+    let path = derive_execution_positions(operations, source)?;
     Ok(LinearLayout {
+        data_pointer_positions: path.data,
         encrypted_code_positions: path.encrypted,
         executed_code_positions: path.executed,
         profile_fingerprint: profile.fingerprint(),
@@ -380,8 +425,9 @@ pub fn admit_linear_layout(
 /// Assigns contiguous addresses from zero, encodes each desired decoded
 /// operation, and re-admits the entire graphical stream before publication.
 ///
-/// An optional forward jump derives its destination from the exact encoded
-/// code cell; all skipped positions must be inert graphical padding.
+/// Forward jumps read their target from the exact dynamically evolving
+/// data-pointer cell, not necessarily the jump's code cell. Every intervening
+/// skipped source position must be inert graphical padding.
 ///
 /// # Errors
 ///

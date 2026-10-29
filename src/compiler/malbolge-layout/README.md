@@ -4,8 +4,8 @@ The initial executable target encoder admits only bounded straight-line
 machine operations: `NoOperation`, profile `InputWord`/`OutputByte`, and final
 `Halt`. It can also emit either a single `RelocateDataPointer` (`j`) prologue
 followed by real `RotateData` (`*`) and `CrazyData` (`p`) operations, **or**
-one forward `JumpForward` (`i`). There is no conditional branch, backward
-jump, or executable external guest helper in this subset.
+a bounded chain of strictly forward `JumpForward` (`i`) code jumps. There is
+no conditional branch, backward jump, or executable external guest helper.
 
 The encoder assigns code addresses starting at zero and uniquely inverts the
 normative profile decoder over all 94 graphical source bytes. Independent
@@ -27,26 +27,32 @@ rotate/crazy placements at positions 1 through 93, under both declared
 profiles, and independently checks the encoded instruction and execution
 witness lengths. It complements the longer real-VM boundary regression.
 
-The forward jump can occur after nonmutating operations while the original
-code and data pointers still agree. The VM reads the graphical jump cell
-through `D`; its encoded byte plus one must equal the claimed forward target.
-Every skipped position must be graphical no-operation padding, and the target
-must remain inside the emitted source. The VM also encrypts the skipped
-`target - 1` cell on the jump step; no such cell may be reached later. To
-avoid unjustified data-pointer assumptions, jumps cannot mix with the
-relocation/arithmetic subset. Invalid jump targets, backward motion, a
-second jump, or effectful skipped code are rejected before publication.
-Every forward-decodable code position in phases 0 through 93 has separate
-profile-derived encoding, skip-geometry and witness-length regression coverage.
+Forward jumps (`i`) can now form a bounded strictly increasing code path.
+The **first** jump, while `D == C`, reads its own graphical code cell as a
+target word. Each later jump instead reads the memory cell selected by the
+*evolving data pointer*, potentially in an earlier skipped no-op region.
+The checker models the exact XLAT2 mutation after every nonhalt step,
+including `target - 1` after a jump. This matters because the next jump may
+read a cell **encrypted by an earlier jump**, rather than its original source
+byte. The independently admitted claimed target must equal the current data
+word plus one, be strictly forward, and stay inside emitted source.
 
-Every admitted layout now also exposes an ordered, deterministic control-flow
-witness: the exact reachable source-code positions (including the final halt)
-and the exact code cells encrypted after each nonhalt VM step. A jump's
-post-step encryption target is `target - 1`, not the jumped-from address;
-real VM tests compare the witness against stepwise code-pointer and XLAT2
-memory observations on both profiles. The record deliberately excludes
-rotate/crazy *data* writes, input-dependent accumulator values, and any claim
-of program-wide semantic verification.
+Every gap between a jumped-from and jumped-to source address must contain only
+canonical graphical no-op padding. A skipped jump, skipped I/O, backward edge,
+forged target, mixed data relocation/arithmetic, or inconsistent modified
+operand rejects before publication. No reachable source instruction is
+revisited; full mutable code-state or conditional branching remains open.
+The original one-jump 94-phase checks remain, and tests now execute real
+2- and 3-jump chains under both canonical VMs, including an encrypted operand
+read by the third jump and adversarial wrong-target/gap probes.
+
+Every admitted layout returns deterministic, step-indexed witnesses for **all
+three** relevant facts: reachable code pointer, data pointer at the start of
+each step, and code cell encrypted after each nonhalt step. The VM tests check
+all three against actual per-step behavior and XLAT2 memory updates under both
+profiles. Data-memory *content* writes by rotate/crazy are not part of this
+witness; those remain constrained by the proved code/data separation, and no
+arbitrary guest semantic equivalence is claimed.
 
 The source has two to 4096 cells (with a stricter bound for relocated data),
 contains exactly one final halt, and carries the canonical selected profile

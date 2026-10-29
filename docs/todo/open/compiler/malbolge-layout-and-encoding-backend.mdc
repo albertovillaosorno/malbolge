@@ -68,17 +68,17 @@ emission.
   profile byte-I/O operations, executes actual byte I/O and relocated ternary
   rotate/crazy instructions through the current and historical profile VMs,
   and rejects source/profile tampering, invalid lengths, early halt and unsafe
-  data placements. A new one-shot forward `i` jump now proves a source-cell-
-  derived target and graphical no-op skip region, rechecking its exact source
-  bytes; real current/historical VM runs confirm reachable output, skipped-
-  cell encryption, retained accumulator and exact-step halt. Forged target,
-  backward/repeated jump, effectful skip and relocation combination reject.
-  Another phase matrix covers each forward-decodable `i` position from 0 to
-  93 under both canonical profiles, checking target and static path geometry.
-  An admitted layout now returns exact ordered reachable code positions and
-  XLAT2 encryption targets for each nonhalt step; VM integration compares
-  each position and post-step code-cell value for the relocated arithmetic
-  and nonzero-position jump paths, without claiming guest-data write proof.
+  data placements. First forward `i` jump and a strictly increasing chain
+  now prove each code destination from the *evolving data-pointer* memory
+  word, including the operand overwritten by an earlier XLAT2 encryption.
+  The verifier tracks the bounded source-memory shadow, checks all skipped
+  positions are inert no-op padding, and rejects forged/retrograde targets,
+  effectful skipped gaps and mixing jumps with data relocation. Real current
+  and historical VMs execute 2- and 3-jump programs including post-encryption
+  operand reads, with byte I/O through the jumps. The independently admitted
+  layout now returns exact ordered code, data and encryption positions for
+  every step; VM tests compare all three and post-step XLAT2 code-cell values.
+  The original full 94-phase single-jump decoder matrix remains covered.
   General source-to-target lowering, backward/mutable code jumps, heap data,
   guest runtime linkage and self-modifying revisits remain unimplemented.
 - A first real explicit-profile source publisher, `malbolge_layout`, now

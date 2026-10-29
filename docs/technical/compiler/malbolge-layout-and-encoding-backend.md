@@ -25,14 +25,15 @@ This document governs the following declared TODO scope:
 `src/compiler/malbolge-layout/composition/lib.rs` owns a bounded position-
 sensitive source encoder for profile `InputWord`, `OutputByte`, `NoOperation`,
 `RotateData`, `CrazyData`, a single optional `RelocateDataPointer` prologue,
-one source-cell-derived `JumpForward`, and terminal `Halt`. The encoder
+bounded strictly forward `JumpForward` chains, and terminal `Halt`. The encoder
 assigns code positions from zero and inverts the normative VM instruction
 decoder over all 94 graphical source bytes,
 requires exactly one encoding at each address, and independently re-admits
 the emitted source with canonical profile ID and fingerprint.
 
-This slice requires two to 4096 code cells and one final halt. It admits at
-most one strictly forward code jump before a terminal halt. Rotate/crazy are
+This slice requires two to 4096 code cells and one final halt. It admits
+a sequence of strictly forward code jumps before a terminal halt.
+Rotate/crazy are
 admitted only after one `j` data-pointer relocation; earlier instructions
 may perform no-op or raw machine I/O, but no jump or data mutation. Before
 that relocation `D == C`, so the originally encoded graphical code cell at
@@ -49,32 +50,32 @@ An exhaustive phase matrix independently rechecks every safely placeable
 rotate/crazy opcode between positions 1 and 93 for both canonical profiles,
 including the exact output phase and the execution/encryption witness sizes.
 
-The forward jump (`i`) is admitted only without data-pointer relocation: at
-that moment the data pointer still equals the code pointer, so the jump reads
-its own *original graphical source cell* and sets the next code pointer to
-that byte plus one. The claimed target must be strictly forward and within
-emitted source length; every skipped cell is an inert `NoOperation` and no
-second jump may occur. The VM post-step encryption of `target - 1` cannot
-corrupt reachable instructions. The verifier re-derives the target from the
-unique encoded byte and rejects any forged or backward target, effectful
-gap, or jump mixed with relocated arithmetic. An independent finite-phase
-matrix now tests all forward-reachable `i` positions in phases 0 through 93,
-rechecking the decoded target, skipped source geometry, and witness lengths
-for both canonical profiles without claiming unbounded control-flow support.
+Forward code jumps (`i`) are admitted only when no data-pointer relocation
+or rotate/crazy operation is present. The first jump reads its own code cell
+through `D == C`; after it jumps, `D` and `C` diverge. Every later jump reads
+through the evolving data pointer instead, so its target **cannot** be
+inferred from the jump's own graphical code cell. The independent validator
+tracks an exact bounded source-memory shadow, applying canonical XLAT2 after
+each step at the real encryption address (`target - 1` for `i`, fetched code
+position otherwise). It accepts each claimed post-increment target only when
+that exact **current** data word plus one matches; targets must be forward and
+inside the output source. All skipped code cells must be no-op padding, so no
+future instruction is silently lost, and executed code is never revisited.
 
-The admitted artifact additionally retains an exact bounded execution witness
-of reachable code positions and post-step code-encryption targets. Ordinary
-steps encrypt their fetched code position, while `i` encrypts `target - 1`
-and terminal `v` encrypts nothing. The checker derives these positions from
-the independently admitted operation shape, with no runtime guest execution.
-Current and historical VM tests replay the exact path and compare every
-post-step XLAT2 memory update to this proof, including the noncontiguous
-jump and relocated arithmetic paths. This witness is **not** a proof of
-arbitrary input/output equivalence or all runtime memory mutations.
+The admitted artifact retains three aligned deterministic execution witnesses:
+code-pointer positions, data-pointer positions and post-step code encryption
+addresses. The VM regression checks those positions step by step plus the
+actual encrypted memory word, including relocated rotate/crazy geometry.
+Real current/historical VM programs prove two forward jumps whose second
+target is read from skipped no-op data, then three jumps where the final
+target reads a **previously encrypted** no-op operand. Adversarial tests
+reject forged later targets, backward destinations and effectful skipped
+regions. This evidence is not arbitrary branch lowering, a general data
+memory-write proof, or unbounded semantic equivalence.
 
 `tests/malbolge_layout.rs` exercises 94 decode phases for profile byte I/O,
 executes real byte I/O, early and later-phase relocated rotate/crazy, and
-first forward-jump skip programs under the current and historical normative
+single and multi-forward-jump skip programs under the canonical normative
 `ProfileMachine`. It rejects malformed lengths, halts, profile identity,
 altered source and aliasing placements.
 
