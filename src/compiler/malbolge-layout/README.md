@@ -70,6 +70,25 @@ cargo run --bin malbolge_layout -- \
   --output .temp/echo.malbolge -- input output halt
 ```
 
+For a self-describing modern-profile `.malbolge` that the general command
+runner can load directly, request the existing version-one capsule format:
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 \
+  --output .temp/modern-echo.malbolge --capsule -- input output halt
+```
+
+The optional `--capsule` flag follows `--output PATH` and precedes the `--`
+separator. The producer verifies the raw graphical machine code first, then
+wraps it in the canonical historical-safe fallback/space-tab sideband using
+the existing VM `build_capsule` API. Before publication it independently
+parses the capsule and checks canonical profile ID, fingerprint and exact raw
+payload bytes. The normal `malbolge` command runner then selects the embedded
+profile and executes the payload; the historical classic interpreter instead
+sees the fixed safe fallback (output `!`). External process tests verify both
+paths. The raw format remains available by omitting `--capsule`.
+
 It accepts an exact canonical `--profile` ID, a *new* `.malbolge` output path
 whose parent directory already exists, and `--` followed by 2–4096 closed
 opcode tokens: `nop`, `input`, `output`, `rotate`, `crazy`, `relocate`, `halt`,
@@ -92,12 +111,10 @@ An interrupted producer can leave an ignored, hidden `.stage-<pid>` file,
 but it cannot expose a partially written final target. A successful command
 prints a short informational diagnostic to stderr and writes no stdout.
 
-Raw `.malbolge` bytes do **not** embed a modern target-profile identity:
-consumers must supply the same explicit canonical profile separately, or
-use the separately specified versioned capsule mechanism when implemented
-in the full backend. In particular, the general-purpose command-line runner
-currently treats *raw* `.malbolge` files as classic programs, so this tool's
-modern-profile output must be loaded through a profile-aware VM, not treated
-as a self-describing program. The initial source publisher intentionally
-produces no claims of general C lowering, source maps, or guest-runtime
-linkage.
+Raw `.malbolge` bytes still do **not** embed a modern target-profile
+identity: consumers must supply the same explicit profile, or select the
+`--capsule` option. The general-purpose runner treats *raw* files as classic,
+whereas recognized capsules carry a pinned canonical profile/fingerprint and
+use the profile-aware interpreter. The initial publisher is a machine-subset
+emitter only; even with a capsule it does **not** claim C/ternary lowering,
+source maps, guest-runtime linkage or support for general control flow.

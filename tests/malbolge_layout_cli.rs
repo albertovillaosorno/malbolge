@@ -40,7 +40,8 @@ use std::process::{Command, Output, id};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use malbolge::{
-    ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, historical_profile,
+    ExecutionMachine, ExecutionMode, ProfileMachine, RunOutcome, current_profile,
+    decode_profile_instruction, historical_profile, parse_capsule,
 };
 
 const EXECUTABLE: &str = env!("CARGO_BIN_EXE_malbolge_layout");
@@ -91,6 +92,19 @@ fn emit(profile: &str, target: &Path, opcodes: &[&str]) -> Result<Output, String
     command
         .output()
         .map_err(|error| format!("layout CLI: {error}"))
+}
+
+fn emit_capsule(profile: &str, target: &Path, opcodes: &[&str]) -> Result<Output, String> {
+    Command::new(EXECUTABLE)
+        .arg("--profile")
+        .arg(profile)
+        .arg("--output")
+        .arg(target)
+        .arg("--capsule")
+        .arg("--")
+        .args(opcodes)
+        .output()
+        .map_err(|error| format!("capsule CLI: {error}"))
 }
 
 fn emit_os(args: &[OsString]) -> Result<Output, String> {
@@ -429,6 +443,129 @@ fn output_symlink_is_refused_without_modifying_its_target() -> Result<(), String
             .map_err(|error| error.to_string())?
             .count(),
         2
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent profile loader checks published capsule and payload"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "both canonical profiles, frame fields and real guest I/O are verified"
+)]
+fn capsule_emission_preserves_profile_and_exact_raw_source() -> Result<(), String> {
+    for (profile_id, profile) in [
+        ("malbolge-1998", historical_profile()),
+        ("malbolge-2026", current_profile()),
+    ] {
+        let fixture = OwnedFixture::new()?;
+        let raw_path = fixture.path("raw.malbolge");
+        let capsule_path = fixture.path("capsule.malbolge");
+        let operations = &["input", "output", "halt"];
+        let source = source_on_success(&emit(profile_id, &raw_path, operations)?, &raw_path)?;
+        let result = emit_capsule(profile_id, &capsule_path, operations)?;
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(result.stdout.is_empty());
+        let bytes = fs::read(&capsule_path).map_err(|error| error.to_string())?;
+        assert!(bytes.starts_with(b"(C<;_\"K"));
+        assert!(bytes.len() > source.len());
+        let capsule = parse_capsule(&bytes)
+            .map_err(|error| format!("capsule parser: {error:?}"))?
+            .ok_or("capsule emission lacked an exact versioned sideband")?;
+        assert_eq!(capsule.profile().id(), profile.id());
+        assert_eq!(capsule.profile().fingerprint(), profile.fingerprint());
+        assert_eq!(capsule.payload(), source);
+        let mut vm = ProfileMachine::from_source(capsule.profile(), capsule.payload(), vec![b'V'])
+            .map_err(|error| format!("capsule profile VM load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(3),
+            Ok(RunOutcome::Terminated { steps: 3, .. })
+        ));
+        assert_eq!(vm.output(), b"V");
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real general runner and historical fallback both execute capsule"
+)]
+fn modern_capsule_runs_through_general_cli_with_classic_fallback() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let path = fixture.path("self-describing.malbolge");
+    let result = emit_capsule("malbolge-2026", &path, &["nop", "halt"])?;
+    assert!(result.status.success());
+    let bytes = fs::read(&path).map_err(|error| error.to_string())?;
+    let capsule = parse_capsule(&bytes)
+        .map_err(|error| error.to_string())?
+        .ok_or("modern capsule missing")?;
+    assert_eq!(capsule.profile().id(), current_profile().id());
+    let execution = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&path)
+        .output()
+        .map_err(|error| format!("real CLI: {error}"))?;
+    assert!(
+        execution.status.success(),
+        "{}",
+        String::from_utf8_lossy(&execution.stderr)
+    );
+    assert!(execution.stdout.is_empty());
+    let mut historical =
+        ExecutionMachine::from_source(&bytes, Vec::new(), ExecutionMode::Interpreter)
+            .map_err(|error| format!("historical fallback loader: {error}"))?;
+    assert!(matches!(
+        historical.run(7),
+        Ok(RunOutcome::Terminated { steps: 7, .. })
+    ));
+    assert_eq!(historical.output(), b"!");
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "capsule argument grammar and no-overwrite are safety boundaries"
+)]
+fn invalid_capsule_request_or_existing_file_never_publishes() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let target = fixture.path("invalid.malbolge");
+    let arguments = vec![
+        OsString::from("--profile"),
+        OsString::from("malbolge-2026"),
+        OsString::from("--output"),
+        target.as_os_str().to_os_string(),
+        OsString::from("--capsule"),
+        OsString::from("--capsule"),
+        OsString::from("--"),
+        OsString::from("nop"),
+        OsString::from("halt"),
+    ];
+    let malformed = emit_os(&arguments)?;
+    assert!(!malformed.status.success());
+    assert!(!target.exists());
+    let unsafe_opcode = emit_capsule("malbolge-2026", &target, &["crazy", "halt"])?;
+    assert!(!unsafe_opcode.status.success());
+    assert!(!target.exists());
+    fs::write(&target, b"existing").map_err(|error| error.to_string())?;
+    let occupied = emit_capsule("malbolge-2026", &target, &["nop", "halt"])?;
+    assert!(!occupied.status.success());
+    assert_eq!(
+        fs::read(&target).map_err(|error| error.to_string())?,
+        b"existing"
+    );
+    assert_eq!(
+        fs::read_dir(&fixture.root)
+            .map_err(|error| error.to_string())?
+            .count(),
+        1
     );
     Ok(())
 }

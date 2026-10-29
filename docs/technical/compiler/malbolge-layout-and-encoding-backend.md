@@ -105,10 +105,16 @@ bytes across independent runs, reject unsupported input and symlinks, and
 exercise concurrent writers to one target. On abrupt interruption a hidden
 staging file may remain; it cannot expose a partial final target.
 
-The emitted raw source does **not** carry the target-profile fingerprint.
-Modern raw `.malbolge` therefore requires an independently specified profile
-at the VM loader; general runner dispatch, capsules, source maps, arbitrary C
-and guest-runtime linkage remain outside this first machine-subset command.
+An optional `--capsule` mode now wraps verified raw source using the
+existing version-one historical-fallback capsule builder. The producer
+independently parses the result before publication and requires an exact
+canonical profile identity/fingerprint and byte-for-byte payload equality.
+Real external-process integration invokes the *general* `malbolge` runner on
+a modern-profile capsule, and separately runs the historical-safe fallback
+through the classic interpreter. The unframed raw mode remains unchanged:
+modern raw `.malbolge` alone carries no profile and needs an explicitly
+selected profile-aware loader. Neither mode implements source maps, general
+C/ternary lowering or guest-runtime linkage.
 
 ### Remaining implementation
 

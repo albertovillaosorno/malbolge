@@ -39,7 +39,7 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, id};
 
-use malbolge::{ProfileMachine, RunOutcome, target_profile};
+use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile};
 
 use crate::layout::{
     LinearOpcode, LinearProfileIdentity, admit_linear_layout, encode_linear_layout,
@@ -48,11 +48,13 @@ use crate::layout::{
 const PROFILE_ARG: &str = "--profile";
 const OUTPUT_ARG: &str = "--output";
 const DELIMITER_ARG: &str = "--";
+const CAPSULE_ARG: &str = "--capsule";
 const MAX_OPERATIONS: usize = 4096;
 const MALBOLGE_EXTENSION: &str = "malbolge";
 
 #[derive(Debug)]
 struct CommandSpec {
+    capsule: bool,
     operations: Vec<LinearOpcode>,
     output: PathBuf,
     profile: String,
@@ -97,8 +99,14 @@ fn parse_arguments(mut arguments: impl Iterator<Item = OsString>) -> Result<Comm
         return Err(String::from("expected --output <path>.malbolge"));
     }
     let output = PathBuf::from(arguments.next().ok_or("missing output path")?);
-    if arguments.next().as_deref() != Some(OsStr::new(DELIMITER_ARG)) {
-        return Err(String::from("expected -- before opcode tokens"));
+    let next = arguments.next();
+    let capsule = next.as_deref() == Some(OsStr::new(CAPSULE_ARG));
+    if (capsule && arguments.next().as_deref() != Some(OsStr::new(DELIMITER_ARG)))
+        || (!capsule && next.as_deref() != Some(OsStr::new(DELIMITER_ARG)))
+    {
+        return Err(String::from(
+            "expected optional --capsule then -- before opcode tokens",
+        ));
     }
     let mut operations = Vec::new();
     for raw_token in arguments {
@@ -111,6 +119,7 @@ fn parse_arguments(mut arguments: impl Iterator<Item = OsString>) -> Result<Comm
         operations.push(parse_operation(&token)?);
     }
     Ok(CommandSpec {
+        capsule,
         operations,
         output,
         profile,
@@ -170,10 +179,23 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
             "normative VM did not halt at the proven code step",
         ));
     }
-    publish_new(&spec.output, admitted.source())?;
+    let publication = if spec.capsule {
+        let bytes = build_capsule(profile, admitted.source())
+            .map_err(|error| format!("capsule build rejected: {error}"))?;
+        let parsed = parse_capsule(&bytes)
+            .map_err(|error| format!("capsule independent parse rejected: {error}"))?
+            .ok_or("capsule marker missing after framing")?;
+        if parsed.profile() != profile || parsed.payload() != admitted.source() {
+            return Err(String::from("capsule profile or source payload disagrees"));
+        }
+        bytes
+    } else {
+        admitted.source().to_vec()
+    };
+    publish_new(&spec.output, &publication)?;
     let notice = format!(
-        "emitted {} graphical bytes for {} ({steps} VM steps)\n",
-        admitted.source().len(),
+        "emitted {} bytes for {} ({steps} VM steps)\n",
+        publication.len(),
         admitted.profile_id(),
     );
     drop(io::stderr().lock().write_all(notice.as_bytes()));

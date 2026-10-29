@@ -88,8 +88,12 @@ emission.
   no-clobber publication. Process tests prove byte-exact reproducibility,
   historical/current VM I/O, real jumped and relocated machine execution,
   rejected malformed inputs, protected existing targets/symlinks and competing
-  writers. The raw file does not embed modern profile identity; this is
-  explicitly not a typed C→Malbolge frontend, capsule or guest runtime.
+  writers. Optional `--capsule` now uses the existing version-one builder,
+  round-trips canonical ID/fingerprint and exact raw payload via its independent
+  parser before publication, and executes modern output through the actual
+  general `malbolge` runner. Historical interpreter tests check the frozen
+  safe fallback. Unframed raw mode still needs explicit modern profile input;
+  neither mode claims typed C→Malbolge lowering or guest-runtime linkage.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
