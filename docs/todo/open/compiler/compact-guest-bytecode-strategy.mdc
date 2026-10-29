@@ -51,6 +51,23 @@ code-size explosion or compilation cost.
 
 ## Evidence
 
+- An initial bounded, reproducible non-executable echo-macro pilot lives under
+  `algorithms/compact-guest-bytecode-strategy/` with a versioned six-byte
+  `CEB1` candidate and `pilot-v0.toml`. Independent host-side expansion
+  re-admits the original canonical ternary program and reproduces exact
+  graphical source via the existing Malbolge layout verifier. The normative
+  VM executes the expanded direct source for all 256 successful byte values
+  and a separate 4095-cell maximum trace of 2047 pairs. Candidate forgeries
+  and wrong SSA pairs reject; equal-count source identity forgery is
+  deliberately *not* prevented by the candidate format and requires an
+  external binding.
+- The research record gives the necessary idealized size-win inequality,
+  explicit negative small cases, and a separate hypothetical 32-cell
+  source-binding sensitivity threshold. No resident guest interpreter exists;
+  cost in actual Malbolge code/data cells, runtime, compile time, memory, and
+  verification complexity is unmeasured. This is a pilot only and does **not**
+  complete the adoption or semantics acceptance criteria.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

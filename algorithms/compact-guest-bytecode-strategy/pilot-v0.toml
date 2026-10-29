@@ -1,0 +1,13 @@
+schema = "compact-guest-bytecode-pilot-v0"
+target_profile = "malbolge-2026"
+ternary_codec = "malbolge-ternary-ir-v1"
+candidate_codec = "CEB1-u16le"
+echo_pairs = [1, 2, 3, 7, 20, 64, 256, 2047]
+max_direct_code_cells = 4096
+candidate_descriptor_bytes = 6
+hypothetical_binding_cells = 32
+source_shape = "one-void-function-adjacent-successful-byte-echo"
+source_authentication = "external-original-canonical-ternary-program-required"
+execution_mode = "host-expansion-to-verified-direct-malbolge-source"
+experiment_seed = "none-deterministic"
+comparison_type = "optimistic-analytical-code-cell-budget-only"
