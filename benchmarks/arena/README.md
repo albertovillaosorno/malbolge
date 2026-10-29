@@ -230,6 +230,10 @@ python3.14 -B -m benchmarks.arena.reference_audit \
 It only admits canonical `.temp/arena-host-c-study-*/study.json` paths and
 requires the exact host-C stage, Clang `-O0`/`-O2` arms, verifier, declared
 budget, profile, source study identity, and bounded trial/difficulty structure.
+Manifest and raw-sample names must also match the producer's exact
+`<algorithm>-nodes-<difficulty>-trial-<trial>` stem, not just the containing
+`runs/` or `raw/` directories. Renaming all related evidence consistently
+cannot satisfy the producer's trial-name convention.
 Every difficulty must contain the identical consecutive trial indices from the
 one native producer plan; merely balancing the two algorithms within each
 level is insufficient. The generic arena analyzer still admits unequal sample

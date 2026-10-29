@@ -179,11 +179,15 @@ def _check_trials(
     for row in observations:
         if row["verifier"] != reference_study.VERIFIER:
             _fail("host-C reference audit requires native C entry oracle")
-        if not (
-            row["experiment_manifest"].startswith(f"{prefix}/runs/")
-            and row["raw_sample"].startswith(f"{prefix}/raw/")
+        case = row["case"]
+        name = (
+            f"{row['algorithm']}-nodes-{case['difficulty']}-trial-{row['trial']}"
+        )
+        if (
+            row["experiment_manifest"] != f"{prefix}/runs/{name}.toml"
+            or row["raw_sample"] != f"{prefix}/raw/{name}.csv"
         ):
-            _fail("host-C reference audit trial identity escapes its study")
+            _fail("host-C reference audit trial paths differ from native producer")
 
 
 def _check_plan_trials(rows: list[dict[str, Any]]) -> None:

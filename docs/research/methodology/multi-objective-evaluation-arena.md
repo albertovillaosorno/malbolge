@@ -240,6 +240,9 @@ budgets, regenerated challenge sources, and the native executable's linked
 path, SHA-256 digest, and byte length. The audit also enforces the source
 runner's common consecutive trial set across every difficulty, rejecting
 unequal repetitions even when the generic arena accepts each paired cohort.
+It also binds each trial's manifest and raw filename to the native producer's
+exact arm, difficulty and repetition naming rule. A real-study rekeying test
+retains valid raw, TOML and binary links while rejecting the renamed paths.
 Its default path reads files only; an explicit `--replay-oracles` mode can
 rerun the **canonical generator's** native C entry harness, never a retained
 trial executable or Malbolge artifact.

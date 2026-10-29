@@ -44,7 +44,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from benchmarks.arena import analyze, host_c_oracle, reference_audit, reference_study
+from benchmarks.arena import (
+    analyze,
+    evidence,
+    host_c_oracle,
+    reference_audit,
+    reference_study,
+)
 from benchmarks.challenges import generate
 
 if TYPE_CHECKING:
@@ -218,6 +224,67 @@ def test_audit_rejects_uneven_repetitions_between_difficulties(
     with pytest.raises(
         reference_audit.ReferenceAuditError,
         match="same trials at every difficulty",
+    ):
+        reference_audit.audit(relative)
+
+
+def test_host_c_audit_rejects_rekeyed_native_trial_artifacts(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """Matching file digests cannot legitimize a foreign producer filename."""
+    directory, relative = live_pilot
+    study_path = directory / "study.json"
+    study = json.loads(study_path.read_text(encoding="utf-8"))
+    row = study["observations"][0]
+    original_manifest = row["experiment_manifest"]
+    original_raw = row["raw_sample"]
+    old_stem = original_manifest.rsplit("/", maxsplit=1)[1].removesuffix(
+        ".toml"
+    )
+    new_stem = f"forged-{old_stem}"
+    new_manifest = original_manifest.replace(old_stem, new_stem)
+    new_raw = original_raw.replace(old_stem, new_stem)
+    old_manifest_path = reference_audit._ROOT / original_manifest
+    manifest_source = old_manifest_path.read_text(encoding="utf-8")
+    assert manifest_source.count(original_raw) == 1
+    _ = old_manifest_path.rename(reference_audit._ROOT / new_manifest)
+    _ = (reference_audit._ROOT / new_manifest).write_text(
+        manifest_source.replace(original_raw, new_raw), encoding="utf-8"
+    )
+    _ = (reference_audit._ROOT / original_raw).rename(
+        reference_audit._ROOT / new_raw
+    )
+    artifacts_path = directory / "artifacts.json"
+    artifacts = json.loads(artifacts_path.read_text(encoding="utf-8"))
+    artifact = artifacts.pop(original_manifest)
+    old_binary = reference_audit._ROOT / artifact["path"]
+    artifact["path"] = artifact["path"].replace(old_stem, new_stem)
+    _ = old_binary.rename(reference_audit._ROOT / artifact["path"])
+    artifacts[new_manifest] = artifact
+    _ = artifacts_path.write_text(json.dumps(artifacts), encoding="utf-8")
+    row["experiment_manifest"] = new_manifest
+    row["raw_sample"] = new_raw
+    _ = study_path.write_text(json.dumps(study), encoding="utf-8")
+
+    # Every generic identity, raw-row, binary digest and budget remains valid.
+    admitted = analyze.parse_document(json.dumps(study))
+    _ = analyze.analyze(admitted)
+    linked = evidence.validate_links(
+        admitted,
+        reference_audit._ROOT,
+        policy=evidence.EvidencePolicy(
+            require_trial_run_identity=True,
+            require_budget_agreement=True,
+            challenge_root=f"{directory.relative_to(reference_audit._ROOT)}/bundles",
+        ),
+    )
+    assert linked["raw_rows_matched"] == OBSERVED_PAIRS * 2
+    assert reference_study.check_retained_artifacts(study, artifacts) == (
+        OBSERVED_PAIRS * 2
+    )
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="trial paths differ from native producer",
     ):
         reference_audit.audit(relative)
 
