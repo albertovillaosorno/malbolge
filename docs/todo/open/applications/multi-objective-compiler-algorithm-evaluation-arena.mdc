@@ -131,6 +131,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   reject tampered files, forged stage or arm identities, malformed artifacts,
   unsafe paths and missing links; physical benchmark remeasurement and
   Malbolge candidate verification remain open.
+- Host-C audit now checks each recorded run manifest's method class,
+  implementation path, configuration path, output root, and accelerator against
+  the native producer's fixed provenance. Five real-pilot negative regressions
+  prove valid but foreign declarations cannot pass as reference-runner output;
+  these remain file-consistency checks rather than authenticated provenance.
 - Host-C audit also binds manifest and raw sample path basenames to the exact
   producer-derived arm/difficulty/trial stem. A real retained-study negative
   regression rekeys all manifest, raw, and executable paths consistently,

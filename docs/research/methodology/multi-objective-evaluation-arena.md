@@ -262,6 +262,10 @@ provide Malbolge candidate verification.
 
 Post-run audit now rejects disagreement among source-commit claims in the
 retained per-trial manifests, even if all other record identity fields match.
+It also requires the producer's fixed run method, implementation/configuration
+paths, output directory and no-accelerator declaration. Valid but foreign
+research metadata fails the producer-specific audit; this is a consistency
+check, not source or execution attestation.
 An optional `--require-source-commit-object` gate checks that the shared
 claimed SHA-1 resolves to a local Git **commit** object; default audits retain
 the claim without requiring a complete local Git history. Local object

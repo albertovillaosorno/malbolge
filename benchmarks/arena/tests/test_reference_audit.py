@@ -533,6 +533,55 @@ def test_all_reported_trials_share_one_source_commit(
         reference_audit.audit(relative)
 
 
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ('implementation = "benchmarks/arena/reference_study.py"',
+         'implementation = "benchmarks/arena/foreign_study.py"'),
+        ('configuration = "benchmarks/arena/README.md"',
+         'configuration = "benchmarks/arena/foreign.md"'),
+        ('method_class = "benchmarking"', 'method_class = "engineering"'),
+        ('accelerator = "none"', 'accelerator = "cuda"'),
+    ],
+)
+def test_host_c_audit_rejects_foreign_run_manifest_provenance(
+    live_pilot: tuple[Path, str],
+    old: str,
+    new: str,
+) -> None:
+    """Valid research metadata may still contradict this native producer."""
+    directory, relative = live_pilot
+    path = next((directory / "runs").glob("*.toml"))
+    source = path.read_text(encoding="utf-8")
+    assert source.count(old) == 1
+    _ = path.write_text(source.replace(old, new), encoding="utf-8")
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="producer provenance",
+    ):
+        reference_audit.audit(relative)
+
+
+def test_host_c_audit_rejects_foreign_recorded_output_root(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """The recorded run-output root must be this exact local study."""
+    directory, relative = live_pilot
+    path = next((directory / "runs").glob("*.toml"))
+    source = path.read_text(encoding="utf-8")
+    old = f'output = "{directory.relative_to(reference_audit._ROOT)}"'
+    assert source.count(old) == 1
+    _ = path.write_text(
+        source.replace(old, 'output = "benchmarks/arena/foreign"'),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="producer provenance",
+    ):
+        reference_audit.audit(relative)
+
+
 def test_opt_in_git_object_check_rejects_missing_recorded_commit(
     live_pilot: tuple[Path, str],
 ) -> None:

@@ -70,6 +70,10 @@ MAX_FAILURES_BYTES = 64 * 1024
 RUN_PREFIX = "arena-host-c-study-"
 STAGE = "host-c-reference-not-malbolge"
 TOOLCHAIN = "repo-pinned-clang-22.1.8"
+PRODUCER_IMPLEMENTATION = "benchmarks/arena/reference_study.py"
+PRODUCER_CONFIGURATION = "benchmarks/arena/README.md"
+PRODUCER_METHOD_CLASS = "benchmarking"
+PRODUCER_ACCELERATOR = "none"
 REQUIRED_OBJECTIVES = ["elapsed_ns", "artifact_bytes"]
 CURRENT_OBJECTIVES = [*REQUIRED_OBJECTIVES, "peak_rss_bytes"]
 RSS_RESOURCE_POLICY_VERSION = 2
@@ -285,6 +289,14 @@ def _recorded_source_commit(
         manifest = experiment_manifest.parse_manifest(data.decode("utf-8"))
         if manifest.run is None:
             _fail("host-C audit source commit requires a recorded run")
+        if (
+            manifest.implementation != PRODUCER_IMPLEMENTATION
+            or manifest.configuration != PRODUCER_CONFIGURATION
+            or manifest.method_class != PRODUCER_METHOD_CLASS
+            or manifest.output != relative.rsplit("/runs/", maxsplit=1)[0]
+            or manifest.run.accelerator != PRODUCER_ACCELERATOR
+        ):
+            _fail("host-C run manifest producer provenance differs")
         commits.add(manifest.run.commit)
     if len(commits) != 1:
         _fail("host-C study run manifests disagree on source commit")

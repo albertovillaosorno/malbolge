@@ -274,6 +274,12 @@ because shallow clones and archived studies might not retain the object.
 An existing object proves neither that the benchmark executed those exact
 sources nor that its host/toolchain or measurements were authenticated.
 
+The audit now also requires each recorded run's method class, implementation,
+configuration, output root, and accelerator declaration to match the fixed
+host-C reference producer. This prevents a self-consistent but foreign TOML
+provenance declaration from being described as the reference runner's output;
+it does not authenticate the underlying machine, source or execution.
+
 The audit never proves that reported wall-clock
 measurements were authentic, that resource limits were enforced, or that
 candidate Malbolge artifacts were created or verified. File consistency is
