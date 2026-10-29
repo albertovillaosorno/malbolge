@@ -380,3 +380,107 @@ def test_native_rebuild_refuses_unsupported_compiler_mode(mode: str) -> None:
         host_c_oracle.HostOracleError, match="optimization mode"
     ):
         _ = host_c_oracle.rebuild_reference(identity, mode)
+
+
+GIT_HASH_WIDTH = 40
+FAKE_SOURCE_COMMIT = "f" * GIT_HASH_WIDTH
+
+
+def _rewrite_manifest_commit(directory: Path, old: str, new: str) -> None:
+    for filename in (directory / "runs").glob("*.toml"):
+        content = filename.read_text(encoding="utf-8")
+        _ = filename.write_text(
+            content.replace(f'commit = "{old}"', f'commit = "{new}"'),
+            encoding="utf-8",
+        )
+
+
+def test_all_reported_trials_share_one_source_commit(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """A fabricated single-run commit cannot hide among otherwise valid runs."""
+    directory, relative = live_pilot
+    healthy = reference_audit.audit(relative)
+    assert len(healthy["recorded_source_commit"]) == GIT_HASH_WIDTH
+    assert not healthy["source_commit_object_verified"]
+    manifest = next((directory / "runs").glob("*.toml"))
+    content = manifest.read_text(encoding="utf-8")
+    _ = manifest.write_text(
+        content.replace(
+            f'commit = "{healthy["recorded_source_commit"]}"',
+            f'commit = "{FAKE_SOURCE_COMMIT}"',
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="disagree on source commit",
+    ):
+        reference_audit.audit(relative)
+
+
+def test_opt_in_git_object_check_rejects_missing_recorded_commit(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """Cross-file agreement alone does not authenticate claimed Git objects."""
+    directory, relative = live_pilot
+    healthy = reference_audit.audit(relative)
+    _rewrite_manifest_commit(
+        directory,
+        healthy["recorded_source_commit"],
+        FAKE_SOURCE_COMMIT,
+    )
+    unchecked = reference_audit.audit(relative)
+    assert unchecked["recorded_source_commit"] == FAKE_SOURCE_COMMIT
+    assert not unchecked["source_commit_object_verified"]
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="local Git commit object",
+    ):
+        reference_audit.audit(relative, require_source_commit_object=True)
+
+
+def test_opt_in_git_object_check_admits_original_real_source_commit(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """An existing real source revision remains admissible after HEAD moves."""
+    _, relative = live_pilot
+    checked = reference_audit.audit(relative, require_source_commit_object=True)
+    assert checked["source_commit_object_verified"]
+    assert len(checked["recorded_source_commit"]) == GIT_HASH_WIDTH
+
+
+def test_source_commit_object_check_requires_installed_git(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unavailable Git cannot impersonate successful source-object review."""
+    _, relative = live_pilot
+    monkeypatch.setattr(reference_audit.shutil, "which", lambda _: None)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="requires local Git",
+    ):
+        reference_audit.audit(relative, require_source_commit_object=True)
+
+
+def test_cli_source_commit_object_flag_emits_checked_provenance(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Strict post-run CLI preserves the commit-identity audit result."""
+    _, relative = live_pilot
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "reference-audit",
+            relative,
+            "--require-source-commit-object",
+        ],
+    )
+    assert reference_audit.main() == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["source_commit_object_verified"]
+    assert len(report["recorded_source_commit"]) == GIT_HASH_WIDTH

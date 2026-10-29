@@ -235,6 +235,15 @@ ABI and host environment; a later changed toolchain may fail exact replay
 without implying a historical result was dishonest. This is reproducibility
 of host-C output bytes, not independent Malbolge verification.
 
+The post-run audit also requires every distinct trial manifest to report the
+**same source Git revision**, rather than accepting individually unrelated
+40-hex commit labels. The report retains `recorded_source_commit`; add
+`--require-source-commit-object` to check that the claimed revision exists
+as a Git **commit** object in the selected local repository. This is opt-in
+because shallow clones and archived studies might not retain the object.
+An existing object proves neither that the benchmark executed those exact
+sources nor that its host/toolchain or measurements were authenticated.
+
 The audit never proves that reported wall-clock
 measurements were authentic, that resource limits were enforced, or that
 candidate Malbolge artifacts were created or verified. File consistency is

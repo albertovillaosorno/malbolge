@@ -111,6 +111,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   verified host executables. It detects a forged binary even if the recorded
   digest was recomputed to match, without executing the retained artifact or
   remeasuring timing. Same-host reproducibility is not Malbolge verification.
+- Post-run host-C source provenance now requires all trial manifests to
+  agree on the same claimed source commit, with an opt-in Git commit-object
+  existence check. Cross-manifest drift and collectively forged unknown Git
+  references are rejected under the relevant policy; no runtime source
+  attestation or independently proven historical execution is implied.
 - A separate read-only host-C post-run audit now independently reopens the
   producer's ignored study directory and rechecks its trial identities,
   exact host-only stage, canonical source bundles, source-reported budgets,

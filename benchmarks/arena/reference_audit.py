@@ -38,9 +38,13 @@ import argparse
 from itertools import starmap
 import json
 from pathlib import Path
+import shutil
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from typing import Any
 from typing import Never
+
+from scripts.validate import experiment_manifest
 
 from benchmarks.arena import analyze
 from benchmarks.arena import evidence
@@ -53,6 +57,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 MAX_ARTIFACT_INDEX_BYTES = 1024 * 1024
 PART_COUNT = 3
 ROOT_PART = ".temp"
+GIT_COMMIT_TYPE = b"commit"
 UNDERSCORE = "_"
 STUDY_LEAF = "study.json"
 ARTIFACT_LEAF = "artifacts.json"
@@ -201,12 +206,64 @@ def _check_artifact_index(
     return dict(starmap(_index_entry, source.items()))
 
 
+def _recorded_source_commit(
+    document: dict[str, Any],
+    *,
+    require_git_object: bool,
+) -> str:
+    commits: set[str] = set()
+    paths = {row["experiment_manifest"] for row in document["observations"]}
+    for relative in sorted(paths):
+        data = evidence.read_bounded_regular(
+            _ROOT,
+            relative,
+            limit=evidence.MAX_MANIFEST_BYTES,
+        )
+        manifest = experiment_manifest.parse_manifest(data.decode("utf-8"))
+        if manifest.run is None:
+            _fail("host-C audit source commit requires a recorded run")
+        commits.add(manifest.run.commit)
+    if len(commits) != 1:
+        _fail("host-C study run manifests disagree on source commit")
+    commit = next(iter(commits))
+    if require_git_object:
+        _require_git_commit(commit)
+    return commit
+
+
+def _require_git_commit(commit: str) -> None:
+    executable = shutil.which("git")
+    if executable is None:
+        _fail("host-C source commit admission requires local Git")
+    try:
+        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            [executable, "cat-file", "-t", commit],
+            cwd=_ROOT,
+            check=False,
+            shell=False,
+            capture_output=True,
+            timeout=5,
+        )
+    except (OSError, sp.TimeoutExpired) as error:
+        message = "host-C source commit object lookup failed"
+        raise ReferenceAuditError(message) from error
+    if completed.returncode != 0 or completed.stdout.strip() != GIT_COMMIT_TYPE:
+        _fail("host-C recorded source commit is not a local Git commit object")
+
+
 def _admit_data(
     relative_study: str,
     prefix: str,
     *,
     replay_oracles: bool,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, dict[str, str]], int]:
+    require_git_object: bool,
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, dict[str, str]],
+    int,
+    str,
+]:
     document = _load_study(relative_study)
     _check_stage(document, prefix)
     checked = evidence.validate_links(
@@ -219,6 +276,10 @@ def _admit_data(
             require_host_c_challenge_oracle=replay_oracles,
         ),
     )
+    commit = _recorded_source_commit(
+        document,
+        require_git_object=require_git_object,
+    )
     artifacts = _check_artifact_index(
         _read_json(
             f"{prefix}/{ARTIFACT_LEAF}",
@@ -230,7 +291,7 @@ def _admit_data(
         document,
         artifacts,
     )
-    return document, checked, artifacts, verified_binaries
+    return document, checked, artifacts, verified_binaries, commit
 
 
 def _rebuild_reference_binaries(
@@ -274,6 +335,7 @@ def audit(
     *,
     replay_oracles: bool = False,
     rebuild_binaries: bool = False,
+    require_source_commit_object: bool = False,
 ) -> dict[str, Any]:
     """Reopen and validate all retained host-C reference evidence.
 
@@ -290,10 +352,11 @@ def audit(
     """
     prefix = _prefix(relative_study)
     try:
-        document, checked, artifacts, verified_binaries = _admit_data(
+        document, checked, artifacts, verified_binaries, commit = _admit_data(
             relative_study,
             prefix,
             replay_oracles=replay_oracles,
+            require_git_object=require_source_commit_object,
         )
         rebuilt = (
             _rebuild_reference_binaries(document, artifacts)
@@ -306,6 +369,7 @@ def audit(
         evidence.EvidenceError,
         reference_study.ReferenceStudyError,
         host_c_oracle.HostOracleError,
+        experiment_manifest.ExperimentManifestError,
         OSError,
         UnicodeError,
     ) as error:
@@ -320,6 +384,8 @@ def audit(
         ),
         "study": relative_study,
         "host_c_binaries_checked": verified_binaries,
+        "recorded_source_commit": commit,
+        "source_commit_object_verified": require_source_commit_object,
         "host_c_oracle_replayed": replay_oracles,
         "host_c_reference_builds_reproduced": rebuilt,
         "evidence_preflight": checked,
@@ -339,12 +405,14 @@ def main() -> int:
     parser.add_argument("study", help=".temp/arena-host-c-study-*/study.json")
     parser.add_argument("--replay-oracles", action="store_true")
     parser.add_argument("--rebuild-binaries", action="store_true")
+    parser.add_argument("--require-source-commit-object", action="store_true")
     args = parser.parse_args()
     try:
         report = audit(
             args.study,
             replay_oracles=args.replay_oracles,
             rebuild_binaries=args.rebuild_binaries,
+            require_source_commit_object=args.require_source_commit_object,
         )
         report_output.publish(report, sys.stdout)
     except (ReferenceAuditError, report_output.ReportOutputError) as error:

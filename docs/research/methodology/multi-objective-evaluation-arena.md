@@ -219,6 +219,14 @@ canonical generator C. Exact reproducibility assumes the same native toolchain,
 linker, libraries and host ABI, and does not reproduce recorded wall times or
 provide Malbolge candidate verification.
 
+Post-run audit now rejects disagreement among source-commit claims in the
+retained per-trial manifests, even if all other record identity fields match.
+An optional `--require-source-commit-object` gate checks that the shared
+claimed SHA-1 resolves to a local Git **commit** object; default audits retain
+the claim without requiring a complete local Git history. Local object
+existence cannot authenticate the original measurement environment or prove
+that its code actually ran; that distinction is explicit in the report.
+
 The inspectable output preserves the observed capacity curves/frontiers but
 does not rerun elapsed-time measurements, authenticate the source producers,
 or establish an atomic filesystem snapshot. Mutating any retained proof file
@@ -362,6 +370,10 @@ The original study records remain the result authority.
   actual bytes to every retained verified executable. Adversarial tests show
   a matching forged executable SHA-256 is insufficient without independent
   reproducibility; fresh compiler failures also fail closed.
+- Post-run source-commit admission compares the exact claim across all
+  recorded run manifests and optionally checks that Git can resolve it to a
+  real local commit object. Tests include divergent manifests, collectively
+  forged missing revisions, and clean historical commit replay.
 - `benchmarks/arena/reference_audit.py` independently reopens retained
   local host-C studies, checks the strict manifest/raw/challenge path and
   binary evidence, then reports the observed frontier without remeasurement.
