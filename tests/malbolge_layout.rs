@@ -109,7 +109,8 @@ fn all_94_profile_decode_phases_admit_machine_io_and_halt() -> Result<(), String
                     LinearOpcode::OutputByte => profile.output_instruction(),
                     LinearOpcode::NoOperation
                     | LinearOpcode::Halt
-                    | LinearOpcode::RelocateDataPointer => {
+                    | LinearOpcode::RelocateDataPointer
+                    | LinearOpcode::JumpForward { .. } => {
                         return Err(String::from("unexpected test case"));
                     }
                 };
@@ -385,6 +386,167 @@ fn independently_supplied_source_cannot_forge_opcode_or_profile() -> Result<(), 
             artifact.profile_fingerprint(),
         ),
         Err(LinearLayoutError::SourceLengthMismatch)
+    );
+    Ok(())
+}
+
+/// Derive a single forward target from the normative inverse decoder.
+fn jump_target(position: u32) -> Result<u32, String> {
+    let candidates = (33u32..=126u32)
+        .filter(|cell| decode_profile_instruction(*cell, position) == Some(b'i'))
+        .collect::<Vec<_>>();
+    let source_cell = match candidates.as_slice() {
+        [one] => *one,
+        _ => return Err(String::from("jump decoder has no unique inverse")),
+    };
+    source_cell
+        .checked_add(1)
+        .ok_or_else(|| String::from("jump target overflow"))
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "target address and VM execution are independently asserted"
+)]
+fn forward_jump_skips_padding_and_reaches_exact_output_on_both_vms() -> Result<(), String> {
+    for profile in [current_profile(), historical_profile()] {
+        let target = jump_target(0)?;
+        let stop = usize::try_from(target)
+            .map_err(|error| error.to_string())?
+            .saturating_add(2);
+        let mut ops = vec![LinearOpcode::NoOperation; stop];
+        *ops.first_mut().ok_or("missing jump")? = LinearOpcode::JumpForward { target };
+        *ops.get_mut(usize::try_from(target).map_err(|error| error.to_string())?)
+            .ok_or("missing destination")? = LinearOpcode::OutputByte;
+        *ops.last_mut().ok_or("missing halt")? = LinearOpcode::Halt;
+        let artifact = encode_linear_layout(profile, &ops)
+            .map_err(|error| format!("jump layout: {error:?}"))?;
+        assert_eq!(
+            u32::from(artifact.source().first().copied().ok_or("no jump source")?) + 1,
+            target,
+        );
+        let mut machine = ProfileMachine::from_source(profile, artifact.source(), vec![])
+            .map_err(|error| format!("jump VM load: {error:?}"))?;
+        assert!(matches!(
+            machine.run(3),
+            Ok(RunOutcome::Terminated { steps: 3, .. }),
+        ));
+        assert_eq!(machine.output(), &[0]);
+        assert_eq!(machine.registers().code_pointer, target.saturating_add(1));
+        // Jump encrypts cell target-1 before entering target, but must not
+        // overwrite the output and halt instructions at reachable positions.
+        assert_ne!(
+            machine
+                .memory_word(target.saturating_sub(1))
+                .map_err(|error| format!("encryption evidence: {error:?}"))?,
+            u32::from(
+                artifact
+                    .source()
+                    .get(
+                        usize::try_from(target.saturating_sub(1))
+                            .map_err(|error| error.to_string())?
+                    )
+                    .copied()
+                    .ok_or("missing gap")?
+            ),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "adversarial jump arrangements have explicit expected failures"
+)]
+fn jump_rejects_wrong_target_backward_or_nonpadding_gap() -> Result<(), String> {
+    let profile = current_profile();
+    let target = jump_target(0)?;
+    let len = usize::try_from(target)
+        .map_err(|error| error.to_string())?
+        .saturating_add(2);
+    let mut ops = vec![LinearOpcode::NoOperation; len];
+    *ops.first_mut().ok_or("missing jump")? = LinearOpcode::JumpForward { target };
+    *ops.last_mut().ok_or("missing final halt")? = LinearOpcode::Halt;
+    assert!(encode_linear_layout(profile, &ops).is_ok());
+    *ops.first_mut().ok_or("missing jump")? = LinearOpcode::JumpForward {
+        target: target.saturating_add(1),
+    };
+    assert_eq!(
+        encode_linear_layout(profile, &ops),
+        Err(LinearLayoutError::JumpTargetMismatch { position: 0 }),
+    );
+    *ops.first_mut().ok_or("missing jump")? = LinearOpcode::JumpForward { target: 0 };
+    assert_eq!(
+        encode_linear_layout(profile, &ops),
+        Err(LinearLayoutError::JumpPathUnsupported),
+    );
+    *ops.first_mut().ok_or("missing jump")? = LinearOpcode::JumpForward { target };
+    *ops.get_mut(1).ok_or("missing padding")? = LinearOpcode::OutputByte;
+    assert_eq!(
+        encode_linear_layout(profile, &ops),
+        Err(LinearLayoutError::JumpPathUnsupported),
+    );
+    *ops.get_mut(1).ok_or("missing padding")? = LinearOpcode::NoOperation;
+    *ops.get_mut(2).ok_or("missing second jump")? = LinearOpcode::JumpForward { target };
+    assert_eq!(
+        encode_linear_layout(profile, &ops),
+        Err(LinearLayoutError::JumpPathUnsupported),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "forward jump and byte-I/O state are independently checked"
+)]
+fn forward_jump_after_input_preserves_guest_data_state() -> Result<(), String> {
+    let target = jump_target(2)?;
+    let end = usize::try_from(target)
+        .map_err(|error| error.to_string())?
+        .saturating_add(2);
+    let mut ops = vec![LinearOpcode::NoOperation; end];
+    *ops.get_mut(1).ok_or("missing input instruction")? = LinearOpcode::InputWord;
+    *ops.get_mut(2).ok_or("missing jump instruction")? = LinearOpcode::JumpForward { target };
+    *ops.get_mut(usize::try_from(target).map_err(|error| error.to_string())?)
+        .ok_or("missing output instruction")? = LinearOpcode::OutputByte;
+    *ops.last_mut().ok_or("missing final halt")? = LinearOpcode::Halt;
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &ops)
+            .map_err(|error| format!("jump after input layout: {error:?}"))?;
+        let mut machine = ProfileMachine::from_source(profile, layout.source(), vec![b'Y'])
+            .map_err(|error| format!("jump after input VM load: {error:?}"))?;
+        assert!(matches!(
+            machine.run(5),
+            Ok(RunOutcome::Terminated { steps: 5, .. }),
+        ));
+        assert_eq!(machine.input_consumed(), 1);
+        assert_eq!(machine.output(), b"Y");
+        assert_eq!(machine.registers().accumulator, u32::from(b'Y'));
+        assert_eq!(machine.registers().code_pointer, target.saturating_add(1));
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "jump/relocation policy is asserted as an explicit rejection"
+)]
+fn forward_jump_cannot_mix_with_data_relocation() -> Result<(), String> {
+    let target = jump_target(1)?;
+    let end = usize::try_from(target)
+        .map_err(|error| error.to_string())?
+        .saturating_add(1);
+    let mut ops = vec![LinearOpcode::NoOperation; end];
+    *ops.first_mut().ok_or("missing relocation")? = LinearOpcode::RelocateDataPointer;
+    *ops.get_mut(1).ok_or("missing jump")? = LinearOpcode::JumpForward { target };
+    *ops.last_mut().ok_or("missing final halt")? = LinearOpcode::Halt;
+    assert_eq!(
+        encode_linear_layout(current_profile(), &ops),
+        Err(LinearLayoutError::JumpPathUnsupported),
     );
     Ok(())
 }

@@ -1,6 +1,6 @@
 ---
 id: "malbolge-layout-and-encoding-backend"
-status: "pending"
+status: "active"
 lane: "10"
 priority: "p2"
 area: "compiler"
@@ -63,7 +63,12 @@ emission.
   profile byte-I/O operations, executes actual byte I/O and relocated ternary
   rotate/crazy instructions through the current and historical profile VMs,
   and rejects source/profile tampering, invalid lengths, early halt and unsafe
-  data placements. General source-to-target lowering, code jumps, heap data,
+  data placements. A new one-shot forward `i` jump now proves a source-cell-
+  derived target and graphical no-op skip region, rechecking its exact source
+  bytes; real current/historical VM runs confirm reachable output, skipped-
+  cell encryption, retained accumulator and exact-step halt. Forged target,
+  backward/repeated jump, effectful skip and relocation combination reject.
+  General source-to-target lowering, backward/mutable code jumps, heap data,
   guest runtime linkage and self-modifying revisits remain unimplemented.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

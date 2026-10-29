@@ -25,28 +25,41 @@ This document governs the following declared TODO scope:
 `src/compiler/malbolge-layout/composition/lib.rs` owns a bounded position-
 sensitive source encoder for profile `InputWord`, `OutputByte`, `NoOperation`,
 `RotateData`, `CrazyData`, a single optional `RelocateDataPointer` prologue,
-and terminal `Halt`. The encoder assigns code positions from zero, inverts
-the normative VM instruction decoder over all 94 graphical source bytes,
+one source-cell-derived `JumpForward`, and terminal `Halt`. The encoder
+assigns code positions from zero and inverts the normative VM instruction
+decoder over all 94 graphical source bytes,
 requires exactly one encoding at each address, and independently re-admits
 the emitted source with canonical profile ID and fingerprint.
 
-This slice requires two to 4096 code cells and one final halt. No code-pointer
-jump can occur. Rotate/crazy are admitted only when a `j` data-pointer
-relocation is at code position zero and the encoded cell-zero value is at
+This slice requires two to 4096 code cells and one final halt. It admits at
+most one strictly forward code jump before a terminal halt. Rotate/crazy
+are admitted only when a `j` data-pointer relocation is at code position
+zero and the encoded cell-zero value is at
 least the emitted source length. The VM normally increments code and data
 pointers together, so unplaced rotate/crazy could overwrite the current
 instruction before its post-step encryption. After the prologue, the checked
 address offset ensures all subsequent data-cell mutations remain outside
 emitted code. Missing, late, or potentially aliasing relocation fails closed.
 
+The forward jump (`i`) is admitted only without data-pointer relocation: at
+that moment the data pointer still equals the code pointer, so the jump reads
+its own *original graphical source cell* and sets the next code pointer to
+that byte plus one. The claimed target must be strictly forward and within
+emitted source length; every skipped cell is an inert `NoOperation` and no
+second jump may occur. The VM post-step encryption of `target - 1` cannot
+corrupt reachable instructions. The verifier re-derives the target from the
+unique encoded byte and rejects any forged or backward target, effectful
+gap, or jump mixed with relocated arithmetic.
+
 `tests/malbolge_layout.rs` exercises 94 decode phases for profile byte I/O,
-executes real byte I/O and relocated rotate/crazy programs under both the
-historical and current normative `ProfileMachine`, and rejects malformed
+executes real byte I/O, relocated rotate/crazy, and first forward-jump skip
+programs under both the historical and current normative `ProfileMachine`,
+and rejects malformed
 lengths, halts, profile identity, altered source and aliasing placements.
 
 This is a *first machine-code slice*, not C-to-`.malbolge` compilation:
-no guest data/global layout, general IR lowering, code-state revisit,
-code-pointer jumps, calls or runtime linkage is implemented yet.
+no guest data/global layout, general IR lowering, backward code jumps,
+code-state revisits, calls or runtime linkage is implemented yet.
 
 ### Remaining implementation
 

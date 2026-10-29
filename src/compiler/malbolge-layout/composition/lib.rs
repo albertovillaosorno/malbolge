@@ -11,9 +11,9 @@
 // - Owns:
 //   - The first addressed, position-sensitive linear Malbolge code layout.
 // - Must-Not:
-//   - Implement host computation, choose jumps/data, or claim C lowering.
+//   - Implement host guest computation, arbitrary jumps or claim C lowering.
 // - Allows:
-//   - Inputs: canonical target profile and a bounded closed linear opcode list.
+//   - Inputs: canonical profile, bounded opcodes, one safe forward jump.
 //   - Outputs: graphical target bytes with exact decode/profile admission.
 //   - Side effects: none.
 // - Split-When:
@@ -27,16 +27,17 @@
 // - Usage:
 //   - Feed the closed instruction list to `encode_linear_layout`.
 // - Defaults:
-//   - Rejects empty, early-halt, jump and noncanonical code before publication.
+//   - Rejects early halt, backward/forged jumps and noncanonical code.
 //
 
-//! Small address-sensitive, verifier-rechecked Malbolge linear code layout.
+//! Small address-sensitive, verifier-rechecked Malbolge code layout.
 //!
 //! This module does **not** lower arbitrary ternary IR or allocate guest data.
 //! It proves an executable subset for which the code pointer advances by one
-//! position after every step, and stops before leaving the emitted source.
+//! position after every ordinary step, and stops inside the emitted source.
 //! Crazy/rotate may mutate memory only after a data-pointer relocation to
-//! an address beyond all emitted code. This first subset excludes code jumps.
+//! an address beyond all emitted code. One forward code jump is admitted when
+//! its exact encoded source-cell target and skipped region can be proven.
 
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
 
@@ -47,7 +48,7 @@ const MAX_LINEAR_CELLS: usize = 4096;
 const HALT_INSTRUCTION: u8 = b'v';
 const NO_OP_INSTRUCTION: u8 = b'o';
 
-/// One supported decoded machine operation at the next linear code position.
+/// One supported decoded machine operation at an exact source code position.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LinearOpcode {
     /// Execute the canonical ternary crazy operation at the data pointer.
@@ -56,6 +57,11 @@ pub enum LinearOpcode {
     Halt,
     /// Read one raw profile word using the profile's input instruction.
     InputWord,
+    /// Jump to the exact forward code position derived from the current cell.
+    JumpForward {
+        /// Required code address after the VM's automatic increment.
+        target: u32,
+    },
     /// The canonical explicit `o` no-operation instruction.
     NoOperation,
     /// Emit one byte using the profile's output instruction.
@@ -71,6 +77,7 @@ impl LinearOpcode {
         match self {
             Self::CrazyData => b'p',
             Self::InputWord => profile.input_instruction(),
+            Self::JumpForward { .. } => b'i',
             Self::OutputByte => profile.output_instruction(),
             Self::NoOperation => NO_OP_INSTRUCTION,
             Self::Halt => HALT_INSTRUCTION,
@@ -135,6 +142,13 @@ pub enum LinearLayoutError {
         /// Zero-based position of the first premature halt.
         position: usize,
     },
+    /// The jump shape would revisit code or skip non-padding operations.
+    JumpPathUnsupported,
+    /// The jump's claimed target disagrees with the encoded source cell.
+    JumpTargetMismatch {
+        /// Address of the incorrectly targeted jump.
+        position: usize,
+    },
     /// The final operation must halt before the code pointer reaches padding.
     MissingHalt,
     /// An instruction has no inverse graphical code cell at its address.
@@ -188,6 +202,54 @@ fn validate_shape(
             .any(|op| matches!(op, LinearOpcode::CrazyData | LinearOpcode::RotateData));
     if late_relocation || unplaced_arithmetic {
         return Err(LinearLayoutError::UnsafeDataPlacement);
+    }
+    validate_jump_shape(operations)
+}
+
+fn validate_jump_shape(operations: &[LinearOpcode]) -> Result<(), LinearLayoutError> {
+    let mut first = None;
+    for (position, operation) in operations.iter().enumerate() {
+        let LinearOpcode::JumpForward { target } = operation else {
+            continue;
+        };
+        if first.is_some() || operations.first() == Some(&LinearOpcode::RelocateDataPointer) {
+            return Err(LinearLayoutError::JumpPathUnsupported);
+        }
+        let target_position =
+            usize::try_from(*target).map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
+        if target_position <= position || target_position >= operations.len() {
+            return Err(LinearLayoutError::JumpPathUnsupported);
+        }
+        first = Some((position, target_position));
+    }
+    if let Some((jump, target)) = first {
+        let skip_begin = jump.saturating_add(1);
+        if operations
+            .iter()
+            .skip(skip_begin)
+            .take(target.saturating_sub(skip_begin))
+            .any(|operation| *operation != LinearOpcode::NoOperation)
+        {
+            return Err(LinearLayoutError::JumpPathUnsupported);
+        }
+    }
+    Ok(())
+}
+
+fn validate_jump_source(
+    operations: &[LinearOpcode],
+    source: &[u8],
+) -> Result<(), LinearLayoutError> {
+    for (position, operation) in operations.iter().enumerate() {
+        let LinearOpcode::JumpForward { target } = operation else {
+            continue;
+        };
+        let Some(source_byte) = source.get(position).copied() else {
+            return Err(LinearLayoutError::SourceLengthMismatch);
+        };
+        if u32::from(source_byte).saturating_add(1) != *target {
+            return Err(LinearLayoutError::JumpTargetMismatch { position });
+        }
     }
     Ok(())
 }
@@ -243,6 +305,7 @@ pub fn admit_linear_layout(
             return Err(LinearLayoutError::DecodeMismatch { position });
         }
     }
+    validate_jump_source(operations, source)?;
     Ok(LinearLayout {
         profile_fingerprint: profile.fingerprint(),
         profile_id: profile.id(),
@@ -252,6 +315,9 @@ pub fn admit_linear_layout(
 
 /// Assigns contiguous addresses from zero, encodes each desired decoded
 /// operation, and re-admits the entire graphical stream before publication.
+///
+/// An optional forward jump derives its destination from the exact encoded
+/// code cell; all skipped positions must be inert graphical padding.
 ///
 /// # Errors
 ///
