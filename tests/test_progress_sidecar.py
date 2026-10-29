@@ -6963,6 +6963,57 @@ def test_portable_checkpoint_recovers_across_process_crash_boundaries(
 
 
 @pytest.mark.parametrize("boundary", CRASH_BOUNDARIES)
+def test_running_checkpoint_recovers_across_process_crash_boundaries(
+    tmp_path: Path,
+    boundary: str,
+) -> None:
+    """A running job recovers only the generation with a committed pointer."""
+    fixture = _portable_crash_fixture(tmp_path)
+    first = replace(fixture.first, status=progress.ProgressStatus.RUNNING)
+    second = replace(fixture.second, status=progress.ProgressStatus.RUNNING)
+    assert progress.write_atomic(first) == fixture.destination
+    _ = fixture.sidecar_input.write_bytes(progress.encode(second))
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            "-c",
+            CRASH_SCRIPT,
+            str(fixture.sidecar_input),
+            str(fixture.checkpoint_input),
+            str(fixture.partial_input),
+            str(CRASH_EXIT),
+            boundary,
+        ],
+        check=False,
+        capture_output=True,
+        env=_subprocess_environment(),
+        shell=False,
+        timeout=30,
+    )
+    assert completed.returncode == CRASH_EXIT, completed.stderr.decode(
+        errors="replace"
+    )
+    committed_second = boundary in {
+        AFTER_SIDECAR_REPLACE,
+        AFTER_SIDECAR_SYNC,
+    }
+    committed = progress.read(fixture.destination)
+    assert committed == (second if committed_second else first)
+    state, partial = progress.read_portable_checkpoint_generation(
+        committed,
+        PORTABLE_CRASH_CODEC,
+    )
+    assert state == (
+        PORTABLE_STATE_AFTER_CRASH
+        if committed_second
+        else PORTABLE_STATE_BEFORE_CRASH
+    )
+    assert partial == (
+        PARTIAL_AFTER_CRASH if committed_second else PARTIAL_BEFORE_CRASH
+    )
+
+
+@pytest.mark.parametrize("boundary", CRASH_BOUNDARIES)
 def test_typed_ir_checkpoint_recovers_across_process_crash_boundaries(
     tmp_path: Path,
     boundary: str,

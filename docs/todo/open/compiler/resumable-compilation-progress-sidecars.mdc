@@ -213,7 +213,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   without replacing the durable pointer's authority, mandatory publication of
   a new checkpoint sequence while still running, and regression coverage of
   skipped sequences, stale payload references, invalid unit counters, and an
-  intervening writer's valid generation advance,
+  intervening writer's valid generation advance, plus 14 real process-crash
+  boundaries for sequential running-status portable checkpoint generations,
   backend-neutral checkpoint round trips plus outer-digest,
   identity/position/codec/canonical-payload rejection, crash-boundary recovery
   using real portable envelopes for both search-labelled state and tracked

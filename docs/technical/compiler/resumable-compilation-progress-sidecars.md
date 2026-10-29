@@ -625,6 +625,11 @@ publication; after the mutable sidecar temporary file is durable but before
 atomic pointer replacement; after replacement but before directory durability
 confirmation; and immediately after sidecar directory durability confirmation.
 
+The same 14 child-process crash boundaries now cover two successive
+`running`-status portable checkpoints with real partial payloads. Each recovery
+accepts only the state and partial bytes from the last committed pointer,
+including when the new immutable generation exists but is not yet referenced.
+
 Canonical typed IR now supplies one concrete compiler-state codec,
 `malbolge-typed-ir-v1`: validation-gated canonical bytes can be restored through
 `canonical_module()` with exact-tag, bounded-length, UTF-8, trailing-byte, full
