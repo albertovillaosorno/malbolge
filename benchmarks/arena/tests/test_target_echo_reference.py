@@ -367,6 +367,73 @@ def test_patterned_vm_that_ignores_input_retains_verifier_rejection(
         shutil.rmtree(directory)
 
 
+@pytest.mark.skipif(
+    not target_echo_reference.DEFAULT_EMITTER.is_file()
+    or not target_echo_reference.DEFAULT_RUNNER.is_file(),
+    reason="built Malbolge CLI binaries not available",
+)
+def test_changed_producer_pattern_fails_independent_oracle_even_if_linked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Self-consistent producer input drift cannot pass the fixed auditor."""
+    original_pattern = target_echo_reference.PATTERN_BYTES
+    monkeypatch.setattr(
+        target_echo_reference,
+        "PATTERN_BYTES",
+        (1, *original_pattern[1:]),
+    )
+    original_prepare = target_echo_reference._prepare_context
+    directories: list[Path] = []
+
+    def capture_context(
+        emitter: Path, runner: Path
+    ) -> target_echo_reference._Context:
+        context = original_prepare(emitter, runner)
+        directories.append(context.directory)
+        return context
+
+    monkeypatch.setattr(
+        target_echo_reference, "_prepare_context", capture_context
+    )
+    with tempfile.TemporaryDirectory(
+        dir=target_echo_reference._TEMP,
+        prefix="arena-patterned-test-tools-",
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        runner = Path(tool_directory) / "malbolge"
+        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        try:
+            with pytest.raises(
+                target_echo_reference.TargetEchoStudyError,
+                match="fixed echo case",
+            ):
+                target_echo_reference.run_study(
+                    target_echo_reference.StudyPlan(
+                        (1,), 1, target_echo_reference.PATTERNED_MODE
+                    ),
+                    emitter=emitter,
+                    runner=runner,
+                )
+            assert len(directories) == 1
+            document = analyze.parse_document(
+                (directories[0] / "study.json").read_text(encoding="utf-8")
+            )
+            checked = evidence.validate_links(
+                document,
+                target_echo_reference._ROOT,
+                policy=evidence.EvidencePolicy(
+                    require_raw_rows=True,
+                    require_trial_run_identity=True,
+                    require_budget_agreement=True,
+                ),
+            )
+            assert checked["raw_rows_matched"] == len(document["observations"])
+        finally:
+            for directory in directories:
+                shutil.rmtree(directory)
+
+
 @pytest.mark.parametrize(
     "plan",
     [
