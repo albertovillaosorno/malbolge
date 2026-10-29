@@ -81,6 +81,15 @@ emission.
   and nonzero-position jump paths, without claiming guest-data write proof.
   General source-to-target lowering, backward/mutable code jumps, heap data,
   guest runtime linkage and self-modifying revisits remain unimplemented.
+- A first real explicit-profile source publisher, `malbolge_layout`, now
+  converts a bounded closed machine-op token list into **new** graphical
+  `.malbolge` files. It re-admits source and verifies exact-step termination
+  with the normative selected-profile VM before same-directory atomic,
+  no-clobber publication. Process tests prove byte-exact reproducibility,
+  historical/current VM I/O, real jumped and relocated machine execution,
+  rejected malformed inputs, protected existing targets/symlinks and competing
+  writers. The raw file does not embed modern profile identity; this is
+  explicitly not a typed C→Malbolge frontend, capsule or guest runtime.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

@@ -43,6 +43,16 @@ parts:
     kind: composition
     language: rust
     responsibility: Admit and encode exact-profile bounded linear machine code.
+  - id: part-0002
+    path: composition/cli.rs
+    kind: composition
+    language: rust
+    responsibility: Publish admitted explicit-profile target source safely.
+  - id: part-0003
+    path: composition/main.rs
+    kind: composition
+    language: rust
+    responsibility: Wire one bounded machine-subset CLI executable.
 projects: []
 tests: []
 graph:

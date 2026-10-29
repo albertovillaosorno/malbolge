@@ -58,3 +58,46 @@ This is **not** a C-to-Malbolge compiler. Arbitrary ternary-IR operations,
 general control-flow jumps, data/global layout, calls, runtime linkage,
 source maps, full mutable code-state planning, and final capsule production
 remain open.
+
+## Explicit-profile source file emitter
+
+The first source-producing command is an **explicit machine-op subset tool**,
+not the C frontend or the complete compiler:
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-1998 \
+  --output .temp/echo.malbolge -- input output halt
+```
+
+It accepts an exact canonical `--profile` ID, a *new* `.malbolge` output path
+whose parent directory already exists, and `--` followed by 2–4096 closed
+opcode tokens: `nop`, `input`, `output`, `rotate`, `crazy`, `relocate`, `halt`,
+and `jump:<unsigned-decimal-code-address>`. The latter is a **claimed**
+post-increment jump target that must equal the graphical source-cell byte
+plus one at that exact address. Only the previously verified one-shot jump
+and data relocation shapes are allowed. Unsupported opcodes, unsupported
+control/data flow, noncanonical profiles, malformed arguments and unsafe
+source layouts fail before output publication.
+
+The producer independently re-admits its emitted graphical bytes and loads
+and executes them with the normative `ProfileMachine` for the selected
+profile using empty input. It requires a halt at the exact admitted step
+count before any source is published. This execution check validates the
+bounded machine subset's shape and control flow, **not** arbitrary input
+semantics or equivalent C computation. It stages the complete byte stream
+in the output directory, reopens and byte-compares the stage, then uses an
+atomic hard link to publish without replacing an existing target or symlink.
+An interrupted producer can leave an ignored, hidden `.stage-<pid>` file,
+but it cannot expose a partially written final target. A successful command
+prints a short informational diagnostic to stderr and writes no stdout.
+
+Raw `.malbolge` bytes do **not** embed a modern target-profile identity:
+consumers must supply the same explicit canonical profile separately, or
+use the separately specified versioned capsule mechanism when implemented
+in the full backend. In particular, the general-purpose command-line runner
+currently treats *raw* `.malbolge` files as classic programs, so this tool's
+modern-profile output must be loaded through a profile-aware VM, not treated
+as a self-describing program. The initial source publisher intentionally
+produces no claims of general C lowering, source maps, or guest-runtime
+linkage.

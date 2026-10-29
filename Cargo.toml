@@ -17,6 +17,13 @@ bench = false
 doc = false
 
 [[bin]]
+name = "malbolge_layout"
+path = "src/compiler/malbolge-layout/composition/main.rs"
+test = false
+bench = false
+doc = false
+
+[[bin]]
 name = "interpreter_benchmark"
 path = "src/performance/benchmarking/composition/interpreter_benchmark.rs"
 test = false

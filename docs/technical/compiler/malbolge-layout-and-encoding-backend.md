@@ -82,6 +82,34 @@ This is a *first machine-code slice*, not C-to-`.malbolge` compilation:
 no guest data/global layout, general IR lowering, backward code jumps,
 code-state revisits, calls or runtime linkage is implemented yet.
 
+### First real source-artifact publication
+
+A dedicated `malbolge_layout` Cargo executable now accepts an exact canonical
+`--profile`, an explicitly fresh `.malbolge` output path, and a bounded closed
+list of machine-op tokens (`nop`, `input`, `output`, `rotate`, `crazy`,
+`relocate`, `halt`, or `jump:<target>`). This is not a substitute for typed
+ternary or C lowering. It invokes the same verified position-sensitive layout
+encoder, separately re-admits the complete emitted bytes, and loads/runs the
+result under the selected normative `ProfileMachine` with empty input. A halt
+must occur at the exact admitted execution-witness step count before the
+source is published.
+
+The publisher creates a new same-directory staging file, flushes/syncs and
+reopens its exact graphical bytes, then uses a no-overwrite hard link to
+atomically reveal only a complete final `.malbolge`. Existing targets and
+symlinks are never replaced; invalid profiles, operands, paths or layout
+shapes fail closed. Process-level integration tests execute the built binary,
+reopen emitted files under historical/current canonical profiles with real
+byte input, test forward jumps and relocated arithmetic, compare exact output
+bytes across independent runs, reject unsupported input and symlinks, and
+exercise concurrent writers to one target. On abrupt interruption a hidden
+staging file may remain; it cannot expose a partial final target.
+
+The emitted raw source does **not** carry the target-profile fingerprint.
+Modern raw `.malbolge` therefore requires an independently specified profile
+at the VM loader; general runner dispatch, capsules, source maps, arbitrary C
+and guest-runtime linkage remain outside this first machine-subset command.
+
 ### Remaining implementation
 
 Map admitted typed ternary operations and runtime/heap helpers onto real target
