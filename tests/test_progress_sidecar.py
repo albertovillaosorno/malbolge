@@ -3359,6 +3359,38 @@ def test_writer_lock_rejects_real_parent_swap_after_pointer_preflight(
     assert (detached / f"{pointer.name}.lock").is_file()
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX unlink of an acquired lock is platform-specific",
+)
+def test_writer_lock_rejects_leaf_replacement_after_payload_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The held lock must still identify the path at pointer replacement."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    lock_path = Path(f"{destination}.lock")
+    foreign_lock = b"foreign-lock"
+    stage = cast(
+        "Callable[[int, bytes], None]",
+        vars(progress)["_write_payload_descriptor"],
+    )
+
+    def stage_then_detach_lock(descriptor: int, payload: bytes) -> None:
+        stage(descriptor, payload)
+        lock_path.unlink()
+        _ = lock_path.write_bytes(foreign_lock)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_write_payload_descriptor", stage_then_detach_lock
+        )
+        with pytest.raises(ERROR, match="writer lock path changed"):
+            _ = progress.write_atomic(candidate)
+    assert not destination.exists()
+    assert lock_path.read_bytes() == foreign_lock
+
+
 def test_writer_lock_rejects_existing_named_pipe(tmp_path: Path) -> None:
     """A pre-existing FIFO lock cannot block the publisher."""
     destination = tmp_path / PROGRESS_NAME
@@ -6592,8 +6624,10 @@ def test_write_atomic_wraps_mutable_publication_oserror(
     """Mutable filesystem failures remain inside the sidecar error boundary."""
     candidate = _sidecar(tmp_path)
 
-    def fail_publication(destination: Path, payload: bytes) -> Path:
-        del destination, payload
+    def fail_publication(
+        destination: Path, payload: bytes, *, held_lock: object = None
+    ) -> Path:
+        del destination, payload, held_lock
         message = "injected mutable publication failure"
         raise failure_type(message)
 

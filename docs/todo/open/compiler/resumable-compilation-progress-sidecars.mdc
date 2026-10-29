@@ -144,6 +144,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and same-inode parent links installed after lock acquisition,
   plus a second held-lock identity check after pointer/reference preflight
   to reject real-directory substitution before mutable write staging,
+  and a third check after temporary payload staging but before pointer replace
+  rejects a detached/recreated regular writer-lock inode without committing,
   typed rejection of unexpected `ValueError` and `RuntimeError` during
   writer-lock stream opening, acquisition, or post-acquisition identity
   admission, with no publication attempted after failed lock-open,

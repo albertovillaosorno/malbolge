@@ -2177,7 +2177,12 @@ def _cleanup_mutable_temporary(
         raise
 
 
-def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
+def _write_atomic_bytes(
+    destination: Path,
+    payload: bytes,
+    *,
+    held_lock: _LockStream | None = None,
+) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     _reject_path_redirect(destination, "progress sidecar")
     descriptor, temporary_name = tempfile.mkstemp(
@@ -2190,6 +2195,10 @@ def _write_atomic_bytes(destination: Path, payload: bytes) -> Path:
     try:
         _write_payload_descriptor(descriptor, payload)
         _reject_path_redirect(destination, "progress sidecar")
+        if held_lock is not None:
+            _verify_acquired_writer_lock(
+                _writer_lock_path(destination), held_lock
+            )
         _ = temporary.replace(destination)
         replaced = True
         _confirm_publication_durability(
@@ -2487,7 +2496,9 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
             _writer_lock_path(destination), lock_stream
         )
         try:
-            return _write_atomic_bytes(destination, payload)
+            return _write_atomic_bytes(
+                destination, payload, held_lock=lock_stream
+            )
         except ProgressSidecarCommittedError:
             raise
         except _OUTPUT_STREAM_ERRORS as error:

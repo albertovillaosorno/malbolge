@@ -185,8 +185,13 @@ The pointer writer also retains its acquired lock descriptor across transition
 and referenced-generation validation. Immediately before mutable staging, it
 rechecks the current lock-path device and inode against that held descriptor.
 A real-directory replacement after pointer preflight cannot redirect a stale
-writer into a new directory where it holds no serialization lock. This remains
-a check at the publication boundary, not protection from every later rename.
+writer into a new directory where it holds no serialization lock.
+
+After the mutable temporary payload is flushed, a third held-lock identity
+check runs immediately before atomic pointer replacement. Replacing the
+persisted lock with an unrelated regular inode during staging therefore fails
+before pointer commit, and the uncommitted temporary is reclaimed. These checks
+narrow the race windows; they do not make external filesystem renames atomic.
 
 Canonical output-path helpers reject empty or directory-only output names
 instead of deriving hidden progress members in a working directory. Helpers
