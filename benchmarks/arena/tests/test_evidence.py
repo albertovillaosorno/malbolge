@@ -698,6 +698,50 @@ def test_bounded_reader_classifies_stream_read_failure(
     assert isinstance(error.value.__cause__, fault)
 
 
+NONBINARY_READ_KIND = "text"
+
+
+NONBINARY_READ_KIND = "text"
+
+
+NONBINARY_READ_KIND = "text"
+
+
+class _InvalidChunkEvidenceReader:
+    def __init__(self, stream: IO[bytes], kind: str) -> None:
+        self.stream = stream
+        self.kind = kind
+
+    def fileno(self) -> int:
+        return self.stream.fileno()
+
+    def read(self, count: int) -> object:
+        if self.kind == NONBINARY_READ_KIND:
+            return "forged nonbinary read"
+        return b"x" * (count + 1)
+
+
+@pytest.mark.parametrize("kind", [NONBINARY_READ_KIND, "oversized"])
+def test_bounded_reader_rejects_malformed_chunk_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Reader byte shape and requested count are both hard admission bounds."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    original_open = evidence._open_evidence
+
+    @contextmanager
+    def invalid_open(path: Path) -> Iterator[_InvalidChunkEvidenceReader]:
+        with original_open(path) as stream:
+            yield _InvalidChunkEvidenceReader(stream, kind)
+
+    monkeypatch.setattr(evidence, "_open_evidence", invalid_open)
+    with pytest.raises(evidence.EvidenceError, match="invalid bytes"):
+        evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+
+
 @pytest.mark.skipif(
     not hasattr(evidence.os, "mkfifo")
     or not getattr(evidence.os, "O_NONBLOCK", 0),
