@@ -97,17 +97,34 @@ emission.
   forward-jump steps, derives each target from the live data-pointer word and
   its exact XLAT2 shadow, inserts inert graphical no-ops, and returns a
   logical-to-physical source map plus independently admitted linear layout.
+  A per-physical-cell origin witness now distinguishes requested instructions,
+  executed relocation padding and skipped forward-jump padding; the evidence
+  is built from the independently admitted reached code path, not from
+  inferred source-C positions.
   All 94 initial jump decoder phases, 1-to-3-hop paths and jump-then-`j`
   relocation have focused real-VM evidence for both canonical profiles;
   invalid short/backward edges and oversized layouts fail closed. The
-  explicit machine-token CLI still takes concrete jump addresses and no
-  branch/loop lowering is claimed.
+  default machine-token CLI still takes concrete jump addresses, while an
+  opt-in `--auto-layout` mode now accepts symbolic jumps. Neither mode
+  implements conditional branches or loops.
 - The same library planner now accepts `AutoRelocate`, searching at most 94
   reached no-op decoder phases for a safe `j` operand and preserving the live
   data pointer, encrypted operands, source length and planned data writes.
   Focused normative VM tests pass long-suffix and two-jump relocation with
   rotate/crazy, while duplicate/unsafe relocation and subsequent jump reject.
-  The CLI remains concrete-token only, not general control-flow lowering.
+  The default CLI remains concrete-token only; opt-in `--auto-layout`
+  admits symbolic `auto-relocate` but not general control-flow lowering.
+- The file publisher now exposes the proven planner under explicit
+  `--auto-layout` syntax, accepting symbolic `jump` and `auto-relocate`
+  alongside bounded concrete machine effects. The expanded source is
+  independently admitted against exact profile identity, checked by the
+  normative VM for its *reached* step count, then published through the
+  existing no-clobber raw/capsule path. Process-level current/historical
+  profile tests prove byte-identical concrete/auto layout, VM I/O and
+  relocated arithmetic, including two forward jumps and encrypted data
+  operands. Malformed grammar, numeric jump tokens in symbolic mode and
+  unsafe plans fail without a final file. Conditional branches, guest heap,
+  runtime linkage and general C compilation remain open.
 - A first real explicit-profile source publisher, `malbolge_layout`, now
   converts a bounded closed machine-op token list into **new** graphical
   `.malbolge` files. It re-admits source and verifies exact-step termination

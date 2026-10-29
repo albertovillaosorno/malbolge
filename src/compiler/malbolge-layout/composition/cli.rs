@@ -46,7 +46,8 @@ use crate::bridge::{
     ternary::{TernaryOperation, canonical_ternary_program},
 };
 use crate::layout::{
-    LinearOpcode, LinearProfileIdentity, admit_linear_layout, encode_linear_layout,
+    LinearOpcode, LinearProfileIdentity, PaddedForwardStep, admit_linear_layout,
+    encode_auto_padded_forward_layout, encode_linear_layout,
 };
 
 const PROFILE_ARG: &str = "--profile";
@@ -57,10 +58,12 @@ const MAX_OPERATIONS: usize = 4096;
 const MAX_TERNARY_WIRE_BYTES: u64 = 1_048_576;
 const TERNARY_FILE_ARG: &str = "--ternary-file";
 const LATEST_BYTE_TRACE_ARG: &str = "--latest-byte-trace";
+const AUTO_LAYOUT_ARG: &str = "--auto-layout";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 
 #[derive(Debug)]
 enum SourceSpec {
+    AutoLayout(Vec<PaddedForwardStep>),
     CanonicalTernaryFile {
         path: PathBuf,
         mode: TernaryFileMode,
@@ -120,45 +123,80 @@ fn parse_operation(token: &str) -> Result<LinearOpcode, String> {
     }
 }
 
+fn parse_auto_layout_operation(token: &str) -> Result<PaddedForwardStep, String> {
+    match token {
+        "jump" => Ok(PaddedForwardStep::Jump),
+        "auto-relocate" => Ok(PaddedForwardStep::AutoRelocate),
+        _ => {
+            let operation = parse_operation(token)?;
+            if matches!(operation, LinearOpcode::JumpForward { .. }) {
+                Err(String::from(
+                    "--auto-layout accepts symbolic jump, not jump:TARGET",
+                ))
+            } else {
+                Ok(PaddedForwardStep::Instruction(operation))
+            }
+        }
+    }
+}
+
+fn parse_auto_layout(arguments: &mut impl Iterator<Item = OsString>) -> Result<SourceSpec, String> {
+    let mut operations = Vec::new();
+    for raw in arguments {
+        if operations.len() >= MAX_OPERATIONS {
+            return Err(String::from("too many auto-layout operation tokens"));
+        }
+        let token = raw
+            .into_string()
+            .map_err(|_error| String::from("auto-layout token must be UTF-8"))?;
+        operations.push(parse_auto_layout_operation(&token)?);
+    }
+    if operations.is_empty() {
+        return Err(String::from("missing auto-layout operation tokens"));
+    }
+    Ok(SourceSpec::AutoLayout(operations))
+}
+
 fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<SourceSpec, String> {
     let first = arguments
         .next()
         .ok_or("missing machine operations or ternary-file argument")?;
-    let source =
-        if first == OsStr::new(TERNARY_FILE_ARG) || first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
-            let mode = if first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
-                if arguments.next().as_deref() != Some(OsStr::new(TERNARY_FILE_ARG)) {
-                    return Err(String::from(
-                        "--latest-byte-trace requires --ternary-file <path>",
-                    ));
-                }
-                TernaryFileMode::LatestRead
-            } else {
-                TernaryFileMode::AdjacentEcho
-            };
-            let path = PathBuf::from(arguments.next().ok_or("missing ternary wire path")?);
-            if arguments.next().is_some() {
+    let source = if first == OsStr::new(AUTO_LAYOUT_ARG) {
+        return parse_auto_layout(arguments);
+    } else if first == OsStr::new(TERNARY_FILE_ARG) || first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
+        let mode = if first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
+            if arguments.next().as_deref() != Some(OsStr::new(TERNARY_FILE_ARG)) {
                 return Err(String::from(
-                    "ternary file mode accepts exactly one input path",
+                    "--latest-byte-trace requires --ternary-file <path>",
                 ));
             }
-            SourceSpec::CanonicalTernaryFile { path, mode }
+            TernaryFileMode::LatestRead
         } else {
-            let first_token = first
+            TernaryFileMode::AdjacentEcho
+        };
+        let path = PathBuf::from(arguments.next().ok_or("missing ternary wire path")?);
+        if arguments.next().is_some() {
+            return Err(String::from(
+                "ternary file mode accepts exactly one input path",
+            ));
+        }
+        SourceSpec::CanonicalTernaryFile { path, mode }
+    } else {
+        let first_token = first
+            .into_string()
+            .map_err(|_error| String::from("opcode token must be UTF-8"))?;
+        let mut operations = vec![parse_operation(&first_token)?];
+        for raw_token in arguments {
+            if operations.len() >= MAX_OPERATIONS {
+                return Err(String::from("too many machine opcode tokens"));
+            }
+            let token = raw_token
                 .into_string()
                 .map_err(|_error| String::from("opcode token must be UTF-8"))?;
-            let mut operations = vec![parse_operation(&first_token)?];
-            for raw_token in arguments {
-                if operations.len() >= MAX_OPERATIONS {
-                    return Err(String::from("too many machine opcode tokens"));
-                }
-                let token = raw_token
-                    .into_string()
-                    .map_err(|_error| String::from("opcode token must be UTF-8"))?;
-                operations.push(parse_operation(&token)?);
-            }
-            SourceSpec::MachineOperations(operations)
-        };
+            operations.push(parse_operation(&token)?);
+        }
+        SourceSpec::MachineOperations(operations)
+    };
     Ok(source)
 }
 
@@ -301,6 +339,25 @@ fn verified_source(
     profile: &'static malbolge::ProfileDescriptor,
 ) -> Result<VerifiedSource, String> {
     match spec {
+        SourceSpec::AutoLayout(logical) => {
+            let proposed = encode_auto_padded_forward_layout(profile, logical)
+                .map_err(|error| format!("auto-layout rejected: {error:?}"))?;
+            let artifact = admit_linear_layout(
+                profile,
+                proposed.operations(),
+                proposed.layout().source(),
+                LinearProfileIdentity {
+                    fingerprint: proposed.layout().profile_fingerprint(),
+                    id: proposed.layout().profile_id(),
+                },
+            )
+            .map_err(|error| format!("auto-layout independent admission failed: {error:?}"))?;
+            Ok(VerifiedSource {
+                source: artifact.source().to_vec(),
+                steps: artifact.executed_code_positions().len(),
+                successful_byte_effects: None,
+            })
+        }
         SourceSpec::MachineOperations(operations) => {
             let artifact = encode_linear_layout(profile, operations)
                 .map_err(|error| format!("layout rejected: {error:?}"))?;

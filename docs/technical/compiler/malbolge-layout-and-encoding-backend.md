@@ -141,13 +141,20 @@ logical instruction sequences with symbolic forward-jump slots. It computes
 the target from the live `D`-pointer memory shadow (including XLAT2 updates),
 expands only safe no-op padding cells, records logical-to-source address
 mapping, then calls the same exact-profile independent layout admission.
+The returned `source_cell_origins` vector labels every physical graphical
+cell with its original logical index, generated reached relocation no-op,
+or skipped forward-jump no-op. This provenance is computed from an admitted
+VM execution witness rather than assumed reachable positions; it does not
+represent source-C line mapping.
 The planner fails closed on nonforward targets, post-relocation jumps or
 layout overflow. Real VMs exercise one-, two- and three-hop witnesses and
 jump-then-data-relocation; the first-jump phase matrix covers all 94
 address-sensitive decoder phases under both canonical profiles. The current
-source CLI continues accepting explicit concrete `jump:TARGET` tokens, not
-symbolic jumps. This is a compiler-library layout aid, not branch lowering
-or a general guest code-state solver.
+source CLI continues accepting explicit concrete `jump:TARGET` tokens by
+default. An opt-in `--auto-layout` mode now accepts symbolic `jump` and
+`auto-relocate` tokens, with the existing library planner as its untrusted
+candidate producer. This is not conditional branch lowering or a general
+guest code-state solver.
 
 `PaddedForwardStep::AutoRelocate` additionally chooses the earliest safe
 `j` placement among at most 94 reached source phases. It inserts reached
@@ -156,7 +163,31 @@ XLAT2 encryptions, then delegates data nonalias proof to independent layout
 admission. Tests execute actual current/historical VMs for long suffixes
 and a two-hop jump plus relocation with rotate/crazy; impossible placements,
 duplicate relocation and post-relocation jump attempts reject. This library
-helper is not part of the concrete token CLI grammar.
+helper is available only in the opt-in symbolic CLI grammar, not the
+default concrete-token mode.
+
+### Opt-in symbolic layout artifact publisher
+
+After the CLI `--` delimiter, `--auto-layout` chooses the symbolic input
+mode. It accepts `jump` and `auto-relocate` together with the ordinary
+bounded non-jump machine tokens, rejecting the numeric `jump:TARGET` token
+and any ternary-file operand. The default concrete mode and both MCTR wire
+modes are unchanged. Every parsed symbolic step uses the already verified
+`encode_auto_padded_forward_layout` library planner. The emitted operation
+plan and raw bytes are then **separately** passed to
+`admit_linear_layout` with the exact selected profile fingerprint and ID;
+only independently re-admitted code is sent to the normative VM and the
+same raw/capsule no-overwrite publisher. The VM execution length is the
+number of reached code steps, not the number of padded source characters.
+
+External-process regressions compare raw/capsule output against the original
+manual concrete layout for a first forward jump, a two-hop encrypted-data
+operand plus `j`, and automatically placed `j` with real rotate/crazy.
+Both 1998 and 2026 profile VMs replay the published source and check
+successful I/O or data-pointer relocation. Unsupported symbolic shapes,
+invalid arguments, and occupied paths fail without accepted new artifacts.
+This is source layout for a closed machine subset, not general control flow,
+source-C compilation, guest ABI, or total I/O equivalence.
 
 ### Canonical ternary-IR-to-file bridge
 

@@ -69,18 +69,23 @@ physical source positions. Each target is derived from the evolving
 `D`-pointer memory word, including earlier XLAT2 encryption; no caller-supplied
 jump destination is trusted. The planner rejects backward/short targets,
 post-relocation jumps, oversized code and unsupported logical plans. The
-original explicit machine-op CLI still requires concrete `jump:TARGET` tokens;
-it does not invoke this solver automatically.
+original machine-op CLI still requires concrete `jump:TARGET` tokens;
+the opt-in `--auto-layout` mode uses this solver explicitly.
 
 The library planner also accepts `PaddedForwardStep::AutoRelocate`. It inserts
 *reached* no-ops to find the earliest safe decoder phase within 94 positions
 for a `j` data-pointer relocation, taking the remaining logical suffix,
 current data pointer and previously encrypted jump operands into account.
+The planner also returns an exact source-cell origin table alongside
+logical-to-physical code positions: each graphical cell is either an
+original logical step, inserted *reached* relocation padding, or skipped
+jump padding. The table is constructed only after independently admitted
+VM path evidence; this is a bounded machine-step map, not a C source map.
 The resulting source and data-write witness undergo the normal independent
 layout check. Current/historical VM tests cover a long suffix and a two-jump
 chain followed by safe rotate/crazy writes; duplicate relocations, a jump
 after relocation and impossible source-length bounds reject. The CLI does
-not yet accept a symbolic relocation token.
+accepts a symbolic relocation token only after `--auto-layout`.
 
 Every admitted layout returns deterministic, step-indexed witnesses for
 **four** facts: reachable code pointer, data pointer at the start of each
@@ -106,7 +111,7 @@ remain open.
 
 ## Explicit-profile source file emitter
 
-The first source-producing command is an **explicit machine-op subset tool**,
+The first source-producing command is a **bounded machine-op subset tool**,
 not the C frontend or the complete compiler:
 
 ```sh
@@ -114,6 +119,38 @@ cargo run --bin malbolge_layout -- \
   --profile malbolge-1998 \
   --output .temp/echo.malbolge -- input output halt
 ```
+
+The same publisher now has an explicit symbolic layout mode. Only after
+`--auto-layout` does `jump` mean a forward target chosen from the live
+`D`-pointer word; `auto-relocate` asks for the earliest safe `j` phase.
+`--auto-layout` also accepts the other ordinary machine tokens (`nop`,
+`input`, `output`, `rotate`, `crazy`, `halt`, and explicit `relocate`), but
+refuses numeric `jump:TARGET` and any ternary-file operand:
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 \
+  --output .temp/auto-jump.malbolge -- \
+  --auto-layout jump input output halt
+```
+
+For relocated guest ternary arithmetic, place `auto-relocate` before
+`rotate`/`crazy`, followed by the final `halt`. The planner expands
+unreachable source cells with inert no-ops for jumps, and inserts *reached*
+no-ops to find a safe relocation phase within 94 decoder positions.
+The expanded plan is **independently re-admitted** and run in the normative
+profile VM before the same atomic, no-clobber raw or capsule publisher.
+The reported VM step count excludes unreachable padding, while the
+`.malbolge` byte count includes all physical source cells. The default
+machine-token mode remains unchanged and still requires `jump:TARGET`.
+
+The real external-process regressions compare symbolic output byte-for-byte
+against the original concrete-token publisher, reload both profiles' files
+in their independent VMs, and verify input/output, XLAT2 jump behavior and
+relocated rotate/crazy data writes. Unsupported paths, malformed options,
+unsafe data moves and occupied output paths reject before publication.
+Neither mode provides conditional branching, loops, guest storage, EOF
+semantics, or source-C lowering.
 
 For a self-describing modern-profile `.malbolge` that the general command
 runner can load directly, request the existing version-one capsule format:

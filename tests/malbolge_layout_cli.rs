@@ -34,7 +34,7 @@
 
 use std::ffi::OsString;
 use std::fs;
-use std::iter::repeat_with;
+use std::iter::{repeat_n, repeat_with};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, id};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -821,6 +821,253 @@ fn two_jumps_then_data_relocation_publishes_replayable_source() -> Result<(), St
                 .map_err(|error| format!("second data operand: {error:?}"))?,
             120
         );
+    }
+    Ok(())
+}
+
+fn emit_auto(
+    profile: &str,
+    target: &Path,
+    tokens: &[&str],
+    capsule: bool,
+) -> Result<Output, String> {
+    let mut command = Command::new(EXECUTABLE);
+    let _arguments = command
+        .arg("--profile")
+        .arg(profile)
+        .arg("--output")
+        .arg(target);
+    if capsule {
+        let _capsule = command.arg("--capsule");
+    }
+    command
+        .arg("--")
+        .arg("--auto-layout")
+        .args(tokens)
+        .output()
+        .map_err(|error| format!("automatic layout CLI: {error}"))
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "raw, capsule and legacy source are independently cross-checked"
+)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "the independent normative VM must replay the published jump"
+)]
+fn automatic_symbolic_jump_publishes_runnable_raw_and_capsule() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    for (profile_id, profile) in [
+        ("malbolge-1998", historical_profile()),
+        ("malbolge-2026", current_profile()),
+    ] {
+        let raw = fixture.path(&format!("{profile_id}-auto-jump.malbolge"));
+        let framed = fixture.path(&format!("{profile_id}-auto-jump-cap.malbolge"));
+        let tokens = ["jump", "input", "output", "halt"];
+        let source = source_on_success(&emit_auto(profile_id, &raw, &tokens, false)?, &raw)?;
+        let target = usize::from(*source.first().ok_or("missing graphical jump")?) + 1;
+        assert_eq!(source.len(), target.saturating_add(3));
+        assert!(source.len() > tokens.len());
+        let mut concrete = vec![format!("jump:{target}")];
+        concrete.extend(repeat_n(String::from("nop"), target.saturating_sub(1)));
+        concrete.extend([
+            String::from("input"),
+            String::from("output"),
+            String::from("halt"),
+        ]);
+        let old_tokens: Vec<&str> = concrete.iter().map(String::as_str).collect();
+        let explicit = fixture.path(&format!("{profile_id}-explicit-jump.malbolge"));
+        let manual = source_on_success(&emit(profile_id, &explicit, &old_tokens)?, &explicit)?;
+        assert_eq!(source, manual);
+
+        let published = emit_auto(profile_id, &framed, &tokens, true)?;
+        assert!(
+            published.status.success(),
+            "{}",
+            String::from_utf8_lossy(&published.stderr)
+        );
+        let frame = fs::read(framed).map_err(|error| error.to_string())?;
+        let capsule = parse_capsule(&frame)
+            .map_err(|error| format!("independent capsule parser: {error:?}"))?
+            .ok_or("missing version-one capsule")?;
+        assert_eq!(capsule.profile().id(), profile.id());
+        assert_eq!(capsule.payload(), source);
+        let mut vm = ProfileMachine::from_source(profile, capsule.payload(), vec![0xe1])
+            .map_err(|error| format!("published symbolic VM load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(4),
+            Ok(RunOutcome::Terminated { steps: 4, .. })
+        ));
+        assert_eq!(vm.input_consumed(), 1);
+        assert_eq!(vm.output(), &[0xe1]);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "the real CLI must preserve data relocation and self-modification"
+)]
+fn automatic_relocation_publishes_same_source_as_explicit_safe_layout() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let mut logical = vec!["auto-relocate"];
+    logical.extend(["nop"].repeat(44));
+    logical.extend(["rotate", "crazy", "halt"]);
+    let mut concrete = vec!["nop"; 8];
+    concrete.push("relocate");
+    concrete.extend(["nop"].repeat(44));
+    concrete.extend(["rotate", "crazy", "halt"]);
+    for (profile_id, profile) in [
+        ("malbolge-1998", historical_profile()),
+        ("malbolge-2026", current_profile()),
+    ] {
+        let path = fixture.path(&format!("{profile_id}-auto-reloc.malbolge"));
+        let baseline_path = fixture.path(&format!("{profile_id}-manual-reloc.malbolge"));
+        let source = source_on_success(&emit_auto(profile_id, &path, &logical, false)?, &path)?;
+        let baseline = source_on_success(
+            &emit(profile_id, &baseline_path, &concrete)?,
+            &baseline_path,
+        )?;
+        assert_eq!(source, baseline);
+        assert_eq!(source.len(), 56);
+        let mut vm = ProfileMachine::from_source(profile, &source, Vec::new())
+            .map_err(|error| format!("auto relocation VM load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(56),
+            Ok(RunOutcome::Terminated { steps: 56, .. })
+        ));
+        assert!(usize::try_from(vm.registers().data_pointer).unwrap_or_default() > source.len());
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "semantic source equality is cross-checked with existing concrete publishing"
+)]
+fn symbolic_two_jumps_and_auto_relocation_publish_exact_file() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let mut tokens = vec!["input"];
+    tokens.extend(["nop"].repeat(47));
+    tokens.extend([
+        "jump",
+        "nop",
+        "jump",
+        "auto-relocate",
+        "rotate",
+        "crazy",
+        "halt",
+    ]);
+    let original: Vec<&str> = (0..73usize)
+        .map(|position| match position {
+            0 => "input",
+            48 => "jump:51",
+            52 => "jump:69",
+            69 => "relocate",
+            70 => "rotate",
+            71 => "crazy",
+            72 => "halt",
+            _ => "nop",
+        })
+        .collect();
+    for (profile_id, profile) in [
+        ("malbolge-1998", historical_profile()),
+        ("malbolge-2026", current_profile()),
+    ] {
+        let target = fixture.path(&format!("{profile_id}-two-auto.malbolge"));
+        let manual_path = fixture.path(&format!("{profile_id}-two-manual.malbolge"));
+        let result = emit_auto(profile_id, &target, &tokens, true)?;
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let bytes = fs::read(target).map_err(|error| error.to_string())?;
+        let capsule = parse_capsule(&bytes)
+            .map_err(|error| format!("read checked source capsule: {error:?}"))?
+            .ok_or("symbolic jump capsule absent")?;
+        assert_eq!(capsule.profile().id(), profile.id());
+        let baseline =
+            source_on_success(&emit(profile_id, &manual_path, &original)?, &manual_path)?;
+        assert_eq!(capsule.payload(), baseline);
+        let mut vm = ProfileMachine::from_source(profile, capsule.payload(), vec![0x5e])
+            .map_err(|error| format!("published multi-hop VM: {error:?}"))?;
+        assert!(matches!(
+            vm.run(55),
+            Ok(RunOutcome::Terminated { steps: 55, .. })
+        ));
+        assert_eq!(vm.input_consumed(), 1);
+        assert_eq!(vm.registers().data_pointer, 123);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "all malformed requests must fail closed"
+)]
+fn automatic_layout_mode_rejects_hostile_grammar_and_unsafe_plans() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let target = fixture.path("never-created.malbolge");
+    for tokens in [
+        vec![],
+        vec!["jump:42", "halt"],
+        vec!["--ternary-file", "data.mctr"],
+        vec!["auto-relocate", "auto-relocate", "halt"],
+        vec!["auto-relocate", "jump", "halt"],
+        vec!["jump"],
+        vec!["auto-relocate", "rotate", "halt", "nop"],
+    ] {
+        let refused = emit_auto("malbolge-1998", &target, &tokens, true)?;
+        assert!(
+            !refused.status.success(),
+            "unexpected acceptance: {tokens:?}"
+        );
+        assert!(!target.exists());
+    }
+    let oversized = vec!["nop"; 4097];
+    let refused_overflow = emit_auto("malbolge-1998", &target, &oversized, false)?;
+    assert!(!refused_overflow.status.success());
+    assert!(!target.exists());
+    let refused = emit("malbolge-1998", &target, &["jump", "halt"])?;
+    assert!(!refused.status.success());
+    assert!(!target.exists());
+    let sentinel = b"existing artifact protected";
+    fs::write(&target, sentinel).map_err(|error| error.to_string())?;
+    let protected = emit_auto(
+        "malbolge-1998",
+        &target,
+        &["jump", "input", "output", "halt"],
+        false,
+    )?;
+    assert!(!protected.status.success());
+    assert_eq!(
+        fs::read(target).map_err(|error| error.to_string())?,
+        sentinel
+    );
+    Ok(())
+}
+
+#[test]
+fn automatic_layout_preserves_ordinary_machine_source_bytes() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let normal_path = fixture.path("concrete.malbolge");
+    let automatic_path = fixture.path("automatic.malbolge");
+    let tokens = ["nop", "input", "output", "halt"];
+    let concrete = source_on_success(&emit("malbolge-1998", &normal_path, &tokens)?, &normal_path)?;
+    let automatic = source_on_success(
+        &emit_auto("malbolge-1998", &automatic_path, &tokens, false)?,
+        &automatic_path,
+    )?;
+    if concrete != automatic {
+        return Err(String::from(
+            "opt-in planner changed non-symbolic machine source",
+        ));
     }
     Ok(())
 }
