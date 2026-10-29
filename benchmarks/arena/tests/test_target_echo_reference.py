@@ -37,7 +37,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import shutil
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+import tempfile
 from typing import TYPE_CHECKING
 
 import pytest
@@ -48,7 +51,6 @@ from benchmarks.arena import target_echo_reference
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
 
 RAW_TAMPER = "raw"
@@ -60,6 +62,7 @@ ARTIFACT_BYTES = "artifact_bytes"
 GRAPHICAL_LOW = 33
 GRAPHICAL_HIGH = 126
 BOOL_TRIAL_ALIAS = True
+OUTPUT_ARGUMENT = "--output"
 
 
 @pytest.fixture
@@ -70,13 +73,23 @@ def live_echo() -> Iterator[tuple[Path, dict]]:
         Retained study directory and admitted study document.
 
     """
-    directory, document = target_echo_reference.run_study(
-        target_echo_reference.StudyPlan((1, 4), 2)
-    )
-    try:
-        yield directory, document
-    finally:
-        shutil.rmtree(directory)
+    with tempfile.TemporaryDirectory(
+        dir=target_echo_reference._TEMP,
+        prefix="arena-target-test-tools-",
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        runner = Path(tool_directory) / "malbolge"
+        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        directory, document = target_echo_reference.run_study(
+            target_echo_reference.StudyPlan((1, 4), 2),
+            emitter=emitter,
+            runner=runner,
+        )
+        try:
+            yield directory, document
+        finally:
+            shutil.rmtree(directory)
 
 
 @pytest.mark.skipif(
@@ -175,6 +188,51 @@ def test_retained_target_evidence_tamper_fails_closed(
         )
 
 
+@pytest.mark.skipif(
+    not target_echo_reference.DEFAULT_EMITTER.is_file()
+    or not target_echo_reference.DEFAULT_RUNNER.is_file(),
+    reason="built Malbolge binaries not available",
+)
+def test_producer_rejects_forged_graphical_source_and_vm_agreement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fake source and fake expected stdout cannot claim target emission."""
+    directories: list[Path] = []
+    real_prepare = target_echo_reference._prepare_context
+
+    def recorded(emitter: Path, runner: Path) -> target_echo_reference._Context:
+        context = real_prepare(emitter, runner)
+        directories.append(context.directory)
+        return context
+
+    def forged(command: list[str]) -> sp.CompletedProcess[bytes]:
+        if OUTPUT_ARGUMENT in command:
+            output = Path(command[command.index(OUTPUT_ARGUMENT) + 1])
+            operations = command[command.index("--") + 1 :]
+            output.write_bytes(b"!" * len(operations))
+            return sp.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+        return sp.CompletedProcess(
+            command,
+            0,
+            stdout=bytes([target_echo_reference.CLASSIC_EOF_BYTE]),
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(target_echo_reference, "_prepare_context", recorded)
+    monkeypatch.setattr(target_echo_reference, "_invoke", forged)
+    try:
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="source instruction",
+        ):
+            target_echo_reference.run_study(
+                target_echo_reference.StudyPlan((1,), 1)
+            )
+    finally:
+        for directory in directories:
+            shutil.rmtree(directory)
+
+
 @pytest.mark.parametrize(
     "plan",
     [
@@ -223,9 +281,17 @@ def test_wrong_external_vm_output_retains_failed_trial_not_success(
     runner = tmp_path / "incorrect-runner"
     _ = runner.write_bytes(b"#!/bin/sh\nprintf '" + wrong_output + b"'\n")
     runner.chmod(0o700)
-    directory, document = target_echo_reference.run_study(
-        target_echo_reference.StudyPlan((1,), 1), runner=runner
-    )
+    with tempfile.TemporaryDirectory(
+        dir=target_echo_reference._TEMP,
+        prefix="arena-target-test-tools-",
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        directory, document = target_echo_reference.run_study(
+            target_echo_reference.StudyPlan((1,), 1),
+            emitter=emitter,
+            runner=runner,
+        )
     try:
         assert all(
             row["outcome"] == expected_outcome

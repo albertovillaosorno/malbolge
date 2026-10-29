@@ -2,8 +2,9 @@
 
 This directory owns cross-algorithm evaluation definitions and reproducible
 comparison reports. Capacity curves and multi-objective Pareto frontiers take
-precedence over any convenience score. This is an initial **offline analysis**
-slice; it neither runs an experiment nor certifies submitted evidence.
+precedence over any convenience score. The standalone **analyzer** is offline
+and cannot certify submitted evidence; separate bounded host-C and classic
+target-reference producers now record real, narrowly scoped experiments.
 
 ## Analyze retained observations
 
@@ -211,6 +212,38 @@ performance verdict. An independent caller can inspect the resulting file:
 python3.14 -B -m benchmarks.arena.analyze \
   .temp/arena-target-echo-EXAMPLE/study.json
 ```
+
+Every newly produced classic target study now passes a distinct post-run
+read-only source audit **before** its command can publish a successful study.
+The audit independently decodes each retained graphical byte using the frozen
+classic XLAT1 table and its exact source position, requiring the claimed
+input/output/no-op/halt sequence. Reported sizes and raw-file hashes alone do
+not satisfy this check. It additionally requires the producer's fixed study
+question, stage, budgets, case identities and paired trial plan; exact
+manifest/raw/candidate path inventory; identical reported source revision
+across run manifests; and strict run/raw/budget links. It rejects foreign
+producer declarations and unrecognized or linked candidate files. Successful
+source digests are derived from inspected bytes; failed trials remain visible
+but their historical failures are **not** reproduced or authenticated.
+
+Audit any retained bounded classic target study without launching an external
+process:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_audit \
+  .temp/arena-target-echo-EXAMPLE/study.json
+```
+
+To **opt in to a new VM execution** of every retained successful source, use
+`--replay-candidates`. Replay requires the current local `malbolge_layout` and
+`malbolge` executable bytes to match the jointly recorded SHA-256 toolchain
+fingerprint. It checks exact EOF output again and reopens each source after
+execution to reject observed source changes. This is separate post-run VM
+reexecution; it is not proof that the original benchmark executed those same
+binary bytes, not independent verification of arbitrary Malbolge programs,
+and never a replay of recorded wall times or failed attempts. If binaries were
+rebuilt since the study, offline source admission remains available but replay
+rejects the toolchain drift until the original binaries are recovered.
 
 The exact executable hashes and Git revision are recorded as **claimed
 provenance**, not execution attestation. The declared 60-second/1024-MiB

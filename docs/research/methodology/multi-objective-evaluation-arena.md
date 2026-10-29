@@ -2,7 +2,8 @@
 
 ## Status
 
-Active. Initial offline analyzer implemented; performance evidence pending.
+Active. Offline analysis, host-C baseline and bounded classic target pilot
+implemented; general verified guest compiler evidence remains pending.
 
 ## Research Question
 
@@ -20,10 +21,10 @@ fixed budgets. Preserve raw evidence so an algorithm that is faster at easy
 instances but scales worse than another remains distinguishable instead of both
 appearing equally "perfect" after crossing an arbitrary threshold.
 
-- Status: Active (offline evidence analysis only)
+- Status: Active (bounded measured reference stages, no general guest compiler)
 - Record type: Methodology
 - Planning identity: `multi-objective-compiler-algorithm-evaluation-arena`
-- Last reviewed: 2026-10-28
+- Last reviewed: 2026-10-29
 
 ## Prior Work
 
@@ -206,6 +207,28 @@ modern capsule identity. The classic EOF-only check is not independent proof
 of a C-to-Malbolge translation, arithmetic correctness, heap/call linking,
 or unrestricted target-profile execution. Broader verified guest workloads
 and multiple physically controlled host observations remain open.
+
+A separate `benchmarks/arena/target_echo_audit.py` now provides producer-
+specific **read-only post-run source admission** for these classic target
+studies. It accepts only canonical ignored study locations, checks the fixed
+research claims, bounded consecutive trial populations, case fingerprints,
+exact run/raw/candidate paths, source revision consistency, producer-specific
+manifest provenance, and full strict arena raw/budget preflight. For every
+reported verified program it independently decodes each retained graphical
+byte against the frozen classic translation table and position-specific
+expected input/output/no-op/halt trace. Forging a different same-length source
+is thus rejected even when its manifest and raw CSV remain self-consistent.
+The real study producer calls this audit before returning a successful study;
+a subprocess echoing the expected bytes cannot make a forged code stream pass.
+
+The optional `--replay-candidates` audit mode requires the local emitter/VM
+binary fingerprints to match the recorded combined toolchain fingerprint,
+reexecutes all retained successful sources through the general classic VM,
+and checks full expected EOF output and unchanged source bytes afterward.
+Neither static admission nor the opt-in replay authenticates historical
+measurement, validates reported failures by reexecution, enforces aggregate
+resources, or proves arbitrary guest semantics. Missing original binaries can
+block replay while leaving the offline source evidence inspectable.
 
 The bounded host-C *reference study* runner now measures actual compiler,
 linker and native oracle-check wall time, executable size and maximum

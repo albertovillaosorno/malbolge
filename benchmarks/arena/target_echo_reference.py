@@ -427,6 +427,28 @@ def _make_document(
     }
 
 
+def _audit_retained_study(path: Path) -> dict[str, Any]:
+    """Admit the complete retained source graph before returning a study.
+
+    Returns:
+        Strictly parsed version-one study after producer-specific source audit.
+
+    Raises:
+        TargetEchoStudyError: A retained candidate or source claim is invalid.
+
+    """
+    # The read-only auditor owns inverse decoding, not the emitting backend.
+    from benchmarks.arena import target_echo_audit  # ruff: ignore[import-outside-top-level]
+
+    relative = path.relative_to(_ROOT).as_posix()
+    try:
+        _ = target_echo_audit.audit(relative)
+    except target_echo_audit.TargetEchoAuditError as error:
+        message = f"target echo source admission failed: {error}"
+        raise TargetEchoStudyError(message) from error
+    return analyze.parse_document(path.read_text(encoding="utf-8"))
+
+
 def run_study(
     plan: StudyPlan,
     *,
@@ -450,17 +472,7 @@ def run_study(
     document = _make_document(context, observations)
     path = context.directory / "study.json"
     path.write_text(json.dumps(document, sort_keys=True, indent=2) + "\n")
-    admitted = analyze.parse_document(path.read_text())
-    evidence.validate_links(
-        admitted,
-        _ROOT,
-        policy=evidence.EvidencePolicy(
-            require_raw_rows=True,
-            require_trial_run_identity=True,
-            require_budget_agreement=True,
-        ),
-    )
-    analyze.analyze(admitted)
+    admitted = _audit_retained_study(path)
     if _tool_identity(context.emitter, context.runner) != context.toolchain:
         _fail("target echo executables changed during the measured study")
     return context.directory, admitted
