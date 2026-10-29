@@ -151,6 +151,25 @@ def _open_evidence(path: Path) -> IO[bytes]:
         raise EvidenceError(message) from error
 
 
+def _read_complete(stream: IO[bytes], *, size: int, relative: str) -> bytes:
+    """Consume the exact admitted inode length across bounded short reads.
+
+    Returns:
+        Complete admitted evidence bytes or a typed rejection on early EOF.
+
+    """
+    data = bytearray()
+    while len(data) < size:
+        requested = min(size - len(data), 1024 * 1024)
+        chunk = stream.read(requested)
+        if type(chunk) is not bytes or len(chunk) > requested:
+            _fail(f"evidence read returned invalid bytes: {relative}")
+        if not chunk:
+            _fail(f"evidence read ended before admitted size: {relative}")
+        data.extend(chunk)
+    return bytes(data)
+
+
 def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     """Read bounded ordinary evidence with before/after file identity checks.
 
@@ -168,7 +187,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
             _fail(
                 f"evidence opened file changed after path admission: {relative}"
             )
-        data = stream.read(limit + 1)
+        data = _read_complete(stream, size=opened.st_size, relative=relative)
         completed = os.fstat(stream.fileno())
         if _file_identity(completed) != _file_identity(opened):
             _fail(f"evidence file changed during read: {relative}")

@@ -33,10 +33,11 @@
 """Synthetic-only experiment link checks for the multi-objective arena."""
 
 # Assertions here have the same test-only policy as tests/**/*.py.
-# ruff: file-ignore[assert]
+# ruff: file-ignore[assert,private-member-access]
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import sys
@@ -49,7 +50,9 @@ from benchmarks.arena import analyze
 from benchmarks.arena import evidence
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from os import stat_result
+    from typing import IO
 
 REPLACE_AFTER_LSTAT_COUNT = 3
 SECOND_FSTAT_CALL = 2
@@ -609,6 +612,51 @@ def test_bounded_reader_returns_original_bytes_for_ordinary_file(
         )
         == original
     )
+
+
+class _ShortEvidenceReader:
+    def __init__(self, stream: IO[bytes], *, premature_eof: bool) -> None:
+        self.stream = stream
+        self.premature_eof = premature_eof
+        self.calls = 0
+
+    def fileno(self) -> int:
+        return self.stream.fileno()
+
+    def read(self, count: int) -> bytes:
+        self.calls += 1
+        if self.premature_eof and self.calls > 1:
+            return b""
+        return self.stream.read(min(count, 3))
+
+
+@pytest.mark.parametrize("premature_eof", [False, True])
+def test_bounded_reader_requires_complete_bytes_across_short_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    premature_eof: bool,
+) -> None:
+    """A stable inode never authenticates a truncated stream prefix."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    expected = (tmp_path / relative).read_bytes()
+    original_open = evidence._open_evidence
+
+    @contextmanager
+    def short_open(path: Path) -> Iterator[_ShortEvidenceReader]:
+        with original_open(path) as stream:
+            yield _ShortEvidenceReader(stream, premature_eof=premature_eof)
+
+    monkeypatch.setattr(evidence, "_open_evidence", short_open)
+    if premature_eof:
+        with pytest.raises(evidence.EvidenceError, match="ended before"):
+            evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+    else:
+        assert (
+            evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+            == expected
+        )
 
 
 @pytest.mark.skipif(

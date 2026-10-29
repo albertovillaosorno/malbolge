@@ -524,6 +524,10 @@ The original study records remain the result authority.
 - A shared bounded file reader now compares path and descriptor identity,
   size and timestamps around manifest/raw/challenge/historical evidence reads.
   Synthetic tests reject an opened-file substitution and an in-place rewrite.
+  Evidence reads now consume all observed inode bytes in bounded chunks,
+  admitting ordinary short reads but rejecting premature EOF or overlong/nonbyte
+  chunks before hashing or parsing a retained run, CSV, or challenge bundle.
+  Stable inode metadata alone cannot authorize a valid-looking file prefix.
 - `benchmarks/arena/budget_links.py` optionally requires exact resource
   budget declarations from each linked run, rejecting missing/forged integers,
   unit mismatches, and one-unit study drift with fail-closed CLI regressions.
