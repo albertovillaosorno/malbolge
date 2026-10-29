@@ -128,6 +128,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   fails, including `ValueError` and `RuntimeError` from raw directory close,
   typed uncertain-durability outcomes also cover non-`OSError` directory
   sync failures, keeping them primary over later close errors,
+  POSIX parent-directory fsync now rejects non-directory inodes, linked parent
+  paths, and linked parent swaps during sync using directory/no-follow flags
+  with fallback descriptor-type admission and exact committed-path evidence,
   non-`OSError` payload file-sync failures during partial and pointer
   publication retain exact last-committed generation evidence, with pre-first-
   checkpoint failures remaining typed prepublication errors,

@@ -4356,6 +4356,71 @@ def test_checkpoint_generation_wraps_immutable_publication_oserror(
     assert not Path(sidecar.progress_path).exists()
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX directory fsync and no-follow flags are platform-specific",
+)
+def test_durability_sync_rejects_regular_file_parent(tmp_path: Path) -> None:
+    """Synchronizing a regular inode cannot prove directory durability."""
+    parent = tmp_path / "not-a-directory"
+    _ = parent.write_bytes(b"regular-file-not-directory")
+    flusher = cast("Callable[..., None]", vars(progress)["_flush_parent"])
+    with pytest.raises((OSError, ERROR)):
+        flusher(parent, platform="posix")
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX directory symlinks are platform-specific",
+)
+def test_durability_sync_rejects_linked_parent(tmp_path: Path) -> None:
+    """A redirected parent must not be accepted as durability evidence."""
+    parent = tmp_path / "real-parent"
+    parent.mkdir()
+    alias = tmp_path / "linked-parent"
+    try:
+        alias.symlink_to(parent, target_is_directory=True)
+    except (NotImplementedError, OSError) as error:
+        pytest.skip(f"directory symlinks unavailable on this host: {error}")
+    flusher = cast("Callable[..., None]", vars(progress)["_flush_parent"])
+    with pytest.raises((OSError, ERROR)):
+        flusher(alias, platform="posix")
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX parent relocation is platform-specific",
+)
+def test_sidecar_durability_rejects_parent_link_swap_after_sync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A committed pointer reports uncertain durability after a parent swap."""
+    parent = tmp_path / "job"
+    parent.mkdir()
+    detached = tmp_path / "detached-job"
+    sidecar = _sidecar(parent)
+    destination = Path(sidecar.progress_path)
+    original_fsync = os.fsync
+
+    def relocate_after_sync(descriptor: int) -> None:
+        original_fsync(descriptor)
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            parent.rename(detached)
+            parent.symlink_to(detached, target_is_directory=True)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", relocate_after_sync)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="durability",
+        ) as captured:
+            _ = progress.write_atomic(sidecar)
+    assert captured.value.published_path == destination
+    assert (detached / destination.name).exists()
+    assert parent.is_symlink()
+
+
 @pytest.mark.parametrize("cleanup_type", [OSError, ValueError, RuntimeError])
 def test_directory_close_after_sync_reports_committed_path(
     tmp_path: Path,

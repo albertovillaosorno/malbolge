@@ -275,6 +275,17 @@ Directory `fsync` failures of types `OSError`, `ValueError`, and
 `RuntimeError` all retain uncertain-durability path evidence. A non-OS sync
 failure remains primary even if the subsequent directory close also fails.
 
+POSIX durability confirmation requires a directory descriptor rather than
+accepting a regular file's successful `fsync`. The parent is opened with
+`O_DIRECTORY` and `O_NOFOLLOW` where supported, and its path is checked for
+symlink or junction components before opening and before and after sync.
+Platforms without `O_DIRECTORY` check the opened descriptor's directory type.
+
+A linked parent or a parent replaced with a link during directory sync thus
+fails closed with the original committed path recorded as uncertain durability.
+Tests cover regular-file substitution, a linked parent, and a live parent swap
+after sync. This is not a proof against every real-directory rename race.
+
 Writer-lock release/close and immutable temporary-file cleanup failure after
 durable publication follow the same committed-evidence principle. If a durable
 checkpoint member commits before a later partial member fails prepublication,

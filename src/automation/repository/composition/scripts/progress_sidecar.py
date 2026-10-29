@@ -1906,14 +1906,33 @@ def read(path: Path) -> ProgressSidecar:
     return loads(text)
 
 
+def _open_durability_directory(path: Path) -> int:
+    _reject_path_redirect(path, "progress durability directory")
+    flags = os.O_RDONLY
+    flags |= cast("int", getattr(os, "O_DIRECTORY", 0))
+    flags |= cast("int", getattr(os, "O_NOFOLLOW", 0))
+    return os.open(path, flags)
+
+
+def _verify_durability_directory(path: Path, descriptor: int) -> None:
+    # O_DIRECTORY is not available on every POSIX host.
+    if not getattr(os, "O_DIRECTORY", 0) and not stat.S_ISDIR(
+        os.fstat(descriptor).st_mode
+    ):
+        _fail("progress durability parent must be a directory")
+    _reject_path_redirect(path, "progress durability directory")
+
+
 def _flush_parent(path: Path, *, platform: str = os.name) -> None:
     if platform == WINDOWS_PLATFORM:
         return
-    descriptor = os.open(path, os.O_RDONLY)
+    descriptor = _open_durability_directory(path)
     sync_error: Exception | None = None
     try:
         try:
+            _verify_durability_directory(path, descriptor)
             os.fsync(descriptor)
+            _verify_durability_directory(path, descriptor)
         except (OSError, ValueError, RuntimeError) as error:
             sync_error = error
             raise
