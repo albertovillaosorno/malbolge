@@ -1757,3 +1757,97 @@ fn auto_relocation_rejects_unsafe_capacity_and_duplicate_data_moves() {
         Err(LinearLayoutError::JumpPathUnsupported)
     );
 }
+
+/// An independent scalar trit-table oracle for the guest `p` operation.
+/// Keep this deliberately separate from the VM's chunked crazy lookup.
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "base-three quotient and remainder are the independent scalar trit oracle"
+)]
+fn scalar_crazy_reference(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
+    const CRAZY: [[u32; 3]; 3] = [[1, 0, 0], [1, 0, 2], [2, 2, 1]];
+    let mut place = 1u32;
+    let mut result = 0u32;
+    for _trit in 0..trits {
+        let data_digit = usize::try_from(data % 3).unwrap_or_default();
+        let acc_digit = usize::try_from(accumulator % 3).unwrap_or_default();
+        let digit = CRAZY
+            .get(data_digit)
+            .and_then(|row| row.get(acc_digit))
+            .copied()
+            .unwrap_or_default();
+        result = result.saturating_add(digit.saturating_mul(place));
+        place = place.saturating_mul(3);
+        data /= 3;
+        accumulator /= 3;
+    }
+    result
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "the target VM must perform both real data operations for each input"
+)]
+#[expect(
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    reason = "independent ternary rotate and low-byte oracle requires exact integer math"
+)]
+fn auto_relocation_guest_crazy_and_rotate_compute_independent_output() -> Result<(), String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction};
+    let logical = [
+        Instruction(LinearOpcode::InputWord),
+        AutoRelocate,
+        Instruction(LinearOpcode::CrazyData),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::RotateData),
+        Instruction(LinearOpcode::OutputByte),
+        Instruction(LinearOpcode::Halt),
+    ];
+    for profile in [current_profile(), historical_profile()] {
+        let artifact = encode_auto_padded_forward_layout(profile, &logical)
+            .map_err(|error| format!("guest ternary arithmetic layout: {error:?}"))?;
+        verify_bidirectional_source_map(&artifact)?;
+        let layout = artifact.layout();
+        assert_eq!(artifact.logical_code_positions(), &[0, 1, 2, 3, 4, 5, 6]);
+        assert_eq!(
+            layout.data_write_positions(),
+            &[None, None, Some(40), None, Some(42), None, None,]
+        );
+        for input in [0u8, 1, 2, 13, 127, 255] {
+            let mut vm = ProfileMachine::from_source(profile, layout.source(), vec![input])
+                .map_err(|error| format!("guest ternary VM load: {error:?}"))?;
+            let initial_crazy_word = vm
+                .memory_word(40)
+                .map_err(|error| format!("initial crazy data: {error:?}"))?;
+            let initial_rotate_word = vm
+                .memory_word(42)
+                .map_err(|error| format!("initial rotate data: {error:?}"))?;
+            let expected_crazy =
+                scalar_crazy_reference(initial_crazy_word, u32::from(input), profile.word_trits());
+            let expected_rotate =
+                initial_rotate_word / 3 + (initial_rotate_word % 3) * (profile.word_modulus() / 3);
+            verify_execution_witness(&mut vm, layout)?;
+            assert_eq!(vm.input_consumed(), 1);
+            assert_eq!(
+                vm.output(),
+                &[
+                    u8::try_from(expected_crazy % 256).map_err(|error| error.to_string())?,
+                    u8::try_from(expected_rotate % 256).map_err(|error| error.to_string())?,
+                ]
+            );
+            assert_eq!(
+                vm.memory_word(40)
+                    .map_err(|error| format!("crazy memory result: {error:?}"))?,
+                expected_crazy
+            );
+            assert_eq!(
+                vm.memory_word(42)
+                    .map_err(|error| format!("rotated memory result: {error:?}"))?,
+                expected_rotate
+            );
+        }
+    }
+    Ok(())
+}
