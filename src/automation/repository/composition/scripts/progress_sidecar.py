@@ -432,6 +432,8 @@ class ProgressWriteLimiter:
 
     def _validate_committed_sidecar(self) -> None:
         if self._last_committed_sidecar is None:
+            if self._last_committed_write_ns is not None:
+                _fail("progress write last committed sidecar is missing")
             return
         if (
             type(self._last_committed_sidecar) is not ProgressSidecar

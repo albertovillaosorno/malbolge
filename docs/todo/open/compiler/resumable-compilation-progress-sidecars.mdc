@@ -212,6 +212,7 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   plus rejection of otherwise suppressed invalid lifecycle transitions,
   caller-local limiter binding to committed job output/operation/start identity
   so a second job cannot silently lose its initial progress publication,
+  and rejection of direct limiter state with an orphan committed timestamp,
   full cached committed-sidecar transition preflight before routine suppression
   without replacing the durable pointer's authority, mandatory publication of
   a new checkpoint sequence while still running, and regression coverage of

@@ -8483,9 +8483,27 @@ def test_progress_write_limiter_fails_closed_on_invalid_timing(
         _minimum_interval_ns=10,
         _started_ns=10,
         _last_committed_write_ns=9,
+        _last_committed_sidecar=candidate,
     )
     with pytest.raises(ERROR, match="precedes limiter start"):
         _ = corrupt_commit.publish(candidate)
+
+
+def test_progress_limiter_rejects_orphan_committed_clock(
+    tmp_path: Path,
+) -> None:
+    """A commit timestamp alone cannot suppress a new job's initial pointer."""
+    limiter = progress.ProgressWriteLimiter(
+        _clock=SequenceClock([101]),
+        _minimum_interval_ns=1_000,
+        _started_ns=100,
+        _last_committed_write_ns=100,
+        _last_observed_ns=100,
+    )
+    first = _sidecar(tmp_path)
+    with pytest.raises(ERROR, match="last committed sidecar"):
+        _ = limiter.publish(first)
+    assert not Path(first.progress_path).exists()
 
 
 def test_monotonic_timer_separates_every_scientific_phase() -> None:
@@ -8670,6 +8688,7 @@ def test_direct_observation_state_cannot_precede_clock_anchors(
         _started_ns=100,
         _last_committed_write_ns=160,
         _last_observed_ns=159,
+        _last_committed_sidecar=_sidecar(tmp_path),
     )
     with pytest.raises(ERROR, match="last observation precedes"):
         _ = limiter.publish(_sidecar(tmp_path))
