@@ -247,17 +247,18 @@ fn validate_shape(
 }
 
 fn validate_jump_shape(operations: &[LinearOpcode]) -> Result<(), LinearLayoutError> {
-    if operations.contains(&LinearOpcode::RelocateDataPointer)
-        && operations
-            .iter()
-            .any(|operation| matches!(operation, LinearOpcode::JumpForward { .. }))
-    {
-        return Err(LinearLayoutError::JumpPathUnsupported);
-    }
+    let relocation = operations
+        .iter()
+        .position(|operation| *operation == LinearOpcode::RelocateDataPointer);
     for (position, operation) in operations.iter().enumerate() {
         let LinearOpcode::JumpForward { target } = operation else {
             continue;
         };
+        // Once j relocates D beyond graphical source, later i operands are
+        // synthesized loader data and not yet covered by this small proof.
+        if relocation.is_some_and(|relocate_at| position > relocate_at) {
+            return Err(LinearLayoutError::JumpPathUnsupported);
+        }
         let target_position =
             usize::try_from(*target).map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
         if target_position <= position || target_position >= operations.len() {
@@ -324,8 +325,9 @@ fn derive_execution_positions(
     let mut data = Vec::new();
     let mut executed = Vec::new();
     let mut encrypted = Vec::new();
-    // Only source-addressed code cells are needed: jumps cannot coexist with
-    // relocation or arithmetic, and every data-pointer read is in this range.
+    // Every jump and the sole relocation read a source-addressed data cell.
+    // After relocation all further operations are linear and never inspect
+    // memory contents for code control flow. Arithmetic cannot alias source.
     let mut code_cells: Vec<u32> = source.iter().copied().map(u32::from).collect();
     let mut data_pointer = 0usize;
     let mut position = 0usize;
@@ -350,13 +352,16 @@ fn derive_execution_positions(
             LinearOpcode::Halt => return Err(LinearLayoutError::EarlyHalt { position }),
         };
         let next_data_pointer = if *operation == LinearOpcode::RelocateDataPointer {
-            usize::try_from(
+            let data_word = usize::try_from(
                 *code_cells
                     .get(data_pointer)
                     .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
             )
-            .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
-            .saturating_add(1)
+            .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
+            if data_word < source.len() {
+                return Err(LinearLayoutError::UnsafeDataPlacement);
+            }
+            data_word.saturating_add(1)
         } else {
             data_pointer.saturating_add(1)
         };
@@ -397,15 +402,6 @@ pub fn admit_linear_layout(
     if source.len() != operations.len() {
         return Err(LinearLayoutError::SourceLengthMismatch);
     }
-    if let Some(position) = operations
-        .iter()
-        .position(|op| *op == LinearOpcode::RelocateDataPointer)
-        && source
-            .get(position)
-            .is_none_or(|byte| source.len() > usize::from(*byte))
-    {
-        return Err(LinearLayoutError::UnsafeDataPlacement);
-    }
     for (position, (operation, byte)) in operations.iter().zip(source.iter()).enumerate() {
         if *byte != unique_graphical_cell(profile, *operation, position)? {
             return Err(LinearLayoutError::DecodeMismatch { position });
@@ -426,7 +422,8 @@ pub fn admit_linear_layout(
 /// operation, and re-admits the entire graphical stream before publication.
 ///
 /// Forward jumps read their target from the exact dynamically evolving
-/// data-pointer cell, not necessarily the jump's code cell. Every intervening
+/// data-pointer cell, not necessarily the jump's code cell. A later `j` may
+/// move data beyond source if the proven current D word admits that boundary. Every intervening
 /// skipped source position must be inert graphical padding.
 ///
 /// # Errors

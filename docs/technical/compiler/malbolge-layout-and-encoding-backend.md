@@ -24,8 +24,8 @@ This document governs the following declared TODO scope:
 
 `src/compiler/malbolge-layout/composition/lib.rs` owns a bounded position-
 sensitive source encoder for profile `InputWord`, `OutputByte`, `NoOperation`,
-`RotateData`, `CrazyData`, a single optional `RelocateDataPointer` prologue,
-bounded strictly forward `JumpForward` chains, and terminal `Halt`. The encoder
+`RotateData`, `CrazyData`, one optional `RelocateDataPointer` after the
+jump-free or forward-jump prefix, and terminal `Halt`. The encoder
 assigns code positions from zero and inverts the normative VM instruction
 decoder over all 94 graphical source bytes,
 requires exactly one encoding at each address, and independently re-admits
@@ -33,14 +33,15 @@ the emitted source with canonical profile ID and fingerprint.
 
 This slice requires two to 4096 code cells and one final halt. It admits
 a sequence of strictly forward code jumps before a terminal halt.
-Rotate/crazy are
-admitted only after one `j` data-pointer relocation; earlier instructions
-may perform no-op or raw machine I/O, but no jump or data mutation. Before
-that relocation `D == C`, so the originally encoded graphical code cell at
-the relocation's chosen address becomes the new data base. The exact cell
-value must be at least the complete emitted source length. The checked
-offset keeps all later data mutations disjoint from source-code cells.
-Missing, duplicate, or potentially overlapping relocations fail closed.
+Rotate/crazy are admitted only after one `j` data-pointer relocation;
+earlier instructions may perform no-op, raw byte I/O, or strictly forward
+jumps, but not data mutation. After a jump `D` and `C` diverge, so the
+relocation base is read from the **current data-pointer memory cell**, not
+the original encoded `j` source byte. The verifier replays prior XLAT2
+mutation of source-memory cells before checking that the resulting base is
+at least the complete emitted source length. This exact bound keeps all
+later rotate/crazy writes disjoint from source code. Later jumps, duplicate
+or unreachable relocations, early arithmetic, and overlapping bases reject.
 
 A real VM boundary regression selects a later inverse-decode phase with a
 greater encoded data address than position zero, admits a longer safe layout
@@ -50,8 +51,8 @@ An exhaustive phase matrix independently rechecks every safely placeable
 rotate/crazy opcode between positions 1 and 93 for both canonical profiles,
 including the exact output phase and the execution/encryption witness sizes.
 
-Forward code jumps (`i`) are admitted only when no data-pointer relocation
-or rotate/crazy operation is present. The first jump reads its own code cell
+Forward code jumps (`i`) are admitted only **before** any data-pointer
+relocation or rotate/crazy operation. The first jump reads its own code cell
 through `D == C`; after it jumps, `D` and `C` diverge. Every later jump reads
 through the evolving data pointer instead, so its target **cannot** be
 inferred from the jump's own graphical code cell. The independent validator
@@ -70,7 +71,14 @@ Real current/historical VM programs prove two forward jumps whose second
 target is read from skipped no-op data, then three jumps where the final
 target reads a **previously encrypted** no-op operand. Adversarial tests
 reject forged later targets, backward destinations and effectful skipped
-regions. Another real VM regression demonstrates the distinct case where a
+regions. A distinct real VM witness now executes one forward jump followed by a
+`j` relocation, rotate and crazy; another fixture reads a `j` operand from
+the earlier jump's **encrypted** target-minus-one cell. Independent source
+extension beyond that dynamic operand rejects as unsafe. The actual CLI
+emits both raw and versioned capsule files, reopened and run under both
+canonical VMs to confirm byte I/O and guest memory mutation.
+
+Another real VM regression demonstrates the distinct case where a
 later jump reads a code cell whose normal no-op execution already encrypted
 it. This evidence is not arbitrary branch lowering, a general data
 memory-write proof, or unbounded semantic equivalence.

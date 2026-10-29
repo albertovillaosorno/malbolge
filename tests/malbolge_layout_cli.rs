@@ -649,3 +649,178 @@ fn multi_jump_raw_and_capsule_files_preserve_encrypted_operand_branching() -> Re
     assert!(String::from_utf8_lossy(&refused.stderr).contains("JumpTargetMismatch"));
     Ok(())
 }
+
+fn jump_then_relocated_arithmetic_tokens() -> Vec<&'static str> {
+    (0..55usize)
+        .map(|position| match position {
+            0 => "input",
+            48 => "jump:51",
+            51 => "relocate",
+            52 => "rotate",
+            53 => "crazy",
+            54 => "halt",
+            _ => "nop",
+        })
+        .collect()
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real process output is independently loaded and executed"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "raw and capsule source identity across both canonical VMs"
+)]
+fn jump_then_data_relocation_publishes_real_safe_arithmetic_artifacts() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let tokens = jump_then_relocated_arithmetic_tokens();
+    for (profile_id, profile) in [
+        ("malbolge-1998", historical_profile()),
+        ("malbolge-2026", current_profile()),
+    ] {
+        let raw_path = fixture.path(&format!("{profile_id}-jump-relocation.malbolge"));
+        let capsule_path = fixture.path(&format!("{profile_id}-jump-relocation-cap.malbolge"));
+        let raw = source_on_success(&emit(profile_id, &raw_path, &tokens)?, &raw_path)?;
+        assert_eq!(raw.len(), 55);
+        assert_eq!(raw.get(49).copied(), Some(113));
+        let result = emit_capsule(profile_id, &capsule_path, &tokens)?;
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let bytes = fs::read(&capsule_path).map_err(|error| error.to_string())?;
+        let capsule = parse_capsule(&bytes)
+            .map_err(|error| format!("capsule parse: {error:?}"))?
+            .ok_or("jump-relocation capsule is not recognized")?;
+        assert_eq!(capsule.profile().fingerprint(), profile.fingerprint());
+        assert_eq!(capsule.payload(), raw);
+        let mut vm = ProfileMachine::from_source(profile, &raw, vec![0x92])
+            .map_err(|error| format!("jump-relocation VM loader: {error:?}"))?;
+        let initial_rotate_word = vm
+            .memory_word(114)
+            .map_err(|error| format!("initial data word: {error:?}"))?;
+        assert!(matches!(
+            vm.run(53),
+            Ok(RunOutcome::Terminated { steps: 53, .. })
+        ));
+        assert_eq!(vm.registers().data_pointer, 116);
+        assert_eq!(vm.registers().code_pointer, 54);
+        assert_eq!(vm.input_consumed(), 1);
+        assert_ne!(
+            vm.memory_word(114)
+                .map_err(|error| format!("rotated data word: {error:?}"))?,
+            initial_rotate_word,
+            "rotate must perform actual guest data work"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "XLAT2-derived relocation capacity must fail before publication"
+)]
+fn prior_encrypted_relocation_operand_rejects_overlapping_source_file() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let operations: Vec<&str> = (0..62usize)
+        .map(|position| match position {
+            0 => "input",
+            46 => "jump:53",
+            58 => "relocate",
+            59 => "rotate",
+            60 => "crazy",
+            61 => "halt",
+            _ => "nop",
+        })
+        .collect();
+    let safe = fixture.path("encrypted-relocation.malbolge");
+    let source = source_on_success(&emit("malbolge-2026", &safe, &operations)?, &safe)?;
+    assert_eq!(source.get(52).copied(), Some(110));
+    let mut vm = ProfileMachine::from_source(current_profile(), &source, Vec::new())
+        .map_err(|error| format!("encrypted j VM loader: {error:?}"))?;
+    assert!(matches!(
+        vm.run(56),
+        Ok(RunOutcome::Terminated { steps: 56, .. })
+    ));
+    assert_eq!(vm.registers().data_pointer, 129);
+    let mut oversized = operations;
+    *oversized.last_mut().ok_or("missing terminal halt")? = "nop";
+    oversized.resize(127, "nop");
+    *oversized.last_mut().ok_or("oversized terminal")? = "halt";
+    let rejected = fixture.path("aliasing-relocation.malbolge");
+    let failed = emit_capsule("malbolge-2026", &rejected, &oversized)?;
+    assert!(!failed.status.success());
+    assert!(String::from_utf8_lossy(&failed.stderr).contains("UnsafeDataPlacement"));
+    assert!(!rejected.exists());
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "two real jumps and relocated arithmetic must survive file publication"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "cross-profile raw/capsule decode and guest code/data mutations"
+)]
+fn two_jumps_then_data_relocation_publishes_replayable_source() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let operations: Vec<&str> = (0..73usize)
+        .map(|position| match position {
+            0 => "input",
+            48 => "jump:51",
+            52 => "jump:69",
+            69 => "relocate",
+            70 => "rotate",
+            71 => "crazy",
+            72 => "halt",
+            _ => "nop",
+        })
+        .collect();
+    for (profile_id, profile) in [
+        ("malbolge-1998", historical_profile()),
+        ("malbolge-2026", current_profile()),
+    ] {
+        let raw_path = fixture.path(&format!("{profile_id}-two-jumps-then-j.malbolge"));
+        let capsule_path = fixture.path(&format!("{profile_id}-two-jumps-then-j-cap.malbolge"));
+        let source = source_on_success(&emit(profile_id, &raw_path, &operations)?, &raw_path)?;
+        assert_eq!(source.get(50).copied(), Some(112));
+        assert_eq!(source.get(51).copied(), Some(111));
+        let result = emit_capsule(profile_id, &capsule_path, &operations)?;
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let capsule_bytes = fs::read(&capsule_path).map_err(|error| error.to_string())?;
+        let capsule = parse_capsule(&capsule_bytes)
+            .map_err(|error| format!("capsule read: {error:?}"))?
+            .ok_or("multi-jump relocation capsule not recognized")?;
+        assert_eq!(capsule.profile().id(), profile.id());
+        assert_eq!(capsule.payload(), source);
+        let mut vm = ProfileMachine::from_source(profile, &source, vec![0x5e])
+            .map_err(|error| format!("multi-jump relocation VM: {error:?}"))?;
+        assert!(matches!(
+            vm.run(55),
+            Ok(RunOutcome::Terminated { steps: 55, .. })
+        ));
+        assert_eq!(vm.input_consumed(), 1);
+        assert_eq!(vm.registers().data_pointer, 123);
+        assert_eq!(
+            vm.memory_word(50)
+                .map_err(|error| format!("first data operand: {error:?}"))?,
+            68
+        );
+        assert_eq!(
+            vm.memory_word(51)
+                .map_err(|error| format!("second data operand: {error:?}"))?,
+            120
+        );
+    }
+    Ok(())
+}

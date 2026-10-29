@@ -3,9 +3,12 @@
 The initial executable target encoder admits only bounded straight-line
 machine operations: `NoOperation`, profile `InputWord`/`OutputByte`, and final
 `Halt`. It can also emit either a single `RelocateDataPointer` (`j`) prologue
-followed by real `RotateData` (`*`) and `CrazyData` (`p`) operations, **or**
-a bounded chain of strictly forward `JumpForward` (`i`) code jumps. There is
-no conditional branch, backward jump, or executable external guest helper.
+followed by real `RotateData` (`*`) and `CrazyData` (`p`) operations, and
+bounded chains of strictly forward `JumpForward` (`i`) code jumps. The jumps
+may precede the single relocation when its dynamically read data word proves
+that all later data writes remain outside source. Jumps after relocation are
+not admitted. There is no conditional branch, backward jump, or executable
+external guest helper.
 
 The encoder assigns code addresses starting at zero and uniquely inverts the
 normative profile decoder over all 94 graphical source bytes. Independent
@@ -14,14 +17,22 @@ exact positions, length, and terminal halt. No translation table is copied.
 
 Data relocation is necessary before rotate/crazy: without it, code and
 data pointers advance together and mutate the currently executing cell.
-A single `j` may occur at any code position after no-op/raw byte I/O, but
-before all rotate/crazy steps and without a code-pointer jump. The VM still
-has `D == C` at that point, so the original graphical source byte at the
-chosen phase becomes the new data address. Requiring the complete emitted
-source length to be at most that exact byte ensures subsequent data writes
-stay outside the code region. Later phases can encode a much larger data
-base than the first source cell, admitting longer safe executable layouts.
-Missing, duplicate, or potentially aliasing relocation is rejected.
+The single `j` may occur after no-op/raw byte I/O or forward jumps, but must
+precede rotate/crazy and **all** following code must be jump-free. Its
+operand comes from the *actual current data-pointer memory word* at that
+step, not necessarily the `j` graphical code byte. For an earlier jump,
+`C` and `D` have diverged; the operand can reside in a skipped no-op cell
+whose value has already been XLAT2-encrypted. The source-memory shadow
+models those prior encryptions before checking `j`.
+
+The verifier requires the current `j` operand to be **at least the entire
+source length**, so D becomes the operand plus one and all subsequent data
+writes remain outside emitted code. If its base would overlap source, it
+fails closed even when the `j` code character itself looks safe. Source-
+length extension past an encrypted operand also fails before publication.
+Earlier jump/no-op source positions remain fully graphical and uniquely
+encoded. Missing, duplicate, premature arithmetic and potentially aliasing
+relocation are rejected.
 A separate exhaustive decoder-phase test enumerates all safely addressable
 rotate/crazy placements at positions 1 through 93, under both declared
 profiles, and independently checks the encoded instruction and execution
@@ -39,8 +50,8 @@ word plus one, be strictly forward, and stay inside emitted source.
 
 Every gap between a jumped-from and jumped-to source address must contain only
 canonical graphical no-op padding. A skipped jump, skipped I/O, backward edge,
-forged target, mixed data relocation/arithmetic, or inconsistent modified
-operand rejects before publication. No reachable source instruction is
+forged target, a jump after relocation, or inconsistent modified operands
+reject before publication. No reachable source instruction is
 revisited; full mutable code-state or conditional branching remains open.
 The original one-jump 94-phase checks remain, and tests now execute real
 2- and 3-jump chains under both canonical VMs, including an encrypted operand
@@ -126,6 +137,12 @@ two concrete effect traces. `MCTR` metadata including its source hash is
 copied provenance, not independent cryptographic source authentication.
 A full C-to-Malbolge frontend and general guest-runtime realization remain
 out of scope.
+
+Independent process tests also publish real raw/capsule jump-then-`j`
+rotate/crazy programs for both canonical profiles, reopen the files and
+confirm VM data-pointer changes and an actual guest data-word mutation.
+A second fixture reads an earlier jump's XLAT2-encrypted data operand and
+rejects a lengthened source crossing its exact relocated-data bound.
 
 A separate external-process regression now passes a three-jump instruction
 list through the actual `malbolge_layout` emitter in both canonical profiles.

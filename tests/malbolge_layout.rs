@@ -1040,3 +1040,205 @@ fn later_jump_may_read_previously_executed_and_encrypted_code_data() -> Result<(
     }
     Ok(())
 }
+
+/// The first jump leaves D at source address 49. The later `j` at C=51
+/// relocates from the no-op cell *at D=49*, not its own code character.
+fn jump_then_relocation_operations() -> Vec<LinearOpcode> {
+    (0..55usize)
+        .map(|position| match position {
+            0 => LinearOpcode::InputWord,
+            48 => LinearOpcode::JumpForward { target: 51 },
+            51 => LinearOpcode::RelocateDataPointer,
+            52 => LinearOpcode::RotateData,
+            53 => LinearOpcode::CrazyData,
+            54 => LinearOpcode::Halt,
+            _ => LinearOpcode::NoOperation,
+        })
+        .collect()
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real VM/code/data witnesses are asserted"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "profile and jump-relocation invariants"
+)]
+fn forward_jump_then_relocated_arithmetic_reads_data_not_code() -> Result<(), String> {
+    let operations = jump_then_relocation_operations();
+    for profile in [current_profile(), historical_profile()] {
+        let artifact = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("jump then relocation: {error:?}"))?;
+        assert_eq!(artifact.source().len(), 55);
+        assert_eq!(artifact.source().get(49).copied(), Some(113));
+        assert_ne!(artifact.source().get(51).copied(), Some(113));
+        let relocation_step = artifact
+            .executed_code_positions()
+            .iter()
+            .position(|address| *address == 51)
+            .ok_or("missing reached j")?;
+        assert_eq!(
+            artifact.data_pointer_positions().get(relocation_step),
+            Some(&49)
+        );
+        assert_eq!(
+            artifact.data_pointer_positions().get(relocation_step + 1),
+            Some(&114)
+        );
+        assert_eq!(artifact.executed_code_positions().last(), Some(&54));
+        let mut machine = ProfileMachine::from_source(profile, artifact.source(), vec![0xa9])
+            .map_err(|error| format!("jump-then-arithmetic VM: {error:?}"))?;
+        verify_execution_witness(&mut machine, &artifact)?;
+        assert_eq!(machine.input_consumed(), 1);
+        assert!(machine.output().is_empty());
+        assert_eq!(machine.registers().data_pointer, 116);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "XLAT2-mutated relocation base follows actual VM memory"
+)]
+fn relocation_reads_prior_jump_encrypted_data_word_and_rejects_overlap() -> Result<(), String> {
+    let operations: Vec<LinearOpcode> = (0..62usize)
+        .map(|position| match position {
+            0 => LinearOpcode::InputWord,
+            46 => LinearOpcode::JumpForward { target: 53 },
+            58 => LinearOpcode::RelocateDataPointer,
+            59 => LinearOpcode::RotateData,
+            60 => LinearOpcode::CrazyData,
+            61 => LinearOpcode::Halt,
+            _ => LinearOpcode::NoOperation,
+        })
+        .collect();
+    for profile in [current_profile(), historical_profile()] {
+        let artifact = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("encrypted data relocation: {error:?}"))?;
+        assert_eq!(artifact.source().get(52).copied(), Some(110));
+        assert_eq!(encrypt_profile_cell(110), Some(126));
+        let relocation_step = artifact
+            .executed_code_positions()
+            .iter()
+            .position(|address| *address == 58)
+            .ok_or("missing reached j")?;
+        assert_eq!(
+            artifact.data_pointer_positions().get(relocation_step),
+            Some(&52)
+        );
+        assert_eq!(
+            artifact.data_pointer_positions().get(relocation_step + 1),
+            Some(&127)
+        );
+        let mut machine = ProfileMachine::from_source(profile, artifact.source(), vec![0x37])
+            .map_err(|error| format!("encrypted relocation VM: {error:?}"))?;
+        verify_execution_witness(&mut machine, &artifact)?;
+        assert_eq!(machine.input_consumed(), 1);
+        // Inserting enough no-ops without changing any reached phase means
+        // D=52 still holds encrypted 126, now overlapping source length 127.
+        let mut too_long = operations.clone();
+        *too_long.last_mut().ok_or("missing original halt")? = LinearOpcode::NoOperation;
+        too_long.resize(126, LinearOpcode::NoOperation);
+        too_long.push(LinearOpcode::Halt);
+        assert_eq!(too_long.len(), 127);
+        assert_eq!(
+            encode_linear_layout(profile, &too_long),
+            Err(LinearLayoutError::UnsafeDataPlacement)
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn reject_relocation_before_a_jump_and_inside_a_skipped_gap() {
+    let profile = current_profile();
+    let mut operations = jump_then_relocation_operations();
+    if let Some(slot) = operations.get_mut(49) {
+        *slot = LinearOpcode::RelocateDataPointer;
+    }
+    if let Some(slot) = operations.get_mut(51) {
+        *slot = LinearOpcode::NoOperation;
+    }
+    assert_eq!(
+        encode_linear_layout(profile, &operations),
+        Err(LinearLayoutError::JumpPathUnsupported)
+    );
+    let mut reverse = jump_then_relocation_operations();
+    if let Some(slot) = reverse.get_mut(48) {
+        *slot = LinearOpcode::RelocateDataPointer;
+    }
+    if let Some(slot) = reverse.get_mut(51) {
+        *slot = LinearOpcode::JumpForward { target: 53 };
+    }
+    assert_eq!(
+        encode_linear_layout(profile, &reverse),
+        Err(LinearLayoutError::JumpPathUnsupported)
+    );
+}
+
+/// First jump encrypts cell 50, which supplies the second jump; the ordinary
+/// no-op at 51 is encrypted too and supplies the later `j` relocation word.
+fn two_jump_then_relocation_operations() -> Vec<LinearOpcode> {
+    (0..73usize)
+        .map(|position| match position {
+            0 => LinearOpcode::InputWord,
+            48 => LinearOpcode::JumpForward { target: 51 },
+            52 => LinearOpcode::JumpForward { target: 69 },
+            69 => LinearOpcode::RelocateDataPointer,
+            70 => LinearOpcode::RotateData,
+            71 => LinearOpcode::CrazyData,
+            72 => LinearOpcode::Halt,
+            _ => LinearOpcode::NoOperation,
+        })
+        .collect()
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real VM proves chained code/data shadow state"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "two encrypted jump operands and data mutation"
+)]
+fn two_forward_jumps_then_relocation_consume_prior_xlat2_data() -> Result<(), String> {
+    for profile in [current_profile(), historical_profile()] {
+        let operations = two_jump_then_relocation_operations();
+        let artifact = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("chained jumps to relocation: {error:?}"))?;
+        assert_eq!(artifact.source().get(50).copied(), Some(112));
+        assert_eq!(artifact.source().get(51).copied(), Some(111));
+        assert_eq!(encrypt_profile_cell(112), Some(68));
+        assert_eq!(encrypt_profile_cell(111), Some(120));
+        let second_jump = artifact
+            .executed_code_positions()
+            .iter()
+            .position(|address| *address == 52)
+            .ok_or("missing second jump")?;
+        let relocation = artifact
+            .executed_code_positions()
+            .iter()
+            .position(|address| *address == 69)
+            .ok_or("missing relocation")?;
+        assert_eq!(
+            artifact.data_pointer_positions().get(second_jump),
+            Some(&50)
+        );
+        assert_eq!(artifact.data_pointer_positions().get(relocation), Some(&51));
+        assert_eq!(
+            artifact.data_pointer_positions().get(relocation + 1),
+            Some(&121)
+        );
+        let mut vm = ProfileMachine::from_source(profile, artifact.source(), vec![0x7d])
+            .map_err(|error| format!("chained jump-relocation VM: {error:?}"))?;
+        verify_execution_witness(&mut vm, &artifact)?;
+        assert_eq!(vm.input_consumed(), 1);
+        assert!(vm.output().is_empty());
+        assert_eq!(vm.registers().data_pointer, 123);
+    }
+    Ok(())
+}

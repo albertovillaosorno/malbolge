@@ -57,13 +57,17 @@ emission.
 - Crucial alias evidence: data and code pointers normally advance together,
   so an unplaced rotate/crazy can modify its own code cell and trigger a VM
   encryption error. Relocated arithmetic requires the original encoded `j`
-  cell at its chosen phase to address data beyond the complete emitted
-  source length; it can follow an unmodified prefix of no-op or raw byte I/O.
+  source-memory word **at the current data pointer** to address data beyond
+  the complete emitted source length. The single `j` may follow a no-op,
+  byte-I/O or strictly forward-jump prefix; a jump can alter `D` relative to
+  `C` and XLAT2-encrypt the eventual relocation operand. Later code must be
+  jump-free and arithmetic may operate only after the proven relocation.
   A later-phase VM regression admits a larger safe code/data layout than
   phase zero, proves code-pointer/encryption state stepwise, and rejects a
   one-cell extension. Every safely reachable rotate/crazy phase from 1 to 93
   now has separate profile-derived decoder and witness-size regression coverage.
-  Missing, duplicate, early-arithmetic or overlapping relocations fail closed.
+  Missing, duplicate, early-arithmetic, post-relocation jumps or overlapping
+  relocations fail closed.
 - `tests/malbolge_layout.rs` checks all 94 decode phases for both canonical
   profile byte-I/O operations, executes actual byte I/O and relocated ternary
   rotate/crazy instructions through the current and historical profile VMs,
@@ -79,6 +83,10 @@ emission.
   through the jumps. The independently admitted
   layout now returns exact ordered code, data and encryption positions for
   every step; VM tests compare all three and post-step XLAT2 code-cell values.
+  New real VM cases admit a jump followed by relocated rotate/crazy when
+  the *actual* data-pointer operand proves code/data separation, including
+  one operand previously encrypted by the first jump. Extending source
+  beyond that exact dynamic bound rejects; later jumps remain forbidden.
   The original full 94-phase single-jump decoder matrix remains covered.
   General source-to-target lowering, backward/mutable code jumps, heap data,
   guest runtime linkage and self-modifying revisits remain unimplemented.
@@ -89,7 +97,10 @@ emission.
   no-clobber publication. Process tests prove byte-exact reproducibility,
   historical/current VM I/O, real jumped and relocated machine execution,
   rejected malformed inputs, protected existing targets/symlinks and competing
-  writers. Real 3-jump programs now publish raw/capsule files under both
+  writers. Real jump-then-relocate data programs now publish raw/capsule
+  files for both profiles and prove live data-word mutation with no code
+  alias; an XLAT2-relocation capacity boundary rejects before publication.
+  Real 3-jump programs now publish raw/capsule files under both
   profiles; independent VM reload confirms output and rejects a forged third
   target before publication. Optional `--capsule` uses the version-one builder,
   round-trips canonical ID/fingerprint and exact raw payload via its independent
