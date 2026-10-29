@@ -703,6 +703,68 @@ def test_host_child_resource_record_tampering_is_rejected(
         reference_audit.audit(relative)
 
 
+@pytest.mark.parametrize("sidecar", ["artifacts", "nested", "failures", "policy"])
+def test_host_c_sidecars_reject_duplicate_json_fields(
+    live_pilot: tuple[Path, str],
+    sidecar: str,
+) -> None:
+    """Repeated identical keys cannot mask ambiguous retained audit evidence."""
+    directory, relative = live_pilot
+    if sidecar in {"artifacts", "nested"}:
+        path = directory / "artifacts.json"
+        recorded = json.loads(path.read_text(encoding="utf-8"))
+        key, entry = next(iter(recorded.items()))
+        if sidecar == "artifacts":
+            payload = f"{{{json.dumps(key)}:{json.dumps(entry)}," + (
+                json.dumps(recorded)[1:]
+            )
+        else:
+            raw = path.read_text(encoding="utf-8")
+            payload = raw.replace(
+                '"path":', f'"path": {json.dumps(entry["path"])}, "path":', 1
+            )
+    elif sidecar == "failures":
+        path = directory / "failures.json"
+        payload = '{"schema_version":1,"failures":{},"failures":{}}'
+    else:
+        path = directory / "resource-controls.json"
+        recorded = json.loads(path.read_text(encoding="utf-8"))
+        payload = '{"schema_version":2,' + json.dumps(recorded)[1:]
+    _ = path.write_text(payload, encoding="utf-8")
+    with pytest.raises(reference_audit.ReferenceAuditError, match="duplicate"):
+        reference_audit.audit(relative)
+
+
+@pytest.mark.parametrize("payload", ["NaN", "Infinity", "-Infinity"])
+def test_host_c_resource_receipt_rejects_nonfinite_json(
+    live_pilot: tuple[Path, str],
+    payload: str,
+) -> None:
+    """Non-standard JSON numbers never become admissible resource receipts."""
+    directory, relative = live_pilot
+    path = directory / "resource-controls.json"
+    raw = path.read_text(encoding="utf-8")
+    _ = path.write_text(raw.replace('"cpu_seconds": 16', f'"cpu_seconds": {payload}'))
+    with pytest.raises(reference_audit.ReferenceAuditError, match="nonfinite"):
+        reference_audit.audit(relative)
+
+
+def test_host_c_sidecar_recursion_exhaustion_is_a_typed_audit_failure(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """JSON scanner nesting failures do not leak untyped audit exceptions."""
+    _, relative = live_pilot
+
+    def exhausted(_pairs: list[tuple[str, object]]) -> dict[str, object]:
+        message = "injected scanner nesting limit"
+        raise RecursionError(message)
+
+    monkeypatch.setattr(reference_audit, "_unique_pairs", exhausted)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="not valid"):
+        reference_audit.audit(relative)
+
+
 def test_new_study_retains_versioned_resource_controls_receipt(
     live_pilot: tuple[Path, str],
 ) -> None:

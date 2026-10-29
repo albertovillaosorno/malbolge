@@ -132,11 +132,30 @@ def _prefix(relative: str) -> str:
     return "/".join(parts[:2])
 
 
+def _unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for name, value in pairs:
+        if name in result:
+            _fail(f"host-C retained JSON has duplicate field: {name}")
+        result[name] = value
+    return result
+
+
+def _reject_nonfinite(value: str) -> Never:
+    _fail(f"host-C retained JSON has nonfinite number: {value}")
+
+
 def _read_json(relative: str, *, limit: int) -> object:
     raw = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
     try:
-        return json.loads(raw.decode("utf-8"))
-    except (UnicodeError, json.JSONDecodeError) as error:
+        return json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_unique_pairs,
+            parse_constant=_reject_nonfinite,
+        )
+    except ReferenceAuditError:
+        raise
+    except (UnicodeError, ValueError, RecursionError) as error:
         message = f"host-C retained JSON is not valid: {relative}"
         raise ReferenceAuditError(message) from error
 

@@ -248,6 +248,10 @@ canonical host-C executable bytes with the same pinned Clang and independently
 compares them byte-for-byte against all retained verified binaries, deduplicated
 per source and arm. Mutating an executable while recomputing its reported
 SHA-256 can pass file-to-claim checks but not this source-to-binary replay.
+The artifact, failure, and resource-control JSON sidecars now reject
+ambiguous duplicate names at every depth and nonfinite numeric literals;
+scanner recursion failures also produce a typed audit rejection. These are
+read-admission safeguards, not proof of historical measurements or authorship.
 The mode never executes a retained binary; new oracle harnesses run only from
 canonical generator C. Exact reproducibility assumes the same native toolchain,
 linker, libraries and host ABI, and does not reproduce recorded wall times or

@@ -131,6 +131,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   reject tampered files, forged stage or arm identities, malformed artifacts,
   unsafe paths and missing links; physical benchmark remeasurement and
   Malbolge candidate verification remain open.
+- Retained host-C artifact/failure/resource JSON sidecars now use duplicate-
+  rejecting parsers and reject nonfinite constants, with typed scanner-depth
+  failures; real pilot regressions cover top-level and nested duplicate keys,
+  forged nonfinite policy claims, and injected scanner recursion errors.
+  This strengthens file interpretation, not measurement provenance.
 - The independent host-C audit now enforces the producer's single repetition
   plan across all difficulties: each level must retain the same consecutive
   trial indices, even if both arms remain paired within an uneven level.

@@ -237,9 +237,12 @@ sizes across difficulty levels for other independently produced studies.
 It rechecks canonical challenge-bundle regeneration, all versioned run
 manifests, raw rows/digests, declared budgets, and each retained executable's
 SHA-256, path and recorded byte length before reporting the capacity curve
-and Pareto frontier. Missing, altered, symlinked and malformed inputs fail
-without a report. By default no host compiler, benchmark or native binary
-is executed. `--replay-oracles` separately compiles and executes **only** the
+and Pareto frontier. Its artifacts, failures and resource-control JSON readers
+reject duplicate keys (including nested keys), nonfinite numbers, and parser
+recursion failures instead of silently accepting ambiguous receipts.
+Missing, altered, symlinked and malformed inputs fail without a report. By
+default no host compiler, benchmark or native binary is executed.
+`--replay-oracles` separately compiles and executes **only** the
 canonical generated challenge C at both optimization modes; it never runs a
 retained trial binary. For a stronger **same-host source-to-executable** check,
 add
