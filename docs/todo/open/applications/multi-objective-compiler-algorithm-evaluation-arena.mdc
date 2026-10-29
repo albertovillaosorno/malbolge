@@ -116,6 +116,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   existence check. Cross-manifest drift and collectively forged unknown Git
   references are rejected under the relevant policy; no runtime source
   attestation or independently proven historical execution is implied.
+- Host-C reference failure evidence now retains per-trial diagnostics in a
+  versioned, bounded, sanitized `failures.json` record. Both producer and
+  later auditor require exact links to `tool_failed` observations, reject
+  mismatched/missing/oversized entries, and preserve older all-success
+  studies. These are recorded failure explanations, not reproduced stage
+  failures or independently verified resource exhaustion.
 - A separate read-only host-C post-run audit now independently reopens the
   producer's ignored study directory and rechecks its trial identities,
   exact host-only stage, canonical source bundles, source-reported budgets,

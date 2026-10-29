@@ -61,6 +61,8 @@ GIT_COMMIT_TYPE = b"commit"
 UNDERSCORE = "_"
 STUDY_LEAF = "study.json"
 ARTIFACT_LEAF = "artifacts.json"
+FAILURES_LEAF = "failures.json"
+MAX_FAILURES_BYTES = 64 * 1024
 RUN_PREFIX = "arena-host-c-study-"
 STAGE = "host-c-reference-not-malbolge"
 TOOLCHAIN = "repo-pinned-clang-22.1.8"
@@ -251,6 +253,40 @@ def _require_git_commit(commit: str) -> None:
         _fail("host-C recorded source commit is not a local Git commit object")
 
 
+def _valid_failure_version(version: object) -> bool:
+    return type(version) is int and version == 1
+
+
+def _check_retained_failures(
+    document: dict[str, Any],
+    prefix: str,
+) -> int:
+    relative = f"{prefix}/{FAILURES_LEAF}"
+    path = _ROOT / relative
+    has_failure = any(
+        row["outcome"] == reference_study.FAILED_OUTCOME
+        for row in document["observations"]
+    )
+    if not path.exists() and not path.is_symlink():
+        if has_failure:
+            _fail("host-C reference failure details file is missing")
+        return 0  # Pre-extension all-success pilot is still admissible.
+    source = _read_json(relative, limit=MAX_FAILURES_BYTES)
+    if (
+        not isinstance(source, dict)
+        or set(source) != {"schema_version", "failures"}
+        or not _valid_failure_version(source["schema_version"])
+    ):
+        _fail("host-C reference failure file has invalid schema")
+    failures = source["failures"]
+    if not isinstance(failures, dict) or any(
+        type(key) is not str or type(value) is not str
+        for key, value in failures.items()
+    ):
+        _fail("host-C reference failure index has invalid data")
+    return reference_study.check_retained_failures(document, failures)
+
+
 def _admit_data(
     relative_study: str,
     prefix: str,
@@ -261,6 +297,7 @@ def _admit_data(
     dict[str, Any],
     dict[str, Any],
     dict[str, dict[str, str]],
+    int,
     int,
     str,
 ]:
@@ -291,7 +328,15 @@ def _admit_data(
         document,
         artifacts,
     )
-    return document, checked, artifacts, verified_binaries, commit
+    failed_diagnostics = _check_retained_failures(document, prefix)
+    return (
+        document,
+        checked,
+        artifacts,
+        verified_binaries,
+        failed_diagnostics,
+        commit,
+    )
 
 
 def _rebuild_reference_binaries(
@@ -352,7 +397,14 @@ def audit(
     """
     prefix = _prefix(relative_study)
     try:
-        document, checked, artifacts, verified_binaries, commit = _admit_data(
+        (
+            document,
+            checked,
+            artifacts,
+            verified_binaries,
+            failed_diagnostics,
+            commit,
+        ) = _admit_data(
             relative_study,
             prefix,
             replay_oracles=replay_oracles,
@@ -384,6 +436,7 @@ def audit(
         ),
         "study": relative_study,
         "host_c_binaries_checked": verified_binaries,
+        "host_c_failure_diagnostics_checked": failed_diagnostics,
         "recorded_source_commit": commit,
         "source_commit_object_verified": require_source_commit_object,
         "host_c_oracle_replayed": replay_oracles,

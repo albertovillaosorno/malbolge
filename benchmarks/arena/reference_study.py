@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import csv
 from dataclasses import dataclass
+from dataclasses import field
 from hashlib import sha256
 from io import StringIO
 import json
@@ -69,6 +70,9 @@ BUDGET_SECONDS = 60
 BUDGET_MEMORY_MIB = 1024
 MAX_DIFFICULTIES = 4
 MAX_TRIALS = 5
+FAILED_OUTCOME = "tool_failed"
+ASCII_LOW = " "
+ASCII_HIGH = "~"
 GIT_HASH_WIDTH = 40
 
 
@@ -154,6 +158,7 @@ class _Env:
     host: str
     toolchain: str
     prefix: str
+    failures: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,13 +282,22 @@ def _successful(
     )
 
 
+def _failure_diagnostic(error: host_c_oracle.HostOracleError) -> str:
+    raw = str(error)
+    ascii_message = "".join(
+        character if ASCII_LOW <= character <= ASCII_HIGH else "?"
+        for character in raw
+    )[:256]
+    return ascii_message or "host-C reference failed without diagnostic"
+
+
 def _measure(
     root: Path,
     case: dict[str, Any],
     *,
     trial: int,
     arm: tuple[str, str],
-) -> tuple[dict[str, Any], dict[str, str]]:
+) -> tuple[dict[str, Any], dict[str, str], str | None]:
     algorithm, mode = arm
     name = f"{algorithm}-nodes-{case["difficulty"]}-trial-{trial}"
     identity = generate.ChallengeIdentity(
@@ -294,16 +308,18 @@ def _measure(
         case["difficulty"],
     )
     started = time.perf_counter_ns()
+    diagnostic: str | None = None
     try:
         metrics, artifact = _successful(root, identity, name, mode=mode)
-    except host_c_oracle.HostOracleError:
-        outcome, verdict = "tool_failed", analyze.NOT_RUN
+    except host_c_oracle.HostOracleError as error:
+        diagnostic = _failure_diagnostic(error)
+        outcome = FAILED_OUTCOME
         metrics, artifact = (
             {"elapsed_ns": time.perf_counter_ns() - started},
             {},
         )
     else:
-        outcome, verdict = analyze.VERIFIED, analyze.ACCEPTED
+        outcome = analyze.VERIFIED
     prefix = root.relative_to(_ROOT).as_posix()
     return (
         {
@@ -312,12 +328,17 @@ def _measure(
             "trial": trial,
             "outcome": outcome,
             "verifier": VERIFIER,
-            "verifier_verdict": verdict,
+            "verifier_verdict": (
+                analyze.ACCEPTED
+                if outcome == analyze.VERIFIED
+                else analyze.NOT_RUN
+            ),
             "experiment_manifest": f"{prefix}/runs/{name}.toml",
             "raw_sample": f"{prefix}/raw/{name}.csv",
             "metrics": metrics,
         },
         artifact,
+        diagnostic,
     )
 
 
@@ -329,12 +350,14 @@ def _write_attempt(
     arm: tuple[str, str],
 ) -> tuple[dict[str, Any], dict[str, str]]:
     case, fingerprint = bundle
-    row, artifact = _measure(
+    row, artifact, diagnostic = _measure(
         environment.root,
         case,
         trial=trial,
         arm=arm,
     )
+    if diagnostic is not None:
+        environment.failures[row["experiment_manifest"]] = diagnostic
     raw = _raw_csv(row)
     _ = (_ROOT / row["raw_sample"]).write_bytes(raw)
     metadata = _ManifestMeta(environment, fingerprint, sha256(raw).hexdigest())
@@ -476,6 +499,41 @@ def check_retained_artifacts(
     return len(verified)
 
 
+MAX_FAILURE_DIAGNOSTIC_BYTES = 256
+
+
+def check_retained_failures(
+    document: dict[str, Any],
+    failures: dict[str, str],
+) -> int:
+    """Bind bounded diagnostics to every real host-C failed trial.
+
+    Returns:
+        Number of failed trial diagnostics checked.
+
+    """
+    admitted = {analyze.VERIFIED, FAILED_OUTCOME}
+    if any(row["outcome"] not in admitted for row in document["observations"]):
+        _fail("host-C reference contains a non-runner outcome")
+    expected = {
+        row["experiment_manifest"]
+        for row in document["observations"]
+        if row["outcome"] == FAILED_OUTCOME
+    }
+    if set(failures) != expected:
+        _fail("host-C failure diagnostics must match failed trial identities")
+    if any(
+        type(message) is not str
+        or not 1 <= len(message) <= MAX_FAILURE_DIAGNOSTIC_BYTES
+        or any(
+            not ASCII_LOW <= character <= ASCII_HIGH for character in message
+        )
+        for message in failures.values()
+    ):
+        _fail("host-C failure diagnostics must be bounded printable ASCII")
+    return len(failures)
+
+
 def _run_study(root: Path, plan: StudyPlan) -> dict[str, Any]:
     environment = _Env(
         root=root,
@@ -494,6 +552,19 @@ def _run_study(root: Path, plan: StudyPlan) -> dict[str, Any]:
     document = _document(environment, observations)
     _verify_report(environment, document)
     _ = check_retained_artifacts(document, artifacts)
+    _ = check_retained_failures(document, environment.failures)
+    _ = (root / "failures.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "failures": environment.failures,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     _ = (root / "artifacts.json").write_text(
         json.dumps(artifacts, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

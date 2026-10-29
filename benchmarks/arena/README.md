@@ -195,6 +195,18 @@ Missing/extra artifacts or forged success-size associations fail closed.
 This is file-to-report integrity only; no independently authenticated
 compiler optimizer output or resource measurement is implied.
 
+Each new study also retains a version-one `failures.json` sidecar. Every
+`tool_failed` attempt carries exactly one entry keyed by its run-manifest
+path, with the sanitized compiler/linker/oracle diagnostic bounded to 256
+printable ASCII characters. No child stderr dump or unrelated host state is
+published. The producer checks that diagnostic keys match failed attempts
+and that successful ones never claim failure records. Post-run audit checks
+the exact same relation and rejects missing, extra, malformed, nonprintable
+or overlong entries. Earlier all-success studies with no `failures.json` remain
+admissible; if any failed trial exists, the sidecar is required. The text is
+**source-reported failure context**, not an independently rerun failure or
+proof that a compiler crashed in the claimed way.
+
 The run manifest records the current Git commit, host, toolchain, target-profile
 fingerprint, source digest, raw-data SHA-256, explicit budget declarations, and
 exact trial number. The producer rechecks every emitted trial with the arena's

@@ -384,6 +384,13 @@ def test_native_rebuild_refuses_unsupported_compiler_mode(mode: str) -> None:
 
 GIT_HASH_WIDTH = 40
 FAKE_SOURCE_COMMIT = "f" * GIT_HASH_WIDTH
+OPTIMIZED_MODE = "-O2"
+INJECTED_SANITIZED = "injected linker?failed?with nonascii ?"
+LINE_BREAK = "\n"
+FAILURE_MISSING = "missing"
+FAILURE_NO_ENTRY = "no-entry"
+FAILURE_INVENTED = "invented"
+FAILURE_INVALID_SIZE = "invalid-size"
 
 
 def _rewrite_manifest_commit(directory: Path, old: str, new: str) -> None:
@@ -484,3 +491,114 @@ def test_cli_source_commit_object_flag_emits_checked_provenance(
     report = json.loads(capsys.readouterr().out)
     assert report["source_commit_object_verified"]
     assert len(report["recorded_source_commit"]) == GIT_HASH_WIDTH
+
+
+@pytest.fixture
+def failed_pilot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[tuple[Path, str]]:
+    """Retain one real host-C successful arm and one failed O2 attempt.
+
+    Yields:
+        Failed-study directory and canonical study path for audit tampering.
+
+    """
+    original = host_c_oracle.measure_reference
+
+    def fail_o2(
+        identity: generate.ChallengeIdentity,
+        mode: str,
+    ) -> host_c_oracle.ReferenceMeasurement:
+        if mode == OPTIMIZED_MODE:
+            message = "injected linker\nfailed\twith nonascii é"
+            raise host_c_oracle.HostOracleError(message)
+        return original(identity, mode)
+
+    monkeypatch.setattr(host_c_oracle, "measure_reference", fail_o2)
+    directory, _ = reference_study.run_study(
+        reference_study.StudyPlan(FAMILY, (4,), 7, 1),
+    )
+    try:
+        yield (
+            directory,
+            (directory / "study.json")
+            .relative_to(
+                reference_audit._ROOT,
+            )
+            .as_posix(),
+        )
+    finally:
+        shutil.rmtree(directory)
+
+
+def test_failed_native_attempt_retains_bounded_diagnostic_provenance(
+    failed_pilot: tuple[Path, str],
+) -> None:
+    """Failure outcome must have an exact separate printable diagnostic map."""
+    directory, relative = failed_pilot
+    source = json.loads((directory / "failures.json").read_text())
+    assert source["schema_version"] == 1
+    assert len(source["failures"]) == 1
+    message = next(iter(source["failures"].values()))
+    assert INJECTED_SANITIZED in message
+    assert LINE_BREAK not in message
+    result = reference_audit.audit(relative)
+    assert result["host_c_failure_diagnostics_checked"] == 1
+    assert result["host_c_binaries_checked"] == 1
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ["missing", "no-entry", "invented", "invalid-size", "bad-schema"],
+)
+def test_audit_rejects_forged_or_missing_failure_diagnostics(
+    failed_pilot: tuple[Path, str],
+    tamper: str,
+) -> None:
+    """Recorded failures must not lose their negative-evidence explanations."""
+    directory, relative = failed_pilot
+    path = directory / "failures.json"
+    if tamper == FAILURE_MISSING:
+        path.unlink()
+    else:
+        record = json.loads(path.read_text())
+        if tamper == FAILURE_NO_ENTRY:
+            record["failures"] = {}
+        elif tamper == FAILURE_INVENTED:
+            record["failures"]["forged-run"] = "forged"
+        elif tamper == FAILURE_INVALID_SIZE:
+            name = next(iter(record["failures"]))
+            record["failures"][name] = "x" * 300
+        else:
+            record["schema_version"] = 2
+        _ = path.write_text(json.dumps(record), encoding="utf-8")
+    with pytest.raises(reference_audit.ReferenceAuditError, match="host-C"):
+        reference_audit.audit(relative)
+
+
+def test_old_successful_study_without_failure_sidecar_is_admitted(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """Complete healthy legacy studies predate this optional new file."""
+    directory, relative = live_pilot
+    (directory / "failures.json").unlink()
+    assert (
+        reference_audit.audit(relative)["host_c_failure_diagnostics_checked"]
+        == 0
+    )
+
+
+def test_failure_diagnostic_drift_fails_cli_without_reporting_pareto(
+    failed_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Malformed negative evidence cannot publish a positive study report."""
+    directory, relative = failed_pilot
+    _ = (directory / "failures.json").write_bytes(b"broken")
+    monkeypatch.setattr(sys, "argv", ["reference-audit", relative])
+    with pytest.raises(SystemExit, match="2"):
+        reference_audit.main()
+    capture = capsys.readouterr()
+    assert not capture.out
+    assert INVALID_STUDY in capture.err

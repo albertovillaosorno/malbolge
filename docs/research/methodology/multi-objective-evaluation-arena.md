@@ -232,6 +232,16 @@ does not rerun elapsed-time measurements, authenticate the source producers,
 or establish an atomic filesystem snapshot. Mutating any retained proof file
 or mislabeling the host-C stage rejects the post-run audit.
 
+For negative results, the host-C reference producer now retains a separate
+versioned `failures.json` file that maps every failed trial manifest to a
+bounded, printable diagnostic from the failed host compiler/linker/oracle
+stage. Both producing and offline audit paths require exact agreement of the
+failure index with `tool_failed` observations, no entries for accepted runs,
+and no missing or forged entries. Invalid schema, overlong/unprintable text,
+and absent files when a failure was reported reject. Old fully successful
+studies remain readable without the extension. Error text is only recorded
+local process evidence, not independent attestation that the stage failed.
+
 The optional `--require-matched-accelerator` check additionally requires all
 linked experiment runs to name the same recorded accelerator and retains the
 canonical manifest-path-to-device identity map in the output. This protects
@@ -374,6 +384,10 @@ The original study records remain the result authority.
   recorded run manifests and optionally checks that Git can resolve it to a
   real local commit object. Tests include divergent manifests, collectively
   forged missing revisions, and clean historical commit replay.
+- The host-C reference runner and post-run auditor now bind a version-one
+  `failures.json` sidecar to every reported failed trial, retaining printable
+  bounded stage diagnostics alongside all-attempt elapsed costs. Injected
+  failures and missing, forged, and invalid diagnostic records fail closed.
 - `benchmarks/arena/reference_audit.py` independently reopens retained
   local host-C studies, checks the strict manifest/raw/challenge path and
   binary evidence, then reports the observed frontier without remeasurement.
