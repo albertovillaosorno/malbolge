@@ -53,6 +53,7 @@ from benchmarks.arena import evidence
 from benchmarks.arena import raw_samples
 from benchmarks.arena import report_output
 from benchmarks.arena import target_echo_reference as producer
+from benchmarks.arena import target_process
 
 _ROOT = Path(__file__).resolve().parents[2]
 MAX_STUDY_BYTES = 16 * 1024 * 1024
@@ -415,13 +416,9 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
 
 
 def _invoke_runner(runner: Path, source: Path) -> sp.CompletedProcess[bytes]:
-    return sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    return target_process.invoke(
         [str(runner), str(source)],
-        cwd=_ROOT,
-        stdin=sp.DEVNULL,
-        capture_output=True,
-        check=False,
-        timeout=producer.TIMEOUT_SECONDS,
+        timeout_seconds=producer.TIMEOUT_SECONDS,
     )
 
 

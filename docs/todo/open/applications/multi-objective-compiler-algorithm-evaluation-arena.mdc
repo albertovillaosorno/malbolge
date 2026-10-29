@@ -110,6 +110,15 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   classic-profile I/O shape; there is no C or arbitrary ternary compilation,
   guest-runtime verification, calibrated throughput inference, authenticated
   timing, or physically enforced aggregate memory budget.
+- Both the real-target producer and replay now share a bounded POSIX child
+  transport. It drains stdout/stderr concurrently with strict 4-KiB/16-KiB
+  limits, one cumulative 15-second deadline, isolated process groups,
+  best-effort cleanup and direct-child reaping. Exhaustion, overflow and
+  inherited-pipe descendant stalls are typed failures, not verified samples.
+  Independent subprocess regressions cover stream fragmentation, one-byte
+  overrun, timeout, process-group cleanup and a flood judged as tool failure.
+  This does not impose physical study-wide RAM limits or contain detached
+  child sessions, and Windows execution of this pilot remains unsupported.
 - A separate read-only classic target audit now reopens local pilot
   studies, binds fixed producer research/manifest/case claims, complete
   paired repetition plans and exact run/raw/candidate inventories, and

@@ -57,6 +57,7 @@ from benchmarks.arena import analyze
 from benchmarks.arena import evidence
 from benchmarks.arena import raw_samples
 from benchmarks.arena import report_output
+from benchmarks.arena import target_process
 
 _ROOT = Path(__file__).resolve().parents[2]
 _TEMP = _ROOT / ".temp"
@@ -181,14 +182,7 @@ def _operations(pairs: int, algorithm: str) -> list[str]:
 
 
 def _invoke(command: list[str]) -> sp.CompletedProcess[bytes]:
-    return sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        command,
-        cwd=_ROOT,
-        stdin=sp.DEVNULL,
-        capture_output=True,
-        check=False,
-        timeout=TIMEOUT_SECONDS,
-    )
+    return target_process.invoke(command, timeout_seconds=TIMEOUT_SECONDS)
 
 
 def _case(pairs: int) -> dict[str, Any]:

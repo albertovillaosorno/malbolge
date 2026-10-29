@@ -194,10 +194,18 @@ canonical `malbolge-1998` profile. It rejects zero, duplicate, invalid or
 more than four difficulty levels; each level has between 1 and 64 echo
 pairs, with one to three repetitions. The two arms alternate execution order
 by repetition to reduce (but not eliminate) order bias. Each executable child
-has a 15-second wall timeout. The runner checks complete stdout against the
-expected bytes; mismatches remain `verifier_rejected`, and launcher failures
-remain `tool_failed`, never credited as successes. It also checks exact
-source length, graphical byte domain, the per-attempt output path, and exact
+has a 15-second wall timeout. The target process boundary now uses a
+POSIX-isolated child session and concurrent selector-based pipe reads with
+explicit **4-KiB stdout** and **16-KiB stderr** hard limits. It rejects an
+additional byte on either stream, a cumulative wall timeout, and
+ordinary pipe-retaining descendants. Cleanup signals the original isolated
+process group and reaps the direct child; detached descendants and any
+physical memory or CPU budget enforcement remain outside this claim.
+The runner checks complete stdout against the expected bytes; mismatches
+remain `verifier_rejected`, and launcher failures, stream overruns and
+child timeouts remain `tool_failed`, never credited as successes. It also
+checks exact source length, graphical byte domain, the per-attempt output
+path, and exact
 executable identity before/after the study.
 
 New studies retain `study.json`, actual raw graphical `candidates/*.malbolge`,
@@ -252,6 +260,8 @@ not prove the original benchmark used those executable bytes, independently
 verify arbitrary programs, reproduce recorded times or replay failed trials.
 If binaries were rebuilt, offline source admission remains available, while
 VM replay rejects the toolchain drift until original binaries are recovered.
+Opt-in replay uses the same bounded POSIX subprocess transport, so a hostile
+or broken VM cannot produce unlimited buffered output before rejection.
 
 The separate `--require-source-commit-object` option also asks local Git to
 resolve the identical source revision claimed by every run manifest to an

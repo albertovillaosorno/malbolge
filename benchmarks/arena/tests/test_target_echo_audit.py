@@ -53,6 +53,7 @@ from benchmarks.arena import analyze
 from benchmarks.arena import evidence
 from benchmarks.arena import target_echo_audit as audit
 from benchmarks.arena import target_echo_reference as producer
+from benchmarks.arena import target_process
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -491,6 +492,19 @@ def test_late_unreported_evidence_file_is_rejected(
         match=r"missing or unexpected|unexpected candidate",
     ):
         audit.audit(relative)
+
+
+def test_replay_runner_output_overflow_is_typed_failure(
+    tmp_path: Path,
+) -> None:
+    """VM replay cannot buffer an unbounded successful-output impostor."""
+    fake_runner = tmp_path / "flooding-vm"
+    fake_runner.write_text(
+        f"#!{sys.executable}\nimport os\nos.write(1,b'Z'*8192)\n"
+    )
+    fake_runner.chmod(0o700)
+    with pytest.raises(target_process.TargetProcessError, match="stdout"):
+        audit._invoke_runner(fake_runner, tmp_path / "source.malbolge")
 
 
 def test_injected_mismatched_vm_replay_fails_closed(

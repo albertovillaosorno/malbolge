@@ -197,6 +197,20 @@ analysis; separate external-process and tampering regressions constrain this
 claim. The prior lack of an actual `.malbolge` measurement is narrowed only
 for this small, fixed classic target-subset.
 
+The producer and opt-in replay now run external emitter/VM children through
+`benchmarks/arena/target_process.py`: POSIX-isolated child sessions,
+selector-drained stdout/stderr (4 KiB and 16 KiB separately), and one 15-second
+wall deadline that includes child launch, pipe closure and direct-child exit.
+Any stream overrun or pipe-retaining ordinary descendant past the deadline is
+a typed failure with a direct-child reap and best-effort original process-group
+termination. Regressions inject oversized standard/error streams, deliberately
+fragmented dual-stream output, idle children and an ordinary descendant that
+would otherwise keep the caller waiting on inherited pipes. This bounds host
+capture allocations; it is not an OS memory quota, process sandbox, complete
+descendant containment (detached sessions remain outside the group), or a
+physically enforced study-wide budget. The pilot requires POSIX for this
+subprocess boundary and makes no Windows process-supervision claim.
+
 This is a falsifiable source-size hypothesis (the nop-padded source should
 use one extra graphical code byte per pair), not a general compiler-size or
 performance result. Host wall times include compiler process startup,
