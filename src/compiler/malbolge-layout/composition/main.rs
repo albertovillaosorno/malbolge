@@ -21,7 +21,7 @@
 // - Merge-When:
 //   - A verified final source publisher subsumes this isolated frontend.
 // - Summary:
-//   - Wires the guarded layout CLI and canonical machine-code encoder.
+//   - Wires bounded ternary echo and graphical artifact publication.
 // - Description:
 //   - Standalone source artifact validation and no-overwrite publication.
 // - Usage:
@@ -32,6 +32,13 @@
 
 //! Explicit-profile source emitter for the bounded verified machine subset.
 
+#[expect(
+    clippy::too_many_lines,
+    clippy::duplicate_mod,
+    reason = "existing independently validated bridge includes ternary decoder and layout"
+)]
+#[path = "../../byte-echo-bridge/composition/lib.rs"]
+pub mod bridge;
 #[path = "cli.rs"]
 pub mod cli;
 #[path = "lib.rs"]

@@ -79,6 +79,38 @@ cargo run --bin malbolge_layout -- \
   --output .temp/modern-echo.malbolge --capsule -- input output halt
 ```
 
+The compiler can also consume a **canonical pre-layout ternary wire file**,
+provided its already-validated effect trace is one or more adjacent
+successful `ByteInput`/`ByteOutput` SSA echo pairs and a void return:
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 \
+  --output .temp/echo-from-ternary.malbolge --capsule -- \
+  --ternary-file .temp/echo.mctr
+```
+
+`--ternary-file` is mutually exclusive with individual decoded machine-op
+tokens. Its sole operand must be an existing, nonempty regular file with at
+most 1,048,576 bytes. The complete MCTR version-one stream is independently
+restored through `canonical_ternary_program` and passed to the separate
+`byte-echo-bridge` admissibility checker; invalid/truncated/noncanonical
+wire, wrong profile, or unsupported effect/control/data flow fails before
+publication. The returned source is loaded and executed by the normative
+profile VM at its declared execution-witness step count and then published
+through exactly the same raw/capsule and no-clobber file path as machine-op
+mode. Real external-process tests validate a successful three-byte trace
+(including `0x00`/`0xff`) and reject canonical but semantically unsupported
+SSA output, profile drift, corrupted wire and oversized files.
+
+The source contains exactly the successful-input-byte interpretation of the
+admitted ternary operations; it does **not** encode the source-C runtime ABI,
+EOF or failed-I/O behavior, and the empty-input emitter preflight checks VM
+reachability/termination only. `MCTR` metadata including its source hash is
+copied provenance, not independent cryptographic source authentication.
+A full C-to-Malbolge frontend and general guest-runtime realization remain
+out of scope.
+
 The optional `--capsule` flag follows `--output PATH` and precedes the `--`
 separator. The producer verifies the raw graphical machine code first, then
 wraps it in the canonical historical-safe fallback/space-tab sideband using

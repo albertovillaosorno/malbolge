@@ -94,6 +94,16 @@ emission.
   general `malbolge` runner. Historical interpreter tests check the frozen
   safe fallback. Unframed raw mode still needs explicit modern profile input;
   neither mode claims typed C→Malbolge lowering or guest-runtime linkage.
+- The emitter now accepts a nonempty bounded canonical MCTR wire file
+  through `--ternary-file`, restores it with the authoritative pre-layout
+  codec, and admits only the separately validated successful-byte-echo SSA
+  subset before using the *same* exact-profile VM and raw/capsule file
+  publisher. A real external-process integration fixture confirms a
+  three-byte trace including `0x00` and `0xff`, while profile mismatch,
+  modified wire, an independently canonical but unsupported SSA trace and
+  oversized files fail without a published artifact. Empty-input VM
+  preflight proves reachability/termination only; it does not realize EOF,
+  guest ABI or arbitrary C execution.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

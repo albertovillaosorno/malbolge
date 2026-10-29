@@ -116,6 +116,31 @@ modern raw `.malbolge` alone carries no profile and needs an explicitly
 selected profile-aware loader. Neither mode implements source maps, general
 C/ternary lowering or guest-runtime linkage.
 
+### Canonical ternary-IR-to-file bridge
+
+The separate `byte-echo-bridge` now connects to the same artifact publisher
+using `--ternary-file <canonical-MCTR-file>` after the CLI's `--` delimiter.
+The input must be a regular nonempty file of at most 1 MiB. The publisher
+uses the canonical MCTR version-one restorer, not a permissive ad hoc decoder,
+and calls the independently validated bridge to admit one exact
+successful-byte-input/output SSA echo trace with a final void return. The
+bridge, not the file publisher, owns all semantic effect restrictions.
+
+The resultant graphical Malbolge bytes receive the existing normative-profile
+VM load/halt check and either raw or version-one capsule publication with
+independently validated identity/payload and atomic no-overwrite behavior.
+End-to-end tests invoke the real binary with a serialized canonical ternary
+program, reopen both types of output under the normative VM, and compare
+an actual multi-byte echo trace (including zero and 255). Forged profiles,
+corrupted wire bytes, valid but unsupported SSA output and oversized inputs
+reject without a final artifact. The source hash in MCTR is copied provenance,
+not independent source authentication; VM preflight on empty input verifies
+termination, **not** total successful byte-I/O equivalence including EOF.
+
+This is a **bounded, working ternary-stage-to-file path**, but it does not
+admit arbitrary ternary operations, source-C programs, guest heap, ABI return
+values, EOF, failed I/O, or unbounded control-flow/layout code-state revisits.
+
 ### Remaining implementation
 
 Map admitted typed ternary operations and runtime/heap helpers onto real target

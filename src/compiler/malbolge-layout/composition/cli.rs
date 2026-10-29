@@ -9,11 +9,11 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Bounded CLI decoding, VM preflight and no-overwrite artifact publication.
+//   - Bounded machine/ternary input, VM preflight and artifact publication.
 // - Must-Not:
 //   - Infer guest semantics from host arguments or publish unverified source.
 // - Allows:
-//   - Inputs: exact canonical profile ID, file path and closed opcode tokens.
+//   - Inputs: exact profile, canonical MCTR file or closed opcode tokens.
 //   - Outputs: one complete raw graphical `.malbolge` file.
 //   - Side effects: same-directory staging and atomic no-clobber hard link.
 // - Split-When:
@@ -35,12 +35,13 @@
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write as _};
+use std::io::{self, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, id};
 
 use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile};
 
+use crate::bridge::{encode_successful_byte_echo, ternary::canonical_ternary_program};
 use crate::layout::{
     LinearOpcode, LinearProfileIdentity, admit_linear_layout, encode_linear_layout,
 };
@@ -50,14 +51,27 @@ const OUTPUT_ARG: &str = "--output";
 const DELIMITER_ARG: &str = "--";
 const CAPSULE_ARG: &str = "--capsule";
 const MAX_OPERATIONS: usize = 4096;
+const MAX_TERNARY_WIRE_BYTES: u64 = 1_048_576;
+const TERNARY_FILE_ARG: &str = "--ternary-file";
 const MALBOLGE_EXTENSION: &str = "malbolge";
+
+#[derive(Debug)]
+enum SourceSpec {
+    CanonicalTernaryFile(PathBuf),
+    MachineOperations(Vec<LinearOpcode>),
+}
 
 #[derive(Debug)]
 struct CommandSpec {
     capsule: bool,
-    operations: Vec<LinearOpcode>,
     output: PathBuf,
     profile: String,
+    source: SourceSpec,
+}
+
+struct VerifiedSource {
+    source: Vec<u8>,
+    steps: usize,
 }
 
 fn parse_operation(token: &str) -> Result<LinearOpcode, String> {
@@ -108,21 +122,38 @@ fn parse_arguments(mut arguments: impl Iterator<Item = OsString>) -> Result<Comm
             "expected optional --capsule then -- before opcode tokens",
         ));
     }
-    let mut operations = Vec::new();
-    for raw_token in arguments {
-        if operations.len() >= MAX_OPERATIONS {
-            return Err(String::from("too many machine opcode tokens"));
+    let first = arguments
+        .next()
+        .ok_or("missing machine operations or ternary-file argument")?;
+    let source = if first == OsStr::new(TERNARY_FILE_ARG) {
+        let path = PathBuf::from(arguments.next().ok_or("missing ternary wire path")?);
+        if arguments.next().is_some() {
+            return Err(String::from(
+                "ternary file mode accepts exactly one input path",
+            ));
         }
-        let token = raw_token
+        SourceSpec::CanonicalTernaryFile(path)
+    } else {
+        let first_token = first
             .into_string()
             .map_err(|_error| String::from("opcode token must be UTF-8"))?;
-        operations.push(parse_operation(&token)?);
-    }
+        let mut operations = vec![parse_operation(&first_token)?];
+        for raw_token in arguments {
+            if operations.len() >= MAX_OPERATIONS {
+                return Err(String::from("too many machine opcode tokens"));
+            }
+            let token = raw_token
+                .into_string()
+                .map_err(|_error| String::from("opcode token must be UTF-8"))?;
+            operations.push(parse_operation(&token)?);
+        }
+        SourceSpec::MachineOperations(operations)
+    };
     Ok(CommandSpec {
         capsule,
-        operations,
         output,
         profile,
+        source,
     })
 }
 
@@ -157,46 +188,106 @@ fn publish_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
     outcome
 }
 
+fn read_ternary_program(path: &Path) -> Result<Vec<u8>, String> {
+    let file = fs::File::open(path)
+        .map_err(|error| format!("cannot open canonical ternary wire: {error}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("cannot inspect canonical ternary wire: {error}"))?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_TERNARY_WIRE_BYTES {
+        return Err(String::from(
+            "ternary wire must be a nonempty bounded regular file",
+        ));
+    }
+    let mut bytes = Vec::new();
+    let _bytes_read = file
+        .take(MAX_TERNARY_WIRE_BYTES.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("cannot read canonical ternary wire: {error}"))?;
+    let length = u64::try_from(bytes.len())
+        .map_err(|_error| String::from("ternary wire length overflow"))?;
+    if length > MAX_TERNARY_WIRE_BYTES || length != metadata.len() {
+        return Err(String::from(
+            "ternary wire read length disagrees with bounded file",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn verified_source(
+    spec: &SourceSpec,
+    profile: &'static malbolge::ProfileDescriptor,
+) -> Result<VerifiedSource, String> {
+    match spec {
+        SourceSpec::MachineOperations(operations) => {
+            let artifact = encode_linear_layout(profile, operations)
+                .map_err(|error| format!("layout rejected: {error:?}"))?;
+            let admitted = admit_linear_layout(
+                profile,
+                operations,
+                artifact.source(),
+                LinearProfileIdentity {
+                    fingerprint: artifact.profile_fingerprint(),
+                    id: artifact.profile_id(),
+                },
+            )
+            .map_err(|error| format!("source admission failed: {error:?}"))?;
+            Ok(VerifiedSource {
+                source: admitted.source().to_vec(),
+                steps: admitted.executed_code_positions().len(),
+            })
+        }
+        SourceSpec::CanonicalTernaryFile(path) => {
+            let bytes = read_ternary_program(path)?;
+            let program = canonical_ternary_program(&bytes)
+                .map_err(|error| format!("canonical ternary wire rejected: {error:?}"))?;
+            let layout = encode_successful_byte_echo(&program, profile)
+                .map_err(|error| format!("ternary byte-echo bridge rejected: {error:?}"))?;
+            if layout.profile_id() != profile.id()
+                || layout.profile_fingerprint() != profile.fingerprint()
+            {
+                return Err(String::from(
+                    "ternary source profile mismatch after admission",
+                ));
+            }
+            Ok(VerifiedSource {
+                source: layout.source().to_vec(),
+                steps: layout.executed_code_positions().len(),
+            })
+        }
+    }
+}
+
 fn execute(spec: &CommandSpec) -> Result<(), String> {
     let profile = target_profile(&spec.profile).ok_or("unknown canonical target profile")?;
-    let artifact = encode_linear_layout(profile, &spec.operations)
-        .map_err(|error| format!("layout rejected: {error:?}"))?;
-    let admitted = admit_linear_layout(
-        profile,
-        &spec.operations,
-        artifact.source(),
-        LinearProfileIdentity {
-            fingerprint: artifact.profile_fingerprint(),
-            id: artifact.profile_id(),
-        },
-    )
-    .map_err(|error| format!("independent source admission failed: {error:?}"))?;
-    let mut vm = ProfileMachine::from_source(profile, admitted.source(), Vec::new())
+    let artifact = verified_source(&spec.source, profile)?;
+    let mut vm = ProfileMachine::from_source(profile, &artifact.source, Vec::new())
         .map_err(|error| format!("normative VM rejected source: {error:?}"))?;
-    let steps = admitted.executed_code_positions().len();
-    if !matches!(vm.run(steps), Ok(RunOutcome::Terminated { steps: count, .. }) if count == steps) {
+    if !matches!(vm.run(artifact.steps), Ok(RunOutcome::Terminated { steps: count, .. }) if count == artifact.steps)
+    {
         return Err(String::from(
             "normative VM did not halt at the proven code step",
         ));
     }
     let publication = if spec.capsule {
-        let bytes = build_capsule(profile, admitted.source())
+        let bytes = build_capsule(profile, &artifact.source)
             .map_err(|error| format!("capsule build rejected: {error}"))?;
         let parsed = parse_capsule(&bytes)
             .map_err(|error| format!("capsule independent parse rejected: {error}"))?
             .ok_or("capsule marker missing after framing")?;
-        if parsed.profile() != profile || parsed.payload() != admitted.source() {
+        if parsed.profile() != profile || parsed.payload() != artifact.source {
             return Err(String::from("capsule profile or source payload disagrees"));
         }
         bytes
     } else {
-        admitted.source().to_vec()
+        artifact.source
     };
     publish_new(&spec.output, &publication)?;
     let notice = format!(
-        "emitted {} bytes for {} ({steps} VM steps)\n",
+        "emitted {} bytes for {} ({} VM steps)\n",
         publication.len(),
-        admitted.profile_id(),
+        profile.id(),
+        artifact.steps,
     );
     drop(io::stderr().lock().write_all(notice.as_bytes()));
     Ok(())
