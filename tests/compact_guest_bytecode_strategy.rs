@@ -35,6 +35,9 @@
 pub mod strategy;
 
 use malbolge::{ProfileMachine, RunOutcome, current_profile, historical_profile};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Command, id};
 
 use strategy::bridge::ternary::{
     InputBlock, InputFunction, InputInstruction, InputScalarType, InputSourcePosition,
@@ -49,6 +52,32 @@ use strategy::{
 const PILOT_CASES: [usize; 8] = [1, 2, 3, 7, 20, 64, 256, 2047];
 const PILOT_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v0.toml");
+
+struct OwnedArtifactFixture {
+    root: PathBuf,
+}
+
+impl OwnedArtifactFixture {
+    fn new(case: usize) -> Result<Self, String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(".temp")
+            .join(format!("compact-bytecode-baseline-{}-{case}", id()));
+        #[expect(clippy::create_dir, reason = "never reuse another run's fixture")]
+        fs::create_dir(&root).map_err(|error| format!("fixture directory: {error}"))?;
+        Ok(Self { root })
+    }
+
+    fn path(&self, basename: &str) -> PathBuf {
+        self.root.join(basename)
+    }
+}
+
+#[expect(clippy::missing_trait_methods, reason = "owned test fixture cleanup")]
+impl Drop for OwnedArtifactFixture {
+    fn drop(&mut self) {
+        drop(fs::remove_dir_all(&self.root));
+    }
+}
 
 const fn position(byte: u32) -> InputSourcePosition {
     InputSourcePosition {
@@ -123,6 +152,44 @@ fn program(pairs: usize) -> Result<TernaryProgram, String> {
         return Err(String::from("canonical research checkpoint mismatch"));
     }
     Ok(decoded)
+}
+
+fn compare_published_direct_baseline(pairs: usize) -> Result<(), String> {
+    let fixture = OwnedArtifactFixture::new(pairs)?;
+    let original = program(pairs)?;
+    let macro_bytes = encode_echo_macro(&original, current_profile())
+        .map_err(|error| format!("candidate: {error:?}"))?;
+    let independently_expanded = admit_echo_macro(&original, current_profile(), &macro_bytes)
+        .map_err(|error| format!("expanded candidate: {error:?}"))?;
+    let wire = canonical_ternary_bytes(&original)
+        .map_err(|error| format!("canonical source: {error:?}"))?;
+    let input_path = fixture.path("source.mctr");
+    let output_path = fixture.path("source.malbolge");
+    fs::write(&input_path, wire).map_err(|error| format!("write ternary wire: {error}"))?;
+    let outcome = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+        .arg("--profile")
+        .arg(current_profile().id())
+        .arg("--output")
+        .arg(&output_path)
+        .arg("--")
+        .arg("--ternary-file")
+        .arg(&input_path)
+        .output()
+        .map_err(|error| format!("invoke real source publisher: {error}"))?;
+    if !outcome.status.success() {
+        return Err(format!(
+            "publisher rejected {pairs} pairs: {}",
+            String::from_utf8_lossy(&outcome.stderr),
+        ));
+    }
+    let actual =
+        fs::read(&output_path).map_err(|error| format!("read published source: {error}"))?;
+    if actual != independently_expanded.source() {
+        return Err(format!(
+            "published and independently expanded source diverge for {pairs} pairs"
+        ));
+    }
+    Ok(())
 }
 
 #[test]
@@ -400,5 +467,13 @@ fn maximum_admitted_echo_program_executes_all_guest_io_in_order() -> Result<(), 
     ));
     assert_eq!(vm.output(), input);
     assert_eq!(vm.input_consumed(), PAIRS);
+    Ok(())
+}
+
+#[test]
+fn published_real_malbolge_baseline_matches_structural_expansion() -> Result<(), String> {
+    for pairs in [1, 7, 64, 256] {
+        compare_published_direct_baseline(pairs)?;
+    }
     Ok(())
 }

@@ -83,6 +83,14 @@ The original source identity is not embedded in the six-byte descriptor:
 another equally long, separately validated program is accepted, proving
 that standalone authentication remains missing.
 
+A second, process-level baseline uses the real `malbolge_layout` publisher with
+`--ternary-file` for `n = 1, 7, 64, 256`. Each validated MCTR checkpoint is
+published to a fresh `.malbolge` file; its bytes match the independently
+expanded candidate's position-sensitive direct source exactly. This exercises
+the actual artifact path and confirms the direct source-size baseline rather
+than relying only on an in-memory encoder. The **candidate** is still expanded
+on the host and is not published or executed as guest bytecode.
+
 Under the deliberately optimistic assumptions that one candidate byte occupies
 one Malbolge memory cell and all missing runtime/packaging cells can be counted
 in the same units, the **necessary** strict-size-win inequality is

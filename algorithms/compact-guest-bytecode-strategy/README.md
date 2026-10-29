@@ -36,6 +36,11 @@ truncations, trailing bytes, profile drift, wrong SSA uses, empty and overlarge
 traces reject. A separate test demonstrates the intentionally missing
 source binding.
 
+A separate external-process baseline publishes real `.malbolge` from canonical
+MCTR checkpoints for 1, 7, 64, and 256 pairs using `malbolge_layout
+--ternary-file`; every published byte equals the independently reconstructed
+direct source. These are real **direct** programs, not guest bytecode artifacts.
+
 ## Reproducible pilot
 
 `pilot-v0.toml` records the fixed case family and cost assumptions. No seed is
