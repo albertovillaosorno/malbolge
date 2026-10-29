@@ -22,26 +22,31 @@ This document governs the following declared TODO scope:
 
 ### Implemented linear code-layout slice
 
-`src/compiler/malbolge-layout/composition/lib.rs` owns an initial bounded
-position-sensitive source encoder for exact profile `InputWord`, `OutputByte`,
-`NoOperation`, and terminal `Halt` instructions. The encoder assigns code
-addresses from zero, inverts the canonical VM instruction decoder over all 94
-printable graphical cells for every target address, requires one unambiguous
-encoding, and re-admits the entire byte stream independently before returning
-it. The result preserves the immutable selected profile ID and fingerprint.
+`src/compiler/malbolge-layout/composition/lib.rs` owns a bounded position-
+sensitive source encoder for profile `InputWord`, `OutputByte`, `NoOperation`,
+`RotateData`, `CrazyData`, a single optional `RelocateDataPointer` prologue,
+and terminal `Halt`. The encoder assigns code positions from zero, inverts
+the normative VM instruction decoder over all 94 graphical source bytes,
+requires exactly one encoding at each address, and independently re-admits
+the emitted source with canonical profile ID and fingerprint.
 
-This slice admits 2..4096 code cells, one final halt, no earlier halts, and no
-jumps, mutable code-state revisits, data placement, guest helper invocation,
-or arbitrary ternary-IR scalar realization. Ordinary VM post-instruction code
-encryption remains part of the normal execution semantics; these straight-line
-instructions never revisit an earlier code address. There is no claim of
-C-to-`.malbolge` compilation or general self-modifying layout yet.
+This slice requires two to 4096 code cells and one final halt. No code-pointer
+jump can occur. Rotate/crazy are admitted only when a `j` data-pointer
+relocation is at code position zero and the encoded cell-zero value is at
+least the emitted source length. The VM normally increments code and data
+pointers together, so unplaced rotate/crazy could overwrite the current
+instruction before its post-step encryption. After the prologue, the checked
+address offset ensures all subsequent data-cell mutations remain outside
+emitted code. Missing, late, or potentially aliasing relocation fails closed.
 
-`tests/malbolge_layout.rs` checks both current and historical profile decoders
-across all 94 code-position phases, runs the resulting byte streams through
-the normative `ProfileMachine` with real guest byte I/O and halt, and rejects
-short, oversized, nonterminal, premature-halt, wrong-profile, truncated, and
-modified source evidence.
+`tests/malbolge_layout.rs` exercises 94 decode phases for profile byte I/O,
+executes real byte I/O and relocated rotate/crazy programs under both the
+historical and current normative `ProfileMachine`, and rejects malformed
+lengths, halts, profile identity, altered source and aliasing placements.
+
+This is a *first machine-code slice*, not C-to-`.malbolge` compilation:
+no guest data/global layout, general IR lowering, code-state revisit,
+code-pointer jumps, calls or runtime linkage is implemented yet.
 
 ### Remaining implementation
 

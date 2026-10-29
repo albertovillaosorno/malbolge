@@ -103,9 +103,13 @@ fn all_94_profile_decode_phases_admit_machine_io_and_halt() -> Result<(), String
                 let layout = encode_linear_layout(profile, &operations)
                     .map_err(|error| format!("phase encoding: {error:?}"))?;
                 let desired = match opcode {
+                    LinearOpcode::CrazyData => b'p',
+                    LinearOpcode::RotateData => b'*',
                     LinearOpcode::InputWord => profile.input_instruction(),
                     LinearOpcode::OutputByte => profile.output_instruction(),
-                    LinearOpcode::NoOperation | LinearOpcode::Halt => {
+                    LinearOpcode::NoOperation
+                    | LinearOpcode::Halt
+                    | LinearOpcode::RelocateDataPointer => {
                         return Err(String::from("unexpected test case"));
                     }
                 };
@@ -152,6 +156,52 @@ fn emitted_source_runs_on_normative_vm_without_guest_host_callbacks() -> Result<
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "VM execution assertions follow fallible setup"
+)]
+fn real_rotate_and_crazy_instructions_execute_without_jumps() -> Result<(), String> {
+    let operations = [
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::RotateData,
+        LinearOpcode::CrazyData,
+        LinearOpcode::Halt,
+    ];
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("arithmetic layout: {error:?}"))?;
+        assert_eq!(
+            decode_profile_instruction(
+                u32::from(layout.source().get(1).copied().ok_or("rotate cell")?),
+                1,
+            ),
+            Some(b'*'),
+        );
+        assert_eq!(
+            decode_profile_instruction(
+                u32::from(layout.source().get(2).copied().ok_or("crazy cell")?),
+                2,
+            ),
+            Some(b'p'),
+        );
+        let mut machine = ProfileMachine::from_source(profile, layout.source(), vec![])
+            .map_err(|error| format!("arithmetic VM load: {error:?}"))?;
+        let result = machine.run(operations.len());
+        assert!(matches!(
+            result,
+            Ok(RunOutcome::Terminated { steps: 4, .. }),
+        ));
+        let prologue_byte = layout.source().first().copied().ok_or("no prologue")?;
+        assert_eq!(
+            machine.registers().data_pointer,
+            u32::from(prologue_byte).saturating_add(3),
+        );
+        assert!(machine.output().is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "test assertions are intentional after fallible setup"
 )]
 fn layout_fail_closed_on_unsupported_shapes() -> Result<(), String> {
@@ -186,6 +236,79 @@ fn layout_fail_closed_on_unsupported_shapes() -> Result<(), String> {
         Err(LinearLayoutError::TooLong),
     );
     Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "capacity boundary assertions follow fallible VM setup"
+)]
+fn relocated_data_limit_is_exactly_encoded_code_zero_cell() -> Result<(), String> {
+    for profile in [current_profile(), historical_profile()] {
+        let probe = encode_linear_layout(
+            profile,
+            &[LinearOpcode::RelocateDataPointer, LinearOpcode::Halt],
+        )
+        .map_err(|error| format!("relocation probe: {error:?}"))?;
+        let span = usize::from(probe.source().first().copied().ok_or("probe cell")?);
+        let mut exact = vec![LinearOpcode::NoOperation; span];
+        *exact.first_mut().ok_or("empty exact program")? = LinearOpcode::RelocateDataPointer;
+        *exact.get_mut(1).ok_or("missing crazy operation")? = LinearOpcode::CrazyData;
+        *exact.last_mut().ok_or("missing final halt")? = LinearOpcode::Halt;
+        let valid = encode_linear_layout(profile, &exact)
+            .map_err(|error| format!("exact relocation: {error:?}"))?;
+        assert_eq!(valid.source().len(), span);
+        let mut machine = ProfileMachine::from_source(profile, valid.source(), vec![])
+            .map_err(|error| format!("exact VM load: {error:?}"))?;
+        assert!(matches!(
+            machine.run(span),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        exact.insert(1, LinearOpcode::NoOperation);
+        assert_eq!(
+            encode_linear_layout(profile, &exact),
+            Err(LinearLayoutError::UnsafeDataPlacement),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn relocation_proofs_reject_aliases_and_unplaced_arithmetic() {
+    let profile = current_profile();
+    assert_eq!(
+        encode_linear_layout(
+            profile,
+            &[
+                LinearOpcode::NoOperation,
+                LinearOpcode::RotateData,
+                LinearOpcode::Halt,
+            ]
+        ),
+        Err(LinearLayoutError::UnsafeDataPlacement),
+    );
+    assert_eq!(
+        encode_linear_layout(
+            profile,
+            &[
+                LinearOpcode::NoOperation,
+                LinearOpcode::RelocateDataPointer,
+                LinearOpcode::Halt,
+            ]
+        ),
+        Err(LinearLayoutError::UnsafeDataPlacement),
+    );
+    let mut aliased = vec![LinearOpcode::NoOperation; 130];
+    if let Some(first) = aliased.first_mut() {
+        *first = LinearOpcode::RelocateDataPointer;
+    }
+    if let Some(last) = aliased.last_mut() {
+        *last = LinearOpcode::Halt;
+    }
+    assert_eq!(
+        encode_linear_layout(profile, &aliased),
+        Err(LinearLayoutError::UnsafeDataPlacement),
+    );
 }
 
 #[test]

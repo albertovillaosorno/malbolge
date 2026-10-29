@@ -35,6 +35,8 @@
 //! This module does **not** lower arbitrary ternary IR or allocate guest data.
 //! It proves an executable subset for which the code pointer advances by one
 //! position after every step, and stops before leaving the emitted source.
+//! Crazy/rotate may mutate memory only after a data-pointer relocation to
+//! an address beyond all emitted code. This first subset excludes code jumps.
 
 use malbolge::{ProfileDescriptor, decode_profile_instruction};
 
@@ -48,6 +50,8 @@ const NO_OP_INSTRUCTION: u8 = b'o';
 /// One supported decoded machine operation at the next linear code position.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LinearOpcode {
+    /// Execute the canonical ternary crazy operation at the data pointer.
+    CrazyData,
     /// Stop execution; this must be the only terminal operation.
     Halt,
     /// Read one raw profile word using the profile's input instruction.
@@ -56,15 +60,22 @@ pub enum LinearOpcode {
     NoOperation,
     /// Emit one byte using the profile's output instruction.
     OutputByte,
+    /// Redirect the data pointer through memory word zero at code position 0.
+    RelocateDataPointer,
+    /// Rotate the data-pointer word one trit to the right.
+    RotateData,
 }
 
 impl LinearOpcode {
     const fn decoded(self, profile: &ProfileDescriptor) -> u8 {
         match self {
+            Self::CrazyData => b'p',
             Self::InputWord => profile.input_instruction(),
             Self::OutputByte => profile.output_instruction(),
             Self::NoOperation => NO_OP_INSTRUCTION,
             Self::Halt => HALT_INSTRUCTION,
+            Self::RelocateDataPointer => b'j',
+            Self::RotateData => b'*',
         }
     }
 }
@@ -139,6 +150,8 @@ pub enum LinearLayoutError {
     TooLong,
     /// Fewer than two cells cannot initialize the canonical profile loader.
     TooShort,
+    /// Data relocation is required before rotate/crazy or is misplaced.
+    UnsafeDataPlacement,
 }
 
 fn validate_shape(
@@ -163,6 +176,18 @@ fn validate_shape(
         .position(|op| *op == LinearOpcode::Halt)
     {
         return Err(LinearLayoutError::EarlyHalt { position });
+    }
+    let relocated = operations.first() == Some(&LinearOpcode::RelocateDataPointer);
+    let late_relocation = operations
+        .iter()
+        .skip(1)
+        .any(|op| *op == LinearOpcode::RelocateDataPointer);
+    let unplaced_arithmetic = !relocated
+        && operations
+            .iter()
+            .any(|op| matches!(op, LinearOpcode::CrazyData | LinearOpcode::RotateData));
+    if late_relocation || unplaced_arithmetic {
+        return Err(LinearLayoutError::UnsafeDataPlacement);
     }
     Ok(())
 }
@@ -205,6 +230,13 @@ pub fn admit_linear_layout(
     }
     if source.len() != operations.len() {
         return Err(LinearLayoutError::SourceLengthMismatch);
+    }
+    if operations.first() == Some(&LinearOpcode::RelocateDataPointer)
+        && source
+            .first()
+            .is_none_or(|byte| source.len() > usize::from(*byte))
+    {
+        return Err(LinearLayoutError::UnsafeDataPlacement);
     }
     for (position, (operation, byte)) in operations.iter().zip(source.iter()).enumerate() {
         if *byte != unique_graphical_cell(profile, *operation, position)? {

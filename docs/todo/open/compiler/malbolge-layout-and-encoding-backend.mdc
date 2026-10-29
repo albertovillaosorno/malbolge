@@ -47,21 +47,24 @@ emission.
 
 ## Evidence
 
-- First executable source-emission slice now lives under
-  `src/compiler/malbolge-layout/`. It accepts only closed straight-line
-  profile-bound sequences of no-op, machine byte I/O and halt operations,
-  assigns exact code addresses starting at zero, and inverts the canonical
-  VM decoder at every position without duplicating `XLAT1`. It requires a
-  unique graphical source cell, a single final halt, two to 4096 cells, and
-  independently re-admits the complete result against canonical profile ID,
-  fingerprint and decoded operations before publication.
-- Real `ProfileMachine` integration checks source admission, input/output,
-  exact-step halt and all 94 encoding phases under both historical and current
-  profiles. Tampered bytes/profile identities, missing/early halts and invalid
-  lengths reject explicitly. This is valid machine code but **not** C-to-
-  Malbolge lowering: data placement, nonlinear control flow, code-state
-  transitions, guest runtime linkage and general ternary-IR realization remain
-  unsupported.
+- A first address-sensitive executable machine-code slice now exists under
+  `src/compiler/malbolge-layout/`. It assigns exact code addresses, inverts
+  normative graphical decoding over all 94 source-cell phases, preserves the
+  immutable profile ID/fingerprint, and independently admits each emitted
+  byte. Accepted operations are no-op, machine I/O, rotate/crazy, a single
+  optional data-pointer relocation (`j`) at code position zero, and final
+  halt. Two to 4096 code cells are admitted; early/missing halts reject.
+- Crucial alias evidence: data and code pointers normally advance together,
+  so an unplaced rotate/crazy can modify its own code cell and trigger a VM
+  encryption error. Relocated arithmetic requires the original encoded code
+  cell zero to address data beyond the complete emitted source length.
+  Nonrelocated, late-relocated or potentially overlapping layouts fail closed.
+- `tests/malbolge_layout.rs` checks all 94 decode phases for both canonical
+  profile byte-I/O operations, executes actual byte I/O and relocated ternary
+  rotate/crazy instructions through the current and historical profile VMs,
+  and rejects source/profile tampering, invalid lengths, early halt and unsafe
+  data placements. General source-to-target lowering, code jumps, heap data,
+  guest runtime linkage and self-modifying revisits remain unimplemented.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
