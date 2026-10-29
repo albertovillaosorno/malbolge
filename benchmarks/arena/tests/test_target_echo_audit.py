@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
@@ -68,6 +69,7 @@ FORGED_TRIAL = 999
 ELAPSED = "elapsed_ns"
 ARTIFACT_BYTES = "artifact_bytes"
 EXTRA_ARTIFACT = "extra"
+POSIX_PLATFORM = "posix"
 NOT_AUTHENTICATED = "not authenticated"
 AUDIT_MESSAGE = "target audit"
 BAD_PROFILE_PROVENANCE = 'implementation = "forged/fake_compiler.py"'
@@ -494,6 +496,9 @@ def test_late_unreported_evidence_file_is_rejected(
         audit.audit(relative)
 
 
+@pytest.mark.skipif(
+    os.name != POSIX_PLATFORM, reason="bounded subprocess requires POSIX"
+)
 def test_replay_runner_output_overflow_is_typed_failure(
     tmp_path: Path,
 ) -> None:

@@ -27,7 +27,7 @@
 # - Usage:
 #   - pytest benchmarks/arena/tests/test_target_process.py.
 # - Defaults:
-#   - POSIX process-group tests require Unix; basic stream tests are portable.
+#   - All child transport tests require the supported POSIX platform.
 #
 
 """Bounded process transport tests for the real Malbolge target pilot."""
@@ -52,6 +52,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 POSIX_PLATFORM = "posix"
+pytestmark = pytest.mark.skipif(
+    os.name != POSIX_PLATFORM, reason="bounded target subprocess requires POSIX"
+)
 STDOUT_NAME = "stdout"
 EXPECTED_EXIT_CODE = 7
 EXPECTED_DIAGNOSTIC = b"problem"
@@ -190,9 +193,6 @@ def test_nonreading_child_is_killed_after_wall_deadline() -> None:
     assert monotonic() - started < LARGE_TIMEOUT_SECONDS
 
 
-@pytest.mark.skipif(
-    os.name != POSIX_PLATFORM, reason="requires POSIX process groups"
-)
 def test_inherited_pipe_descendant_cannot_delay_completion() -> None:
     """The group is terminated if a child leaks a pipe through descendants."""
     started = monotonic()
@@ -209,9 +209,6 @@ def test_inherited_pipe_descendant_cannot_delay_completion() -> None:
     assert monotonic() - started < LARGE_TIMEOUT_SECONDS
 
 
-@pytest.mark.skipif(
-    os.name != POSIX_PLATFORM, reason="requires POSIX process groups"
-)
 def test_output_flood_kills_ordinary_descendants(tmp_path: Path) -> None:
     """A violating process and its ordinary descendants lose write access."""
     marker = tmp_path / "late-marker"
