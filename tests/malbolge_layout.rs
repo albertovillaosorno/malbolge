@@ -36,8 +36,9 @@
 pub mod layout;
 
 use layout::{
-    LinearLayout, LinearLayoutError, LinearOpcode, LinearProfileIdentity, PaddedForwardStep,
-    admit_linear_layout, encode_auto_padded_forward_layout, encode_linear_layout,
+    LinearLayout, LinearLayoutError, LinearOpcode, LinearProfileIdentity, PaddedCellOrigin,
+    PaddedForwardStep, admit_linear_layout, encode_auto_padded_forward_layout,
+    encode_linear_layout,
 };
 use malbolge::{
     ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, encrypt_profile_cell,
@@ -87,6 +88,51 @@ fn verify_data_write_witness(
             != read.value
     {
         return Err(String::from("undisclosed runtime data mutation"));
+    }
+    Ok(())
+}
+
+fn verify_bidirectional_source_map(artifact: &layout::PaddedForwardLayout) -> Result<(), String> {
+    if artifact.source_cell_origins().len() != artifact.operations().len() {
+        return Err(String::from(
+            "source-cell provenance must cover every code cell",
+        ));
+    }
+    for (logical_index, &position) in artifact.logical_code_positions().iter().enumerate() {
+        let physical = usize::try_from(position)
+            .map_err(|error| format!("mapped source position: {error}"))?;
+        if artifact.source_cell_origins().get(physical)
+            != Some(&PaddedCellOrigin::Logical(
+                u32::try_from(logical_index).map_err(|error| error.to_string())?,
+            ))
+        {
+            return Err(String::from("logical and physical provenance disagree"));
+        }
+    }
+    for (code, origin) in artifact.source_cell_origins().iter().enumerate() {
+        let physical = u32::try_from(code).map_err(|error| error.to_string())?;
+        let reached = artifact
+            .layout()
+            .executed_code_positions()
+            .binary_search(&physical)
+            .is_ok();
+        match origin {
+            PaddedCellOrigin::Logical(_) if !reached => {
+                return Err(String::from("unreachable requested logical step"));
+            }
+            PaddedCellOrigin::ExecutedPadding if !reached => {
+                return Err(String::from("claimed executed but skipped padding"));
+            }
+            PaddedCellOrigin::SkippedPadding if reached => {
+                return Err(String::from("reached an allegedly skipped padding cell"));
+            }
+            PaddedCellOrigin::Logical(_) => {}
+            PaddedCellOrigin::ExecutedPadding | PaddedCellOrigin::SkippedPadding => {
+                if artifact.operations().get(code) != Some(&LinearOpcode::NoOperation) {
+                    return Err(String::from("noncanonical synthetic padding opcode"));
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -1330,6 +1376,11 @@ fn auto_padding_first_forward_jump_produces_exact_vm_jump_path() -> Result<(), S
     for profile in [current_profile(), historical_profile()] {
         let expanded = encode_auto_padded_forward_layout(profile, &logical)
             .map_err(|error| format!("auto first jump: {error:?}"))?;
+        verify_bidirectional_source_map(&expanded)?;
+        assert_eq!(
+            expanded.source_cell_origins().get(1),
+            Some(&PaddedCellOrigin::SkippedPadding)
+        );
         let dest = jump_target(0)?;
         assert_eq!(
             expanded.logical_code_positions(),
@@ -1389,6 +1440,11 @@ fn auto_padding_two_hop_jump_then_relocation_matches_manual_vm_source() -> Resul
     for profile in [current_profile(), historical_profile()] {
         let expanded = encode_auto_padded_forward_layout(profile, &logical)
             .map_err(|error| format!("two-jump automatic planning: {error:?}"))?;
+        verify_bidirectional_source_map(&expanded)?;
+        assert_eq!(
+            expanded.source_cell_origins().get(49),
+            Some(&PaddedCellOrigin::SkippedPadding)
+        );
         assert_eq!(expanded.logical_code_positions().get(48), Some(&48));
         assert_eq!(expanded.logical_code_positions().get(49), Some(&51));
         assert_eq!(expanded.logical_code_positions().get(50), Some(&52));
@@ -1577,6 +1633,10 @@ fn auto_padding_matches_all_first_jump_decoder_phases() -> Result<(), String> {
     clippy::panic_in_result_fn,
     reason = "auto-chosen safe relocation and real data mutations are independently checked"
 )]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "VM data changes and exact origins must hold under both profiles"
+)]
 fn auto_relocation_finds_first_safe_decoder_phase_for_long_tail() -> Result<(), String> {
     use PaddedForwardStep::{AutoRelocate, Instruction};
     let mut logical = vec![AutoRelocate];
@@ -1589,6 +1649,15 @@ fn auto_relocation_finds_first_safe_decoder_phase_for_long_tail() -> Result<(), 
     for profile in [current_profile(), historical_profile()] {
         let artifact = encode_auto_padded_forward_layout(profile, &logical)
             .map_err(|error| format!("automatic data relocation: {error:?}"))?;
+        verify_bidirectional_source_map(&artifact)?;
+        assert!(
+            artifact
+                .source_cell_origins()
+                .get(..8)
+                .ok_or("auto relocation prefix missing")?
+                .iter()
+                .all(|origin| *origin == PaddedCellOrigin::ExecutedPadding)
+        );
         assert_eq!(artifact.logical_code_positions().first(), Some(&8));
         assert_eq!(artifact.logical_code_positions().last(), Some(&55));
         assert_eq!(artifact.operations().len(), 56);
@@ -1645,6 +1714,7 @@ fn auto_relocation_after_two_jumps_uses_modified_data_operand() -> Result<(), St
     for profile in [current_profile(), historical_profile()] {
         let artifact = encode_auto_padded_forward_layout(profile, &logical)
             .map_err(|error| format!("automatic jump+relocation: {error:?}"))?;
+        verify_bidirectional_source_map(&artifact)?;
         assert_eq!(artifact.logical_code_positions().get(51), Some(&69));
         let explicit = encode_linear_layout(profile, &two_jump_then_relocation_operations())
             .map_err(|error| format!("manual two jump relocate: {error:?}"))?;

@@ -218,12 +218,24 @@ pub enum PaddedForwardStep {
     Jump,
 }
 
-/// Executable automatically padded source, plus a logical-to-code map.
+/// Proven origin of one emitted position-sensitive source code cell.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PaddedCellOrigin {
+    /// An inserted no-op that is actually executed on the admitted VM path.
+    ExecutedPadding,
+    /// One requested logical instruction, identified by its zero-based index.
+    Logical(u32),
+    /// An inserted no-op skipped by an unconditional forward code jump.
+    SkippedPadding,
+}
+
+/// Executable automatically padded source, plus bidirectional source maps.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PaddedForwardLayout {
     layout: LinearLayout,
     logical_code_positions: Vec<u32>,
     operations: Vec<LinearOpcode>,
+    source_cell_origins: Vec<PaddedCellOrigin>,
 }
 
 impl PaddedForwardLayout {
@@ -244,6 +256,15 @@ impl PaddedForwardLayout {
     #[must_use]
     pub fn operations(&self) -> &[LinearOpcode] {
         &self.operations
+    }
+
+    /// Maps every emitted code address to its logical or synthetic origin.
+    /// Unlike the forward map, this distinguishes executed `AutoRelocate`
+    /// fillers from unreachable `Jump` padding, so diagnostics cannot treat
+    /// all inserted no-ops as semantically invisible.
+    #[must_use]
+    pub fn source_cell_origins(&self) -> &[PaddedCellOrigin] {
+        &self.source_cell_origins
     }
 }
 
@@ -670,6 +691,44 @@ fn encrypt_padded_cell(shadow: &mut [u32], address: usize) -> Result<(), LinearL
     Ok(())
 }
 
+fn proven_source_origins(
+    layout: &LinearLayout,
+    positions: &[u32],
+    operations: &[LinearOpcode],
+) -> Result<Vec<PaddedCellOrigin>, LinearLayoutError> {
+    let mut origins = vec![PaddedCellOrigin::SkippedPadding; operations.len()];
+    for (logical_index, &code) in positions.iter().enumerate() {
+        let address = usize::try_from(code).map_err(|_error| LinearLayoutError::TooLong)?;
+        let slot = origins
+            .get_mut(address)
+            .ok_or(LinearLayoutError::JumpPathUnsupported)?;
+        if *slot != PaddedCellOrigin::SkippedPadding
+            || layout
+                .executed_code_positions()
+                .binary_search(&code)
+                .is_err()
+        {
+            return Err(LinearLayoutError::JumpPathUnsupported);
+        }
+        *slot = PaddedCellOrigin::Logical(
+            u32::try_from(logical_index).map_err(|_error| LinearLayoutError::TooLong)?,
+        );
+    }
+    for &code in layout.executed_code_positions() {
+        let address = usize::try_from(code).map_err(|_error| LinearLayoutError::TooLong)?;
+        let slot = origins
+            .get_mut(address)
+            .ok_or(LinearLayoutError::JumpPathUnsupported)?;
+        if *slot == PaddedCellOrigin::SkippedPadding {
+            if operations.get(address) != Some(&LinearOpcode::NoOperation) {
+                return Err(LinearLayoutError::JumpPathUnsupported);
+            }
+            *slot = PaddedCellOrigin::ExecutedPadding;
+        }
+    }
+    Ok(origins)
+}
+
 /// Expands reachable instructions into a bounded graphical source by solving
 /// each *unconditional forward* `i` jump's real memory-derived destination.
 ///
@@ -724,9 +783,12 @@ pub fn encode_auto_padded_forward_layout(
     // The existing independent admission controls final source length,
     // dynamic D placement, exact decode identity, skipped gaps and halt.
     let layout = encode_linear_layout(profile, &builder.operations)?;
+    let source_cell_origins =
+        proven_source_origins(&layout, &builder.positions, &builder.operations)?;
     Ok(PaddedForwardLayout {
         layout,
         logical_code_positions: builder.positions,
         operations: builder.operations,
+        source_cell_origins,
     })
 }
