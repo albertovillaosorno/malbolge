@@ -357,6 +357,65 @@ def test_mutated_retained_source_during_report_is_rejected(
         audit.audit(relative)
 
 
+@pytest.mark.parametrize("evidence_kind", ["study", "raw", "run"])
+def test_retained_evidence_changed_after_preflight_is_rejected(
+    retained: tuple[Path, dict[str, Any], str],
+    monkeypatch: pytest.MonkeyPatch,
+    evidence_kind: str,
+) -> None:
+    """Source-stable but changed study/run/raw evidence cannot publish."""
+    directory, document, relative = retained
+    row = document["observations"][0]
+    paths = {
+        "study": directory / "study.json",
+        "raw": producer._ROOT / row["raw_sample"],
+        "run": producer._ROOT / row["experiment_manifest"],
+    }
+    victim = paths[evidence_kind]
+    real_analyze = analyze.analyze
+
+    def mutate_after_preflight(study: dict[str, Any]) -> dict[str, Any]:
+        victim.write_bytes(victim.read_bytes() + b"\n")
+        return real_analyze(study)
+
+    monkeypatch.setattr(audit.analyze, "analyze", mutate_after_preflight)
+    with pytest.raises(
+        audit.TargetEchoAuditError, match="changed before report"
+    ):
+        audit.audit(relative)
+
+
+@pytest.mark.parametrize(
+    "unreported",
+    [
+        ("runs", "unreported.toml"),
+        ("raw", "unreported.csv"),
+        ("candidates", "unreported.malbolge"),
+    ],
+)
+def test_late_unreported_evidence_file_is_rejected(
+    retained: tuple[Path, dict[str, Any], str],
+    monkeypatch: pytest.MonkeyPatch,
+    unreported: tuple[str, str],
+) -> None:
+    """Post-preflight added trial files cannot enter a complete report."""
+    directory, _, relative = retained
+    folder, name = unreported
+    added = directory / folder / name
+    real_analyze = analyze.analyze
+
+    def add_after_preflight(study: dict[str, Any]) -> dict[str, Any]:
+        added.write_bytes(b"unreported")
+        return real_analyze(study)
+
+    monkeypatch.setattr(audit.analyze, "analyze", add_after_preflight)
+    with pytest.raises(
+        audit.TargetEchoAuditError,
+        match=r"missing or unexpected|unexpected candidate",
+    ):
+        audit.audit(relative)
+
+
 def test_injected_mismatched_vm_replay_fails_closed(
     retained: tuple[Path, dict[str, Any], str],
     monkeypatch: pytest.MonkeyPatch,

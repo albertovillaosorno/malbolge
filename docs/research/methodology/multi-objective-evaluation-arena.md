@@ -229,7 +229,18 @@ A separate final source-byte recheck before report publication catches observed
 mutations after initial independent decode, including changes that occur while
 the Pareto comparison is assembled. A real 64-pair regression emits and replays
 129- and 193-cell programs across the classic 94-position decode phase wrap.
-Neither static admission nor the opt-in replay authenticates historical
+
+The audit now pins the full original study JSON and all declared per-trial
+manifest/raw bytes before cross-record preflight. After assembling the offline
+comparison, it reopens every admitted input and verifies matching exact SHA-256
+before publishing the result. It also rescans the run/raw/candidate inventories
+for late additions or removals. Tests mutate otherwise valid JSON, CSV and
+TOML after their initial checks, and inject unreported files after admission;
+all must reject rather than returning a stale report. The reader protects
+individual descriptors from observed inode or timestamp drift, but these
+multiple reads do not establish an atomic snapshot against an adversary that
+can race or restore bytes between checks. Neither static admission nor the
+opt-in replay authenticates historical
 measurement, validates reported failures by reexecution, enforces aggregate
 resources, or proves arbitrary guest semantics. Missing original binaries can
 block replay while leaving the offline source evidence inspectable.

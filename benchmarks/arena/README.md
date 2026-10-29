@@ -234,18 +234,24 @@ python3.14 -B -m benchmarks.arena.target_echo_audit \
   .temp/arena-target-echo-EXAMPLE/study.json
 ```
 
+Every offline audit also pins the original study JSON, run TOML and raw
+CSV bytes before cross-record admission, then reopens and compares every
+fingerprint before returning a report. A final run/raw/candidate inventory
+rescan rejects late additions and substitutions. These checks cover every
+bounded retained trial input, including changes that leave files parseable.
+They do not supply an atomic filesystem snapshot or source attestation.
+
 To **opt in to a new VM execution** of every retained successful source, use
 `--replay-candidates`. Replay requires the current local `malbolge_layout` and
 `malbolge` executable bytes to match the jointly recorded SHA-256 toolchain
 fingerprint. It checks exact EOF output again and reopens each source after
 execution to reject observed source changes. The auditor also reopens each
-successful source immediately before publishing its final report. This rejects
-observed mutations between decoding and result construction. This is separate
-post-run VM reexecution; it does not prove that the original benchmark used
-the same binary bytes or independently verify arbitrary Malbolge programs,
-and never a replay of recorded wall times or failed attempts. If binaries were
-rebuilt since the study, offline source admission remains available but replay
-rejects the toolchain drift until the original binaries are recovered.
+successful source immediately before returning its report. This catches
+observed mutations between decoding and result construction. VM replay does
+not prove the original benchmark used those executable bytes, independently
+verify arbitrary programs, reproduce recorded times or replay failed trials.
+If binaries were rebuilt, offline source admission remains available, while
+VM replay rejects the toolchain drift until original binaries are recovered.
 
 The exact executable hashes and Git revision are recorded as **claimed
 provenance**, not execution attestation. The declared 60-second/1024-MiB

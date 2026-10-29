@@ -47,6 +47,7 @@ from scripts.validate import experiment_manifest
 
 from benchmarks.arena import analyze
 from benchmarks.arena import evidence
+from benchmarks.arena import raw_samples
 from benchmarks.arena import report_output
 from benchmarks.arena import target_echo_reference as producer
 
@@ -106,13 +107,15 @@ def _prefix(relative: str) -> str:
     return "/".join(parts[:2])
 
 
-def _document(relative: str) -> dict[str, Any]:
+def _document(relative: str) -> tuple[dict[str, Any], str]:
     data = evidence.read_bounded_regular(
         _ROOT,
         relative,
         limit=MAX_STUDY_BYTES,
     )
-    return analyze.parse_document(data.decode("utf-8"))
+    return analyze.parse_document(data.decode("utf-8")), sha256(
+        data
+    ).hexdigest()
 
 
 def _producer_study(document: dict[str, Any]) -> None:
@@ -416,17 +419,63 @@ def _replay(
     return len(source_hashes)
 
 
+def _snapshot_linked_inputs(
+    document: dict[str, Any],
+    relative_study: str,
+    study_hash: str,
+) -> dict[str, tuple[str, int]]:
+    """Pin the inspected study and complete declared evidence byte sets.
+
+    Returns:
+        Original SHA-256 and read limit for each retained input path.
+
+    """
+    snapshots = {relative_study: (study_hash, MAX_STUDY_BYTES)}
+    linked = {
+        (row["experiment_manifest"], evidence.MAX_MANIFEST_BYTES)
+        for row in document["observations"]
+    }
+    linked.update({
+        (row["raw_sample"], raw_samples.MAX_RAW_BYTES)
+        for row in document["observations"]
+    })
+    for relative, limit in sorted(linked):
+        data = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
+        snapshots[relative] = (sha256(data).hexdigest(), limit)
+    return snapshots
+
+
+def _recheck_linked_inputs(
+    snapshots: dict[str, tuple[str, int]],
+) -> None:
+    """Reject inspected study and linked-byte changes before publishing."""
+    for relative, (original, limit) in snapshots.items():
+        current = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
+        if sha256(current).hexdigest() != original:
+            _fail(
+                f"target audit linked input changed before report: {relative}"
+            )
+
+
 def _admit_study(
     relative_study: str,
     *,
     replay_candidates: bool,
     emitter: Path,
     runner: Path,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, str], str, int]:
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, str],
+    dict[str, tuple[str, int]],
+    str,
+    int,
+]:
     prefix = _prefix(relative_study)
-    document = _document(relative_study)
+    document, study_hash = _document(relative_study)
     _producer_study(document)
     names = _producer_rows(document, prefix)
+    snapshots = _snapshot_linked_inputs(document, relative_study, study_hash)
     for folder, extension in (("runs", ".toml"), ("raw", ".csv")):
         _check_directory(
             prefix,
@@ -449,7 +498,7 @@ def _admit_study(
         if replay_candidates
         else 0
     )
-    return document, checked, source_hashes, commit, replayed
+    return document, checked, source_hashes, snapshots, commit, replayed
 
 
 def _recheck_sources(source_hashes: dict[str, str]) -> None:
@@ -462,6 +511,19 @@ def _recheck_sources(source_hashes: dict[str, str]) -> None:
         )
         if sha256(current).hexdigest() != recorded:
             _fail("target audit retained source changed before report")
+
+
+def _recheck_inventory(document: dict[str, Any], relative_study: str) -> None:
+    """Refuse late additions, removals, or linked file substitutions."""
+    prefix = _prefix(relative_study)
+    names = _producer_rows(document, prefix)
+    for folder, extension in (("runs", ".toml"), ("raw", ".csv")):
+        _check_directory(
+            prefix,
+            folder,
+            {f"{stem}{extension}" for stem in names},
+        )
+    _candidate_files(prefix, names)
 
 
 def audit(
@@ -481,16 +543,22 @@ def audit(
 
     """
     try:
-        document, checked, source_hashes, commit, replayed = _admit_study(
-            relative_study,
-            replay_candidates=replay_candidates,
-            emitter=emitter
-            if emitter is not None
-            else producer.DEFAULT_EMITTER,
-            runner=runner if runner is not None else producer.DEFAULT_RUNNER,
+        (document, checked, source_hashes, snapshots, commit, replayed) = (
+            _admit_study(
+                relative_study,
+                replay_candidates=replay_candidates,
+                emitter=emitter
+                if emitter is not None
+                else producer.DEFAULT_EMITTER,
+                runner=runner
+                if runner is not None
+                else producer.DEFAULT_RUNNER,
+            )
         )
         report = analyze.analyze(document)
         _recheck_sources(source_hashes)
+        _recheck_linked_inputs(snapshots)
+        _recheck_inventory(document, relative_study)
     except (
         analyze.ArenaError,
         evidence.EvidenceError,

@@ -121,9 +121,14 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   rechecks expected EOF output and stable source bytes. A final byte-hash
   check also rejects observed changes after source admission and before
   report construction. A real 64-pair pilot regression exercises both source
-  layouts across the classic 94-position decode phase cycle. These checks
-  do not validate the original measurements,
-  failure histories, resources or general C.
+  layouts across the classic 94-position decode phase cycle.
+  The offline auditor additionally pins complete study JSON and per-trial
+  manifest/raw byte digests before linked-evidence admission, checks them
+  again before returning a report, and rescans run/raw/candidate inventories.
+  Synthetic late mutations to valid-looking input and added unreported files
+  now fail instead of publishing stale comparison evidence. These checks do
+  not provide an atomic filesystem snapshot or validate original measurements,
+  failure histories, physical resource limits, or general C.
 - A bounded real host-C reference-study producer now measures pinned Clang
   `-O0` and `-O2` compile/link/oracle-run wall time and executable size on
   matched canonical challenge cases and difficulties. It retains actual native
