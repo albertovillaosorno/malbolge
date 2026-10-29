@@ -157,6 +157,46 @@ def test_audit_can_replay_only_canonical_challenge_oracle(
     assert hashes_before == _file_hashes(directory)
 
 
+@pytest.mark.parametrize(
+    "family",
+    ("composed-pipeline", "ternary-fold", "pointer-walk", "alias-walk"),
+)
+def test_strict_host_c_audit_replays_diverse_challenge_families(
+    family: str,
+) -> None:
+    """Independent strict replay remains source-bound beyond arithmetic DAGs."""
+    directory, document = reference_study.run_study(
+        reference_study.StudyPlan(family, (8,), 23, 1),
+    )
+    try:
+        relative = (
+            (directory / "study.json")
+            .relative_to(reference_audit._ROOT)
+            .as_posix()
+        )
+        before = _file_hashes(directory)
+        report = reference_audit.audit(
+            relative,
+            options=reference_audit.AuditOptions(
+                replay_oracles=True,
+                rebuild_binaries=True,
+                require_source_commit_object=True,
+                require_resource_controls_record=True,
+            ),
+        )
+        assert len(document["observations"]) == 2
+        assert all(row["outcome"] == analyze.VERIFIED for row in document["observations"])
+        assert report["evidence_preflight"]["raw_rows_matched"] == 2
+        assert report["evidence_preflight"]["host_c_challenge_oracles_replayed"] == 1
+        assert report["host_c_binaries_checked"] == 2
+        assert report["host_c_reference_builds_reproduced"] == 2
+        assert report["source_commit_object_verified"]
+        assert report["resource_controls_record_version"] == 2
+        assert before == _file_hashes(directory)
+    finally:
+        shutil.rmtree(directory)
+
+
 def _change_json(path: Path, update: str) -> None:
     document = json.loads(path.read_text(encoding="utf-8"))
     study = document["study"]

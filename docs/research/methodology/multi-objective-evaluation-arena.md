@@ -269,7 +269,12 @@ retained per-trial manifests, even if all other record identity fields match.
 It also requires the producer's fixed run method, implementation/configuration
 paths, output directory and no-accelerator declaration. Valid but foreign
 research metadata fails the producer-specific audit; this is a consistency
-check, not source or execution attestation.
+check, not source or execution attestation. Strict real-native audit regressions
+now also cover composed-pipeline, ternary-fold, pointer-walk and alias-walk
+families, with canonical oracle replay, byte-for-byte independent native
+rebuild, resource/source-object checks and unchanged retained file fingerprints.
+The additional challenges establish audit path coverage, not statistical
+performance validity or Malbolge compiler execution.
 An optional `--require-source-commit-object` gate checks that the shared
 claimed SHA-1 resolves to a local Git **commit** object; default audits retain
 the claim without requiring a complete local Git history. Local object

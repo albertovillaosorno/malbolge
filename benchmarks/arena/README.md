@@ -283,6 +283,11 @@ host-C reference producer. This prevents a self-consistent but foreign TOML
 provenance declaration from being described as the reference runner's output;
 it does not authenticate the underlying machine, source or execution.
 
+The strict producer audit also has real native source/rebuild regressions
+for `composed-pipeline`, `ternary-fold`, `pointer-walk`, and `alias-walk`, each
+with canonical oracle replay and retained-file immutability assertions. These
+expand the tested generator families, not the scope of performance conclusions.
+
 The audit never proves that reported wall-clock
 measurements were authentic, that resource limits were enforced, or that
 candidate Malbolge artifacts were created or verified. File consistency is

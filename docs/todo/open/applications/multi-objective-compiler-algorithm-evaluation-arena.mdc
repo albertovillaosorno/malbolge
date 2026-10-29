@@ -131,6 +131,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   reject tampered files, forged stage or arm identities, malformed artifacts,
   unsafe paths and missing links; physical benchmark remeasurement and
   Malbolge candidate verification remain open.
+- A full strict real-native audit is now permanently covered for four
+  non-arithmetic generator families (composed pipeline, ternary fold, pointer
+  walk, alias walk): production measurements, independent canonical-oracle
+  replay, binary source rebuilds, Git object/resource receipt requirements, and
+  unchanged retained byte hashes. This broadens fixture diversity only; it does
+  not measure the target Malbolge compiler.
 - Producer-specific host-C audits now bind the original falsifiable study
   question, hypothesis, and rejection observation. Three real-pilot regressions
   prove that replacing those fields passes generic analysis but cannot be
