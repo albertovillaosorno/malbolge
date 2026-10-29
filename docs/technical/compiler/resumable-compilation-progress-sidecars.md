@@ -284,7 +284,14 @@ Platforms without `O_DIRECTORY` check the opened descriptor's directory type.
 A linked parent or a parent replaced with a link during directory sync thus
 fails closed with the original committed path recorded as uncertain durability.
 Tests cover regular-file substitution, a linked parent, and a live parent swap
-after sync. This is not a proof against every real-directory rename race.
+after sync.
+
+The opened directory descriptor must also match the current nonfollowing
+pathname's device and inode before and after `fsync`. This rejects a different
+regular directory substituted after opening or during synchronization, for both
+mutable sidecars and immutable checkpoint members. Such failures retain the
+exact published path but do not claim durability; external swaps outside the
+two checks remain a filesystem race rather than an atomicity guarantee.
 
 Writer-lock release/close and immutable temporary-file cleanup failure after
 durable publication follow the same committed-evidence principle. If a durable

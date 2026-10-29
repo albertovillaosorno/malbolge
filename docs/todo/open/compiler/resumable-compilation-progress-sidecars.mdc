@@ -129,8 +129,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   typed uncertain-durability outcomes also cover non-`OSError` directory
   sync failures, keeping them primary over later close errors,
   POSIX parent-directory fsync now rejects non-directory inodes, linked parent
-  paths, and linked parent swaps during sync using directory/no-follow flags
-  with fallback descriptor-type admission and exact committed-path evidence,
+  paths, and linked parent swaps during sync using directory/no-follow flags,
+  and independently binds open-directory device/inode to the nonfollowing
+  pathname both before and after sync; real-directory replacement regressions
+  cover the post-open and post-sync pointer and immutable checkpoint routes,
+  retaining exact committed-path evidence on failed durability admission,
   non-`OSError` payload file-sync failures during partial and pointer
   publication retain exact last-committed generation evidence, with pre-first-
   checkpoint failures remaining typed prepublication errors,

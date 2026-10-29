@@ -1917,11 +1917,16 @@ def _open_durability_directory(path: Path) -> int:
 
 
 def _verify_durability_directory(path: Path, descriptor: int) -> None:
-    # O_DIRECTORY is not available on every POSIX host.
-    if not getattr(os, "O_DIRECTORY", 0) and not stat.S_ISDIR(
-        os.fstat(descriptor).st_mode
-    ):
-        _fail("progress durability parent must be a directory")
+    _reject_path_redirect(path, "progress durability directory")
+    opened = os.fstat(descriptor)
+    current = path.stat(follow_symlinks=False)
+    same_inode = (
+        opened.st_dev == current.st_dev and opened.st_ino == current.st_ino
+    )
+    if not stat.S_ISDIR(opened.st_mode) or not stat.S_ISDIR(
+        current.st_mode
+    ) or not same_inode:
+        _fail("progress durability directory changed during sync")
     _reject_path_redirect(path, "progress durability directory")
 
 

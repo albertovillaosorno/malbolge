@@ -4421,6 +4421,123 @@ def test_sidecar_durability_rejects_parent_link_swap_after_sync(
     assert parent.is_symlink()
 
 
+def _swap_real_parent(parent: Path, detached: Path) -> None:
+    parent.rename(detached)
+    parent.mkdir()
+
+
+def _open_then_swap_real_parent(
+    parent: Path, detached: Path
+) -> Callable[..., int]:
+    original_open = os.open
+
+    def open_then_swap(
+        path: Path, flags: int, mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> int:
+        descriptor = original_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == parent:
+            _swap_real_parent(parent, detached)
+        return descriptor
+
+    return open_then_swap
+
+
+def _sync_then_swap_real_parent(
+    parent: Path, detached: Path
+) -> Callable[[int], None]:
+    original_fsync = os.fsync
+
+    def sync_then_swap(descriptor: int) -> None:
+        original_fsync(descriptor)
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            _swap_real_parent(parent, detached)
+
+    return sync_then_swap
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX parent relocation is platform-specific",
+)
+@pytest.mark.parametrize("after_open", [True, False])
+def test_sidecar_durability_rejects_real_parent_inode_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    after_open: bool,
+) -> None:
+    """A different real directory cannot confirm the old parent's fsync."""
+    parent = tmp_path / "job"
+    parent.mkdir()
+    detached = tmp_path / "detached-job"
+    candidate = _sidecar(parent)
+    destination = Path(candidate.progress_path)
+
+    with monkeypatch.context() as context:
+        if after_open:
+            context.setattr(
+                os, "open", _open_then_swap_real_parent(parent, detached)
+            )
+        else:
+            context.setattr(
+                os, "fsync", _sync_then_swap_real_parent(parent, detached)
+            )
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="durability",
+        ) as captured:
+            _ = progress.write_atomic(candidate)
+    assert captured.value.published_path == destination
+    assert not destination.exists()
+    assert (detached / destination.name).exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX parent relocation is platform-specific",
+)
+def test_checkpoint_durability_rejects_real_parent_inode_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A committed immutable member cannot certify a replaced parent."""
+    parent = tmp_path / "checkpoint-job"
+    parent.mkdir()
+    detached = tmp_path / "detached-checkpoint-job"
+    payload = b"verified-checkpoint-bytes"
+    candidate = _checkpointed(
+        _sidecar(parent), checkpoint=payload, partial=None
+    )
+    checkpoint = Path(candidate.checkpoint_path or "")
+    with monkeypatch.context() as context:
+        context.setattr(
+            os, "fsync", _sync_then_swap_real_parent(parent, detached)
+        )
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="durability",
+        ) as captured:
+            _ = progress.write_checkpoint_generation(candidate, payload)
+    assert captured.value.published_path == checkpoint
+    assert (detached / checkpoint.name).read_bytes() == payload
+    assert not Path(candidate.progress_path).exists()
+
+
+def _mock_directory_descriptor(
+    context: pytest.MonkeyPatch, path: Path, descriptor: int
+) -> None:
+    def opened_directory(directory: Path, flags: int) -> int:
+        del flags
+        assert directory == path
+        return descriptor
+
+    def descriptor_stat(observed: int) -> os.stat_result:
+        assert observed == descriptor
+        return path.stat()
+
+    context.setattr(os, "open", opened_directory)
+    context.setattr(os, "fstat", descriptor_stat)
+
+
 @pytest.mark.parametrize("cleanup_type", [OSError, ValueError, RuntimeError])
 def test_directory_close_after_sync_reports_committed_path(
     tmp_path: Path,
@@ -4436,10 +4553,6 @@ def test_directory_close_after_sync_reports_committed_path(
         vars(progress)["_confirm_publication_durability"],
     )
 
-    def open_directory(path: Path, flags: int) -> int:
-        del path, flags
-        return descriptor
-
     def sync_directory(observed: int) -> None:
         calls.append(("sync", observed))
 
@@ -4449,7 +4562,7 @@ def test_directory_close_after_sync_reports_committed_path(
         raise cleanup_type(message)
 
     with monkeypatch.context() as context:
-        context.setattr(os, "open", open_directory)
+        _mock_directory_descriptor(context, tmp_path, descriptor)
         context.setattr(os, "fsync", sync_directory)
         context.setattr(os, "close", fail_close)
         with pytest.raises(
@@ -4483,10 +4596,6 @@ def test_directory_unexpected_sync_failure_stays_uncertain(
         vars(progress)["_confirm_publication_durability"],
     )
 
-    def open_directory(path: Path, flags: int) -> int:
-        del path, flags
-        return descriptor
-
     def fail_sync(observed: int) -> None:
         del observed
         raise sync_type(failure)
@@ -4495,7 +4604,7 @@ def test_directory_unexpected_sync_failure_stays_uncertain(
         closed.append(observed)
 
     with monkeypatch.context() as context:
-        context.setattr(os, "open", open_directory)
+        _mock_directory_descriptor(context, tmp_path, descriptor)
         context.setattr(os, "fsync", fail_sync)
         context.setattr(os, "close", close_directory)
         with pytest.raises(
@@ -4527,10 +4636,6 @@ def test_directory_close_failure_preserves_primary_sync_failure(
         vars(progress)["_confirm_publication_durability"],
     )
 
-    def open_directory(path: Path, flags: int) -> int:
-        del path, flags
-        return descriptor
-
     def fail_sync(observed: int) -> None:
         del observed
         raise sync_type(sync_failure)
@@ -4540,7 +4645,7 @@ def test_directory_close_failure_preserves_primary_sync_failure(
         raise cleanup_type(close_failure)
 
     with monkeypatch.context() as context:
-        context.setattr(os, "open", open_directory)
+        _mock_directory_descriptor(context, tmp_path, descriptor)
         context.setattr(os, "fsync", fail_sync)
         context.setattr(os, "close", fail_close)
         with pytest.raises(
