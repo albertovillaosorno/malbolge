@@ -205,8 +205,17 @@ The runner checks complete stdout against the expected bytes; mismatches
 remain `verifier_rejected`, and launcher failures, stream overruns and
 child timeouts remain `tool_failed`, never credited as successes. It also
 checks exact source length, graphical byte domain, the per-attempt output
-path, and exact
-executable identity before/after the study.
+path, and exact executable identity before/after the study.
+
+The reusable child transport separately supports **opt-in binary stdin** of at
+most 256 bytes; it checks the type and length before process launch, sends the
+bytes through a nonblocking short pipe, closes it to deliver EOF, and applies
+the same wall deadline and output limits. Its exact 0..255 byte-transfer
+regression and no-reader deadline test exercise the host pipe, **not** guest
+semantics: the current `malbolge` CLI constructs VMs with an empty input
+vector and does not consume its own stdin. All recorded classic target studies
+therefore remain explicitly empty-input EOF studies until a separately
+specified guest input adapter is implemented and independently verified.
 
 New studies retain `study.json`, actual raw graphical `candidates/*.malbolge`,
 one per-attempt `arena-raw-v1` CSV and versioned experiment-run TOML, under a

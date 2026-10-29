@@ -48,6 +48,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_STDOUT_LIMIT = 4 * 1024
 DEFAULT_STDERR_LIMIT = 16 * 1024
+MAX_STDIN_BYTES = 256
 READ_CHUNK_BYTES = 64 * 1024
 POSIX_PLATFORM = "posix"
 GROUP_KILL_SIGNAL = 9
@@ -136,6 +137,65 @@ def _collect(
     return bytes(buffers[0]), bytes(buffers[1])
 
 
+def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
+    if child.stdin is None:
+        _fail("bounded target input requires an owned pipe")
+    try:
+        # At most 256 bytes fit in an initially empty POSIX pipe. Nonblocking
+        # prevents a broken child from extending the same wall deadline.
+        os.set_blocking(child.stdin.fileno(), False)
+        if data and os.write(child.stdin.fileno(), data) != len(data):
+            _fail("bounded target input could not be delivered completely")
+    except BrokenPipeError as error:
+        message = "bounded target input pipe closed before delivery"
+        raise TargetProcessError(message) from error
+    finally:
+        child.stdin.close()
+
+
+def _finish_child(child: sp.Popen[bytes]) -> None:
+    _terminate_group(child)
+    for stream in (child.stdin, child.stdout, child.stderr):
+        if stream is not None and not stream.closed:
+            stream.close()
+
+
+def _run(
+    command: list[str],
+    *,
+    limits: _ProcessLimits,
+    input_bytes: bytes | None,
+) -> sp.CompletedProcess[bytes]:
+    _admit_limits(
+        limits.timeout_seconds,
+        limits.stdout_limit,
+        limits.stderr_limit,
+    )
+    started = monotonic()
+    child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
+        command,
+        shell=False,
+        cwd=_ROOT,
+        stdin=sp.PIPE if input_bytes is not None else sp.DEVNULL,
+        stdout=sp.PIPE,
+        stderr=sp.PIPE,
+        start_new_session=True,
+        close_fds=True,
+    )
+    try:
+        deadline = started + limits.timeout_seconds
+        if input_bytes is not None:
+            _send_input(child, input_bytes)
+        stdout, stderr = _collect(child, limits, deadline=deadline)
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            raise sp.TimeoutExpired(command, limits.timeout_seconds)
+        status = child.wait(timeout=remaining)
+        return sp.CompletedProcess(command, status, stdout, stderr)
+    finally:
+        _finish_child(child)
+
+
 def invoke(
     command: list[str],
     *,
@@ -143,42 +203,39 @@ def invoke(
     stdout_limit: int = DEFAULT_STDOUT_LIMIT,
     stderr_limit: int = DEFAULT_STDERR_LIMIT,
 ) -> sp.CompletedProcess[bytes]:
-    """Run one child, returning complete bounded streams or typed failure.
+    """Run one child with null stdin and strictly bounded output streams.
 
     Returns:
         Captured complete stdout/stderr and child exit status.
 
-    Raises:
-        TimeoutExpired: The shared wall deadline was exceeded.
+    """
+    return _run(
+        command,
+        limits=_ProcessLimits(timeout_seconds, stdout_limit, stderr_limit),
+        input_bytes=None,
+    )
+
+
+def invoke_with_input(
+    command: list[str],
+    input_bytes: bytes,
+    *,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+) -> sp.CompletedProcess[bytes]:
+    """Send at most 256 exact binary bytes, closing stdin before observation.
+
+    Returns:
+        Complete stdout/stderr and exit status for one child.
 
     """
-    _admit_limits(timeout_seconds, stdout_limit, stderr_limit)
-    started = monotonic()
-    child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
+    if type(input_bytes) is not bytes or len(input_bytes) > MAX_STDIN_BYTES:
+        _fail("bounded target input requires up to 256 exact bytes")
+    return _run(
         command,
-        shell=False,
-        cwd=_ROOT,
-        stdin=sp.DEVNULL,
-        stdout=sp.PIPE,
-        stderr=sp.PIPE,
-        start_new_session=True,
-        close_fds=True,
+        limits=_ProcessLimits(
+            timeout_seconds,
+            DEFAULT_STDOUT_LIMIT,
+            DEFAULT_STDERR_LIMIT,
+        ),
+        input_bytes=input_bytes,
     )
-    try:
-        deadline = started + timeout_seconds
-        stdout, stderr = _collect(
-            child,
-            _ProcessLimits(timeout_seconds, stdout_limit, stderr_limit),
-            deadline=deadline,
-        )
-        remaining = deadline - monotonic()
-        if remaining <= 0:
-            raise sp.TimeoutExpired(command, timeout_seconds)
-        status = child.wait(timeout=remaining)
-        return sp.CompletedProcess(command, status, stdout, stderr)
-    finally:
-        _terminate_group(child)
-        if child.stdout is not None:
-            child.stdout.close()
-        if child.stderr is not None:
-            child.stderr.close()

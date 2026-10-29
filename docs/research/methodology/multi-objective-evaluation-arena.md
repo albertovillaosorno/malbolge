@@ -210,6 +210,13 @@ capture allocations; it is not an OS memory quota, process sandbox, complete
 descendant containment (detached sessions remain outside the group), or a
 physically enforced study-wide budget. The pilot requires POSIX for this
 subprocess boundary and makes no Windows process-supervision claim.
+The same transport now supports an optional bounded exact 256-byte binary input
+channel, with nonblocking delivery and a positive wall deadline even when the
+child refuses to read. The all-256-byte/empty-input tests establish only POSIX
+pipe fidelity. The existing command-line VM initializes an empty input vector,
+so no current-target non-EOF success claim or measured arena input workload
+follows from those transport tests. Wiring a guest-input-aware runner to the
+transport and revalidating full byte semantics remain separate work.
 
 This is a falsifiable source-size hypothesis (the nop-padded source should
 use one extra graphical code byte per pair), not a general compiler-size or

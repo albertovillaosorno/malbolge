@@ -119,6 +119,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   overrun, timeout, process-group cleanup and a flood judged as tool failure.
   This does not impose physical study-wide RAM limits or contain detached
   child sessions, and Windows execution of this pilot remains unsupported.
+  A separately opt-in 256-byte binary-stdin channel is now available in the
+  child transport and proves host pipe fidelity, zero-byte EOF and bounded
+  no-reader timeout. The existing VM CLI still initializes empty guest input;
+  a real arbitrary-input arena study remains blocked on an independently
+  verified guest-input-aware VM command boundary.
 - A separate read-only classic target audit now reopens local pilot
   studies, binds fixed producer research/manifest/case claims, complete
   paired repetition plans and exact run/raw/candidate inventories, and

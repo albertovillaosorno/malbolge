@@ -42,6 +42,7 @@ import sys
 from time import monotonic
 from time import sleep
 from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 
@@ -55,6 +56,7 @@ STDOUT_NAME = "stdout"
 EXPECTED_EXIT_CODE = 7
 EXPECTED_DIAGNOSTIC = b"problem"
 NO_STDOUT = b""
+EMPTY_INPUT_LENGTH = b"0\n"
 STDOUT_LIMIT = 256
 STDERR_LIMIT = 512
 SMALL_TIMEOUT_SECONDS = 0.2
@@ -118,6 +120,63 @@ def test_external_nonzero_status_is_not_hidden() -> None:
     assert result.returncode == EXPECTED_EXIT_CODE
     assert result.stdout == NO_STDOUT
     assert result.stderr == EXPECTED_DIAGNOSTIC
+
+
+def test_explicit_binary_input_roundtrips_all_256_byte_values() -> None:
+    """Binary pipe input is exact, including NUL, 0xA8 and 0xFF."""
+    data = bytes(range(256))
+    result = target_process.invoke_with_input(
+        _child("import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"),
+        data,
+        timeout_seconds=LARGE_TIMEOUT_SECONDS,
+    )
+    assert result.returncode == 0
+    assert result.stdout == data
+    assert result.stderr == NO_STDOUT
+
+
+@pytest.mark.parametrize("invalid", [bytes(257), bytearray(b"x"), "hi"])
+def test_invalid_binary_input_is_rejected_before_launch(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """Input is a bounded byte blob, never an untrusted streaming source."""
+    launched = False
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        nonlocal launched
+        _ = (args, kwargs)
+        launched = True
+
+    monkeypatch.setattr(target_process.sp, "Popen", forbidden)
+    with pytest.raises(target_process.TargetProcessError, match="input"):
+        target_process.invoke_with_input(
+            _child("print('no')"), cast("bytes", invalid)
+        )
+    assert not launched
+
+
+def test_empty_explicit_input_closes_stdin_to_trigger_guest_eof() -> None:
+    """An explicit empty byte blob delivers immediate EOF, not a live pipe."""
+    result = target_process.invoke_with_input(
+        _child("import sys; print(len(sys.stdin.buffer.read()))"),
+        b"",
+        timeout_seconds=LARGE_TIMEOUT_SECONDS,
+    )
+    assert result.returncode == 0
+    assert result.stdout == EMPTY_INPUT_LENGTH
+
+
+def test_input_pipe_that_is_never_read_still_obeys_wall_deadline() -> None:
+    """The bounded tiny input must not block before the output deadline."""
+    started = monotonic()
+    with pytest.raises(sp.TimeoutExpired):
+        target_process.invoke_with_input(
+            _child("import time; time.sleep(5)"),
+            bytes(range(256)),
+            timeout_seconds=SMALL_TIMEOUT_SECONDS,
+        )
+    assert monotonic() - started < LARGE_TIMEOUT_SECONDS
 
 
 def test_nonreading_child_is_killed_after_wall_deadline() -> None:
