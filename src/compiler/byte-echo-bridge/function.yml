@@ -1,0 +1,71 @@
+schema: jig-function/v3
+identity:
+  id: byte-echo-bridge
+  node: function:byte-echo-bridge
+  path: src/compiler/byte-echo-bridge
+  role: governed-function
+contracts:
+  universal: graph-authority/v2
+  location: src-function/v1
+  domain: domain-compiler/v1
+  role: function/v3
+classification:
+  repository: malbolge
+  location: src
+  domain: compiler
+  lifecycle: implementation
+ownership:
+  primary: repository:malbolge
+  accountable: Alberto Villa Osorno
+lifecycle:
+  stage: implementation
+architecture:
+  route: src/<domain>/<function>/<kind>/<part>
+  kinds:
+    - adapter-inbound
+    - adapter-outbound
+    - application
+    - composition
+    - contract
+    - domain
+    - math
+    - port-inbound
+    - port-outbound
+  boundary:
+    owns: verified successful-byte-echo ternary-to-layout composition
+    must_not: claim arbitrary C lowering, EOF handling or guest ABI realization
+    split_when: more general effect streams need runtime linkage and proof
+    merge_when: a complete target linker covers this exact bounded subset
+language_manifest: byte-echo-bridge.jig
+parts:
+  - id: part-0001
+    path: composition/lib.rs
+    kind: composition
+    language: rust
+    responsibility: Admit exact byte-echo target effects and emit verified code.
+projects: []
+tests: []
+graph:
+  node: function:byte-echo-bridge
+  labels:
+    - hub
+    - function
+    - repository-governance
+  hubs:
+    - hub:repository:malbolge
+    - hub:location:src
+    - hub:domain:compiler
+    - hub:role:governed-function
+    - hub:lifecycle:implementation
+    - hub:function:byte-echo-bridge
+provenance:
+  authority: .jig/taxonomy.json
+  origin: authored
+validation:
+  mode: active
+  language_set: declared-by-language-manifest
+  project_coverage: repository-workspace-projection
+  part_inventory: observed-files-only
+  test_inventory: repository-test-authority
+  project_sidecars: repository-owned
+  unknown_fields: fatal

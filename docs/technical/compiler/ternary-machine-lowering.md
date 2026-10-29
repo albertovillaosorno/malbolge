@@ -1041,6 +1041,32 @@ runtime-call encoding, complete source sequencing, typed-IR external-call
 binding, wrapper branch-address/source-cell placement, target serialization, and
 complete Malbolge emission remain downstream work.
 
+### Bounded Executable Byte-Echo Bridge
+
+A separate composition capability at
+`src/compiler/byte-echo-bridge/composition/lib.rs` now connects canonical
+ternary IR to the independently verified `malbolge-layout` encoder. It admits
+exactly one zero-argument void function whose only pre-return effects are one
+or more adjacent `ByteInput`/`ByteOutput` pairs with the identical SSA byte
+identity. The bridge revalidates the complete canonical ternary program,
+checks the target profile, emits raw profile input/output instructions and a
+terminal halt, and delegates position-sensitive graphical encoding and
+independent source admission to the layout backend.
+
+This is an **execution trace only on the successful-byte-I/O domain**: every
+input must supply a real byte (not EOF), every output must succeed, and the
+function's C ABI and void return are not observed beyond VM process halt.
+Other operations, nonadjacent/reused byte values, mismatched SSA, additional
+functions, value returns, incorrect profiles and malformed programs reject.
+The real profiled Malbolge VM now executes independently round-tripped ternary
+programs for 1, 2, 3, 7 and 64 byte pairs with exact output and input counts.
+A separately admitted, canonically serialized/restored typed-IR void byte-I/O
+fixture also reaches real executable output, with the supported projection
+effects and source spans checked against the restored upstream operations.
+An over-4096-cell trace is rejected by final layout admission.
+This does not implement EOF/error status handling, arbitrary computation, a
+callable guest function, or a general C-to-Malbolge pipeline.
+
 ### Authoritative Inputs
 
 The first implementation must consume existing identities without renaming or
