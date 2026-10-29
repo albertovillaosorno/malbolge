@@ -35,8 +35,9 @@
 
 use std::env::temp_dir;
 use std::fs::{read, remove_file, write};
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, id};
+use std::process::{Command, Stdio, id};
 use std::str::from_utf8;
 
 use malbolge::{
@@ -308,6 +309,38 @@ fn assert_capsule_dispatch(
             String::from_utf8_lossy(&output.stderr),
         ))
     }
+}
+
+#[test]
+fn current_capsule_consumes_explicit_binary_input_before_eof()
+-> Result<(), String> {
+    let source = source_backed_jump_code_io_chain()?;
+    let encoded = build_capsule(current_profile(), &source)
+        .map_err(|error| format!("build current input capsule: {error}"))?;
+    let capsule = TemporaryCapsule::from_bytes("current-stdin", &encoded)?;
+    let mut child = clean_cli_command()
+        .arg(&capsule.path)
+        .arg("--input-stdin")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("launch current input capsule: {error}"))?;
+    let mut stdin = child.stdin.take().ok_or("missing capsule stdin pipe")?;
+    stdin
+        .write_all(&[0x00, 0xff])
+        .map_err(|error| format!("send capsule input: {error}"))?;
+    drop(stdin);
+    let output = child.wait_with_output().map_err(|error| {
+        format!("receive current input capsule output: {error}")
+    })?;
+    if !output.status.success()
+        || output.stdout != [0x00, 0xff]
+        || !output.stderr.is_empty()
+    {
+        return Err(format!("current input capsule mismatch: {output:?}"));
+    }
+    Ok(())
 }
 
 #[test]

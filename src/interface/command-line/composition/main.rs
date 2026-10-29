@@ -14,8 +14,8 @@
 //   - Treat native C execution as Malbolge conformance or performance evidence.
 //   - Compile `.malbolge` into a persistent native executable.
 // - Allows:
-//   - Inputs: one source path and arguments forwarded only to native C debug
-//     runs.
+//   - Inputs: one source path, explicitly bounded stdin for guest byte I/O, and
+//     arguments forwarded only to native C debug runs.
 //   - Outputs: guest stdout or the directly executed C program's stdout/stderr.
 //   - Side effects: temporary native C artifacts removed after execution.
 // - Split-When:
@@ -43,7 +43,7 @@ pub mod c_source;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, DirBuilder};
-use std::io::{self, Write as _};
+use std::io::{self, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio, id};
 
@@ -72,6 +72,8 @@ const DOOM_IWAD_NAMES: [&str; 8] = [
 const C_RUN_PREFIX: &str = "malbolge-c-run";
 const LLVM_VERSION: &str = "22.1.8";
 const MALBOLGE_EXTENSION: &str = "malbolge";
+const INPUT_STDIN_ARGUMENT: &str = "--input-stdin";
+const MAX_GUEST_STDIN_BYTES: u64 = 256;
 const PROFILE_ADAPTIVE_WIDTH_ENV: &str = "MALBOLGE_PROFILE_ADAPTIVE_WIDTH";
 const PROFILE_WORKER_ARG_COUNT_ENV: &str =
     "MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_COUNT";
@@ -359,14 +361,14 @@ fn dispatch(path: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
         })?;
     match extension.as_str() {
         C_EXTENSION => run_c(path, arguments),
-        MALBOLGE_EXTENSION => {
-            if arguments.is_empty() {
-                run_malbolge(path)
-            } else {
-                Err(String::from(
-                    "arguments after a .malbolge path are not implemented yet",
-                ))
-            }
+        MALBOLGE_EXTENSION => match arguments {
+            [] => run_malbolge(path, Vec::new()),
+            [single] if single == OsStr::new(INPUT_STDIN_ARGUMENT) => {
+                run_malbolge(path, read_guest_stdin()?)
+            },
+            _ => Err(String::from(
+                "a .malbolge path accepts only the optional --input-stdin flag",
+            )),
         },
         _ => Err(format!(
             concat!(
@@ -671,10 +673,28 @@ fn run_c(source: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
     Ok(exit_code(status))
 }
 
-fn run_classic(source: &[u8]) -> Result<(), String> {
+fn read_guest_stdin() -> Result<Vec<u8>, String> {
+    // The explicit byte-input mode is bounded before VM loading. This does not
+    // reinterpret input as UTF-8, skip NUL, or make EOF indistinguishable from
+    // the historical EOF accumulator value after the last supplied byte.
+    let mut input = Vec::new();
+    let _read = io::stdin()
+        .lock()
+        .take(MAX_GUEST_STDIN_BYTES + 1)
+        .read_to_end(&mut input)
+        .map_err(|error| format!("failed to read guest stdin: {error}"))?;
+    if u64::try_from(input.len()).unwrap_or(u64::MAX) > MAX_GUEST_STDIN_BYTES {
+        return Err(format!(
+            "guest stdin exceeds {MAX_GUEST_STDIN_BYTES} byte limit",
+        ));
+    }
+    Ok(input)
+}
+
+fn run_classic(source: &[u8], input: Vec<u8>) -> Result<(), String> {
     let mut machine = ExecutionMachine::from_source(
         source,
-        Vec::new(),
+        input,
         ExecutionMode::Interpreter,
     )
     .map_err(|error| format!("classic Malbolge load failed: {error}"))?;
@@ -692,14 +712,19 @@ fn run_classic(source: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn run_malbolge(source_path: &Path) -> Result<ExitCode, String> {
+fn run_malbolge(
+    source_path: &Path,
+    input: Vec<u8>,
+) -> Result<ExitCode, String> {
     let source = fs::read(source_path)
         .map_err(|error| format!("failed to read Malbolge source: {error}"))?;
     match parse_capsule(&source)
         .map_err(|error| format!("Malbolge capsule parsing failed: {error}"))?
     {
-        Some(capsule) => run_profile(capsule.profile(), capsule.payload())?,
-        None => run_classic(&source)?,
+        Some(capsule) => {
+            run_profile(capsule.profile(), capsule.payload(), input)?
+        },
+        None => run_classic(&source, input)?,
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -778,12 +803,13 @@ fn profile_worker_argument_name(index: usize) -> String {
 fn run_profile(
     profile: &'static malbolge::ProfileDescriptor,
     source: &[u8],
+    input: Vec<u8>,
 ) -> Result<(), String> {
     let adaptive_width = configured_adaptive_profile_width(profile)?;
     let machine = if adaptive_width {
-        ProfileMachine::from_adaptive_source(profile, source, Vec::new())
+        ProfileMachine::from_adaptive_source(profile, source, input)
     } else {
-        ProfileMachine::from_source(profile, source, Vec::new())
+        ProfileMachine::from_source(profile, source, input)
     }
     .map_err(|error| format!("profile Malbolge load failed: {error}"))?;
     let mut backend = configured_profile_backend(profile)?;
@@ -848,7 +874,7 @@ fn write_diagnostic(message: &str) {
 
 fn write_usage() -> Result<(), String> {
     let usage = concat!(
-        "Usage: malbolge <program.malbolge>\n",
+        "Usage: malbolge <program.malbolge> [--input-stdin]\n",
         "       malbolge <program.c> [program args...]\n",
         "       malbolge --checkpoint-info ",
         "<program.malbolge.progress.json>\n",
@@ -858,6 +884,8 @@ fn write_usage() -> Result<(), String> {
         "<program.malbolge.progress.json>\n",
         "\n",
         "  .malbolge  Execute the Malbolge program in the normative VM.\n",
+        "  --input-stdin  Read at most 256 guest input bytes from stdin ",
+        "until EOF (default: empty).\n",
         "  .c         Debug-run C directly on the host via a ",
         "temporary binary.\n",
         "  --checkpoint-info  Validate and inspect durable checkpoint ",

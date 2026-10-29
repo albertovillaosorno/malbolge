@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Treat specification comparison as the default execution route.
 // - Allows:
-//   - Inputs: the interpreter-authority roundtrip fixture with empty input.
+//   - Inputs: the roundtrip fixture, exact binary stdin and oversized input.
 //   - Outputs: exact EOF byte, status, and diagnostic assertions.
 //   - Side effects: child process execution only.
 // - Split-When:
@@ -34,18 +34,44 @@
 
 use std::env::temp_dir;
 use std::fs::{remove_file, write};
+use std::io::Write as _;
+use std::iter::once;
 use std::path::{Path, PathBuf};
-use std::process::{Command, id};
+use std::process::{Command, Output, Stdio, id};
 
 use malbolge as _;
 
 const EXPECTED_EOF_OUTPUT: &[u8] = &[0xa8];
+const MAX_STDIN_BYTES: usize = 256;
+const OVERSIZED_STDIN_BYTES: usize = MAX_STDIN_BYTES + 1;
+const ARBITRARY_INPUT_BYTE: &[u8] = &[0xff];
 
 struct TemporarySource {
     path: PathBuf,
 }
 
 impl TemporarySource {
+    fn echo_pairs(pairs: usize) -> Result<Self, String> {
+        let path = temp_dir()
+            .join(format!("malbolge-cli-echo-{}-{pairs}.malbolge", id()));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"));
+        let _configured = command
+            .args(["--profile", "malbolge-1998", "--output"])
+            .arg(&path)
+            .arg("--");
+        for _ in 0..pairs {
+            let _appended = command.args(["input", "output"]);
+        }
+        let output = command
+            .arg("halt")
+            .output()
+            .map_err(|error| format!("emit classic echo source: {error}"))?;
+        if !output.status.success() || !output.stdout.is_empty() {
+            return Err(format!("classic echo emission rejected: {output:?}"));
+        }
+        Ok(Self { path })
+    }
+
     fn oversized() -> Result<Self, String> {
         let path = temp_dir()
             .join(format!("malbolge-cli-oversized-{}.malbolge", id()));
@@ -61,14 +87,118 @@ impl Drop for TemporarySource {
     }
 }
 
-#[test]
-fn raw_source_uses_interpreter_authority() -> Result<(), String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let source = root
+fn roundtrip_fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("compatibility")
         .join("specification")
-        .join("interpreter-io-roundtrip.malbolge");
+        .join("interpreter-io-roundtrip.malbolge")
+}
+
+fn run_with_stdin(source: &Path, input: &[u8]) -> Result<Output, String> {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(source)
+        .arg("--input-stdin")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("spawn binary-input CLI: {error}"))?;
+    let mut stdin = child.stdin.take().ok_or("missing CLI stdin pipe")?;
+    stdin
+        .write_all(input)
+        .map_err(|error| format!("send CLI bytes: {error}"))?;
+    drop(stdin);
+    child
+        .wait_with_output()
+        .map_err(|error| format!("receive binary-input CLI result: {error}"))
+}
+
+#[test]
+fn explicit_guest_stdin_reads_exact_binary_byte() -> Result<(), String> {
+    let output = run_with_stdin(&roundtrip_fixture(), ARBITRARY_INPUT_BYTE)?;
+    if !output.status.success()
+        || output.stdout != ARBITRARY_INPUT_BYTE
+        || !output.stderr.is_empty()
+    {
+        return Err(format!("classic binary-input CLI mismatch: {output:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn explicit_empty_stdin_retains_historical_eof() -> Result<(), String> {
+    let output = run_with_stdin(&roundtrip_fixture(), &[])?;
+    if !output.status.success()
+        || output.stdout != EXPECTED_EOF_OUTPUT
+        || !output.stderr.is_empty()
+    {
+        return Err(format!("classic explicit EOF mismatch: {output:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn oversized_guest_stdin_fails_without_guest_execution() -> Result<(), String> {
+    let oversized = vec![b'Z'; OVERSIZED_STDIN_BYTES];
+    let output = run_with_stdin(&roundtrip_fixture(), &oversized)?;
+    if output.status.success()
+        || !output.stdout.is_empty()
+        || !String::from_utf8_lossy(&output.stderr)
+            .contains("guest stdin exceeds 256 byte limit")
+    {
+        return Err(format!("oversized stdin was admitted: {output:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn real_classic_vm_echoes_all_256_input_values_then_eof() -> Result<(), String>
+{
+    let source = TemporarySource::echo_pairs(OVERSIZED_STDIN_BYTES)?;
+    let input = u8::MIN..=u8::MAX;
+    let eof = EXPECTED_EOF_OUTPUT
+        .first()
+        .copied()
+        .ok_or("missing EOF byte")?;
+    let expected = input.chain(once(eof)).collect::<Vec<_>>();
+    let input_slice = expected
+        .get(..MAX_STDIN_BYTES)
+        .ok_or("missing exact 256-byte input prefix")?;
+    let output = run_with_stdin(&source.path, input_slice)?;
+    if !output.status.success()
+        || output.stdout != expected
+        || !output.stderr.is_empty()
+    {
+        return Err(format!(
+            "256-byte classic VM input/EOF mismatch: {output:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ambiguous_guest_input_flags_fail_before_vm_execution() -> Result<(), String>
+{
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(roundtrip_fixture())
+        .args(["--input-stdin", "--input-stdin"])
+        .output()
+        .map_err(|error| format!("reject duplicate input flag: {error}"))?;
+    if output.status.success()
+        || !output.stdout.is_empty()
+        || !String::from_utf8_lossy(&output.stderr)
+            .contains("only the optional --input-stdin flag")
+    {
+        return Err(format!("duplicate stdin flag admitted: {output:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn raw_source_uses_interpreter_authority() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = roundtrip_fixture();
     let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
         .current_dir(root)
         .arg(source)
