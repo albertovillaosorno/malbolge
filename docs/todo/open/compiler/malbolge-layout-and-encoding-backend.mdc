@@ -125,6 +125,10 @@ emission.
   operands. The separate real `malbolge --input-stdin` runner also replays
   generated historical raw and modern capsule output for successful input
   bytes `0x00`/`0xff`, without implying EOF or full guest ABI support.
+  A second three-hop process fixture proves byte-identical source versus
+  the manual concrete backend even when the third jump consumes an
+  XLAT2-encrypted data operand, and confirms actual general-runner binary
+  input/output in both historical raw and modern capsule modes.
   Malformed grammar, numeric jump tokens in symbolic mode and unsafe plans
   fail without a final file. Conditional branches, guest heap,
   runtime linkage and general C compilation remain open.

@@ -1116,3 +1116,90 @@ fn automatic_layout_artifacts_execute_binary_stdin_in_general_runner() -> Result
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one three-hop source is verified against concrete source and general runner"
+)]
+fn symbolic_three_jump_artifacts_replay_encrypted_operands_in_general_runner() -> Result<(), String>
+{
+    let fixture = OwnedFixture::new()?;
+    let mut logical = vec!["input"];
+    logical.extend(["nop"].repeat(25));
+    logical.push("jump");
+    logical.extend(["nop"].repeat(29));
+    logical.push("jump");
+    logical.extend(["nop"].repeat(15));
+    logical.extend(["jump", "output", "halt"]);
+
+    for (profile_id, profile, capsule, input) in [
+        ("malbolge-1998", historical_profile(), false, 0u8),
+        ("malbolge-2026", current_profile(), true, 255u8),
+    ] {
+        let target = fixture.path(&format!("{profile_id}-three-auto.malbolge"));
+        let manual_path = fixture.path(&format!("{profile_id}-three-concrete.malbolge"));
+        let result = emit_auto(profile_id, &target, &logical, capsule)?;
+        if !result.status.success() {
+            return Err(format!(
+                "three-hop auto-layout rejected: {}",
+                String::from_utf8_lossy(&result.stderr)
+            ));
+        }
+        let artifact = fs::read(&target).map_err(|error| error.to_string())?;
+        let source = if capsule {
+            let restored = parse_capsule(&artifact)
+                .map_err(|error| format!("three-hop capsule parser: {error:?}"))?
+                .ok_or("three-hop capsule marker absent")?;
+            if restored.profile().id() != profile.id() {
+                return Err(String::from("three-hop profile changed"));
+            }
+            restored.payload().to_vec()
+        } else {
+            artifact
+        };
+        let explicit = source_on_success(
+            &emit(profile_id, &manual_path, &multi_jump_tokens())?,
+            &manual_path,
+        )?;
+        if source != explicit || source.len() != 127 || source.get(72).copied() != Some(90) {
+            return Err(String::from(
+                "three-hop source differs from concrete profile layout",
+            ));
+        }
+        let mut vm = ProfileMachine::from_source(profile, &source, vec![input])
+            .map_err(|error| format!("three-hop source load: {error:?}"))?;
+        if !matches!(vm.run(75), Ok(RunOutcome::Terminated { steps: 75, .. }))
+            || vm.output() != [input]
+            || vm
+                .memory_word(72)
+                .map_err(|error| format!("operand: {error:?}"))?
+                != 124
+        {
+            return Err(String::from("three-hop VM cipher/operand witness mismatch"));
+        }
+        let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(&target)
+            .arg("--input-stdin")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("three-hop general runner launch: {error}"))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or("missing stdin for three-hop runner")?;
+        stdin
+            .write_all(&[input])
+            .map_err(|error| format!("three-hop binary input: {error}"))?;
+        drop(stdin);
+        let output = child
+            .wait_with_output()
+            .map_err(|error| format!("three-hop runner result: {error}"))?;
+        if !output.status.success() || output.stdout != [input] || !output.stderr.is_empty() {
+            return Err(format!("real three-hop runner mismatch: {output:?}"));
+        }
+    }
+    Ok(())
+}

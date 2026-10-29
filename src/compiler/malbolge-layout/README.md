@@ -151,6 +151,11 @@ relocated rotate/crazy data writes. A separate process-level round trip
 executes a generated historical raw source and modern profile capsule through
 `malbolge <path> --input-stdin`; the general runner must return the exact
 binary bytes `0x00 0xff` from two successful input/output pairs.
+A separate three-hop symbolic-chain fixture verifies that a later `i` reads
+an XLAT2-encrypted operand rather than its original source byte. The
+resulting historical raw and modern capsule programs are byte-identical to
+the concrete three-hop baseline and execute exact `0x00` or `0xff` through
+the real general runner with guest stdin.
 Unsupported paths, malformed options, unsafe data moves and occupied
 output paths reject before publication.
 Neither mode provides conditional branching, loops, guest storage, EOF

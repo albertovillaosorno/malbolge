@@ -186,9 +186,15 @@ operand plus `j`, and automatically placed `j` with real rotate/crazy.
 Both 1998 and 2026 profile VMs replay the published source and check
 successful I/O or data-pointer relocation.
 
-An additional process-level test runs the actual general `malbolge --input-stdin` command on the generated
+An additional process-level test runs the actual general
+`malbolge --input-stdin` command on the generated
 historical raw source and modern version-one capsule, requiring exact
-`0x00 0xff` output for two non-EOF guest inputs. Unsupported symbolic shapes,
+`0x00 0xff` output for two non-EOF guest inputs. A second general-runner
+fixture proves a symbolic three-hop jump chain whose last target is read
+from an already XLAT2-encrypted operand. Raw and capsule outputs match the
+independent concrete-token source exactly; a normative VM witness verifies
+the data cell changed to the expected encrypted word before the real
+binary-input process replay. Unsupported symbolic shapes,
 invalid arguments, and occupied paths fail without accepted new artifacts.
 This is source layout for a closed machine subset, not general control flow,
 source-C compilation, guest ABI, or total I/O equivalence.
