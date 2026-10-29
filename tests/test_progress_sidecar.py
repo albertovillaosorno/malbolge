@@ -74,6 +74,8 @@ PROGRESS_NAME = "program.malbolge.progress.json"
 SIDECAR_WIRE_LIMIT = 1_048_576
 CHECKPOINT_NAME = "program.malbolge.checkpoint.00000000000000000001"
 PARTIAL_NAME = "program.malbolge.partial.00000000000000000001"
+OUTPUT_CHANGE = "output"
+OPERATION_CHANGE = "operation"
 SUMMARY_FIELDS = (
     "status=checkpointed",
     "stage=candidate-search",
@@ -7936,7 +7938,7 @@ def test_progress_write_limiter_queued_commit_failure_preserves_status(
         return published
 
     limiter = progress.ProgressWriteLimiter.start(
-        1_000, clock=SequenceClock([100, 100, 100, 101, 102])
+        1_000, clock=SequenceClock([100, 100, 100, 101, 102, 103])
     )
     running = replace(
         queued,
@@ -7954,6 +7956,8 @@ def test_progress_write_limiter_queued_commit_failure_preserves_status(
             _ = limiter.publish(queued)
         assert captured.value.published_path == destination
         assert progress.read(destination) == queued
+        with pytest.raises(ERROR, match="limiter job identity changed"):
+            _ = limiter.publish(replace(queued, operation_id="compile-0002"))
         assert limiter.publish(running) == destination
     assert progress.read(destination) == running
 
@@ -7988,6 +7992,38 @@ def test_progress_write_limiter_cannot_hide_invalid_lifecycle(
     with pytest.raises(ERROR, match="invalid progress transition"):
         _ = limiter.publish(invalid)
     assert progress.read(destination) == previous
+
+
+@pytest.mark.parametrize("changed_field", ["output", "operation", "started"])
+def test_progress_write_limiter_rejects_cross_job_reuse(
+    tmp_path: Path,
+    changed_field: str,
+) -> None:
+    """A caller-local cadence cannot suppress another job's first write."""
+    limiter = progress.ProgressWriteLimiter.start(
+        1_000, clock=SequenceClock([100, 100, 100, 101])
+    )
+    first = _sidecar(tmp_path)
+    assert limiter.publish(first) == Path(first.progress_path)
+    candidate = first
+    if changed_field == OUTPUT_CHANGE:
+        new_output = tmp_path / "another.malbolge"
+        candidate = replace(
+            candidate,
+            output_path=str(new_output),
+            progress_path=str(progress.progress_path(new_output)),
+        )
+    elif changed_field == OPERATION_CHANGE:
+        candidate = replace(candidate, operation_id="compile-0002")
+    else:
+        candidate = replace(
+            candidate, started_at="2026-08-06T14:00:00.5Z"
+        )
+    with pytest.raises(ERROR, match="limiter job identity changed"):
+        _ = limiter.publish(candidate)
+    assert progress.read(Path(first.progress_path)) == first
+    if changed_field == OUTPUT_CHANGE:
+        assert not Path(candidate.progress_path).exists()
 
 
 def test_progress_write_limiter_anchors_to_publication_completion(

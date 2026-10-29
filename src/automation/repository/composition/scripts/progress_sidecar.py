@@ -98,6 +98,7 @@ _FOLLOW_FLAG: Final = "--follow"
 _FOLLOW_ARGUMENT_COUNT: Final = 2
 _FOLLOW_INTERVAL_SECONDS: Final = 1.0
 _MAX_SIDECAR_BYTES: Final = 1_048_576
+_JOB_IDENTITY_FIELD_COUNT: Final = 3
 WINDOWS_PLATFORM: Final = "nt"
 _NUL_PATH_CHARACTER: Final = "\x00"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
@@ -406,6 +407,7 @@ class ProgressWriteLimiter:
     _last_committed_write_ns: int | None = None
     _last_observed_ns: int | None = None
     _last_committed_status: ProgressStatus | None = None
+    _last_committed_identity: tuple[str, str, str] | None = None
 
     @classmethod
     def start(
@@ -436,6 +438,20 @@ class ProgressWriteLimiter:
         ):
             _fail("progress write last committed status is invalid")
 
+    def _validate_committed_identity(self) -> None:
+        identity = self._last_committed_identity
+        if identity is None:
+            return
+        if (
+            type(identity) is not tuple
+            or len(identity) != _JOB_IDENTITY_FIELD_COUNT
+        ):
+            _fail("progress write last committed identity is invalid")
+        if any(type(part) is not str for part in identity) or (
+            self._last_committed_write_ns is None
+        ):
+            _fail("progress write last committed identity is invalid")
+
     def _validate_state(self) -> None:
         if not callable(self._clock):
             _fail("monotonic clock must be callable")
@@ -449,6 +465,7 @@ class ProgressWriteLimiter:
             self._last_observed_ns, self._started_ns, "progress write"
         )
         self._validate_committed_status()
+        self._validate_committed_identity()
         if self._last_committed_write_ns is None:
             return
         _ = _nonnegative_integer(
@@ -480,11 +497,16 @@ class ProgressWriteLimiter:
         self._last_observed_ns = now
         return now
 
+    @staticmethod
+    def _job_identity(sidecar: ProgressSidecar) -> tuple[str, str, str]:
+        return sidecar.operation_id, sidecar.progress_path, sidecar.started_at
+
     def _record_committed(
-        self, path: Path, fallback_ns: int, status: ProgressStatus
+        self, path: Path, fallback_ns: int, sidecar: ProgressSidecar
     ) -> None:
         self._last_committed_write_ns = fallback_ns
-        self._last_committed_status = status
+        self._last_committed_status = sidecar.status
+        self._last_committed_identity = self._job_identity(sidecar)
         try:
             self._last_committed_write_ns = self._sample()
         except ProgressSidecarError as error:
@@ -516,6 +538,8 @@ class ProgressWriteLimiter:
         queued-to-running transition, checkpointed status, terminal states,
         and possibly invalid lifecycle transitions always attempt publication.
         The durable pointer remains authoritative for cross-process changes.
+        A limiter is bound to its first committed job and rejects reuse for
+        another output, operation, or job start before suppression.
 
         Returns:
             Canonical progress path when published, otherwise ``None``.
@@ -525,6 +549,12 @@ class ProgressWriteLimiter:
         """
         validated = validate(sidecar)
         now = self._sample()
+        identity = self._job_identity(validated)
+        if (
+            self._last_committed_identity is not None
+            and identity != self._last_committed_identity
+        ):
+            _fail("progress write limiter job identity changed")
         mandatory = (
             validated.status is ProgressStatus.CHECKPOINTED
             or validated.status.value in TERMINAL_STATUSES
@@ -541,12 +571,12 @@ class ProgressWriteLimiter:
         except ProgressSidecarCommittedError as error:
             try:
                 self._record_committed(
-                    error.published_path, now, validated.status
+                    error.published_path, now, validated
                 )
             except ProgressSidecarCommittedError as clock_error:
                 error.add_note(f"limiter clock also failed: {clock_error}")
             raise
-        self._record_committed(destination, now, validated.status)
+        self._record_committed(destination, now, validated)
         return destination
 
 

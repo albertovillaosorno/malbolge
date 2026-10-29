@@ -207,6 +207,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   bounded routine-write cadence with committed/prepublication retry semantics
   and a mandatory queued-to-running publication before strict terminal writes,
   plus rejection of otherwise suppressed invalid lifecycle transitions,
+  caller-local limiter binding to committed job output/operation/start identity
+  so a second job cannot silently lose its initial progress publication,
   backend-neutral checkpoint round trips plus outer-digest,
   identity/position/codec/canonical-payload rejection, crash-boundary recovery
   using real portable envelopes for both search-labelled state and tracked

@@ -347,7 +347,12 @@ pointer even when other processes have advanced it. The interval begins at
 the post-publication sample,
 not at the start of a potentially slow write. Only successful or
 post-commit-failing writes consume the limiter window, so a prepublication
-failure can retry immediately. A failed post-commit clock sample retains
+failure can retry immediately. A limiter is caller-local to one job: after
+its first committed sidecar (even when a later durability operation fails), its
+output progress path, operation ID, and job start timestamp stay fixed. Reusing
+the limiter for a second job fails before routine rate suppression can hide a
+missing first publication; a separate job must create a separate limiter.
+A failed post-commit clock sample retains
 committed-path evidence, falls back to the pre-write sample for throttling, and
 cannot mask an earlier committed durability failure.
 
