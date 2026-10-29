@@ -61,8 +61,9 @@ emission.
   source length; it can follow an unmodified prefix of no-op or raw byte I/O.
   A later-phase VM regression admits a larger safe code/data layout than
   phase zero, proves code-pointer/encryption state stepwise, and rejects a
-  one-cell extension. Missing, duplicate, early-arithmetic or overlapping
-  relocations fail closed.
+  one-cell extension. Every safely reachable rotate/crazy phase from 1 to 93
+  now has separate profile-derived decoder and witness-size regression coverage.
+  Missing, duplicate, early-arithmetic or overlapping relocations fail closed.
 - `tests/malbolge_layout.rs` checks all 94 decode phases for both canonical
   profile byte-I/O operations, executes actual byte I/O and relocated ternary
   rotate/crazy instructions through the current and historical profile VMs,

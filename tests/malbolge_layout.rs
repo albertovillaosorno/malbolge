@@ -671,3 +671,70 @@ fn later_relocation_uses_its_own_code_phase_for_larger_data_safe_layout() -> Res
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "the profile-decoder phase enumeration is an exhaustive assertion"
+)]
+#[expect(
+    clippy::excessive_nesting,
+    reason = "exhaustively enumerate profile, phase, relocation and arithmetic"
+)]
+fn relocated_arithmetic_encodes_every_safely_addressable_phase() -> Result<(), String> {
+    for profile in [current_profile(), historical_profile()] {
+        let mut admitted_phases = 0u32;
+        for phase in 1usize..94usize {
+            let length = phase.saturating_add(2);
+            let base = (0usize..phase).find(|&position| {
+                (33u32..=126u32).any(|source| {
+                    decode_profile_instruction(source, u32::try_from(position).unwrap_or(0))
+                        == Some(b'j')
+                        && usize::try_from(source).unwrap_or(0) >= length
+                })
+            });
+            let Some(relocation_position) = base else {
+                continue;
+            };
+            admitted_phases = admitted_phases.saturating_add(1);
+            for arithmetic in [LinearOpcode::CrazyData, LinearOpcode::RotateData] {
+                let mut operations = vec![LinearOpcode::NoOperation; length];
+                *operations
+                    .get_mut(relocation_position)
+                    .ok_or("relocation phase")? = LinearOpcode::RelocateDataPointer;
+                *operations.get_mut(phase).ok_or("arithmetic phase")? = arithmetic;
+                *operations.last_mut().ok_or("final halt")? = LinearOpcode::Halt;
+                let artifact = encode_linear_layout(profile, &operations)
+                    .map_err(|error| format!("phase arithmetic layout: {error:?}"))?;
+                let expected = match arithmetic {
+                    LinearOpcode::CrazyData => b'p',
+                    LinearOpcode::RotateData => b'*',
+                    LinearOpcode::Halt
+                    | LinearOpcode::InputWord
+                    | LinearOpcode::JumpForward { .. }
+                    | LinearOpcode::NoOperation
+                    | LinearOpcode::OutputByte
+                    | LinearOpcode::RelocateDataPointer => {
+                        return Err(String::from("incorrect arithmetic fixture"));
+                    }
+                };
+                let cell = artifact
+                    .source()
+                    .get(phase)
+                    .copied()
+                    .ok_or("phase source")?;
+                assert_eq!(
+                    decode_profile_instruction(u32::from(cell), u32::try_from(phase).unwrap_or(0)),
+                    Some(expected)
+                );
+                assert_eq!(artifact.executed_code_positions().len(), length);
+                assert_eq!(
+                    artifact.encrypted_code_positions().len(),
+                    length.saturating_sub(1)
+                );
+            }
+        }
+        assert!(admitted_phases >= 60);
+    }
+    Ok(())
+}

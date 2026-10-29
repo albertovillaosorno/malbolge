@@ -22,6 +22,10 @@ source length to be at most that exact byte ensures subsequent data writes
 stay outside the code region. Later phases can encode a much larger data
 base than the first source cell, admitting longer safe executable layouts.
 Missing, duplicate, or potentially aliasing relocation is rejected.
+A separate exhaustive decoder-phase test enumerates all safely addressable
+rotate/crazy placements at positions 1 through 93, under both declared
+profiles, and independently checks the encoded instruction and execution
+witness lengths. It complements the longer real-VM boundary regression.
 
 The forward jump can occur after nonmutating operations while the original
 code and data pointers still agree. The VM reads the graphical jump cell

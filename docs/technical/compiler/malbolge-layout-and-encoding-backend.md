@@ -45,6 +45,9 @@ A real VM boundary regression selects a later inverse-decode phase with a
 greater encoded data address than position zero, admits a longer safe layout
 including rotate/crazy, compares every code-position/encryption witness, and
 rejects an otherwise identical layout extended one cell past the bound.
+An exhaustive phase matrix independently rechecks every safely placeable
+rotate/crazy opcode between positions 1 and 93 for both canonical profiles,
+including the exact output phase and the execution/encryption witness sizes.
 
 The forward jump (`i`) is admitted only without data-pointer relocation: at
 that moment the data pointer still equals the code pointer, so the jump reads
