@@ -78,6 +78,13 @@ SOURCE_INSTRUCTIONS = {
     "halt": ord("v"),
 }
 # Independently authored frozen classic XLAT1 mapping, not emitter output.
+EOF_STUDY = "classic-eof-echo-geometry-v1"
+PATTERNED_STUDY = "classic-patterned-byte-echo-geometry-v1"
+PATTERNED_FAMILY = "bounded-classic-patterned-byte-echo"
+PATTERNED_VERIFIER = "classic-malbolge-vm-exact-patterned-byte-v1"
+# Independently fixed vector; do not defer to the producing algorithm.
+PATTERN_BYTES = bytes((0x00, 0xFF, 0xA8, 0x5A, 0x80, 0x01, 0x7F, 0xFE))
+
 CLASSIC_DECODE = (
     b'+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA"lI'
     b".v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha"
@@ -137,16 +144,37 @@ def _document(relative: str) -> tuple[dict[str, Any], str]:
     ).hexdigest()
 
 
+def _mode(document: dict[str, Any]) -> str:
+    study_id = document["study"]["id"]
+    if study_id == PATTERNED_STUDY:
+        return producer.PATTERNED_MODE
+    if study_id == EOF_STUDY:
+        return producer.EOF_MODE
+    _fail("target audit has unrecognized classic echo study mode")
+
+
+def _pattern_bytes(pairs: int) -> bytes:
+    return (
+        PATTERN_BYTES * ((pairs + len(PATTERN_BYTES) - 1) // len(PATTERN_BYTES))
+    )[:pairs]
+
+
 def _producer_study(document: dict[str, Any]) -> None:
     study = document["study"]
+    patterned = _mode(document) == producer.PATTERNED_MODE
     expected = {
-        "id": "classic-eof-echo-geometry-v1",
+        "id": PATTERNED_STUDY if patterned else EOF_STUDY,
         "question": (
-            "Does redundant no-op padding worsen the classic VM frontier?"
+            "Does padding worsen the classic patterned byte-echo frontier?"
+            if patterned
+            else "Does redundant no-op padding worsen the classic VM frontier?"
         ),
         "hypothesis": "Direct code is smaller than no-op padded code.",
         "rejection_observation": (
-            "Padded code is not larger or direct fails its EOF oracle."
+            "Padded code is not larger or direct fails "
+            "its patterned-byte oracle."
+            if patterned
+            else "Padded code is not larger or direct fails its EOF oracle."
         ),
         "baseline": producer.BASELINE,
         "stage": "measured-classic-malbolge-code-and-vm",
@@ -171,10 +199,21 @@ def _producer_study(document: dict[str, Any]) -> None:
         _fail("target study has an invalid producer toolchain fingerprint")
 
 
-def _expected_case(pairs: int) -> dict[str, Any]:
-    identity = f"classic-eof-echo-v1:pairs={pairs}:empty-input".encode("ascii")
+def _expected_case(pairs: int, mode: str = producer.EOF_MODE) -> dict[str, Any]:
+    if mode == producer.EOF_MODE:
+        identity = f"classic-eof-echo-v1:pairs={pairs}:empty-input".encode(
+            "ascii"
+        )
+    else:
+        payload = _pattern_bytes(pairs)
+        identity = (
+            f"classic-patterned-byte-echo-v1:pairs={pairs}:"
+            f"input={payload.hex()}:eof-after"
+        ).encode("ascii")
     return {
-        "family": producer.FAMILY,
+        "family": producer.FAMILY
+        if mode == producer.EOF_MODE
+        else PATTERNED_FAMILY,
         "version": 1,
         "difficulty": pairs,
         "seed": 0,
@@ -182,11 +221,14 @@ def _expected_case(pairs: int) -> dict[str, Any]:
     }
 
 
-def _expected_operations(pairs: int, algorithm: str) -> list[str]:
+def _expected_operations(
+    pairs: int, algorithm: str, mode: str = producer.EOF_MODE
+) -> list[str]:
     chunk = ["input", "output"]
     if algorithm == producer.CANDIDATE:
         chunk = ["nop", *chunk]
-    return chunk * pairs + ["halt"]
+    count = pairs + int(mode == producer.PATTERNED_MODE)
+    return chunk * count + ["halt"]
 
 
 def _row_stem(row: dict[str, Any]) -> str:
@@ -194,14 +236,17 @@ def _row_stem(row: dict[str, Any]) -> str:
     return f"{row["algorithm"]}-pairs-{case["difficulty"]}-trial-{row["trial"]}"
 
 
-def _check_row(row: dict[str, Any], prefix: str) -> str:
+def _check_row(row: dict[str, Any], prefix: str, mode: str) -> str:
     case = row["case"]
     algorithm = row["algorithm"]
     if algorithm not in producer.ALGORITHMS:
         _fail("target audit trial has a foreign algorithm")
-    if case != _expected_case(case["difficulty"]):
+    if case != _expected_case(case["difficulty"], mode):
         _fail("target audit trial differs from the fixed echo case")
-    if row["verifier"] != producer.VERIFIER:
+    expected_verifier = (
+        producer.VERIFIER if mode == producer.EOF_MODE else PATTERNED_VERIFIER
+    )
+    if row["verifier"] != expected_verifier:
         _fail("target audit trial differs from the fixed echo oracle")
     stem = _row_stem(row)
     if (
@@ -236,7 +281,8 @@ def _check_plan(rows: list[dict[str, Any]]) -> tuple[set[int], set[int]]:
 def _producer_rows(document: dict[str, Any], prefix: str) -> set[str]:
     rows = document["observations"]
     levels, trials = _check_plan(rows)
-    names = {_check_row(row, prefix) for row in rows}
+    mode = _mode(document)
+    names = {_check_row(row, prefix, mode) for row in rows}
     expected = {
         f"{algorithm}-pairs-{level}-trial-{trial}"
         for level in levels
@@ -337,10 +383,11 @@ def _decoded_instruction(cell: int, position: int) -> int:
     return CLASSIC_DECODE[phase]
 
 
-def _admit_source_bytes(source: bytes, row: dict[str, Any]) -> None:
+def _admit_source_bytes(source: bytes, row: dict[str, Any], mode: str) -> None:
     operations = _expected_operations(
         row["case"]["difficulty"],
         row["algorithm"],
+        mode,
     )
     if len(source) != len(operations):
         _fail("target audit source length differs from echo layout")
@@ -355,14 +402,16 @@ def _admit_source_bytes(source: bytes, row: dict[str, Any]) -> None:
         _fail("target audit artifact size differs from source")
 
 
-def _check_source(row: dict[str, Any], prefix: str) -> tuple[str, str]:
+def _check_source(
+    row: dict[str, Any], prefix: str, mode: str
+) -> tuple[str, str]:
     relative = f"{prefix}/candidates/{_row_stem(row)}.malbolge"
     source = evidence.read_bounded_regular(
         _ROOT,
         relative,
         limit=producer.MAX_TARGET_BYTES,
     )
-    _admit_source_bytes(source, row)
+    _admit_source_bytes(source, row, mode)
     return relative, sha256(source).hexdigest()
 
 
@@ -389,9 +438,10 @@ def _source_checks(
 ) -> dict[str, str]:
     _candidate_files(prefix, names)
     fingerprints: dict[str, str] = {}
+    mode = _mode(document)
     for row in document["observations"]:
         if row["outcome"] == analyze.VERIFIED:
-            relative, fingerprint = _check_source(row, prefix)
+            relative, fingerprint = _check_source(row, prefix, mode)
             fingerprints[relative] = fingerprint
     return fingerprints
 
@@ -429,8 +479,23 @@ def _replay_one(
     *,
     runner: Path,
 ) -> None:
-    execution = _invoke_runner(runner, _ROOT / relative)
-    expected = bytes([producer.CLASSIC_EOF_BYTE]) * row["case"]["difficulty"]
+    mode = (
+        producer.PATTERNED_MODE
+        if row["case"]["family"] == PATTERNED_FAMILY
+        else producer.EOF_MODE
+    )
+    pairs = row["case"]["difficulty"]
+    if mode == producer.EOF_MODE:
+        execution = _invoke_runner(runner, _ROOT / relative)
+        expected = bytes([producer.CLASSIC_EOF_BYTE]) * pairs
+    else:
+        payload = _pattern_bytes(pairs)
+        execution = target_process.invoke_with_input(
+            [str(runner), str(_ROOT / relative), "--input-stdin"],
+            payload,
+            timeout_seconds=producer.TIMEOUT_SECONDS,
+        )
+        expected = payload + bytes([producer.CLASSIC_EOF_BYTE])
     if execution.returncode != 0 or execution.stdout != expected:
         _fail(f"target audit VM replay rejected retained source: {relative}")
     current = evidence.read_bounded_regular(

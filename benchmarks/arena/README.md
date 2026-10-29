@@ -208,14 +208,38 @@ checks exact source length, graphical byte domain, the per-attempt output
 path, and exact executable identity before/after the study.
 
 The reusable child transport separately supports **opt-in binary stdin** of at
-most 256 bytes; it checks the type and length before process launch, sends the
+most 256 bytes; it checks type and length before process launch, sends raw
 bytes through a nonblocking short pipe, closes it to deliver EOF, and applies
-the same wall deadline and output limits. Its exact 0..255 byte-transfer
-regression and no-reader deadline test exercise the host pipe, **not** guest
-semantics: the current `malbolge` CLI constructs VMs with an empty input
-vector and does not consume its own stdin. All recorded classic target studies
-therefore remain explicitly empty-input EOF studies until a separately
-specified guest input adapter is implemented and independently verified.
+the same wall deadline and output limits. The `malbolge` CLI now accepts
+`--input-stdin` for classic raw and profile capsule input, preserving the
+ordinary no-argument EOF mode. An end-to-end real 256-byte plus EOF CLI test
+verifies exact classic byte values; a separate capsule test verifies current
+profile binary I/O. The transport alone is not a guest semantic verifier.
+
+To measure a second **real non-EOF classic target pilot**, use:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_reference \
+  --pairs 1 4 16 64 --trials 2 --input-mode patterned
+```
+
+This mode derives exactly `pairs` input bytes by repeating the fixed eight-byte
+vector `00 FF A8 5A 80 01 7F FE`, and emits `pairs + 1` input/output
+pairs: the last reads EOF after the explicit bytes have been consumed. The
+oracle requires the complete input vector **plus the final `0xA8` EOF byte**.
+It records a distinct `classic-patterned-byte-echo-geometry-v1` study and
+`bounded-classic-patterned-byte-echo` case family, and binds the entire input
+hex vector and final EOF in each challenge's SHA-256 identity. Direct and
+one-nop-padded source sizes are `2*(pairs+1)+1` and `3*(pairs+1)+1`; at 64
+input bytes they are 131 and 196 graphical cells. The auditor independently
+reconstructs the fixed vector, validates each retained source's full decoded
+instruction sequence, and optionally replays it through the recorded exact
+runner binary using the same strict byte/EOF oracle. The legacy/default
+`--input-mode eof` study identity, source lengths and verifier remain unchanged.
+
+Both modes are still only bounded classic I/O shapes: neither claims arbitrary
+C lowering, arbitrary guest bytecode, calibrated speedup, authenticated
+historical execution, or a physically enforced study-wide RAM quota.
 
 New studies retain `study.json`, actual raw graphical `candidates/*.malbolge`,
 one per-attempt `arena-raw-v1` CSV and versioned experiment-run TOML, under a
@@ -261,8 +285,9 @@ They do not supply an atomic filesystem snapshot or source attestation.
 To **opt in to a new VM execution** of every retained successful source, use
 `--replay-candidates`. Replay requires the current local `malbolge_layout` and
 `malbolge` executable bytes to match the jointly recorded SHA-256 toolchain
-fingerprint. It checks exact EOF output again and reopens each source after
-execution to reject observed source changes. The auditor also reopens each
+fingerprint. It checks complete mode-specific output bytes: EOF-only, or
+patterned data followed by EOF. The retained source is reopened to reject
+observed changes made during execution. The auditor also reopens each
 successful source immediately before returning its report. This catches
 observed mutations between decoding and result construction. VM replay does
 not prove the original benchmark used those executable bytes, independently

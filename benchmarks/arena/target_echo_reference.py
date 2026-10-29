@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import csv
 from dataclasses import dataclass
+from dataclasses import replace
 from hashlib import sha256
 from io import StringIO
 import json
@@ -81,6 +82,13 @@ TIMEOUT_SECONDS = 15
 BUDGET_SECONDS = 60
 BUDGET_MIB = 1024
 CLASSIC_EOF_BYTE = 0xA8
+EOF_MODE = "eof"
+PATTERNED_MODE = "patterned"
+INPUT_MODES = (EOF_MODE, PATTERNED_MODE)
+PATTERN_BYTES = (0, 255, 168, 90, 128, 1, 127, 254)
+PATTERNED_FAMILY = "bounded-classic-patterned-byte-echo"
+PATTERNED_VERIFIER = "classic-malbolge-vm-exact-patterned-byte-v1"
+PATTERNED_STUDY = "classic-patterned-byte-echo-geometry-v1"
 
 
 class TargetEchoStudyError(ValueError):
@@ -93,6 +101,7 @@ class StudyPlan:
 
     pairs: tuple[int, ...]
     trials: int
+    input_mode: str = EOF_MODE
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +114,7 @@ class _Context:
     toolchain: str
     emitter: Path
     runner: Path
+    input_mode: str = EOF_MODE
 
 
 def _fail(message: str) -> Never:
@@ -123,6 +133,11 @@ def _validate_plan(plan: StudyPlan) -> None:
         _fail("target echo requires 1..64 input/output pairs per level")
     if type(plan.trials) is not int or not 1 <= plan.trials <= MAX_TRIALS:
         _fail("target echo requires one to three paired trials")
+
+
+def _validate_input_mode(mode: str) -> None:
+    if type(mode) is not str or mode not in INPUT_MODES:
+        _fail("target echo input mode must be eof or patterned")
 
 
 def _admit_executable(path: Path) -> Path:
@@ -174,21 +189,39 @@ def _commit() -> str:
     return commit
 
 
-def _operations(pairs: int, algorithm: str) -> list[str]:
+def _input_bytes(pairs: int, mode: str) -> bytes:
+    if mode == EOF_MODE:
+        return b""
+    return bytes(
+        PATTERN_BYTES[index % len(PATTERN_BYTES)] for index in range(pairs)
+    )
+
+
+def _operations(pairs: int, algorithm: str, mode: str = EOF_MODE) -> list[str]:
     step = ["input", "output"]
     if algorithm == CANDIDATE:
         step.insert(0, "nop")
-    return [*step * pairs, "halt"]
+    emitted_pairs = pairs + int(mode == PATTERNED_MODE)
+    return [*step * emitted_pairs, "halt"]
 
 
 def _invoke(command: list[str]) -> sp.CompletedProcess[bytes]:
     return target_process.invoke(command, timeout_seconds=TIMEOUT_SECONDS)
 
 
-def _case(pairs: int) -> dict[str, Any]:
-    workload = f"classic-eof-echo-v1:pairs={pairs}:empty-input".encode("ascii")
+def _case(pairs: int, mode: str = EOF_MODE) -> dict[str, Any]:
+    if mode == EOF_MODE:
+        workload = f"classic-eof-echo-v1:pairs={pairs}:empty-input".encode(
+            "ascii"
+        )
+    else:
+        payload = _input_bytes(pairs, mode)
+        workload = (
+            f"classic-patterned-byte-echo-v1:pairs={pairs}:"
+            f"input={payload.hex()}:eof-after"
+        ).encode("ascii")
     return {
-        "family": FAMILY,
+        "family": FAMILY if mode == EOF_MODE else PATTERNED_FAMILY,
         "version": 1,
         "difficulty": pairs,
         "seed": 0,
@@ -223,8 +256,21 @@ def _classify_attempt(
         GRAPHICAL_LOW <= byte <= GRAPHICAL_HIGH for byte in source
     ):
         return analyze.VERIFIER_REJECTED, None
-    execution = _invoke([str(context.runner), str(path)])
-    expected = bytes([CLASSIC_EOF_BYTE]) * pairs
+    payload = _input_bytes(pairs, context.input_mode)
+    execution = (
+        _invoke([str(context.runner), str(path)])
+        if context.input_mode == EOF_MODE
+        else target_process.invoke_with_input(
+            [str(context.runner), str(path), "--input-stdin"],
+            payload,
+            timeout_seconds=TIMEOUT_SECONDS,
+        )
+    )
+    expected = (
+        bytes([CLASSIC_EOF_BYTE]) * pairs
+        if context.input_mode == EOF_MODE
+        else payload + bytes([CLASSIC_EOF_BYTE])
+    )
     outcome = (
         "tool_failed"
         if execution.returncode != 0
@@ -247,7 +293,7 @@ def _measure(
         outcome, size = _classify_attempt(
             path,
             context,
-            _operations(pairs, algorithm),
+            _operations(pairs, algorithm, context.input_mode),
             pairs=pairs,
         )
     except OSError, sp.SubprocessError, evidence.EvidenceError:
@@ -298,7 +344,7 @@ def _manifest(
         "seed = 0",
         "",
         "[challenge]",
-        f"family = {quote(FAMILY)}",
+        f"family = {quote(case["family"])}",
         f"difficulty = {case["difficulty"]}",
         f"target_profile = {quote(PROFILE)}",
         f"target_profile_fingerprint = {quote(context.fingerprint)}",
@@ -309,7 +355,7 @@ def _manifest(
         "",
         "[verification]",
         "required = true",
-        f"oracle = {quote(VERIFIER)}",
+        f"oracle = {quote(row["verifier"])}",
         "",
         "[provenance]",
         'implementation = "benchmarks/arena/target_echo_reference.py"',
@@ -372,10 +418,12 @@ def _write_attempt(
     }.get(outcome, analyze.NOT_RUN)
     row = {
         "algorithm": algorithm,
-        "case": _case(pairs),
+        "case": _case(pairs, context.input_mode),
         "trial": trial,
         "outcome": outcome,
-        "verifier": VERIFIER,
+        "verifier": (
+            VERIFIER if context.input_mode == EOF_MODE else PATTERNED_VERIFIER
+        ),
         "verifier_verdict": verdict,
         "experiment_manifest": f"{context.prefix}/runs/{stem}.toml",
         "raw_sample": f"{context.prefix}/raw/{stem}.csv",
@@ -395,16 +443,27 @@ def _make_document(
     context: _Context,
     observations: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    patterned = context.input_mode == PATTERNED_MODE
     return {
         "schema_version": 1,
         "study": {
-            "id": "classic-eof-echo-geometry-v1",
+            "id": PATTERNED_STUDY
+            if patterned
+            else "classic-eof-echo-geometry-v1",
             "question": (
-                "Does redundant no-op padding worsen the classic VM frontier?"
+                "Does padding worsen the classic patterned byte-echo frontier?"
+                if patterned
+                else (
+                    "Does redundant no-op padding worsen the "
+                    "classic VM frontier?"
+                )
             ),
             "hypothesis": "Direct code is smaller than no-op padded code.",
             "rejection_observation": (
-                "Padded code is not larger or direct fails its EOF oracle."
+                "Padded code is not larger or direct fails "
+                "its patterned-byte oracle."
+                if patterned
+                else "Padded code is not larger or direct fails its EOF oracle."
             ),
             "baseline": BASELINE,
             "stage": "measured-classic-malbolge-code-and-vm",
@@ -456,7 +515,10 @@ def run_study(
 
     """
     _validate_plan(plan)
-    context = _prepare_context(emitter, runner)
+    _validate_input_mode(plan.input_mode)
+    context = replace(
+        _prepare_context(emitter, runner), input_mode=plan.input_mode
+    )
     observations = [
         _write_attempt(context, pairs, trial, algorithm=algorithm)
         for pairs in plan.pairs
@@ -482,10 +544,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pairs", type=int, nargs="+", default=[1, 4, 16])
     parser.add_argument("--trials", type=int, default=2)
+    parser.add_argument("--input-mode", choices=INPUT_MODES, default=EOF_MODE)
     args = parser.parse_args()
     try:
         directory, document = run_study(
-            StudyPlan(tuple(args.pairs), args.trials)
+            StudyPlan(tuple(args.pairs), args.trials, args.input_mode)
         )
         report_output.publish(
             {
@@ -494,7 +557,7 @@ def main() -> int:
                 .as_posix(),
                 "observations": len(document["observations"]),
                 "scope": (
-                    "Actual classic Malbolge execution and EOF-oracle checks; "
+                    "Actual classic VM execution with bounded I/O oracle; "
                     "unattested time and unenforced study-wide RAM budget; "
                     "not general C/ternary code generation."
                 ),

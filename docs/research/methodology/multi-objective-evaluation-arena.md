@@ -210,13 +210,29 @@ capture allocations; it is not an OS memory quota, process sandbox, complete
 descendant containment (detached sessions remain outside the group), or a
 physically enforced study-wide budget. The pilot requires POSIX for this
 subprocess boundary and makes no Windows process-supervision claim.
-The same transport now supports an optional bounded exact 256-byte binary input
-channel, with nonblocking delivery and a positive wall deadline even when the
-child refuses to read. The all-256-byte/empty-input tests establish only POSIX
-pipe fidelity. The existing command-line VM initializes an empty input vector,
-so no current-target non-EOF success claim or measured arena input workload
-follows from those transport tests. Wiring a guest-input-aware runner to the
-transport and revalidating full byte semantics remain separate work.
+The same transport now supports an optional bounded exact 256-byte binary
+input channel, with nonblocking delivery and a positive wall deadline even
+when the child refuses to read. A new opt-in `--input-stdin` mode in the
+product CLI passes these bytes to classic and selected-profile normative VM
+constructors. End-to-end CLI tests check all 256 byte values followed by
+classic EOF and actual current-profile binary input, while the unchanged
+default still uses an empty input buffer.
+
+A second opt-in real-target study `--input-mode patterned` now fixes an
+independently reconstructable eight-byte periodic input vector, including NUL,
+`0xFF`, `0xA8` and high-bit bytes. For each difficulty `pairs`, a generated
+classic source reads and outputs all `pairs` supplied bytes and then performs
+one final input/output pair at EOF. The complete expected output, including
+this final `0xA8`, is checked from the actual process bytes. A distinct study
+ID, fixed oracle, case family and SHA-256 workload identity bind the exact
+input payload to the reported records and per-trial receipts. Direct and
+one-nop-per-pair sources have `2*(pairs+1)+1` and `3*(pairs+1)+1` bytes.
+The read-only auditor independently reconstructs the fixed byte vector,
+checks positional classic decode for every instruction and, when requested,
+replays retained successful sources through the same exact hashed toolchain.
+The original empty-input EOF mode is byte-identical and backward compatible.
+No memory instrumentation, worktree attestation, general bytecode compiler,
+profile-independent execution, or physical resource enforcement is implied.
 
 This is a falsifiable source-size hypothesis (the nop-padded source should
 use one extra graphical code byte per pair), not a general compiler-size or
@@ -224,10 +240,10 @@ performance result. Host wall times include compiler process startup,
 code emission, runner startup, and VM execution; the recorded resource budget
 is declared but not enforced study-wide, no hardware-level attestation or
 statistical speedup inference is claimed, and the source bytes do not carry
-modern capsule identity. The classic EOF-only check is not independent proof
-of a C-to-Malbolge translation, arithmetic correctness, heap/call linking,
-or unrestricted target-profile execution. Broader verified guest workloads
-and multiple physically controlled host observations remain open.
+modern capsule identity. Neither classic I/O check independently proves
+C-to-Malbolge translation, arithmetic correctness, heap/call linking, or
+unrestricted target-profile execution. Broader verified guest workloads and
+multiple physically controlled host observations remain open.
 
 A separate `benchmarks/arena/target_echo_audit.py` now provides producer-
 specific **read-only post-run source admission** for these classic target

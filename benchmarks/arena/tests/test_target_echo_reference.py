@@ -43,6 +43,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
 from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 
@@ -65,6 +66,10 @@ GRAPHICAL_HIGH = 126
 BOOL_TRIAL_ALIAS = True
 OUTPUT_ARGUMENT = "--output"
 TOOL_FAILED = "tool_failed"
+PATTERNED_LEVEL_COUNT = 4
+PATTERNED_MAX_PAIR_COUNT = 64
+PATTERNED_DIRECT_BYTES = 131
+PATTERNED_PADDED_BYTES = 196
 
 
 @pytest.fixture
@@ -274,6 +279,94 @@ def test_flooding_vm_is_recorded_as_tool_failure_not_verified(
         shutil.rmtree(directory)
 
 
+@pytest.mark.skipif(
+    not target_echo_reference.DEFAULT_EMITTER.is_file()
+    or not target_echo_reference.DEFAULT_RUNNER.is_file(),
+    reason="built Malbolge CLI binaries not available",
+)
+def test_patterned_mode_records_true_non_eof_input_and_final_eof() -> None:
+    """Real target measurements use actual NUL/high-bit input and then EOF."""
+    with tempfile.TemporaryDirectory(
+        dir=target_echo_reference._TEMP,
+        prefix="arena-patterned-test-tools-",
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        runner = Path(tool_directory) / "malbolge"
+        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        directory, document = target_echo_reference.run_study(
+            target_echo_reference.StudyPlan(
+                (1, 4, 16, 64), 1, target_echo_reference.PATTERNED_MODE
+            ),
+            emitter=emitter,
+            runner=runner,
+        )
+        try:
+            rows = document["observations"]
+            assert len(rows) == EXPECTED_OBSERVATIONS
+            assert all(row["outcome"] == analyze.VERIFIED for row in rows)
+            assert all(
+                row["verifier_verdict"] == analyze.ACCEPTED for row in rows
+            )
+            assert (
+                document["study"]["id"] == target_echo_reference.PATTERNED_STUDY
+            )
+            assert (
+                len(analyze.analyze(document)["pareto_frontiers"])
+                == PATTERNED_LEVEL_COUNT
+            )
+            assert {
+                row["algorithm"]: row["metrics"][ARTIFACT_BYTES]
+                for row in rows
+                if row["case"]["difficulty"] == PATTERNED_MAX_PAIR_COUNT
+            } == {
+                target_echo_reference.BASELINE: PATTERNED_DIRECT_BYTES,
+                target_echo_reference.CANDIDATE: PATTERNED_PADDED_BYTES,
+            }
+        finally:
+            shutil.rmtree(directory)
+
+
+@pytest.mark.skipif(
+    not target_echo_reference.DEFAULT_EMITTER.is_file(),
+    reason="built Malbolge layout emitter missing",
+)
+def test_patterned_vm_that_ignores_input_retains_verifier_rejection(
+    tmp_path: Path,
+) -> None:
+    """EOF-only output must not certify the varied-byte guest program."""
+    runner = tmp_path / "eof-only-runner"
+    runner.write_bytes(b"#!/bin/sh\nprintf 'Z'\n")
+    runner.chmod(0o700)
+    with tempfile.TemporaryDirectory(
+        dir=target_echo_reference._TEMP,
+        prefix="arena-patterned-test-tools-",
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        directory, document = target_echo_reference.run_study(
+            target_echo_reference.StudyPlan(
+                (1,), 1, target_echo_reference.PATTERNED_MODE
+            ),
+            emitter=emitter,
+            runner=runner,
+        )
+    try:
+        assert all(
+            row["outcome"] == analyze.VERIFIER_REJECTED
+            for row in document["observations"]
+        )
+        assert all(
+            ARTIFACT_BYTES not in row["metrics"]
+            for row in document["observations"]
+        )
+        assert (
+            analyze.analyze(document)["pareto_frontiers"][0]["algorithms"] == []
+        )
+    finally:
+        shutil.rmtree(directory)
+
+
 @pytest.mark.parametrize(
     "plan",
     [
@@ -284,6 +377,8 @@ def test_flooding_vm_is_recorded_as_tool_failure_not_verified(
         target_echo_reference.StudyPlan((1,), 0),
         target_echo_reference.StudyPlan((1,), 4),
         target_echo_reference.StudyPlan((True,), 1),
+        target_echo_reference.StudyPlan((1,), 1, "arbitrary"),
+        target_echo_reference.StudyPlan((1,), 1, cast("str", BOOL_TRIAL_ALIAS)),
         target_echo_reference.StudyPlan((1,), BOOL_TRIAL_ALIAS),
     ],
 )

@@ -115,6 +115,43 @@ def retained(
             shutil.rmtree(directory)
 
 
+@pytest.fixture
+def patterned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[Path, dict[str, Any], str]]:
+    """Create an independently replayable patterned-input target study.
+
+    Yields:
+        Local output root, recorded study and canonical relative path.
+
+    """
+    if (
+        not producer.DEFAULT_EMITTER.is_file()
+        or not producer.DEFAULT_RUNNER.is_file()
+    ):
+        pytest.skip("repository Malbolge binaries are not built")
+    with tempfile.TemporaryDirectory(
+        dir=producer._TEMP,
+        prefix="arena-patterned-test-tools-",
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        runner = Path(tool_directory) / "malbolge"
+        emitter.hardlink_to(producer.DEFAULT_EMITTER)
+        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
+        monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
+        directory, document = producer.run_study(
+            producer.StudyPlan((1, 4), 2, producer.PATTERNED_MODE),
+            emitter=emitter,
+            runner=runner,
+        )
+        relative = (directory / "study.json").relative_to(producer._ROOT)
+        try:
+            yield directory, document, relative.as_posix()
+        finally:
+            shutil.rmtree(directory)
+
+
 def _save(directory: Path, document: dict[str, Any]) -> None:
     (directory / "study.json").write_text(
         json.dumps(document, sort_keys=True),
@@ -140,6 +177,55 @@ def _recheck_generic(document: dict[str, Any]) -> None:
             require_budget_agreement=True,
         ),
     )
+
+
+def test_patterned_source_audit_replays_real_input_and_eof(
+    patterned: tuple[Path, dict[str, Any], str],
+) -> None:
+    """Opt-in replay checks the whole patterned byte vector and final EOF."""
+    _, study, relative = patterned
+    assert study["study"]["id"] == producer.PATTERNED_STUDY
+    checked = audit.audit(relative)
+    assert checked["verified_target_sources_checked"] == ROWS
+    assert checked["target_sources_replayed"] == 0
+    replay = audit.audit(
+        relative,
+        options=audit.AuditOptions(
+            replay_candidates=True,
+            require_source_commit_object=True,
+        ),
+    )
+    assert replay["target_sources_replayed"] == ROWS
+    assert replay["source_commit_object_verified"] is True
+    assert replay["source_sha256"] == checked["source_sha256"]
+    assert len(replay["pareto_frontiers"]) == FRONTIERS
+
+
+def test_patterned_claim_switched_to_eof_fails_before_publication(
+    patterned: tuple[Path, dict[str, Any], str],
+) -> None:
+    """A synthetic EOF identity cannot replace a real patterned-input claim."""
+    directory, document, relative = patterned
+    modified = copy.deepcopy(document)
+    modified["study"]["id"] = "classic-eof-echo-geometry-v1"
+    _save(directory, modified)
+    _recheck_generic(modified)
+    with pytest.raises(audit.TargetEchoAuditError, match="producer policy"):
+        audit.audit(relative)
+
+
+def test_patterned_same_length_source_replacement_is_rejected(
+    patterned: tuple[Path, dict[str, Any], str],
+) -> None:
+    """Preserving size and receipts cannot change decoded guest semantics."""
+    directory, document, relative = patterned
+    source = _first_source(directory, document)
+    altered = bytearray(source.read_bytes())
+    altered[0] = INVALID_SOURCE if altered[0] != INVALID_SOURCE else 34
+    source.write_bytes(altered)
+    _recheck_generic(document)
+    with pytest.raises(audit.TargetEchoAuditError, match="source instruction"):
+        audit.audit(relative)
 
 
 def test_real_retained_target_study_passes_offline_and_replay(
