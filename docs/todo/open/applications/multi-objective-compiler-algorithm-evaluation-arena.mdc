@@ -237,6 +237,9 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   Linked evidence now also consumes the complete admitted inode size across
   bounded short chunks; truncated streams fail rather than authenticating a
   valid-looking CSV/manifest prefix under otherwise stable file metadata.
+  Failures from reading an opened evidence stream now retain the typed
+  evidence-error boundary with the original stream exception as the cause;
+  five injected read-exception categories have negative regressions.
 - An optional Clopper-Pearson 95% reported-success interval now uses all
   attempted trials, exact binomial-tail inversion and outward rational-grid
   bounds. It rejects empty and over-limit sample populations instead of

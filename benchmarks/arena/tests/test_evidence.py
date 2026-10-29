@@ -659,6 +659,45 @@ def test_bounded_reader_requires_complete_bytes_across_short_reads(
         )
 
 
+class _FaultEvidenceReader:
+    def __init__(self, stream: IO[bytes], fault: type[Exception]) -> None:
+        self.stream = stream
+        self.fault = fault
+
+    def fileno(self) -> int:
+        return self.stream.fileno()
+
+    def read(self, count: int) -> bytes:
+        _ = count
+        message = "injected stream failure"
+        raise self.fault(message)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [OSError, ValueError, RuntimeError, TypeError, AttributeError],
+)
+def test_bounded_reader_classifies_stream_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Malformed or failing file streams retain typed evidence diagnostics."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    original_open = evidence._open_evidence
+
+    @contextmanager
+    def broken_open(path: Path) -> Iterator[_FaultEvidenceReader]:
+        with original_open(path) as stream:
+            yield _FaultEvidenceReader(stream, fault)
+
+    monkeypatch.setattr(evidence, "_open_evidence", broken_open)
+    with pytest.raises(evidence.EvidenceError, match="read failed") as error:
+        evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+    assert isinstance(error.value.__cause__, fault)
+
+
 @pytest.mark.skipif(
     not hasattr(evidence.os, "mkfifo")
     or not getattr(evidence.os, "O_NONBLOCK", 0),

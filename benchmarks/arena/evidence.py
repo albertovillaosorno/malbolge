@@ -155,13 +155,26 @@ def _read_complete(stream: IO[bytes], *, size: int, relative: str) -> bytes:
     """Consume the exact admitted inode length across bounded short reads.
 
     Returns:
-        Complete admitted evidence bytes or a typed rejection on early EOF.
+        Complete admitted evidence bytes.
+
+    Raises:
+        EvidenceError: Incomplete or invalid read bytes or stream failure.
 
     """
     data = bytearray()
     while len(data) < size:
         requested = min(size - len(data), 1024 * 1024)
-        chunk = stream.read(requested)
+        try:
+            chunk = stream.read(requested)
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            TypeError,
+            AttributeError,
+        ) as error:
+            message = f"evidence read failed: {relative}"
+            raise EvidenceError(message) from error
         if type(chunk) is not bytes or len(chunk) > requested:
             _fail(f"evidence read returned invalid bytes: {relative}")
         if not chunk:

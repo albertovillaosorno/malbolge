@@ -528,6 +528,9 @@ The original study records remain the result authority.
   admitting ordinary short reads but rejecting premature EOF or overlong/nonbyte
   chunks before hashing or parsing a retained run, CSV, or challenge bundle.
   Stable inode metadata alone cannot authorize a valid-looking file prefix.
+  File-stream read exceptions (including malformed custom stream failures)
+  retain a typed evidence rejection and the original failure cause, so an
+  audit cannot accidentally bypass its declared failure boundary.
 - `benchmarks/arena/budget_links.py` optionally requires exact resource
   budget declarations from each linked run, rejecting missing/forged integers,
   unit mismatches, and one-unit study drift with fail-closed CLI regressions.
