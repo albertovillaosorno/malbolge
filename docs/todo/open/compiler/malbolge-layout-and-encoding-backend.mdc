@@ -73,6 +73,8 @@ emission.
   bytes; real current/historical VM runs confirm reachable output, skipped-
   cell encryption, retained accumulator and exact-step halt. Forged target,
   backward/repeated jump, effectful skip and relocation combination reject.
+  Another phase matrix covers each forward-decodable `i` position from 0 to
+  93 under both canonical profiles, checking target and static path geometry.
   An admitted layout now returns exact ordered reachable code positions and
   XLAT2 encryption targets for each nonhalt step; VM integration compares
   each position and post-step code-cell value for the relocated arithmetic

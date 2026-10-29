@@ -36,6 +36,8 @@ must remain inside the emitted source. The VM also encrypts the skipped
 avoid unjustified data-pointer assumptions, jumps cannot mix with the
 relocation/arithmetic subset. Invalid jump targets, backward motion, a
 second jump, or effectful skipped code are rejected before publication.
+Every forward-decodable code position in phases 0 through 93 has separate
+profile-derived encoding, skip-geometry and witness-length regression coverage.
 
 Every admitted layout now also exposes an ordered, deterministic control-flow
 witness: the exact reachable source-code positions (including the final halt)

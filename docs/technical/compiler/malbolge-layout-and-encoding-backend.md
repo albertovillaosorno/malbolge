@@ -57,7 +57,10 @@ emitted source length; every skipped cell is an inert `NoOperation` and no
 second jump may occur. The VM post-step encryption of `target - 1` cannot
 corrupt reachable instructions. The verifier re-derives the target from the
 unique encoded byte and rejects any forged or backward target, effectful
-gap, or jump mixed with relocated arithmetic.
+gap, or jump mixed with relocated arithmetic. An independent finite-phase
+matrix now tests all forward-reachable `i` positions in phases 0 through 93,
+rechecking the decoded target, skipped source geometry, and witness lengths
+for both canonical profiles without claiming unbounded control-flow support.
 
 The admitted artifact additionally retains an exact bounded execution witness
 of reachable code positions and post-step code-encryption targets. Ordinary

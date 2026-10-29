@@ -738,3 +738,64 @@ fn relocated_arithmetic_encodes_every_safely_addressable_phase() -> Result<(), S
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent phase and witness assertions cover every forward jump"
+)]
+fn every_addressable_forward_jump_phase_has_exact_static_path() -> Result<(), String> {
+    for profile in [current_profile(), historical_profile()] {
+        let mut admitted = 0u32;
+        for position in 0u32..94u32 {
+            let target = jump_target(position)?;
+            if target <= position {
+                continue;
+            }
+            admitted = admitted.saturating_add(1);
+            let size = usize::try_from(target)
+                .map_err(|error| error.to_string())?
+                .saturating_add(2);
+            let mut operations = vec![LinearOpcode::NoOperation; size];
+            *operations
+                .get_mut(usize::try_from(position).map_err(|error| error.to_string())?)
+                .ok_or("jump slot")? = LinearOpcode::JumpForward { target };
+            *operations
+                .get_mut(usize::try_from(target).map_err(|error| error.to_string())?)
+                .ok_or("target slot")? = LinearOpcode::OutputByte;
+            *operations.last_mut().ok_or("terminal halt")? = LinearOpcode::Halt;
+            let artifact = encode_linear_layout(profile, &operations)
+                .map_err(|error| format!("forward phase layout: {error:?}"))?;
+            assert_eq!(
+                u32::from(
+                    artifact
+                        .source()
+                        .get(usize::try_from(position).map_err(|error| error.to_string())?)
+                        .copied()
+                        .ok_or("jump source")?
+                )
+                .saturating_add(1),
+                target,
+            );
+            let expected_steps = usize::try_from(position)
+                .map_err(|error| error.to_string())?
+                .saturating_add(3);
+            assert_eq!(artifact.executed_code_positions().len(), expected_steps);
+            assert_eq!(
+                artifact.encrypted_code_positions().len(),
+                expected_steps.saturating_sub(1)
+            );
+            assert_eq!(
+                artifact.executed_code_positions().last(),
+                Some(&target.saturating_add(1))
+            );
+            assert!(
+                artifact
+                    .encrypted_code_positions()
+                    .contains(&target.saturating_sub(1))
+            );
+        }
+        assert!(admitted >= 45);
+    }
+    Ok(())
+}
