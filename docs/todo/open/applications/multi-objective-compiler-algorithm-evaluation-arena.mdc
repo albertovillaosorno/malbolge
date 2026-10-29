@@ -105,6 +105,15 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   explicitly a host-C reference stage: physical memory/budget enforcement,
   candidate Malbolge verification and reproducible cross-host performance
   conclusions remain pending.
+- A separate read-only host-C post-run audit now independently reopens the
+  producer's ignored study directory and rechecks its trial identities,
+  exact host-only stage, canonical source bundles, source-reported budgets,
+  versioned TOML/raw CSV, and each retained native executable's originating
+  path, SHA-256 and byte length. An opt-in canonical-source oracle replay
+  does not execute any retained candidate. Real-study negative regressions
+  reject tampered files, forged stage or arm identities, malformed artifacts,
+  unsafe paths and missing links; physical benchmark remeasurement and
+  Malbolge candidate verification remain open.
 - The real host-C reference producer now reopens retained successful native
   binaries with strict file admission and checks their trial-derived paths,
   SHA-256 identities and exact byte lengths against recorded artifact-size

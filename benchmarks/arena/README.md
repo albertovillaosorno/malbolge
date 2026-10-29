@@ -200,6 +200,29 @@ fingerprint, source digest, raw-data SHA-256, explicit budget declarations, and
 exact trial number. The producer rechecks every emitted trial with the arena's
 strict raw-row, run-identity, budget and challenge-bundle preflights.
 
+To audit a previously saved local reference study **without rerunning its
+measurements**, use the independent read-only inspector:
+
+```sh
+python3.14 -B -m benchmarks.arena.reference_audit \
+  .temp/arena-host-c-study-EXAMPLE/study.json
+```
+
+It only admits canonical `.temp/arena-host-c-study-*/study.json` paths and
+requires the exact host-C stage, Clang `-O0`/`-O2` arms, verifier, declared
+budget, profile, source study identity, and bounded trial/difficulty structure.
+It rechecks canonical challenge-bundle regeneration, all versioned run
+manifests, raw rows/digests, declared budgets, and each retained executable's
+SHA-256, path and recorded byte length before reporting the capacity curve
+and Pareto frontier. Missing, altered, symlinked and malformed inputs fail
+without a report. By default no host compiler, benchmark or native binary
+is executed. `--replay-oracles` separately compiles and executes **only** the
+canonical generated challenge C at both optimization modes; it never runs a
+retained trial binary. The audit never proves that reported wall-clock
+measurements were authentic, that resource limits were enforced, or that
+candidate Malbolge artifacts were created or verified. File consistency is
+not an atomic snapshot against concurrent filesystem mutation.
+
 The limits are one to four positive distinct difficulties, 512 nodes per case,
 and one to five paired repetitions. Native child compile/link/execute each have
 a 15-second deadline; per-run declared budget is 60 seconds and 1024 MiB.

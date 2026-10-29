@@ -1,0 +1,304 @@
+# Copyright:
+#   - Copyright © 2026 Alberto Villa Osorno.
+# SPDX-License-Identifier:
+#   - Apache-2.0
+# Confidential:
+#   - false
+# License-File:
+#   - LICENSE
+#
+# Boundary-Contract:
+# - Owns:
+#   - Independent read-only admission of retained host-C arena studies.
+# - Must-Not:
+#   - Measure host performance, execute candidate binaries or certify Malbolge.
+# - Allows:
+#   - Inputs: bounded ignored local host-C study and optional source replay.
+#   - Outputs: checked report over source, raw, run, and binary identities.
+#   - Side effects: none by default; optional temporary host-C oracle replay.
+# - Split-When:
+#   - Target compiler results need an independently attested trust boundary.
+# - Merge-When:
+#   - All arena studies acquire a governed generic offline audit contract.
+# - Summary:
+#   - Reopen retained studies without trusting their producer's own checks.
+# - Description:
+#   - Revalidates trial links, canonical source and binary hashes/byte lengths.
+# - Usage:
+#   - `python -B -m benchmarks.arena.reference_audit .temp/RUN/study.json`.
+# - Defaults:
+#   - No native child process or claimed performance verification by default.
+#
+
+"""Read-only offline audit of retained real host-C reference studies."""
+
+from __future__ import annotations
+
+import argparse
+from itertools import starmap
+import json
+from pathlib import Path
+import sys
+from typing import Any
+from typing import Never
+
+from benchmarks.arena import analyze
+from benchmarks.arena import evidence
+from benchmarks.arena import reference_study
+from benchmarks.arena import report_output
+
+_ROOT = Path(__file__).resolve().parents[2]
+MAX_ARTIFACT_INDEX_BYTES = 1024 * 1024
+PART_COUNT = 3
+ROOT_PART = ".temp"
+UNDERSCORE = "_"
+STUDY_LEAF = "study.json"
+ARTIFACT_LEAF = "artifacts.json"
+RUN_PREFIX = "arena-host-c-study-"
+STAGE = "host-c-reference-not-malbolge"
+TOOLCHAIN = "repo-pinned-clang-22.1.8"
+REQUIRED_OBJECTIVES = ["elapsed_ns", "artifact_bytes"]
+REQUIRED_ALGORITHMS = frozenset({
+    reference_study.BASELINE,
+    reference_study.CANDIDATE,
+})
+
+
+class ReferenceAuditError(ValueError):
+    """Retained host-C research evidence is not independently consistent."""
+
+
+def _fail(message: str) -> Never:
+    raise ReferenceAuditError(message)
+
+
+def _prefix(relative: str) -> str:
+    if type(relative) is not str:
+        _fail("host-C audit requires a canonical ignored study path")
+    parts = relative.split("/")
+    if (
+        len(parts) != PART_COUNT
+        or parts[0] != ROOT_PART
+        or parts[2] != STUDY_LEAF
+    ):
+        _fail("host-C audit requires .temp/arena-host-c-study-*/study.json")
+    directory = parts[1]
+    suffix = directory.removeprefix(RUN_PREFIX)
+    if not directory.startswith(RUN_PREFIX) or not suffix:
+        _fail("host-C audit requires a generated host-C study directory")
+    if not suffix.isascii() or not all(
+        char.isalnum() or char == UNDERSCORE for char in suffix
+    ):
+        _fail("host-C audit requires a canonical local study directory")
+    return "/".join(parts[:2])
+
+
+def _read_json(relative: str, *, limit: int) -> object:
+    raw = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        message = f"host-C retained JSON is not valid: {relative}"
+        raise ReferenceAuditError(message) from error
+
+
+def _load_study(relative: str) -> dict[str, Any]:
+    raw = evidence.read_bounded_regular(
+        _ROOT,
+        relative,
+        limit=analyze.MAX_INPUT_BYTES,
+    )
+    return analyze.parse_document(raw.decode("utf-8"))
+
+
+def _check_trials(
+    document: dict[str, Any],
+    prefix: str,
+) -> None:
+    observations = document["observations"]
+    if {row["algorithm"] for row in observations} != REQUIRED_ALGORITHMS:
+        _fail("host-C reference audit requires both recorded Clang arms")
+    for row in observations:
+        if row["verifier"] != reference_study.VERIFIER:
+            _fail("host-C reference audit requires native C entry oracle")
+        if not (
+            row["experiment_manifest"].startswith(f"{prefix}/runs/")
+            and row["raw_sample"].startswith(f"{prefix}/raw/")
+        ):
+            _fail("host-C reference audit trial identity escapes its study")
+
+
+def _check_plan_trials(rows: list[dict[str, Any]]) -> None:
+    trials = {row["trial"] for row in rows}
+    if not 1 <= len(trials) <= reference_study.MAX_TRIALS:
+        _fail("host-C audit contains too many trial repetitions")
+    if trials != set(range(len(trials))):
+        _fail("host-C audit requires consecutive trial repetition indices")
+
+
+def _check_case_plan(document: dict[str, Any]) -> None:
+    rows = document["observations"]
+    families = {row["case"]["family"] for row in rows}
+    seeds = {row["case"]["seed"] for row in rows}
+    difficulties = {row["case"]["difficulty"] for row in rows}
+    if len(families) != 1 or len(seeds) != 1:
+        _fail("host-C audit requires one generated family and seed")
+    if not 1 <= len(difficulties) <= reference_study.MAX_DIFFICULTIES:
+        _fail("host-C audit contains too many challenge difficulty levels")
+    if max(difficulties) > reference_study.host_c_oracle.MAX_REPLAY_NODES:
+        _fail("host-C audit exceeds the source runner challenge limit")
+    family = next(iter(families))
+    seed = next(iter(seeds))
+    if document["study"]["id"] != f"host-C-reference-{family}-seed-{seed}":
+        _fail("host-C reference audit study identity differs from source")
+    _check_plan_trials(rows)
+
+
+def _check_stage(document: dict[str, Any], prefix: str) -> None:
+    study = document["study"]
+    if (
+        study["stage"] != STAGE
+        or study["target_profile"] != reference_study.PROFILE
+    ):
+        _fail("host-C reference audit stage or target profile differs")
+    if (
+        study["baseline"] != reference_study.BASELINE
+        or study["toolchain"] != TOOLCHAIN
+        or study["objectives"] != REQUIRED_OBJECTIVES
+    ):
+        _fail("host-C reference audit configured arms or objectives differ")
+    expected_budget = {
+        "time_ns": reference_study.BUDGET_SECONDS * 1_000_000_000,
+        "memory_bytes": reference_study.BUDGET_MEMORY_MIB * 1_048_576,
+    }
+    if study["budget"] != expected_budget:
+        _fail("host-C reference audit budgets differ from source runner")
+    _check_trials(document, prefix)
+    _check_case_plan(document)
+
+
+def _index_entry(name: object, item: object) -> tuple[str, dict[str, str]]:
+    if type(name) is not str or not isinstance(item, dict):
+        _fail("host-C artifact index has invalid trial entries")
+    if set(item) != {"path", "sha256"}:
+        _fail("host-C artifact index requires exact identity fields")
+    path, digest = item["path"], item["sha256"]
+    if type(path) is not str or type(digest) is not str:
+        _fail("host-C artifact index requires string identity fields")
+    return name, {"path": path, "sha256": digest}
+
+
+def _check_artifact_index(
+    source: object,
+    document: dict[str, Any],
+) -> dict[str, dict[str, str]]:
+    if not isinstance(source, dict):
+        _fail("host-C artifact index must be a map")
+    if len(source) > len(document["observations"]):
+        _fail("host-C artifact index contains extra entries")
+    return dict(starmap(_index_entry, source.items()))
+
+
+def _admit_data(
+    relative_study: str,
+    prefix: str,
+    *,
+    replay_oracles: bool,
+) -> tuple[dict[str, Any], dict[str, Any], int]:
+    document = _load_study(relative_study)
+    _check_stage(document, prefix)
+    checked = evidence.validate_links(
+        document,
+        _ROOT,
+        policy=evidence.EvidencePolicy(
+            require_trial_run_identity=True,
+            require_budget_agreement=True,
+            challenge_root=f"{prefix}/bundles",
+            require_host_c_challenge_oracle=replay_oracles,
+        ),
+    )
+    artifacts = _check_artifact_index(
+        _read_json(
+            f"{prefix}/{ARTIFACT_LEAF}",
+            limit=MAX_ARTIFACT_INDEX_BYTES,
+        ),
+        document,
+    )
+    verified_binaries = reference_study.check_retained_artifacts(
+        document,
+        artifacts,
+    )
+    return document, checked, verified_binaries
+
+
+def audit(
+    relative_study: str,
+    *,
+    replay_oracles: bool = False,
+) -> dict[str, Any]:
+    """Reopen and validate all retained host-C reference evidence.
+
+    The optional independent source oracle check only compiles regenerated
+    canonical C; it never executes the retained native binary or reruns timing.
+
+    Returns:
+        Audited source counts, checked artifact count, and offline arena report.
+
+    Raises:
+        ReferenceAuditError: Evidence is absent, malformed, or inconsistent.
+
+    """
+    prefix = _prefix(relative_study)
+    try:
+        document, checked, verified_binaries = _admit_data(
+            relative_study,
+            prefix,
+            replay_oracles=replay_oracles,
+        )
+        report = analyze.analyze(document)
+    except (
+        analyze.ArenaError,
+        evidence.EvidenceError,
+        reference_study.ReferenceStudyError,
+        OSError,
+        UnicodeError,
+    ) as error:
+        message = f"host-C reference evidence audit failed: {error}"
+        raise ReferenceAuditError(message) from error
+    return {
+        "schema_version": 1,
+        "scope": (
+            "Retained source-reported host-C reference evidence consistent; "
+            "no Malbolge candidate execution, measurement replay, "
+            "or physical budget attestation."
+        ),
+        "study": relative_study,
+        "host_c_binaries_checked": verified_binaries,
+        "host_c_oracle_replayed": replay_oracles,
+        "evidence_preflight": checked,
+        "capacity_curve": report["capacity_curve"],
+        "pareto_frontiers": report["pareto_frontiers"],
+    }
+
+
+def main() -> int:
+    """Audit a retained local host-C study without modifying its files.
+
+    Returns:
+        Zero with a checked JSON audit report or two on admission failure.
+
+    """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("study", help=".temp/arena-host-c-study-*/study.json")
+    parser.add_argument("--replay-oracles", action="store_true")
+    args = parser.parse_args()
+    try:
+        report = audit(args.study, replay_oracles=args.replay_oracles)
+        report_output.publish(report, sys.stdout)
+    except (ReferenceAuditError, report_output.ReportOutputError) as error:
+        parser.exit(2, f"host-C reference audit: {error}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

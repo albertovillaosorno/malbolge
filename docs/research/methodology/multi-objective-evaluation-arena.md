@@ -200,6 +200,20 @@ of Malbolge compiler performance. Independent optimizer candidate verification,
 peak-memory/energy measurement, physical resource-budget enforcement and a
 reviewed generalizable scaling conclusion remain absent.
 
+An independent `benchmarks.arena.reference_audit` command can now reopen
+retained host-C reference studies after the producing process exits, without
+rerunning measured work. It admits only canonical ignored study paths and
+revalidates exact host-C stage/arm/verifier identities, bounded difficulty and
+trial scope, complete experiment-run TOML and v1 raw CSV links, declared
+budgets, regenerated challenge sources, and the native executable's linked
+path, SHA-256 digest, and byte length. Its default path reads files only; an
+explicit `--replay-oracles` mode can rerun the **canonical generator's** native
+C entry harness, never a retained trial executable or Malbolge artifact.
+The inspectable output preserves the observed capacity curves/frontiers but
+does not rerun elapsed-time measurements, authenticate the source producers,
+or establish an atomic filesystem snapshot. Mutating any retained proof file
+or mislabeling the host-C stage rejects the post-run audit.
+
 The optional `--require-matched-accelerator` check additionally requires all
 linked experiment runs to name the same recorded accelerator and retains the
 canonical manifest-path-to-device identity map in the output. This protects
@@ -333,6 +347,12 @@ The original study records remain the result authority.
   without changing v1 headers. Synthetic tests prove exact energy Pareto
   comparison and rejection of cross-version omissions, forged costs and
   impossible signed energy reports, not measured energy savings.
+- `benchmarks/arena/reference_audit.py` independently reopens retained
+  local host-C studies, checks the strict manifest/raw/challenge path and
+  binary evidence, then reports the observed frontier without remeasurement.
+  Optional canonical host oracle replay is separate. Real-study tamper tests
+  reject drift in raw CSVs, run manifests, challenge oracles, binary hashes,
+  stage identities, and malformed artifact indices.
 - `benchmarks/arena/reference_study.py` records real pinned host-C reference
   time, native executable sizes, exact binary hashes and versioned trial files
   across multiple canonical difficulties and matched `-O0`/`-O2` arms.
