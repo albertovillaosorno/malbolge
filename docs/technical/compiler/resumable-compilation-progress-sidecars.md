@@ -337,9 +337,11 @@ verification, serialization, and checkpoint phases to construct the exact timing
 fields without UTC arithmetic.
 
 `ProgressWriteLimiter` accepts one explicit
-positive monotonic interval: routine queued/running updates are suppressed until
-that interval passes, while checkpointed and terminal evidence always attempts
-publication. The interval begins at the post-publication monotonic sample,
+positive monotonic interval: repeated queued/running updates are suppressed
+until that interval passes. The first queued-to-running transition is always
+published, because eliding it would prevent a strict queued-to-completed or
+queued-to-checkpointed writer transition. Checkpointed and terminal evidence
+also bypass suppression. The interval begins at the post-publication sample,
 not at the start of a potentially slow write. Only successful or
 post-commit-failing writes consume the limiter window, so a prepublication
 failure can retry immediately. A failed post-commit clock sample retains
@@ -754,8 +756,9 @@ these selectors once a product C-to-Malbolge pipeline exists.
   target profile, compiler, verifier, and accepted artifact determine meaning.
 - Routine progress writes are rate-limited by an explicit positive monotonic
   interval so checkpointing does not become an unmeasured dominant cost. The
-  first routine write is eligible immediately; checkpointed and terminal states
-  bypass suppression, and only attempts that cross publication commit start a
+  first routine write is eligible immediately; the first durable transition
+  from queued to running, checkpointed, and terminal states bypass suppression,
+  and only attempts that cross publication commit start a
   new rate window. Suppressed publications still advance the limiter's
   monotonic observation floor; a later regressed sample is rejected without
   permitting an unnecessary write. Mandatory checkpoint and terminal

@@ -7880,6 +7880,84 @@ def test_progress_write_limiter_bounds_routine_publication(
     assert progress.read(destination) == completed
 
 
+def test_progress_write_limiter_preserves_queued_to_running_transition(
+    tmp_path: Path,
+) -> None:
+    """Rate limiting cannot elide the mandatory durable RUNNING lifecycle."""
+    limiter = progress.ProgressWriteLimiter.start(
+        1_000, clock=SequenceClock([100, 100, 100, 101, 102, 102, 102, 103])
+    )
+    queued = _sidecar(tmp_path, status=progress.ProgressStatus.QUEUED)
+    destination = Path(queued.progress_path)
+    assert limiter.publish(queued) == destination
+
+    running = replace(
+        queued,
+        active_elapsed_ns=queued.active_elapsed_ns + 1,
+        updated_at="2026-08-06T14:00:03Z",
+        wall_elapsed_ns=queued.wall_elapsed_ns + 1,
+    )
+    running = replace(running, status=progress.ProgressStatus.RUNNING)
+    assert limiter.publish(running) == destination
+    assert progress.read(destination) == running
+    repeat_running = replace(
+        running,
+        active_elapsed_ns=running.active_elapsed_ns + 1,
+        updated_at="2026-08-06T14:00:03.5Z",
+        wall_elapsed_ns=running.wall_elapsed_ns + 1,
+    )
+    assert limiter.publish(repeat_running) is None
+    assert progress.read(destination) == running
+
+    completed = replace(
+        running,
+        completed_at="2026-08-06T14:00:04Z",
+        status=progress.ProgressStatus.COMPLETED,
+        updated_at="2026-08-06T14:00:04Z",
+    )
+    assert limiter.publish(completed) == destination
+    assert progress.read(destination) == completed
+
+
+def test_progress_write_limiter_queued_commit_failure_preserves_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Committed queued evidence still forces the next running publication."""
+    queued = _sidecar(tmp_path, status=progress.ProgressStatus.QUEUED)
+    destination = Path(queued.progress_path)
+    real_writer = progress.write_atomic
+
+    def commit_then_fail(candidate: progress.ProgressSidecar) -> Path:
+        published = real_writer(candidate)
+        if candidate.status is progress.ProgressStatus.QUEUED:
+            message = "injected post-publication sync failure"
+            raise progress.ProgressSidecarDurabilityError(message, published)
+        return published
+
+    limiter = progress.ProgressWriteLimiter.start(
+        1_000, clock=SequenceClock([100, 100, 100, 101, 102])
+    )
+    running = replace(
+        queued,
+        active_elapsed_ns=queued.active_elapsed_ns + 1,
+        status=progress.ProgressStatus.RUNNING,
+        updated_at="2026-08-06T14:00:03Z",
+        wall_elapsed_ns=queued.wall_elapsed_ns + 1,
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", commit_then_fail)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="injected post-publication sync failure",
+        ) as captured:
+            _ = limiter.publish(queued)
+        assert captured.value.published_path == destination
+        assert progress.read(destination) == queued
+        assert limiter.publish(running) == destination
+    assert progress.read(destination) == running
+
+
 def test_progress_write_limiter_anchors_to_publication_completion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

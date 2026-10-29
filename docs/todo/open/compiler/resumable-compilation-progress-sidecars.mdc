@@ -204,7 +204,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   substitution after reading, same-inode parent links during lock
   acquisition, in-place payload rewrites with stable inode during read,
   exact-string JSON parser admission,
-  bounded routine-write cadence with committed/prepublication retry semantics,
+  bounded routine-write cadence with committed/prepublication retry semantics
+  and a mandatory queued-to-running publication before strict terminal writes,
   backend-neutral checkpoint round trips plus outer-digest,
   identity/position/codec/canonical-payload rejection, crash-boundary recovery
   using real portable envelopes for both search-labelled state and tracked

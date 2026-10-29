@@ -405,6 +405,7 @@ class ProgressWriteLimiter:
     _started_ns: int
     _last_committed_write_ns: int | None = None
     _last_observed_ns: int | None = None
+    _last_committed_status: ProgressStatus | None = None
 
     @classmethod
     def start(
@@ -428,6 +429,13 @@ class ProgressWriteLimiter:
             _last_observed_ns=now,
         )
 
+    def _validate_committed_status(self) -> None:
+        if self._last_committed_status is not None and (
+            type(self._last_committed_status) is not ProgressStatus
+            or self._last_committed_write_ns is None
+        ):
+            _fail("progress write last committed status is invalid")
+
     def _validate_state(self) -> None:
         if not callable(self._clock):
             _fail("monotonic clock must be callable")
@@ -440,6 +448,7 @@ class ProgressWriteLimiter:
         _validate_observed_sample(
             self._last_observed_ns, self._started_ns, "progress write"
         )
+        self._validate_committed_status()
         if self._last_committed_write_ns is None:
             return
         _ = _nonnegative_integer(
@@ -471,8 +480,11 @@ class ProgressWriteLimiter:
         self._last_observed_ns = now
         return now
 
-    def _record_committed(self, path: Path, fallback_ns: int) -> None:
+    def _record_committed(
+        self, path: Path, fallback_ns: int, status: ProgressStatus
+    ) -> None:
         self._last_committed_write_ns = fallback_ns
+        self._last_committed_status = status
         try:
             self._last_committed_write_ns = self._sample()
         except ProgressSidecarError as error:
@@ -486,8 +498,9 @@ class ProgressWriteLimiter:
         """Publish one sidecar only when its lifecycle requires or permits it.
 
         Routine queued/running updates are suppressed until the configured
-        interval has elapsed since the previous committed write. Checkpointed
-        and terminal states always attempt publication.
+        interval has elapsed since the previous committed write. A durable
+        queued-to-running transition, checkpointed status, and terminal states
+        always attempt publication, preserving strict writer transitions.
 
         Returns:
             Canonical progress path when published, otherwise ``None``.
@@ -500,6 +513,10 @@ class ProgressWriteLimiter:
         mandatory = (
             validated.status is ProgressStatus.CHECKPOINTED
             or validated.status.value in TERMINAL_STATUSES
+            or (
+                self._last_committed_status is ProgressStatus.QUEUED
+                and validated.status is ProgressStatus.RUNNING
+            )
         )
         if (
             self._last_committed_write_ns is not None
@@ -511,11 +528,13 @@ class ProgressWriteLimiter:
             destination = write_atomic(validated)
         except ProgressSidecarCommittedError as error:
             try:
-                self._record_committed(error.published_path, now)
+                self._record_committed(
+                    error.published_path, now, validated.status
+                )
             except ProgressSidecarCommittedError as clock_error:
                 error.add_note(f"limiter clock also failed: {clock_error}")
             raise
-        self._record_committed(destination, now)
+        self._record_committed(destination, now, validated.status)
         return destination
 
 
