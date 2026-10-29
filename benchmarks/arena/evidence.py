@@ -15,7 +15,7 @@
 # - Allows:
 #   - Inputs: admitted arena JSON and repository-local manifest/raw paths.
 #   - Outputs: identity cross-check summary and offline capacity analysis.
-#   - Side effects: read declared repository-local regular files.
+#   - Side effects: read local files; optional bounded host oracle subprocesses.
 # - Split-When:
 #   - Verifier replay or content-digest admission gains an owned lifecycle.
 # - Merge-When:
@@ -52,6 +52,7 @@ from scripts.validate import experiment_manifest
 from benchmarks.arena import analyze
 from benchmarks.arena import budget_links
 from benchmarks.arena import challenge_bundles
+from benchmarks.arena import host_c_oracle
 from benchmarks.arena import raw_samples
 from benchmarks.arena import report_output
 from benchmarks.arena import trial_runs
@@ -260,6 +261,7 @@ class EvidencePolicy:
     require_budget_agreement: bool = False
     challenge_root: str | None = None
     require_matched_accelerator: bool = False
+    require_host_c_challenge_oracle: bool = False
 
 
 DEFAULT_EVIDENCE_POLICY = EvidencePolicy()
@@ -427,6 +429,32 @@ def _bundle_inspection(
     return results
 
 
+def _replay_host_c_challenges(
+    document: dict[str, Any],
+    bundle_hashes: dict[str, str],
+    relative_root: str,
+) -> dict[str, str]:
+    cases = {
+        _bundle_directory(row["case"], relative_root): row["case"]
+        for row in document["observations"]
+    }
+    if len(cases) > host_c_oracle.MAX_REPLAY_CASES:
+        _fail("host-C challenge replay exceeds 16 distinct cases")
+    if any(
+        case["difficulty"] > host_c_oracle.MAX_REPLAY_NODES
+        for case in cases.values()
+    ):
+        _fail("host-C challenge replay exceeds 512 nodes")
+    return {
+        key: host_c_oracle.replay_one(
+            case,
+            document["study"]["target_profile"],
+            bundle_hashes[key],
+        )
+        for key, case in sorted(cases.items())
+    }
+
+
 def _matched_accelerators(
     context: _EvidenceContext,
 ) -> dict[str, str] | None:
@@ -455,12 +483,46 @@ def _report_accelerators(
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _BundleReports:
+    source_hashes: dict[str, str] | None
+    host_c_hashes: dict[str, str] | None
+
+
+def _report_bundle_sources(
+    report: dict[str, Any],
+    bundle: _BundleReports,
+) -> None:
+    if bundle.source_hashes is not None:
+        report["regenerated_challenge_bundles"] = len(bundle.source_hashes)
+        report["challenge_source_sha256"] = bundle.source_hashes
+        if bundle.host_c_hashes is None:
+            report["scope"] += (
+                " Deterministic challenge bundle replay succeeded; "
+                "no compiler execution or verifier replay."
+            )
+        else:
+            report["scope"] += (
+                " Deterministic challenge bundle replay succeeded before "
+                "optional host-C source execution."
+            )
+    if bundle.host_c_hashes is not None:
+        report["host_c_challenge_oracles_replayed"] = len(bundle.host_c_hashes)
+        report["host_c_replay_modes"] = ["O0", "O2"]
+        report["host_c_replay_source_sha256"] = bundle.host_c_hashes
+        report["scope"] += (
+            " Pinned host C compiler executed canonical generator C at O0/O2 "
+            "and matched the generated oracle; no candidate compiler output "
+            "was executed or independently certified."
+        )
+
+
 def _report_links(
     context: _EvidenceContext,
     document: dict[str, Any],
     contents: dict[str, str] | None,
     *,
-    bundle_sources: dict[str, str] | None,
+    bundle: _BundleReports,
 ) -> dict[str, Any]:
     accelerators = _matched_accelerators(context)
     report = {
@@ -493,13 +555,7 @@ def _report_links(
             "no physical budget enforcement."
         )
     _report_accelerators(report, accelerators)
-    if bundle_sources is not None:
-        report["regenerated_challenge_bundles"] = len(bundle_sources)
-        report["challenge_source_sha256"] = bundle_sources
-        report["scope"] += (
-            " Deterministic challenge bundle replay succeeded; "
-            "no compiler execution or verifier replay."
-        )
+    _report_bundle_sources(report, bundle)
     return report
 
 
@@ -518,6 +574,8 @@ def validate_links(
         EvidenceError: A linked identity or retained file is inadmissible.
 
     """
+    if policy.require_host_c_challenge_oracle and policy.challenge_root is None:
+        _fail("host-C oracle replay requires --challenge-root")
     context = _EvidenceContext(
         root,
         document["study"],
@@ -535,6 +593,15 @@ def validate_links(
             if policy.challenge_root is not None
             else None
         )
+        host_c_sources = (
+            _replay_host_c_challenges(
+                document, bundle_sources, policy.challenge_root
+            )
+            if policy.require_host_c_challenge_oracle
+            and bundle_sources is not None
+            and policy.challenge_root is not None
+            else None
+        )
     except (
         OSError,
         UnicodeError,
@@ -544,6 +611,7 @@ def validate_links(
         trial_runs.TrialRunError,
         budget_links.BudgetLinkError,
         challenge_bundles.ChallengeBundleError,
+        host_c_oracle.HostOracleError,
     ) as error:
         message = f"linked arena evidence invalid: {error}"
         raise EvidenceError(message) from error
@@ -551,7 +619,7 @@ def validate_links(
         context,
         document,
         contents,
-        bundle_sources=bundle_sources,
+        bundle=_BundleReports(bundle_sources, host_c_sources),
     )
 
 
@@ -580,6 +648,9 @@ def main() -> int:
     parser.add_argument("--require-budget-agreement", action="store_true")
     parser.add_argument("--challenge-root")
     parser.add_argument("--require-matched-accelerator", action="store_true")
+    parser.add_argument(
+        "--require-host-c-challenge-oracle", action="store_true"
+    )
     parser.add_argument("--median-intervals-95", action="store_true")
     parser.add_argument("--paired-exact-tests", action="store_true")
     parser.add_argument("--adjust-paired-tests", action="store_true")
@@ -596,6 +667,9 @@ def main() -> int:
                 require_budget_agreement=args.require_budget_agreement,
                 challenge_root=args.challenge_root,
                 require_matched_accelerator=args.require_matched_accelerator,
+                require_host_c_challenge_oracle=(
+                    args.require_host_c_challenge_oracle
+                ),
             ),
         )
         report = analyze.analyze(

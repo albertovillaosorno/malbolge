@@ -96,6 +96,15 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   admit microjoule observations without changing v1 bytes, rejecting lost
   energy fields or inconsistent trial costs. No real energy measurements,
   calibration or physical consumption claim is yet available.
+- An opt-in host-C challenge oracle replay now requires canonical challenge
+  bundle preflight, re-generates the checked C source, compiles it at `-O0`
+  and `-O2` with pinned Clang 22.1.8, and independently compares the native
+  C entry result to the four-byte oracle. Every currently generated challenge
+  family passes real native replay tests; deliberate oracle-harness mismatch,
+  malformed source, compiler failure and deadline injection fail closed.
+  At most 16 cases of 512 nodes each are admitted, with temporary compilation
+  files and bounded direct-child timeouts. This checks the challenge generator,
+  **not** either optimizer/compiler candidate or physical budgets.
 - An optional bounded challenge-bundle preflight now regenerates original
   parametric C source, binary oracle and canonical manifest bytes in memory
   and matches every reported workload digest to the regenerated C source.

@@ -162,6 +162,23 @@ be ordinary, canonical, unlinked and bounded, and the profile fingerprint
 remains under the generator's existing authority. No compiler or verifier is
 run; this does not prove the optimizer consumed the retained challenge.
 
+A separate `--require-host-c-challenge-oracle` mode now requires the
+canonical `--challenge-root` preflight, then executes the **generator's**
+C entry function against the recorded four-byte oracle. The checker
+re-generates the checked source before launching the repository-pinned
+Clang 22.1.8 compiler at `-O0` and `-O2`, links an independent return-value
+harness, and requires both native executions to match. It accepts at most
+16 distinct cases of 512 nodes and gives each child 15 seconds, with temporary
+source/object/executable files removed after the check. The matched C source
+fingerprints and modes remain visible in the evidence preflight. Canonical
+bundle corruption fails before any compiler launch; failed compilation,
+execution or timeout fails the entire preflight without emitting a report.
+This is real host-C **challenge oracle replay**, not verification of an
+algorithm's generated candidate artifact, not proof of Malbolge semantics,
+and not authentication of any producer-reported elapsed time or memory use.
+There is no OS sandbox or physical budget enforcement. The final candidate
+verifier and real multi-difficulty compiler comparison remain outstanding.
+
 The optional `--require-matched-accelerator` check additionally requires all
 linked experiment runs to name the same recorded accelerator and retains the
 canonical manifest-path-to-device identity map in the output. This protects
@@ -295,6 +312,12 @@ The original study records remain the result authority.
   without changing v1 headers. Synthetic tests prove exact energy Pareto
   comparison and rejection of cross-version omissions, forged costs and
   impossible signed energy reports, not measured energy savings.
+- `benchmarks/arena/host_c_oracle.py` optionally compiles canonical
+  generated C through pinned Clang at `-O0` and `-O2` and independently checks
+  the native entry return against its regenerated four-byte oracle. All 16
+  active challenge families pass real replay tests; injected wrong entry
+  results, compiler stages, source mutations and oversized batches fail closed.
+  The subprocess gate explicitly does not execute a compiler candidate.
 - `benchmarks/arena/challenge_bundles.py` optionally replays the original
   generator's exact source/oracle/manifest bytes against a bounded retained
   challenge bundle, binding workload digests to reproducible C source. Synthetic

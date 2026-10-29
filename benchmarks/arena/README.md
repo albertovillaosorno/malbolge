@@ -123,6 +123,48 @@ The identity-only output includes `evidence_preflight` counts. A stronger,
 optional raw-row check is documented below; neither mode runs the independent
 semantic verifier.
 
+## Optional host-C challenge-oracle replay
+
+The evidence-aware CLI can additionally *execute* the canonical challenge C
+source to cross-check its independent four-byte oracle. This is an explicit
+operator opt-in, not a default admission condition:
+
+```sh
+export PYTHONPATH=src/automation/repository/composition
+python3.14 -B -m benchmarks.arena.evidence path/to/study.json --root . \
+  --challenge-root path/to/challenge-bundles \
+  --require-host-c-challenge-oracle
+```
+
+The `--challenge-root` prerequisite is mandatory. All retained
+`program.c`, `oracle.bin`, and `manifest.json` files must first pass exact
+regeneration, SHA-256, profile, and canonical-file admission; the host oracle
+checker then regenerates the same source in memory. It never compiles a
+caller-provided candidate program or follows a reported candidate-artifact
+path. The repository-pinned LLVM 22.1.8 Clang compiles that source at both
+`-O0` and `-O2`, links a small separate entry-function harness, and executes
+each result to compare the complete 32-bit return value with `oracle.bin`.
+The generated program's standalone `main` is not used for oracle comparison.
+
+A host replay covers at most 16 distinct cases of at most 512 nodes each;
+each compiler, linker and executable child has a 15-second timeout. The mode
+requires an available pinned compiler and the repository's `.temp/` workspace;
+all temporary objects/executables are removed on completion or failure. The
+output adds `host_c_challenge_oracles_replayed`, `host_c_replay_modes`, and
+`host_c_replay_source_sha256` under `evidence_preflight`. An error or timeout
+fails admission without emitting a capacity/Pareto report. Without the new
+flag, no host compiler subprocess is launched and previous outputs are
+unchanged.
+
+**Scope:** This checks the generator oracle against separate native C
+execution on the recorded host, at two optimization levels. It does *not*
+execute or independently verify **either compared algorithm's output**, nor
+does it prove Malbolge semantics, sampling independence, resource-budget
+enforcement, hardware utilization, or real performance measurements. Host
+compilation and execution are not an OS-enforced sandbox, so operators must
+keep the trusted checked-in generator and pinned compiler within their trust
+policy. Full compiler-candidate verification remains open.
+
 ## Optional version-one raw CSV check
 
 Add `--require-raw-rows` to the `benchmarks.arena.evidence` command to verify
