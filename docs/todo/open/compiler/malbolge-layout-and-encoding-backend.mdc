@@ -68,6 +68,10 @@ emission.
   bytes; real current/historical VM runs confirm reachable output, skipped-
   cell encryption, retained accumulator and exact-step halt. Forged target,
   backward/repeated jump, effectful skip and relocation combination reject.
+  An admitted layout now returns exact ordered reachable code positions and
+  XLAT2 encryption targets for each nonhalt step; VM integration compares
+  each position and post-step code-cell value for the relocated arithmetic
+  and nonzero-position jump paths, without claiming guest-data write proof.
   General source-to-target lowering, backward/mutable code jumps, heap data,
   guest runtime linkage and self-modifying revisits remain unimplemented.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.

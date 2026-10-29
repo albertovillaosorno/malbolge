@@ -90,12 +90,29 @@ impl LinearOpcode {
 /// One fully admitted graphical source with exact canonical profile identity.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LinearLayout {
+    encrypted_code_positions: Vec<u32>,
+    executed_code_positions: Vec<u32>,
     profile_fingerprint: &'static str,
     profile_id: &'static str,
     source: Vec<u8>,
 }
 
 impl LinearLayout {
+    /// Returns the ordered code addresses encrypted after each nonhalt step.
+    /// Jumps encrypt the target-minus-one cell rather than the fetched cell.
+    /// Data-memory writes by rotate/crazy are not included here.
+    #[must_use]
+    pub fn encrypted_code_positions(&self) -> &[u32] {
+        &self.encrypted_code_positions
+    }
+
+    /// Returns the ordered code addresses of every statically reachable step.
+    /// Includes the terminal halt address and excludes skipped padding.
+    #[must_use]
+    pub fn executed_code_positions(&self) -> &[u32] {
+        &self.executed_code_positions
+    }
+
     /// Returns the canonical profile fingerprint used for emission.
     #[must_use]
     pub const fn profile_fingerprint(&self) -> &'static str {
@@ -166,6 +183,11 @@ pub enum LinearLayoutError {
     TooShort,
     /// Data relocation is required before rotate/crazy or is misplaced.
     UnsafeDataPlacement,
+}
+
+struct DerivedExecutionPositions {
+    encrypted: Vec<u32>,
+    executed: Vec<u32>,
 }
 
 fn validate_shape(
@@ -273,6 +295,39 @@ fn unique_graphical_cell(
     candidate.ok_or(LinearLayoutError::NoEncoding { position })
 }
 
+fn derive_execution_positions(
+    operations: &[LinearOpcode],
+) -> Result<DerivedExecutionPositions, LinearLayoutError> {
+    let mut executed = Vec::new();
+    let mut encrypted = Vec::new();
+    let mut position = 0usize;
+    while let Some(operation) = operations.get(position) {
+        let code = u32::try_from(position).map_err(|_error| LinearLayoutError::TooLong)?;
+        executed.push(code);
+        match operation {
+            LinearOpcode::Halt => break,
+            LinearOpcode::JumpForward { target } => {
+                encrypted.push(target.saturating_sub(1));
+                position = usize::try_from(*target)
+                    .map_err(|_error| LinearLayoutError::JumpPathUnsupported)?;
+            }
+            LinearOpcode::CrazyData
+            | LinearOpcode::InputWord
+            | LinearOpcode::NoOperation
+            | LinearOpcode::OutputByte
+            | LinearOpcode::RelocateDataPointer
+            | LinearOpcode::RotateData => {
+                encrypted.push(code);
+                position = position.saturating_add(1);
+            }
+        }
+    }
+    Ok(DerivedExecutionPositions {
+        encrypted,
+        executed,
+    })
+}
+
 /// Re-admits independently supplied code against an exact linear instruction
 /// sequence and the selected canonical target-profile descriptor.
 ///
@@ -306,7 +361,10 @@ pub fn admit_linear_layout(
         }
     }
     validate_jump_source(operations, source)?;
+    let path = derive_execution_positions(operations)?;
     Ok(LinearLayout {
+        encrypted_code_positions: path.encrypted,
+        executed_code_positions: path.executed,
         profile_fingerprint: profile.fingerprint(),
         profile_id: profile.id(),
         source: source.to_vec(),

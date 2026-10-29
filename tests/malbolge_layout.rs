@@ -36,12 +36,46 @@
 pub mod layout;
 
 use layout::{
-    LinearLayoutError, LinearOpcode, LinearProfileIdentity, admit_linear_layout,
+    LinearLayout, LinearLayoutError, LinearOpcode, LinearProfileIdentity, admit_linear_layout,
     encode_linear_layout,
 };
 use malbolge::{
-    ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, historical_profile,
+    ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, encrypt_profile_cell,
+    historical_profile,
 };
+
+fn verify_execution_witness(
+    machine: &mut ProfileMachine,
+    layout: &LinearLayout,
+) -> Result<(), String> {
+    for (step, &code) in layout.executed_code_positions().iter().enumerate() {
+        if machine.registers().code_pointer != code {
+            return Err(String::from("runtime code path differs from layout proof"));
+        }
+        let target = layout.encrypted_code_positions().get(step).copied();
+        let before = target
+            .map(|address| machine.memory_word(address))
+            .transpose()
+            .map_err(|error| format!("before encryption: {error:?}"))?;
+        let _outcome: malbolge::StepOutcome = machine
+            .step()
+            .map_err(|error| format!("layout execution: {error:?}"))?;
+        if let (Some(address), Some(value)) = (target, before) {
+            let expected =
+                encrypt_profile_cell(value).ok_or("encryption source must be graphical")?;
+            let actual = machine
+                .memory_word(address)
+                .map_err(|error| format!("after encryption: {error:?}"))?;
+            if actual != expected {
+                return Err(String::from("runtime code encryption differs"));
+            }
+        }
+    }
+    if machine.termination().is_none() {
+        return Err(String::from("layout path failed to terminate"));
+    }
+    Ok(())
+}
 
 const fn no_operation_halt() -> [LinearOpcode; 2] {
     [LinearOpcode::NoOperation, LinearOpcode::Halt]
@@ -52,6 +86,10 @@ const fn no_operation_halt() -> [LinearOpcode; 2] {
     clippy::panic_in_result_fn,
     reason = "test assertions are intentional after fallible setup"
 )]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "exact source, profile and witness regression covers two profiles"
+)]
 fn layout_encodes_current_and_historical_profiles_exactly() -> Result<(), String> {
     let operations = no_operation_halt();
     for profile in [current_profile(), historical_profile()] {
@@ -60,6 +98,8 @@ fn layout_encodes_current_and_historical_profiles_exactly() -> Result<(), String
         assert_eq!(artifact.profile_id(), profile.id());
         assert_eq!(artifact.profile_fingerprint(), profile.fingerprint());
         assert_eq!(artifact.source().len(), operations.len());
+        assert_eq!(artifact.executed_code_positions(), &[0, 1]);
+        assert_eq!(artifact.encrypted_code_positions(), &[0]);
         for (position, byte) in artifact.source().iter().enumerate() {
             assert!((33..=126).contains(byte));
             let decoded = decode_profile_instruction(
@@ -142,6 +182,8 @@ fn emitted_source_runs_on_normative_vm_without_guest_host_callbacks() -> Result<
     for profile in [current_profile(), historical_profile()] {
         let layout = encode_linear_layout(profile, &operations)
             .map_err(|error| format!("VM layout: {error:?}"))?;
+        assert_eq!(layout.executed_code_positions(), &[0, 1, 2, 3]);
+        assert_eq!(layout.encrypted_code_positions(), &[0, 1, 2]);
         let mut machine = ProfileMachine::from_source(profile, layout.source(), vec![b'Q'])
             .map_err(|error| format!("VM load: {error:?}"))?;
         assert!(matches!(
@@ -183,13 +225,11 @@ fn real_rotate_and_crazy_instructions_execute_without_jumps() -> Result<(), Stri
             ),
             Some(b'p'),
         );
+        assert_eq!(layout.executed_code_positions(), &[0, 1, 2, 3]);
+        assert_eq!(layout.encrypted_code_positions(), &[0, 1, 2]);
         let mut machine = ProfileMachine::from_source(profile, layout.source(), vec![])
             .map_err(|error| format!("arithmetic VM load: {error:?}"))?;
-        let result = machine.run(operations.len());
-        assert!(matches!(
-            result,
-            Ok(RunOutcome::Terminated { steps: 4, .. }),
-        ));
+        verify_execution_witness(&mut machine, &layout)?;
         let prologue_byte = layout.source().first().copied().ok_or("no prologue")?;
         assert_eq!(
             machine.registers().data_pointer,
@@ -426,6 +466,14 @@ fn forward_jump_skips_padding_and_reaches_exact_output_on_both_vms() -> Result<(
             u32::from(artifact.source().first().copied().ok_or("no jump source")?) + 1,
             target,
         );
+        assert_eq!(
+            artifact.executed_code_positions(),
+            &[0, target, target.saturating_add(1)],
+        );
+        assert_eq!(
+            artifact.encrypted_code_positions(),
+            &[target.saturating_sub(1), target]
+        );
         let mut machine = ProfileMachine::from_source(profile, artifact.source(), vec![])
             .map_err(|error| format!("jump VM load: {error:?}"))?;
         assert!(matches!(
@@ -516,12 +564,17 @@ fn forward_jump_after_input_preserves_guest_data_state() -> Result<(), String> {
     for profile in [current_profile(), historical_profile()] {
         let layout = encode_linear_layout(profile, &ops)
             .map_err(|error| format!("jump after input layout: {error:?}"))?;
+        assert_eq!(
+            layout.executed_code_positions(),
+            &[0, 1, 2, target, target.saturating_add(1)]
+        );
+        assert_eq!(
+            layout.encrypted_code_positions(),
+            &[0, 1, target.saturating_sub(1), target]
+        );
         let mut machine = ProfileMachine::from_source(profile, layout.source(), vec![b'Y'])
             .map_err(|error| format!("jump after input VM load: {error:?}"))?;
-        assert!(matches!(
-            machine.run(5),
-            Ok(RunOutcome::Terminated { steps: 5, .. }),
-        ));
+        verify_execution_witness(&mut machine, &layout)?;
         assert_eq!(machine.input_consumed(), 1);
         assert_eq!(machine.output(), b"Y");
         assert_eq!(machine.registers().accumulator, u32::from(b'Y'));

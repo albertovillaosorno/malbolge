@@ -51,6 +51,16 @@ corrupt reachable instructions. The verifier re-derives the target from the
 unique encoded byte and rejects any forged or backward target, effectful
 gap, or jump mixed with relocated arithmetic.
 
+The admitted artifact additionally retains an exact bounded execution witness
+of reachable code positions and post-step code-encryption targets. Ordinary
+steps encrypt their fetched code position, while `i` encrypts `target - 1`
+and terminal `v` encrypts nothing. The checker derives these positions from
+the independently admitted operation shape, with no runtime guest execution.
+Current and historical VM tests replay the exact path and compare every
+post-step XLAT2 memory update to this proof, including the noncontiguous
+jump and relocated arithmetic paths. This witness is **not** a proof of
+arbitrary input/output equivalence or all runtime memory mutations.
+
 `tests/malbolge_layout.rs` exercises 94 decode phases for profile byte I/O,
 executes real byte I/O, relocated rotate/crazy, and first forward-jump skip
 programs under both the historical and current normative `ProfileMachine`,

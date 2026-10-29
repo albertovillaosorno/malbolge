@@ -30,6 +30,15 @@ avoid unjustified data-pointer assumptions, jumps cannot mix with the
 relocation/arithmetic subset. Invalid jump targets, backward motion, a
 second jump, or effectful skipped code are rejected before publication.
 
+Every admitted layout now also exposes an ordered, deterministic control-flow
+witness: the exact reachable source-code positions (including the final halt)
+and the exact code cells encrypted after each nonhalt VM step. A jump's
+post-step encryption target is `target - 1`, not the jumped-from address;
+real VM tests compare the witness against stepwise code-pointer and XLAT2
+memory observations on both profiles. The record deliberately excludes
+rotate/crazy *data* writes, input-dependent accumulator values, and any claim
+of program-wide semantic verification.
+
 The source has two to 4096 cells (with a stricter bound for relocated data),
 contains exactly one final halt, and carries the canonical selected profile
 identity. Real current and historical profile-VM tests prove byte I/O,
