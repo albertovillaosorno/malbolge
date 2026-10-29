@@ -164,3 +164,86 @@ def test_failed_reference_arm_retains_failure_not_fabricated_cost(
         assert result["capacity_curve"][1]["verified"] == 0
     finally:
         shutil.rmtree(path)
+
+
+TAMPER_BYTES = "bytes"
+TAMPER_SIZE = "size"
+TAMPER_PATH = "path"
+TAMPER_MISSING = "missing"
+TAMPER_EXTRA = "extra"
+TAMPER_SYMLINK = "symlink"
+
+
+def _tamper_size(document: dict[str, Any], manifest: str) -> None:
+    for row in document["observations"]:
+        if row["experiment_manifest"] == manifest:
+            row["metrics"][ARTIFACT_METRIC] += 1
+
+
+def _tamper_record(
+    tamper: str,
+    document: dict[str, Any],
+    reference: dict[str, str],
+    *,
+    manifest: str,
+) -> None:
+    executable = reference_study._ROOT / reference["path"]  # ruff: ignore[private-member-access]
+    if tamper == TAMPER_BYTES:
+        original = executable.read_bytes()
+        _ = executable.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+    elif tamper == TAMPER_SIZE:
+        _tamper_size(document, manifest)
+    elif tamper == TAMPER_PATH:
+        reference["path"] = ".temp/unrelated-executable"
+    elif tamper == TAMPER_SYMLINK:
+        other = executable.parent / "alternate-file"
+        _ = other.write_bytes(executable.read_bytes())
+        executable.unlink()
+        executable.symlink_to(other)
+
+
+def _tamper(
+    tamper: str,
+    document: dict[str, Any],
+    artifacts: dict[str, dict[str, str]],
+) -> None:
+    name = next(iter(artifacts))
+    if tamper == TAMPER_MISSING:
+        _ = artifacts.pop(name)
+    elif tamper == TAMPER_EXTRA:
+        artifacts["extra-trial"] = artifacts[name].copy()
+    else:
+        _tamper_record(tamper, document, artifacts[name], manifest=name)
+
+
+@pytest.mark.skipif(
+    not host_c_oracle._PINNED_CLANG.is_file(),  # ruff: ignore[private-member-access]
+    reason="repository pinned native Clang is unavailable",
+)
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        TAMPER_BYTES,
+        TAMPER_SIZE,
+        TAMPER_PATH,
+        TAMPER_MISSING,
+        TAMPER_EXTRA,
+        TAMPER_SYMLINK,
+    ],
+)
+def test_reference_artifact_audit_rejects_retained_drift(tamper: str) -> None:
+    """Source-reported native hashes and sizes reject mutated binaries."""
+    path, document = reference_study.run_study(
+        reference_study.StudyPlan(FAMILY, (4,), 7, 1),
+    )
+    try:
+        artifacts = json.loads((path / "artifacts.json").read_text())
+        assert (
+            reference_study.check_retained_artifacts(document, artifacts)
+            == REPETITIONS
+        )
+        _tamper(tamper, document, artifacts)
+        with pytest.raises(reference_study.ReferenceStudyError, match="host-C"):
+            reference_study.check_retained_artifacts(document, artifacts)
+    finally:
+        shutil.rmtree(path)

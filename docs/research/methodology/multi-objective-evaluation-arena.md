@@ -186,6 +186,12 @@ ignored local output tree containing reproducible canonical challenge bundles,
 per-trial versioned run manifests, retained `arena-raw-v1` CSV rows, a study
 JSON file and SHA-256-identified native executables. Its publisher reruns the
 strict trial-run/raw-row, declared budget and source-bundle identity preflights.
+The producer independently reopens each retained successful executable,
+rechecks exact originating trial path and SHA-256, and requires byte length to
+match the reported artifact-size metric. Failures cannot claim successful
+binaries; missing, extra, linked or tampered artifacts fail the local study.
+This is integrity of locally retained host artifacts, not independent proof of
+candidate compilation, host resource enforcement or measurement attribution.
 The runner and the optional host-C challenge-oracle replay are deliberately
 **different**: reference runs measure compiled host C, whereas the existing
 arena analyzer accepts producer-reported data. The stage is labeled

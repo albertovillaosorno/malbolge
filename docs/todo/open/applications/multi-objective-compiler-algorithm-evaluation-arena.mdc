@@ -105,6 +105,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   explicitly a host-C reference stage: physical memory/budget enforcement,
   candidate Malbolge verification and reproducible cross-host performance
   conclusions remain pending.
+- The real host-C reference producer now reopens retained successful native
+  binaries with strict file admission and checks their trial-derived paths,
+  SHA-256 identities and exact byte lengths against recorded artifact-size
+  claims. Missing, extra, linked or altered binaries fail instead of silently
+  entering local stage comparisons. Candidate Malbolge verification remains
+  unimplemented.
 - An opt-in host-C challenge oracle replay now requires canonical challenge
   bundle preflight, re-generates the checked C source, compiles it at `-O0`
   and `-O2` with pinned Clang 22.1.8, and independently compares the native

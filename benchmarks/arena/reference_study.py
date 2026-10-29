@@ -414,6 +414,68 @@ def _verify_report(environment: _Env, document: dict[str, Any]) -> None:
     )
 
 
+MAX_ARTIFACT_BYTES = 8 * 1024 * 1024
+
+
+def _check_artifact_metadata(
+    row: dict[str, Any],
+    entry: dict[str, str],
+) -> None:
+    manifest = row["experiment_manifest"]
+    prefix, filename = manifest.rsplit("/runs/", maxsplit=1)
+    expected = f"{prefix}/candidates/{filename.removesuffix(".toml")}"
+    if entry.get("path") != expected:
+        _fail("host-C artifact path differs from its originating trial")
+    if not isinstance(entry.get("sha256"), str):
+        _fail("host-C artifact missing SHA-256 identity")
+    if not set(entry["sha256"]) <= analyze.SHA256_ALPHABET:
+        _fail("host-C artifact has noncanonical digest")
+    if len(entry["sha256"]) != analyze.SHA256_HEX_LENGTH:
+        _fail("host-C artifact has noncanonical digest")
+
+
+def _checked_artifact(
+    row: dict[str, Any],
+    entry: dict[str, str],
+) -> None:
+    _check_artifact_metadata(row, entry)
+    try:
+        actual = evidence.read_bounded_regular(
+            _ROOT,
+            entry["path"],
+            limit=MAX_ARTIFACT_BYTES,
+        )
+    except (OSError, evidence.EvidenceError) as error:
+        message = f"host-C retained artifact cannot be admitted: {error}"
+        raise ReferenceStudyError(message) from error
+    if sha256(actual).hexdigest() != entry["sha256"]:
+        _fail("host-C retained executable differs from its SHA-256 claim")
+    if len(actual) != row["metrics"]["artifact_bytes"]:
+        _fail("host-C retained executable size differs from study metric")
+
+
+def check_retained_artifacts(
+    document: dict[str, Any],
+    artifacts: dict[str, dict[str, str]],
+) -> int:
+    """Check successful binaries against reported size, path and SHA-256.
+
+    Returns:
+        Number of verified native host-C reference binaries checked.
+
+    """
+    verified = {
+        row["experiment_manifest"]: row
+        for row in document["observations"]
+        if row["outcome"] == analyze.VERIFIED
+    }
+    if set(artifacts) != set(verified):
+        _fail("host-C artifact map must match exactly the successful trials")
+    for manifest, row in sorted(verified.items()):
+        _checked_artifact(row, artifacts[manifest])
+    return len(verified)
+
+
 def _run_study(root: Path, plan: StudyPlan) -> dict[str, Any]:
     environment = _Env(
         root=root,
@@ -431,6 +493,7 @@ def _run_study(root: Path, plan: StudyPlan) -> dict[str, Any]:
         artifacts.update(binaries)
     document = _document(environment, observations)
     _verify_report(environment, document)
+    _ = check_retained_artifacts(document, artifacts)
     _ = (root / "artifacts.json").write_text(
         json.dumps(artifacts, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

@@ -187,6 +187,14 @@ challenge bundle files, an `artifacts.json` map, and the exact compiled
 executables and their SHA-256 identities in a unique **Git-ignored**
 `.temp/arena-host-c-study-*/` directory. The tool's JSON stdout reports the
 study path and the number of observations, not an authoritative conclusion.
+Before publishing the local study, the producer also reopens every retained
+successful native executable through the arena's bounded non-symlink file
+reader, checks its path against the originating trial, and independently
+compares its SHA-256 and exact byte size with the reported artifact metadata.
+Missing/extra artifacts or forged success-size associations fail closed.
+This is file-to-report integrity only; no independently authenticated
+compiler optimizer output or resource measurement is implied.
+
 The run manifest records the current Git commit, host, toolchain, target-profile
 fingerprint, source digest, raw-data SHA-256, explicit budget declarations, and
 exact trial number. The producer rechecks every emitted trial with the arena's
