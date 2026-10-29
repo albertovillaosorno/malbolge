@@ -72,6 +72,16 @@ post-relocation jumps, oversized code and unsupported logical plans. The
 original explicit machine-op CLI still requires concrete `jump:TARGET` tokens;
 it does not invoke this solver automatically.
 
+The library planner also accepts `PaddedForwardStep::AutoRelocate`. It inserts
+*reached* no-ops to find the earliest safe decoder phase within 94 positions
+for a `j` data-pointer relocation, taking the remaining logical suffix,
+current data pointer and previously encrypted jump operands into account.
+The resulting source and data-write witness undergo the normal independent
+layout check. Current/historical VM tests cover a long suffix and a two-jump
+chain followed by safe rotate/crazy writes; duplicate relocations, a jump
+after relocation and impossible source-length bounds reject. The CLI does
+not yet accept a symbolic relocation token.
+
 Every admitted layout returns deterministic, step-indexed witnesses for
 **four** facts: reachable code pointer, data pointer at the start of each
 step, code cell encrypted after each nonhalt step, and the *planned guest

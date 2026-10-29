@@ -149,6 +149,15 @@ source CLI continues accepting explicit concrete `jump:TARGET` tokens, not
 symbolic jumps. This is a compiler-library layout aid, not branch lowering
 or a general guest code-state solver.
 
+`PaddedForwardStep::AutoRelocate` additionally chooses the earliest safe
+`j` placement among at most 94 reached source phases. It inserts reached
+no-ops while checking dynamic `D` state, future source length and previous
+XLAT2 encryptions, then delegates data nonalias proof to independent layout
+admission. Tests execute actual current/historical VMs for long suffixes
+and a two-hop jump plus relocation with rotate/crazy; impossible placements,
+duplicate relocation and post-relocation jump attempts reject. This library
+helper is not part of the concrete token CLI grammar.
+
 ### Canonical ternary-IR-to-file bridge
 
 The separate `byte-echo-bridge` now connects to the same artifact publisher

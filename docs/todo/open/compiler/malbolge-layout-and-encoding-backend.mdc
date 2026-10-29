@@ -102,6 +102,12 @@ emission.
   invalid short/backward edges and oversized layouts fail closed. The
   explicit machine-token CLI still takes concrete jump addresses and no
   branch/loop lowering is claimed.
+- The same library planner now accepts `AutoRelocate`, searching at most 94
+  reached no-op decoder phases for a safe `j` operand and preserving the live
+  data pointer, encrypted operands, source length and planned data writes.
+  Focused normative VM tests pass long-suffix and two-jump relocation with
+  rotate/crazy, while duplicate/unsafe relocation and subsequent jump reject.
+  The CLI remains concrete-token only, not general control-flow lowering.
 - A first real explicit-profile source publisher, `malbolge_layout`, now
   converts a bounded closed machine-op token list into **new** graphical
   `.malbolge` files. It re-admits source and verifies exact-step termination
