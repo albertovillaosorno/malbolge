@@ -209,6 +209,16 @@ budgets, regenerated challenge sources, and the native executable's linked
 path, SHA-256 digest, and byte length. Its default path reads files only; an
 explicit `--replay-oracles` mode can rerun the **canonical generator's** native
 C entry harness, never a retained trial executable or Malbolge artifact.
+The new independent `--rebuild-binaries` option additionally compiles fresh,
+canonical host-C executable bytes with the same pinned Clang and independently
+compares them byte-for-byte against all retained verified binaries, deduplicated
+per source and arm. Mutating an executable while recomputing its reported
+SHA-256 can pass file-to-claim checks but not this source-to-binary replay.
+The mode never executes a retained binary; new oracle harnesses run only from
+canonical generator C. Exact reproducibility assumes the same native toolchain,
+linker, libraries and host ABI, and does not reproduce recorded wall times or
+provide Malbolge candidate verification.
+
 The inspectable output preserves the observed capacity curves/frontiers but
 does not rerun elapsed-time measurements, authenticate the source producers,
 or establish an atomic filesystem snapshot. Mutating any retained proof file
@@ -347,6 +357,11 @@ The original study records remain the result authority.
   without changing v1 headers. Synthetic tests prove exact energy Pareto
   comparison and rejection of cross-version omissions, forged costs and
   impossible signed energy reports, not measured energy savings.
+- An explicit offline binary-rebuild mode compiles canonical source and
+  native oracle harness anew for each distinct challenge/Clang mode, comparing
+  actual bytes to every retained verified executable. Adversarial tests show
+  a matching forged executable SHA-256 is insufficient without independent
+  reproducibility; fresh compiler failures also fail closed.
 - `benchmarks/arena/reference_audit.py` independently reopens retained
   local host-C studies, checks the strict manifest/raw/challenge path and
   binary evidence, then reports the observed frontier without remeasurement.

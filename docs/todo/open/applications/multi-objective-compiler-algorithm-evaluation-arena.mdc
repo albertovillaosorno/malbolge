@@ -105,6 +105,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   explicitly a host-C reference stage: physical memory/budget enforcement,
   candidate Malbolge verification and reproducible cross-host performance
   conclusions remain pending.
+- An opt-in post-run native binary rebuild now compiles the generator's
+  canonical C source and oracle harness independently for each challenge and
+  pinned Clang mode, then requires byte-identical output to all retained
+  verified host executables. It detects a forged binary even if the recorded
+  digest was recomputed to match, without executing the retained artifact or
+  remeasuring timing. Same-host reproducibility is not Malbolge verification.
 - A separate read-only host-C post-run audit now independently reopens the
   producer's ignored study directory and rechecks its trial identities,
   exact host-only stage, canonical source bundles, source-reported budgets,

@@ -190,6 +190,55 @@ def replay_one(
     return source_sha256
 
 
+def _reference_source(
+    identity: generate.ChallengeIdentity,
+    mode: str,
+) -> generate.GeneratedChallenge:
+    if mode not in OPTIMIZATION_MODES:
+        _fail("unsupported host-C reference optimization mode")
+    if identity.nodes > MAX_REPLAY_NODES:
+        _fail("host-C reference exceeds 512-node limit")
+    if not _PINNED_CLANG.is_file() or not _TEMP.is_dir():
+        _fail("pinned host-C compiler or local temporary directory unavailable")
+    try:
+        return generate.generate(identity)
+    except generate.ChallengeError as error:
+        message = f"host-C reference identity cannot regenerate: {error}"
+        raise HostOracleError(message) from error
+
+
+def _write_canonical_source(
+    directory: Path,
+    generated: generate.GeneratedChallenge,
+) -> None:
+    _ = (directory / "program.c").write_bytes(generated.source)
+    _ = (directory / "oracle-harness.c").write_bytes(_harness(generated.oracle))
+
+
+def rebuild_reference(
+    identity: generate.ChallengeIdentity,
+    mode: str,
+) -> bytes:
+    """Independently build and execute the canonical host-C entry harness.
+
+    No retained trial binary is executed, no old output path is read, and the
+    original wall-clock cost cannot be reconstructed from a fresh compilation.
+
+    Returns:
+        The newly compiled native executable bytes for exact same-host review.
+
+    """
+    generated = _reference_source(identity, mode)
+    with tempfile.TemporaryDirectory(
+        prefix="arena-host-c-rebuild-",
+        dir=_TEMP,
+    ) as temporary:
+        directory = Path(temporary)
+        _write_canonical_source(directory, generated)
+        _replay_mode(directory, mode)
+        return (directory / "oracle-check").read_bytes()
+
+
 def measure_reference(
     identity: generate.ChallengeIdentity,
     mode: str,
@@ -203,30 +252,14 @@ def measure_reference(
     Returns:
         Exact observed elapsed nanoseconds and successful executable bytes.
 
-    Raises:
-        HostOracleError: The bounded canonical host-C replay failed.
-
     """
-    if mode not in OPTIMIZATION_MODES:
-        _fail("unsupported host-C reference optimization mode")
-    if identity.nodes > MAX_REPLAY_NODES:
-        _fail("host-C reference exceeds 512-node limit")
-    if not _PINNED_CLANG.is_file() or not _TEMP.is_dir():
-        _fail("pinned host-C compiler or local temporary directory unavailable")
-    try:
-        generated = generate.generate(identity)
-    except generate.ChallengeError as error:
-        message = f"host-C reference identity cannot regenerate: {error}"
-        raise HostOracleError(message) from error
+    generated = _reference_source(identity, mode)
     with tempfile.TemporaryDirectory(
         prefix="arena-host-c-measure-",
         dir=_TEMP,
     ) as temporary:
         directory = Path(temporary)
-        _ = (directory / "program.c").write_bytes(generated.source)
-        _ = (directory / "oracle-harness.c").write_bytes(
-            _harness(generated.oracle)
-        )
+        _write_canonical_source(directory, generated)
         started = time.perf_counter_ns()
         _replay_mode(directory, mode)
         elapsed = time.perf_counter_ns() - started

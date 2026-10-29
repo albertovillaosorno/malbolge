@@ -44,8 +44,10 @@ from typing import Never
 
 from benchmarks.arena import analyze
 from benchmarks.arena import evidence
+from benchmarks.arena import host_c_oracle
 from benchmarks.arena import reference_study
 from benchmarks.arena import report_output
+from benchmarks.challenges import generate
 
 _ROOT = Path(__file__).resolve().parents[2]
 MAX_ARTIFACT_INDEX_BYTES = 1024 * 1024
@@ -204,7 +206,7 @@ def _admit_data(
     prefix: str,
     *,
     replay_oracles: bool,
-) -> tuple[dict[str, Any], dict[str, Any], int]:
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, dict[str, str]], int]:
     document = _load_study(relative_study)
     _check_stage(document, prefix)
     checked = evidence.validate_links(
@@ -228,18 +230,56 @@ def _admit_data(
         document,
         artifacts,
     )
-    return document, checked, verified_binaries
+    return document, checked, artifacts, verified_binaries
+
+
+def _rebuild_reference_binaries(
+    document: dict[str, Any],
+    artifacts: dict[str, dict[str, str]],
+) -> int:
+    built: dict[tuple[str, int, int, int, str], bytes] = {}
+    for row in document["observations"]:
+        if row["outcome"] != analyze.VERIFIED:
+            continue
+        case = row["case"]
+        mode = "-O0" if row["algorithm"] == reference_study.BASELINE else "-O2"
+        key = (
+            case["family"],
+            case["version"],
+            case["seed"],
+            case["difficulty"],
+            mode,
+        )
+        if key not in built:
+            identity = generate.ChallengeIdentity(
+                family=case["family"],
+                version=case["version"],
+                seed=case["seed"],
+                nodes=case["difficulty"],
+                profile=reference_study.PROFILE,
+            )
+            built[key] = host_c_oracle.rebuild_reference(identity, mode)
+        retained = evidence.read_bounded_regular(
+            _ROOT,
+            artifacts[row["experiment_manifest"]]["path"],
+            limit=reference_study.MAX_ARTIFACT_BYTES,
+        )
+        if built[key] != retained:
+            _fail("host-C retained binary differs from canonical rebuilt C")
+    return len(built)
 
 
 def audit(
     relative_study: str,
     *,
     replay_oracles: bool = False,
+    rebuild_binaries: bool = False,
 ) -> dict[str, Any]:
     """Reopen and validate all retained host-C reference evidence.
 
     The optional independent source oracle check only compiles regenerated
-    canonical C; it never executes the retained native binary or reruns timing.
+    canonical C; rebuild mode compiles a new reference without executing the
+    retained trial binary or pretending to reproduce its recorded elapsed time.
 
     Returns:
         Audited source counts, checked artifact count, and offline arena report.
@@ -250,16 +290,22 @@ def audit(
     """
     prefix = _prefix(relative_study)
     try:
-        document, checked, verified_binaries = _admit_data(
+        document, checked, artifacts, verified_binaries = _admit_data(
             relative_study,
             prefix,
             replay_oracles=replay_oracles,
+        )
+        rebuilt = (
+            _rebuild_reference_binaries(document, artifacts)
+            if rebuild_binaries
+            else 0
         )
         report = analyze.analyze(document)
     except (
         analyze.ArenaError,
         evidence.EvidenceError,
         reference_study.ReferenceStudyError,
+        host_c_oracle.HostOracleError,
         OSError,
         UnicodeError,
     ) as error:
@@ -275,6 +321,7 @@ def audit(
         "study": relative_study,
         "host_c_binaries_checked": verified_binaries,
         "host_c_oracle_replayed": replay_oracles,
+        "host_c_reference_builds_reproduced": rebuilt,
         "evidence_preflight": checked,
         "capacity_curve": report["capacity_curve"],
         "pareto_frontiers": report["pareto_frontiers"],
@@ -291,9 +338,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("study", help=".temp/arena-host-c-study-*/study.json")
     parser.add_argument("--replay-oracles", action="store_true")
+    parser.add_argument("--rebuild-binaries", action="store_true")
     args = parser.parse_args()
     try:
-        report = audit(args.study, replay_oracles=args.replay_oracles)
+        report = audit(
+            args.study,
+            replay_oracles=args.replay_oracles,
+            rebuild_binaries=args.rebuild_binaries,
+        )
         report_output.publish(report, sys.stdout)
     except (ReferenceAuditError, report_output.ReportOutputError) as error:
         parser.exit(2, f"host-C reference audit: {error}\n")

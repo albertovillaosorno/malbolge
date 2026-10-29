@@ -47,6 +47,7 @@ import pytest
 from benchmarks.arena import host_c_oracle
 from benchmarks.arena import reference_audit
 from benchmarks.arena import reference_study
+from benchmarks.challenges import generate
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -285,3 +286,97 @@ def test_cli_emits_checked_json_or_no_output_on_failure(
     captured = capsys.readouterr()
     assert not captured.out
     assert INVALID_STUDY in captured.err
+
+
+def test_independent_rebuild_matches_all_retained_host_reference_binaries(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """Fresh native output reproduces each recorded binary byte-for-byte."""
+    directory, relative = live_pilot
+    before = _file_hashes(directory)
+    report = reference_audit.audit(relative, rebuild_binaries=True)
+    assert report["host_c_binaries_checked"] == OBSERVED_PAIRS * 2
+    assert report["host_c_reference_builds_reproduced"] == OBSERVED_PAIRS
+    assert before == _file_hashes(directory)
+
+
+def test_forged_binary_and_updated_digest_cannot_pass_rebuild_audit(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """A producer-controlled digest alone cannot prove source provenance."""
+    directory, relative = live_pilot
+    index_path = directory / "artifacts.json"
+    metadata = json.loads(index_path.read_text(encoding="utf-8"))
+    name = next(iter(metadata))
+    binary = reference_audit._ROOT / metadata[name]["path"]
+    altered = bytearray(binary.read_bytes())
+    altered[-1] ^= 1
+    _ = binary.write_bytes(altered)
+    metadata[name]["sha256"] = sha256(altered).hexdigest()
+    _ = index_path.write_text(json.dumps(metadata), encoding="utf-8")
+    assert reference_audit.audit(relative)["host_c_binaries_checked"] == (
+        OBSERVED_PAIRS * 2
+    )
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="canonical rebuilt C",
+    ):
+        reference_audit.audit(relative, rebuild_binaries=True)
+
+
+def test_source_rebuild_failure_is_a_report_failure_not_a_passing_check(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An independent compiler failure cannot yield a positive audit count."""
+    _, relative = live_pilot
+
+    def rejected(
+        identity: object,
+        mode: str,
+    ) -> bytes:
+        _ = (identity, mode)
+        message = "injected independent compiler failure"
+        raise host_c_oracle.HostOracleError(message)
+
+    monkeypatch.setattr(host_c_oracle, "rebuild_reference", rejected)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="compiler failure",
+    ):
+        reference_audit.audit(relative, rebuild_binaries=True)
+
+
+def test_cli_rebuild_output_checks_native_artifact_reproducibility(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The explicit flag emits independently built source provenance counts."""
+    _, relative = live_pilot
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["reference-audit", relative, "--rebuild-binaries"],
+    )
+    assert reference_audit.main() == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["host_c_reference_builds_reproduced"] == OBSERVED_PAIRS
+    assert report["host_c_binaries_checked"] == OBSERVED_PAIRS * 2
+    assert not report["host_c_oracle_replayed"]
+
+
+@pytest.mark.parametrize("mode", ["-O3", "-invalid", ""])
+def test_native_rebuild_refuses_unsupported_compiler_mode(mode: str) -> None:
+    """Rebuilds cannot be steered into arbitrary compiler flags."""
+    identity = generate.ChallengeIdentity(
+        FAMILY,
+        1,
+        7,
+        reference_study.PROFILE,
+        4,
+    )
+    with pytest.raises(
+        host_c_oracle.HostOracleError, match="optimization mode"
+    ):
+        _ = host_c_oracle.rebuild_reference(identity, mode)

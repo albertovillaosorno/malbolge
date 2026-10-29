@@ -218,7 +218,24 @@ and Pareto frontier. Missing, altered, symlinked and malformed inputs fail
 without a report. By default no host compiler, benchmark or native binary
 is executed. `--replay-oracles` separately compiles and executes **only** the
 canonical generated challenge C at both optimization modes; it never runs a
-retained trial binary. The audit never proves that reported wall-clock
+retained trial binary. For a stronger **same-host source-to-executable** check,
+add
+`--rebuild-binaries` to the offline audit. After all files and reported hashes
+pass, it independently recompiles the canonical regenerated C and its oracle
+harness through pinned Clang for each distinct challenge/optimization mode.
+The newly compiled executable must match **every** corresponding retained
+successful native executable byte-for-byte. Rebuilding once per identical
+source/arm avoids duplicate work across repetitions. This catches a forged
+retained binary even when its `artifacts.json` SHA-256 is updated to match.
+Rebuilds use new temporary files and run only the fresh canonical C harness;
+**retained executables are never launched**. The audit reports the distinct
+`host_c_reference_builds_reproduced` count, zero unless explicitly enabled.
+Deterministic executable bytes depend on the same pinned linker, libraries,
+ABI and host environment; a later changed toolchain may fail exact replay
+without implying a historical result was dishonest. This is reproducibility
+of host-C output bytes, not independent Malbolge verification.
+
+The audit never proves that reported wall-clock
 measurements were authentic, that resource limits were enforced, or that
 candidate Malbolge artifacts were created or verified. File consistency is
 not an atomic snapshot against concurrent filesystem mutation.
