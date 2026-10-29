@@ -233,7 +233,10 @@ budget, profile, source study identity, and bounded trial/difficulty structure.
 Manifest and raw-sample names must also match the producer's exact
 `<algorithm>-nodes-<difficulty>-trial-<trial>` stem, not just the containing
 `runs/` or `raw/` directories. Renaming all related evidence consistently
-cannot satisfy the producer's trial-name convention.
+cannot satisfy the producer's trial-name convention. The fixed native
+reference study question, hypothesis and rejection observation must also
+match those emitted by its producer; the generic analyzer permits other
+research questions for unrelated experiments.
 Every difficulty must contain the identical consecutive trial indices from the
 one native producer plan; merely balancing the two algorithms within each
 level is insufficient. The generic arena analyzer still admits unequal sample

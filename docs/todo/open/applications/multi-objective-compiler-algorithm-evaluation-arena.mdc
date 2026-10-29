@@ -131,6 +131,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   reject tampered files, forged stage or arm identities, malformed artifacts,
   unsafe paths and missing links; physical benchmark remeasurement and
   Malbolge candidate verification remain open.
+- Producer-specific host-C audits now bind the original falsifiable study
+  question, hypothesis, and rejection observation. Three real-pilot regressions
+  prove that replacing those fields passes generic analysis but cannot be
+  misreported as the fixed native reference experiment.
 - Host-C audit now checks each recorded run manifest's method class,
   implementation path, configuration path, output root, and accelerator against
   the native producer's fixed provenance. Five real-pilot negative regressions

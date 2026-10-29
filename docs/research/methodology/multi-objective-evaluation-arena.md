@@ -243,6 +243,10 @@ unequal repetitions even when the generic arena accepts each paired cohort.
 It also binds each trial's manifest and raw filename to the native producer's
 exact arm, difficulty and repetition naming rule. A real-study rekeying test
 retains valid raw, TOML and binary links while rejecting the renamed paths.
+The three fixed native research claims (question, hypothesis, rejection
+observation) now match the producer text exactly; changing them in retained
+study JSON is a source-identity drift, even though the generic analyzer accepts
+other well-formed research questions.
 Its default path reads files only; an explicit `--replay-oracles` mode can
 rerun the **canonical generator's** native C entry harness, never a retained
 trial executable or Malbolge artifact.

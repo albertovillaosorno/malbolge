@@ -74,6 +74,11 @@ PRODUCER_IMPLEMENTATION = "benchmarks/arena/reference_study.py"
 PRODUCER_CONFIGURATION = "benchmarks/arena/README.md"
 PRODUCER_METHOD_CLASS = "benchmarking"
 PRODUCER_ACCELERATOR = "none"
+PRODUCER_RESEARCH_CLAIMS = {
+    "question": "Does Clang O2 reduce time or code size vs O0?",
+    "hypothesis": "O2 improves verified time/size frontier on C.",
+    "rejection_observation": "O2 is dominated by O0 at all difficulties.",
+}
 REQUIRED_OBJECTIVES = ["elapsed_ns", "artifact_bytes"]
 CURRENT_OBJECTIVES = [*REQUIRED_OBJECTIVES, "peak_rss_bytes"]
 RSS_RESOURCE_POLICY_VERSION = 2
@@ -235,6 +240,11 @@ def _check_stage(document: dict[str, Any], prefix: str) -> None:
         or study["target_profile"] != reference_study.PROFILE
     ):
         _fail("host-C reference audit stage or target profile differs")
+    if any(
+        study[field] != expected
+        for field, expected in PRODUCER_RESEARCH_CLAIMS.items()
+    ):
+        _fail("host-C reference producer research claims differ")
     if (
         study["baseline"] != reference_study.BASELINE
         or study["toolchain"] != TOOLCHAIN

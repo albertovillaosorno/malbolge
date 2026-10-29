@@ -289,6 +289,27 @@ def test_host_c_audit_rejects_rekeyed_native_trial_artifacts(
         reference_audit.audit(relative)
 
 
+@pytest.mark.parametrize(
+    "field", ["question", "hypothesis", "rejection_observation"]
+)
+def test_host_c_reference_rejects_forged_fixed_research_claim(
+    live_pilot: tuple[Path, str],
+    field: str,
+) -> None:
+    """A native reference study cannot silently substitute its experiment."""
+    directory, relative = live_pilot
+    path = directory / "study.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["study"][field] = "An unrelated research question on native C."
+    _ = analyze.analyze(analyze.parse_document(json.dumps(document)))
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="producer research claims",
+    ):
+        reference_audit.audit(relative)
+
+
 @pytest.mark.parametrize("mutation", ["raw", "manifest", "bundle", "binary"])
 def test_audit_rejects_retained_file_tampering(
     live_pilot: tuple[Path, str],
