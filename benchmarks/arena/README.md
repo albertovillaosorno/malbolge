@@ -238,9 +238,11 @@ To **opt in to a new VM execution** of every retained successful source, use
 `--replay-candidates`. Replay requires the current local `malbolge_layout` and
 `malbolge` executable bytes to match the jointly recorded SHA-256 toolchain
 fingerprint. It checks exact EOF output again and reopens each source after
-execution to reject observed source changes. This is separate post-run VM
-reexecution; it is not proof that the original benchmark executed those same
-binary bytes, not independent verification of arbitrary Malbolge programs,
+execution to reject observed source changes. The auditor also reopens each
+successful source immediately before publishing its final report. This rejects
+observed mutations between decoding and result construction. This is separate
+post-run VM reexecution; it does not prove that the original benchmark used
+the same binary bytes or independently verify arbitrary Malbolge programs,
 and never a replay of recorded wall times or failed attempts. If binaries were
 rebuilt since the study, offline source admission remains available but replay
 rejects the toolchain drift until the original binaries are recovered.

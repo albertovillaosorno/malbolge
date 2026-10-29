@@ -225,6 +225,10 @@ The optional `--replay-candidates` audit mode requires the local emitter/VM
 binary fingerprints to match the recorded combined toolchain fingerprint,
 reexecutes all retained successful sources through the general classic VM,
 and checks full expected EOF output and unchanged source bytes afterward.
+A separate final source-byte recheck before report publication catches observed
+mutations after initial independent decode, including changes that occur while
+the Pareto comparison is assembled. A real 64-pair regression emits and replays
+129- and 193-cell programs across the classic 94-position decode phase wrap.
 Neither static admission nor the opt-in replay authenticates historical
 measurement, validates reported failures by reexecution, enforces aggregate
 resources, or proves arbitrary guest semantics. Missing original binaries can

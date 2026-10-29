@@ -58,6 +58,7 @@ if TYPE_CHECKING:
 
 ROWS = 8
 REPLAYED = 8
+MAX_PHASE_TRIALS = 2
 FRONTIERS = 2
 INVALID_SOURCE = 33
 DIFFICULTY = 1
@@ -155,6 +156,46 @@ def test_real_retained_target_study_passes_offline_and_replay(
     assert replay["source_sha256"] == checked["source_sha256"]
     assert replay["capacity_curve"] == checked["capacity_curve"]
     assert study["study"]["stage"].startswith("measured-classic")
+
+
+@pytest.mark.skipif(
+    not producer.DEFAULT_EMITTER.is_file()
+    or not producer.DEFAULT_RUNNER.is_file(),
+    reason="repository Malbolge binaries are not built",
+)
+def test_real_64_pair_echo_crosses_two_classic_decode_phases() -> None:
+    """The fixed target oracle remains exact across code positions above 94."""
+    with tempfile.TemporaryDirectory(
+        dir=producer._TEMP,
+        prefix="arena-target-phase-tools-",
+    ) as tools:
+        emitter = Path(tools) / "malbolge_layout"
+        runner = Path(tools) / "malbolge"
+        emitter.hardlink_to(producer.DEFAULT_EMITTER)
+        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        directory, document = producer.run_study(
+            producer.StudyPlan((producer.MAX_PAIRS,), 1),
+            emitter=emitter,
+            runner=runner,
+        )
+        try:
+            relative = (directory / "study.json").relative_to(producer._ROOT)
+            checked = audit.audit(
+                relative.as_posix(),
+                replay_candidates=True,
+                emitter=emitter,
+                runner=runner,
+            )
+            assert (
+                checked["verified_target_sources_checked"] == MAX_PHASE_TRIALS
+            )
+            assert checked["target_sources_replayed"] == MAX_PHASE_TRIALS
+            assert {
+                row["algorithm"]: row["metrics"][ARTIFACT_BYTES]
+                for row in document["observations"]
+            } == {producer.BASELINE: 129, producer.CANDIDATE: 193}
+        finally:
+            shutil.rmtree(directory)
 
 
 def test_same_length_source_rewrite_passes_generic_but_fails_target_decode(
@@ -288,6 +329,32 @@ def test_real_study_profile_binary_digest_required_for_vm_replay(
     assert audit.audit(relative)["verified_target_sources_checked"] == ROWS
     with pytest.raises(audit.TargetEchoAuditError, match="toolchain differs"):
         audit.audit(relative, replay_candidates=True)
+
+
+def test_mutated_retained_source_during_report_is_rejected(
+    retained: tuple[Path, dict[str, Any], str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A new source mutation after initial decode cannot enter the report."""
+    directory, document, relative = retained
+    target = _first_source(directory, document)
+    actual_analyze = analyze.analyze
+
+    def mutate_after_decode(study: dict[str, Any]) -> dict[str, Any]:
+        contents = bytearray(target.read_bytes())
+        contents[0] = (
+            INVALID_SOURCE
+            if contents[0] != INVALID_SOURCE
+            else INVALID_SOURCE + 1
+        )
+        target.write_bytes(contents)
+        return actual_analyze(study)
+
+    monkeypatch.setattr(audit.analyze, "analyze", mutate_after_decode)
+    with pytest.raises(
+        audit.TargetEchoAuditError, match="changed before report"
+    ):
+        audit.audit(relative)
 
 
 def test_injected_mismatched_vm_replay_fails_closed(

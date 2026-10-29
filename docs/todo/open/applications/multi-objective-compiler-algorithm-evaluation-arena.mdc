@@ -118,8 +118,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   same-length candidate even if normal arena CSV and run records agree.
   The producer now requires this source audit before success publication.
   Optional VM replay only admits the recorded exact tool binary fingerprint,
-  rechecks expected EOF output and stable source bytes, and does not validate
-  the original measurements, failure histories, resources or general C.
+  rechecks expected EOF output and stable source bytes. A final byte-hash
+  check also rejects observed changes after source admission and before
+  report construction. A real 64-pair pilot regression exercises both source
+  layouts across the classic 94-position decode phase cycle. These checks
+  do not validate the original measurements,
+  failure histories, resources or general C.
 - A bounded real host-C reference-study producer now measures pinned Clang
   `-O0` and `-O2` compile/link/oracle-run wall time and executable size on
   matched canonical challenge cases and difficulties. It retains actual native

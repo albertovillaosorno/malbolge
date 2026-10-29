@@ -452,6 +452,18 @@ def _admit_study(
     return document, checked, source_hashes, commit, replayed
 
 
+def _recheck_sources(source_hashes: dict[str, str]) -> None:
+    """Refuse observed retained-source drift before reporting an audit."""
+    for relative, recorded in source_hashes.items():
+        current = evidence.read_bounded_regular(
+            _ROOT,
+            relative,
+            limit=producer.MAX_TARGET_BYTES,
+        )
+        if sha256(current).hexdigest() != recorded:
+            _fail("target audit retained source changed before report")
+
+
 def audit(
     relative_study: str,
     *,
@@ -478,6 +490,7 @@ def audit(
             runner=runner if runner is not None else producer.DEFAULT_RUNNER,
         )
         report = analyze.analyze(document)
+        _recheck_sources(source_hashes)
     except (
         analyze.ArenaError,
         evidence.EvidenceError,
