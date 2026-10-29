@@ -988,6 +988,14 @@ route also rejects two independently invalid expected line placements without
 re-lowering saved checkpoint state. This verifies internal provenance
 consistency, not the original source file's authenticity or an exact byte-to-
 line mapping without source text.
+
+Fresh and independent admission also require every *observed* byte offset in
+one function to have one normalized line/column coordinate, even across
+sibling operations and the return. A paired negative fixture for both ends
+of a byte output checks that individually valid, contained spans with
+contradictory shared-offset locations are rejected by both validator paths.
+Unobserved byte offsets remain unchecked; source-text authentication is not
+claimed.
 The ordinary progress route remains available but does not bind an expected
 source. The source-matched route rejects an independently valid checkpoint
 with changed function identity despite a matching module digest, as well as

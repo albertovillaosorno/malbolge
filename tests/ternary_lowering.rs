@@ -3177,6 +3177,55 @@ fn ternary_source_subspans_reject_forged_line_column_coordinates()
 }
 
 #[test]
+fn ternary_shared_source_offsets_reject_conflicting_coordinates()
+-> Result<(), String> {
+    let original = project_typed_ir(&byte_io_module())?;
+    let admitted = lower_typed_ir(&original)
+        .map_err(|error| format!("lower shared-source fixture: {error:?}"))?;
+    for endpoint in 0u8..2 {
+        let mut projection = original.clone();
+        let block = projection.functions.first_mut()
+            .and_then(|function| function.blocks.first_mut())
+            .ok_or_else(|| String::from("source block missing"))?;
+        let Some(InputInstruction::ByteOutput { span, .. }) =
+            block.instructions.get_mut(1)
+        else {
+            return Err(String::from("source output missing"));
+        };
+        if endpoint == 0 {
+            span.begin.column = span.begin.column.saturating_add(1);
+        } else {
+            span.end.column = span.end.column.saturating_add(1);
+        }
+        if lower_typed_ir(&projection)
+            != Err(TernaryLoweringError::InvalidProjection)
+        {
+            return Err(format!("shared input source offset {endpoint} was ambiguous"));
+        }
+
+        let mut program = admitted.clone();
+        let function = program.functions.first_mut()
+            .ok_or_else(|| String::from("ternary function missing"))?;
+        let Some(TernaryOperation::ByteOutput { span: target_span, .. }) =
+            function.operations.get_mut(1)
+        else {
+            return Err(String::from("ternary output missing"));
+        };
+        if endpoint == 0 {
+            target_span.begin.column = target_span.begin.column.saturating_add(1);
+        } else {
+            target_span.end.column = target_span.end.column.saturating_add(1);
+        }
+        if ternary_lowering::validate_ternary_program(&program)
+            != Err(TernaryProgramValidationError::SourceProvenance)
+        {
+            return Err(format!("shared ternary source offset {endpoint} was ambiguous"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn ternary_dense_functions_restore_through_inspector() -> Result<(), String> {
     let (target, projection) = lowered_dense_lane_io_fixture(128)?;
     assert_boolean_inspector_convergence(

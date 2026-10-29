@@ -36,7 +36,7 @@
 
 //! Fail-closed typed-IR projection to pre-layout ternary lowering.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::input::{
     InputFunction, InputInstruction, InputOrderedComparison, InputScalarType,
@@ -59,6 +59,7 @@ type NarrowConstantInput<'input> =
 type ConstantI32Input<'input> =
     (u16, &'input [u8], u32, InputSourceSpan, InputScalarType);
 type TruncateInput = (u32, InputSourceSpan, InputScalarType, u32);
+type SourceCoordinatesByByte = BTreeMap<u32, (u32, u32)>;
 
 #[derive(Clone, Copy)]
 enum Bitwise32Kind {
@@ -196,10 +197,28 @@ pub(super) const fn projected_instruction_span(
     }
 }
 
+fn register_projection_span(
+    observed: &mut SourceCoordinatesByByte,
+    span: InputSourceSpan,
+) -> bool {
+    for point in [span.begin, span.end] {
+        let coordinate = (point.line, point.column);
+        if let Some(previous) = observed.insert(point.byte, coordinate)
+            && previous != coordinate
+        {
+            return false;
+        }
+    }
+    true
+}
+
 pub(super) fn validate_projection_spans(
     function: &InputFunction,
 ) -> Result<(), TernaryLoweringError> {
-    if !valid_projection_span(function.span) {
+    let mut observed = BTreeMap::new();
+    if !valid_projection_span(function.span)
+        || !register_projection_span(&mut observed, function.span)
+    {
         return Err(TernaryLoweringError::InvalidProjection);
     }
     let block = function
@@ -208,14 +227,16 @@ pub(super) fn validate_projection_spans(
         .ok_or(TernaryLoweringError::UnsupportedFunction)?;
     if let InputTerminator::Return { span, .. } = block.terminator
         && (!valid_projection_span(span)
-            || !projection_span_contains(function.span, span))
+            || !projection_span_contains(function.span, span)
+            || !register_projection_span(&mut observed, span))
     {
         return Err(TernaryLoweringError::InvalidProjection);
     }
     for instruction in &block.instructions {
         if let Some(span) = projected_instruction_span(instruction)
             && (!valid_projection_span(span)
-                || !projection_span_contains(function.span, span))
+                || !projection_span_contains(function.span, span)
+                || !register_projection_span(&mut observed, span))
         {
             return Err(TernaryLoweringError::InvalidProjection);
         }

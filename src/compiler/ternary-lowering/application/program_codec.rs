@@ -59,6 +59,8 @@ const OPERATION_MIN_BYTES: usize = 25;
 /// Stable codec identity for canonical pre-layout ternary programs.
 pub const TERNARY_PROGRAM_CODEC_ID: &str = "malbolge-ternary-ir-v1";
 
+type SourceCoordinatesByByte = BTreeMap<u32, (u32, u32)>;
+
 /// Stable failures for canonical pre-layout ternary encoding/restoration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TernaryProgramCodecError {
@@ -2731,10 +2733,29 @@ fn validate_operation(
     Err(TernaryProgramValidationError::SsaValue)
 }
 
+fn register_source_span(
+    observed: &mut SourceCoordinatesByByte,
+    span: TernarySourceSpan,
+) -> bool {
+    for point in [span.begin, span.end] {
+        let coordinate = (point.line, point.column);
+        if let Some(previous) = observed.insert(point.byte, coordinate)
+            && previous != coordinate
+        {
+            return false;
+        }
+    }
+    true
+}
+
 fn validate_operations(
     function: &TernaryFunction,
 ) -> Result<(), TernaryProgramValidationError> {
     let mut values = BTreeMap::new();
+    let mut observed = BTreeMap::new();
+    if !register_source_span(&mut observed, function.span) {
+        return Err(TernaryProgramValidationError::SourceProvenance);
+    }
     let Some((last, prefix)) = function.operations.split_last() else {
         return Err(TernaryProgramValidationError::Terminator);
     };
@@ -2742,7 +2763,10 @@ fn validate_operations(
         let Some(span) = operation_span(*operation) else {
             return Err(TernaryProgramValidationError::SourceProvenance);
         };
-        if !valid_span(span) || !span_contains(function.span, span) {
+        if !valid_span(span)
+            || !span_contains(function.span, span)
+            || !register_source_span(&mut observed, span)
+        {
             return Err(TernaryProgramValidationError::SourceProvenance);
         }
         if validate_operation(*operation, &mut values)? {
@@ -2752,7 +2776,10 @@ fn validate_operations(
     let Some(span) = operation_span(*last) else {
         return Err(TernaryProgramValidationError::SourceProvenance);
     };
-    if !valid_span(span) || !span_contains(function.span, span) {
+    if !valid_span(span)
+        || !span_contains(function.span, span)
+        || !register_source_span(&mut observed, span)
+    {
         return Err(TernaryProgramValidationError::SourceProvenance);
     }
     if !matches!(
