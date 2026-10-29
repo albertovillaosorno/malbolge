@@ -43,6 +43,7 @@ import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
+import tomllib
 from typing import Any
 from typing import TYPE_CHECKING
 
@@ -151,7 +152,9 @@ def test_real_retained_target_study_passes_offline_and_replay(
     assert checked["evidence_preflight"]["raw_rows_matched"] == ROWS
     assert checked["reported_failed_trials_not_replayed"] == 0
     assert NOT_AUTHENTICATED in checked["scope"]
-    replay = audit.audit(relative, replay_candidates=True)
+    replay = audit.audit(
+        relative, options=audit.AuditOptions(replay_candidates=True)
+    )
     assert replay["target_sources_replayed"] == REPLAYED
     assert replay["source_sha256"] == checked["source_sha256"]
     assert replay["capacity_curve"] == checked["capacity_curve"]
@@ -182,9 +185,11 @@ def test_real_64_pair_echo_crosses_two_classic_decode_phases() -> None:
             relative = (directory / "study.json").relative_to(producer._ROOT)
             checked = audit.audit(
                 relative.as_posix(),
-                replay_candidates=True,
-                emitter=emitter,
-                runner=runner,
+                options=audit.AuditOptions(
+                    replay_candidates=True,
+                    emitter=emitter,
+                    runner=runner,
+                ),
             )
             assert (
                 checked["verified_target_sources_checked"] == MAX_PHASE_TRIALS
@@ -328,7 +333,79 @@ def test_real_study_profile_binary_digest_required_for_vm_replay(
     _recheck_generic(modified)
     assert audit.audit(relative)["verified_target_sources_checked"] == ROWS
     with pytest.raises(audit.TargetEchoAuditError, match="toolchain differs"):
-        audit.audit(relative, replay_candidates=True)
+        audit.audit(
+            relative, options=audit.AuditOptions(replay_candidates=True)
+        )
+
+
+def test_opt_in_git_object_admission_confirms_real_source_revision(
+    retained: tuple[Path, dict[str, Any], str],
+) -> None:
+    """A recorded local commit is independently resolved only on opt-in."""
+    _, _, relative = retained
+    result = audit.audit(
+        relative,
+        options=audit.AuditOptions(require_source_commit_object=True),
+    )
+    assert result["source_commit_object_verified"] is True
+
+
+@pytest.mark.parametrize("hostile_name", ["GIT_DIR", "GIT_OBJECT_DIRECTORY"])
+def test_source_commit_object_lookup_ignores_hostile_git_environment(
+    retained: tuple[Path, dict[str, Any], str],
+    monkeypatch: pytest.MonkeyPatch,
+    hostile_name: str,
+) -> None:
+    """Ambient Git overrides cannot replace the project's object database."""
+    _, _, relative = retained
+    forged = producer._TEMP / "absent-arena-git-object-database"
+    monkeypatch.setenv(hostile_name, str(forged))
+    result = audit.audit(
+        relative,
+        options=audit.AuditOptions(require_source_commit_object=True),
+    )
+    assert result["source_commit_object_verified"] is True
+
+
+def test_source_commit_opt_in_cli_reports_checked_revision(
+    retained: tuple[Path, dict[str, Any], str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Explicit CLI source-object admission has a visible checked result."""
+    _, _, relative = retained
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["target-echo-audit", relative, "--require-source-commit-object"],
+    )
+    assert audit.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["source_commit_object_verified"] is True
+    assert result["verified_target_sources_checked"] == ROWS
+
+
+def test_forged_consistent_git_commit_is_rejected_when_requested(
+    retained: tuple[Path, dict[str, Any], str],
+) -> None:
+    """Consistent invented source revision cannot claim local Git provenance."""
+    _, document, relative = retained
+    for row in document["observations"]:
+        manifest = producer._ROOT / row["experiment_manifest"]
+        original = manifest.read_text(encoding="utf-8")
+        previous = tomllib.loads(original)["run"]["commit"]
+        updated = original.replace(
+            f'commit = "{previous}"',
+            'commit = "' + "f" * 40 + '"',
+        )
+        assert updated != original
+        manifest.write_text(updated, encoding="utf-8")
+    assert audit.audit(relative)["source_commit_object_verified"] is False
+    with pytest.raises(audit.TargetEchoAuditError, match="Git commit object"):
+        audit.audit(
+            relative,
+            options=audit.AuditOptions(require_source_commit_object=True),
+        )
 
 
 def test_mutated_retained_source_during_report_is_rejected(
@@ -432,7 +509,9 @@ def test_injected_mismatched_vm_replay_fails_closed(
 
     monkeypatch.setattr(audit, "_invoke_runner", wrong_output)
     with pytest.raises(audit.TargetEchoAuditError, match="VM replay rejected"):
-        audit.audit(relative, replay_candidates=True)
+        audit.audit(
+            relative, options=audit.AuditOptions(replay_candidates=True)
+        )
 
 
 @pytest.mark.parametrize(

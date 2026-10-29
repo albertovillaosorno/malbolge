@@ -35,8 +35,11 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from hashlib import sha256
+import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
@@ -60,6 +63,8 @@ DIGEST_HEX_LENGTH = 64
 PHASES = 94
 METHOD_CLASS = "benchmarking"
 ACCELERATOR = "none"
+GIT_COMMIT_TYPE = b"commit"
+GIT_TIMEOUT_SECONDS = 5
 RUN_PREFIX = "arena-target-echo-"
 ROOT_PART = ".temp"
 DIRECTORY_NAMES = ("runs", "raw", "candidates")
@@ -80,6 +85,19 @@ CLASSIC_DECODE = (
 
 class TargetEchoAuditError(ValueError):
     """Retained target echo evidence is inconsistent or unverifiable."""
+
+
+@dataclass(frozen=True, slots=True)
+class AuditOptions:
+    """Explicit optional retained-study replay and provenance gates."""
+
+    replay_candidates: bool = False
+    require_source_commit_object: bool = False
+    emitter: Path | None = None
+    runner: Path | None = None
+
+
+DEFAULT_AUDIT_OPTIONS = AuditOptions()
 
 
 def _fail(message: str) -> Never:
@@ -278,6 +296,39 @@ def _check_provenance(document: dict[str, Any], prefix: str) -> str:
     return next(iter(commits))
 
 
+def _require_git_commit(commit: str) -> None:
+    """Check local commit-object type; never attest historical execution.
+
+    Raises:
+        TargetEchoAuditError: Git is missing or cannot admit a commit object.
+
+    """
+    executable = shutil.which("git")
+    if executable is None:
+        _fail("target audit source commit admission requires local Git")
+    # Ambient Git object/database selectors cannot redirect local admission.
+    clean_env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("GIT_")
+    }
+    try:
+        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            [executable, "cat-file", "-t", commit],
+            cwd=_ROOT,
+            stdin=sp.DEVNULL,
+            check=False,
+            capture_output=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+            env=clean_env,
+        )
+    except (OSError, sp.SubprocessError) as error:
+        message = "target audit Git commit object lookup failed"
+        raise TargetEchoAuditError(message) from error
+    if completed.returncode != 0 or completed.stdout.strip() != GIT_COMMIT_TYPE:
+        _fail("target audit source revision is not a local Git commit object")
+
+
 def _decoded_instruction(cell: int, position: int) -> int:
     if not producer.GRAPHICAL_LOW <= cell <= producer.GRAPHICAL_HIGH:
         _fail("target audit source contains nongraphical code")
@@ -460,9 +511,7 @@ def _recheck_linked_inputs(
 def _admit_study(
     relative_study: str,
     *,
-    replay_candidates: bool,
-    emitter: Path,
-    runner: Path,
+    options: AuditOptions,
 ) -> tuple[
     dict[str, Any],
     dict[str, Any],
@@ -492,10 +541,17 @@ def _admit_study(
         ),
     )
     commit = _check_provenance(document, prefix)
+    if options.require_source_commit_object:
+        _require_git_commit(commit)
     source_hashes = _source_checks(document, prefix, names)
     replayed = (
-        _replay(document, source_hashes, emitter=emitter, runner=runner)
-        if replay_candidates
+        _replay(
+            document,
+            source_hashes,
+            emitter=options.emitter or producer.DEFAULT_EMITTER,
+            runner=options.runner or producer.DEFAULT_RUNNER,
+        )
+        if options.replay_candidates
         else 0
     )
     return document, checked, source_hashes, snapshots, commit, replayed
@@ -529,9 +585,7 @@ def _recheck_inventory(document: dict[str, Any], relative_study: str) -> None:
 def audit(
     relative_study: str,
     *,
-    replay_candidates: bool = False,
-    emitter: Path | None = None,
-    runner: Path | None = None,
+    options: AuditOptions = DEFAULT_AUDIT_OPTIONS,
 ) -> dict[str, Any]:
     """Read retained target evidence and optionally replay successful sources.
 
@@ -544,16 +598,7 @@ def audit(
     """
     try:
         (document, checked, source_hashes, snapshots, commit, replayed) = (
-            _admit_study(
-                relative_study,
-                replay_candidates=replay_candidates,
-                emitter=emitter
-                if emitter is not None
-                else producer.DEFAULT_EMITTER,
-                runner=runner
-                if runner is not None
-                else producer.DEFAULT_RUNNER,
-            )
+            _admit_study(relative_study, options=options)
         )
         report = analyze.analyze(document)
         _recheck_sources(source_hashes)
@@ -574,6 +619,7 @@ def audit(
         "schema_version": 1,
         "study": relative_study,
         "source_commit_reported": commit,
+        "source_commit_object_verified": options.require_source_commit_object,
         "source_sha256": source_hashes,
         "verified_target_sources_checked": len(source_hashes),
         "target_sources_replayed": replayed,
@@ -601,9 +647,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("study", help=".temp/arena-target-echo-*/study.json")
     parser.add_argument("--replay-candidates", action="store_true")
+    parser.add_argument("--require-source-commit-object", action="store_true")
     args = parser.parse_args()
     try:
-        result = audit(args.study, replay_candidates=args.replay_candidates)
+        result = audit(
+            args.study,
+            options=AuditOptions(
+                replay_candidates=args.replay_candidates,
+                require_source_commit_object=args.require_source_commit_object,
+            ),
+        )
         report_output.publish(result, sys.stdout)
     except (TargetEchoAuditError, report_output.ReportOutputError) as error:
         parser.exit(2, f"target echo audit: {error}\n")

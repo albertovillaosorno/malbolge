@@ -253,6 +253,16 @@ verify arbitrary programs, reproduce recorded times or replay failed trials.
 If binaries were rebuilt, offline source admission remains available, while
 VM replay rejects the toolchain drift until original binaries are recovered.
 
+The separate `--require-source-commit-object` option also asks local Git to
+resolve the identical source revision claimed by every run manifest to an
+actual **commit** object. It rejects missing, foreign-type or unavailable
+objects without changing the default offline audit. This confirms only that
+the recorded Git object exists locally; it does not authenticate historical
+execution, prove the worktree was clean, or verify a cryptographic signature.
+The lookup clears inherited `GIT_*` environment overrides so ambient object
+or repository selectors cannot substitute another local Git database.
+Both opt-in switches may be combined on the same command.
+
 The exact executable hashes and Git revision are recorded as **claimed
 provenance**, not execution attestation. The declared 60-second/1024-MiB
 study budget is not physically enforced in aggregate; individual child wall

@@ -239,9 +239,16 @@ TOML after their initial checks, and inject unreported files after admission;
 all must reject rather than returning a stale report. The reader protects
 individual descriptors from observed inode or timestamp drift, but these
 multiple reads do not establish an atomic snapshot against an adversary that
-can race or restore bytes between checks. Neither static admission nor the
-opt-in replay authenticates historical
-measurement, validates reported failures by reexecution, enforces aggregate
+can race or restore bytes between checks. A distinct opt-in Git-object gate
+checks that the revision consistently reported by run manifests resolves to a
+local Git commit object, refusing absent or non-commit objects. This extends
+reported source provenance beyond syntactic cross-record agreement without
+claiming that a particular worktree or build actually executed. Git-specific
+environment variables are removed from the child lookup so inherited Git
+object-directory and worktree overrides cannot substitute another
+Git database. Neither static admission nor opt-in replay authenticates
+historical measurements, validates reported failures by reexecution, enforces
+aggregate
 resources, or proves arbitrary guest semantics. Missing original binaries can
 block replay while leaving the offline source evidence inspectable.
 
