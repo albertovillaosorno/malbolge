@@ -179,8 +179,14 @@ After acquiring the process lock,
 the publisher rechecks every path component for links and confirms that the
 lock pathname still identifies the acquired descriptor's device and inode.
 A same-inode parent symlink or substituted/detached lock fails closed before
-the publication body can execute. These checks guard acquisition
-interleavings, not external mutation after the identity check.
+the publication body can execute.
+
+The pointer writer also retains its acquired lock descriptor across transition
+and referenced-generation validation. Immediately before mutable staging, it
+rechecks the current lock-path device and inode against that held descriptor.
+A real-directory replacement after pointer preflight cannot redirect a stale
+writer into a new directory where it holds no serialization lock. This remains
+a check at the publication boundary, not protection from every later rename.
 
 Canonical output-path helpers reject empty or directory-only output names
 instead of deriving hidden progress members in a working directory. Helpers

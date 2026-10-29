@@ -2113,7 +2113,7 @@ def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
 
 
 @contextmanager
-def _writer_lock(destination: Path) -> Generator[None]:
+def _writer_lock(destination: Path) -> Generator[_LockStream]:
     stream = _open_writer_lock_stream(_writer_lock_path(destination))
     try:
         try:
@@ -2126,7 +2126,7 @@ def _writer_lock(destination: Path) -> Generator[None]:
             )
         try:
             _verify_acquired_writer_lock(_writer_lock_path(destination), stream)
-            yield
+            yield stream
         finally:
             _release_writer_lock_preserving_primary(release)
     finally:
@@ -2134,11 +2134,11 @@ def _writer_lock(destination: Path) -> Generator[None]:
 
 
 @contextmanager
-def _writer_publication_lock(destination: Path) -> Generator[None]:
+def _writer_publication_lock(destination: Path) -> Generator[_LockStream]:
     publication_completed = False
     try:
-        with _writer_lock(destination):
-            yield
+        with _writer_lock(destination) as stream:
+            yield stream
             publication_completed = True
     except ProgressSidecarCommittedError:
         raise
@@ -2477,10 +2477,15 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
     payload = _admit_sidecar_wire_size(validated)
     destination = Path(validated.progress_path)
     _reject_path_redirect(destination, "progress sidecar")
-    with _writer_publication_lock(destination):
+    with _writer_publication_lock(destination) as lock_stream:
         _reject_path_redirect(destination, "progress sidecar")
         _validate_existing_pointer(destination, validated)
         _validate_referenced_generation(validated)
+        # Admission may involve expensive referenced-state reads. The lock
+        # pathname must still identify the inode this process holds.
+        _verify_acquired_writer_lock(
+            _writer_lock_path(destination), lock_stream
+        )
         try:
             return _write_atomic_bytes(destination, payload)
         except ProgressSidecarCommittedError:

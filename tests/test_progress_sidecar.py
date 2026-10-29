@@ -3327,6 +3327,38 @@ def test_existing_writer_lock_retains_its_permissions(tmp_path: Path) -> None:
     assert stat.S_IMODE(updated.st_mode) == retained_mode
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX parent directory replacement is platform-specific",
+)
+def test_writer_lock_rejects_real_parent_swap_after_pointer_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Holding an old lock cannot authorize publication in a new directory."""
+    parent = tmp_path / "original-job"
+    parent.mkdir()
+    detached = tmp_path / "detached-job"
+    candidate = _sidecar(parent)
+    pointer = Path(candidate.progress_path)
+    preflight = cast(
+        "Callable[..., None]", vars(progress)["_validate_existing_pointer"]
+    )
+
+    def swap_after_preflight(destination: Path, sidecar: object) -> None:
+        preflight(destination, sidecar)
+        _swap_real_parent(parent, detached)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_validate_existing_pointer", swap_after_preflight
+        )
+        with pytest.raises(ERROR, match="writer lock"):
+            _ = progress.write_atomic(candidate)
+    assert not pointer.exists()
+    assert not (detached / pointer.name).exists()
+    assert (detached / f"{pointer.name}.lock").is_file()
+
+
 def test_writer_lock_rejects_existing_named_pipe(tmp_path: Path) -> None:
     """A pre-existing FIFO lock cannot block the publisher."""
     destination = tmp_path / PROGRESS_NAME
