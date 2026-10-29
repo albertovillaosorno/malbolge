@@ -46,6 +46,7 @@ from pathlib import Path
 import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+import tempfile
 import time
 from typing import Protocol
 from typing import TYPE_CHECKING
@@ -5588,7 +5589,7 @@ def _inject_temporary_descriptor_admission_failure(
     staged_descriptors: list[int],
     message: str,
 ) -> None:
-    original_mkstemp = progress.tempfile.mkstemp
+    original_mkstemp = tempfile.mkstemp
     original_fstat = os.fstat
 
     def tracked_mkstemp(
@@ -5605,7 +5606,7 @@ def _inject_temporary_descriptor_admission_failure(
             raise OSError(message)
         return original_fstat(descriptor)
 
-    context.setattr(progress.tempfile, "mkstemp", tracked_mkstemp)
+    context.setattr(tempfile, "mkstemp", tracked_mkstemp)
     context.setattr(os, "fstat", fail_staged_fstat)
 
 

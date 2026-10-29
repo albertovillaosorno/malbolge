@@ -307,16 +307,20 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   now also matches an admitted frontend's ABI, source identity/digest, profile,
   ordered function count/names/full spans, and the current `fn()->i32`
   result-signature type-table identity after canonical checkpoint admission.
+
   The expected frontend header must also pass fresh lowering's exact artifact,
   Clang target/version, language, and schema identity check, without lowering
   operations; five independent header-drift cases fail on both resume routes.
+
   Expected functions also share the fresh lowering gate for supported
   definition/inline/linkage/storage forms and valid signed integer constants;
   five unsupported function changes now fail through direct and product resume
   without rebuilding typed-IR instructions. The same independent typed-IR span
   predicates now also reject four malformed or out-of-function expected body,
   return, and literal spans that fresh lowering rejects, without operation
-  comparison or a new IR construction pass. Source-bound typed-IR recovery now
+  comparison or a new IR construction pass.
+
+  Source-bound typed-IR recovery now
   additionally binds the checkpoint's entry-block, return-terminator, and
   literal-instruction spans to the caller's frontend source map, requiring the
   one-block, phi-free, one-instruction shape of fresh lowering. The saved
@@ -324,27 +328,34 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and returned SSA identity without rebuilding IR. Child-inspector regressions
   reject three independently valid internal span forgeries, one extra unused
   instruction, and a changed valid constant with matching source metadata,
-  while preserving unrestricted restoration. The same source-bound route
+  while preserving unrestricted restoration.
+
+  The same source-bound route
   accepts freshly lowered signed `i32` boundary constants including both
   extrema, negative one, and zero through direct and product selectors.
   This exact semantic match is limited to the admitted constant-return
   frontend slice. Source-matched
-  selection also rejects a valid empty-function checkpoint paired with an empty expected
-  frontend, which fresh lowering cannot admit. A valid checkpoint with an
+  selection also rejects a valid empty-function checkpoint paired with an
+  empty expected frontend, which fresh lowering cannot admit. A valid
+  checkpoint with an
   extra global or retained proof obligation is rejected as well, since the
   current normalized frontend slice emits neither module-global objects nor
   verifier-visible obligations.
+
   Real inspector-backed checks reject valid foreign-source state and caller
   provenance drift without changing unrestricted resume. An independently
   admitted unsigned-return checkpoint also rejects despite identical source
   provenance. This is equality admission, not source authentication or full
-  semantic re-lowering. A source-matched production-inspector regression also
+  semantic re-lowering.
+
+  A source-matched production-inspector regression also
   covers all ten immutable publication crash boundaries: the old matching
   generation stays selected until sidecar replacement, after which the new
   independently admitted foreign generation is rejected by direct and product
   routes. The source-matched selector also preserves launch, diagnostics,
   and canonical checkpoint codec failure classes independently of provenance
   mismatch, with both direct and product regression assertions.
+
   Ternary source-bound resume now also binds the signedness, result SSA ID and
   exact constant bits of every supported scalar materialization without
   re-lowering its program. Seven independently admitted scalar substitutions
@@ -355,6 +366,7 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   lowering. Two independently admitted changed-opcode/operand checkpoints
   reject through direct and product inspector selectors, and all twenty
   unchanged binary shapes pass their positive inspector-backed matrix.
+
   Guest byte effects now also match the expected `ByteInput`/`ByteOutput`
   kind and exact input-result/output-operand SSA identity. Inspector-backed
   valid forgeries substituting an input materialization, exchanging an output
@@ -417,12 +429,14 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   generation through the production inspector. The matrix transitions from a
   CPU-labelled generation to a CUDA-labelled generation, alongside malformed-
   state and bridge failure regressions.
+
   The opt-in source-bound ternary route now independently tests all ten
   crash boundaries through both the direct and product selectors. Before
   pointer replacement it restores the matching source generation; after
   replacement it rejects the independently valid foreign generation. Explicit
   negative selectors also distinguish inspector launch, inspector rejection,
   and malformed canonical checkpoint bytes from source mismatch.
+
   A two-function checkpoint proves the last function is source-bound too.
   The source-bound ternary selector now rejects a caller projection containing
   any globals or pending proof obligations, matching fresh lowering's

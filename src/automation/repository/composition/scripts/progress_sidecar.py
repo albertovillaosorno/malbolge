@@ -2185,8 +2185,7 @@ def _close_unadmitted_temporary(
         os.close(descriptor)
     except (OSError, ValueError, RuntimeError) as close_error:
         error.add_note(
-            "progress temporary descriptor cleanup also failed: "
-            f"{close_error}"
+            f"progress temporary cleanup also failed: {close_error}"
         )
 
 
