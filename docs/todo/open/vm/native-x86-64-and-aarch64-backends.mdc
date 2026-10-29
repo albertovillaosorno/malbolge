@@ -151,6 +151,8 @@ synchronization, and hardening remain adapters rather than VM semantics.
   COFF object candidates from the same portable IR. This proves the shared
   host-code boundary and target split. Safe-Rust COFF admission now verifies
   machine/entry/section identity and rejects unresolved external dependencies;
+  the complete COFF long-name table now checks UTF-8 even for unreferenced
+  entries, with negative real pinned-Clang cases on both target machines;
   a minimal direct emitter/verifier owns deopt-only x86-64/AArch64 stubs with
   byte-exact semantic admission, and `direct-initial-halt` now supplies the
   first

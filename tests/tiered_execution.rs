@@ -47517,6 +47517,7 @@ fn check_compiled_coff_case(
     check_rejected_coff_section_alias(&source, &artifact)?;
     check_rejected_coff_line_numbers(&source, &artifact)?;
     check_rejected_coff_inline_name_padding(&source, &artifact)?;
+    check_rejected_coff_unreferenced_invalid_utf8(&source, &artifact)?;
     check_rejected_coff_symbol_name_padding(&source, &artifact)?;
     check_rejected_coff_relocation_pointer(&source, &artifact)?;
     check_rejected_coff_raw_section_pointer(&source, &artifact)?;
@@ -49396,6 +49397,46 @@ fn coff_fixture_with_static_end_label(
     )?;
     write_fixture_u32(&mut boundary, label.saturating_add(8), size)?;
     Ok(CoffStaticEndLabelFixture { boundary, label })
+}
+
+fn check_rejected_coff_unreferenced_invalid_utf8(
+    source: &execution_native::UntrustedNativeSourceArtifact,
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<(), String> {
+    let object = artifact.object();
+    let symbol_start = usize::try_from(read_fixture_u32(object, 8)?)
+        .map_err(|error| format!("COFF symbol offset: {error}"))?;
+    let count = usize::try_from(read_fixture_u32(object, 12)?)
+        .map_err(|error| format!("COFF symbol count: {error}"))?;
+    let string_start = symbol_start
+        .checked_add(count.saturating_mul(18))
+        .ok_or("COFF string table offset overflow")?;
+    let string_length = read_fixture_u32(object, string_start)?;
+    let expected_end = string_start
+        .checked_add(
+            usize::try_from(string_length)
+                .map_err(|error| format!("COFF string size: {error}"))?,
+        )
+        .ok_or("COFF string table length overflow")?;
+    if expected_end != object.len() {
+        return Err(String::from("COFF fixture has nontrailing string table"));
+    }
+    let mut bytes = object.to_vec();
+    bytes.extend_from_slice(&[0xff, 0]);
+    write_fixture_u32(
+        &mut bytes,
+        string_start,
+        string_length.saturating_add(2),
+    )?;
+    let candidate =
+        UntrustedNativeObjectArtifact::from_compiler_output(source, bytes)
+            .map_err(|error| error.to_string())?;
+    if structurally_admit_coff(&candidate) != Err(CoffAdmissionError::Bounds) {
+        return Err(String::from(
+            "COFF accepted unreferenced malformed UTF-8 in string table",
+        ));
+    }
+    Ok(())
 }
 
 fn check_rejected_coff_unreferenced_unterminated_string(

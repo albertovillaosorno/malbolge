@@ -421,6 +421,15 @@ fn parse_coff(object: &[u8]) -> Result<ParsedCoff, CoffAdmissionError> {
     let string_table = checked_add(symbol_table, symbol_bytes)?;
     let string_bytes = parse_string_table_length(object, string_table)?;
     require_range(object, string_table, string_bytes)?;
+    // Every string-table entry is textual data, not only names currently
+    // referenced by a symbol or section. Reject invalid UTF-8 even when an
+    // unreferenced entry would otherwise evade name decoding.
+    let string_data = slice(
+        object,
+        checked_add(string_table, 4)?,
+        string_bytes.saturating_sub(4),
+    )?;
+    let _ = from_utf8(string_data).map_err(|_error| CoffAdmissionError::Bounds)?;
     // The table contains NUL-terminated names, including unreferenced
     // entries. A declared trailing fragment cannot remain unterminated.
     if string_bytes > 4

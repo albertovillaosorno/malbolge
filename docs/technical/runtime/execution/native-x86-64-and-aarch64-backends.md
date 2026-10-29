@@ -346,6 +346,10 @@ The COFF object layout is further required to have disjoint on-disk regions
 for headers, initialized section bytes, relocation records, symbol slots, and
 long-name storage. The long-name string table must end at a NUL
 terminator, even when its final entry is not referenced by any symbol.
+The complete declared string-table payload must also be valid UTF-8, not just
+names referenced by known section/symbol entries. A real pinned-Clang x86-64
+and AArch64 object mutation appends an unreferenced malformed text entry and
+requires structural rejection without constructing an admitted object.
 
 A section cannot alias its own headers or borrow symbol or
 string-table bytes as executable code. Zero-size sections own no bytes.
