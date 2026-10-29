@@ -70,6 +70,8 @@ RUN_PREFIX = "arena-host-c-study-"
 STAGE = "host-c-reference-not-malbolge"
 TOOLCHAIN = "repo-pinned-clang-22.1.8"
 REQUIRED_OBJECTIVES = ["elapsed_ns", "artifact_bytes"]
+CURRENT_OBJECTIVES = [*REQUIRED_OBJECTIVES, "peak_rss_bytes"]
+RSS_RESOURCE_POLICY_VERSION = 2
 REQUIRED_ALGORITHMS = frozenset({
     reference_study.BASELINE,
     reference_study.CANDIDATE,
@@ -94,7 +96,7 @@ class _AuditData:
     verified_binaries: int
     failed_diagnostics: int
     commit: str
-    resource_record: bool
+    resource_record_version: int
 
 
 DEFAULT_AUDIT_OPTIONS = AuditOptions()
@@ -200,7 +202,7 @@ def _check_stage(document: dict[str, Any], prefix: str) -> None:
     if (
         study["baseline"] != reference_study.BASELINE
         or study["toolchain"] != TOOLCHAIN
-        or study["objectives"] != REQUIRED_OBJECTIVES
+        or study["objectives"] not in (REQUIRED_OBJECTIVES, CURRENT_OBJECTIVES)
     ):
         _fail("host-C reference audit configured arms or objectives differ")
     expected_budget = {
@@ -314,27 +316,51 @@ def _check_retained_failures(
     return reference_study.check_retained_failures(document, failures)
 
 
-def _check_resource_controls(
-    prefix: str,
-    *,
-    required: bool,
-) -> bool:
-    relative = f"{prefix}/{RESOURCE_CONTROLS_LEAF}"
-    path = _ROOT / relative
-    if not path.exists() and not path.is_symlink():
-        if required:
-            _fail("host-C reference resource-control record is missing")
-        return False  # Legacy measurements predate controlled child launches.
-    recorded = _read_json(relative, limit=MAX_RESOURCE_CONTROLS_BYTES)
+def _expected_resource_policy(version: int) -> dict[str, str | int]:
     expected = host_c_oracle.resource_controls_record()
-    if not isinstance(recorded, dict) or set(recorded) != set(expected):
+    if version == 1:
+        expected = {
+            key: value
+            for key, value in expected.items()
+            if key not in {"rss_measurement", "rss_tool"}
+        }
+        expected["schema_version"] = 1
+    return expected
+
+
+def _validate_resource_policy_fields(
+    recorded: dict[str, Any],
+    version: int,
+) -> None:
+    expected = _expected_resource_policy(version)
+    if set(recorded) != set(expected):
         _fail("host-C reference child resource-control policy differs")
     if any(
         type(recorded[name]) is not type(value) or recorded[name] != value
         for name, value in expected.items()
     ):
         _fail("host-C reference child resource-control policy differs")
-    return True
+
+
+def _check_resource_controls(
+    prefix: str,
+    *,
+    required: bool,
+) -> int:
+    relative = f"{prefix}/{RESOURCE_CONTROLS_LEAF}"
+    path = _ROOT / relative
+    if not path.exists() and not path.is_symlink():
+        if required:
+            _fail("host-C reference resource-control record is missing")
+        return 0  # Legacy measurements predate controlled child launches.
+    recorded = _read_json(relative, limit=MAX_RESOURCE_CONTROLS_BYTES)
+    if not isinstance(recorded, dict):
+        _fail("host-C reference child resource-control policy differs")
+    version = recorded.get("schema_version")
+    if type(version) is not int or version not in {1, 2}:
+        _fail("host-C reference child resource-control version invalid")
+    _validate_resource_policy_fields(recorded, version)
+    return version
 
 
 def _admit_data(
@@ -374,6 +400,11 @@ def _admit_data(
         prefix,
         required=options.require_resource_controls_record,
     )
+    if (
+        document["study"]["objectives"] == CURRENT_OBJECTIVES
+        and resource_record != RSS_RESOURCE_POLICY_VERSION
+    ):
+        _fail("host-C peak-RSS study requires v2 resource-control record")
     return _AuditData(
         document,
         checked,
@@ -471,7 +502,8 @@ def audit(
         "host_c_failure_diagnostics_checked": data.failed_diagnostics,
         "recorded_source_commit": data.commit,
         "source_commit_object_verified": options.require_source_commit_object,
-        "resource_controls_record_checked": data.resource_record,
+        "resource_controls_record_checked": data.resource_record_version > 0,
+        "resource_controls_record_version": data.resource_record_version,
         "host_c_oracle_replayed": options.replay_oracles,
         "host_c_reference_builds_reproduced": rebuilt,
         "evidence_preflight": data.checked,

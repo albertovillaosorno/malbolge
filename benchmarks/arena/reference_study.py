@@ -275,6 +275,7 @@ def _successful(
         {
             "elapsed_ns": measured.elapsed_ns,
             "artifact_bytes": len(measured.executable),
+            "peak_rss_bytes": measured.peak_rss_bytes,
         },
         {
             "path": f"{root.relative_to(_ROOT).as_posix()}/{path}",
@@ -418,7 +419,7 @@ def _document(
                 "time_ns": BUDGET_SECONDS * 1_000_000_000,
                 "memory_bytes": BUDGET_MEMORY_MIB * 1_048_576,
             },
-            "objectives": ["elapsed_ns", "artifact_bytes"],
+            "objectives": ["elapsed_ns", "artifact_bytes", "peak_rss_bytes"],
         },
         "observations": observations,
     }

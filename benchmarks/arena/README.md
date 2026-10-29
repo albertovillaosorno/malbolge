@@ -186,7 +186,8 @@ The tool runs repository-pinned Clang 22.1.8 at `-O0` and `-O2` for each
 matched case/replicate, compiling the canonical regenerated C, linking the
 independent entry-return harness, and executing the native program. It records
 actual `perf_counter_ns` elapsed time for compile + link + oracle execution,
-plus the resulting native executable byte length, retaining failures rather
+plus native executable byte length and kernel-observed maximum direct-child
+resident memory, retaining failures rather
 than synthesizing costs or treating a failed run as verified. It saves
 `study.json`, one `arena-raw-v1` CSV and run TOML per trial, all three canonical
 challenge bundle files, an `artifacts.json` map, and the exact compiled
@@ -278,27 +279,36 @@ CPU time (`RLIMIT_CPU`), and 8 MiB per output file (`RLIMIT_FSIZE`). Each
 stage also has a parent-enforced 15-second wall deadline; the runner attempts
 to terminate the entire session's original process group after each child,
 including on timeout. Missing Linux/prlimit refuses to launch an unbounded
-fallback. Newly produced studies also retain a version-one
+fallback. Newly produced studies retain a version-two
 `resource-controls.json` declaring those exact per-child ceilings, Linux
-`prlimit` launcher, process-group cleanup mode and local wall deadline.
-The producer refuses to create a new study if the launcher is unavailable.
+`prlimit` launcher, process-group cleanup mode, local wall deadline and
+GNU `time` maximum-RSS measurement method.
+The producer refuses to create a new study if the limiter or RSS measurement
+tool is unavailable.
 The post-run auditor reads this bounded nonlinked JSON and requires exact
 field names, value types and policy equality; it reports
 `resource_controls_record_checked` as `true` or `false`. Add
 `--require-resource-controls-record` to reject older studies with no such
 receipt. The original ignored pilot predates enforcement and remains readable,
 but cannot claim this receipt, even if newly rebuilt reference binaries use
-the current child limits. A matching producer-reported receipt is **not**
-independent proof that a historical process stayed inside those limits.
+the current child limits. Version-one receipts from earlier controlled pilots
+remain readable for their original two-cost comparisons; a claimed new RSS
+objective requires a version-two measurement receipt. A matching producer
+record is **not** proof of historical enforcement or memory attribution.
 
 Linux process-group cleanup and inherited rlimits are not cgroup
 isolation: escaped process groups, aggregate multi-process RSS/CPU budgets,
-the Python producer's work, and actual peak physical memory remain unaccounted
-for. The declared 60-second/1024-MiB study budget is **not** an aggregate
-physically enforced limit; the per-child address-space ceiling is not a
-measurement of resident memory. Generated source and the reference oracle use
-the
-canonical `malbolge-2026.3` profile identity, but native execution targets the
+the Python producer's work, and aggregate physical peak memory remain
+unaccounted for. The declared 60-second/1024-MiB study budget is **not** an
+aggregate physically enforced limit. On successful host-C references, GNU
+`time` supplies `ru_maxrss` in Linux KiB for each direct compile, link and
+oracle child; `peak_rss_bytes` is the maximum of those three values converted
+to bytes. The maximum includes child wrapper overhead but does **not** measure
+simultaneous descendant memory, Python producer memory or GPU usage. New
+capacity curves and Pareto frontiers include RSS as a third declared cost;
+older two-cost studies retain their original meaning. Generated source and
+the reference oracle use the canonical `malbolge-2026.3` profile identity,
+but native execution targets the
 host C ABI. The recorded study stage is explicitly
 `host-c-reference-not-malbolge`; do **not** treat it as Malbolge compiler
 output, verified Malbolge semantics, independent optimizer correctness,

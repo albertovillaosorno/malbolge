@@ -180,7 +180,8 @@ There is no OS sandbox or physical budget enforcement. The final candidate
 verifier and real multi-difficulty compiler comparison remain outstanding.
 
 The bounded host-C *reference study* runner now measures actual compiler,
-linker and native oracle-check wall time plus executable size for pinned
+linker and native oracle-check wall time, executable size and maximum
+per-stage kernel RSS for pinned
 Clang `-O0` versus `-O2` on exactly paired generator cases. It writes an
 ignored local output tree containing reproducible canonical challenge bundles,
 per-trial versioned run manifests, retained `arena-raw-v1` CSV rows, a study
@@ -200,17 +201,25 @@ stage and best-effort original-process-group cleanup after success or timeout.
 The runner fails closed if Linux or `prlimit` is unavailable. Live regression
 children inspect actual inherited kernel rlimits, exhaust the CPU/file-size
 limits, and verify normal descendant shutdown in both success/timeout paths.
-Each new host-C study now writes `resource-controls.json` with the exact
-versioned Linux per-child policy and refuses to begin if `prlimit` is absent.
+Each new host-C study writes a version-two `resource-controls.json` with
+per-child limit policy and the GNU `time` measurement identity. It refuses
+to begin if either `prlimit` or GNU `time` is absent. Child stage usage is
+reported through Linux `ru_maxrss` in KiB; the maximum of successful compile,
+link and execution stages is converted to exact `peak_rss_bytes` and retained
+in raw CSV and analysis as a third cost objective. This is a measured direct
+process-stage maximum, not a combined process-tree RSS or proof of full study
+memory use. Legacy version-one receipts and two-cost studies remain admitted;
+a three-cost RSS study requires the version-two measurement receipt.
 The offline auditor admits the bounded normal-file receipt with strict field
 names, types and policy values; `--require-resource-controls-record` rejects
 legacy study directories with no receipt, while default mode reports them as
 unverified for resource-control provenance. A matching sidecar establishes
 consistency with current configured controls, not independently authenticated
-historical enforcement, measured peak physical memory or a study-wide cgroup.
+historical enforcement, aggregate peak physical memory or a cgroup.
 
-These are **per-child** limits, not physical peak-RSS measurements, cgroup
-restrictions, escape-proof sandboxing, or study-wide enforcement of the declared
+These are **per-child** limits and direct-stage peak-RSS observations, not
+cgroup restrictions, escape-proof sandboxing, aggregate resource use, or
+study-wide enforcement of the declared
 60-second/1024-MiB budget. Historical host-C pilots predate this boundary,
 and their recorded measurements cannot be retrospectively certified.
 
@@ -219,7 +228,7 @@ The runner and the optional host-C challenge-oracle replay are deliberately
 arena analyzer accepts producer-reported data. The stage is labeled
 `host-c-reference-not-malbolge`; the actual host measurements are not evidence
 of Malbolge compiler performance. Independent optimizer candidate verification,
-peak-memory/energy measurement, physical resource-budget enforcement and a
+aggregate peak-memory/energy measurement, full physical budget enforcement and a
 reviewed generalizable scaling conclusion remain absent.
 
 An independent `benchmarks.arena.reference_audit` command can now reopen
@@ -426,7 +435,12 @@ The original study records remain the result authority.
   across multiple canonical difficulties and matched `-O0`/`-O2` arms.
   Live and injected-failure tests verify complete run/raw/challenge identity
   linkage and preserve failed attempts; this is not Malbolge performance.
-- The host-C reference producer now retains version-one Linux child-limit
+- Host-C reference measurement now uses GNU `time` per direct stage to
+  report exact `peak_rss_bytes` (maximum observed Linux `ru_maxrss` after
+  KiB-to-byte conversion), retained as a third Pareto cost. Invalid, zero,
+  oversized or missing stage readings fail closed; old measurements retain
+  their original two-cost analysis.
+- The host-C reference producer now retains version-two Linux child-limit
   policy metadata and blocks new studies when its limiter is unavailable.
   The offline auditor strictly compares the resource-control sidecar to the
   configured process limits; the opt-in required mode rejects old pilots

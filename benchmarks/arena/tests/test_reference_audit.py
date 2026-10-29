@@ -393,6 +393,7 @@ def test_native_rebuild_refuses_unsupported_compiler_mode(mode: str) -> None:
 
 
 GIT_HASH_WIDTH = 40
+RSS_CONTROL_SCHEMA = 2
 MISSING_RECORD_FIELD = "no-field"
 LINKED_RECORD = "symlink"
 RESOURCE_RECORD_ERROR = "resource-control record"
@@ -690,6 +691,7 @@ def test_new_study_retains_versioned_resource_controls_receipt(
         ),
     )
     assert report["resource_controls_record_checked"]
+    assert report["resource_controls_record_version"] == RSS_CONTROL_SCHEMA
     assert report["host_c_binaries_checked"] == OBSERVED_PAIRS * 2
 
 
@@ -699,6 +701,15 @@ def test_missing_child_controls_are_explicitly_legacy_not_attested(
     """An older study without this sidecar never gains a policy assertion."""
     directory, relative = live_pilot
     (directory / "resource-controls.json").unlink()
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="peak-RSS study requires v2",
+    ):
+        reference_audit.audit(relative)
+    old_path = directory / "study.json"
+    old = json.loads(old_path.read_text(encoding="utf-8"))
+    old["study"]["objectives"] = ["elapsed_ns", "artifact_bytes"]
+    _ = old_path.write_text(json.dumps(old), encoding="utf-8")
     old_report = reference_audit.audit(relative)
     assert not old_report["resource_controls_record_checked"]
     with pytest.raises(
@@ -739,3 +750,41 @@ def test_cli_requires_child_resource_controls_when_requested(
     result = capsys.readouterr()
     assert not result.out
     assert RESOURCE_RECORD_ERROR in result.err
+
+
+def test_v1_resource_controls_still_admit_two_cost_reference_studies(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """The first Linux-controlled schema survives subsequent RSS extension."""
+    directory, relative = live_pilot
+    path = directory / "resource-controls.json"
+    data = json.loads(path.read_text())
+    _ = data.pop("rss_measurement")
+    _ = data.pop("rss_tool")
+    data["schema_version"] = 1
+    _ = path.write_text(json.dumps(data), encoding="utf-8")
+    study_path = directory / "study.json"
+    study = json.loads(study_path.read_text())
+    study["study"]["objectives"] = ["elapsed_ns", "artifact_bytes"]
+    _ = study_path.write_text(json.dumps(study), encoding="utf-8")
+    report = reference_audit.audit(relative)
+    assert report["resource_controls_record_version"] == 1
+    assert report["resource_controls_record_checked"]
+
+
+def test_rss_claim_requires_v2_recorded_linux_measurement_policy(
+    live_pilot: tuple[Path, str],
+) -> None:
+    """One cannot pretend old resource-control metadata measured peak RSS."""
+    directory, relative = live_pilot
+    path = directory / "resource-controls.json"
+    data = json.loads(path.read_text())
+    _ = data.pop("rss_tool")
+    _ = data.pop("rss_measurement")
+    data["schema_version"] = 1
+    _ = path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="peak-RSS study requires v2",
+    ):
+        reference_audit.audit(relative)

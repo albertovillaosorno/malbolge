@@ -41,6 +41,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 from typing import Any
 
 import pytest
@@ -445,21 +446,26 @@ def test_evidence_cli_replay_failure_prints_no_pareto_report(
 
 
 def _check_grandchild_stopped(pid: int) -> None:
-    """Check a child has exited or is waiting to be reaped.
+    """Check a descendant stops before accepting group cleanup.
 
     Raises:
-        AssertionError: The known grandchild still runs after cleanup.
+        AssertionError: The known grandchild survives a bounded wait.
 
     """
     proc = Path(f"/proc/{pid}/stat")
-    try:
-        state = proc.read_text(encoding="ascii").split(") ", maxsplit=1)[1][0]
-    except ProcessLookupError, FileNotFoundError:
-        return
-    if state != ZOMBIE_STATE:
-        os.kill(pid, host_c_oracle.GROUP_TERMINATION_SIGNAL)
-        message = "native child descendant escaped its assigned group"
-        raise AssertionError(message)
+    for _ in range(25):
+        try:
+            state = proc.read_text(encoding="ascii").split(") ", maxsplit=1)[1][
+                0
+            ]
+        except ProcessLookupError, FileNotFoundError:
+            return
+        if state == ZOMBIE_STATE:
+            return
+        time.sleep(0.02)
+    os.kill(pid, host_c_oracle.GROUP_TERMINATION_SIGNAL)
+    message = "native child descendant escaped its assigned group"
+    raise AssertionError(message)
 
 
 @pytest.mark.skipif(
@@ -535,3 +541,52 @@ def test_host_c_file_size_resource_limit_blocks_oversized_output(
     with pytest.raises(host_c_oracle.HostOracleError, match="failed"):
         host_c_oracle._run([sys.executable, "-c", script], tmp_path, "fsize")
     assert output.stat().st_size <= max_bytes
+
+
+def test_host_c_child_rss_is_kernel_observed_not_reported_magic(
+    tmp_path: Path,
+) -> None:
+    """A real child allocates memory and reports a kernel byte peak."""
+    script = "payload=bytearray(16 * 1024 * 1024); assert payload[-1] == 0"
+    peak = host_c_oracle._run(
+        [sys.executable, "-c", script],
+        tmp_path,
+        "RSS check",
+    )
+    minimum_bytes = 16 * 1024 * 1024
+    assert (
+        minimum_bytes
+        <= peak
+        <= host_c_oracle.CHILD_VIRTUAL_MEMORY_MIB * 1024 * 1024
+    )
+
+
+@pytest.mark.parametrize("invalid", [b"", b"0", b"unknown", b"2" * 40])
+def test_host_c_rejects_missing_or_malformed_rss_reports(
+    tmp_path: Path,
+    invalid: bytes,
+) -> None:
+    """Malformed external measurement cannot silently become a zero cost."""
+    report = tmp_path / "invalid-stage-rss.txt"
+    _ = report.write_bytes(invalid)
+    with pytest.raises(host_c_oracle.HostOracleError, match="RSS observation"):
+        host_c_oracle._read_stage_rss(report)
+
+
+def test_host_c_rss_measurement_tool_missing_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reference verification never substitutes an absent RSS measurement."""
+    original = host_c_oracle.shutil.which
+
+    def without_time(name: str) -> str | None:
+        return (
+            None
+            if name == host_c_oracle.RSS_MEASUREMENT_TOOL
+            else original(name)
+        )
+
+    monkeypatch.setattr(host_c_oracle.shutil, "which", without_time)
+    with pytest.raises(host_c_oracle.HostOracleError, match="GNU time"):
+        host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "RSS")

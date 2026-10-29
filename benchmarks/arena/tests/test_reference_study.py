@@ -86,6 +86,12 @@ def test_real_host_c_reference_pilot_links_all_trial_evidence() -> None:
         assert {row["case"]["difficulty"] for row in rows} == {4, 8}
         assert all(row["outcome"] == analyze.VERIFIED for row in rows)
         assert all(row["metrics"]["elapsed_ns"] > 0 for row in rows)
+        assert all(row["metrics"]["peak_rss_bytes"] > 0 for row in rows)
+        assert document["study"]["objectives"] == [
+            "elapsed_ns",
+            "artifact_bytes",
+            "peak_rss_bytes",
+        ]
         report = analyze.analyze(analyze.parse_document(json.dumps(document)))
         assert len(report["capacity_curve"]) == CAPACITY_POINTS
         linked = evidence.validate_links(

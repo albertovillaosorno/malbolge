@@ -60,6 +60,9 @@ MIB_BYTES = 1024 * 1024
 GROUP_TERMINATION_SIGNAL = 9
 LINUX_PLATFORM = "linux"
 RESOURCE_LIMIT_TOOL = "prlimit"
+RSS_MEASUREMENT_TOOL = "time"
+RSS_REPORT_MAX_BYTES = 32
+KIB_BYTES = 1024
 OPTIMIZATION_MODES = ("-O0", "-O2")
 _ROOT = Path(__file__).resolve().parents[2]
 _PINNED_CLANG = _ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
@@ -72,6 +75,7 @@ class ReferenceMeasurement:
 
     elapsed_ns: int
     executable: bytes
+    peak_rss_bytes: int
 
 
 class HostOracleError(ValueError):
@@ -102,7 +106,7 @@ def resource_controls_record() -> dict[str, str | int]:
 
     """
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "platform": LINUX_PLATFORM,
         "limiter": RESOURCE_LIMIT_TOOL,
         "scope": "per-child-inherited-not-aggregate",
@@ -111,6 +115,8 @@ def resource_controls_record() -> dict[str, str | int]:
         "output_file_bytes": CHILD_FILE_BYTES,
         "wall_timeout_seconds": SUBPROCESS_TIMEOUT_SECONDS,
         "cleanup": "new-session-best-effort-original-process-group",
+        "rss_measurement": "gnu-time-per-stage-max-ru_maxrss-kib",
+        "rss_tool": RSS_MEASUREMENT_TOOL,
     }
 
 
@@ -132,8 +138,10 @@ def _limited_command(command: list[str]) -> list[str]:
 
 
 def require_child_resource_controls() -> None:
-    """Refuse reference-study creation if the Linux limiter is absent."""
+    """Refuse new studies unless the limiter and RSS measurer are present."""
     _ = _limited_command([])
+    if shutil.which(RSS_MEASUREMENT_TOOL) is None:
+        _fail("host-C child RSS measurement requires GNU time")
 
 
 def _kill_child_group(child: sp.Popen[bytes]) -> None:
@@ -143,21 +151,23 @@ def _kill_child_group(child: sp.Popen[bytes]) -> None:
         os.kill(-child.pid, GROUP_TERMINATION_SIGNAL)
 
 
-def _bounded_child(command: list[str], cwd: Path, label: str) -> None:
-    limited = _limited_command(command)
-    try:
-        child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
-            limited,
-            cwd=cwd,
-            shell=False,
-            stdin=sp.DEVNULL,
-            stdout=sp.DEVNULL,
-            stderr=sp.DEVNULL,
-            start_new_session=True,
-        )
-    except (OSError, sp.SubprocessError) as error:
-        message = f"host-C challenge oracle {label} could not start"
-        raise HostOracleError(message) from error
+def _ascii_digits(value: bytes) -> bool:
+    return value.isascii() and value.isdigit()
+
+
+def _read_stage_rss(path: Path) -> int:
+    with path.open("rb") as stream:
+        raw = stream.read(RSS_REPORT_MAX_BYTES + 1)
+    value = raw.strip()
+    if not value or len(raw) > RSS_REPORT_MAX_BYTES or not _ascii_digits(value):
+        _fail("host-C child RSS observation missing or malformed")
+    peak_kib = int(value)
+    if peak_kib <= 0:
+        _fail("host-C child RSS observation must be positive")
+    return peak_kib * KIB_BYTES
+
+
+def _wait_child(child: sp.Popen[bytes], label: str) -> None:
     try:
         try:
             _ = child.communicate(timeout=SUBPROCESS_TIMEOUT_SECONDS)
@@ -165,25 +175,66 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> None:
             message = f"host-C challenge oracle {label} timed out"
             raise HostOracleError(message) from error
     finally:
-        # A compiler wrapper may fork grandchildren that outlive the leader.
-        # Best-effort group termination does not imply a cgroup-wide sandbox.
         _kill_child_group(child)
         _ = child.wait()
     if child.returncode != 0:
         _fail(f"host-C challenge oracle {label} failed")
 
 
-def _run(command: list[str], cwd: Path, label: str) -> None:
-    """Execute one bounded host-C stage with descendant cleanup."""
-    _bounded_child(command, cwd, label)
+def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
+    limited = _limited_command(command)
+    time_tool = shutil.which(RSS_MEASUREMENT_TOOL)
+    if time_tool is None:
+        _fail("host-C child RSS measurement requires GNU time")
+    fd, output_path = tempfile.mkstemp(
+        dir=cwd,
+        prefix="host-c-stage-rss-",
+        suffix=".txt",
+    )
+    os.close(fd)
+    try:
+        try:
+            child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
+                [
+                    time_tool,
+                    "--format=%M",
+                    "--output",
+                    output_path,
+                    "--",
+                    *limited,
+                ],
+                cwd=cwd,
+                shell=False,
+                stdin=sp.DEVNULL,
+                stdout=sp.DEVNULL,
+                stderr=sp.DEVNULL,
+                start_new_session=True,
+            )
+        except (OSError, sp.SubprocessError) as error:
+            message = f"host-C challenge oracle {label} could not start"
+            raise HostOracleError(message) from error
+        _wait_child(child, label)
+        return _read_stage_rss(Path(output_path))
+    finally:
+        Path(output_path).unlink(missing_ok=True)
 
 
-def _replay_mode(directory: Path, mode: str) -> None:
+def _run(command: list[str], cwd: Path, label: str) -> int:
+    """Execute one limited host stage and return its kernel peak RSS bytes.
+
+    Returns:
+        GNU time ru_maxrss converted from Linux KiB to bytes.
+
+    """
+    return _bounded_child(command, cwd, label)
+
+
+def _replay_mode(directory: Path, mode: str) -> int:
     source = directory / "program.c"
     harness = directory / "oracle-harness.c"
     obj = directory / "challenge.o"
     binary = directory / "oracle-check"
-    _run(
+    compile_rss = _run(
         [
             str(_PINNED_CLANG),
             "-std=c23",
@@ -200,12 +251,13 @@ def _replay_mode(directory: Path, mode: str) -> None:
         directory,
         f"{mode} compile",
     )
-    _run(
+    link_rss = _run(
         [str(_PINNED_CLANG), str(obj), str(harness), "-o", str(binary)],
         directory,
         f"{mode} link",
     )
-    _run([str(binary)], directory, f"{mode} execute")
+    execute_rss = _run([str(binary)], directory, f"{mode} execute")
+    return max(compile_rss, link_rss, execute_rss)
 
 
 def _canonical_payload(
@@ -337,7 +389,11 @@ def measure_reference(
         directory = Path(temporary)
         _write_canonical_source(directory, generated)
         started = time.perf_counter_ns()
-        _replay_mode(directory, mode)
+        peak_rss = _replay_mode(directory, mode)
         elapsed = time.perf_counter_ns() - started
         artifact = (directory / "oracle-check").read_bytes()
-    return ReferenceMeasurement(elapsed_ns=elapsed, executable=artifact)
+    return ReferenceMeasurement(
+        elapsed_ns=elapsed,
+        executable=artifact,
+        peak_rss_bytes=peak_rss,
+    )
