@@ -3226,6 +3226,51 @@ fn ternary_shared_source_offsets_reject_conflicting_coordinates()
 }
 
 #[test]
+fn ternary_source_bound_inspector_rejects_shared_offset_forgery()
+-> Result<(), String> {
+    let original = project_typed_ir(&byte_io_module())?;
+    let saved = enter_ternary_stage(TernaryStageInput::Projection(&original))
+        .map_err(|error| format!("lower matched source: {error:?}"))?;
+    let bytes = canonical_ternary_bytes(&saved)
+        .map_err(|error| format!("encode matched source: {error:?}"))?;
+    let (progress, directory) = publish_ternary_progress_fixture(
+        "conflicting-shared-offset", &bytes,
+    )?;
+    let result = (|| {
+        let interpreter = repository_python();
+        let inspector = progress_inspector();
+        assert_source_matched_ternary_success(
+            &original, &saved, &inspector, (&interpreter, &progress),
+        )?;
+        for endpoint in 0u8..2 {
+            let mut foreign = original.clone();
+            let block = foreign.functions.first_mut()
+                .and_then(|function| function.blocks.first_mut())
+                .ok_or_else(|| String::from("expected byte-I/O block missing"))?;
+            let Some(InputInstruction::ByteOutput { span, .. }) =
+                block.instructions.get_mut(1)
+            else {
+                return Err(String::from("expected byte output missing"));
+            };
+            if endpoint == 0 {
+                span.begin.column = span.begin.column.saturating_add(1);
+            } else {
+                span.end.column = span.end.column.saturating_add(1);
+            }
+            assert_source_matched_ternary_failure(
+                &foreign, &inspector, (&interpreter, &progress),
+                TernaryProgressCheckpointError::IdentityMismatch,
+            )?;
+        }
+        Ok(())
+    })();
+    let cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("clean shared-offset fixture: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
 fn ternary_dense_functions_restore_through_inspector() -> Result<(), String> {
     let (target, projection) = lowered_dense_lane_io_fixture(128)?;
     assert_boolean_inspector_convergence(

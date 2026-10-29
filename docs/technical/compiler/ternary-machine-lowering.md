@@ -995,7 +995,10 @@ sibling operations and the return. A paired negative fixture for both ends
 of a byte output checks that individually valid, contained spans with
 contradictory shared-offset locations are rejected by both validator paths.
 Unobserved byte offsets remain unchecked; source-text authentication is not
-claimed.
+claimed. A production-inspector regression additionally publishes the unchanged
+canonical byte-I/O checkpoint and rejects two conflicting caller source maps
+under both direct `ProgressForSource` and product selection, while matching
+source state still resumes successfully.
 The ordinary progress route remains available but does not bind an expected
 source. The source-matched route rejects an independently valid checkpoint
 with changed function identity despite a matching module digest, as well as
