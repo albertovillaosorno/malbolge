@@ -386,9 +386,11 @@ consume the limiter window, so a prepublication failure can retry immediately.
 A limiter is caller-local to one job: after its first committed sidecar, its
 output progress path, operation ID, and job start timestamp stay fixed. Reusing
 it for a second job fails before rate suppression can hide a missing first
-publication; a separate job must create a separate limiter. Directly constructed
-limiter state also requires every prior-commit timestamp to have a matching
-exact-typed committed sidecar; an orphan timestamp cannot suppress a new job.
+publication; a separate job must create a separate limiter.
+
+Directly constructed limiter state also requires every prior-commit timestamp
+to have a matching exact-typed committed sidecar; an orphan timestamp cannot
+suppress a new job.
 
 A failed post-commit clock sample retains committed-path evidence, falls back to
 the pre-write sample for throttling, and cannot mask an earlier durability

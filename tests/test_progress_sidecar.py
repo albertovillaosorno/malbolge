@@ -4470,7 +4470,7 @@ def test_sidecar_durability_rejects_parent_link_swap_after_sync(
     def relocate_after_sync(descriptor: int) -> None:
         original_fsync(descriptor)
         if stat.S_ISDIR(os.fstat(descriptor).st_mode):
-            parent.rename(detached)
+            _ = parent.rename(detached)
             parent.symlink_to(detached, target_is_directory=True)
 
     with monkeypatch.context() as context:
@@ -4486,7 +4486,7 @@ def test_sidecar_durability_rejects_parent_link_swap_after_sync(
 
 
 def _swap_real_parent(parent: Path, detached: Path) -> None:
-    parent.rename(detached)
+    _ = parent.rename(detached)
     parent.mkdir()
 
 
