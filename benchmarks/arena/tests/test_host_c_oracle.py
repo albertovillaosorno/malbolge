@@ -38,10 +38,10 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
-import subprocess  # ruff: ignore[suspicious-subprocess-import]
+import os
+from pathlib import Path
 import sys
 from typing import Any
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -55,12 +55,11 @@ from benchmarks.arena.tests.test_challenge_bundles import PROFILE
 from benchmarks.arena.tests.test_challenge_bundles import _study
 from benchmarks.challenges import generate
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 MISSING_ROOT_DIAGNOSTIC = "requires --challenge-root"
 ORACLE_FAILURE = "host-C challenge oracle"
 RUN_MISMATCH_DIAGNOSTIC = "O0 execute failed"
+ZOMBIE_STATE = "Z"
+LINUX_PLATFORM = "linux"
 NO_CANDIDATE_SCOPE = "no candidate compiler output"
 TIMEOUT_FAILURE = "timeout"
 
@@ -173,18 +172,46 @@ def test_child_timeout_is_reported_as_replay_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A timed-out direct compiler child fails instead of being trusted."""
+    """A sleeping Linux child exceeds its deadline and is reaped."""
+    monkeypatch.setattr(host_c_oracle, "SUBPROCESS_TIMEOUT_SECONDS", 0.2)
+    with pytest.raises(host_c_oracle.HostOracleError, match="timed out"):
+        host_c_oracle._run(
+            [sys.executable, "-c", "import time; time.sleep(4)"],
+            tmp_path,
+            "O0 compile",
+        )
 
-    def timeout(
-        command: list[str],
-        **kwargs: object,
-    ) -> subprocess.CompletedProcess[bytes]:
-        _ = (command, kwargs)
-        raise subprocess.TimeoutExpired(["compiler"], 1)
 
-    monkeypatch.setattr(host_c_oracle.sp, "run", timeout)
-    with pytest.raises(host_c_oracle.HostOracleError, match="did not complete"):
-        host_c_oracle._run(["dummy"], tmp_path, "O0 compile")
+def test_host_child_has_real_kernel_limits(tmp_path: Path) -> None:
+    """Linux enforces the resource limits before executing user code."""
+    script = (
+        "import resource,sys; "
+        "keys=(resource.RLIMIT_AS,resource.RLIMIT_CPU,resource.RLIMIT_FSIZE); "
+        "expected=(1073741824,16,8388608); "
+        "sys.exit(0 if tuple(resource.getrlimit(k)[0] for k in keys) "
+        "== expected else 7)"
+    )
+    host_c_oracle._run([sys.executable, "-c", script], tmp_path, "limits")
+
+
+def test_host_child_missing_limit_tool_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unbounded native execution cannot silently replace guarded mode."""
+    monkeypatch.setattr(host_c_oracle.shutil, "which", lambda _: None)
+    with pytest.raises(host_c_oracle.HostOracleError, match="prlimit"):
+        host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "limits")
+
+
+def test_host_child_nonzero_exit_fails_closed(tmp_path: Path) -> None:
+    """Child failures remain distinct from passing oracle checks."""
+    with pytest.raises(host_c_oracle.HostOracleError, match="failed"):
+        host_c_oracle._run(
+            [sys.executable, "-c", "raise SystemExit(7)"],
+            tmp_path,
+            "verification",
+        )
 
 
 def test_native_replay_never_compiles_invalid_retained_bundle(
@@ -415,3 +442,96 @@ def test_evidence_cli_replay_failure_prints_no_pareto_report(
     result = capsys.readouterr()
     assert not result.out
     assert RUN_MISMATCH_DIAGNOSTIC in result.err
+
+
+def _check_grandchild_stopped(pid: int) -> None:
+    """Check a child has exited or is waiting to be reaped.
+
+    Raises:
+        AssertionError: The known grandchild still runs after cleanup.
+
+    """
+    proc = Path(f"/proc/{pid}/stat")
+    try:
+        state = proc.read_text(encoding="ascii").split(") ", maxsplit=1)[1][0]
+    except ProcessLookupError, FileNotFoundError:
+        return
+    if state != ZOMBIE_STATE:
+        os.kill(pid, host_c_oracle.GROUP_TERMINATION_SIGNAL)
+        message = "native child descendant escaped its assigned group"
+        raise AssertionError(message)
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM, reason="Linux proc child state"
+)
+@pytest.mark.parametrize("timeout", [False, True])
+def test_host_c_group_termination_reaps_spawned_descendants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    timeout: bool,
+) -> None:
+    """Success and timeout both stop ordinary descendants of native stages."""
+    marker = tmp_path / "grandchild.pid"
+    grandchild = (
+        "import os,time; "
+        f"open({str(marker)!r}, 'w').write(str(os.getpid())); "
+        "time.sleep(10)"
+    )
+    parent = (
+        "import pathlib,subprocess,sys,time; "
+        f"subprocess.Popen([sys.executable,'-c',{grandchild!r}]); "
+        f"p=pathlib.Path({str(marker)!r}); "
+        "[(time.sleep(0.01)) for _ in range(200) if not p.exists()]; "
+        "time.sleep(2)"
+        if timeout
+        else "import pathlib,subprocess,sys,time; "
+        f"subprocess.Popen([sys.executable,'-c',{grandchild!r}]); "
+        f"p=pathlib.Path({str(marker)!r}); "
+        "[(time.sleep(0.01)) for _ in range(200) if not p.exists()]"
+    )
+    if timeout:
+        monkeypatch.setattr(host_c_oracle, "SUBPROCESS_TIMEOUT_SECONDS", 0.6)
+        with pytest.raises(host_c_oracle.HostOracleError, match="timed out"):
+            host_c_oracle._run(
+                [sys.executable, "-c", parent], tmp_path, "descendant"
+            )
+    else:
+        host_c_oracle._run(
+            [sys.executable, "-c", parent], tmp_path, "descendant"
+        )
+    assert marker.exists()
+    _check_grandchild_stopped(int(marker.read_text()))
+
+
+def test_host_c_cpu_resource_limit_interrupts_busy_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Linux kernel enforces the CPU ceiling, not only wall time."""
+    monkeypatch.setattr(host_c_oracle, "CHILD_CPU_SECONDS", 1)
+    monkeypatch.setattr(host_c_oracle, "SUBPROCESS_TIMEOUT_SECONDS", 5)
+    with pytest.raises(host_c_oracle.HostOracleError, match="failed"):
+        host_c_oracle._run(
+            [sys.executable, "-c", "while True: pass"],
+            tmp_path,
+            "CPU budget",
+        )
+
+
+def test_host_c_file_size_resource_limit_blocks_oversized_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The child cannot write a file beyond the configured kernel limit."""
+    max_bytes = 1024
+    monkeypatch.setattr(host_c_oracle, "CHILD_FILE_BYTES", max_bytes)
+    output = tmp_path / "over-limit.dat"
+    script = (
+        f"with open({str(output)!r}, 'wb') as writer:\n"
+        "    writer.write(b'x' * 4096)\n"
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="failed"):
+        host_c_oracle._run([sys.executable, "-c", script], tmp_path, "fsize")
+    assert output.stat().st_size <= max_bytes

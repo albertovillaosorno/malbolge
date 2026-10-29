@@ -137,6 +137,14 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   claims. Missing, extra, linked or altered binaries fail instead of silently
   entering local stage comparisons. Candidate Malbolge verification remains
   unimplemented.
+- Linux host-C reference compile/link/oracle children now require
+  util-linux `prlimit`, inherit kernel per-process limits on virtual address
+  space, CPU seconds, and output-file size, and execute in separate sessions
+  whose original process groups are terminated after exit or wall timeout.
+  Real subprocess tests verify inherited limits and descendant cleanup. This
+  is not a cgroup, physical peak-RSS meter, aggregate study budget enforcement,
+  or a Malbolge candidate-verification boundary. Older pilots cannot inherit
+  these checks retroactively.
 - An opt-in host-C challenge oracle replay now requires canonical challenge
   bundle preflight, re-generates the checked C source, compiles it at `-O0`
   and `-O2` with pinned Clang 22.1.8, and independently compares the native

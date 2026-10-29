@@ -34,10 +34,14 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from hashlib import sha256
+import os
 from pathlib import Path
+import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+import sys
 import tempfile
 import time
 from typing import Any
@@ -49,6 +53,13 @@ MAX_REPLAY_CASES = 16
 MAX_REPLAY_NODES = 512
 ORACLE_BYTES = 4
 SUBPROCESS_TIMEOUT_SECONDS = 15
+CHILD_VIRTUAL_MEMORY_MIB = 1024
+CHILD_CPU_SECONDS = 16
+CHILD_FILE_BYTES = 8 * 1024 * 1024
+MIB_BYTES = 1024 * 1024
+GROUP_TERMINATION_SIGNAL = 9
+LINUX_PLATFORM = "linux"
+RESOURCE_LIMIT_TOOL = "prlimit"
 OPTIMIZATION_MODES = ("-O0", "-O2")
 _ROOT = Path(__file__).resolve().parents[2]
 _PINNED_CLANG = _ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
@@ -83,23 +94,63 @@ def _harness(oracle: bytes) -> bytes:
     ).encode("ascii")
 
 
-def _run(command: list[str], cwd: Path, label: str) -> None:
+def _limited_command(command: list[str]) -> list[str]:
+    if sys.platform != LINUX_PLATFORM:
+        _fail("host-C child resource controls require Linux")
+    utility = shutil.which(RESOURCE_LIMIT_TOOL)
+    if utility is None:
+        _fail("host-C child resource controls require util-linux prlimit")
+    memory = CHILD_VIRTUAL_MEMORY_MIB * MIB_BYTES
+    return [
+        utility,
+        f"--as={memory}:{memory}",
+        f"--cpu={CHILD_CPU_SECONDS}:{CHILD_CPU_SECONDS}",
+        f"--fsize={CHILD_FILE_BYTES}:{CHILD_FILE_BYTES}",
+        "--",
+        *command,
+    ]
+
+
+def _kill_child_group(child: sp.Popen[bytes]) -> None:
+
+    # Linux negative PID targets the child's separate session/process group.
+    with suppress(ProcessLookupError):
+        os.kill(-child.pid, GROUP_TERMINATION_SIGNAL)
+
+
+def _bounded_child(command: list[str], cwd: Path, label: str) -> None:
+    limited = _limited_command(command)
     try:
-        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command,
+        child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
+            limited,
             cwd=cwd,
-            check=False,
             shell=False,
             stdin=sp.DEVNULL,
             stdout=sp.DEVNULL,
-            stderr=sp.PIPE,
-            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            stderr=sp.DEVNULL,
+            start_new_session=True,
         )
-    except (OSError, sp.TimeoutExpired) as error:
-        message = f"host-C challenge oracle {label} did not complete"
+    except (OSError, sp.SubprocessError) as error:
+        message = f"host-C challenge oracle {label} could not start"
         raise HostOracleError(message) from error
-    if completed.returncode != 0:
+    try:
+        try:
+            _ = child.communicate(timeout=SUBPROCESS_TIMEOUT_SECONDS)
+        except sp.TimeoutExpired as error:
+            message = f"host-C challenge oracle {label} timed out"
+            raise HostOracleError(message) from error
+    finally:
+        # A compiler wrapper may fork grandchildren that outlive the leader.
+        # Best-effort group termination does not imply a cgroup-wide sandbox.
+        _kill_child_group(child)
+        _ = child.wait()
+    if child.returncode != 0:
         _fail(f"host-C challenge oracle {label} failed")
+
+
+def _run(command: list[str], cwd: Path, label: str) -> None:
+    """Execute one bounded host-C stage with descendant cleanup."""
+    _bounded_child(command, cwd, label)
 
 
 def _replay_mode(directory: Path, mode: str) -> None:

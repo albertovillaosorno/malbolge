@@ -270,13 +270,26 @@ not an atomic snapshot against concurrent filesystem mutation.
 The limits are one to four positive distinct difficulties, 512 nodes per case,
 and one to five paired repetitions. Native child compile/link/execute each have
 a 15-second deadline; per-run declared budget is 60 seconds and 1024 MiB.
-Actual peak memory usage is **not** measured or enforced, so the memory budget
-is a declared limit only. Generated source and the reference oracle use the
+Linux host-C compiler, linker, and oracle children now run through util-linux
+`prlimit` in their own POSIX process sessions, with kernel-enforced
+**per-child**
+limits of 1024 MiB of **virtual address space** (`RLIMIT_AS`), 16 seconds of
+CPU time (`RLIMIT_CPU`), and 8 MiB per output file (`RLIMIT_FSIZE`). Each
+stage also has a parent-enforced 15-second wall deadline; the runner attempts
+to terminate the entire session's original process group after each child,
+including on timeout. Missing Linux/prlimit refuses to launch an unbounded
+fallback. Linux process-group cleanup and inherited rlimits are not cgroup
+isolation: escaped process groups, aggregate multi-process RSS/CPU budgets,
+the Python producer's work, and actual peak physical memory remain unaccounted
+for. The declared 60-second/1024-MiB study budget is **not** an aggregate
+physically enforced limit; the per-child address-space ceiling is not a
+measurement of resident memory. Generated source and the reference oracle use
+the
 canonical `malbolge-2026.3` profile identity, but native execution targets the
 host C ABI. The recorded study stage is explicitly
 `host-c-reference-not-malbolge`; do **not** treat it as Malbolge compiler
 output, verified Malbolge semantics, independent optimizer correctness,
-resource enforcement, or evidence that one strategy is generally faster.
+study-wide resource enforcement, or evidence that one strategy is faster.
 The study files stay local/ignored and require host-specific review before
 publication. Unverified independence assumptions preclude inferential claims.
 

@@ -192,6 +192,19 @@ match the reported artifact-size metric. Failures cannot claim successful
 binaries; missing, extra, linked or tampered artifacts fail the local study.
 This is integrity of locally retained host artifacts, not independent proof of
 candidate compilation, host resource enforcement or measurement attribution.
+On Linux, pinned host-C compile, link and oracle stages now execute under
+util-linux `prlimit` in separate POSIX sessions. Per-child kernel limits are
+1024 MiB of virtual address space, 16 seconds of CPU time, and 8 MiB per
+output file; parent process monitoring supplies a 15-second wall limit per
+stage and best-effort original-process-group cleanup after success or timeout.
+The runner fails closed if Linux or `prlimit` is unavailable. Live regression
+children inspect actual inherited kernel rlimits, exhaust the CPU/file-size
+limits, and verify normal descendant shutdown in both success/timeout paths.
+These are **per-child** limits, not physical peak-RSS measurements, cgroup
+restrictions, escape-proof sandboxing, or study-wide enforcement of the declared
+60-second/1024-MiB budget. Historical host-C pilots predate this boundary,
+and their recorded measurements cannot be retrospectively certified.
+
 The runner and the optional host-C challenge-oracle replay are deliberately
 **different**: reference runs measure compiled host C, whereas the existing
 arena analyzer accepts producer-reported data. The stage is labeled
@@ -404,6 +417,11 @@ The original study records remain the result authority.
   across multiple canonical difficulties and matched `-O0`/`-O2` arms.
   Live and injected-failure tests verify complete run/raw/challenge identity
   linkage and preserve failed attempts; this is not Malbolge performance.
+- Linux host-C children now inherit kernel-enforced `RLIMIT_AS`,
+  `RLIMIT_CPU`, and `RLIMIT_FSIZE` under util-linux `prlimit`, with separate
+  process-group wall-timeout cleanup. Real subprocess tests exercise limits,
+  successful and timed-out descendants, and unavailable resource tools;
+  these controls do not cover aggregate system resource consumption.
 - `benchmarks/arena/host_c_oracle.py` optionally compiles canonical
   generated C through pinned Clang at `-O0` and `-O2` and independently checks
   the native entry return against its regenerated four-byte oracle. All 16
