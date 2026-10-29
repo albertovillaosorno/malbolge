@@ -141,6 +141,45 @@ preregistered cases, or whose guest-observable behavior differs at any admitted
 input. A failed decoder, missing source/profile identity or unverifiable code
 also rejects adoption regardless of an optimistic payload saving.
 
+## Results: Exact Canonical-Source Binding Sensitivity v1 (2026-10-29)
+
+The separate `pilot-v1.toml` preserves the v0 six-byte `CEB1` baseline and
+introduces 38-byte `CEB2` (magic + little-endian pair count + SHA-256 digest).
+A domain-separated digest now binds the selected profile *fingerprint* and
+exact canonical ternary source, including source identity, ABI, function names,
+spans and effect sequence. This rejects same-count valid foreign-source swaps
+that v0 admits; it is not an authenticated signature and requires a separately
+trusted canonical input. Every single-byte candidate mutation is refused,
+including version downgrade, count, digest, and malformed length. Known-answer
+SHA-256 cases, the eight direct-layout comparisons, and valid equal-count
+source substitutions supply separate checks; direct guest execution remains
+the v0 verified source baseline, not bytecode execution.
+
+The v1 **necessary but insufficient** strict-win model is now
+`R + 38 < 2n + 1`, where `R` includes still-absent guest decoder, loader,
+interpreter, and packaging. An optimistic byte-to-cell conversion remains
+assumed, and the 32 digest bytes do not imply a 32-cell executable source
+binding. The table compares the actual host descriptor bytes with the unchanged
+direct Malbolge source-cell counts; it is a sensitivity bound, not a physical
+packing or performance result.
+
+| Echo pairs | Direct cells | Bound CEB2 bytes | Max R optimistic |
+| ---: | ---: | ---: | ---: |
+| 1 | 3 | 38 | None |
+| 2 | 5 | 38 | None |
+| 3 | 7 | 38 | None |
+| 7 | 15 | 38 | None |
+| 20 | 41 | 38 | 2 |
+| 64 | 129 | 38 | 90 |
+| 256 | 513 | 38 | 474 |
+| 2047 | 4095 | 38 | 4056 |
+
+The v1 bound exactly matches v0's previously **hypothetical** 32-cell binding
+cost, but gives that overhead an explicit host-byte format and falsifiable
+byte-binding test. No Malbolge-resident SHA-256, compact-bytecode interpreter,
+or authentic source anchor is available; verified runtime benefits remain
+unknown. CEB2 remains a non-executable proposal.
+
 ## Threats to Validity
 
 The pilot has no guest interpreter, no real bytecode loader, no linked data

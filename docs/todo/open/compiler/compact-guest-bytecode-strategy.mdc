@@ -71,6 +71,16 @@ code-size explosion or compilation cost.
   verification complexity is unmeasured. This is a pilot only and does **not**
   complete the adoption or semantics acceptance criteria.
 
+- A separate version-one `CEB2` candidate now binds its 6-byte echo
+  descriptor to a 32-byte SHA-256 digest of domain-separated canonical ternary
+  program bytes and exact selected profile fingerprint. Independent admission
+  rejects all single-byte candidate mutations, same-count foreign-source
+  provenance and function-name substitutions, and downgraded CEB1 descriptors;
+  known-answer SHA-256 fixtures and real direct-layout comparisons pass.
+  Its 38-byte optimistic size cost leaves a two-cell missing-runtime allowance
+  at 20 echo pairs, but does not prove physical memory-cell packing, source
+  authenticity, guest execution, or any overall compilation benefit.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

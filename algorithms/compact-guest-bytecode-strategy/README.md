@@ -57,6 +57,39 @@ an executable interpreter or proves authentic provenance. These are upper
 bounds, not observed headroom. See the owning research record for the
 complete table, failed small cases, and unresolved acceptance criteria.
 
+## Bound follow-up: CEB2 v1 (2026-10-29)
+
+`pilot-v1.toml` and `echo_binding.rs` add a separate, 38-byte research
+candidate: four literal `CEB2` bytes, the same little-endian `u16` pair count,
+and exactly 32 SHA-256 digest bytes. The digest binds the fixed domain
+`CEB2-ternary-profile-v1\0`, the selected *profile fingerprint*, a separator
+byte, and the fully validated canonical `malbolge-ternary-ir-v1` wire bytes.
+The canonical bytes contain source identifier/hash, guest ABI, profile ID,
+function names and every operation/source span. The immutable v0 CEB1 pilot
+and its exact six-byte interface remain unchanged.
+
+Both v1 encoding and v1 admission independently revalidate the original
+ternary program. Admission rejects an altered digest, unsupported source,
+changed count, downgrade to CEB1, truncation or extra bytes. The tests compare
+all eight sizes with independently admitted direct layouts, reject every
+single-byte mutation of a 38-byte candidate, and reject otherwise-valid
+same-count changes to source ID/hash and function name. SHA-256 also passes
+published empty, short and multiblock known-answer vectors. This is
+**byte equality binding**, not source authentication: a malicious publisher
+could still supply matching forged source and candidate, and the caller must
+trust the original canonical ternary program and profile.
+
+At the same intentionally optimistic one-byte-per-memory-cell assumption, v1
+requires `R + 38 < 2n + 1` for a strict code-size win. The maximum allowable
+missing guest-runtime cells at `n=1,7,20,256,2047` are respectively
+`None, None, 2, 474, 4056`. The v0 hypothetical +32-cell column shares those
+numerical thresholds, but v1 actually carries 32 digest *bytes* in its
+research descriptor; it still does **not** prove 32 Malbolge data cells can
+hold those bytes or account for a guest digest/decoder, loader, provenance
+anchor, source availability, or any real interpreter. It also does not reduce
+execution time. The CEB2 envelope is expanded **on the host** to the exact
+same executable **direct** source, never interpreted by a guest bytecode VM.
+
 ## Status
 
 No VM-resident bytecode runtime has been implemented. No guest-interpreted

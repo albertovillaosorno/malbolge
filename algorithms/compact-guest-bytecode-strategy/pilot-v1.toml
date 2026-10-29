@@ -1,0 +1,14 @@
+schema = "compact-guest-bytecode-pilot-v1"
+target_profile = "malbolge-2026"
+ternary_codec = "malbolge-ternary-ir-v1"
+source_blind_candidate_codec = "CEB1-u16le"
+source_bound_candidate_codec = "CEB2-u16le-sha256"
+source_bound_candidate_bytes = 38
+binding_domain = "CEB2-ternary-profile-v1"
+binding_material = "selected-profile-fingerprint-and-canonical-ternary-bytes"
+echo_pairs = [1, 2, 3, 7, 20, 64, 256, 2047]
+max_direct_code_cells = 4096
+execution_mode = "host-expansion-to-verified-direct-malbolge-source"
+comparison_type = "optimistic-analytical-code-cell-budget-only"
+source_authentication = "external-original-canonical-ternary-program-required"
+experiment_seed = "none-deterministic"

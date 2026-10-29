@@ -31,6 +31,8 @@
 //
 //! Research-only bytecode candidate, validated through actual direct VM code.
 
+#[path = "../algorithms/compact-guest-bytecode-strategy/echo_binding.rs"]
+pub mod binding;
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_macro.rs"]
 pub mod strategy;
 
@@ -48,6 +50,14 @@ use strategy::{
     ECHO_MACRO_BYTES, EchoMacroError, admit_echo_macro, encode_echo_macro,
     maximum_runtime_cells_for_strict_size_win, maximum_runtime_cells_with_binding,
 };
+
+use binding::{
+    BOUND_ECHO_MACRO_BYTES, BoundEchoError, admit_bound_echo_macro, encode_bound_echo_macro,
+    maximum_bound_runtime_cells,
+};
+
+const BOUND_PILOT_CONFIG: &str =
+    include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v1.toml");
 
 const PILOT_CASES: [usize; 8] = [1, 2, 3, 7, 20, 64, 256, 2047];
 const PILOT_CONFIG: &str =
@@ -476,4 +486,158 @@ fn published_real_malbolge_baseline_matches_structural_expansion() -> Result<(),
         compare_published_direct_baseline(pairs)?;
     }
     Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "separate bound research baseline"
+)]
+fn canonical_bound_echo_macro_admits_exact_direct_source() -> Result<(), String> {
+    for pairs in PILOT_CASES {
+        let original = program(pairs)?;
+        let encoded = encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("bound encode {pairs}: {error:?}"))?;
+        assert_eq!(encoded.len(), BOUND_ECHO_MACRO_BYTES);
+        assert_eq!(&encoded[..4], b"CEB2");
+        let decoded = admit_bound_echo_macro(&original, current_profile(), &encoded)
+            .map_err(|error| format!("bound admit {pairs}: {error:?}"))?;
+        let direct = strategy::bridge::encode_successful_byte_echo(&original, current_profile())
+            .map_err(|error| format!("baseline {pairs}: {error:?}"))?;
+        assert_eq!(decoded.source(), direct.source());
+        assert_eq!(
+            maximum_bound_runtime_cells(decoded.source().len()),
+            decoded.source().len().checked_sub(39),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "negative same-shape provenance tests"
+)]
+fn bound_candidate_rejects_valid_equal_shape_foreign_sources() -> Result<(), String> {
+    let original = program(7)?;
+    let encoded = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("encode bound: {error:?}"))?;
+    let mut alternates = Vec::new();
+    let mut changed_path = original.clone();
+    changed_path.source_id = String::from("research/foreign.c");
+    alternates.push(changed_path);
+    let mut changed_hash = original.clone();
+    changed_hash.source_sha256 = [0xb7; 32];
+    alternates.push(changed_hash);
+    let mut changed_name = original.clone();
+    changed_name
+        .functions
+        .first_mut()
+        .ok_or("missing source function")?
+        .name = String::from("foreign_echo");
+    alternates.push(changed_name);
+    let mut invalid_abi = original.clone();
+    invalid_abi.abi_id = String::from("research-private-abi-v1");
+    assert!(matches!(
+        encode_bound_echo_macro(&invalid_abi, current_profile()),
+        Err(BoundEchoError::Echo(EchoMacroError::Program(_))),
+    ));
+    for alternate in &alternates {
+        let structural = encode_echo_macro(alternate, current_profile())
+            .map_err(|error| format!("alternate structural: {error:?}"))?;
+        assert_eq!(
+            structural,
+            encode_echo_macro(&original, current_profile())
+                .map_err(|error| format!("original structural: {error:?}"))?
+        );
+        assert_eq!(
+            admit_bound_echo_macro(alternate, current_profile(), &encoded),
+            Err(BoundEchoError::SourceMismatch),
+        );
+        let distinct = encode_bound_echo_macro(alternate, current_profile())
+            .map_err(|error| format!("alternate bound: {error:?}"))?;
+        assert_ne!(encoded, distinct);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "candidate mutation matrix")]
+fn bound_candidate_rejects_every_single_byte_mutation_and_downgrade() -> Result<(), String> {
+    let original = program(7)?;
+    let encoded = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound encode: {error:?}"))?;
+    for size in 0..BOUND_ECHO_MACRO_BYTES {
+        assert_eq!(
+            admit_bound_echo_macro(
+                &original,
+                current_profile(),
+                encoded.get(..size).ok_or("invalid candidate prefix")?
+            ),
+            Err(BoundEchoError::InvalidCandidate),
+        );
+    }
+    let mut appended = encoded.to_vec();
+    appended.push(0);
+    assert_eq!(
+        admit_bound_echo_macro(&original, current_profile(), &appended),
+        Err(BoundEchoError::InvalidCandidate),
+    );
+    assert_eq!(
+        admit_bound_echo_macro(
+            &original,
+            current_profile(),
+            &encode_echo_macro(&original, current_profile())
+                .map_err(|error| format!("legacy CEB1: {error:?}"))?
+        ),
+        Err(BoundEchoError::InvalidCandidate),
+    );
+    for position in 0..BOUND_ECHO_MACRO_BYTES {
+        for replacement in u8::MIN..=u8::MAX {
+            let original_byte = encoded.get(position).ok_or("candidate position")?;
+            if replacement == *original_byte {
+                continue;
+            }
+            let mut mutated = encoded;
+            *mutated
+                .get_mut(position)
+                .ok_or("candidate mutation position")? = replacement;
+            assert!(
+                admit_bound_echo_macro(&original, current_profile(), &mutated).is_err(),
+                "mutation {position}/{replacement} must reject",
+            );
+        }
+    }
+    assert_eq!(
+        admit_bound_echo_macro(&original, historical_profile(), &encoded),
+        Err(BoundEchoError::Echo(EchoMacroError::ProfileMismatch)),
+    );
+    Ok(())
+}
+
+#[test]
+fn versioned_bound_pilot_documented_costs_remain_reproducible() {
+    for value in [
+        "schema = \"compact-guest-bytecode-pilot-v1\"",
+        "target_profile = \"malbolge-2026\"",
+        "source_blind_candidate_codec = \"CEB1-u16le\"",
+        "source_bound_candidate_codec = \"CEB2-u16le-sha256\"",
+        "source_bound_candidate_bytes = 38",
+        "binding_domain = \"CEB2-ternary-profile-v1\"",
+        "binding_material = \"selected-profile-fingerprint-and-canonical-ternary-bytes\"",
+        "echo_pairs = [1, 2, 3, 7, 20, 64, 256, 2047]",
+        "source_authentication = \"external-original-canonical-ternary-program-required\"",
+    ] {
+        assert!(BOUND_PILOT_CONFIG.lines().any(|line| line == value));
+    }
+    for (direct, allowance) in [
+        (3, None),
+        (15, None),
+        (39, Some(0)),
+        (41, Some(2)),
+        (513, Some(474)),
+        (4095, Some(4056)),
+    ] {
+        assert_eq!(maximum_bound_runtime_cells(direct), allowance);
+    }
 }
