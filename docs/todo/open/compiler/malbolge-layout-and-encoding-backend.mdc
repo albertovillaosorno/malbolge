@@ -93,6 +93,15 @@ emission.
   The original full 94-phase single-jump decoder matrix remains covered.
   General source-to-target lowering, backward/mutable code jumps, heap data,
   guest runtime linkage and self-modifying revisits remain unimplemented.
+- A bounded library-level auto-padding planner now accepts symbolic
+  forward-jump steps, derives each target from the live data-pointer word and
+  its exact XLAT2 shadow, inserts inert graphical no-ops, and returns a
+  logical-to-physical source map plus independently admitted linear layout.
+  All 94 initial jump decoder phases, 1-to-3-hop paths and jump-then-`j`
+  relocation have focused real-VM evidence for both canonical profiles;
+  invalid short/backward edges and oversized layouts fail closed. The
+  explicit machine-token CLI still takes concrete jump addresses and no
+  branch/loop lowering is claimed.
 - A first real explicit-profile source publisher, `malbolge_layout`, now
   converts a bounded closed machine-op token list into **new** graphical
   `.malbolge` files. It re-admits source and verifies exact-step termination
@@ -124,6 +133,17 @@ emission.
   preflight separately proves reachability only. Missing/empty input files,
   extra operands and existing targets reject. Neither preflight realizes
   EOF, failed I/O, guest ABI or arbitrary C execution.
+- The separate opt-in `--latest-byte-trace --ternary-file` mode now publishes
+  a broader, still bounded canonical MCTR successful-read trace: repeated
+  outputs of the most recently read byte and consumed-but-unused reads are
+  supported. Valid SSA use of an earlier read after a newer input rejects.
+  Both modes share the normative VM two-pattern output/consumption/step
+  preflight and atomic raw/capsule publication, and adjacent echoes yield
+  identical artifacts with or without the opt-in. Real CLI process tests
+  independently reopen published payloads, replay both 0 and 255 byte
+  values, and confirm stale SSA, bad arguments, profile drift and corrupt
+  wire fail without a final file. No EOF/error semantics or general C
+  runtime have been realized.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

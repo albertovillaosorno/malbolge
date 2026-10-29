@@ -134,6 +134,21 @@ modern raw `.malbolge` alone carries no profile and needs an explicitly
 selected profile-aware loader. Neither mode implements source maps, general
 C/ternary lowering or guest-runtime linkage.
 
+### Library-level automatic forward-jump padding
+
+The independent encoder also exposes `encode_auto_padded_forward_layout` for
+logical instruction sequences with symbolic forward-jump slots. It computes
+the target from the live `D`-pointer memory shadow (including XLAT2 updates),
+expands only safe no-op padding cells, records logical-to-source address
+mapping, then calls the same exact-profile independent layout admission.
+The planner fails closed on nonforward targets, post-relocation jumps or
+layout overflow. Real VMs exercise one-, two- and three-hop witnesses and
+jump-then-data-relocation; the first-jump phase matrix covers all 94
+address-sensitive decoder phases under both canonical profiles. The current
+source CLI continues accepting explicit concrete `jump:TARGET` tokens, not
+symbolic jumps. This is a compiler-library layout aid, not branch lowering
+or a general guest code-state solver.
+
 ### Canonical ternary-IR-to-file bridge
 
 The separate `byte-echo-bridge` now connects to the same artifact publisher
@@ -155,6 +170,20 @@ on the normative VM, requiring byte-exact output, consumed-byte count and
 witness-length termination before publication. Forged profiles, corrupted
 wire bytes, valid but unsupported SSA output, missing or oversized inputs,
 extra operands and existing targets fail without a new final artifact.
+An explicit `--latest-byte-trace --ternary-file <canonical-MCTR-file>` mode
+extends this same checked file publisher to latest-read SSA traces with a
+single void return. Each output must refer to the most recent successful
+byte input; repeated output and consumed-but-unused input are allowed. The
+original `--ternary-file` option stays strict adjacent echo, and the two
+modes emit byte-identical raw/capsule artifacts on the echo intersection.
+The publisher derives the exact expected output for each of two fixed
+successful-byte input patterns from the validated ordered MCTR effects, then
+compares the normative VM's output, consumed count and exact halting step.
+Missing/wrong-profile/corrupt wire, stale SSA output after a later read and
+misordered mode options reject before publication. A real external-process
+fixture reloads both new artifact formats and independently verifies
+repeated outputs and ignored inputs, including zero and byte 255.
+
 The source hash in MCTR is copied provenance, not independent source
 authentication; VM preflight with empty input verifies
 termination, and two chosen successful-byte traces are only bounded evidence,

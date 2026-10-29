@@ -49,6 +49,12 @@ const EXECUTABLE: &str = env!("CARGO_BIN_EXE_malbolge_layout");
 const MAX_WIRE_BYTES: u64 = 1_048_576;
 static FIXTURE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
+#[derive(Clone, Copy)]
+enum TraceEffect {
+    Read(u32),
+    Write(u32),
+}
+
 type TestResult<T> = Result<T, String>;
 
 struct Fixture {
@@ -321,5 +327,229 @@ fn missing_empty_extra_argument_and_existing_target_fail_closed() -> TestResult<
             .count(),
         3
     );
+    Ok(())
+}
+
+fn trace_program(effects: &[TraceEffect]) -> TestResult<TernaryProgram> {
+    let mut program = echoed_program(1)?;
+    let end = u32::try_from(effects.len().saturating_add(1))
+        .map_err(|error| format!("trace source length: {error}"))?;
+    let mut operations = Vec::with_capacity(effects.len().saturating_add(1));
+    for (index, effect) in effects.iter().enumerate() {
+        let begin = u32::try_from(index).map_err(|error| format!("trace span: {error}"))?;
+        let span = span(begin, begin.saturating_add(1));
+        operations.push(match effect {
+            TraceEffect::Read(result) => TernaryOperation::ByteInput {
+                result: *result,
+                span,
+            },
+            TraceEffect::Write(value) => TernaryOperation::ByteOutput {
+                value: *value,
+                span,
+            },
+        });
+    }
+    operations.push(TernaryOperation::ReturnVoid {
+        span: span(end.saturating_sub(1), end),
+    });
+    let function = program
+        .functions
+        .first_mut()
+        .ok_or("missing trace function")?;
+    function.operations = operations;
+    function.span = span(0, end);
+    Ok(program)
+}
+
+fn invoke_latest(profile: &str, target: &Path, wire: &Path, capsule: bool) -> TestResult<Output> {
+    let mut command = Command::new(EXECUTABLE);
+    let _args = command
+        .arg("--profile")
+        .arg(profile)
+        .arg("--output")
+        .arg(target);
+    if capsule {
+        let _capsule = command.arg("--capsule");
+    }
+    command
+        .arg("--")
+        .arg("--latest-byte-trace")
+        .arg("--ternary-file")
+        .arg(wire)
+        .output()
+        .map_err(|error| format!("latest-byte CLI invocation: {error}"))
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "raw/capsule output and independent VM trace are checked together"
+)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent raw/capsule successful-byte VM witness is asserted"
+)]
+fn latest_read_trace_publishes_raw_and_capsule_with_exact_guest_effects() -> TestResult<()> {
+    let fixture = Fixture::new()?;
+    let program = trace_program(&[
+        TraceEffect::Read(0),
+        TraceEffect::Write(0),
+        TraceEffect::Write(0),
+        TraceEffect::Read(1), // consumed but never output
+        TraceEffect::Read(2),
+        TraceEffect::Write(2),
+        TraceEffect::Read(3),
+        TraceEffect::Write(3),
+        TraceEffect::Write(3),
+    ])?;
+    let wire = fixture.path("latest.mctr");
+    let _bytes = save_wire(&wire, &program)?;
+    let strict_target = fixture.path("strict-rejected.malbolge");
+    let strict = invoke("malbolge-2026", &strict_target, &wire, false)?;
+    assert!(!strict.status.success());
+    assert!(!strict_target.exists());
+
+    let raw_path = fixture.path("latest-raw.malbolge");
+    let raw = invoke_latest("malbolge-2026", &raw_path, &wire, false)?;
+    assert!(
+        raw.status.success(),
+        "{}",
+        String::from_utf8_lossy(&raw.stderr)
+    );
+    let source = fs::read(&raw_path).map_err(|error| error.to_string())?;
+    assert_eq!(source.len(), 10);
+    let bridge_layout = bridge::encode_successful_latest_byte_trace(&program, current_profile())
+        .map_err(|error| format!("independent trace layout: {error:?}"))?;
+    assert_eq!(source, bridge_layout.source());
+
+    let capsule_path = fixture.path("latest-capsule.malbolge");
+    let framed = invoke_latest("malbolge-2026", &capsule_path, &wire, true)?;
+    assert!(
+        framed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&framed.stderr)
+    );
+    let capsule_bytes = fs::read(&capsule_path).map_err(|error| error.to_string())?;
+    let capsule = parse_capsule(&capsule_bytes)
+        .map_err(|error| format!("capsule decode: {error:?}"))?
+        .ok_or("missing latest-byte capsule")?;
+    assert_eq!(capsule.profile(), current_profile());
+    assert_eq!(capsule.payload(), source);
+    for (input, output) in [
+        (vec![0, 255, 173, 128], vec![0, 0, 173, 128, 128]),
+        (vec![255, 0, 128, 1], vec![255, 255, 128, 1, 1]),
+    ] {
+        let mut vm = ProfileMachine::from_source(capsule.profile(), capsule.payload(), input)
+            .map_err(|error| format!("independent VM load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(10),
+            Ok(RunOutcome::Terminated { steps: 10, .. })
+        ));
+        assert_eq!(vm.input_consumed(), 4);
+        assert_eq!(vm.output(), output);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "compatibility and output identity"
+)]
+fn latest_read_opt_in_does_not_change_existing_adjacent_echo_artifacts() -> TestResult<()> {
+    let fixture = Fixture::new()?;
+    let program = echoed_program(3)?;
+    let wire = fixture.path("echo.mctr");
+    let _wire = save_wire(&wire, &program)?;
+    for capsule in [false, true] {
+        let old_path = fixture.path(if capsule {
+            "old-cap.malbolge"
+        } else {
+            "old-raw.malbolge"
+        });
+        let new_path = fixture.path(if capsule {
+            "new-cap.malbolge"
+        } else {
+            "new-raw.malbolge"
+        });
+        let old = invoke("malbolge-2026", &old_path, &wire, capsule)?;
+        let new = invoke_latest("malbolge-2026", &new_path, &wire, capsule)?;
+        assert!(
+            old.status.success(),
+            "{}",
+            String::from_utf8_lossy(&old.stderr)
+        );
+        assert!(
+            new.status.success(),
+            "{}",
+            String::from_utf8_lossy(&new.stderr)
+        );
+        assert_eq!(
+            fs::read(old_path).map_err(|error| error.to_string())?,
+            fs::read(new_path).map_err(|error| error.to_string())?
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "all hostile wire and parser cases must fail before publication"
+)]
+#[expect(clippy::panic_in_result_fn, reason = "hostile source and mode grammar")]
+fn latest_read_mode_rejects_stale_ssa_invalid_wire_profile_and_arguments() -> TestResult<()> {
+    let fixture = Fixture::new()?;
+    let wire = fixture.path("latest.mctr");
+    let target = fixture.path("never-created.malbolge");
+    let stale = trace_program(&[
+        TraceEffect::Read(0),
+        TraceEffect::Read(1),
+        TraceEffect::Write(0),
+    ])?;
+    let _bytes = save_wire(&wire, &stale)?;
+    let rejected = invoke_latest("malbolge-2026", &target, &wire, true)?;
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("UnsupportedEffectTrace"));
+    assert!(!target.exists());
+
+    let supported = trace_program(&[TraceEffect::Read(0), TraceEffect::Write(0)])?;
+    let original = save_wire(&wire, &supported)?;
+    let wrong_profile = invoke_latest("malbolge-1998", &target, &wire, false)?;
+    assert!(!wrong_profile.status.success());
+    assert!(!target.exists());
+    let mut corrupted = original.clone();
+    if let Some(last) = corrupted.last_mut() {
+        *last ^= 0x80;
+    }
+    fs::write(&wire, corrupted).map_err(|error| error.to_string())?;
+    let bad_wire = invoke_latest("malbolge-2026", &target, &wire, true)?;
+    assert!(!bad_wire.status.success());
+    assert!(!target.exists());
+    fs::write(&wire, original).map_err(|error| error.to_string())?;
+
+    for suffix in [
+        vec!["--latest-byte-trace", "input", "output", "halt"],
+        vec!["--latest-byte-trace", "--ternary-file"],
+        vec![
+            "--latest-byte-trace",
+            "--ternary-file",
+            "latest.mctr",
+            "nop",
+        ],
+        vec!["--ternary-file", "latest.mctr", "--latest-byte-trace"],
+    ] {
+        let invalid = Command::new(EXECUTABLE)
+            .arg("--profile")
+            .arg("malbolge-2026")
+            .arg("--output")
+            .arg(&target)
+            .arg("--")
+            .args(suffix)
+            .output()
+            .map_err(|error| error.to_string())?;
+        assert!(!invalid.status.success());
+        assert!(!target.exists());
+    }
     Ok(())
 }

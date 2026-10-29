@@ -21,7 +21,7 @@
 // - Merge-When:
 //   - General backend owns equivalent publication with the same guarantees.
 // - Summary:
-//   - Publishes only complete executable machine-subset source artifacts.
+//   - Publishes only complete executable machine and byte-I/O trace artifacts.
 // - Description:
 //   - Requires explicit profile, validates admitted source with a real VM.
 // - Usage:
@@ -42,7 +42,7 @@ use std::process::{ExitCode, id};
 use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile};
 
 use crate::bridge::{
-    encode_successful_byte_echo,
+    encode_successful_byte_echo, encode_successful_latest_byte_trace,
     ternary::{TernaryOperation, canonical_ternary_program},
 };
 use crate::layout::{
@@ -56,11 +56,15 @@ const CAPSULE_ARG: &str = "--capsule";
 const MAX_OPERATIONS: usize = 4096;
 const MAX_TERNARY_WIRE_BYTES: u64 = 1_048_576;
 const TERNARY_FILE_ARG: &str = "--ternary-file";
+const LATEST_BYTE_TRACE_ARG: &str = "--latest-byte-trace";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 
 #[derive(Debug)]
 enum SourceSpec {
-    CanonicalTernaryFile(PathBuf),
+    CanonicalTernaryFile {
+        path: PathBuf,
+        mode: TernaryFileMode,
+    },
     MachineOperations(Vec<LinearOpcode>),
 }
 
@@ -72,10 +76,22 @@ struct CommandSpec {
     source: SourceSpec,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum TernaryFileMode {
+    AdjacentEcho,
+    LatestRead,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum SuccessfulByteEffect {
+    Input,
+    Output,
+}
+
 struct VerifiedSource {
     source: Vec<u8>,
     steps: usize,
-    successful_byte_echo_pairs: Option<usize>,
+    successful_byte_effects: Option<Vec<SuccessfulByteEffect>>,
 }
 
 fn parse_operation(token: &str) -> Result<LinearOpcode, String> {
@@ -104,6 +120,48 @@ fn parse_operation(token: &str) -> Result<LinearOpcode, String> {
     }
 }
 
+fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<SourceSpec, String> {
+    let first = arguments
+        .next()
+        .ok_or("missing machine operations or ternary-file argument")?;
+    let source =
+        if first == OsStr::new(TERNARY_FILE_ARG) || first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
+            let mode = if first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
+                if arguments.next().as_deref() != Some(OsStr::new(TERNARY_FILE_ARG)) {
+                    return Err(String::from(
+                        "--latest-byte-trace requires --ternary-file <path>",
+                    ));
+                }
+                TernaryFileMode::LatestRead
+            } else {
+                TernaryFileMode::AdjacentEcho
+            };
+            let path = PathBuf::from(arguments.next().ok_or("missing ternary wire path")?);
+            if arguments.next().is_some() {
+                return Err(String::from(
+                    "ternary file mode accepts exactly one input path",
+                ));
+            }
+            SourceSpec::CanonicalTernaryFile { path, mode }
+        } else {
+            let first_token = first
+                .into_string()
+                .map_err(|_error| String::from("opcode token must be UTF-8"))?;
+            let mut operations = vec![parse_operation(&first_token)?];
+            for raw_token in arguments {
+                if operations.len() >= MAX_OPERATIONS {
+                    return Err(String::from("too many machine opcode tokens"));
+                }
+                let token = raw_token
+                    .into_string()
+                    .map_err(|_error| String::from("opcode token must be UTF-8"))?;
+                operations.push(parse_operation(&token)?);
+            }
+            SourceSpec::MachineOperations(operations)
+        };
+    Ok(source)
+}
+
 fn parse_arguments(mut arguments: impl Iterator<Item = OsString>) -> Result<CommandSpec, String> {
     if arguments.next().as_deref() != Some(OsStr::new(PROFILE_ARG)) {
         return Err(String::from("expected --profile <canonical-id>"));
@@ -126,33 +184,7 @@ fn parse_arguments(mut arguments: impl Iterator<Item = OsString>) -> Result<Comm
             "expected optional --capsule then -- before opcode tokens",
         ));
     }
-    let first = arguments
-        .next()
-        .ok_or("missing machine operations or ternary-file argument")?;
-    let source = if first == OsStr::new(TERNARY_FILE_ARG) {
-        let path = PathBuf::from(arguments.next().ok_or("missing ternary wire path")?);
-        if arguments.next().is_some() {
-            return Err(String::from(
-                "ternary file mode accepts exactly one input path",
-            ));
-        }
-        SourceSpec::CanonicalTernaryFile(path)
-    } else {
-        let first_token = first
-            .into_string()
-            .map_err(|_error| String::from("opcode token must be UTF-8"))?;
-        let mut operations = vec![parse_operation(&first_token)?];
-        for raw_token in arguments {
-            if operations.len() >= MAX_OPERATIONS {
-                return Err(String::from("too many machine opcode tokens"));
-            }
-            let token = raw_token
-                .into_string()
-                .map_err(|_error| String::from("opcode token must be UTF-8"))?;
-            operations.push(parse_operation(&token)?);
-        }
-        SourceSpec::MachineOperations(operations)
-    };
+    let source = parse_source(&mut arguments)?;
     Ok(CommandSpec {
         capsule,
         output,
@@ -218,6 +250,52 @@ fn read_ternary_program(path: &Path) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+fn verified_ternary_source(
+    path: &Path,
+    mode: TernaryFileMode,
+    profile: &'static malbolge::ProfileDescriptor,
+) -> Result<VerifiedSource, String> {
+    let bytes = read_ternary_program(path)?;
+    let program = canonical_ternary_program(&bytes)
+        .map_err(|error| format!("canonical ternary wire rejected: {error:?}"))?;
+    let layout = match mode {
+        TernaryFileMode::AdjacentEcho => encode_successful_byte_echo(&program, profile),
+        TernaryFileMode::LatestRead => encode_successful_latest_byte_trace(&program, profile),
+    }
+    .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
+    if layout.profile_id() != profile.id() || layout.profile_fingerprint() != profile.fingerprint()
+    {
+        return Err(String::from(
+            "ternary source profile mismatch after admission",
+        ));
+    }
+    let effects = program
+        .functions
+        .first()
+        .ok_or("bridge accepted no ternary function")?
+        .operations
+        .iter()
+        .filter(|operation| {
+            matches!(
+                operation,
+                TernaryOperation::ByteInput { .. } | TernaryOperation::ByteOutput { .. }
+            )
+        })
+        .map(|operation| {
+            if matches!(operation, TernaryOperation::ByteInput { .. }) {
+                SuccessfulByteEffect::Input
+            } else {
+                SuccessfulByteEffect::Output
+            }
+        })
+        .collect();
+    Ok(VerifiedSource {
+        source: layout.source().to_vec(),
+        steps: layout.executed_code_positions().len(),
+        successful_byte_effects: Some(effects),
+    })
+}
+
 fn verified_source(
     spec: &SourceSpec,
     profile: &'static malbolge::ProfileDescriptor,
@@ -239,64 +317,58 @@ fn verified_source(
             Ok(VerifiedSource {
                 source: admitted.source().to_vec(),
                 steps: admitted.executed_code_positions().len(),
-                successful_byte_echo_pairs: None,
+                successful_byte_effects: None,
             })
         }
-        SourceSpec::CanonicalTernaryFile(path) => {
-            let bytes = read_ternary_program(path)?;
-            let program = canonical_ternary_program(&bytes)
-                .map_err(|error| format!("canonical ternary wire rejected: {error:?}"))?;
-            let layout = encode_successful_byte_echo(&program, profile)
-                .map_err(|error| format!("ternary byte-echo bridge rejected: {error:?}"))?;
-            if layout.profile_id() != profile.id()
-                || layout.profile_fingerprint() != profile.fingerprint()
-            {
-                return Err(String::from(
-                    "ternary source profile mismatch after admission",
-                ));
-            }
-            let pair_count = program
-                .functions
-                .first()
-                .ok_or("bridge accepted no ternary function")?
-                .operations
-                .iter()
-                .filter(|operation| matches!(operation, TernaryOperation::ByteInput { .. }))
-                .count();
-            Ok(VerifiedSource {
-                source: layout.source().to_vec(),
-                steps: layout.executed_code_positions().len(),
-                successful_byte_echo_pairs: Some(pair_count),
-            })
+        SourceSpec::CanonicalTernaryFile { path, mode } => {
+            verified_ternary_source(path, *mode, profile)
         }
     }
 }
 
-fn verify_successful_byte_echo(
+fn verify_successful_byte_trace(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
-    pairs: usize,
+    effects: &[SuccessfulByteEffect],
 ) -> Result<(), String> {
     let patterns: [[u8; 8]; 2] = [
         [0, 255, 173, 128, 1, 254, 10, 65],
         [255, 0, 82, 127, 254, 1, 42, 13],
     ];
-    if pairs == 0 || pairs.checked_mul(2).and_then(|n| n.checked_add(1)) != Some(artifact.steps) {
+    let reads = effects
+        .iter()
+        .filter(|effect| matches!(effect, SuccessfulByteEffect::Input))
+        .count();
+    if reads == 0 || effects.len().checked_add(1) != Some(artifact.steps) {
         return Err(String::from(
             "ternary bridge emitted an unexpected effect geometry",
         ));
     }
     for pattern in patterns {
-        let input: Vec<u8> = pattern.into_iter().cycle().take(pairs).collect();
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input.clone())
+        let input: Vec<u8> = pattern.into_iter().cycle().take(reads).collect();
+        let mut consumed = 0;
+        let mut latest = None;
+        let mut expected_output = Vec::new();
+        for effect in effects {
+            match effect {
+                SuccessfulByteEffect::Input => {
+                    latest = input.get(consumed).copied();
+                    consumed = consumed.checked_add(1).ok_or("byte input count overflow")?;
+                }
+                SuccessfulByteEffect::Output => {
+                    expected_output.push(latest.ok_or("output before successful input")?);
+                }
+            }
+        }
+        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
             .map_err(|error| format!("successful-byte VM load failed: {error:?}"))?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps: count, .. }) if count == artifact.steps)
         {
             return Err(String::from("successful-byte VM trace did not terminate"));
         }
-        if vm.output() != input || vm.input_consumed() != pairs {
-            return Err(String::from("successful-byte VM echo trace mismatch"));
+        if vm.output() != expected_output || vm.input_consumed() != reads {
+            return Err(String::from("successful-byte VM trace mismatch"));
         }
     }
     Ok(())
@@ -313,8 +385,8 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
             "normative VM did not halt at the proven code step",
         ));
     }
-    if let Some(pairs) = artifact.successful_byte_echo_pairs {
-        verify_successful_byte_echo(profile, &artifact, pairs)?;
+    if let Some(effects) = &artifact.successful_byte_effects {
+        verify_successful_byte_trace(profile, &artifact, effects)?;
     }
     let publication = if spec.capsule {
         let bytes = build_capsule(profile, &artifact.source)

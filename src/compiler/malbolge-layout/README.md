@@ -60,6 +60,18 @@ regression verifies that a later jump may also read an already *executed*
 no-op that has since been XLAT2-encrypted; the original code-cell byte is not
 a trustworthy jump operand after execution.
 
+An opt-in library-level forward-padding planner,
+`encode_auto_padded_forward_layout`, accepts logical
+`PaddedForwardStep::{Instruction, Jump}` and inserts the exact graphical
+no-op gap for each independently admissible forward jump. Its output includes
+both the verified linear layout and the mapping of logical operations to
+physical source positions. Each target is derived from the evolving
+`D`-pointer memory word, including earlier XLAT2 encryption; no caller-supplied
+jump destination is trusted. The planner rejects backward/short targets,
+post-relocation jumps, oversized code and unsupported logical plans. The
+original explicit machine-op CLI still requires concrete `jump:TARGET` tokens;
+it does not invoke this solver automatically.
+
 Every admitted layout returns deterministic, step-indexed witnesses for
 **four** facts: reachable code pointer, data pointer at the start of each
 step, code cell encrypted after each nonhalt step, and the *planned guest
@@ -113,6 +125,24 @@ cargo run --bin malbolge_layout -- \
   --ternary-file .temp/echo.mctr
 ```
 
+The original `--ternary-file` form retains strict adjacent-pair echo
+admission. A separate explicit mode accepts a *latest-successful-read* trace:
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 \
+  --output .temp/latest-read.malbolge --capsule -- \
+  --latest-byte-trace --ternary-file .temp/latest-read.mctr
+```
+
+In this opt-in mode, every output must reference exactly the latest read's
+SSA result. Reads may be unused and a read can be output more than once.
+Replaying an older SSA byte after another input, writing before the first
+input, scalar operations and non-void returns remain unsupported. The
+successful-byte condition excludes EOF and failed I/O; no guest byte storage
+or transformation is synthesized. Both modes produce identical bytes for
+admitted adjacent echo programs.
+
 `--ternary-file` is mutually exclusive with individual decoded machine-op
 tokens. Its sole operand must be an existing, nonempty regular file with at
 most 1,048,576 bytes. The complete MCTR version-one stream is independently
@@ -126,8 +156,9 @@ mode. Real external-process tests validate a successful three-byte trace
 (including `0x00`/`0xff`) and reject canonical but semantically unsupported
 SSA output, profile drift, corrupted wire and oversized files. Before any
 publication, the emitter additionally runs two deterministic *successful*
-input-byte patterns through the real normative VM and checks exact output,
-consumed-input count, and terminal instruction step. This is a bounded
+input-byte patterns through the real normative VM and checks output
+according to the admitted ordered read/write effect trace, consumed-input
+count, and terminal instruction step. This is a bounded
 execution regression, not a proof of all possible input traces or I/O errors.
 Missing/empty input files, extra operands, and existing target paths also
 fail without changing the output directory.
