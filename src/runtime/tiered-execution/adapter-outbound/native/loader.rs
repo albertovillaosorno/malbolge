@@ -2077,7 +2077,7 @@ fn verified_load_image_parts(
     target_triple: &'static str,
 ) -> Result<VerifiedLoadImageParts, VerifiedDirectLoadError> {
     let isa = key.target().host_isa();
-    let executable = extract_relocation_free_executable_text(object, isa)
+    let executable = extract_relocation_free_executable_text(object, key)
         .map_err(map_executable_text_error)?;
     let alignment = minimum_instruction_alignment(isa);
     if !is_aligned(executable.entry_offset, alignment)

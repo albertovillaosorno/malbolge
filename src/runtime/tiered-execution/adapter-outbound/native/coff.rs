@@ -308,8 +308,9 @@ type SymbolSlots = Vec<Option<CoffSymbol>>;
 /// unresolved closure, or any relocation owned by no current loader.
 pub(super) fn extract_relocation_free_executable_text(
     object: &[u8],
-    isa: HostIsa,
+    key: &NativeArtifactKey,
 ) -> Result<CoffExecutableText, CoffExecutableTextError> {
+    let isa = key.target().host_isa();
     if read_u16(object, 0).map_err(CoffExecutableTextError::Admission)?
         != expected_machine(isa)
     {
@@ -329,6 +330,10 @@ pub(super) fn extract_relocation_free_executable_text(
     validate_sections(object, &parsed.sections)
         .map_err(CoffExecutableTextError::Admission)?;
     validate_coff_layout(object, &parsed)
+        .map_err(CoffExecutableTextError::Admission)?;
+    // Extraction must rebind identity as well as structure: a previously
+    // verified artifact does not validate separately supplied object bytes.
+    validate_profile_metadata(object, &parsed.sections, key)
         .map_err(CoffExecutableTextError::Admission)?;
     validate_symbols_and_relocations(object, &parsed)
         .map_err(CoffExecutableTextError::Admission)?;

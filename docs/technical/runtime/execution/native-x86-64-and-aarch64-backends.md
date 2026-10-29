@@ -189,7 +189,14 @@ The callable `.text` cannot simultaneously claim initialized or uninitialized
 data content. Likewise, `.mbprof` cannot claim code or uninitialized data
 content while presenting itself as read-only initialized identity metadata.
 These permission and required-content checks are shared with relocation-free
-COFF extraction, which cannot independently verify the key-bound metadata.
+COFF extraction.
+
+Extraction now additionally receives the complete
+`NativeArtifactKey` and compares the embedded `.mbprof` bytes against its
+canonical profile metadata before exposing executable text. A valid COFF
+object with a different key, mutated profile bytes, or a renamed metadata
+section is rejected on both x86-64 and AArch64. This is a second admission
+check, not permission to load unverified executable code.
 
 Both `.text` and `.mbprof` also reject non-cacheable, nonpageable, and shared
 memory flags because these image-loader policies have no object-level owner.

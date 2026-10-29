@@ -1242,9 +1242,11 @@ A distinct single-resident lease cache
   state-applying authority. `NativeRegionBuffers` keeps caller loans bound to
   the same verified bytes, target assumptions, and ABI pointer.
   `VerifiedDirectLoadImage` reparses verified COFF, rejects relocations,
-  extracts
-  exact immutable code and entry offset, retains full key/target identity, and
-  validates ISA alignment. Its fixed policy requires RW-to-RX transition plus
+  extracts exact immutable code and entry offset, retains full key/target
+  identity, and validates ISA alignment. Relocation-free extraction now also
+  binds `.mbprof` to the exact native key, rejecting both mutated/missing
+  metadata and a different structurally valid object's identity on both ISAs.
+  Its fixed policy requires RW-to-RX transition plus
   instruction synchronization. This does not link, allocate pages, change real
 
   permissions, flush instructions, clean up mappings, or invoke code.

@@ -70424,6 +70424,98 @@ fn verified_direct_load_image_rejects_machine_drift() -> Result<(), String> {
 }
 
 #[test]
+fn verified_direct_load_image_rejects_profile_metadata_drift()
+-> Result<(), String> {
+    let program = direct_output_program();
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = select_verified_direct_native(
+            &program,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        let header = coff_fixture_metadata_header(artifact.object())?;
+        let start = usize::try_from(read_fixture_u32(
+            artifact.object(),
+            header.saturating_add(20),
+        )?)
+        .map_err(|error| format!("metadata start overflow: {error}"))?;
+        let length = usize::try_from(read_fixture_u32(
+            artifact.object(),
+            header.saturating_add(16),
+        )?)
+        .map_err(|error| format!("metadata length overflow: {error}"))?;
+        if length == 0 {
+            return Err(String::from("direct COFF profile metadata is empty"));
+        }
+        let mut mutated = artifact.object().to_vec();
+        let first =
+            mutated.get_mut(start).ok_or("COFF profile bytes missing")?;
+        *first ^= 1;
+        if VerifiedDirectLoadImage::from_object_for_test(&artifact, &mutated)
+            != Err(VerifiedDirectLoadError::Object(
+                CoffAdmissionError::ProfileMetadata,
+            ))
+        {
+            return Err(format!(
+                "native executable loader accepted profile drift on {isa:?}"
+            ));
+        }
+        let mut renamed = artifact.object().to_vec();
+        let name = renamed
+            .get_mut(header..header.saturating_add(8))
+            .ok_or("COFF metadata section name missing")?;
+        name.copy_from_slice(b".mbpr0f\0");
+        if VerifiedDirectLoadImage::from_object_for_test(&artifact, &renamed)
+            != Err(VerifiedDirectLoadError::Object(
+                CoffAdmissionError::ProfileMetadata,
+            ))
+        {
+            return Err(format!(
+                "native executable loader accepted absent profile on {isa:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn verified_direct_load_image_rejects_foreign_valid_profile_key()
+-> Result<(), String> {
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let expected = select_verified_direct_native(
+            &direct_output_program(),
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        let foreign = select_verified_direct_native(
+            &direct_no_operation_program(),
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| error.to_string())?;
+        if foreign.key() == expected.key() {
+            return Err(String::from("foreign native key was not distinct"));
+        }
+        if VerifiedDirectLoadImage::from_object_for_test(
+            &expected,
+            foreign.object(),
+        ) != Err(VerifiedDirectLoadError::Object(
+            CoffAdmissionError::ProfileMetadata,
+        )) {
+            return Err(format!(
+                "native loader admitted foreign object identity on {isa:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn verified_direct_load_image_rejects_relocations() -> Result<(), String> {
     const TEXT_HEADER: usize = 20;
     const RELOCATION_START_OFFSET: usize = 24;
