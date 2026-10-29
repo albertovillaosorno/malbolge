@@ -3052,6 +3052,130 @@ fn ternary_projection_rejects_late_invalid_function_and_operation_spans()
     Ok(())
 }
 
+fn forge_input_subspan_coordinates(
+    projection: &mut TypedIrInput,
+    mutation: u8,
+) -> Result<(), String> {
+    let block = projection.functions.first_mut()
+        .and_then(|function| function.blocks.first_mut())
+        .ok_or_else(|| String::from("source block missing"))?;
+    let span: &mut InputSourceSpan = match mutation {
+        0 | 1 => {
+            let Some(InputInstruction::ByteInput { span, .. }) =
+                block.instructions.first_mut()
+            else {
+                return Err(String::from("source byte input missing"));
+            };
+            span
+        },
+        2 => {
+            let InputTerminator::Return { span, .. } = &mut block.terminator
+            else {
+                return Err(String::from("source return missing"));
+            };
+            span
+        },
+        3 => {
+            let Some(InputInstruction::ByteOutput { span, .. }) =
+                block.instructions.get_mut(1)
+            else {
+                return Err(String::from("source byte output missing"));
+            };
+            span
+        },
+        _ => return Err(String::from("unknown source span mutation")),
+    };
+    match mutation {
+        0 => span.begin.column = span.begin.column.saturating_add(1),
+        2 => span.end.column = span.end.column.saturating_add(1),
+        1 | 3 => {
+            span.begin.line = span.begin.line.saturating_add(1);
+            span.end.line = span.end.line.saturating_add(1);
+        },
+        _ => return Err(String::from("unknown source span coordinate")),
+    }
+    Ok(())
+}
+
+fn forge_target_subspan_coordinates(
+    program: &mut ternary_lowering::TernaryProgram,
+    mutation: u8,
+) -> Result<(), String> {
+    let function = program.functions.first_mut()
+        .ok_or_else(|| String::from("ternary function missing"))?;
+    let span: &mut ternary_lowering::TernarySourceSpan = match mutation {
+        0 | 1 => {
+            let Some(TernaryOperation::ByteInput { span, .. }) =
+                function.operations.first_mut()
+            else {
+                return Err(String::from("ternary byte input missing"));
+            };
+            span
+        },
+        2 => {
+            let Some(TernaryOperation::Return { span, .. }) =
+                function.operations.last_mut()
+            else {
+                return Err(String::from("ternary return missing"));
+            };
+            span
+        },
+        3 => {
+            let Some(TernaryOperation::ByteOutput { span, .. }) =
+                function.operations.get_mut(1)
+            else {
+                return Err(String::from("ternary byte output missing"));
+            };
+            span
+        },
+        _ => return Err(String::from("unknown ternary span mutation")),
+    };
+    match mutation {
+        0 => span.begin.column = span.begin.column.saturating_add(1),
+        2 => span.end.column = span.end.column.saturating_add(1),
+        1 | 3 => {
+            span.begin.line = span.begin.line.saturating_add(1);
+            span.end.line = span.end.line.saturating_add(1);
+        },
+        _ => return Err(String::from("unknown ternary span coordinate")),
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_source_subspans_reject_forged_line_column_coordinates()
+-> Result<(), String> {
+    let original = project_typed_ir(&byte_io_module())?;
+    let admitted = lower_typed_ir(&original)
+        .map_err(|error| format!("lower original source spans: {error:?}"))?;
+    ternary_lowering::validate_ternary_program(&admitted)
+        .map_err(|error| format!("validate original source spans: {error:?}"))?;
+
+    // Byte offsets and local span order remain valid, but source coordinates
+    // either escape the function or contradict an identical boundary byte.
+    for mutation in 0u8..4 {
+        let mut projected = original.clone();
+        forge_input_subspan_coordinates(&mut projected, mutation)?;
+        if lower_typed_ir(&projected)
+            != Err(TernaryLoweringError::InvalidProjection)
+        {
+            return Err(format!(
+                "fresh lowering admitted forged source coordinates {mutation}"
+            ));
+        }
+        let mut restored = admitted.clone();
+        forge_target_subspan_coordinates(&mut restored, mutation)?;
+        if ternary_lowering::validate_ternary_program(&restored)
+            != Err(TernaryProgramValidationError::SourceProvenance)
+        {
+            return Err(format!(
+                "canonical ternary validator admitted forged coordinates {mutation}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn ternary_dense_functions_restore_through_inspector() -> Result<(), String> {
     let (target, projection) = lowered_dense_lane_io_fixture(128)?;
@@ -12238,18 +12362,24 @@ fn invalidate_expected_projection_span(
     expected: &mut TypedIrInput,
     field: u8,
 ) -> Result<(), String> {
-    let block = expected.functions.first_mut()
-        .and_then(|function| function.blocks.first_mut())
+    let function = expected.functions.first_mut()
+        .ok_or_else(|| String::from("source function missing"))?;
+    let after_function_line = function.span.end.line.saturating_add(1);
+    let block = function.blocks.first_mut()
         .ok_or_else(|| String::from("source entry block missing"))?;
-    if field < 2 {
+    if matches!(field, 0 | 1 | 4) {
         let InputTerminator::Return { span, .. } = &mut block.terminator
         else {
             return Err(String::from("expected return missing"));
         };
-        if field == 0 {
-            span.begin.byte = 0;
-        } else {
-            span.end.column = 0;
+        match field {
+            0 => span.begin.byte = 0,
+            1 => span.end.column = 0,
+            4 => {
+                span.begin.line = after_function_line;
+                span.end.line = after_function_line;
+            },
+            _ => return Err(String::from("unknown expected return mutation")),
         }
     } else {
         let Some(InputInstruction::ConstantInteger { span, .. }) =
@@ -12257,10 +12387,14 @@ fn invalidate_expected_projection_span(
         else {
             return Err(String::from("expected constant missing"));
         };
-        if field == 2 {
-            span.begin.byte = 0;
-        } else {
-            span.begin.line = 0;
+        match field {
+            2 => span.begin.byte = 0,
+            3 => span.begin.line = 0,
+            5 => {
+                span.begin.line = after_function_line;
+                span.end.line = after_function_line;
+            },
+            _ => return Err(String::from("unknown expected constant mutation")),
         }
     }
     Ok(())
@@ -12287,7 +12421,7 @@ fn ternary_progress_for_source_rejects_invalid_expected_operation_spans()
         assert_source_matched_ternary_success(
             &expected, &saved, &inspector, (&interpreter, &progress),
         )?;
-        for field in 0u8..4 {
+        for field in 0u8..6 {
             let mut changed = expected.clone();
             invalidate_expected_projection_span(&mut changed, field)?;
             if lower_typed_ir(&changed)

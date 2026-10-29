@@ -140,11 +140,27 @@ const fn valid_projection_span(span: InputSourceSpan) -> bool {
         || (begin.line == end.line && begin.column <= end.column)
 }
 
+const fn projection_position_precedes(
+    before: super::input::InputSourcePosition,
+    after: super::input::InputSourcePosition,
+) -> bool {
+    if before.byte > after.byte {
+        return false;
+    }
+    // One byte offset has exactly one normalized source coordinate.
+    if before.byte == after.byte {
+        return before.line == after.line && before.column == after.column;
+    }
+    before.line < after.line
+        || (before.line == after.line && before.column <= after.column)
+}
+
 const fn projection_span_contains(
     parent: InputSourceSpan,
     child: InputSourceSpan,
 ) -> bool {
-    parent.begin.byte <= child.begin.byte && child.end.byte <= parent.end.byte
+    projection_position_precedes(parent.begin, child.begin)
+        && projection_position_precedes(child.end, parent.end)
 }
 
 pub(super) const fn projected_instruction_span(

@@ -1964,11 +1964,27 @@ fn require_value(
     Ok(())
 }
 
+const fn source_position_precedes(
+    before: TernarySourcePosition,
+    after: TernarySourcePosition,
+) -> bool {
+    if before.byte > after.byte {
+        return false;
+    }
+    // Exact byte boundary identity is part of canonical source provenance.
+    if before.byte == after.byte {
+        return before.line == after.line && before.column == after.column;
+    }
+    before.line < after.line
+        || (before.line == after.line && before.column <= after.column)
+}
+
 const fn span_contains(
     parent: TernarySourceSpan,
     child: TernarySourceSpan,
 ) -> bool {
-    parent.begin.byte <= child.begin.byte && child.end.byte <= parent.end.byte
+    source_position_precedes(parent.begin, child.begin)
+        && source_position_precedes(child.end, parent.end)
 }
 
 fn valid_name(name: &str) -> bool {

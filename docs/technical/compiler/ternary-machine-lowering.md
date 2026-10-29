@@ -975,6 +975,19 @@ rejecting an independently valid checkpoint that returns a different already-
 defined value of the same type. Independently admitted checkpoints with
 changed operation provenance or return operand but unchanged module/function
 identity fail without repeating semantic lowering.
+
+Fresh projection and independent canonical `MCTR` program admission now check
+source-span containment in *both* byte offsets and normalized line/column
+coordinates. When a child operation or return shares its function's boundary
+byte offset, its full source position must match exactly. At distinct offsets,
+source coordinates must advance monotonically. Four intentionally forged
+spans retain individually valid local spans and in-range byte offsets while
+changing boundary columns or moving operations outside their function's line
+range; both validators reject them. The real progress-inspector source-matched
+route also rejects two independently invalid expected line placements without
+re-lowering saved checkpoint state. This verifies internal provenance
+consistency, not the original source file's authenticity or an exact byte-to-
+line mapping without source text.
 The ordinary progress route remains available but does not bind an expected
 source. The source-matched route rejects an independently valid checkpoint
 with changed function identity despite a matching module digest, as well as
