@@ -249,6 +249,11 @@ same-device comparison claims against silent heterogeneous arms while leaving
 explicit cross-accelerator comparisons permitted without this mode. Even
 matching declarations do not attest actual hardware or accelerator utilization.
 
+The host-C reference-study producer now also uses that same checked stdout
+publisher. A short text write or flush failure causes a nonzero operator exit
+rather than claiming the local study summary was delivered successfully;
+retained verified local evidence is not deleted on stdout failure.
+
 Both arena CLI commands also share a checked JSON stdout publisher: the
 complete report is serialized before one text write, whose returned character
 count must be exact, then explicitly flushed before successful command exit.

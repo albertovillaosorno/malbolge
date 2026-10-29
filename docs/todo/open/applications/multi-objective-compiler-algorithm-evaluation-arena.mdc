@@ -191,6 +191,9 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   bounds. It rejects empty and over-limit sample populations instead of
   fabricating inference, while documenting the unverified iid Bernoulli and
   verifier assumptions. Independent exact reference and both-CLI tests pass.
+- The host-C reference-study producer's operator JSON now uses the same
+  checked stdout publisher and fails nonzero on incomplete writes or flush,
+  without pretending that already-emitted text can be retracted.
 - Operator report output now requires exact text write counts and an explicit
   successful stdout flush across both arena CLI routes, rejecting malformed
   return values, truncation, and injected stream errors as nonzero exits.

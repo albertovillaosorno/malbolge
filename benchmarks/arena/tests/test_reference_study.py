@@ -39,6 +39,7 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 import shutil
+import sys
 from typing import Any
 from typing import TYPE_CHECKING
 
@@ -48,6 +49,7 @@ from benchmarks.arena import analyze
 from benchmarks.arena import evidence
 from benchmarks.arena import host_c_oracle
 from benchmarks.arena import reference_study
+from benchmarks.arena import report_output
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -61,6 +63,7 @@ FAILED = "tool_failed"
 ARTIFACT_METRIC = "artifact_bytes"
 EXPECTED_ROWS = 8
 FAMILY = "arithmetic-dag"
+OUTPUT_FAULT = "injected short stdout write"
 
 
 def _pilot() -> tuple[Path, dict[str, Any]]:
@@ -247,3 +250,56 @@ def test_reference_artifact_audit_rejects_retained_drift(tamper: str) -> None:
             reference_study.check_retained_artifacts(document, artifacts)
     finally:
         shutil.rmtree(path)
+
+
+def _fake_study_for_stdout(
+    plan: reference_study.StudyPlan,
+) -> tuple[Path, dict[str, Any]]:
+    """Avoid rerunning native Clang for an unrelated stdout framing check.
+
+    Returns:
+        A path and documented observation count for the operator summary.
+
+    """
+    _ = plan
+    return (
+        reference_study._ROOT / ".temp" / "host-c-output-probe",  # ruff: ignore[private-member-access]
+        {"observations": [{"trial": 0}, {"trial": 1}]},
+    )
+
+
+def test_reference_cli_output_is_checked_and_complete(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A healthy operator stream emits exactly one complete JSON object."""
+    monkeypatch.setattr(reference_study, "run_study", _fake_study_for_stdout)
+    monkeypatch.setattr(sys, "argv", ["reference-study", FAMILY])
+    assert reference_study.main() == 0
+    observed = json.loads(capsys.readouterr().out)
+    assert observed["observations"] == REPETITIONS
+    assert observed["study"].endswith("/host-c-output-probe/study.json")
+
+
+def test_reference_cli_rejects_unflushed_or_truncated_operator_report(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Publishing failure cannot be reported as a successful command."""
+    monkeypatch.setattr(reference_study, "run_study", _fake_study_for_stdout)
+    monkeypatch.setattr(sys, "argv", ["reference-study", FAMILY])
+
+    def broken_publisher(
+        report: dict[str, Any],
+        stream: report_output.TextReportStream,
+    ) -> None:
+        _ = (report, stream)
+        message = OUTPUT_FAULT
+        raise report_output.ReportOutputError(message)
+
+    monkeypatch.setattr(report_output, "publish", broken_publisher)
+    with pytest.raises(SystemExit, match="2"):
+        reference_study.main()
+    result = capsys.readouterr()
+    assert not result.out
+    assert OUTPUT_FAULT in result.err

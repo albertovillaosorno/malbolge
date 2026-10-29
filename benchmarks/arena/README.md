@@ -176,6 +176,12 @@ python3.14 -B -m benchmarks.arena.reference_study arithmetic-dag \
   --difficulties 4 8 32 --seed 7 --trials 3
 ```
 
+The reference runner's operator JSON summary now uses the same checked
+single-record text publisher as the arena analyzer: a complete write count
+and a successful stdout flush are mandatory before it returns code zero.
+A failed stream returns code two even if validated ignored study files have
+already been retained; emitted stdout fragments cannot be rolled back.
+
 The tool runs repository-pinned Clang 22.1.8 at `-O0` and `-O2` for each
 matched case/replicate, compiling the canonical regenerated C, linking the
 independent entry-return harness, and executing the native program. It records

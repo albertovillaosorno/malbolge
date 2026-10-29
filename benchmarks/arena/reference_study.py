@@ -57,6 +57,7 @@ from benchmarks.arena import analyze
 from benchmarks.arena import evidence
 from benchmarks.arena import host_c_oracle
 from benchmarks.arena import raw_samples
+from benchmarks.arena import report_output
 from benchmarks.challenges import generate
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -648,8 +649,8 @@ def main() -> int:
         OSError,
     ) as error:
         parser.exit(2, f"host-C reference study: {error}\n")
-    _ = sys.stdout.write(
-        json.dumps(
+    try:
+        report_output.publish(
             {
                 "study": (path / "study.json").relative_to(_ROOT).as_posix(),
                 "observations": len(document["observations"]),
@@ -657,10 +658,10 @@ def main() -> int:
                     "real host-C reference only; not Malbolge compiler results"
                 ),
             },
-            sort_keys=True,
+            sys.stdout,
         )
-        + "\n"
-    )
+    except report_output.ReportOutputError as error:
+        parser.exit(2, f"host-C reference study: {error}\n")
     return 0
 
 
