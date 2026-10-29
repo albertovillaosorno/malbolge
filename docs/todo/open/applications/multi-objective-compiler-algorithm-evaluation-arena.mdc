@@ -96,6 +96,20 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   admit microjoule observations without changing v1 bytes, rejecting lost
   energy fields or inconsistent trial costs. No real energy measurements,
   calibration or physical consumption claim is yet available.
+- A first real-target (not C translation) arena producer now invokes the
+  separately built `malbolge_layout` emitter and general classic `malbolge`
+  VM runner on matched fixed empty-input EOF echo pairs, comparing direct
+  and one-nop-per-pair executable graphical code. The actual source byte
+  count, external process elapsed time and full expected `0xA8`-byte output
+  are checked per attempt. It bounds pair counts, difficulties, trials and
+  child timeouts; alternates the arm order; retains actual `.malbolge`
+  source, raw CSV and versioned per-trial manifests under ignored local
+  output; and independently re-admits raw rows, exact declared budgets and
+  run identity before capacity/Pareto reporting. Wrong output and failed
+  process attempts remain failures, not successes. This is only one
+  classic-profile I/O shape; there is no C or arbitrary ternary compilation,
+  guest-runtime verification, calibrated throughput inference, authenticated
+  timing, or physically enforced aggregate memory budget.
 - A bounded real host-C reference-study producer now measures pinned Clang
   `-O0` and `-O2` compile/link/oracle-run wall time and executable size on
   matched canonical challenge cases and difficulties. It retains actual native

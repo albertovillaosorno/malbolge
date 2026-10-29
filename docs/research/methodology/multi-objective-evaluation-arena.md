@@ -179,6 +179,34 @@ and not authentication of any producer-reported elapsed time or memory use.
 There is no OS sandbox or physical budget enforcement. The final candidate
 verifier and real multi-difficulty compiler comparison remain outstanding.
 
+A separate first *real target Malbolge* pilot now pairs the actual
+`malbolge_layout` source emitter with the general classic `malbolge` VM on
+fixed empty-input byte-echo programs. The direct arm uses one input/output
+pair per requested logical byte; the comparison adds one inert no-op per pair.
+Classic EOF returns low byte `0xA8`, which the external VM must emit exactly
+once per pair to count as an observed verified trial. The producer admits
+1..64 pairs at up to four distinct difficulties, 1..3 paired repetitions,
+actual graphical source bytes, strict per-run TOML/raw-CSV identity, real
+external process outcomes, and source-size/elapsed-time observations. It
+alternates arm order across repetitions and records negative outcomes rather
+than conferring success when a tool fails or output differs. The resulting
+ignored `.temp/arena-target-echo-*/study.json` is independently checked by
+the arena's existing raw/manifest/budget admission before capacity/Pareto
+analysis; separate external-process and tampering regressions constrain this
+claim. The prior lack of an actual `.malbolge` measurement is narrowed only
+for this small, fixed classic target-subset.
+
+This is a falsifiable source-size hypothesis (the nop-padded source should
+use one extra graphical code byte per pair), not a general compiler-size or
+performance result. Host wall times include compiler process startup,
+code emission, runner startup, and VM execution; the recorded resource budget
+is declared but not enforced study-wide, no hardware-level attestation or
+statistical speedup inference is claimed, and the source bytes do not carry
+modern capsule identity. The classic EOF-only check is not independent proof
+of a C-to-Malbolge translation, arithmetic correctness, heap/call linking,
+or unrestricted target-profile execution. Broader verified guest workloads
+and multiple physically controlled host observations remain open.
+
 The bounded host-C *reference study* runner now measures actual compiler,
 linker and native oracle-check wall time, executable size and maximum
 per-stage kernel RSS for pinned

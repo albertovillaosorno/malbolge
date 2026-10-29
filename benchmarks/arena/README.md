@@ -167,6 +167,62 @@ compilation and execution are not an OS-enforced sandbox, so operators must
 keep the trusted checked-in generator and pinned compiler within their trust
 policy. Full compiler-candidate verification remains open.
 
+## Bounded measured classic Malbolge target reference
+
+A first, strictly bounded **real-target** study now runs the checked-in
+`malbolge_layout` executable and the independent general `malbolge` VM runner
+on two classic-profile code layouts. Both execute the same empty-input
+EOF-byte echo (one `0xA8` byte per input/output pair); the candidate prepends
+one inert `nop` per pair. This compares address-sensitive native Malbolge
+**source bytes and measured emission-plus-execution elapsed time**, not C
+lowering or guest runtime throughput. It measures emitted executable text
+length, not capsule framing or memory footprint.
+
+From the repository root, build the two product executables using the pinned
+Cargo toolchain, then run:
+
+```sh
+export PYTHONPATH=src/automation/repository/composition
+python3.14 -B -m benchmarks.arena.target_echo_reference \
+  --pairs 1 4 16 --trials 2
+```
+
+The study requires repository-local built executables under
+`.cache/rust/target/debug/`, an existing `.temp` root, and an explicit
+canonical `malbolge-1998` profile. It rejects zero, duplicate, invalid or
+more than four difficulty levels; each level has between 1 and 64 echo
+pairs, with one to three repetitions. The two arms alternate execution order
+by repetition to reduce (but not eliminate) order bias. Each executable child
+has a 15-second wall timeout. The runner checks complete stdout against the
+expected bytes; mismatches remain `verifier_rejected`, and launcher failures
+remain `tool_failed`, never credited as successes. It also checks exact
+source length, graphical byte domain, the per-attempt output path, and exact
+executable identity before/after the study.
+
+New studies retain `study.json`, actual raw graphical `candidates/*.malbolge`,
+one per-attempt `arena-raw-v1` CSV and versioned experiment-run TOML, under a
+unique Git-ignored `.temp/arena-target-echo-*/` directory. Their raw-byte
+hashes, declared resource budgets and per-trial identity are re-admitted
+through the normal arena evidence boundary, followed by a matched-cohort
+capacity/Pareto analysis. The CLI prints the local study path, not a
+performance verdict. An independent caller can inspect the resulting file:
+
+```sh
+python3.14 -B -m benchmarks.arena.analyze \
+  .temp/arena-target-echo-EXAMPLE/study.json
+```
+
+The exact executable hashes and Git revision are recorded as **claimed
+provenance**, not execution attestation. The declared 60-second/1024-MiB
+study budget is not physically enforced in aggregate; individual child wall
+timeouts do not establish peak resident memory. Wall-clock samples include
+process startup, source emission, loading, and VM termination, and should not
+be interpreted as a calibrated throughput or a speedup claim. The EOF oracle
+checks only this narrow classic I/O behavior, not general computation or
+modern-profile control flow. This is the first measured `.malbolge` stage in
+the arena, **not** verification of the general C-to-Malbolge compiler, and
+no production strategy is selected from these observations.
+
 ## Actual host-C reference study (not Malbolge performance)
 
 For a small **real measured host-C baseline** over at least two parametric
