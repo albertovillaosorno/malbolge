@@ -694,3 +694,84 @@ fn canonical_typed_latest_byte_trace_reaches_4096_cells_and_rejects_4097() -> Re
     );
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "canonical typed-to-MCTR-to-file-to-VM evidence shares one fixture"
+)]
+fn canonical_typed_latest_byte_trace_publishes_independent_capsule() -> Result<(), String> {
+    let steps = [
+        (true, 0),
+        (false, 0),
+        (false, 0),
+        (true, 1), // successful byte consumed but not output
+        (true, 2),
+        (false, 2),
+    ];
+    let canonical = wire(&latest_typed_fixture(&steps)?)?;
+    let compiled =
+        adapter::compile_canonical_typed_latest_byte_trace(&canonical, current_profile())
+            .map_err(|error| format!("canonical typed trace: {error:?}"))?;
+    let fixture = OwnedFixture::new()?;
+    let mctr = fixture.path("typed-latest.mctr");
+    fs::write(&mctr, compiled.ternary_bytes())
+        .map_err(|error| format!("write admitted MCTR: {error}"))?;
+    let refused_path = fixture.path("strict-reject.malbolge");
+    let refused = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+        .arg("--profile")
+        .arg(current_profile().id())
+        .arg("--output")
+        .arg(&refused_path)
+        .arg("--")
+        .arg("--ternary-file")
+        .arg(&mctr)
+        .output()
+        .map_err(|error| format!("strict publisher launch: {error}"))?;
+    if refused.status.success() || refused_path.exists() {
+        return Err(String::from(
+            "strict adjacent publisher accepted nonadjacent typed trace",
+        ));
+    }
+
+    let target = fixture.path("typed-latest.malbolge");
+    let result = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+        .arg("--profile")
+        .arg(current_profile().id())
+        .arg("--output")
+        .arg(&target)
+        .arg("--capsule")
+        .arg("--")
+        .arg("--latest-byte-trace")
+        .arg("--ternary-file")
+        .arg(&mctr)
+        .output()
+        .map_err(|error| format!("opt-in publisher launch: {error}"))?;
+    if !result.status.success() {
+        return Err(format!(
+            "latest typed trace publication failed: {}",
+            String::from_utf8_lossy(&result.stderr)
+        ));
+    }
+    let bytes = fs::read(&target).map_err(|error| format!("published capsule: {error}"))?;
+    let capsule = malbolge::parse_capsule(&bytes)
+        .map_err(|error| format!("independent capsule parser: {error}"))?
+        .ok_or("typed trace capsule framing absent")?;
+    if capsule.profile() != current_profile() || capsule.payload() != compiled.layout().source() {
+        return Err(String::from("published typed source or profile drift"));
+    }
+    let mut vm =
+        ProfileMachine::from_source(capsule.profile(), capsule.payload(), vec![0, 255, 128])
+            .map_err(|error| format!("published typed VM load: {error:?}"))?;
+    if !matches!(
+        vm.run(steps.len().saturating_add(1)),
+        Ok(RunOutcome::Terminated { steps: 7, .. })
+    ) || vm.input_consumed() != 3
+        || vm.output() != [0, 0, 128]
+    {
+        return Err(String::from(
+            "published typed latest-byte effect trace mismatch",
+        ));
+    }
+    Ok(())
+}

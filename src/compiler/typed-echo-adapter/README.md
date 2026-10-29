@@ -49,7 +49,11 @@ the all-byte domain, exact 4096-cell upper bound, stale SSA rejection and
 byte-identical old/new output for ordinary echo traces.
 
 For the original strict echo subset, canonical `MCTR` bytes remain consumable
-by the existing `malbolge_layout --ternary-file` publication CLI, which is
-the sole artifact publisher. The CLI **has not yet admitted the broader
-latest-read subset**, although the opt-in API already produces verified raw
-code in memory. No competing publication or partial files are introduced.
+by the default `malbolge_layout --ternary-file` CLI. Its separate opt-in
+`--latest-byte-trace --ternary-file` path now accepts the latest-successful-read
+subset, preserving the same real VM preflight and no-clobber raw/capsule
+publisher. The typed-adapter test exercises full canonical MCTI-to-MCTR-to-
+published-capsule provenance, reloading the independent normative VM and
+checking repeated output and unused consumed input. The strict default still
+rejects this nonadjacent trace. Neither path realizes EOF, failed I/O, guest
+byte storage, arbitrary C operations, source authentication or guest ABI.

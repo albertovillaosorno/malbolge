@@ -690,7 +690,14 @@ instruction.
   MCTR bytes and real Malbolge source, and handles repeated outputs and
   consumed-but-unused inputs. Typed SSA replay after a later input rejects,
   and the original strict echo API remains byte-identical. Normative VM tests
-  cover the 4096-cell boundary; the file publisher remains echo-only.
+  cover the 4096-cell boundary. The existing default MCTR file publisher
+  remains strict adjacent echo; a separately opt-in `--latest-byte-trace`
+  path now publishes the broader successful-read SSA subset as raw/capsule
+  target artifacts, with two normative VM successful-byte trace preflights.
+  A process-level typed MCTI-to-MCTR-to-capsule regression independently
+  checks provenance, executed VM output and rejection by the strict default.
+  It remains conditional on successful I/O with no EOF, guest storage, full
+  C operation lowering or guest runtime ABI.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

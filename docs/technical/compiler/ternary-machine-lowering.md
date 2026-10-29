@@ -1090,9 +1090,10 @@ values, old strict echo byte-for-byte compatibility, and the 4096-cell maximum
 operations, profile drift, malformed canonical state and excess code length.
 No host callback performs I/O; the graphical code executes on the normative
 profile VM. The guarantee remains conditional on successful input bytes and
-outputs, unobserved guest ABI/return, and absent EOF/error behavior. The
-the artifact publisher remains strict echo-only; the typed-IR adapter now
-has a separately opt-in latest-read path, but that mode is not yet published.
+outputs, unobserved guest ABI/return, and absent EOF/error behavior.
+The default artifact-publisher ternary-file mode remains strict adjacent
+echo. An explicit `--latest-byte-trace --ternary-file` mode also accepts the
+verified latest-read subset, under the same successful-I/O-only condition.
 
 ### Canonical Typed-IR Byte-Echo Adapter
 
@@ -1124,8 +1125,13 @@ independently admitted canonical typed IR, binds SSA and source provenance,
 round-trips canonical MCTR and emits the independently admitted graphical
 layout. Tests demonstrate duplicate output, unused consumed input, rejection
 of stale typed SSA, equal output for the ordinary echo subset, and exact
-4096-cell VM execution. The CLI's `--ternary-file` path still accepts only
-strict adjacent echo; publishing the broader path remains separate work.
+4096-cell VM execution. The default CLI `--ternary-file` path stays strict
+adjacent echo, while the separate `--latest-byte-trace --ternary-file` form
+now publishes the broader admitted MCTR as verified raw or capsule source.
+A real process-level regression takes canonical typed MCTI, independently
+checks its compiled MCTR and graphical layout, publishes an executable capsule,
+reopens the frame and checks exact profile, source bytes, VM output,
+consumption and halt step. The strict file mode rejects that same typed trace.
 
 ### Authoritative Inputs
 
