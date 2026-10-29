@@ -237,9 +237,12 @@ rerunning measured work. It admits only canonical ignored study paths and
 revalidates exact host-C stage/arm/verifier identities, bounded difficulty and
 trial scope, complete experiment-run TOML and v1 raw CSV links, declared
 budgets, regenerated challenge sources, and the native executable's linked
-path, SHA-256 digest, and byte length. Its default path reads files only; an
-explicit `--replay-oracles` mode can rerun the **canonical generator's** native
-C entry harness, never a retained trial executable or Malbolge artifact.
+path, SHA-256 digest, and byte length. The audit also enforces the source
+runner's common consecutive trial set across every difficulty, rejecting
+unequal repetitions even when the generic arena accepts each paired cohort.
+Its default path reads files only; an explicit `--replay-oracles` mode can
+rerun the **canonical generator's** native C entry harness, never a retained
+trial executable or Malbolge artifact.
 The new independent `--rebuild-binaries` option additionally compiles fresh,
 canonical host-C executable bytes with the same pinned Clang and independently
 compares them byte-for-byte against all retained verified binaries, deduplicated

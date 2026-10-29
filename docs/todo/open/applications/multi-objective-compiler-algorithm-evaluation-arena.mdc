@@ -131,6 +131,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   reject tampered files, forged stage or arm identities, malformed artifacts,
   unsafe paths and missing links; physical benchmark remeasurement and
   Malbolge candidate verification remain open.
+- The independent host-C audit now enforces the producer's single repetition
+  plan across all difficulties: each level must retain the same consecutive
+  trial indices, even if both arms remain paired within an uneven level.
+  Negative regressions exercise unequal populations while showing the generic
+  analyzer correctly permits unequal samples for other study producers.
 - The real host-C reference producer now reopens retained successful native
   binaries with strict file admission and checks their trial-derived paths,
   SHA-256 identities and exact byte lengths against recorded artifact-size

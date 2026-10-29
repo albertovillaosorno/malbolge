@@ -35,23 +35,24 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-from itertools import starmap
 import json
-from pathlib import Path
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import Any
-from typing import Never
+from dataclasses import dataclass
+from itertools import starmap
+from pathlib import Path
+from typing import Any, Never
 
 from scripts.validate import experiment_manifest
 
-from benchmarks.arena import analyze
-from benchmarks.arena import evidence
-from benchmarks.arena import host_c_oracle
-from benchmarks.arena import reference_study
-from benchmarks.arena import report_output
+from benchmarks.arena import (
+    analyze,
+    evidence,
+    host_c_oracle,
+    reference_study,
+    report_output,
+)
 from benchmarks.challenges import generate
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -172,6 +173,14 @@ def _check_plan_trials(rows: list[dict[str, Any]]) -> None:
         _fail("host-C audit contains too many trial repetitions")
     if trials != set(range(len(trials))):
         _fail("host-C audit requires consecutive trial repetition indices")
+    # The native producer applies one repetition count to every difficulty.
+    # Per-difficulty paired cohorts alone do not establish that invariant.
+    by_difficulty: dict[int, set[int]] = {}
+    for row in rows:
+        difficulty = row["case"]["difficulty"]
+        by_difficulty.setdefault(difficulty, set()).add(row["trial"])
+    if any(level_trials != trials for level_trials in by_difficulty.values()):
+        _fail("host-C audit requires the same trials at every difficulty")
 
 
 def _check_case_plan(document: dict[str, Any]) -> None:

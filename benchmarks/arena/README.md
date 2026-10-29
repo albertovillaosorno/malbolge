@@ -230,6 +230,10 @@ python3.14 -B -m benchmarks.arena.reference_audit \
 It only admits canonical `.temp/arena-host-c-study-*/study.json` paths and
 requires the exact host-C stage, Clang `-O0`/`-O2` arms, verifier, declared
 budget, profile, source study identity, and bounded trial/difficulty structure.
+Every difficulty must contain the identical consecutive trial indices from the
+one native producer plan; merely balancing the two algorithms within each
+level is insufficient. The generic arena analyzer still admits unequal sample
+sizes across difficulty levels for other independently produced studies.
 It rechecks canonical challenge-bundle regeneration, all versioned run
 manifests, raw rows/digests, declared budgets, and each retained executable's
 SHA-256, path and recorded byte length before reporting the capacity curve

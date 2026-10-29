@@ -36,17 +36,15 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import shutil
 import sys
+from hashlib import sha256
 from typing import TYPE_CHECKING
 
 import pytest
 
-from benchmarks.arena import host_c_oracle
-from benchmarks.arena import reference_audit
-from benchmarks.arena import reference_study
+from benchmarks.arena import analyze, host_c_oracle, reference_audit, reference_study
 from benchmarks.challenges import generate
 
 if TYPE_CHECKING:
@@ -193,6 +191,34 @@ def test_audit_rejects_retained_study_claim_mutations(
     directory, relative = live_pilot
     _change_json(directory / "study.json", change)
     with pytest.raises(reference_audit.ReferenceAuditError, match="host-C"):
+        reference_audit.audit(relative)
+
+
+@pytest.mark.parametrize("missing_trial", [0, 1])
+def test_audit_rejects_uneven_repetitions_between_difficulties(
+    live_pilot: tuple[Path, str],
+    missing_trial: int,
+) -> None:
+    """Paired arms at each level still need one common source-run trial plan."""
+    directory, relative = live_pilot
+    path = directory / "study.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["observations"] = [
+        row
+        for row in document["observations"]
+        if not (
+            row["case"]["difficulty"] == 8
+            and row["trial"] == missing_trial
+        )
+    ]
+    # The generic arena legitimately accepts different sample sizes per level.
+    # The host-C producer cannot create this plan: every level uses 2 trials.
+    _ = analyze.analyze(analyze.parse_document(json.dumps(document)))
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="same trials at every difficulty",
+    ):
         reference_audit.audit(relative)
 
 
