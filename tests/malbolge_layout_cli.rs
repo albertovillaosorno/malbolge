@@ -569,3 +569,83 @@ fn invalid_capsule_request_or_existing_file_never_publishes() -> Result<(), Stri
     );
     Ok(())
 }
+
+/// This chain's third jump reads the encrypted data word at source address
+/// 72, not the original no-op cell (or the third jump's code character).
+fn multi_jump_tokens() -> Vec<&'static str> {
+    (0..127usize)
+        .map(|position| match position {
+            0 => "input",
+            26 => "jump:73",
+            102 => "jump:107",
+            122 => "jump:125",
+            125 => "output",
+            126 => "halt",
+            _ => "nop",
+        })
+        .collect()
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent serialized target VM execution and hostile CLI rejection"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "two profiles and both published file forms are checked end to end"
+)]
+fn multi_jump_raw_and_capsule_files_preserve_encrypted_operand_branching() -> Result<(), String> {
+    let fixture = OwnedFixture::new()?;
+    let tokens = multi_jump_tokens();
+    for (profile_id, profile) in [
+        ("malbolge-1998", historical_profile()),
+        ("malbolge-2026", current_profile()),
+    ] {
+        let raw_path = fixture.path(&format!("{profile_id}-three-jumps.malbolge"));
+        let capsule_path = fixture.path(&format!("{profile_id}-three-jumps-capsule.malbolge"));
+        let raw_result = emit(profile_id, &raw_path, &tokens)?;
+        let raw = source_on_success(&raw_result, &raw_path)?;
+        assert_eq!(raw.len(), 127);
+        assert_eq!(raw.get(72).copied(), Some(90));
+        let capsule_result = emit_capsule(profile_id, &capsule_path, &tokens)?;
+        assert!(
+            capsule_result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&capsule_result.stderr)
+        );
+        let capsule_file = fs::read(&capsule_path).map_err(|error| error.to_string())?;
+        let capsule = parse_capsule(&capsule_file)
+            .map_err(|error| format!("capsule decode: {error:?}"))?
+            .ok_or("three-jump capsule not recognized")?;
+        assert_eq!(capsule.profile().id(), profile.id());
+        assert_eq!(capsule.payload(), raw);
+        let mut machine = ProfileMachine::from_source(profile, &raw, vec![0xf3])
+            .map_err(|error| format!("three-jump VM loader: {error:?}"))?;
+        assert!(matches!(
+            machine.run(75),
+            Ok(RunOutcome::Terminated { steps: 75, .. })
+        ));
+        assert_eq!(machine.output(), &[0xf3]);
+        assert_eq!(machine.input_consumed(), 1);
+        assert_eq!(
+            machine
+                .memory_word(72)
+                .map_err(|error| format!("encrypted operand read: {error:?}"))?,
+            124
+        );
+        assert_eq!(machine.registers().code_pointer, 126);
+        assert_eq!(machine.registers().data_pointer, 74);
+    }
+    let profile_id = "malbolge-2026";
+    let mut forged = tokens;
+    if let Some(third) = forged.get_mut(122) {
+        *third = "jump:124";
+    }
+    let refused_path = fixture.path("forged-third-jump.malbolge");
+    let refused = emit_capsule(profile_id, &refused_path, &forged)?;
+    assert!(!refused.status.success());
+    assert!(!refused_path.exists());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("JumpTargetMismatch"));
+    Ok(())
+}

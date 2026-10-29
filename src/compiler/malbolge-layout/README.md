@@ -44,7 +44,10 @@ operand rejects before publication. No reachable source instruction is
 revisited; full mutable code-state or conditional branching remains open.
 The original one-jump 94-phase checks remain, and tests now execute real
 2- and 3-jump chains under both canonical VMs, including an encrypted operand
-read by the third jump and adversarial wrong-target/gap probes.
+read by the third jump and adversarial wrong-target/gap probes. A separate
+regression verifies that a later jump may also read an already *executed*
+no-op that has since been XLAT2-encrypted; the original code-cell byte is not
+a trustworthy jump operand after execution.
 
 Every admitted layout returns deterministic, step-indexed witnesses for **all
 three** relevant facts: reachable code pointer, data pointer at the start of
@@ -123,6 +126,12 @@ two concrete effect traces. `MCTR` metadata including its source hash is
 copied provenance, not independent cryptographic source authentication.
 A full C-to-Malbolge frontend and general guest-runtime realization remain
 out of scope.
+
+A separate external-process regression now passes a three-jump instruction
+list through the actual `malbolge_layout` emitter in both canonical profiles.
+It verifies raw and version-one capsule bytes independently, reloads and
+executes the resulting real VM source with successful input, and rejects a
+forged later jump destination without publishing an output file.
 
 The optional `--capsule` flag follows `--output PATH` and precedes the `--`
 separator. The producer verifies the raw graphical machine code first, then

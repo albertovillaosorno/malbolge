@@ -70,7 +70,9 @@ Real current/historical VM programs prove two forward jumps whose second
 target is read from skipped no-op data, then three jumps where the final
 target reads a **previously encrypted** no-op operand. Adversarial tests
 reject forged later targets, backward destinations and effectful skipped
-regions. This evidence is not arbitrary branch lowering, a general data
+regions. Another real VM regression demonstrates the distinct case where a
+later jump reads a code cell whose normal no-op execution already encrypted
+it. This evidence is not arbitrary branch lowering, a general data
 memory-write proof, or unbounded semantic equivalence.
 
 `tests/malbolge_layout.rs` exercises 94 decode phases for profile byte I/O,
@@ -103,7 +105,10 @@ shapes fail closed. Process-level integration tests execute the built binary,
 reopen emitted files under historical/current canonical profiles with real
 byte input, test forward jumps and relocated arithmetic, compare exact output
 bytes across independent runs, reject unsupported input and symlinks, and
-exercise concurrent writers to one target. On abrupt interruption a hidden
+exercise concurrent writers to one target. A separate three-jump external
+process fixture publishes both raw and capsule sources under both profiles,
+reopens and executes the exact outputs, and rejects a forged later destination
+without creating a final file. On abrupt interruption a hidden
 staging file may remain; it cannot expose a partial final target.
 
 An optional `--capsule` mode now wraps verified raw source using the

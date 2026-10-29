@@ -74,8 +74,9 @@ emission.
   The verifier tracks the bounded source-memory shadow, checks all skipped
   positions are inert no-op padding, and rejects forged/retrograde targets,
   effectful skipped gaps and mixing jumps with data relocation. Real current
-  and historical VMs execute 2- and 3-jump programs including post-encryption
-  operand reads, with byte I/O through the jumps. The independently admitted
+  and historical VMs execute 2- and 3-jump programs including operand reads
+  encrypted during a prior skip **or** normal code execution, with byte I/O
+  through the jumps. The independently admitted
   layout now returns exact ordered code, data and encryption positions for
   every step; VM tests compare all three and post-step XLAT2 code-cell values.
   The original full 94-phase single-jump decoder matrix remains covered.
@@ -88,7 +89,9 @@ emission.
   no-clobber publication. Process tests prove byte-exact reproducibility,
   historical/current VM I/O, real jumped and relocated machine execution,
   rejected malformed inputs, protected existing targets/symlinks and competing
-  writers. Optional `--capsule` now uses the existing version-one builder,
+  writers. Real 3-jump programs now publish raw/capsule files under both
+  profiles; independent VM reload confirms output and rejects a forged third
+  target before publication. Optional `--capsule` uses the version-one builder,
   round-trips canonical ID/fingerprint and exact raw payload via its independent
   parser before publication, and executes modern output through the actual
   general `malbolge` runner. Historical interpreter tests check the frozen

@@ -999,3 +999,44 @@ fn three_forward_jumps_reuse_an_earlier_encrypted_operand() -> Result<(), String
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real VM proves a later jump reads an already executed and encrypted no-op"
+)]
+fn later_jump_may_read_previously_executed_and_encrypted_code_data() -> Result<(), String> {
+    let operations: Vec<LinearOpcode> = (0..127usize)
+        .map(|position| match position {
+            0 => LinearOpcode::InputWord,
+            27 => LinearOpcode::JumpForward { target: 72 },
+            116 => LinearOpcode::JumpForward { target: 125 },
+            125 => LinearOpcode::OutputByte,
+            126 => LinearOpcode::Halt,
+            _ => LinearOpcode::NoOperation,
+        })
+        .collect();
+    for profile in [current_profile(), historical_profile()] {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("executed operand encoding: {error:?}"))?;
+        assert_eq!(layout.source().get(72).copied(), Some(90));
+        assert_eq!(encrypt_profile_cell(90), Some(124));
+        let second_jump_index = layout
+            .executed_code_positions()
+            .iter()
+            .position(|position| *position == 116)
+            .ok_or("second jump not reached")?;
+        assert_eq!(
+            layout.data_pointer_positions().get(second_jump_index),
+            Some(&72)
+        );
+        assert!(layout.executed_code_positions().contains(&72));
+        assert!(layout.encrypted_code_positions().contains(&72));
+        let mut vm = ProfileMachine::from_source(profile, layout.source(), vec![0x80])
+            .map_err(|error| format!("executed operand VM: {error:?}"))?;
+        verify_execution_witness(&mut vm, &layout)?;
+        assert_eq!(vm.input_consumed(), 1);
+        assert_eq!(vm.output(), &[0x80]);
+    }
+    Ok(())
+}
