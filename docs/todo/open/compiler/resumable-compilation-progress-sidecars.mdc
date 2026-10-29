@@ -120,7 +120,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   `ValueError` or `RuntimeError`,
   post-`mkdir` mutable pointer path
   re-admission against directory-swap races, post-staging mutable/immutable
-  path re-admission before publication, stable read with read-before-close
+  path re-admission before publication, and temporary descriptor inode
+  pinning through the staged pathname's regular-file, device/inode, and byte-
+  length admission before replace or no-replace linking; real regular-file,
+  symlink, and same-inode length substitutions reject both publisher routes,
+  while descriptor admission failure closes its raw fd before stream transfer,
+  stable read with read-before-close
   failure precedence plus writer-lock lifecycle,
   pre-publication filesystem failures, exact committed-path evidence for
   post-publication directory-sync failures, committed evidence when directory

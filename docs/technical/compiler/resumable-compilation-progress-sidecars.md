@@ -157,6 +157,20 @@ is also readmitted after temporary bytes are fully written and before atomic
 publication. Parent-directory substitution during either mutable or immutable
 staging therefore fails closed before committing a redirected generation.
 
+Mutable and immutable writers now capture the device and inode of the fresh
+`mkstemp` descriptor before transferring it to the payload stream. After file
+sync and stream close, and before pointer replacement or immutable linking,
+they require the temporary pathname to remain a regular, unlinked entry with
+the same device, inode, and exact expected byte length. Substituting a regular
+file, substituting a symlink, or truncating the original inode fails before
+publication in both paths. Temporary cleanup still runs on rejection.
+
+If descriptor identity admission fails before ownership transfer, the raw
+descriptor is closed with cleanup exceptions kept secondary to the primary
+error. The temporary checks constrain the observed prepublication window;
+they do not claim an atomic filesystem snapshot or protection against
+same-length in-place rewriting after the check.
+
 The persistent writer-lock file also receives regular-descriptor admission and
 nonblocking/no-follow opens where available. Its lock-path recheck after
 creating the parent directory rejects a parent-link substitution before the

@@ -5503,6 +5503,148 @@ def test_checkpoint_read_rejects_fifo_swapped_during_open(
             _ = progress.read_checkpoint_generation(sidecar)
 
 
+TEMP_MUTABLE = "mutable"
+TEMP_IMMUTABLE = "immutable"
+TEMP_REGULAR = "regular"
+TEMP_SYMLINK = "symlink"
+TEMP_INPLACE = "inplace"
+
+
+def _replace_staged_progress_temporary(
+    writer: Callable[[int, bytes], None],
+    destination: Path,
+    foreign: Path,
+    *,
+    replacement: str,
+) -> Callable[[int, bytes], None]:
+    def substitute(descriptor: int, payload: bytes) -> None:
+        writer(descriptor, payload)
+        staged = tuple(destination.parent.glob(f".{destination.name}.*.tmp"))
+        assert len(staged) == 1
+        temporary = staged[0]
+        if replacement == TEMP_INPLACE:
+            _ = temporary.write_bytes(foreign.read_bytes())
+        else:
+            temporary.unlink()
+            if replacement == TEMP_REGULAR:
+                _ = temporary.write_bytes(foreign.read_bytes())
+            else:
+                temporary.symlink_to(foreign)
+
+    return substitute
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+@pytest.mark.parametrize(
+    "replacement", [TEMP_REGULAR, TEMP_SYMLINK, TEMP_INPLACE]
+)
+def test_progress_temporary_substitution_fails_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    kind: str,
+    replacement: str,
+) -> None:
+    """Only the exact fsynced temporary inode may become a durable output."""
+    if replacement == TEMP_SYMLINK and os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("temporary symlink substitution needs POSIX semantics")
+    original_write = cast(
+        "Callable[[int, bytes], None]",
+        vars(progress)["_write_payload_descriptor"],
+    )
+    foreign = tmp_path / "foreign-payload"
+    foreign_payload = b"attacker-replacement"
+    _ = foreign.write_bytes(foreign_payload)
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+
+    replace_staged_inode = _replace_staged_progress_temporary(
+        original_write, destination, foreign, replacement=replacement
+    )
+
+    def publish() -> Path:
+        if kind == TEMP_MUTABLE:
+            return progress.write_atomic(sidecar)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        return writer(destination, b"expected-checkpoint", platform=os.name)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_write_payload_descriptor", replace_staged_inode
+        )
+        with pytest.raises(ERROR, match="temporary"):
+            _ = publish()
+    assert not destination.exists()
+    assert foreign.read_bytes() == foreign_payload
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def _inject_temporary_descriptor_admission_failure(
+    context: pytest.MonkeyPatch,
+    staged_descriptors: list[int],
+    message: str,
+) -> None:
+    original_mkstemp = progress.tempfile.mkstemp
+    original_fstat = os.fstat
+
+    def tracked_mkstemp(
+        *, prefix: str, suffix: str, **options: Path
+    ) -> tuple[int, str]:
+        descriptor, name = original_mkstemp(
+            dir=options["dir"], prefix=prefix, suffix=suffix
+        )
+        staged_descriptors.append(descriptor)
+        return descriptor, name
+
+    def fail_staged_fstat(descriptor: int) -> os.stat_result:
+        if descriptor in staged_descriptors:
+            raise OSError(message)
+        return original_fstat(descriptor)
+
+    context.setattr(progress.tempfile, "mkstemp", tracked_mkstemp)
+    context.setattr(os, "fstat", fail_staged_fstat)
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+def test_temporary_descriptor_admission_failure_closes_raw_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    kind: str,
+) -> None:
+    """Failure before writer stream ownership must close mkstemp's fd."""
+    staged_descriptors: list[int] = []
+    message = "injected temporary descriptor fstat failure"
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+
+    def publish() -> Path:
+        if kind == TEMP_MUTABLE:
+            return progress.write_atomic(sidecar)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        return writer(destination, b"expected-checkpoint", platform=os.name)
+
+    with monkeypatch.context() as context:
+        _inject_temporary_descriptor_admission_failure(
+            context, staged_descriptors, message
+        )
+        with pytest.raises(ERROR, match=message):
+            _ = publish()
+    assert len(staged_descriptors) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(staged_descriptors[0])
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
 def test_checkpoint_generation_rejects_linked_immutable_path(
     tmp_path: Path,
 ) -> None:

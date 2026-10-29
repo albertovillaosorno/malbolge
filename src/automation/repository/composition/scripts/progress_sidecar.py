@@ -2177,6 +2177,61 @@ def _cleanup_mutable_temporary(
         raise
 
 
+def _close_unadmitted_temporary(
+    descriptor: int, error: BaseException
+) -> None:
+    """Preserve staging-admission failure over descriptor-close errors."""
+    try:
+        os.close(descriptor)
+    except (OSError, ValueError, RuntimeError) as close_error:
+        error.add_note(
+            "progress temporary descriptor cleanup also failed: "
+            f"{close_error}"
+        )
+
+
+def _temporary_descriptor_identity(descriptor: int) -> tuple[int, int]:
+    """Retain the inode created by mkstemp before stream ownership moves.
+
+    Returns:
+        Device and inode numbers for the unique staging descriptor.
+
+    """
+    try:
+        opened = os.fstat(descriptor)
+    except (OSError, ValueError, RuntimeError) as error:
+        _close_unadmitted_temporary(descriptor, error)
+        _fail_with_source(
+            f"progress temporary descriptor cannot be inspected: {error}",
+            error,
+        )
+    if not stat.S_ISREG(opened.st_mode):
+        error = ProgressSidecarError(
+            "progress temporary descriptor must be a regular file"
+        )
+        _close_unadmitted_temporary(descriptor, error)
+        raise error
+    return opened.st_dev, opened.st_ino
+
+
+def _verify_written_temporary(
+    temporary: Path, identity: tuple[int, int], expected_size: int
+) -> None:
+    """Reject a substituted staging inode before rename or no-replace link."""
+    _reject_path_redirect(temporary, "progress temporary")
+    try:
+        current = temporary.stat(follow_symlinks=False)
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail(f"progress temporary identity cannot be verified: {error}")
+    if (
+        not stat.S_ISREG(current.st_mode)
+        or (current.st_dev, current.st_ino) != identity
+        or current.st_size != expected_size
+    ):
+        _fail("progress temporary inode or size changed during staging")
+    _reject_path_redirect(temporary, "progress temporary")
+
+
 def _write_atomic_bytes(
     destination: Path,
     payload: bytes,
@@ -2193,8 +2248,10 @@ def _write_atomic_bytes(
     temporary = Path(temporary_name)
     replaced = False
     try:
+        temporary_identity = _temporary_descriptor_identity(descriptor)
         _write_payload_descriptor(descriptor, payload)
         _reject_path_redirect(destination, "progress sidecar")
+        _verify_written_temporary(temporary, temporary_identity, len(payload))
         if held_lock is not None:
             _verify_acquired_writer_lock(
                 _writer_lock_path(destination), held_lock
@@ -2350,8 +2407,10 @@ def _write_immutable(
     temporary = Path(temporary_name)
     durable = False
     try:
+        temporary_identity = _temporary_descriptor_identity(descriptor)
         _write_payload_descriptor(descriptor, payload)
         _reject_path_redirect(destination, "immutable progress payload")
+        _verify_written_temporary(temporary, temporary_identity, len(payload))
         _publish_immutable_payload(
             temporary,
             destination,
