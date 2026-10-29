@@ -1243,7 +1243,9 @@ A distinct single-resident lease cache
   the same verified bytes, target assumptions, and ABI pointer.
   `VerifiedDirectLoadImage` reparses verified COFF, rejects relocations,
   extracts exact immutable code and entry offset, retains full key/target
-  identity, and validates ISA alignment. Relocation-free extraction now also
+  identity, and validates ISA alignment.
+
+  Relocation-free extraction now also
   binds `.mbprof` to the exact native key, rejecting both mutated/missing
   metadata and a different structurally valid object's identity on both ISAs.
   Its fixed policy requires RW-to-RX transition plus
