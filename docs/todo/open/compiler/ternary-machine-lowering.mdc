@@ -659,7 +659,8 @@ instruction.
   `.malbolge` code through the independently validating layout backend. The
   current-profile VM echoes exact input for 1, 2, 3, 7, and 64 pairs after
   canonical target round trips. A canonical typed-IR module also reaches the
-  same executable subset, and too-long traces reject at layout admission;
+  same executable subset, all 256 successful byte values execute in one
+  independently encoded VM trace, and too-long traces reject at layout admission;
   alternate profile, non-echo dataflow,
   arithmetic and value returns fail closed. This proves only successful byte
   I/O traces with unobserved ABI/return; EOF, error behavior, and general

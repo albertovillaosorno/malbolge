@@ -28,5 +28,7 @@ functions are not realized. Rejections are explicit, not fallback emulation.
 the normative current-profile VM and checks the exact input/output trace, as
 well as profile drift, oversized trace admission and unsupported-effect
 rejection. An independently admitted canonical typed-IR byte-I/O function
-round-trips through typed-IR and ternary wire formats before executing on the VM. This capability is a
+round-trips through typed-IR and ternary wire formats before executing on the VM.
+One 513-cell machine trace also executes all 256 possible successful byte values
+exactly, including `0x00` and `0xff` (which is data, not an EOF signal). This capability is a
 bounded integration witness, not the full C-to-Malbolge backend.

@@ -461,3 +461,34 @@ fn overly_large_echo_trace_rejects_before_source_emission() -> Result<(), String
     );
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "all-byte VM output comparison is the test oracle"
+)]
+fn all_256_successful_guest_byte_values_execute_exactly() -> Result<(), String> {
+    // One execution covers every possible successful u8 byte, including
+    // NUL, high-bit bytes and 0xff, without conflating 0xff with EOF.
+    const BYTE_VALUES: usize = 256;
+    let lowered = program(BYTE_VALUES)?;
+    let wire = canonical_ternary_bytes(&lowered)
+        .map_err(|error| format!("all-byte ternary encode: {error:?}"))?;
+    let restored = canonical_ternary_program(&wire)
+        .map_err(|error| format!("all-byte ternary restore: {error:?}"))?;
+    assert_eq!(restored, lowered);
+    let layout = encode_successful_byte_echo(&restored, current_profile())
+        .map_err(|error| format!("all-byte target encode: {error:?}"))?;
+    assert_eq!(layout.source().len(), 513);
+    let bytes = (0..=u8::MAX).collect::<Vec<_>>();
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), layout.source(), bytes.clone())
+            .map_err(|error| format!("all-byte VM load: {error:?}"))?;
+    assert!(matches!(
+        machine.run(513),
+        Ok(RunOutcome::Terminated { steps: 513, .. })
+    ));
+    assert_eq!(machine.output(), bytes);
+    assert_eq!(machine.input_consumed(), BYTE_VALUES);
+    Ok(())
+}

@@ -1063,6 +1063,8 @@ programs for 1, 2, 3, 7 and 64 byte pairs with exact output and input counts.
 A separately admitted, canonically serialized/restored typed-IR void byte-I/O
 fixture also reaches real executable output, with the supported projection
 effects and source spans checked against the restored upstream operations.
+One 513-cell source also emits all 256 possible successful byte values in
+order, including zero and 255, with exact machine input consumption.
 An over-4096-cell trace is rejected by final layout admission.
 This does not implement EOF/error status handling, arbitrary computation, a
 callable guest function, or a general C-to-Malbolge pipeline.
