@@ -1142,7 +1142,10 @@ The already verified raw/capsule publisher remains the only output authority.
 External process regressions prove direct MCTI raw/capsule bytes equal the
 old explicit MCTR publication route, check normative VM output and input
 consumption, and fail closed for invalid wire, drifted profile, stale SSA,
-oversize and output collisions. The path accepts only the existing void,
+oversize and output collisions. The directly published MCTI capsule is
+also launched by the real general runner with binary guest stdin, proving
+0x00/0xff/0x80 inputs and exact repeated output, while mixed-mode CLI
+grammar fails closed. The path accepts only the existing void,
 one-function successful-byte sublanguage; this is not general typed-C to
 Malbolge lowering and does not implement EOF or guest ABI returns.
 

@@ -43,9 +43,10 @@ use adapter::typed::{
 use adapter::{TypedEchoAdapterError, compile_canonical_typed_echo};
 use malbolge::{ProfileMachine, RunOutcome, current_profile, historical_profile};
 use std::fs;
+use std::io::Write as _;
 use std::iter::repeat_n;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, id};
+use std::process::{Command, Output, Stdio, id};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static TEST_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -1045,5 +1046,106 @@ fn canonical_typed_file_cli_rejects_stale_ssa_corrupt_wire_profile_and_oversize(
         fs::read(target).map_err(|error| error.to_string())?,
         sentinel
     );
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_latest_file_runs_real_general_cli_with_successful_binary_stdin()
+-> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let steps = [
+        (true, 0),
+        (false, 0),
+        (false, 0),
+        (true, 1),
+        (true, 2),
+        (false, 2),
+        (false, 2),
+    ];
+    let canonical = wire(&latest_typed_fixture(&steps)?)?;
+    let source = workspace.path("process-input.mcti");
+    let artifact = workspace.path("process-output.malbolge");
+    fs::write(&source, canonical).map_err(|error| error.to_string())?;
+    let published = publish_typed_wire(current_profile().id(), &source, &artifact, true, true)?;
+    if !published.status.success() {
+        return Err(format!(
+            "canonical typed-to-capsule publisher failed: {}",
+            String::from_utf8_lossy(&published.stderr)
+        ));
+    }
+    let bytes = fs::read(&artifact).map_err(|error| error.to_string())?;
+    let restored = malbolge::parse_capsule(&bytes)
+        .map_err(|error| format!("independent capsule read: {error}"))?
+        .ok_or("missing directly published typed capsule")?;
+    if restored.profile() != current_profile() || restored.payload().len() != 8 {
+        return Err(String::from(
+            "direct typed process target identity or size drift",
+        ));
+    }
+    let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&artifact)
+        .arg("--input-stdin")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("real guest CLI launch: {error}"))?;
+    let mut stdin = child.stdin.take().ok_or("guest CLI has no input pipe")?;
+    stdin
+        .write_all(&[0, 255, 128])
+        .map_err(|error| format!("binary guest input: {error}"))?;
+    drop(stdin);
+    let observed = child
+        .wait_with_output()
+        .map_err(|error| format!("read guest process result: {error}"))?;
+    if !observed.status.success()
+        || observed.stdout != [0, 0, 128, 128]
+        || !observed.stderr.is_empty()
+    {
+        return Err(format!("real guest typed execution mismatch: {observed:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_file_mode_requires_exact_explicit_grammar() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let source = workspace.path("valid.mcti");
+    let target = workspace.path("grammar-refused.malbolge");
+    fs::write(&source, wire(&fixture(1)?)?).map_err(|error| error.to_string())?;
+    for tokens in [
+        vec!["--typed-file"],
+        vec!["--latest-byte-trace", "--typed-file"],
+        vec!["--latest-byte-trace", "--auto-layout", "input", "halt"],
+        vec!["--latest-byte-trace", "--typed-file", "missing.mcti", "nop"],
+        vec!["--typed-file", "missing.mcti", "--latest-byte-trace"],
+    ] {
+        let result = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+            .arg("--profile")
+            .arg(current_profile().id())
+            .arg("--output")
+            .arg(&target)
+            .arg("--")
+            .args(tokens)
+            .output()
+            .map_err(|error| format!("typed grammar invocation: {error}"))?;
+        if result.status.success() || target.exists() {
+            return Err(String::from("invalid typed mode grammar published source"));
+        }
+    }
+    let rejected_extra = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+        .arg("--profile")
+        .arg(current_profile().id())
+        .arg("--output")
+        .arg(&target)
+        .arg("--")
+        .arg("--typed-file")
+        .arg(&source)
+        .arg("nop")
+        .output()
+        .map_err(|error| format!("typed trailing token: {error}"))?;
+    if rejected_extra.status.success() || target.exists() {
+        return Err(String::from("typed file accepted a trailing machine token"));
+    }
     Ok(())
 }

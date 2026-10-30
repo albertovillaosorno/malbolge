@@ -231,7 +231,12 @@ empty-input and two successful-byte-pattern preflights. Raw and capsule
 artifacts use the existing atomic no-clobber publisher. Tests verify that
 direct MCTI output equals the previous MCTI-to-MCTR-to-file route for both
 modes, malformed/cross-profile/stale SSA/oversize inputs refuse publication,
-and existing output is never modified. No EOF/error/guest ABI is added.
+and existing output is never modified. A separate process regression
+executes a directly published typed latest-read capsule through the real
+`malbolge --input-stdin` runner, verifying binary `0x00`, `0xff` and `0x80`
+input with repeated outputs `0x00 0x00 0x80 0x80`. Hostile mode ordering,
+missing path and extra operands also reject before target publication.
+No EOF/error/guest ABI is added.
 
 `--ternary-file` is mutually exclusive with individual decoded machine-op
 tokens. Its sole operand must be an existing, nonempty regular file with at

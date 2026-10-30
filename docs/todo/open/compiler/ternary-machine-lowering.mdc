@@ -705,8 +705,11 @@ instruction.
   source artifact. Independent MCTR decode and source re-encoding gate the
   adapter's output before the same VM preflight and no-clobber raw/capsule
   publication. Real external tests compare direct and old staged artifacts
-  byte-for-byte and reject forged/unsupported/oversized typed input. The
-  default strict echo subdomain and successful-I/O-only limitation remain.
+  byte-for-byte and reject forged/unsupported/oversized typed input. A
+  directly published latest-byte capsule now also executes through the
+  real general Malbolge CLI with binary stdin; exact repeated output and
+  bad option-grammar rejection are independently observed. The default
+  strict echo subdomain and successful-I/O-only limitation remain.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

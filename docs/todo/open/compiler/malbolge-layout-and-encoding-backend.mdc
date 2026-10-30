@@ -185,8 +185,10 @@ emission.
   two-pattern preflight and raw/capsule no-overwrite publish. Real process
   tests compare direct vs MCTR-file artifact bytes in both modes, verify
   guest output and consumption, and refuse wrong-profile/invalid/stale SSA,
-  oversized MCTI or occupied outputs. No generic C, EOF, ABI or heap work
-  is claimed.
+  oversized MCTI or occupied outputs. A real general-runner process also
+  executes directly published MCTI capsule bytes with explicit 0/255/128
+  binary stdin and exact repeated output; invalid typed option grammar
+  fails without publication. No generic C, EOF, ABI or heap work is claimed.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

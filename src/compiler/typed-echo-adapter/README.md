@@ -65,7 +65,10 @@ length. The same normative VM successful-byte patterns and raw/capsule
 no-clobber publication are retained. The integration regressions compare
 both direct paths byte-for-byte against the older explicit MCTR workflow and
 reject malformed, wrong-profile, stale-SSA and oversized MCTI without
-creating a target.
+creating a target. A direct MCTI-to-capsule-to-real-general-CLI regression
+additionally feeds three binary guest bytes (including 0 and 255) and
+requires the expected repeated latest-byte output; grammar errors and
+trailing mixed-mode operands fail closed.
 
 For the original strict echo subset, canonical `MCTR` bytes remain consumable
 by the default `malbolge_layout --ternary-file` CLI. Its separate opt-in

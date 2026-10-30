@@ -265,8 +265,12 @@ publication. Process tests compare strict and latest-read direct MCTI
 output byte-for-byte against independent MCTR-file publication, reopen
 published raw/capsule payloads and verify real VM output/consumption, and
 reject malformed input, profile mismatch, stale-SSA use, oversize and
-occupied output paths. This closes one artifact-adapter integration gap,
-not arbitrary C lowering, guest-runtime ABI, EOF or I/O failure semantics.
+occupied output paths. A second integration test executes the directly
+published MCTI capsule through the real `malbolge --input-stdin` process,
+requiring exact repeated byte output for input 0, 255 and 128. Invalid
+mode order, absent typed path and mixed trailing machine tokens are refused.
+This closes one artifact-adapter integration gap, not arbitrary C lowering,
+guest-runtime ABI, EOF or I/O failure semantics.
 
 ### Remaining implementation
 
