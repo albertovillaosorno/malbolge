@@ -771,6 +771,25 @@ def _wait_for_bounded_pipes(running: _RunningProbe, deadline: float) -> None:
         time.sleep(_POLL_SECONDS)
 
 
+def _start_capture_checked(
+    process: subprocess.Popen[bytes], command: ProbeCommand
+) -> _RunningProbe:
+    """Normalize worker startup failures to the probe execution boundary.
+
+    Returns:
+        Active bounded capture readers and optional stdin writer.
+
+    Raises:
+        ProbeExecutionError: Starting stream workers failed.
+
+    """
+    try:
+        return _start_capture(process, command)
+    except (OSError, RuntimeError, ValueError) as error:
+        message = f"probe worker startup failed: {error}"
+        raise ProbeExecutionError(message) from error
+
+
 def _launch_command(
     argv: list[str], command: ProbeCommand, scratch_root: Path
 ) -> subprocess.CompletedProcess[bytes]:
@@ -783,7 +802,7 @@ def _launch_command(
     deadline = time.monotonic() + command.timeout_ms / 1000
     process = _spawn_probe(argv, scratch_root)
     try:
-        running = _start_capture(process, command)
+        running = _start_capture_checked(process, command)
         _wait_for_bounded_pipes(running, deadline)
         completed = subprocess.CompletedProcess(
             argv,

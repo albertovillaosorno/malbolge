@@ -602,6 +602,42 @@ def test_uncaught_reader_thread_failure_rejects_probe(
     _expect(bool(uncaught), "worker exception fixture was not exercised")
 
 
+@pytest.mark.parametrize("fail_writer", [False, True])
+def test_probe_worker_startup_failures_are_wrapped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fail_writer: bool,
+) -> None:
+    """Reader and writer start errors must stay inside the probe boundary."""
+    source = tmp_path / "source"
+    source.mkdir()
+    original_start = threading.Thread.start
+    triggered = [False]
+
+    def failing_start(thread: threading.Thread) -> None:
+        is_writer = thread.name == _PROBE_WRITER_THREAD_NAME
+        if is_writer is fail_writer:
+            triggered[0] = True
+            message = "synthetic OS thread resource exhaustion"
+            raise RuntimeError(message)
+        original_start(thread)
+
+    monkeypatch.setattr(threading.Thread, "start", failing_start)
+    command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "pass"),
+        stdin=b"nonempty",
+        digest_stdout=True,
+    )
+    with pytest.raises(ProbeExecutionError, match="worker startup failed"):
+        _ = run_probe_program(
+            ProbeProgram("worker-startup", (command,)),
+            _context(source, tmp_path),
+        )
+    _expect(triggered[0], "worker start failure was not injected")
+
+
 def test_uncaught_stdin_writer_failure_rejects_probe(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -150,8 +150,9 @@ reject before execution. Unrelated repository hardlinks remain valid. This
 prevents the typed-path class from bypassing the protected `source` mirror even
 with post-run immutability checks disabled. Arbitrary raw string argv remains a
 trusted consumer contract, not a filesystem sandbox. Probe metadata rejects
-NUL argv/path/tool IDs before launching, and executable spawn failures
-stay inside the probe error boundary. No-shell child output pipes now stream
+NUL argv/path/tool IDs before launching; executable spawn and stream worker
+startup failures stay inside the
+probe execution error boundary. No-shell child output pipes now stream
 into independent memory-guarded readers, aborting on the first byte over each
 stdout/stderr quota; stdin has a concurrent writer to avoid full-duplex
 backpressure deadlocks. Unexpected read/write/close stream errors are recorded

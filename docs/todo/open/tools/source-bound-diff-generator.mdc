@@ -68,6 +68,9 @@ format.
 - A conjunctive gate proves behavior-only clones cannot replace structural
   lineage
   and source lineage cannot replace failed compatibility behavior.
+- Reader and stdin-writer startup failures now normalize to probe execution
+  errors, while the child is killed and reaped. Both worker types have injected
+  failed-before-green thread-start regressions.
 - The isolated mirror is now re-snapshotted after every command, including
   failure, before any later command can consume mutated intermediate source
   state. A within-command flip-and-restore remains outside post-exit scanning.
