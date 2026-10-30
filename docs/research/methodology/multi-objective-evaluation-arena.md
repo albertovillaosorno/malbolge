@@ -799,7 +799,10 @@ The original study records remain the result authority.
   report exact `peak_rss_bytes` (maximum observed Linux `ru_maxrss` after
   KiB-to-byte conversion), retained as a third Pareto cost. Invalid, zero,
   oversized or missing stage readings fail closed; old measurements retain
-  their original two-cost analysis.
+  their original two-cost analysis. RSS receipts now use the bounded ordinary-
+  file admission reader; a link, FIFO, malformed extra whitespace or a
+  claimed peak above the configured per-child address-space limit rejects.
+  Receipt consistency does not authenticate the kernel measurement source.
 - The host-C reference producer now retains version-two Linux child-limit
   policy metadata and blocks new studies when its limiter is unavailable.
   The offline auditor strictly compares the resource-control sidecar to the

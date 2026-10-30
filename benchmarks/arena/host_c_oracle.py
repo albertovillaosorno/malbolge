@@ -161,14 +161,20 @@ def _ascii_digits(value: bytes) -> bool:
 
 
 def _read_stage_rss(path: Path) -> int:
-    with path.open("rb") as stream:
-        raw = stream.read(RSS_REPORT_MAX_BYTES + 1)
-    value = raw.strip()
-    if not value or len(raw) > RSS_REPORT_MAX_BYTES or not _ascii_digits(value):
+    from benchmarks.arena import evidence  # ruff: ignore[import-outside-top-level]
+
+    try:
+        raw = evidence.read_bounded_regular(
+            path.parent, path.name, limit=RSS_REPORT_MAX_BYTES
+        )
+    except (OSError, evidence.EvidenceError) as error:
+        message = "host-C child RSS observation missing or unsafe"
+        raise HostOracleError(message) from error
+    if not raw.endswith(b"\n") or not _ascii_digits(raw[:-1]):
         _fail("host-C child RSS observation missing or malformed")
-    peak_kib = int(value)
-    if peak_kib <= 0:
-        _fail("host-C child RSS observation must be positive")
+    peak_kib = int(raw[:-1])
+    if not 0 < peak_kib <= CHILD_VIRTUAL_MEMORY_MIB * MIB_BYTES // KIB_BYTES:
+        _fail("host-C child RSS observation outside child limits")
     return peak_kib * KIB_BYTES
 
 

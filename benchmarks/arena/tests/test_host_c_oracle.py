@@ -575,6 +575,62 @@ def test_host_c_rejects_missing_or_malformed_rss_reports(
         host_c_oracle._read_stage_rss(report)
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [b"1", b"1\r\n", b"1\n\n", b" 1\n", b"1 \n", b"+1\n"],
+)
+def test_host_c_rss_rejects_noncanonical_gnu_time_bytes(
+    tmp_path: Path,
+    invalid: bytes,
+) -> None:
+    """Only one newline-terminated decimal count is GNU-time evidence."""
+    report = tmp_path / "rss.txt"
+    _ = report.write_bytes(invalid)
+    with pytest.raises(host_c_oracle.HostOracleError, match="RSS observation"):
+        host_c_oracle._read_stage_rss(report)
+
+
+def test_host_c_rss_rejects_impossible_peak_above_address_space_limit(
+    tmp_path: Path,
+) -> None:
+    """A reported per-child resident peak cannot exceed its address limit."""
+    maximum = (
+        host_c_oracle.CHILD_VIRTUAL_MEMORY_MIB
+        * host_c_oracle.MIB_BYTES
+        // host_c_oracle.KIB_BYTES
+    )
+    report = tmp_path / "rss.txt"
+    _ = report.write_bytes(f"{maximum}\n".encode("ascii"))
+    assert host_c_oracle._read_stage_rss(report) == maximum * 1024
+    _ = report.write_bytes(f"{maximum + 1}\n".encode("ascii"))
+    with pytest.raises(host_c_oracle.HostOracleError, match="outside child limits"):
+        host_c_oracle._read_stage_rss(report)
+
+
+def test_host_c_rss_does_not_follow_linked_receipt(tmp_path: Path) -> None:
+    """Source-reported RSS cannot be substituted through a symlink."""
+    target = tmp_path / "outside.txt"
+    _ = target.write_bytes(b"10\n")
+    report = tmp_path / "rss.txt"
+    report.symlink_to(target)
+    with pytest.raises(host_c_oracle.HostOracleError, match="RSS observation"):
+        host_c_oracle._read_stage_rss(report)
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "mkfifo") or not getattr(os, "O_NONBLOCK", 0),
+    reason="requires nonblocking POSIX file admission",
+)
+def test_host_c_rss_rejects_fifo_without_opening_writer(tmp_path: Path) -> None:
+    """A substituted pipe must fail admission without waiting for a writer."""
+    report = tmp_path / "rss.txt"
+    mkfifo = getattr(os, "mkfifo", None)
+    assert callable(mkfifo)
+    mkfifo(report)
+    with pytest.raises(host_c_oracle.HostOracleError, match="RSS observation"):
+        host_c_oracle._read_stage_rss(report)
+
+
 def test_host_c_rss_measurement_tool_missing_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
