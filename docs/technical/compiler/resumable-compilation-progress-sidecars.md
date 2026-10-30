@@ -192,7 +192,18 @@ after hashing on the open descriptor, and after reader closure. Deterministic
 POSIX tests insert a hard-link alias at each boundary, including between hash
 completion and the final pathname check; none may publish the aliased inode.
 The immutable POSIX publisher's intentional no-replace hard link happens only
-after these staging checks and is cleaned up when staging completes.
+after these staging checks and is cleaned up when staging completes. After
+successfully confirming directory durability and removing the temporary entry,
+the immutable writer now re-admits the published path as a regular single-link
+inode and compares its device/inode with the one recorded directly after the
+no-replace publication or collision reuse. A foreign alias added after the
+initial staging check, or a byte-identical inode replacement during durability
+confirmation, no longer yields success. Because this check happens after the
+committed generation, any rejection reports `ProgressSidecarCommittedError`
+with the exact published member path rather than pretending the filesystem
+change was rolled back. Generation publication stops before the mutable pointer
+in these failure cases. This is still a bounded observation: an adversary may
+modify the inode after the final check or via another open descriptor.
 
 If descriptor identity admission fails before ownership transfer, the raw
 descriptor is closed with cleanup exceptions kept secondary to the primary

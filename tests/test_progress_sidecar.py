@@ -5815,6 +5815,114 @@ def test_immutable_collision_rejects_fifo_swapped_during_open(
             reader(destination, payload)
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX hard-link injection requires native link publication",
+)
+def test_immutable_postpublication_alias_is_committed_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A linked generation after publication is committed but not safe."""
+    destination = tmp_path / "checkpoint"
+    alias = tmp_path / "foreign-published-alias"
+    payload = b"durable-checkpoint"
+    publisher = cast(
+        "Callable[..., None]", vars(progress)["_publish_no_replace"]
+    )
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+
+    def publish_then_alias(
+        temporary: Path, target: Path, *, platform: str = os.name
+    ) -> None:
+        publisher(temporary, target, platform=platform)
+        os.link(target, alias)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_publish_no_replace", publish_then_alias)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=r"committed durably.*hard link",
+        ) as captured:
+            _ = writer(destination, payload, platform=os.name)
+    assert captured.value.published_path == destination
+    assert destination.read_bytes() == payload
+    assert alias.read_bytes() == payload
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX hard-link injection requires native link publication",
+)
+def test_late_immutable_hardlink_blocks_checkpoint_pointer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A linked but durably committed checkpoint cannot publish its pointer."""
+    payload = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=payload, partial=None
+    )
+    checkpoint = Path(sidecar.checkpoint_path or "")
+    alias = tmp_path / "checkpoint-external-alias"
+    publisher = cast(
+        "Callable[..., None]", vars(progress)["_publish_no_replace"]
+    )
+
+    def publish_then_alias(
+        temporary: Path, destination: Path, *, platform: str = os.name
+    ) -> None:
+        publisher(temporary, destination, platform=platform)
+        os.link(destination, alias)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_publish_no_replace", publish_then_alias)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=r"committed durably.*hard link",
+        ) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, payload)
+    assert captured.value.published_path == checkpoint
+    assert not Path(sidecar.progress_path).exists()
+    assert checkpoint.read_bytes() == alias.read_bytes() == payload
+
+
+def test_immutable_postpublication_inode_swap_is_committed_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late same-byte inode swap cannot certify staged publication."""
+    destination = tmp_path / "checkpoint"
+    replacement = tmp_path / "replacement"
+    payload = b"durable-checkpoint"
+    _ = replacement.write_bytes(payload)
+    replacement_inode = replacement.stat().st_ino
+    confirmer = cast(
+        "Callable[..., None]", vars(progress)["_confirm_publication_durability"]
+    )
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+
+    def confirm_then_swap(
+        path: Path, *, context: str, platform: str = os.name
+    ) -> None:
+        confirmer(path, context=context, platform=platform)
+        _ = replacement.replace(path)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_confirm_publication_durability", confirm_then_swap
+        )
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=r"committed durably.*inode changed",
+        ) as captured:
+            _ = writer(destination, payload, platform=os.name)
+    assert captured.value.published_path == destination
+    assert destination.stat().st_ino == replacement_inode
+    assert destination.read_bytes() == payload
+
+
 def test_immutable_collision_rejects_named_pipe(tmp_path: Path) -> None:
     """Collided generation FIFOs fail closed without pointer publication."""
     checkpoint = b"checkpoint-state-v1"

@@ -2634,6 +2634,28 @@ def _cleanup_immutable_temporary(
         raise
 
 
+def _confirm_immutable_postcleanup_identity(
+    destination: Path, expected_identity: tuple[int, int]
+) -> None:
+    """Reject a changed committed inode or an external hard-link alias.
+
+    Raises:
+        ProgressSidecarCommittedError: If the committed inode is no longer
+            an isolated regular generation after staging cleanup.
+
+    """
+    try:
+        observed = _admit_collided_immutable_inode(destination)
+        if (observed.st_dev, observed.st_ino) != expected_identity:
+            _fail("immutable progress payload inode changed after publication")
+    except _OUTPUT_STREAM_ERRORS as error:
+        message = (
+            "immutable progress payload committed durably but final "
+            f"identity admission failed: {error}"
+        )
+        raise ProgressSidecarCommittedError(message, destination) from error
+
+
 def _write_immutable(
     destination: Path,
     payload: bytes,
@@ -2661,6 +2683,15 @@ def _write_immutable(
             payload,
             platform=platform,
         )
+        try:
+            published = destination.stat(follow_symlinks=False)
+        except _OUTPUT_STREAM_ERRORS as error:
+            message = (
+                "immutable progress payload committed but published inode "
+                f"cannot be identified: {error}"
+            )
+            raise ProgressSidecarCommittedError(message, destination) from error
+        expected_identity = (published.st_dev, published.st_ino)
         _confirm_publication_durability(
             destination,
             context="immutable progress payload",
@@ -2673,6 +2704,7 @@ def _write_immutable(
             destination,
             durable=durable,
         )
+    _confirm_immutable_postcleanup_identity(destination, expected_identity)
     return destination
 
 
