@@ -453,15 +453,53 @@ multiple bytes, authenticating its own source, or supporting arbitrary C.
 The P2 compact-bytecode task stays open pending larger, truly equivalent
 programs and a reusable guest bytecode runtime.
 
+## Results: Two Genuine Sequential Guest Opcode Fetches v7 (2026-10-29)
+
+The v6 result used only one resident graphical operation. Version seven
+executes two distinct opcode reads and two independent guest-side control
+transfers before halting. The source has exactly 227 loader-positioned
+cells and preserves the same SHA-256-bound CEB2 descriptor, now relocated
+to 102 graphical cells at 125–226. The first operand `M[121]=90` sends
+`i@81` to `input@91`, `output@92`, `i@93`. Those reached operations
+advance D to address 124, where a **second physical bytecode operand**
+`M[124]=104` transfers the second `i` to `input@105`, `output@106`,
+`halt@107`. Each jump targets and encrypts a code cell (90 or 104),
+leaving both opcode words and all 102 CEB2 data cells unchanged.
+
+Independent host admission enforces precisely two original byte echo
+pairs, exact source/profile CEB2 SHA-256 identity, all positional code,
+both individually fixed graphical opcodes and canonical descriptor padding.
+Malformed source lengths, forged equal-count source IDs, all alternative
+loader-valid graphical opcode cells, source changes and corrupted CEB2
+payloads reject before VM execution. The guest does **not** authenticate
+source bytes itself. Full normative VM traces for successful bytes
+`[0,255]`, `[255,0]`, `[128,129]` verify two reached `i` operands and
+after-state C and D registers, exact read/write counts, complete CEB2
+memory preservation and equality with the separately compiled two-pair
+source's stdout and input consumption. Canonical `.malbolge` capsules
+run through the real general Malbolge CLI match for `[0,255]` and
+`[255,0]` with exact byte output and step receipts.
+
+The semantically equivalent successful two-pair sample costs
+**227 vs 5 source cells** and **88 vs 5 guest steps** for guest opcode
+execution versus direct code: +222 cells and +83 steps. This does not
+show a compression win or amortization. The two opcodes are *hand-placed*
+with different graphical values and two distinct native handlers. No
+single reusable handler, runtime ordinal decoding, dynamic repeat count,
+loop, guest source authentication or larger program family has been
+implemented. CEB2 remains a host-bound descriptor, not a resident CEB2
+bytecode interpreter. This P2 task and its hypothesis remain open.
+
 ## Threats to Validity
 
-The pilot has no guest interpreter, no real bytecode loader, no linked data
-layout, no source-authenticating envelope, and no measured decoder cost.
-Comparing binary descriptor bytes to graphical instruction cells is optimistic
-and may be physically impossible at the assumed one-cell-per-byte density.
-The host expands a macro into direct Malbolge instructions, rather than
-executing bytecode inside Malbolge. Successful byte I/O does not cover EOF,
-status errors, arbitrary arithmetic, control flow, or whole-program C ABI.
+The pilot has no **reusable** guest interpreter or complete bytecode
+loader, no guest-side authenticity check, and no measured generic decoder
+cost. The original v0/v1 hypothetical byte-density assumptions are not
+physical guest encodings. Later v6/v7 sources do execute one or two
+fixed graphical opcodes with real guest I/O but do not expand, decode or
+execute a complete general CEB2 program inside Malbolge. These bounded
+successful byte I/O cases do not prove status errors, arbitrary arithmetic,
+general control flow, or whole-program C ABI support.
 The tested current-profile word width and deterministic synthetic trace family
 cannot be generalized to classic or later profiles. Compiler time, guest
 runtime time, resident memory, proof complexity, workload bias and
@@ -473,10 +511,13 @@ resource budgets, reporting negative results and any bound limitations.
 
 ## Conclusion
 
-This pilot establishes a closed six-byte repeat-echo research encoding and a
-quantitative *conditional* break-even budget, **not** bytecode feasibility.
-Without verified guest execution and the missing cost dimensions, H1 remains
-unresolved and there is no basis to adopt guest bytecode in the compiler.
+This pilot establishes a versioned structural echo descriptor, a
+source-bound and loader-placed CEB2 encoding, and **bounded real guest
+execution** of one and two fixed graphical operations. The equivalent
+one- and two-pair costs are decisively worse than direct execution. A
+reusable guest interpreter, repeat loop, general decoding and additional
+cost dimensions remain unverified. H1 remains unresolved and there is no
+basis to adopt guest bytecode as a compiler strategy.
 
 ## References
 

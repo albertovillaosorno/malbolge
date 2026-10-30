@@ -162,6 +162,21 @@ code-size explosion or compilation cost.
   bytes plus EOF and trailing input against direct execution; they are
   bounded samples rather than a 256-value exhaustive proof.
 
+- The version-seven **two-operation guest** pilot now executes two distinct
+  graphical bytecode cells in one real Malbolge source: `i@81` reads
+  `M[121]=90`, executes native input/output and `i@93`; the second `i`
+  independently reads `M[124]=104`, then executes a second input/output
+  and halts. Two byte inputs are echoed in order, with both guest jump
+  traces and 102 unchanged SHA-256-bound CEB2 descriptor cells verified.
+  Independently emitted direct two-pair source and real general CLI
+  capsules match observable successful byte I/O and exact steps. The v7
+  encoded source uses 227 cells/88 steps versus direct 5/5: +222 cells
+  and +83 steps, a negative small-case result. Strict host admission
+  rejects foreign source IDs, unsupported counts, tampered positions or
+  either loader-valid opcode substitution. The two graphical opcode
+  values and native handlers are **hand-placed**; no reusable interpreter,
+  generic opcode decoding, repeat-count loop or on-guest SHA-256 exists.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

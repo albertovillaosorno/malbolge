@@ -328,9 +328,51 @@ runtime arithmetic. It has no bytecode loop, repeated instructions, second
 opcode, unbounded program coverage or compilation advantage. General
 interpreter feasibility and the P2 TODO remain open.
 
+## Two sequential source-bound guest opcodes v7 (2026-10-29)
+
+`two_opcode.rs` and `pilot-v7.toml` extend the actual v6 guest I/O
+experiment to **two independently fetched graphical operations**. The
+227-cell loader-admissible source contains initial `j@0`, 80 no-ops,
+`i@81` reading opcode **`M[121]=90`**, then native `/@91`, `<@92`,
+`i@93`. The first input/output pair advances guest D to address 124,
+so `i@93` reads a **different** graphical opcode `M[124]=104` and
+branches to `/@105`, `<@106`, `v@107`. The normative VM fetches and
+executes both indirect instructions, consumes exactly two inputs, echoes
+both bytes in order and halts after **88 actual guest steps**. Each
+indirect jump's mandatory XLAT2 targets code, never bytecode.
+
+A separate 102-cell, 38-byte SHA-256-bound CEB2 graphical descriptor
+occupies positions 125–226; all 102 original three-bit ordinals are
+re-encoded for their new loader addresses. Every word of the descriptor
+remains unchanged after actual two-operation guest execution. Independent
+host admission reconstructs exact descriptor bytes from the *supplied*
+source and rejects unsupported pair counts, changes to code or either
+opcode, all loader-valid alternate opcode glyphs, mutations of data and
+foreign canonical source identity. Host admission, not the guest,
+authenticates the original two-pair program and selected profile.
+
+Compared with an independently emitted **two-pair** direct baseline, real
+VM traces for `[0,255]`, `[255,0]`, `[128,129]` agree in exact stdout,
+input consumption and termination. Separate canonical capsules executed
+by the *general* Malbolge CLI likewise agree on `[0,255]` and `[255,0]`
+with exact **88 vs 5 step** receipts. The guest code is **227 cells**
+versus direct **5 cells**: +222 source cells and +83 executed steps for
+an equivalent successful two-byte workload. This is another **negative
+small-program cost result**, not a demonstrated compression speedup.
+
+Importantly, the two literal graphical opcode encodings are hand placed
+at different phases; this is an **unrolled two-operation guest program**.
+It has no count-driven repeat loop, generic opcode decoder, on-guest
+CEB2 verification, bounded-loop termination, or independently established
+performance benefit for larger programs. The compiler P2 TODO remains
+open pending a reusable interpreter and equivalent multi-operation study.
+
 ## Status
 
-No VM-resident bytecode runtime has been implemented. No guest-interpreted
-candidate has been verified, and no compile-time, execution-time, memory,
-or verifier-complexity advantage has been measured. The pilot does not satisfy
-the P2 adoption criterion.
+No **reusable** VM-resident bytecode interpreter has been implemented.
+The executable v6/v7 research probes prove one and two hand-placed guest
+opcode dispatches, but no generic decoding, count-driven loop, in-guest
+source verification or compiler integration. The small equivalent input
+workloads have strictly worse source-cell and guest-step counts than direct
+lowering; no compilation-time, memory or verification-cost advantage has
+been demonstrated. The P2 adoption criterion is not satisfied.

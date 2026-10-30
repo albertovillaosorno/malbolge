@@ -43,6 +43,8 @@ pub mod residency;
 pub mod single;
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_macro.rs"]
 pub mod strategy;
+#[path = "../algorithms/compact-guest-bytecode-strategy/two_opcode.rs"]
+pub mod two;
 
 use malbolge::{
     ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, encrypt_profile_cell,
@@ -90,6 +92,10 @@ use single::{
     SINGLE_CEB2_START, SINGLE_ECHO_GUEST_STEPS, SINGLE_ECHO_OPCODE_RANK, SINGLE_OPCODE_ADDRESS,
     SINGLE_SOURCE_CELLS, SingleOpcodeError, admit_single_echo_opcode, embed_single_echo_opcode,
 };
+use two::{
+    FIRST_OPCODE_ADDRESS, SECOND_OPCODE_ADDRESS, TWO_CEB2_START, TWO_GUEST_STEPS, TWO_SOURCE_CELLS,
+    TwoOpcodeError, admit_two_echo_opcodes, embed_two_echo_opcodes,
+};
 
 const BOUND_PILOT_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v1.toml");
@@ -98,6 +104,8 @@ const GUEST_PROBE_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v3.toml");
 const SINGLE_OPCODE_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v6.toml");
+const TWO_OPCODE_CONFIG: &str =
+    include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v7.toml");
 const ISOLATED_DISPATCH_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v5.toml");
 const ISOLATED_HANDLERS_CONFIG: &str =
@@ -2648,6 +2656,356 @@ fn guest_echo_one_opcode_agrees_with_direct_on_eof_and_trailing_input() -> Resul
                 "trailing input is never echoed by a one-opcode program"
             );
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn two_graphical_guest_operations_config_pins_bounded_semantics() {
+    for declaration in [
+        "schema = \"compact-guest-bytecode-pilot-v7\"",
+        "operation_count = 2",
+        "required_echo_pairs = 2",
+        "source_cells = 227",
+        "first_opcode_address = 121",
+        "first_opcode_word = 90",
+        "second_opcode_address = 124",
+        "second_opcode_word = 104",
+        "source_bound_descriptor_start = 125",
+        "source_bound_descriptor_cells = 102",
+        "reached_guest_steps = 88",
+        "guest_opcode_read_count = 2",
+        "guest_repetition_loop_present = false",
+        "guest_sha256_authentication_present = false",
+        "general_bytecode_interpreter_present = false",
+    ] {
+        assert!(
+            TWO_OPCODE_CONFIG.lines().any(|line| line == declaration),
+            "missing v7 research contract: {declaration}"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "two semantic guest opcodes with independent direct oracle"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "all reached branches and source-bound payload traces"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "two real indirect instruction trace receipts"
+)]
+fn two_real_graphical_guest_opcodes_match_two_pair_direct_echo() -> Result<(), String> {
+    let original = program(2)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("original 2-pair digest: {error:?}"))?;
+    let guest_source = embed_two_echo_opcodes(&original, current_profile(), &candidate)
+        .map_err(|error| format!("emit two-op guest source: {error:?}"))?;
+    assert_eq!(guest_source.len(), TWO_SOURCE_CELLS, "exact 227 positions");
+    assert_eq!(TWO_SOURCE_CELLS, 227);
+    assert_eq!(TWO_CEB2_START, 125);
+    assert_eq!(FIRST_OPCODE_ADDRESS, 121);
+    assert_eq!(SECOND_OPCODE_ADDRESS, 124);
+    assert_eq!(guest_source.get(121), Some(&90), "first physical opcode");
+    assert_eq!(guest_source.get(124), Some(&104), "second physical opcode");
+    assert_eq!(
+        admit_two_echo_opcodes(&original, current_profile(), &guest_source),
+        Ok(candidate),
+        "host must reconstruct exact CEB2 from new-phase glyphs"
+    );
+    for (address, &glyph) in guest_source.iter().enumerate() {
+        assert!(
+            matches!(
+                decode_profile_instruction(
+                    u32::from(glyph),
+                    u32::try_from(address).map_err(|error| error.to_string())?
+                ),
+                Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+            ),
+            "entire graphical source must pass normative loader at {address}"
+        );
+    }
+    let direct = strategy::bridge::encode_successful_byte_echo(&original, current_profile())
+        .map_err(|error| format!("independent 2-pair direct layout: {error:?}"))?;
+    assert_eq!(direct.source().len(), 5, "direct code only five cells");
+    for input in [vec![0u8, 255], vec![255, 0], vec![128, 129]] {
+        let mut guest =
+            ProfileMachine::from_source(current_profile(), &guest_source, input.clone())
+                .map_err(|error| format!("loader for two opcode VM: {error:?}"))?;
+        let mut indirect = Vec::new();
+        let outcome = guest
+            .run_traced(TWO_GUEST_STEPS, &mut |trace| {
+                if trace.before.registers.code_pointer == 81
+                    || trace.before.registers.code_pointer == 93
+                {
+                    indirect.push(*trace);
+                }
+            })
+            .map_err(|error| format!("two-op guest VM: {error:?}"))?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated { steps: 88, .. }),
+            "two guest opcodes must halt after exactly 88 native steps"
+        );
+        assert_eq!(indirect.len(), 2, "two actual data-derived reached jumps");
+        for (index, (code, data, glyph)) in [(81u32, 121u32, 90u32), (93, 124, 104)]
+            .into_iter()
+            .enumerate()
+        {
+            let step = indirect.get(index).ok_or("missing real guest jump trace")?;
+            assert_eq!(step.decoded, Some(b'i'), "guest must execute native i");
+            assert_eq!(
+                step.before.registers.code_pointer, code,
+                "guest jumps at two separate code positions"
+            );
+            assert_eq!(
+                step.before.registers.data_pointer, data,
+                "second D advanced by first native input/output"
+            );
+            assert_eq!(
+                step.memory_reads
+                    .data
+                    .map(|read| (read.address, read.value)),
+                Some((data, glyph)),
+                "physical source opcode read, not host-injected"
+            );
+            assert_eq!(
+                step.memory_delta.encryption.map(|write| write.address),
+                Some(glyph),
+                "native self-encryption stays in code-only region"
+            );
+            assert_eq!(
+                step.after.registers.code_pointer,
+                glyph.saturating_add(1),
+                "real C pointer advances after indirect target"
+            );
+        }
+        assert_eq!(guest.output(), input, "two bytes echoed in original order");
+        assert_eq!(
+            guest.input_consumed(),
+            2,
+            "exactly two real guest input reads"
+        );
+        let mut direct_vm =
+            ProfileMachine::from_source(current_profile(), direct.source(), input.clone())
+                .map_err(|error| format!("independent direct loader: {error:?}"))?;
+        assert!(
+            matches!(
+                direct_vm.run(5),
+                Ok(RunOutcome::Terminated { steps: 5, .. })
+            ),
+            "independent direct code executes exactly five instructions"
+        );
+        assert_eq!(
+            guest.output(),
+            direct_vm.output(),
+            "complete equivalent two-byte guest/direct output trace"
+        );
+        assert_eq!(
+            guest.input_consumed(),
+            direct_vm.input_consumed(),
+            "complete equivalent input consumption trace"
+        );
+        for position in TWO_CEB2_START..TWO_SOURCE_CELLS {
+            let address = u32::try_from(position).map_err(|error| error.to_string())?;
+            assert_eq!(
+                guest
+                    .memory_word(address)
+                    .map_err(|error| format!("guest memory {position}: {error:?}"))?,
+                u32::from(*guest_source.get(position).ok_or("bound source glyph")?),
+                "both real guest operations must preserve all 102 CEB2 words"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded two-opcode negative matrix"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "forge source/count, phase-valid alternatives"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "complete input/code/payload forgery matrix"
+)]
+fn two_graphical_opcodes_reject_bad_counts_and_forged_source() -> Result<(), String> {
+    for pairs in [1usize, 3, 7, 10, 64] {
+        let original = program(pairs)?;
+        let candidate = encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("candidate n={pairs}: {error:?}"))?;
+        assert_eq!(
+            embed_two_echo_opcodes(&original, current_profile(), &candidate),
+            Err(TwoOpcodeError::UnsupportedEchoCount),
+            "reject every tested other echo count n={pairs}"
+        );
+    }
+    let original = program(2)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("candidate: {error:?}"))?;
+    let source = embed_two_echo_opcodes(&original, current_profile(), &candidate)
+        .map_err(|error| format!("two-op source: {error:?}"))?;
+    for index in [0usize, 81, 91, 92, 93, 105, 106, 107, 121, 124] {
+        let mut corrupted = source.clone();
+        *corrupted.get_mut(index).ok_or("code or opcode cell")? = b'!';
+        assert_eq!(
+            admit_two_echo_opcodes(&original, current_profile(), &corrupted),
+            Err(TwoOpcodeError::InvalidSource),
+            "changed code or opcode fails before guest reaches index={index}"
+        );
+    }
+    for index in [121usize, 124] {
+        let original_word = *source.get(index).ok_or("loaded graphical opcode")?;
+        for replacement in (33u8..=126u8).filter(|&glyph| {
+            glyph != original_word
+                && matches!(
+                    decode_profile_instruction(
+                        u32::from(glyph),
+                        u32::try_from(index).unwrap_or(u32::MAX)
+                    ),
+                    Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                )
+        }) {
+            let mut forged = source.clone();
+            *forged.get_mut(index).ok_or("forged opcode")? = replacement;
+            assert_eq!(
+                admit_two_echo_opcodes(&original, current_profile(), &forged),
+                Err(TwoOpcodeError::InvalidSource),
+                "other loader-valid graphical opcode must not pass host admission"
+            );
+        }
+    }
+    for index in [TWO_CEB2_START, TWO_CEB2_START + 1, TWO_SOURCE_CELLS - 1] {
+        let mut forged = source.clone();
+        let original_glyph = *forged.get(index).ok_or("payload cell")?;
+        let replacement = (33u8..=126u8)
+            .find(|&glyph| {
+                glyph != original_glyph
+                    && matches!(
+                        decode_profile_instruction(
+                            u32::from(glyph),
+                            u32::try_from(index).unwrap_or(u32::MAX)
+                        ),
+                        Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                    )
+            })
+            .ok_or("alternate loader-valid CEB2 source glyph")?;
+        *forged.get_mut(index).ok_or("mutated descriptor source")? = replacement;
+        assert!(
+            admit_two_echo_opcodes(&original, current_profile(), &forged).is_err(),
+            "changed phase-valid CEB2 payload must not pass original digest"
+        );
+    }
+    for cut in [0usize, 1, 121, 124, 125, 226] {
+        assert_eq!(
+            admit_two_echo_opcodes(
+                &original,
+                current_profile(),
+                source.get(..cut).ok_or("source truncated prefix")?
+            ),
+            Err(TwoOpcodeError::InvalidSource),
+            "reject truncated shape"
+        );
+    }
+    let mut oversized = source.clone();
+    oversized.push(b'!');
+    assert_eq!(
+        admit_two_echo_opcodes(&original, current_profile(), &oversized),
+        Err(TwoOpcodeError::InvalidSource),
+        "reject excess byte"
+    );
+    let mut foreign = original;
+    foreign.source_id = String::from("research/forged-two-opcodes.c");
+    assert!(
+        admit_two_echo_opcodes(&foreign, current_profile(), &source).is_err(),
+        "equal-count but foreign canonical source must fail digest admission"
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real CLI two-op source/direct parity"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "two independently published verified guest sources"
+)]
+fn two_sequential_guest_opcodes_match_direct_in_general_malbolge_cli() -> Result<(), String> {
+    let fixture = OwnedArtifactFixture::new(32_002)?;
+    let original = program(2)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound two-pair source: {error:?}"))?;
+    let guest = embed_two_echo_opcodes(&original, current_profile(), &candidate)
+        .map_err(|error| format!("two-opcode source: {error:?}"))?;
+    assert_eq!(
+        admit_two_echo_opcodes(&original, current_profile(), &guest),
+        Ok(candidate),
+        "external process must receive exact admitted source"
+    );
+    let direct = strategy::bridge::encode_successful_byte_echo(&original, current_profile())
+        .map_err(|error| format!("independent direct compiler: {error:?}"))?;
+    for (basename, bytes) in [
+        ("two-direct.malbolge", direct.source()),
+        ("two-guest.malbolge", guest.as_slice()),
+    ] {
+        let capsule = malbolge::build_capsule(current_profile(), bytes)
+            .map_err(|error| format!("capsule {basename}: {error:?}"))?;
+        fs::write(fixture.path(basename), capsule)
+            .map_err(|error| format!("publish {basename}: {error}"))?;
+    }
+    for input in [vec![0u8, 255], vec![255, 0]] {
+        let mut outputs = Vec::new();
+        for (basename, expected_steps) in
+            [("two-direct.malbolge", 5usize), ("two-guest.malbolge", 88)]
+        {
+            let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+                .env_remove("MALBOLGE_PROFILE_ADAPTIVE_WIDTH")
+                .env_remove("MALBOLGE_PROFILE_RESIDENT_WORKER")
+                .arg(fixture.path(basename))
+                .arg("--input-stdin")
+                .arg("--report-steps")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|error| format!("spawn {basename}: {error}"))?;
+            let mut stdin = child.stdin.take().ok_or("missing runner stdin")?;
+            stdin
+                .write_all(&input)
+                .map_err(|error| format!("write {basename} stdin: {error}"))?;
+            drop(stdin);
+            let output = child
+                .wait_with_output()
+                .map_err(|error| format!("wait {basename}: {error}"))?;
+            assert!(
+                output.status.success(),
+                "two-byte guest/direct external runner failed: {output:?}"
+            );
+            assert_eq!(
+                output.stdout, input,
+                "real general CLI must echo both submitted bytes in order"
+            );
+            assert_eq!(
+                output.stderr,
+                format!("malbolge-steps-v1:{expected_steps}\n").as_bytes(),
+                "real CLI must report exact guest/native instruction count"
+            );
+            outputs.push(output.stdout);
+        }
+        assert_eq!(
+            outputs.first(),
+            outputs.get(1),
+            "independent guest/direct CLI processes must agree byte for byte"
+        );
     }
     Ok(())
 }
