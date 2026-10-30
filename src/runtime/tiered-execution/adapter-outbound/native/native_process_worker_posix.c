@@ -62,6 +62,7 @@ struct mb_worker_mapping {
     mb_u8 *reservation;
     size_t reservation_len;
     enum mb_native_process_memory_permission permission;
+    int synchronized;
 };
 
 struct mb_worker_state {
@@ -308,6 +309,7 @@ static int mb_worker_handle_allocate(
         .reservation = reservation,
         .reservation_len = reservation_len,
         .permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE,
+        .synchronized = 0,
     };
     worker->count += 1U;
 
@@ -429,6 +431,8 @@ static int mb_worker_handle_protect(
             response_len);
     }
     mapping->permission = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE;
+    // RX readiness is not execution authority until cache synchronization.
+    mapping->synchronized = 0;
     mb_u8 *bytes = mb_worker_memory_success(
         MB_NATIVE_PROCESS_MEMORY_PROTECT,
         MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES);
@@ -486,6 +490,8 @@ static int mb_worker_handle_sync(
     if (bytes == NULL) {
         return 0;
     }
+    // Only a reportable synchronization grants raw native-call authority.
+    mapping->synchronized = 1;
     mb_native_process_write_u64(&bytes[10], mapping->id);
     mb_native_process_write_u64(&bytes[18], start);
     mb_native_process_write_u64(&bytes[26], (mb_u64)sync_len);
@@ -772,6 +778,7 @@ static int mb_worker_handle_call(
     int raw_status = MB_NATIVE_INVALID_ARGUMENT;
     if (mapping != NULL
         && mapping->permission == MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE
+        && mapping->synchronized
         && entry_offset < mapping->len
         && mb_native_entry_offset_aligned(entry_offset)
         && state.input_consumed <= state.input_len

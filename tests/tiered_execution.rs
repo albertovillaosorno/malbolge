@@ -71916,6 +71916,32 @@ fn posix_worker_memory_exchange(
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_sync_executable(
+    session: &mut NativeProcessSession,
+    executable: NativeExecutableMappingReport,
+) -> Result<(), String> {
+    let request = NativeProcessMemoryRequest::Synchronize(
+        NativeInstructionSyncRequest::new(
+            executable.mapping_id(),
+            executable.base_address(),
+            executable.mapped_len(),
+        ),
+    );
+    let NativeProcessMemoryResponse::Synchronize(report) =
+        posix_worker_memory_exchange(session, &request)?
+    else {
+        return Err(String::from("native executable cache sync failed"));
+    };
+    let mapping_matches = report.mapping_id() == executable.mapping_id();
+    let range_matches = report.start_address() == executable.base_address()
+        && report.byte_len() == executable.mapped_len();
+    if !mapping_matches || !range_matches {
+        return Err(String::from("native cache sync identity drifted"));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_rejects_memory_frame_length(
     session: &mut NativeProcessSession,
     request: &NativeProcessMemoryRequest,
@@ -72903,6 +72929,7 @@ fn assert_posix_worker_nonzero_entry_response(
     executable: NativeExecutableMappingReport,
     entry_offset: u64,
 ) -> Result<(), String> {
+    posix_worker_sync_executable(session, executable)?;
     let (request, _expected) = native_process_call_wire_fixture()?;
     let mut bytes = encode_native_process_call_request(&request)
         .map_err(|error| error.to_string())?;
@@ -73159,7 +73186,7 @@ fn native_process_posix_worker_invokes_second_page_entry() -> Result<(), String>
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-fn posix_worker_install_status_entry(
+fn posix_worker_install_unsynchronized_status_entry(
     session: &mut NativeProcessSession,
     status: u8,
 ) -> Result<NativeExecutableMappingReport, String> {
@@ -73187,6 +73214,56 @@ fn posix_worker_install_status_entry(
         return Err(String::from("dispatch stub RX transition failed"));
     };
     Ok(executable)
+}
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn posix_worker_install_status_entry(
+    session: &mut NativeProcessSession,
+    status: u8,
+) -> Result<NativeExecutableMappingReport, String> {
+    let executable =
+        posix_worker_install_unsynchronized_status_entry(session, status)?;
+    posix_worker_sync_executable(session, executable)?;
+    Ok(executable)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_requires_instruction_sync_before_call()
+-> Result<(), String> {
+    let (directory, host) = native_process_posix_worker_fixture(
+        "call_requires_instruction_cache_sync",
+    )?;
+    let result = (|| -> Result<(), String> {
+        let worker = directory.join("native-process-worker-posix");
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("cache-sync worker spawn: {error:?}"))?;
+        let executable =
+            posix_worker_install_unsynchronized_status_entry(&mut session, 1)?;
+        // RX alone is not callable. The worker must enforce the same
+        // instruction-cache boundary as the safe-Rust loader typestate.
+        assert_posix_worker_call_dispatch_status(&mut session, executable, 2)?;
+        let sync = NativeProcessMemoryRequest::Synchronize(
+            NativeInstructionSyncRequest::new(
+                executable.mapping_id(),
+                executable.base_address(),
+                executable.mapped_len(),
+            ),
+        );
+        if !matches!(
+            posix_worker_memory_exchange(&mut session, &sync)?,
+            NativeProcessMemoryResponse::Synchronize(_),
+        ) {
+            return Err(String::from("native worker cache sync failed"));
+        }
+        assert_posix_worker_call_dispatch_status(&mut session, executable, 1)?;
+        posix_worker_release(&mut session, executable)?;
+        assert_posix_worker_allocates_and_releases(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -73409,6 +73486,7 @@ fn assert_posix_worker_allocates_overaligned_mappings(
         else {
             return Err(String::from("aligned mapping protection failed"));
         };
+        posix_worker_sync_executable(session, executable)?;
         assert_posix_worker_call_dispatch_status(session, executable, 1)?;
         posix_worker_release(session, executable)?;
     }
@@ -74152,6 +74230,7 @@ fn assert_posix_worker_fault_sibling_reuses_mapping(
     else {
         return Err(String::from("fault sibling lost RX transition"));
     };
+    posix_worker_sync_executable(session, executable)?;
     assert_posix_worker_call_dispatch_status(session, executable, 1)?;
     posix_worker_release(session, executable)?;
     assert_posix_worker_allocates_and_releases(session)
@@ -74216,6 +74295,7 @@ fn assert_posix_worker_native_fault_is_session_local(
     else {
         return Err(String::from("native fault trap RX seal failed"));
     };
+    posix_worker_sync_executable(&mut failed, executable)?;
     assert_posix_worker_call_causes_child_fault(&mut failed, executable)?;
     assert_posix_worker_fault_sibling_reuses_mapping(
         &mut healthy,
@@ -74246,6 +74326,7 @@ fn posix_worker_install_loop_entry(
     else {
         return Err(String::from("loop stub RX seal failed"));
     };
+    posix_worker_sync_executable(session, executable)?;
     Ok(executable)
 }
 
@@ -74770,6 +74851,7 @@ fn assert_posix_worker_advances_nonzero_transfer_cursors(
     else {
         return Err(String::from("offset transfer stub RX seal failed"));
     };
+    posix_worker_sync_executable(session, executable)?;
     assert_posix_worker_nonzero_transfer_response(session, executable)?;
     posix_worker_release(session, executable)?;
     assert_posix_worker_allocates_and_releases(session)
@@ -74883,6 +74965,7 @@ fn assert_posix_worker_private_input_copy(
     else {
         return Err(String::from("private input stub RX seal failed"));
     };
+    posix_worker_sync_executable(session, executable)?;
     assert_posix_worker_private_input_response(session, executable)?;
     posix_worker_release(session, executable)?;
     assert_posix_worker_allocates_and_releases(session)
@@ -74989,6 +75072,7 @@ fn assert_posix_worker_transfers_input_into_output(
     else {
         return Err(String::from("input/output transfer RX seal failed"));
     };
+    posix_worker_sync_executable(session, executable)?;
     assert_posix_worker_input_output_transfer_response(session, executable)?;
     posix_worker_release(session, executable)?;
     assert_posix_worker_allocates_and_releases(session)
@@ -75085,6 +75169,7 @@ fn assert_posix_worker_admits_exact_progress(
     else {
         return Err(String::from("valid progress entry was not sealed"));
     };
+    posix_worker_sync_executable(session, executable)?;
     assert_posix_worker_exact_progress_response(session, executable)?;
     assert_posix_worker_admits_normative_termination_tags(session, executable)?;
     posix_worker_release(session, executable)
@@ -75171,6 +75256,7 @@ fn assert_posix_worker_admits_empty_transfer_buffers(
     else {
         return Err(String::from("empty-buffer native stub RX failed"));
     };
+    posix_worker_sync_executable(session, executable)?;
     assert_posix_worker_empty_call_response(session, executable)?;
     posix_worker_release(session, executable)
 }
@@ -75240,6 +75326,7 @@ fn assert_posix_worker_reports_native_pointer_replacement(
     else {
         return Err(String::from("pointer replacement stub was not sealed"));
     };
+    posix_worker_sync_executable(session, executable)?;
     assert_posix_worker_pointer_replacement_response(session, executable)?;
     posix_worker_release(session, executable)
 }
@@ -75389,6 +75476,7 @@ fn posix_worker_seal_pointer_tamper_stub(
     else {
         return Err(String::from("pointer/buffer stub RX seal failed"));
     };
+    posix_worker_sync_executable(session, executable)?;
     Ok(executable)
 }
 
@@ -75554,6 +75642,7 @@ fn assert_posix_worker_encodes_mutated_scalar_state(
     else {
         return Err(String::from("scalar mutation stub protection failed"));
     };
+    posix_worker_sync_executable(session, executable)?;
     assert_posix_worker_mutated_scalar_response(
         session,
         executable,
@@ -75785,6 +75874,7 @@ fn assert_posix_worker_native_guard_miss_rollback(
         else {
             return Err(String::from("non-atomic native RX seal failed"));
         };
+        posix_worker_sync_executable(session, executable)?;
         assert_posix_worker_rolls_back_mutating_guard_miss(
             session, executable, surface,
         )
@@ -75997,6 +76087,7 @@ fn native_process_posix_worker_rolls_back_invalid_exit_termination()
         else {
             return Err(String::from("exit termination stub RX seal failed"));
         };
+        posix_worker_sync_executable(&mut session, executable)?;
         assert_posix_worker_rejects_corrupted_return_termination(
             &mut session,
             executable,
@@ -76040,6 +76131,7 @@ fn native_process_posix_worker_rejects_false_applied_and_unknown_status()
             else {
                 return Err(String::from("unverified native RX seal failed"));
             };
+            posix_worker_sync_executable(&mut session, executable)?;
             assert_posix_worker_rejects_unverified_native_status(
                 &mut session,
                 executable,

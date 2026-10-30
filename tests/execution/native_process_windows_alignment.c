@@ -1254,6 +1254,14 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
     request[83] = 0x10U;
     mb_u8 unchanged_request[sizeof(request)];
     memcpy(unchanged_request, request, sizeof(request));
+    // This direct-handler simulation bypasses the worker's usual MBNPM1
+    // protection/sync framing. Prove RX alone cannot dispatch before marking
+    // the mock entry as already cache-synchronized.
+    if (check_native_call_shape(
+            worker, request, MB_NATIVE_INVALID_ARGUMENT, 0) != 0) {
+        return 17;
+    }
+    worker->mappings[0].synchronized = 1;
     const int call_result = check_native_call_shape(
         worker, request, MB_NATIVE_APPLIED, 1);
     if (call_result != 0 || memcmp(request, unchanged_request,
@@ -1272,11 +1280,13 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
         return 14;
     }
     worker->mappings[0].permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    worker->mappings[0].synchronized = 0;
     if (check_native_call_shape(
             worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
         return 10;
     }
     worker->mappings[0].permission = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE;
+    worker->mappings[0].synchronized = 1;
     mb_native_process_write_u64(&request[8], id + 1U);
     if (check_native_call_shape(
             worker, request, MB_NATIVE_INVALID_ARGUMENT, 0)) {
@@ -2285,6 +2295,14 @@ static int check_two_live_native_mappings(struct mb_worker_state *worker)
                 != MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES) {
             mb_worker_free(response);
             return 2;
+        }
+        mb_worker_free(response);
+        if (!mb_worker_handle_sync(worker, allocation, 33U,
+                &response, &response_len)
+            || response_len
+                != MB_NATIVE_PROCESS_MEMORY_SYNC_RESPONSE_BYTES) {
+            mb_worker_free(response);
+            return 6;
         }
         mb_worker_free(response);
         mb_u8 *native_address = NULL;

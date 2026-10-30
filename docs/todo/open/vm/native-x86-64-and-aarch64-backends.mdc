@@ -944,6 +944,15 @@ A distinct single-resident lease cache
   without claiming successful synchronization; retrying the exact range
   succeeds before the mapping is released.
 
+  Both POSIX and Windows workers now require an individual mapping to record
+  successful full-range instruction-cache synchronization before MBNPC1
+  execution. RX-only entries return invalid argument without guest mutation.
+  A host-real Linux regression verifies an unsynchronized direct call is
+  rejected, synchronizes the same mapping, then executes its entry successfully
+  and reuses the healthy child after release. Existing valid raw-worker call
+  fixtures now request synchronization explicitly; Windows COFF compilation
+  continues to admit both x86-64 and AArch64 targets.
+
   Nine forged Windows RX synchronization requests now reject stale IDs,
   off-by-one start addresses, invalid ranges, and truncated/extended frames.
   None calls the cache API; a valid full-range retry and release remain healthy.

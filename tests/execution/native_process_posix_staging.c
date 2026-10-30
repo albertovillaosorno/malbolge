@@ -408,6 +408,8 @@ static int check_call_allocations(void)
         .reservation = NULL,
         .reservation_len = 0U,
         .permission = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE,
+        // Direct-handler fixture starts with an already-synchronized entry.
+        .synchronized = 1,
     };
     struct mb_worker_state worker = {
         .mappings = &mapping,

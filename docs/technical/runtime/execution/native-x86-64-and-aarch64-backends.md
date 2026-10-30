@@ -1435,6 +1435,20 @@ remains writable and denies a second protect operation after it becomes RX.
 Once sealed, full-range synchronization returns the exact expected report and
 the retained worker releases the executable mapping without losing its session.
 
+Both POSIX and Windows workers now track cache-synchronization readiness for
+each live mapping, independently of the caller's lifecycle typestate. Mapping
+allocation and RW-to-RX protection leave it unsynchronized; only successful
+full-range instruction-cache synchronization authorizes MBNPC1 dispatch.
+A direct call against an RX-but-unsynchronized mapping returns the unchanged
+invalid-argument response without executing code or changing guest buffers.
+
+The host-real POSIX regression first dispatches one valid RX machine-code stub
+before synchronization and observes that rejection with an unpoisoned child.
+It then synchronizes the same mapping, invokes that same stub successfully,
+releases the mapping, and proves the session can still allocate and release.
+The remaining host-real call fixtures now explicitly synchronize before native
+execution; both Windows worker targets continue to cross-compile warning-clean.
+
 An aligned variant repeats the stale release, protection, and execution-ID
 denials with two successive 64-KiB-aligned allocations. The current mapping
 retains copy, RX protection, and release authority despite prior reservation
