@@ -104,7 +104,10 @@ consume that value contract: decode can use a wide code pointer through its
 modulo-94 phase while graphical code cells remain exact small values. An
 optional
 `u32` conversion succeeds only when the concrete value fits; it is not a width
-admission rule.
+admission rule. Constructors accepting a width and checked crazy/projection
+operations reserve chunk storage fallibly, returning a typed resource failure
+when the host cannot allocate the requested word. This does not invent a
+semantic maximum trit width; concrete backends remain separately bounded.
 
 This does not yet widen `ProfileMachine` memory or registers. Product tests show
 N10 through N20 equal the existing `u32` primitives, while independent

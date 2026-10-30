@@ -657,6 +657,30 @@ fn chunked_profile_word_decode_encrypt_reject_invalid_shapes() -> TestResult {
     )
 }
 
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn chunked_profile_word_reports_impossible_storage_without_panicking()
+-> TestResult {
+    let trits = usize::MAX;
+    let required_chunks = trits.div_ceil(PROFILE_WORD_CHUNK_TRITS);
+    let expected =
+        Err(ChunkedProfileWordError::AllocationFailure { required_chunks });
+    for (label, result) in [
+        ("zero", ChunkedProfileWord::zero(trits)),
+        ("EOF", ChunkedProfileWord::eof(trits)),
+        ("integer", ChunkedProfileWord::from_u64(trits, 0)),
+    ] {
+        check_equal(&result, &expected, label)?;
+    }
+    let small =
+        ChunkedProfileWord::zero(101).map_err(|error| error.to_string())?;
+    check_equal(
+        &small.chunk_count(),
+        &21,
+        "nonaligned wide words still allocate",
+    )
+}
+
 #[test]
 fn chunked_profile_word_rejects_invalid_shapes() -> TestResult {
     let n10_zero =

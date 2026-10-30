@@ -54,6 +54,11 @@ const TERNARY_RADIX: u8 = SEMANTIC_WIDTH_RADIX;
 /// Failure while constructing or combining chunked profile words.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ChunkedProfileWordError {
+    /// The requested chunk storage cannot be reserved by this host.
+    AllocationFailure {
+        /// Number of five-trit chunks requested.
+        required_chunks: usize,
+    },
     /// The supplied chunk count disagrees with `ceil(trits / 5)`.
     ChunkCount {
         /// Observed number of chunks.
@@ -103,6 +108,10 @@ pub enum ChunkedProfileWordError {
 impl Display for ChunkedProfileWordError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match *self {
+            Self::AllocationFailure { required_chunks } => write!(
+                f,
+                "cannot reserve {required_chunks} five-trit word chunks"
+            ),
             Self::ChunkCount { observed, required } => {
                 write!(
                     f,
@@ -160,7 +169,9 @@ impl ChunkedProfileWord {
     ///
     /// # Errors
     ///
-    /// Returns [`ChunkedProfileWordError::WidthMismatch`] for different widths.
+    /// Returns [`ChunkedProfileWordError::WidthMismatch`] for different widths
+    /// or [`ChunkedProfileWordError::AllocationFailure`] if output storage
+    /// cannot be reserved.
     pub fn crazy(
         &self,
         accumulator: &Self,
@@ -171,7 +182,7 @@ impl ChunkedProfileWord {
                 left_trits: self.trits,
             });
         }
-        let mut chunks = Vec::with_capacity(self.chunk_count());
+        let mut chunks = reserved_chunks(self.chunk_count())?;
         for (index, (data_chunk, accumulator_chunk)) in self
             .chunks
             .iter()
@@ -194,10 +205,11 @@ impl ChunkedProfileWord {
     ///
     /// # Errors
     ///
-    /// Returns [`ChunkedProfileWordError::ZeroWidth`] for `trits == 0`.
+    /// Returns [`ChunkedProfileWordError::ZeroWidth`] for `trits == 0`, or
+    /// [`ChunkedProfileWordError::AllocationFailure`] for unavailable storage.
     pub fn eof(trits: usize) -> Result<Self, ChunkedProfileWordError> {
         let chunk_count = checked_chunk_count(trits)?;
-        let mut chunks = Vec::with_capacity(chunk_count);
+        let mut chunks = reserved_chunks(chunk_count)?;
         for index in 0..chunk_count {
             chunks.push(chunk_maximum(chunk_trits(trits, index)));
         }
@@ -237,13 +249,14 @@ impl ChunkedProfileWord {
     /// # Errors
     ///
     /// Returns [`ChunkedProfileWordError::ValueOutsideWidth`] when `value` has
-    /// nonzero trits above the requested width.
+    /// nonzero trits above the requested width, or
+    /// [`ChunkedProfileWordError::AllocationFailure`] for unavailable storage.
     pub fn from_u64(
         trits: usize,
         value: u64,
     ) -> Result<Self, ChunkedProfileWordError> {
         let chunk_count = checked_chunk_count(trits)?;
-        let mut chunks = Vec::with_capacity(chunk_count);
+        let mut chunks = reserved_chunks(chunk_count)?;
         let mut remaining = value;
         for index in 0..chunk_count {
             let modulus = u64::from(chunk_modulus(chunk_trits(trits, index)));
@@ -276,7 +289,8 @@ impl ChunkedProfileWord {
     ///
     /// # Errors
     ///
-    /// Rejects zero-width projection or any projection wider than the source.
+    /// Rejects zero-width projection, any projection wider than the source,
+    /// or unavailable output storage with a typed allocation failure.
     pub fn project(
         &self,
         target_trits: usize,
@@ -294,7 +308,8 @@ impl ChunkedProfileWord {
                 target_trits,
             },
         )?;
-        let mut chunks = source.to_vec();
+        let mut chunks = reserved_chunks(target_chunks)?;
+        chunks.extend_from_slice(source);
         let top = target_chunks.saturating_sub(1);
         let modulus = chunk_modulus(chunk_trits(target_trits, top));
         if let Some(value) = chunks.get_mut(top) {
@@ -464,14 +479,29 @@ impl ChunkedProfileWord {
     ///
     /// # Errors
     ///
-    /// Returns [`ChunkedProfileWordError::ZeroWidth`] for `trits == 0`.
+    /// Returns [`ChunkedProfileWordError::ZeroWidth`] for `trits == 0`, or
+    /// [`ChunkedProfileWordError::AllocationFailure`] for unavailable storage.
     pub fn zero(trits: usize) -> Result<Self, ChunkedProfileWordError> {
         let chunk_count = checked_chunk_count(trits)?;
+        let mut chunks = reserved_chunks(chunk_count)?;
+        chunks.resize(chunk_count, 0);
         Ok(Self {
-            chunks: vec![0; chunk_count].into_boxed_slice(),
+            chunks: chunks.into_boxed_slice(),
             trits,
         })
     }
+}
+
+fn reserved_chunks(
+    required_chunks: usize,
+) -> Result<Vec<u8>, ChunkedProfileWordError> {
+    let mut chunks = Vec::new();
+    chunks
+        .try_reserve_exact(required_chunks)
+        .map_err(|_error| ChunkedProfileWordError::AllocationFailure {
+            required_chunks,
+        })?;
+    Ok(chunks)
 }
 
 const fn checked_chunk_count(
