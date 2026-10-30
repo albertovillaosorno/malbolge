@@ -114,9 +114,12 @@ snapshot or authenticate the source. The caller must establish provenance.
 
 Arena raw CSV and historical paired CSV admit only headers whose first
 physical line is at most 512 characters with no unterminated quoted field.
-This bounded preflight runs before the CSV parser constructs header columns;
-together with trial-count admission it limits both header and row-list object
-amplification inside the already bounded file sizes.
+Before parsing either CSV, a second constant-memory delimiter scan limits
+each logical data record to the registered schema's column count. It counts
+only separators outside quoted fields, allowing valid commas, escaped quotes,
+and newlines within quoted values. Together with trial-count admission these
+checks limit header, row-column and row-list object amplification inside the
+already bounded file sizes; strict CSV parsing still validates actual syntax.
 
 Arena evidence file readers now check regular-path and opened-descriptor
 identity, size, and modification/change timestamps before and after

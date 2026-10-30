@@ -268,6 +268,32 @@ def test_oversized_csv_header_rejected_before_csv_parser(
         raw_samples.check_rows(raw, [record], ROOT_LABEL)
 
 
+def test_excessive_data_row_columns_reject_before_parser(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An admitted header cannot precede an excessive-column trial row."""
+    record = _setup(tmp_path)["observations"][0]
+    header = _render([record]).split(b"\n", maxsplit=1)[0]
+    raw = header + b"\n" + b"," * 10_000 + b"\n"
+
+    def forbidden_reader(source: StringIO, *, strict: bool) -> Iterator[list[str]]:
+        assert source is not None
+        assert strict
+        pytest.fail("parsed an oversized data row")
+
+    monkeypatch.setattr(raw_samples.csv, "reader", forbidden_reader)
+    with pytest.raises(raw_samples.RawSampleError, match="CSV columns"):
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
+
+
+def test_quoted_commas_in_raw_data_remain_admissible(tmp_path: Path) -> None:
+    """Real quoted comma data is not mistaken for extra columns."""
+    record = _setup(tmp_path)["observations"][0]
+    record["algorithm"] = "comma," * 100
+    raw = _render([record])
+    assert raw_samples.check_rows(raw, [record], ROOT_LABEL) == sha256(raw).hexdigest()
+
+
 @pytest.mark.parametrize("version", [1, 2])
 def test_unreported_csv_rows_stop_at_first_excess_row(
     tmp_path: Path,

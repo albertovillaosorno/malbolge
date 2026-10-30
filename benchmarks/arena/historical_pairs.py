@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from collections.abc import Sequence
 
-from benchmarks.arena import analyze, evidence, report_output
+from benchmarks.arena import analyze, csv_admission, evidence, report_output
 from scripts.validate import benchmark_protocol, experiment_manifest
 
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
@@ -192,6 +192,8 @@ def _csv_rows(
     if analyze.NUL in text:
         _fail("historical raw CSV cannot contain NUL")
     _require_bounded_csv_header(text)
+    if not csv_admission.within_column_limit(text, len(registered_fields)):
+        _fail("historical raw CSV columns exceed registered count")
     try:
         reader = csv.DictReader(StringIO(text, newline=""), strict=True)
         fields = reader.fieldnames or []

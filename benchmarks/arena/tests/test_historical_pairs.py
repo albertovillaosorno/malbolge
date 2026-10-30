@@ -298,6 +298,27 @@ def test_historical_csv_header_rejected_before_dict_reader(
         historical_pairs.build_report(tmp_path, TEMP)
 
 
+def test_excessive_historical_data_columns_reject_before_parser(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A normal header cannot conceal an unbounded number of row columns."""
+    directory = _copy_source(tmp_path, PREFIX)
+    path = directory / "raw.csv"
+    header = path.read_bytes().split(b"\n", maxsplit=1)[0]
+    _ = path.write_bytes(header + b"\n" + b"," * 10_000 + b"\n")
+
+    def forbidden_reader(
+        source: StringIO, *, strict: bool
+    ) -> Iterator[dict[str, str]]:
+        assert source is not None
+        assert strict
+        pytest.fail("parsed an oversized historical data row")
+
+    monkeypatch.setattr(historical_pairs.csv, "DictReader", forbidden_reader)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="CSV columns"):
+        historical_pairs.build_report(tmp_path, TEMP)
+
+
 @pytest.mark.parametrize("source", [PREFIX, REUSE])
 def test_historical_raw_rows_stop_at_first_unregistered_trial(
     tmp_path: Path,

@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-from benchmarks.arena import analyze
+from benchmarks.arena import analyze, csv_admission
 
 RAW_SCHEMA_VERSION: Final = "1"
 RAW_SCHEMA_VERSION_2: Final = "2"
@@ -146,6 +146,8 @@ def _csv_rows(
     expected_rows: int,
 ) -> tuple[str, tuple[str, ...], list[tuple[str, ...]]]:
     _require_bounded_csv_header(text, label)
+    if not csv_admission.within_column_limit(text, len(HEADER_2)):
+        _fail(f"{label}: arena raw CSV columns exceed registered count")
     try:
         reader = csv.reader(StringIO(text, newline=""), strict=True)
         header = next(reader, None)
