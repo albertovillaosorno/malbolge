@@ -1296,3 +1296,59 @@ fn traced_guest_rotates_loaded_count_cell_not_a_host_supplied_literal() -> Resul
     );
     Ok(())
 }
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "external capsule process witness"
+)]
+#[expect(clippy::integer_division, reason = "independent scalar output oracle")]
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "base-three scalar oracle"
+)]
+#[expect(clippy::arithmetic_side_effects, reason = "bounded scalar trit oracle")]
+fn externally_run_guest_payload_probe(pairs: usize) -> Result<u8, String> {
+    let fixture = OwnedArtifactFixture::new(pairs.saturating_add(10_000))?;
+    let original = program(pairs)?;
+    let bound = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("CEB2 {pairs}: {error:?}"))?;
+    let source = embed_guest_payload_probe(&original, current_profile(), &bound)
+        .map_err(|error| format!("guest source {pairs}: {error:?}"))?;
+    let restored = admit_guest_payload_probe(&original, current_profile(), &source)
+        .map_err(|error| format!("independent source recovery {pairs}: {error:?}"))?;
+    assert_eq!(restored, bound, "capsule source must reproduce bound CEB2");
+    let read = u32::from(*source.get(53).ok_or("missing count field glyph")?);
+    let rotation = read / 3 + read % 3 * (current_profile().word_modulus() / 3);
+    let expected = u8::try_from(rotation % 256).map_err(|error| format!("output byte: {error}"))?;
+    let capsule = malbolge::build_capsule(current_profile(), &source)
+        .map_err(|error| format!("capsule publisher {pairs}: {error}"))?;
+    let path = fixture.path("source.malbolge");
+    fs::write(&path, &capsule).map_err(|error| format!("publish {pairs}: {error}"))?;
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .env_remove("MALBOLGE_PROFILE_ADAPTIVE_WIDTH")
+        .env_remove("MALBOLGE_PROFILE_RESIDENT_WORKER")
+        .arg(&path)
+        .arg("--report-steps")
+        .output()
+        .map_err(|error| format!("run actual general malbolge CLI {pairs}: {error}"))?;
+    assert!(output.status.success(), "general CLI error: {output:?}");
+    assert_eq!(
+        output.stdout,
+        [expected],
+        "actual runner CEB2-derived stdout"
+    );
+    assert_eq!(output.stderr, b"malbolge-steps-v1:16\n", "actual VM steps");
+    Ok(expected)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "two full external process replays"
+)]
+fn real_general_malbolge_cli_runs_current_profile_resident_data_probe() -> Result<(), String> {
+    let count_seven = externally_run_guest_payload_probe(7)?;
+    let count_sixty_four = externally_run_guest_payload_probe(64)?;
+    assert_ne!(count_seven, count_sixty_four);
+    Ok(())
+}

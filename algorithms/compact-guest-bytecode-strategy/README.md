@@ -163,6 +163,15 @@ semantic equivalence or speedup claim. The 143-cell diagnostic is even larger
 than the 129-cell direct baseline at 64 pairs; those programs do different
 work, so this is only a structural observation, not a performance comparison.
 
+An additional end-to-end executable-artifact regression wraps the **same**
+validated research source in a public version-one `.malbolge` capsule and runs
+it through the actual general `malbolge` CLI. Distinct seven- and 64-pair
+bound descriptors produce distinct exact diagnostic bytes, both independently
+predicted from each literal count glyph; `--report-steps` confirms exactly
+16 committed guest steps in both external processes. The source is built by
+the experiment and framed with the existing capsule API, **not** emitted by
+a production bytecode compiler or decoded by a bytecode interpreter.
+
 ## Status
 
 No VM-resident bytecode runtime has been implemented. No guest-interpreted

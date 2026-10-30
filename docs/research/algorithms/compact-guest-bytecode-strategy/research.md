@@ -255,6 +255,15 @@ loader-valid count-glyph substitution makes the same VM emit a different byte
 but is rejected by host CEB2 admission. This is now *guest data computation*,
 not only a host-expanded source or loader-only data-residency claim.
 
+A separate process-level comparison publishes two independently host-admitted
+seven- and 64-pair probe sources as version-one `.malbolge` capsules through
+the canonical `build_capsule` library. The **real general Malbolge runner**
+executes those artifacts with `--report-steps` and produces distinct exact
+stdout bytes matching the scalar glyph-rotation oracle. Both stderr receipts
+report exactly 16 committed guest steps. This tests actual artifact framing,
+profile dispatch and process output; the host still constructs the source
+and the guest still computes only the diagnostic single-cell rotation.
+
 **It is not bytecode interpretation or semantic equivalence.** The guest
 rotates one ASCII glyph; it neither calculates the packed ordinal, decodes
 the full count, authenticates the source, loops, consumes input nor emits the
