@@ -38,6 +38,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from math import comb
+from typing import cast
 
 import pytest
 
@@ -71,9 +72,7 @@ def test_fewer_than_six_observations_cannot_prove_95_percent(
     sample_count: int,
 ) -> None:
     """Even the full observed min-max interval undercovers at n <= 5."""
-    assert (
-        median_intervals.median_interval_95(list(range(sample_count))) is None
-    )
+    assert median_intervals.median_interval_95(list(range(sample_count))) is None
 
 
 @pytest.mark.parametrize("sample_count", [6, 7, 8, 9, 10, 11, 20, 99, 100])
@@ -150,3 +149,21 @@ def test_bounded_maximum_and_one_above_limit() -> None:
     assert Fraction(*observed["coverage"]) >= TARGET
     within.append(median_intervals.MAX_SAMPLES)
     assert median_intervals.median_interval_95(within) is None
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [True, 6.0, float("nan"), float("inf"), "6", None, Fraction(6)],
+)
+def test_noninteger_costs_never_produce_inferential_interval(
+    invalid: object,
+) -> None:
+    """Malformed reported costs cannot become numeric median evidence."""
+    values = cast("list[int]", [1, 2, 3, 4, 5, invalid])
+    assert median_intervals.median_interval_95(values) is None
+
+
+def test_median_interval_rejects_non_list_collection() -> None:
+    """A malformed direct call cannot leak untyped collection errors."""
+    values = cast("list[int]", (1, 2, 3, 4, 5, 6))
+    assert median_intervals.median_interval_95(values) is None

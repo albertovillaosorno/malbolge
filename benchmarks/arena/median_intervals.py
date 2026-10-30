@@ -63,11 +63,15 @@ def median_interval_95(values: list[int]) -> MedianInterval | None:
 
     Returns:
         Exact integer order-statistic endpoints and rational lower coverage,
-        or None for sample sizes outside the documented bounded domain.
+        or None for invalid integer samples or sizes outside the bounded domain.
 
     """
+    if type(values) is not list:
+        return None
     size = len(values)
     if size < MIN_SAMPLES or size > MAX_SAMPLES:
+        return None
+    if any(type(value) is not int for value in values):
         return None
     denominator = 1 << size
     tail = 0
@@ -79,10 +83,7 @@ def median_interval_95(values: list[int]) -> MedianInterval | None:
         proposed_tail = tail + binomial
         if proposed_tail * 2 * REQUESTED_CONFIDENCE.denominator > (
             denominator
-            * (
-                REQUESTED_CONFIDENCE.denominator
-                - REQUESTED_CONFIDENCE.numerator
-            )
+            * (REQUESTED_CONFIDENCE.denominator - REQUESTED_CONFIDENCE.numerator)
         ):
             break
         rank = j + 1

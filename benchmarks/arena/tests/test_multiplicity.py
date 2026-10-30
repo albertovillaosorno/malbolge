@@ -39,6 +39,7 @@ from __future__ import annotations
 from fractions import Fraction
 from itertools import product
 from operator import itemgetter
+from typing import cast
 
 import pytest
 
@@ -75,16 +76,13 @@ def test_known_holm_examples_preserve_input_order_and_exact_fractions(
     assert multiplicity.holm_adjusted(raw) == adjusted
 
 
-def test_holm_monotonicity_and_uncorrected_lower_bound_for_small_families() -> (
-    None
-):
+def test_holm_monotonicity_and_uncorrected_lower_bound_for_small_families() -> None:
     """Small exact fractions never become smaller after correction."""
     candidates = [Fraction(0), Fraction(1, 10), Fraction(1, 2), Fraction(1)]
     for sample in product(candidates, repeat=4):
         adjusted = multiplicity.holm_adjusted(list(sample))
         assert all(
-            left <= right <= 1
-            for left, right in zip(sample, adjusted, strict=True)
+            left <= right <= 1 for left, right in zip(sample, adjusted, strict=True)
         )
         ordered = sorted(zip(sample, adjusted, strict=True), key=itemgetter(0))
         assert all(
@@ -113,3 +111,23 @@ def test_invalid_probability_fails_closed(bad: Fraction) -> None:
     """Caller bugs must not produce a purported correction from invalid p."""
     with pytest.raises(ValueError, match="Holm adjustment requires"):
         multiplicity.holm_adjusted([Fraction(1, 5), bad])
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [0, True, 0.05, float("nan"), float("inf"), "0.05", None],
+)
+def test_non_rational_probability_rejects_without_adjustment(
+    invalid: object,
+) -> None:
+    """Do not convert untrusted or nonfinite values into exact p-values."""
+    probabilities = cast("list[Fraction]", [Fraction(1, 20), invalid])
+    with pytest.raises(ValueError, match="exact rational probabilities"):
+        multiplicity.holm_adjusted(probabilities)
+
+
+def test_holm_rejects_non_list_collection() -> None:
+    """A malformed direct call must raise a typed admission failure."""
+    probabilities = cast("list[Fraction]", (Fraction(1, 20),))
+    with pytest.raises(ValueError, match="exact rational probabilities"):
+        multiplicity.holm_adjusted(probabilities)

@@ -50,11 +50,13 @@ def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
         Exact adjusted probabilities between each raw p-value and one.
 
     Raises:
-        ValueError: A caller supplied a probability outside [0, 1].
+        ValueError: A caller supplied a non-Fraction or out-of-range value.
 
     """
-    if any(value < 0 or value > 1 for value in p_values):
-        message = "Holm adjustment requires probabilities in [0, 1]"
+    if type(p_values) is not list or any(
+        type(value) is not Fraction or not 0 <= value <= 1 for value in p_values
+    ):
+        message = "Holm adjustment requires exact rational probabilities in [0, 1]"
         raise ValueError(message)
     count = len(p_values)
     adjusted = [Fraction(1)] * count

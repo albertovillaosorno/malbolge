@@ -687,9 +687,11 @@ view, then applies exact step-down Holm-Bonferroni correction across the
 complete study-wide family of nonnull paired outcome and cost-sign tests,
 including different algorithms, objective dimensions and difficulty levels.
 It retains unadjusted fractions alongside exact adjusted fractions, reports
-the total family size, and treats tied p-values consistently. Holm controls
-family-wise error under arbitrary test dependence *only when* its marginal
-p-values are valid. It does not establish pair independence, honest verifier
+the total family size, and treats tied p-values consistently. The direct
+statistical port admits only exact `Fraction` probabilities in `[0, 1]`, so
+nonfinite floats and truthy integer substitutes cannot enter the correction.
+Holm controls family-wise error under arbitrary test dependence *only when*
+its marginal p-values are valid. It does not establish pair independence, honest verifier
 execution, representative workload selection, or physical timing validity;
 no significance or performance promotion decision follows automatically.
 
@@ -839,6 +841,8 @@ The original study records remain the result authority.
 - `benchmarks/arena/median_intervals.py` computes exact 95%-or-higher
   symmetric-rank intervals using binomial coverage, with independent reference
   tests for small/large samples, ties, negative costs and sample bounds.
+  Malformed, noninteger cost inputs yield no inferential interval instead of
+  numeric endpoints or leaked sorting errors.
   Both analyzer CLIs expose this as an optional view only; default reports and
   existing frontier rankings remain unchanged.
 - An additional opt-in accelerator identity gate rejects mixed declared
