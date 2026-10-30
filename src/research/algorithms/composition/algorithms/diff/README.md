@@ -163,8 +163,11 @@ cleanup. Source trees are validated as regular-file-only before mirroring
 regardless of the optional post-run immutability policy. Mirroring never follows
 symlinks, and the copy must match the admitted byte-tree snapshot before any
 probe runs; mismatches or invalid trees fail in the probe execution boundary.
-Programs run against an isolated source mirror; changing the mirror invalidates
-the probe. The optional original-source immutability check separately verifies
+Programs run against an isolated source mirror; changing the mirror between
+commands or programs fails before a following command can consume altered
+bytes. Checks also run when a command fails, although a change made and
+reverted inside one process remains outside this post-exit check. The optional
+original-source immutability check separately verifies
 user input after success **or failure**, so a failed child cannot suppress
 source-mutation diagnostics. It reports but cannot undo writes from arbitrary
 trusted raw argv; execution is not a sandbox. Pre-copy and mirror snapshots do

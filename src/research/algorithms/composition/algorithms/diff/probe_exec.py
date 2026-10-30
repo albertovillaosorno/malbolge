@@ -799,13 +799,17 @@ def _update_exit_digest(
 def _run_program(
     program: ProbeProgram,
     context: ProbeRunContext,
+    baseline: TreeSnapshot,
 ) -> ProbeTranscript:
     hasher = hashlib.sha256()
     digested_commands = _ZERO
     with tempfile.TemporaryDirectory(prefix="diff-probe-") as scratch:
         scratch_root = Path(scratch)
         for command_index, command in enumerate(program.commands):
-            result = _run_command(command, context, scratch_root)
+            try:
+                result = _run_command(command, context, scratch_root)
+            finally:
+                _require_mirror_unchanged(context.source_root, baseline)
             selected = False
             if command.digest_stdout:
                 _update_stdout_digest(hasher, command_index, result.stdout)
@@ -900,6 +904,18 @@ def _require_repository_paths_disjoint(
                 _require_repository_argument_disjoint(argument, context, source)
 
 
+def _require_mirror_unchanged(root: Path, baseline: TreeSnapshot) -> None:
+    """Reject a persistent mirror change after every executed command.
+
+    Raises:
+        ProbeExecutionError: The isolated source mirror no longer matches.
+
+    """
+    if _snapshot_probe_tree(root, "isolated source mirror") != baseline:
+        message = "behavior probe modified its isolated source mirror"
+        raise ProbeExecutionError(message)
+
+
 def _run_isolated_batch(
     programs: tuple[ProbeProgram, ...], context: ProbeRunContext
 ) -> tuple[ProbeTranscript, ...]:
@@ -926,13 +942,8 @@ def _run_isolated_batch(
             raise ProbeExecutionError(message)
         transcripts: list[ProbeTranscript] = []
         for program in programs:
-            transcripts.append(_run_program(program, isolated))
-            if (
-                _snapshot_probe_tree(mirror_root, "isolated source mirror")
-                != baseline
-            ):
-                message = "behavior probe modified its isolated source mirror"
-                raise ProbeExecutionError(message)
+            transcripts.append(_run_program(program, isolated, baseline))
+            _require_mirror_unchanged(mirror_root, baseline)
         return tuple(transcripts)
 
 

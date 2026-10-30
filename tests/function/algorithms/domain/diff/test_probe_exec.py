@@ -645,6 +645,62 @@ def test_source_mutation_is_isolated_from_user_source(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize("mutator_fails", [False, True])
+def test_source_mirror_checked_after_each_command(
+    tmp_path: Path, *, mutator_fails: bool
+) -> None:
+    """Do not digest intermediate mutated bytes or lose failure diagnostics."""
+    source = tmp_path / "source"
+    source.mkdir()
+    target = source / "input.txt"
+    _ = target.write_text(_ORIGINAL_TEXT, encoding="utf-8")
+    mutation = (
+        "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text('during');"
+    )
+    if mutator_fails:
+        mutation += "raise SystemExit(7)"
+    restore = (
+        "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2])"
+    )
+    program = ProbeProgram(
+        "transient-source-mutation",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    mutation,
+                    PathArgument(ProbeRoot.SOURCE, "input.txt"),
+                ),
+            ),
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    _READ_BYTES_CODE,
+                    PathArgument(ProbeRoot.SOURCE, "input.txt"),
+                ),
+                digest_stdout=True,
+            ),
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    restore,
+                    PathArgument(ProbeRoot.SOURCE, "input.txt"),
+                    _ORIGINAL_TEXT,
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match="isolated source mirror"):
+        _ = run_probe_program(program, _context(source, tmp_path))
+    _expect(
+        target.read_text(encoding="utf-8") == _ORIGINAL_TEXT,
+        "source mirror mutation escaped into original source",
+    )
+
+
 @pytest.mark.parametrize("via_alias", [False, True])
 def test_repository_rooted_argument_cannot_modify_original_source(
     tmp_path: Path, *, via_alias: bool
