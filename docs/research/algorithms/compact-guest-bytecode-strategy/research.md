@@ -231,6 +231,43 @@ semantic equivalence of a VM-resident decoder remain unknown. The v0/v1
 source-cell cost by 64 cells; other bit encodings and data initialization
 techniques have not been excluded.
 
+## Results: Genuine Guest CEB2 Memory Read v3 (2026-10-29)
+
+The v3 source removes the earlier restriction that the Malbolge guest never
+reads resident data. Its first `j` loads source glyph `40`, then actual
+`D := M[0]` and pointer advancement move D to address 41, the start of a
+102-cell CEB2 tail. Twelve real `o` steps advance D to address 53, payload
+ordinal 12 encoding three low count-field bits (descriptor bits 36–38).
+
+At code position 13, the guest executes `*`: it reads that cell's ASCII word,
+rotates it under profile trit semantics and writes the changed value to both
+M[53] and A. `<` at position 14 outputs the low byte, and `v` halts at 15.
+No-op padding fills positions 16–40; CEB2 glyphs occupy positions 41–142.
+The complete source is **143 loader-valid cells** (41 prefix/padding, 102
+payload), with exactly **16 reached guest steps** for every encoded count.
+
+The normative VM tests five source-bound CEB2 counts (1/7/20/64/256), with
+independent scalar output oracle, original vs rotated memory word, all other
+payload cells unmodified, and varying results across distinct counts. An
+independent sixteen-step execution trace proves real data read at 53, guest
+write to 53, post-instruction encryption and final output/termination. A
+loader-valid count-glyph substitution makes the same VM emit a different byte
+but is rejected by host CEB2 admission. This is now *guest data computation*,
+not only a host-expanded source or loader-only data-residency claim.
+
+**It is not bytecode interpretation or semantic equivalence.** The guest
+rotates one ASCII glyph; it neither calculates the packed ordinal, decodes
+the full count, authenticates the source, loops, consumes input nor emits the
+n requested echo outputs. The 16 guest steps do not implement an n-pair
+program. At 64 pairs the 143-cell probe exceeds the 129-cell direct program
+despite doing less work. Neither that comparison nor the earlier hypothetical
+`R + 102 < 2n + 1` (for an unimplemented *equivalent* interpreter) proves an
+actual source-size or throughput benefit. The probe does not measure the
+runtime footprint `R` required to execute arbitrary stored bytecode.
+
+A complete guest decoder and looping echo interpreter with independent
+end-to-end semantic verification are still required for P2 adoption.
+
 ## Threats to Validity
 
 The pilot has no guest interpreter, no real bytecode loader, no linked data

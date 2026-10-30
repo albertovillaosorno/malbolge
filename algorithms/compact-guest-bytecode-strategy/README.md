@@ -132,6 +132,37 @@ allowance for missing runtime cells is now `None` at 20 echo pairs, **26** at
 sizes, proven semantic equivalents, or speedups. A real guest interpreter may
 require significantly more cells and independent verification.
 
+## Real guest payload-read probe v3 (2026-10-29)
+
+`pilot-v3.toml` and `guest_payload_probe.rs` add a **genuine guest-side
+memory read** on top of the v2 graphical representation. A unique loader-valid
+`j` at code address 0 is source glyph `40`. Its Malbolge-defined effect sets
+`D` to `M[0] + 1 = 41`, the beginning of the CEB2 data region. Twelve
+reached `o` instructions advance `D` to address 53: packed CEB2 ordinal 12
+(three bits of its low repeat count). At code address 13, actual guest `*`
+rotates and writes that resident data word into guest memory and `A`. Guest
+`<` at 14 outputs `A mod 256`; `v` at 15 halts. Positions 16–40 are valid
+unexecuted no-op padding; positions 41–142 hold 102 graphical CEB2 glyphs.
+The resulting source uses **143 loaded cells** and **16 reached guest steps**.
+
+Unlike v2, the VM **reads and mutates one CEB2 source-memory cell** and its
+output depends on that cell. Normative profile executions for 1, 7, 20, 64,
+and 256 echo counts check output and memory against an independent scalar
+ternary oracle. A separate 16-step trace proves actual `D=53` semantic read,
+write, code fetches, encryption, output and halt. Altering the observed count
+glyph to another loader-valid glyph changes actual guest output but fails
+independent host CEB2 admission. Host reconstruction still rejects malformed,
+shifted, truncated and foreign-source payloads; there is no host runtime
+callback supplying the guest output.
+
+**This is not a bytecode interpreter.** The guest does not decode a glyph
+ordinal, recover the complete count, check the source digest, dispatch a loop,
+consume input or execute the original echo instructions. Its single output
+byte diagnoses rotated CEB2 data, **not** a byte-echo result. There is no
+semantic equivalence or speedup claim. The 143-cell diagnostic is even larger
+than the 129-cell direct baseline at 64 pairs; those programs do different
+work, so this is only a structural observation, not a performance comparison.
+
 ## Status
 
 No VM-resident bytecode runtime has been implemented. No guest-interpreted

@@ -33,6 +33,8 @@
 
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_binding.rs"]
 pub mod binding;
+#[path = "../algorithms/compact-guest-bytecode-strategy/guest_payload_probe.rs"]
+pub mod guest_probe;
 #[path = "../algorithms/compact-guest-bytecode-strategy/graphical_residency.rs"]
 pub mod residency;
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_macro.rs"]
@@ -41,6 +43,7 @@ pub mod strategy;
 use malbolge::{
     ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, historical_profile,
 };
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, id};
@@ -65,8 +68,16 @@ use residency::{
     admit_bound_resident_source, embed_bound_resident_source, maximum_packed_runtime_cells,
 };
 
+use guest_probe::{
+    GuestPayloadProbeError, admit_guest_payload_probe, embed_guest_payload_probe,
+    guest_probe_source_cells, guest_read_address,
+};
+
 const BOUND_PILOT_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v1.toml");
+
+const GUEST_PROBE_CONFIG: &str =
+    include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v3.toml");
 
 const RESIDENT_PILOT_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v2.toml");
@@ -974,6 +985,314 @@ fn last_graphical_cell_rejects_nonzero_two_bit_padding() -> Result<(), String> {
     assert_eq!(
         admit_bound_resident_source(&original, current_profile(), &source),
         Err(GraphicalResidencyError::NoncanonicalPadding),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "genuine VM payload execution witness"
+)]
+#[expect(
+    clippy::integer_division,
+    reason = "independent scalar base-three oracle"
+)]
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "independent trit oracle"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "five-profile-VM-literal-memory witnesses"
+)]
+#[expect(clippy::cognitive_complexity, reason = "real guest memory read checks")]
+fn guest_reads_real_ce_b2_count_glyph_through_relocation_and_rotate() -> Result<(), String> {
+    assert_eq!(guest_read_address(current_profile()), Ok(53));
+    assert_eq!(guest_probe_source_cells(current_profile()), Ok(143));
+    let mut observed = BTreeSet::new();
+    for pairs in [1usize, 7, 20, 64, 256] {
+        let original = program(pairs)?;
+        let descriptor = encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("bound {pairs}: {error:?}"))?;
+        let emitted = embed_guest_payload_probe(&original, current_profile(), &descriptor)
+            .map_err(|error| format!("embed {pairs}: {error:?}"))?;
+        assert_eq!(emitted.len(), 143);
+        let recovered = admit_guest_payload_probe(&original, current_profile(), &emitted)
+            .map_err(|error| format!("recover {pairs}: {error:?}"))?;
+        assert_eq!(recovered, descriptor);
+        for (position, glyph) in emitted.iter().copied().enumerate() {
+            let code = decode_profile_instruction(
+                u32::from(glyph),
+                u32::try_from(position).map_err(|error| error.to_string())?,
+            );
+            assert!(matches!(
+                code,
+                Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+            ));
+        }
+        assert_eq!(emitted.first(), Some(&40));
+        let initial_glyph = *emitted.get(53).ok_or("missing resident count glyph")?;
+        let modulus = current_profile().word_modulus();
+        // Independent trit oracle, deliberately not profile_rotate().
+        let glyph_word = u32::from(initial_glyph);
+        let expected = glyph_word / 3 + (glyph_word % 3) * (modulus / 3);
+        let expected_output =
+            u8::try_from(expected % 256).map_err(|error| format!("output byte: {error}"))?;
+        let mut vm = ProfileMachine::from_source(current_profile(), &emitted, Vec::new())
+            .map_err(|error| format!("profile source loader {pairs}: {error:?}"))?;
+        assert_eq!(
+            vm.memory_word(53)
+                .map_err(|error| format!("read: {error:?}"))?,
+            glyph_word
+        );
+        assert!(matches!(
+            vm.run(16),
+            Ok(RunOutcome::Terminated { steps: 16, .. })
+        ));
+        assert_eq!(vm.output(), &[expected_output]);
+        assert_eq!(vm.input_consumed(), 0);
+        assert_eq!(vm.registers().code_pointer, 15);
+        assert_eq!(vm.registers().data_pointer, 55);
+        assert_eq!(vm.registers().accumulator, expected);
+        assert_eq!(
+            vm.memory_word(53)
+                .map_err(|error| format!("rotated word: {error:?}"))?,
+            expected,
+        );
+        // All other CEB2 cells were not executed or mutated by the guest.
+        for position in 41u32..143u32 {
+            if position == 53 {
+                continue;
+            }
+            let offset = usize::try_from(position).map_err(|error| error.to_string())?;
+            assert_eq!(
+                vm.memory_word(position)
+                    .map_err(|error| format!("tail: {error:?}"))?,
+                u32::from(*emitted.get(offset).ok_or("tail glyph")?)
+            );
+        }
+        let _new_output = observed.insert(expected_output);
+    }
+    assert!(
+        observed.len() >= 2,
+        "different admitted repeat counts must be guest-observable"
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "adversarial host and guest distinctions"
+)]
+#[expect(
+    clippy::integer_division,
+    reason = "independent trit output projection"
+)]
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "scalar base-three oracle"
+)]
+fn guest_probed_count_cell_mutation_changes_guest_output_but_fails_host_admission()
+-> Result<(), String> {
+    let original = program(7)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound: {error:?}"))?;
+    let source = embed_guest_payload_probe(&original, current_profile(), &candidate)
+        .map_err(|error| format!("guest probe: {error:?}"))?;
+    let before = *source.get(53).ok_or("initial count cell")?;
+    let mut replaced = source.clone();
+    let replacement = (33u8..=126u8)
+        .find(|glyph| {
+            *glyph != before
+                && matches!(
+                    decode_profile_instruction(u32::from(*glyph), 53),
+                    Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                )
+                && (u32::from(*glyph) / 3
+                    + (u32::from(*glyph) % 3) * (current_profile().word_modulus() / 3))
+                    % 256
+                    != (u32::from(before) / 3
+                        + (u32::from(before) % 3) * (current_profile().word_modulus() / 3))
+                        % 256
+        })
+        .ok_or("no distinct loader-valid count glyph")?;
+    *replaced.get_mut(53).ok_or("read cell")? = replacement;
+    assert!(matches!(
+        admit_guest_payload_probe(&original, current_profile(), &replaced),
+        Err(GuestPayloadProbeError::Binding(_))
+    ));
+    let mut original_vm = ProfileMachine::from_source(current_profile(), &source, Vec::new())
+        .map_err(|error| format!("old source: {error:?}"))?;
+    let mut forged_vm = ProfileMachine::from_source(current_profile(), &replaced, Vec::new())
+        .map_err(|error| format!("forged loader-valid source: {error:?}"))?;
+    assert!(matches!(
+        original_vm.run(16),
+        Ok(RunOutcome::Terminated { steps: 16, .. })
+    ));
+    assert!(matches!(
+        forged_vm.run(16),
+        Ok(RunOutcome::Terminated { steps: 16, .. })
+    ));
+    assert_ne!(original_vm.output(), forged_vm.output());
+    assert_eq!(forged_vm.input_consumed(), 0);
+    assert_eq!(forged_vm.registers().data_pointer, 55);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "host check cannot trust guest glyphs"
+)]
+fn guest_probe_host_rejects_shifted_truncated_and_forged_sources() -> Result<(), String> {
+    let original = program(7)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound: {error:?}"))?;
+    let source = embed_guest_payload_probe(&original, current_profile(), &candidate)
+        .map_err(|error| format!("resident: {error:?}"))?;
+    let mut wrong_prefix = source.clone();
+    *wrong_prefix.get_mut(1).ok_or("second code glyph")? = b'!';
+    assert_eq!(
+        admit_guest_payload_probe(&original, current_profile(), &wrong_prefix),
+        Err(GuestPayloadProbeError::InvalidSource)
+    );
+    let mut suffix = source.clone();
+    suffix.push(b'!');
+    assert_eq!(
+        admit_guest_payload_probe(&original, current_profile(), &suffix),
+        Err(GuestPayloadProbeError::InvalidSource)
+    );
+    for length in [0usize, 1, 16, 41, 53, 142] {
+        assert_eq!(
+            admit_guest_payload_probe(
+                &original,
+                current_profile(),
+                source.get(..length).ok_or("truncated")?
+            ),
+            Err(GuestPayloadProbeError::InvalidSource),
+        );
+    }
+    let mut other = original;
+    other.source_id = String::from("research/another-count-7.c");
+    assert_eq!(
+        admit_guest_payload_probe(&other, current_profile(), &source),
+        Err(GuestPayloadProbeError::Binding(
+            BoundEchoError::SourceMismatch
+        ))
+    );
+    assert!(embed_guest_payload_probe(&other, current_profile(), &candidate).is_err());
+    Ok(())
+}
+
+#[test]
+fn guest_probe_v3_configuration_pins_costs_and_no_interpreter_claim() {
+    for declaration in [
+        "schema = \"compact-guest-bytecode-pilot-v3\"",
+        "bound_descriptor_bytes = 38",
+        "payload_cells = 102",
+        "payload_count_probe_ordinal = 12",
+        "reached_guest_steps = 16",
+        "reached_guest_code = \"j oooooooooooo * < v\"",
+        "reads_genuine_source_resident_data = true",
+        "interpreter_present = false",
+        "repeat_echo_semantic_equivalence = false",
+        "source_authentication_in_guest = false",
+    ] {
+        assert!(GUEST_PROBE_CONFIG.lines().any(|line| line == declaration));
+    }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "normative per-step source read evidence"
+)]
+#[expect(
+    clippy::integer_division,
+    reason = "independent ternary rotation check"
+)]
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "independent ternary rotation check"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "complete sixteen-step trace witness"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one exact guest read and write receipt"
+)]
+fn traced_guest_rotates_loaded_count_cell_not_a_host_supplied_literal() -> Result<(), String> {
+    let original = program(7)?;
+    let descriptor = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("descriptor: {error:?}"))?;
+    let source = embed_guest_payload_probe(&original, current_profile(), &descriptor)
+        .map_err(|error| format!("guest program: {error:?}"))?;
+    let original_glyph = u32::from(*source.get(53).ok_or("probe source glyph")?);
+    let mut vm = ProfileMachine::from_source(current_profile(), &source, Vec::new())
+        .map_err(|error| format!("real VM loader: {error:?}"))?;
+    let mut events = Vec::new();
+    let outcome = vm
+        .run_traced(16, &mut |event| events.push(*event))
+        .map_err(|error| format!("real VM trace: {error:?}"))?;
+    assert!(matches!(outcome, RunOutcome::Terminated { steps: 16, .. }));
+    assert_eq!(events.len(), 16);
+    for (index, event) in events.iter().enumerate() {
+        assert_eq!(
+            event.before.registers.code_pointer,
+            u32::try_from(index).map_err(|error| error.to_string())?
+        );
+        assert_eq!(
+            event.memory_reads.fetch.map(|read| read.address),
+            Some(u32::try_from(index).map_err(|error| error.to_string())?)
+        );
+    }
+    assert_eq!(events.first().and_then(|event| event.decoded), Some(b'j'));
+    assert_eq!(
+        events
+            .first()
+            .and_then(|event| event.memory_reads.data)
+            .map(|read| read.value),
+        Some(40)
+    );
+    for event in events.iter().skip(1).take(12) {
+        assert_eq!(event.decoded, Some(b'o'));
+        assert_eq!(event.memory_reads.data, None);
+    }
+    let rotate = events.get(13).ok_or("rotation step")?;
+    assert_eq!(rotate.decoded, Some(b'*'));
+    assert_eq!(rotate.before.registers.data_pointer, 53);
+    assert_eq!(
+        rotate
+            .memory_reads
+            .data
+            .map(|read| (read.address, read.value)),
+        Some((53, original_glyph))
+    );
+    let expected = original_glyph / 3 + original_glyph % 3 * (current_profile().word_modulus() / 3);
+    assert_eq!(
+        rotate
+            .memory_delta
+            .data
+            .map(|write| (write.address, write.before, write.after)),
+        Some((53, original_glyph, expected))
+    );
+    assert_eq!(
+        rotate.memory_delta.encryption.map(|write| write.address),
+        Some(13)
+    );
+    let output = events.get(14).ok_or("output step")?;
+    assert_eq!(output.decoded, Some(current_profile().output_instruction()));
+    assert_eq!(output.output, vm.output().first().copied());
+    assert_eq!(output.memory_reads.data, None);
+    assert_eq!(events.get(15).and_then(|event| event.decoded), Some(b'v'));
+    assert_eq!(
+        vm.memory_word(53)
+            .map_err(|error| format!("data: {error:?}"))?,
+        expected
     );
     Ok(())
 }

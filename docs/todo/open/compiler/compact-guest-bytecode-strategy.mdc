@@ -95,6 +95,17 @@ code-size explosion or compilation cost.
   allowance to 26 cells at 64 echo pairs and 410 at 256; the guest does not
   interpret the resident bytes or execute a complete n-pair CEB2 program.
 
+- The version-three **guest-read** research pilot adds actual resident-data
+  effects: a reached `j` points D at the CEB2 tail, twelve `o` steps select
+  packed count glyph ordinal 12, and guest `*`, `<`, `v` read, rotate, write,
+  output and halt. The source costs 143 loader-valid cells/16 guest steps.
+  Real profile-VM execution with five bound counts, an independent scalar
+  oracle, exact guest trace, memory witness and loader-valid corruption case
+  prove one source-bound bytecode *cell* is guest-observable. The guest still
+  does not decode a bytecode ordinal, verify its SHA-256 identity, loop or
+  execute n echo pairs. No semantically equivalent size/speed comparison is
+  possible and the TODO remains pending.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
