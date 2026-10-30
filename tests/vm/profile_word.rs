@@ -383,7 +383,7 @@ fn chunked_profile_word_matches_u32_primitives_through_n20() -> TestResult {
                 "chunked word narrows exactly through N20",
             )?;
             check_equal(
-                &data.rotate().to_u64(),
+                &data.rotate().map_err(|error| error.to_string())?.to_u64(),
                 &Some(u64::from(profile_rotate(data_u32, modulus_u32))),
                 "chunked rotate equals u32 primitive",
             )?;
@@ -487,7 +487,7 @@ fn chunked_profile_word_wide_rotate_matches_trit_oracle() -> TestResult {
         for seed in 0..3usize {
             let word = patterned_word(trits, seed)?;
             check_equal(
-                &word.rotate(),
+                &word.rotate().map_err(|error| error.to_string())?,
                 &wide_rotate_oracle(&word)?,
                 "wide rotate equals trit oracle",
             )?;
@@ -527,12 +527,12 @@ fn chunked_profile_word_exhausts_six_trit_transitions() -> TestResult {
         let word = ChunkedProfileWord::from_u64(6, value)
             .map_err(|error| error.to_string())?;
         check_equal(
-            &word.rotate(),
+            &word.rotate().map_err(|error| error.to_string())?,
             &wide_rotate_oracle(&word)?,
             "six-trit cross-chunk rotation",
         )?;
         check_equal(
-            &word.successor(),
+            &word.successor().map_err(|error| error.to_string())?,
             &wide_successor_oracle(&word)?,
             "six-trit cross-chunk successor",
         )?;
@@ -661,7 +661,7 @@ fn chunked_profile_word_successor_matches_wide_trit_oracle() -> TestResult {
         for seed in 0..3usize {
             let word = patterned_word(trits, seed)?;
             check_equal(
-                &word.successor(),
+                &word.successor().map_err(|error| error.to_string())?,
                 &wide_successor_oracle(&word)?,
                 "chunked successor equals trit oracle",
             )?;
@@ -671,7 +671,7 @@ fn chunked_profile_word_successor_matches_wide_trit_oracle() -> TestResult {
         let zero = ChunkedProfileWord::zero(trits)
             .map_err(|error| error.to_string())?;
         check_equal(
-            &eof.successor(),
+            &eof.successor().map_err(|error| error.to_string())?,
             &zero,
             "chunked successor wraps EOF to zero",
         )?;

@@ -120,6 +120,11 @@ complete 243-value five-trit crazy chunk against the trit-level truth table,
 and all 729 six-trit words against independently calculated rotation and
 successor across the five-trit boundary. This is exhaustive for those bounded
 widths only, not a proof of arbitrary-width host allocation or execution.
+Width-generic rotation and modular successor now return checked results as well:
+their output buffers use the same fallible reservation helper rather than
+infallible `vec![]`/`to_vec()` allocations. Their existing independent
+cross-width and exhaustive boundary tests consume these typed results; classic
+`Word` and the selected `ProfileMachine` API and behavior are unchanged.
 
 This does not yet widen `ProfileMachine` memory or registers. Product tests show
 N10 through N20 equal the existing `u32` primitives, while independent

@@ -394,9 +394,14 @@ impl ChunkedProfileWord {
     }
 
     /// Rotates the least-significant trit into the exact highest semantic trit.
-    #[must_use]
-    pub fn rotate(&self) -> Self {
-        let mut chunks = vec![0u8; self.chunk_count()];
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChunkedProfileWordError::AllocationFailure`] if the exact
+    /// output chunk storage cannot be reserved.
+    pub fn rotate(&self) -> Result<Self, ChunkedProfileWordError> {
+        let mut chunks = reserved_chunks(self.chunk_count())?;
+        chunks.resize(self.chunk_count(), 0);
         for index in 0..self.chunk_count() {
             let current = self.chunks.get(index).copied().unwrap_or(0);
             let higher_low = self
@@ -424,16 +429,21 @@ impl ChunkedProfileWord {
         if let Some(value) = chunks.get_mut(top) {
             *value = value.saturating_add(low_trit.saturating_mul(high_weight));
         }
-        Self {
+        Ok(Self {
             chunks: chunks.into_boxed_slice(),
             trits: self.trits,
-        }
+        })
     }
 
     /// Advances this word by one with exact wraparound at `3^N`.
-    #[must_use]
-    pub fn successor(&self) -> Self {
-        let mut chunks = self.chunks.to_vec();
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChunkedProfileWordError::AllocationFailure`] if the exact
+    /// output chunk storage cannot be reserved.
+    pub fn successor(&self) -> Result<Self, ChunkedProfileWordError> {
+        let mut chunks = reserved_chunks(self.chunk_count())?;
+        chunks.extend_from_slice(self.chunks());
         let mut carry = true;
         for index in 0..chunks.len() {
             if !carry {
@@ -451,10 +461,10 @@ impl ChunkedProfileWord {
                 u8::try_from(current).ok().unwrap_or(0)
             };
         }
-        Self {
+        Ok(Self {
             chunks: chunks.into_boxed_slice(),
             trits: self.trits,
-        }
+        })
     }
 
     /// Returns the exact integer when it fits in `u32`.
