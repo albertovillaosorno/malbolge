@@ -42,7 +42,7 @@ use std::process::{ExitCode, id};
 use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile};
 
 use crate::bridge::{
-    encode_successful_byte_echo, encode_successful_latest_byte_trace,
+    encode_initial_zero_outputs, encode_successful_byte_echo, encode_successful_latest_byte_trace,
     ternary::{TernaryOperation, canonical_ternary_program},
 };
 use crate::layout::{
@@ -50,7 +50,8 @@ use crate::layout::{
     encode_auto_padded_forward_layout, encode_linear_layout,
 };
 use crate::typed_adapter::{
-    compile_canonical_typed_echo, compile_canonical_typed_latest_byte_trace,
+    compile_canonical_typed_echo, compile_canonical_typed_initial_zero_outputs,
+    compile_canonical_typed_latest_byte_trace,
 };
 
 const PROFILE_ARG: &str = "--profile";
@@ -61,6 +62,7 @@ const MAX_OPERATIONS: usize = 4096;
 const MAX_CANONICAL_WIRE_BYTES: u64 = 1_048_576;
 const TERNARY_FILE_ARG: &str = "--ternary-file";
 const LATEST_BYTE_TRACE_ARG: &str = "--latest-byte-trace";
+const INITIAL_ZERO_OUTPUT_ARG: &str = "--initial-zero-output";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
 const TERNARY_STDIN_ARG: &str = "--ternary-stdin";
@@ -88,6 +90,7 @@ struct CommandSpec {
 #[derive(Clone, Copy, Debug)]
 enum ByteTraceMode {
     AdjacentEcho,
+    InitialZero,
     LatestRead,
 }
 
@@ -97,10 +100,15 @@ enum SuccessfulByteEffect {
     Output,
 }
 
+enum SourceEffectWitness {
+    InitialZero { outputs: usize },
+    SuccessfulByteTrace(Vec<SuccessfulByteEffect>),
+}
+
 struct VerifiedSource {
+    effect_witness: Option<SourceEffectWitness>,
     source: Vec<u8>,
     steps: usize,
-    successful_byte_effects: Option<Vec<SuccessfulByteEffect>>,
 }
 
 fn parse_operation(token: &str) -> Result<LinearOpcode, String> {
@@ -167,12 +175,19 @@ fn parse_canonical_source(
     first: OsString,
     arguments: &mut impl Iterator<Item = OsString>,
 ) -> Result<SourceSpec, String> {
-    let (kind, mode) = if first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
+    let (kind, mode) = if first == OsStr::new(LATEST_BYTE_TRACE_ARG)
+        || first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG)
+    {
+        let mode = if first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG) {
+            ByteTraceMode::InitialZero
+        } else {
+            ByteTraceMode::LatestRead
+        };
         (
             arguments
                 .next()
                 .ok_or("missing canonical wire input mode")?,
-            ByteTraceMode::LatestRead,
+            mode,
         )
     } else {
         (first, ByteTraceMode::AdjacentEcho)
@@ -181,7 +196,7 @@ fn parse_canonical_source(
     let uses_stdin = kind == OsStr::new(TERNARY_STDIN_ARG) || kind == OsStr::new(TYPED_STDIN_ARG);
     if !uses_file && !uses_stdin {
         return Err(String::from(
-            "--latest-byte-trace requires --ternary-file, --typed-file, --ternary-stdin or --typed-stdin",
+            "effect mode requires --ternary-file, --typed-file, --ternary-stdin or --typed-stdin",
         ));
     }
     let source = if uses_stdin {
@@ -220,6 +235,7 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
         || first == OsStr::new(TERNARY_STDIN_ARG)
         || first == OsStr::new(TYPED_STDIN_ARG)
         || first == OsStr::new(LATEST_BYTE_TRACE_ARG)
+        || first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG)
     {
         return parse_canonical_source(first, arguments);
     } else {
@@ -395,6 +411,7 @@ fn verified_ternary_bytes(
         .map_err(|error| format!("canonical ternary wire rejected: {error:?}"))?;
     let layout = match mode {
         ByteTraceMode::AdjacentEcho => encode_successful_byte_echo(&program, profile),
+        ByteTraceMode::InitialZero => encode_initial_zero_outputs(&program, profile),
         ByteTraceMode::LatestRead => encode_successful_latest_byte_trace(&program, profile),
     }
     .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
@@ -404,30 +421,41 @@ fn verified_ternary_bytes(
             "ternary source profile mismatch after admission",
         ));
     }
-    let effects = program
+    let operations = &program
         .functions
         .first()
         .ok_or("bridge accepted no ternary function")?
-        .operations
-        .iter()
-        .filter(|operation| {
-            matches!(
-                operation,
-                TernaryOperation::ByteInput { .. } | TernaryOperation::ByteOutput { .. }
-            )
+        .operations;
+    let effect_witness = if matches!(mode, ByteTraceMode::InitialZero) {
+        Some(SourceEffectWitness::InitialZero {
+            outputs: operations
+                .iter()
+                .filter(|operation| matches!(operation, TernaryOperation::ByteOutput { .. }))
+                .count(),
         })
-        .map(|operation| {
-            if matches!(operation, TernaryOperation::ByteInput { .. }) {
-                SuccessfulByteEffect::Input
-            } else {
-                SuccessfulByteEffect::Output
-            }
-        })
-        .collect();
+    } else {
+        let effects = operations
+            .iter()
+            .filter(|operation| {
+                matches!(
+                    operation,
+                    TernaryOperation::ByteInput { .. } | TernaryOperation::ByteOutput { .. }
+                )
+            })
+            .map(|operation| {
+                if matches!(operation, TernaryOperation::ByteInput { .. }) {
+                    SuccessfulByteEffect::Input
+                } else {
+                    SuccessfulByteEffect::Output
+                }
+            })
+            .collect();
+        Some(SourceEffectWitness::SuccessfulByteTrace(effects))
+    };
     Ok(VerifiedSource {
+        effect_witness,
         source: layout.source().to_vec(),
         steps: layout.executed_code_positions().len(),
-        successful_byte_effects: Some(effects),
     })
 }
 
@@ -438,6 +466,9 @@ fn verified_typed_bytes(
 ) -> Result<VerifiedSource, String> {
     let compiled = match mode {
         ByteTraceMode::AdjacentEcho => compile_canonical_typed_echo(typed_bytes, profile),
+        ByteTraceMode::InitialZero => {
+            compile_canonical_typed_initial_zero_outputs(typed_bytes, profile)
+        }
         ByteTraceMode::LatestRead => {
             compile_canonical_typed_latest_byte_trace(typed_bytes, profile)
         }
@@ -478,9 +509,9 @@ fn verified_source(
             )
             .map_err(|error| format!("auto-layout independent admission failed: {error:?}"))?;
             Ok(VerifiedSource {
+                effect_witness: None,
                 source: artifact.source().to_vec(),
                 steps: artifact.executed_code_positions().len(),
-                successful_byte_effects: None,
             })
         }
         SourceSpec::MachineOperations(operations) => {
@@ -497,9 +528,9 @@ fn verified_source(
             )
             .map_err(|error| format!("source admission failed: {error:?}"))?;
             Ok(VerifiedSource {
+                effect_witness: None,
                 source: admitted.source().to_vec(),
                 steps: admitted.executed_code_positions().len(),
-                successful_byte_effects: None,
             })
         }
         SourceSpec::CanonicalTernaryFile { path, mode } => {
@@ -565,6 +596,31 @@ fn verify_successful_byte_trace(
     Ok(())
 }
 
+// Constant-zero emission has no successful input effects: the selected VM
+// must emit each zero from initial A=0 while ignoring any supplied guest stdin.
+fn verify_initial_zero_outputs(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    outputs: usize,
+) -> Result<(), String> {
+    if outputs == 0 || outputs.checked_add(1) != Some(artifact.steps) {
+        return Err(String::from("initial-zero guest output geometry disagrees"));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
+            .map_err(|error| format!("initial-zero guest VM load failed: {error:?}"))?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != 0
+            || vm.output().len() != outputs
+            || vm.output().iter().any(|byte| *byte != 0)
+        {
+            return Err(String::from("initial-zero guest VM output mismatch"));
+        }
+    }
+    Ok(())
+}
+
 fn execute(spec: &CommandSpec) -> Result<(), String> {
     let profile = target_profile(&spec.profile).ok_or("unknown canonical target profile")?;
     let artifact = verified_source(&spec.source, profile)?;
@@ -576,8 +632,14 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
             "normative VM did not halt at the proven code step",
         ));
     }
-    if let Some(effects) = &artifact.successful_byte_effects {
-        verify_successful_byte_trace(profile, &artifact, effects)?;
+    match &artifact.effect_witness {
+        Some(SourceEffectWitness::SuccessfulByteTrace(effects)) => {
+            verify_successful_byte_trace(profile, &artifact, effects)?;
+        }
+        Some(SourceEffectWitness::InitialZero { outputs }) => {
+            verify_initial_zero_outputs(profile, &artifact, *outputs)?;
+        }
+        None => {}
     }
     let publication = if spec.capsule {
         let bytes = build_capsule(profile, &artifact.source)

@@ -206,6 +206,14 @@ emission.
   or publish invalid wires. Other OSes keep the pre-open path check plus
   independent descriptor admission and retain a pathname race limitation;
   the stress fixture is not exhaustive proof of every scheduling interleave.
+- An explicitly selected `--initial-zero-output` publisher now admits
+  complete canonical typed or ternary source with one proven `u8` zero SSA,
+  repeated same-SSA byte outputs and final void return. Both file and stdin
+  inputs rejoin the independent canonical MCTR/bridge, normative VM exact
+  zero-byte output with zero consumed input, optional profile capsule and
+  atomic no-clobber publication. Its prefix is mutually exclusive with
+  `--latest-byte-trace` and does not broaden strict echo by default.
+  This is guest initial-A zero output only, not arbitrary constant codegen.
 - The verified artifact emitter now also takes bounded canonical MCTI or
   MCTR bytes through explicit `--typed-stdin` / `--ternary-stdin` modes,
   including opt-in `--latest-byte-trace`. Zero path operands and EOF are

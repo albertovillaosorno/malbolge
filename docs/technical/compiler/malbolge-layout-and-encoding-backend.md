@@ -267,6 +267,26 @@ publisher authenticate that an input retained the same pathname throughout
 validation. Independent canonical-byte checks and atomic no-clobber final
 publication remain distinct guarantees.
 
+### Initial-zero typed and ternary source publication
+
+An explicit `--initial-zero-output` prefix for `--typed-file`,
+`--ternary-file`, `--typed-stdin` and `--ternary-stdin` enables the
+independently admitted `MaterializeU8(0)` plus one or more same-SSA guest
+byte outputs and void return. The VM starts with accumulator zero; the
+verified graphical code executes only actual output operations and halt.
+No source operation is executed by host software. MCTI first undergoes
+full canonical module admission, typed-source projection, canonical MCTR
+re-encoding and independent re-decoding. Both wire kinds are then checked
+by the same independent zero-output bridge, real VM empty/extra-input
+termination and exact guest-output oracle, and the existing atomic raw or
+capsule no-overwrite publisher. This differs deliberately from successful
+byte-input preflight: zero output consumes no input and rejects any extra
+source effects. The CLI grammar makes this flag mutually exclusive with
+`--latest-byte-trace`, leaving default strict echo unchanged.
+
+Only a bounded initial-zero constant is implemented: no general nonzero
+constant materialization, guest C ABI, libc, dataflow, EOF or C compilation.
+
 ### Canonical wire streaming publication
 
 The verified file emitter now has explicit `--typed-stdin` (MCTI) and

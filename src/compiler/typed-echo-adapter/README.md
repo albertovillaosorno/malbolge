@@ -12,7 +12,7 @@ the existing independently verified Malbolge byte-echo layout backend.
 
 ## Supported domain
 
-Both modes accept exactly one no-argument, non-variadic, void-return
+All three modes accept exactly one no-argument, non-variadic, void-return
 function;
 one entry block without phi nodes; and no globals or proof obligations.
 `compile_canonical_typed_echo` preserves the original strict contract: one
@@ -29,6 +29,20 @@ cells. Function, source
 ID/digest, ABI, profile, return and operation spans all originate from the
 validated upstream module. Unsupported shapes reject before any source
 emission. This bridge does not perform I/O on the host.
+
+A third, separately opt-in entrypoint,
+`compile_canonical_typed_initial_zero_outputs`, accepts exactly one `u8`
+`ConstantInteger(0)` SSA definition followed by one or more `ByteOutput`
+instructions referring to that same SSA ID. It projects the real typed source
+spans and exact constant bits into canonical MCTR, re-decodes that wire and
+calls the independently verified `encode_initial_zero_outputs` target bridge.
+The normative VM initializes its accumulator to zero, so every emitted
+`OutputByte` executes on the guest without consuming any input. The target
+contains only `OutputByte` instructions and a final `Halt`, while the
+source-constant's provenance remains in the ternary IR. A maximum of 4095
+outputs fits the 4096-cell code bound. Nonzero or additional constants,
+other instructions, stale SSA, profile drift, and empty output traces reject.
+Neither the original adjacent-echo API nor latest-read API is broadened.
 
 The resulting native Malbolge program is semantically equivalent only on
 successful byte reads/writes with ignored void guest ABI. It does not handle
@@ -69,6 +83,18 @@ creating a target. A direct MCTI-to-capsule-to-real-general-CLI regression
 additionally feeds three binary guest bytes (including 0 and 255) and
 requires the expected repeated latest-byte output; grammar errors and
 trailing mixed-mode operands fail closed.
+
+For the initial-zero-only subset, use the separate
+`--initial-zero-output --typed-file PATH` or
+`--initial-zero-output --ternary-file PATH` forms. The same options also
+accept `--typed-stdin` and `--ternary-stdin` for a bounded canonical wire
+producer. Each source enters the existing independently re-decoded MCTR,
+position-sensitive target verification, exact no-input/extra-input normative
+VM output-and-consumption preflight and no-overwrite raw/capsule publisher.
+The explicit mode is incompatible with `--latest-byte-trace`; the default
+commands remain strict adjacent byte echo. Canonical source files and pipes
+are compiler inputs, not guest stdin. This still does not implement C input,
+nonzero constant output or a callable C guest ABI.
 
 Canonical MCTI wire version one is intentionally pinned to `malbolge-2026`
 and `malbolge-c32-v1`: unlike the lower-level VM and standalone layout

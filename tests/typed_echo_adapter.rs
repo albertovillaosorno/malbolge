@@ -1976,3 +1976,502 @@ fn canonical_file_modes_survive_atomic_regular_fifo_symlink_replacement() -> Res
     }
     Ok(())
 }
+
+fn initial_zero_typed_fixture(value: u8, outputs: usize) -> Result<Module, String> {
+    let mut instructions = Vec::with_capacity(outputs.saturating_add(1));
+    instructions.push(LocatedInstruction::new(
+        Instruction::ConstantInteger {
+            constant: adapter::typed::IntegerConstant::new(8, vec![value]),
+            result: ValueId::new(0),
+            type_id: TypeId::new(0),
+        },
+        span(0, 1),
+    ));
+    for offset in 0..outputs {
+        let start = u32::try_from(offset.saturating_add(1))
+            .map_err(|error| format!("typed zero-output source span: {error}"))?;
+        instructions.push(LocatedInstruction::new(
+            Instruction::ByteOutput {
+                value: ValueId::new(0),
+            },
+            span(start, start.saturating_add(1)),
+        ));
+    }
+    fixture_with_instructions(instructions, "fixtures/typed-initial-zero.c")
+}
+
+#[test]
+fn canonical_initial_zero_typed_ir_reaches_guest_vm_without_reading() -> Result<(), String> {
+    for outputs in [1usize, 2, 7, 64] {
+        let module = initial_zero_typed_fixture(0, outputs)?;
+        let typed = wire(&module)?;
+        let decoded = canonical_module(&typed)
+            .map_err(|error| format!("independent zero MCTI admission: {error:?}"))?;
+        if decoded != module {
+            return Err(String::from("canonical zero source identity changed"));
+        }
+        let compiled =
+            adapter::compile_canonical_typed_initial_zero_outputs(&typed, current_profile())
+                .map_err(|error| format!("typed zero target lowering: {error:?}"))?;
+        let restored = canonical_ternary_program(compiled.ternary_bytes())
+            .map_err(|error| format!("independent zero MCTR admission: {error:?}"))?;
+        if restored.source_id != module.source_id()
+            || restored.source_sha256 != *module.source_sha256()
+            || restored.target_profile != current_profile().id()
+        {
+            return Err(String::from("zero typed source/target provenance changed"));
+        }
+        let independently_compiled =
+            adapter::bridge::encode_initial_zero_outputs(&restored, current_profile())
+                .map_err(|error| format!("independent zero bridge: {error:?}"))?;
+        if compiled.layout() != &independently_compiled
+            || compiled.layout().source().len() != outputs.saturating_add(1)
+        {
+            return Err(String::from(
+                "zero typed and ternary executable source disagree",
+            ));
+        }
+        for input in [Vec::new(), vec![255, 128, 0]] {
+            let mut vm =
+                ProfileMachine::from_source(current_profile(), compiled.layout().source(), input)
+                    .map_err(|error| format!("typed zero real guest VM: {error:?}"))?;
+            if !matches!(vm.run(outputs.saturating_add(1)),
+                Ok(RunOutcome::Terminated { steps, .. }) if steps == outputs.saturating_add(1))
+                || vm.input_consumed() != 0
+                || vm.output() != vec![0; outputs]
+            {
+                return Err(String::from("zero typed source changed guest effects"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_initial_zero_typed_rejects_unsupported_and_default_modes() -> Result<(), String> {
+    let canonical = wire(&initial_zero_typed_fixture(0, 2)?)?;
+    if compile_canonical_typed_echo(&canonical, current_profile()).is_ok()
+        || adapter::compile_canonical_typed_latest_byte_trace(&canonical, current_profile()).is_ok()
+    {
+        return Err(String::from(
+            "zero scalar broadened existing byte trace modes",
+        ));
+    }
+    for (value, outputs) in [(0, 0), (1, 1), (255, 2)] {
+        let input = wire(&initial_zero_typed_fixture(value, outputs)?)?;
+        if adapter::compile_canonical_typed_initial_zero_outputs(&input, current_profile()).is_ok()
+        {
+            return Err(String::from(
+                "typed zero mode admitted unsupported constant",
+            ));
+        }
+    }
+    if adapter::compile_canonical_typed_initial_zero_outputs(&canonical, historical_profile())
+        != Err(TypedEchoAdapterError::Layout(
+            adapter::bridge::ByteEchoBridgeError::ProfileMismatch,
+        ))
+    {
+        return Err(String::from("typed zero mode accepted profile drift"));
+    }
+    // Keep the invalid SSA witness in canonical typed bytes, not in a
+    // caller-invented lowering projection.
+    let mut instructions = vec![LocatedInstruction::new(
+        Instruction::ConstantInteger {
+            constant: adapter::typed::IntegerConstant::new(8, vec![0]),
+            result: ValueId::new(0),
+            type_id: TypeId::new(0),
+        },
+        span(0, 1),
+    )];
+    instructions.push(LocatedInstruction::new(
+        Instruction::ByteOutput {
+            value: ValueId::new(7),
+        },
+        span(1, 2),
+    ));
+    let invalid = fixture_with_instructions(instructions, "fixtures/typed-stale-zero.c")?;
+    if wire(&invalid).is_ok() {
+        return Err(String::from("invalid typed SSA passed upstream admission"));
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "external fixture selects canonical source form and framing"
+)]
+fn publish_initial_zero_wire(
+    profile: &str,
+    wire_bytes: &[u8],
+    target: &Path,
+    typed: bool,
+    stdin: bool,
+    capsule: bool,
+) -> Result<Output, String> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"));
+    let _profile = command
+        .arg("--profile")
+        .arg(profile)
+        .arg("--output")
+        .arg(target);
+    if capsule {
+        let _capsule = command.arg("--capsule");
+    }
+    let _source = command.arg("--").arg("--initial-zero-output");
+    if stdin {
+        let _stdin = command.arg(if typed {
+            "--typed-stdin"
+        } else {
+            "--ternary-stdin"
+        });
+    } else {
+        let wire_path = target.with_extension(if typed { "mcti" } else { "mctr" });
+        fs::write(&wire_path, wire_bytes)
+            .map_err(|error| format!("zero canonical file fixture: {error}"))?;
+        let _file = command
+            .arg(if typed {
+                "--typed-file"
+            } else {
+                "--ternary-file"
+            })
+            .arg(wire_path);
+    }
+    let mut child = command
+        .stdin(if stdin { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("zero canonical CLI spawn: {error}"))?;
+    if stdin {
+        child
+            .stdin
+            .take()
+            .ok_or("canonical zero guest wire pipe absent")?
+            .write_all(wire_bytes)
+            .map_err(|error| format!("feed zero canonical source bytes: {error}"))?;
+    }
+    child
+        .wait_with_output()
+        .map_err(|error| format!("zero source CLI status: {error}"))
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "external publication fixture covers two source forms and output framing"
+)]
+fn require_initial_zero_publication(
+    bytes: &[u8],
+    path: &Path,
+    typed: bool,
+    stdin: bool,
+    capsule: bool,
+) -> Result<(), String> {
+    let process =
+        publish_initial_zero_wire(current_profile().id(), bytes, path, typed, stdin, capsule)?;
+    if !process.status.success() {
+        return Err(format!(
+            "zero guest publisher refused: {}",
+            String::from_utf8_lossy(&process.stderr)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_initial_zero_cli_publishes_verified_raw_capsules_from_file_and_stdin()
+-> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&initial_zero_typed_fixture(0, 2)?)?;
+    let compiled =
+        adapter::compile_canonical_typed_initial_zero_outputs(&canonical, current_profile())
+            .map_err(|error| format!("zero typed compiler baseline: {error:?}"))?;
+    let ternary = compiled.ternary_bytes();
+    for (typed, bytes) in [(true, canonical.as_slice()), (false, ternary)] {
+        for capsule in [false, true] {
+            let kind = if typed { "typed" } else { "ternary" };
+            let framing = if capsule { "capsule" } else { "raw" };
+            let from_file = workspace.path(&format!("file-{kind}-{framing}.malbolge"));
+            let from_stdin = workspace.path(&format!("stdin-{kind}-{framing}.malbolge"));
+            for (stdin, path) in [(false, &from_file), (true, &from_stdin)] {
+                require_initial_zero_publication(bytes, path, typed, stdin, capsule)?;
+            }
+            let file_bytes = fs::read(from_file).map_err(|error| error.to_string())?;
+            let stdin_bytes = fs::read(from_stdin).map_err(|error| error.to_string())?;
+            if file_bytes != stdin_bytes {
+                return Err(format!(
+                    "{kind} {framing} file and stdin target bytes differ"
+                ));
+            }
+            let source = restored_canonical_stdin_source(file_bytes, capsule)?;
+            if source != compiled.layout().source() {
+                return Err(String::from(
+                    "published zero target differs from typed MCTI",
+                ));
+            }
+            let mut vm = ProfileMachine::from_source(current_profile(), &source, vec![255, 128])
+                .map_err(|error| format!("published zero guest load: {error:?}"))?;
+            if !matches!(vm.run(3), Ok(RunOutcome::Terminated { steps: 3, .. }))
+                || vm.input_consumed() != 0
+                || vm.output() != [0, 0]
+            {
+                return Err(String::from(
+                    "published zero source did not execute on real VM",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_initial_zero_cli_fail_closes_without_final_output() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&initial_zero_typed_fixture(0, 2)?)?;
+    let nonzero = wire(&initial_zero_typed_fixture(3, 2)?)?;
+    let compiled =
+        adapter::compile_canonical_typed_initial_zero_outputs(&canonical, current_profile())
+            .map_err(|error| format!("zero negative MCTR baseline: {error:?}"))?;
+    for (index, (typed, bytes, profile)) in [
+        (true, canonical.as_slice(), historical_profile().id()),
+        (false, compiled.ternary_bytes(), historical_profile().id()),
+        (true, nonzero.as_slice(), current_profile().id()),
+        (true, b"MCTI-invalid".as_slice(), current_profile().id()),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let output = workspace.path(&format!("refused-{index}.malbolge"));
+        let verdict = publish_initial_zero_wire(profile, bytes, &output, typed, true, true)?;
+        if verdict.status.success() || output.exists() {
+            return Err(format!("invalid zero source published test index {index}"));
+        }
+    }
+    let occupied = workspace.path("occupied.malbolge");
+    let sentinel = b"existing guest target must remain intact";
+    fs::write(&occupied, sentinel).map_err(|error| error.to_string())?;
+    let verdict = publish_initial_zero_wire(
+        current_profile().id(),
+        &canonical,
+        &occupied,
+        true,
+        false,
+        false,
+    )?;
+    if verdict.status.success()
+        || fs::read(&occupied).map_err(|error| error.to_string())? != sentinel
+    {
+        return Err(String::from("zero compiler replaced an occupied target"));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_initial_zero_cli_refuses_mixed_option_grammar() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for (index, args) in [
+        vec!["--initial-zero-output"],
+        vec![
+            "--initial-zero-output",
+            "--latest-byte-trace",
+            "--typed-stdin",
+        ],
+        vec![
+            "--latest-byte-trace",
+            "--initial-zero-output",
+            "--typed-stdin",
+        ],
+        vec!["--initial-zero-output", "--typed-stdin", "surplus"],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let target = workspace.path(&format!("bad-mode-{index}.malbolge"));
+        let outcome = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+            .arg("--profile")
+            .arg(current_profile().id())
+            .arg("--output")
+            .arg(&target)
+            .arg("--")
+            .args(args)
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|error| format!("bad mode process: {error}"))?;
+        if outcome.status.success() || target.exists() {
+            return Err(String::from("mixed zero and latest option was admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_initial_zero_capsule_executes_in_real_general_cli() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&initial_zero_typed_fixture(0, 2)?)?;
+    let target = workspace.path("initial-zero-runner.malbolge");
+    require_initial_zero_publication(&canonical, &target, true, true, true)?;
+    let published = fs::read(&target).map_err(|error| error.to_string())?;
+    let capsule = malbolge::parse_capsule(&published)
+        .map_err(|error| format!("initial zero capsule parser: {error}"))?
+        .ok_or("zero capsule marker missing")?;
+    if capsule.profile() != current_profile() || capsule.payload().len() != 3 {
+        return Err(String::from(
+            "zero capsule profile or executable size drift",
+        ));
+    }
+    let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&target)
+        .arg("--input-stdin")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("launch zero general guest runner: {error}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or("zero real guest runner pipe absent")?
+        .write_all(&[255, 0, 128])
+        .map_err(|error| format!("feed zero guest binary stdin: {error}"))?;
+    let result = child
+        .wait_with_output()
+        .map_err(|error| format!("zero general runner exit: {error}"))?;
+    if !result.status.success() || result.stdout != [0, 0] || !result.stderr.is_empty() {
+        return Err(format!(
+            "real guest runner disagrees with zero VM: {result:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_initial_zero_typed_exact_maximum_refuses_one_extra_output() -> Result<(), String> {
+    let admitted = wire(&initial_zero_typed_fixture(0, 4095)?)?;
+    let compiled =
+        adapter::compile_canonical_typed_initial_zero_outputs(&admitted, current_profile())
+            .map_err(|error| format!("maximum typed zero source: {error:?}"))?;
+    if compiled.layout().source().len() != 4096 {
+        return Err(String::from("typed zero output layout was not 4096 cells"));
+    }
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), compiled.layout().source(), Vec::new())
+            .map_err(|error| format!("maximum typed zero VM load: {error:?}"))?;
+    if !matches!(vm.run(4096), Ok(RunOutcome::Terminated { steps: 4096, .. }))
+        || vm.output().len() != 4095
+        || vm.output().iter().any(|byte| *byte != 0)
+        || vm.input_consumed() != 0
+    {
+        return Err(String::from("maximum typed zero VM effects changed"));
+    }
+    let excessive = wire(&initial_zero_typed_fixture(0, 4096)?)?;
+    if adapter::compile_canonical_typed_initial_zero_outputs(&excessive, current_profile()).is_ok()
+    {
+        return Err(String::from("typed zero source admitted 4097 code cells"));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_initial_zero_typed_refuses_valid_extra_constant_and_guest_read() -> Result<(), String>
+{
+    let constant = |result: u32, start: u32| {
+        LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: adapter::typed::IntegerConstant::new(8, vec![0]),
+                result: ValueId::new(result),
+                type_id: TypeId::new(0),
+            },
+            span(start, start.saturating_add(1)),
+        )
+    };
+    for middle in [
+        constant(1, 1),
+        LocatedInstruction::new(
+            Instruction::ByteInput {
+                result: ValueId::new(1),
+                type_id: TypeId::new(0),
+            },
+            span(1, 2),
+        ),
+    ] {
+        let module = fixture_with_instructions(
+            vec![
+                constant(0, 0),
+                middle,
+                LocatedInstruction::new(
+                    Instruction::ByteOutput {
+                        value: ValueId::new(0),
+                    },
+                    span(2, 3),
+                ),
+            ],
+            "fixtures/typed-extra-initial-zero.c",
+        )?;
+        let canonical = wire(&module)?;
+        if adapter::compile_canonical_typed_initial_zero_outputs(&canonical, current_profile())
+            != Err(TypedEchoAdapterError::UnsupportedTypedIr)
+        {
+            return Err(String::from(
+                "valid extra typed operation was silently ignored",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_initial_zero_cli_rejects_nonzero_mctr_and_unselected_modes() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&initial_zero_typed_fixture(0, 2)?)?;
+    let compiled =
+        adapter::compile_canonical_typed_initial_zero_outputs(&canonical, current_profile())
+            .map_err(|error| format!("canonical zero negative MCTR: {error:?}"))?;
+    let mut nonzero = canonical_ternary_program(compiled.ternary_bytes())
+        .map_err(|error| format!("admit zero ternary baseline: {error:?}"))?;
+    let Some(TernaryOperation::MaterializeU8 { scalar, .. }) = nonzero
+        .functions
+        .first_mut()
+        .and_then(|function| function.operations.first_mut())
+    else {
+        return Err(String::from("missing canonical zero materialization"));
+    };
+    *scalar = adapter::bridge::ternary::TernaryU8Scalar::from_bits(5);
+    let nonzero_bytes = adapter::bridge::ternary::canonical_ternary_bytes(&nonzero)
+        .map_err(|error| format!("independently valid nonzero MCTR: {error:?}"))?;
+    let invalid_target = workspace.path("nonzero-canonical.malbolge");
+    let rejected = publish_initial_zero_wire(
+        current_profile().id(),
+        &nonzero_bytes,
+        &invalid_target,
+        false,
+        true,
+        false,
+    )?;
+    if rejected.status.success() || invalid_target.exists() {
+        return Err(String::from("valid nonzero MCTR published as initial zero"));
+    }
+    let typed_path = workspace.path("zero-typed.mcti");
+    let ternary_path = workspace.path("zero-ternary.mctr");
+    fs::write(&typed_path, &canonical).map_err(|error| error.to_string())?;
+    fs::write(&ternary_path, compiled.ternary_bytes()).map_err(|error| error.to_string())?;
+    for (index, (typed, latest)) in [(true, false), (false, false), (true, true), (false, true)]
+        .into_iter()
+        .enumerate()
+    {
+        let target = workspace.path(&format!("unselected-{index}.malbolge"));
+        let admitted = if typed {
+            publish_typed_wire(current_profile().id(), &typed_path, &target, latest, false)?
+        } else {
+            publish_ternary_wire(
+                current_profile().id(),
+                &ternary_path,
+                &target,
+                latest,
+                false,
+            )?
+        };
+        if admitted.status.success() || target.exists() {
+            return Err(String::from("unselected echo mode emitted zero constant"));
+        }
+    }
+    Ok(())
+}

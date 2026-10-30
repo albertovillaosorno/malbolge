@@ -266,6 +266,36 @@ publish. This is bounded race stress, not exhaustive scheduling proof or
 an authenticated stable pathname; a replaced regular file still requires
 independent canonical byte admission.
 
+### Canonical initial-zero byte output
+
+An additional explicit opt-in `--initial-zero-output` prefix now publishes
+the independently checked initial-accumulator-zero subset. The canonical
+MCTI or MCTR source must contain exactly one `u8` zero constant followed by
+one or more outputs of that identical SSA byte and final void return, with
+at most 4095 output cells. The guest's initial accumulator is already zero:
+the source contains actual Malbolge `OutputByte` operations and one halt,
+not a host-side print or a hidden typed byte emulation. It consumes zero
+input even when the guest runner has pending bytes.
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 --output .temp/zeros.malbolge \
+  --capsule -- --initial-zero-output --typed-file .temp/zeros.mcti
+cat .temp/zeros.mctr | cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 --output .temp/zeros-piped.malbolge \
+  -- --initial-zero-output --ternary-stdin
+```
+
+`--initial-zero-output` works with both canonical file and stdin modes;
+it cannot be mixed with `--latest-byte-trace` or machine-op tokens. The
+publisher checks the typed source and exact re-decoded MCTR target again,
+then separately executes the normative VM with empty and nonempty guest
+inputs and requires exact zero output and zero input consumption before
+atomic raw/capsule publication. The strict default, latest-read flow,
+bounded wire sizes, and refusal to overwrite an existing output remain.
+This subset supplies no nonzero constant realization, guest EOF/status,
+libc calls, heap operations, or complete C compilation.
+
 ### Bounded canonical wire streaming on standard input
 
 Canonical MCTI and MCTR can also be supplied directly from a producer process

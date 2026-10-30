@@ -93,6 +93,7 @@ impl CompiledTypedEcho {
 #[derive(Clone, Copy)]
 enum ByteTraceMode {
     AdjacentEcho,
+    InitialZero,
     LatestRead,
 }
 
@@ -187,6 +188,54 @@ fn project_latest_effects(
     Ok(instructions)
 }
 
+// An exact source u8 zero needs no materialization instruction: the normative
+// guest VM starts with accumulator A=0. This shape never consumes guest input.
+fn project_initial_zero_effects(
+    module: &Module,
+    original: &[typed::LocatedInstruction],
+) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
+    let Some((first, outputs)) = original.split_first() else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    let Instruction::ConstantInteger {
+        constant,
+        result,
+        type_id,
+    } = first.instruction()
+    else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    if !is_byte_type(module, *type_id)
+        || constant.bit_width() != 8
+        || constant.little_endian() != [0]
+        || outputs.is_empty()
+        || outputs.len() > 4095
+    {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    let mut instructions = Vec::with_capacity(original.len());
+    instructions.push(InputInstruction::ConstantInteger {
+        bit_width: constant.bit_width(),
+        little_endian: constant.little_endian().to_vec(),
+        result: result.value(),
+        span: project_span(first.span()),
+        type_kind: InputScalarType::U8,
+    });
+    for output in outputs {
+        let Instruction::ByteOutput { value } = output.instruction() else {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        };
+        if value != result {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        }
+        instructions.push(InputInstruction::ByteOutput {
+            span: project_span(output.span()),
+            value: value.value(),
+        });
+    }
+    Ok(instructions)
+}
+
 fn project_byte_trace(
     module: &Module,
     mode: ByteTraceMode,
@@ -215,6 +264,7 @@ fn project_byte_trace(
     }
     let instructions = match mode {
         ByteTraceMode::AdjacentEcho => project_effects(module, block.instructions())?,
+        ByteTraceMode::InitialZero => project_initial_zero_effects(module, block.instructions())?,
         ByteTraceMode::LatestRead => project_latest_effects(module, block.instructions())?,
     };
     Ok(TypedIrInput {
@@ -274,6 +324,9 @@ fn compile_byte_trace(
         ByteTraceMode::AdjacentEcho => {
             bridge::encode_successful_byte_echo(&independently_admitted, profile)
         }
+        ByteTraceMode::InitialZero => {
+            bridge::encode_initial_zero_outputs(&independently_admitted, profile)
+        }
         ByteTraceMode::LatestRead => {
             bridge::encode_successful_latest_byte_trace(&independently_admitted, profile)
         }
@@ -319,4 +372,24 @@ pub fn compile_canonical_typed_latest_byte_trace(
     profile: &'static ProfileDescriptor,
 ) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
     compile_byte_trace(canonical, profile, ByteTraceMode::LatestRead)
+}
+
+/// Compiles canonical typed-IR initial-zero outputs to real guest instructions.
+///
+/// The complete canonical module must contain exactly one zero-argument void
+/// function with one phi-free block and no global state/proof obligations. Its
+/// instructions are exactly one `u8` constant of value zero, then one or more
+/// `ByteOutput`s using that precise SSA value. The canonical MCTR is independently
+/// decoded and the actual Malbolge code is independently admitted by layout.
+/// No host byte emulation, arbitrary constants, EOF or guest ABI is implemented.
+///
+/// # Errors
+///
+/// Rejects invalid typed/MCTR data, profile mismatch, unsupported SSA flow
+/// or target source beyond the 4096-cell positional layout bound.
+pub fn compile_canonical_typed_initial_zero_outputs(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(canonical, profile, ByteTraceMode::InitialZero)
 }

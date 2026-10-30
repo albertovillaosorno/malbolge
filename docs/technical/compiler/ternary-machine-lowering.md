@@ -1119,6 +1119,28 @@ and latest-read domain guarantees are unchanged. This narrow bridge is
 publisher. It supplies no general nonzero constant, arbitrary guest
 computation, heap, C ABI or guest libc/EOF realization.
 
+### Canonical Typed Initial-Zero Source Projection
+
+The new `compile_canonical_typed_initial_zero_outputs` is an opt-in,
+source-authored typed-IR route to the existing zero-output guest bridge.
+After independently admitting the whole MCTI module, it requires one
+zero-argument void function, one phi-free block, no global state, and
+exactly one `u8 ConstantInteger(0)` followed by at least one output of its
+SSA ID. This projects the *actual* validated typed source spans, exact
+constant width/bits and SSA IDs into complete MCTR; independently decoding
+and comparing those bytes precedes Malbolge layout admission. The guest
+initial accumulator supplies the zero value, and each emitted guest output
+is real code; the mode consumes no input, even when bytes are available.
+
+A separate publisher flag `--initial-zero-output` now selects this exact
+subset for MCTI/MCTR from canonical regular files or bounded stdin pipes,
+with unchanged normative VM and no-overwrite target publication. It rechecks
+the emitted MCTR through the distinct bridge, verifies guest zero outputs
+with both empty and nonempty input and leaves the original strict echo and
+latest-read flags unchanged. Nonzero constants, stale SSA, guest state,
+additional operations, general arithmetic/ABI, EOF and C source parsing
+are still unsupported. Up to 4095 guest outputs fit 4096 code cells.
+
 ### Canonical Typed-IR Byte-Echo Adapter
 
 The separate `typed-echo-adapter` now closes the earlier gap where a caller

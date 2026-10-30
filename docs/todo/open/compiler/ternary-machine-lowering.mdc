@@ -686,6 +686,14 @@ instruction.
   It is a library-only target witness; the canonical typed adapter and
   file publisher are not wired to it, and nonzero scalar realization,
   guest C ABI, heap and EOF remain unimplemented.
+- Canonical `compile_canonical_typed_initial_zero_outputs` now projects
+  one actual `u8 ConstantInteger(0)` typed SSA definition and one or more
+  outputs of that same ID from complete independently admitted MCTI modules.
+  It re-admits canonical MCTR and independently proves exact target source;
+  the `--initial-zero-output` CLI prefix accepts MCTI/MCTR files or bounded
+  stdin with real VM output/zero-consumption preflight and no-clobber
+  publication. Strict/latest-read modes remain unchanged. Nonzero scalar,
+  other computations, guest memory, ABI and EOF still fail closed.
 - A separate `typed-echo-adapter` now accepts independently admitted
   canonical typed-IR module **bytes** rather than a caller-fabricated
   projection. It converts a complete zero-argument void successful-byte echo
