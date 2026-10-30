@@ -115,6 +115,11 @@ only their generated states, so allocation failure follows the same typed
 `AllocationFailure` result as crazy rather than an initial seed-copy panic.
 Independent trit-vector tests cover all six phases through N1001 without
 mutating the original seed words. The selected VM backend geometry is unchanged.
+Independent enumeration now also checks all 59,049 ordered input pairs of one
+complete 243-value five-trit crazy chunk against the trit-level truth table,
+and all 729 six-trit words against independently calculated rotation and
+successor across the five-trit boundary. This is exhaustive for those bounded
+widths only, not a proof of arbitrary-width host allocation or execution.
 
 This does not yet widen `ProfileMachine` memory or registers. Product tests show
 N10 through N20 equal the existing `u32` primitives, while independent

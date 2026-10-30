@@ -497,6 +497,50 @@ fn chunked_profile_word_wide_rotate_matches_trit_oracle() -> TestResult {
 }
 
 #[test]
+fn chunked_profile_word_exhausts_five_trit_crazy_table() -> TestResult {
+    for data_chunk in 0..PROFILE_WORD_CHUNK_CARDINALITY {
+        let data = ChunkedProfileWord::from_chunks(5, vec![
+            u8::try_from(data_chunk).map_err(|error| error.to_string())?,
+        ])
+        .map_err(|error| error.to_string())?;
+        for accumulator_chunk in 0..PROFILE_WORD_CHUNK_CARDINALITY {
+            let accumulator = ChunkedProfileWord::from_chunks(5, vec![
+                u8::try_from(accumulator_chunk)
+                    .map_err(|error| error.to_string())?,
+            ])
+            .map_err(|error| error.to_string())?;
+            check_equal(
+                &data
+                    .crazy(&accumulator)
+                    .map_err(|error| error.to_string())?,
+                &wide_crazy_oracle(&data, &accumulator)?,
+                "complete five-trit crazy truth table",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn chunked_profile_word_exhausts_six_trit_transitions() -> TestResult {
+    for value in 0..729u64 {
+        let word = ChunkedProfileWord::from_u64(6, value)
+            .map_err(|error| error.to_string())?;
+        check_equal(
+            &word.rotate(),
+            &wide_rotate_oracle(&word)?,
+            "six-trit cross-chunk rotation",
+        )?;
+        check_equal(
+            &word.successor(),
+            &wide_successor_oracle(&word)?,
+            "six-trit cross-chunk successor",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn chunked_profile_word_recurrence_phase_matches_all_trit_states() -> TestResult
 {
     for older_trit in 0..3u64 {
