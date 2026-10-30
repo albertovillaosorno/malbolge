@@ -129,6 +129,12 @@ An exhaustive classic N10 bridge now independently compares all 59,049 word
 values against trit-vector rotation, successor, low-byte, and modulo-94
 reference calculations. These tests verify the chunked value representation,
 not the separate full-memory or I/O interpreter transition engine.
+The exported chunked XLAT2 helper now distinguishes invalid/non-graphical
+inputs (`Ok(None)`) from a graphical cell whose encrypted word cannot fit its
+narrow declared trit width (`ValueOutsideWidth`) or be allocated
+(`AllocationFailure`). A four-trit graphical cell 34 encrypts to 122 and must
+report its typed width error, not silently masquerade as non-graphical;
+regular-width graphical encryption still matches the canonical scalar table.
 
 This does not yet widen `ProfileMachine` memory or registers. Product tests show
 N10 through N20 equal the existing `u32` primitives, while independent

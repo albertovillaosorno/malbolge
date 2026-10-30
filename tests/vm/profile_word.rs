@@ -327,6 +327,7 @@ fn chunked_profile_word_decode_and_encrypt_match_u32_primitives() -> TestResult
                 })?;
             check_equal(
                 &encrypt_chunked_profile_cell(&cell)
+                    .map_err(|error| error.to_string())?
                     .and_then(|word| word.to_u32()),
                 &Some(expected_encrypted),
                 "chunked encryption equals u32 profile encryption",
@@ -355,7 +356,9 @@ fn chunked_profile_word_decode_and_encrypt_support_n100_pointer() -> TestResult
             .copied()
             .ok_or_else(|| String::from("encryption oracle escaped XLAT2"))?;
         check_equal(
-            &encrypt_chunked_profile_cell(&cell).and_then(|word| word.to_u32()),
+            &encrypt_chunked_profile_cell(&cell)
+                .map_err(|error| error.to_string())?
+                .and_then(|word| word.to_u32()),
             &Some(u32::from(encrypted)),
             "N100 encryption equals independent XLAT2 oracle",
         )?;
@@ -494,6 +497,38 @@ fn chunked_profile_word_wide_rotate_matches_trit_oracle() -> TestResult {
         }
     }
     Ok(())
+}
+
+#[test]
+fn chunked_encryption_distinguishes_invalid_width_from_non_graphical()
+-> TestResult {
+    let graphical = ChunkedProfileWord::from_u64(4, 34)
+        .map_err(|error| error.to_string())?;
+    // XLAT2[34 - 33] is 'z' (122), outside the four-trit domain 0..=80.
+    check_equal(
+        &encrypt_chunked_profile_cell(&graphical),
+        &Err(ChunkedProfileWordError::ValueOutsideWidth {
+            trits: 4,
+            value: 122,
+        }),
+        "graphical encryption overflow must not look non-graphical",
+    )?;
+    let valid = ChunkedProfileWord::from_u64(4, 33)
+        .map_err(|error| error.to_string())?;
+    check_equal(
+        &encrypt_chunked_profile_cell(&valid)
+            .map_err(|error| error.to_string())?
+            .and_then(|word| word.to_u32()),
+        &Some(53),
+        "in-domain narrow graphical encryption still succeeds",
+    )?;
+    let nongraphical = ChunkedProfileWord::from_u64(4, 0)
+        .map_err(|error| error.to_string())?;
+    check_equal(
+        &encrypt_chunked_profile_cell(&nongraphical),
+        &Ok(None),
+        "non-graphical input retains distinct None result",
+    )
 }
 
 #[test]
@@ -755,7 +790,7 @@ fn chunked_profile_word_decode_encrypt_reject_invalid_shapes() -> TestResult {
     )?;
     check_equal(
         &encrypt_chunked_profile_cell(&n10_zero),
-        &None,
+        &Ok(None),
         "non-graphical cell does not encrypt",
     )
 }

@@ -1422,12 +1422,23 @@ pub fn profile_cell_decodes_to_no_operation(
 }
 
 /// Encrypts one graphical chunked code cell through canonical XLAT2.
-#[must_use]
+///
+/// Returns `Ok(None)` for a non-graphical cell. A valid graphical cell whose
+/// encrypted value cannot fit in its declared width or cannot be allocated
+/// returns the original typed word error rather than masquerading as a
+/// non-graphical cell.
+///
+/// # Errors
+///
+/// Returns [`ChunkedProfileWordError`] for invalid encrypted word width or
+/// unavailable chunk storage.
 pub fn encrypt_chunked_profile_cell(
     cell: &ChunkedProfileWord,
-) -> Option<ChunkedProfileWord> {
-    let encrypted = encrypt_profile_value(cell.to_u32()?)?;
-    ChunkedProfileWord::from_u64(cell.trits(), u64::from(encrypted)).ok()
+) -> Result<Option<ChunkedProfileWord>, ChunkedProfileWordError> {
+    let Some(encrypted) = cell.to_u32().and_then(encrypt_profile_value) else {
+        return Ok(None);
+    };
+    ChunkedProfileWord::from_u64(cell.trits(), u64::from(encrypted)).map(Some)
 }
 
 /// Encrypts one graphical profile-width code cell after a committed step.
