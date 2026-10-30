@@ -317,6 +317,9 @@ rejecting regressions between snapshots or suppressed writes even when the
 new reading remains above the original phase or last-commit anchor. A failed
 clock sample does not replace a prior accepted observation, and directly
 constructed observation state must not predate its segment or last commit.
+Neither mutable timer nor limiter state permits its accepted observation to be
+reset to `None`: that would otherwise allow a later backward clock sample to
+be accepted against only the weaker phase-start or previous-commit anchor.
 
 Public path helpers
 reject foreign objects instead of stringifying them, and direct reads require a

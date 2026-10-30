@@ -239,7 +239,7 @@ def _validate_observed_sample(
     observed: int | None, lower_bound: int, context: str
 ) -> None:
     if observed is None:
-        return
+        _fail(f"{context} last observation is missing")
     _ = _nonnegative_integer(observed, f"{context} last observation")
     if observed < lower_bound:
         _fail(f"{context} last observation precedes current segment")
@@ -311,9 +311,6 @@ class ProgressTimer:
             _ = _nonnegative_integer(value, context)
         if self._segment_started_ns < self._started_ns:
             _fail("timer segment start precedes timer start")
-        _validate_observed_sample(
-            self._last_observed_ns, self._segment_started_ns, "timer"
-        )
         accumulated = (
             self._active_elapsed_ns
             + self._checkpoint_elapsed_ns
@@ -324,6 +321,9 @@ class ProgressTimer:
         closed_elapsed = self._segment_started_ns - self._started_ns
         if accumulated != closed_elapsed:
             _fail("timer accumulated phases do not match closed elapsed time")
+        _validate_observed_sample(
+            self._last_observed_ns, self._segment_started_ns, "timer"
+        )
 
     @property
     def phase(self) -> TimingPhase:
@@ -452,22 +452,18 @@ class ProgressWriteLimiter:
         ):
             _fail("progress write interval must be a positive integer")
         _ = _nonnegative_integer(self._started_ns, "progress write start")
-        _validate_observed_sample(
-            self._last_observed_ns, self._started_ns, "progress write"
-        )
         self._validate_committed_sidecar()
-        if self._last_committed_write_ns is None:
-            return
-        _ = _nonnegative_integer(
-            self._last_committed_write_ns,
-            "progress write last commit",
-        )
-        if self._last_committed_write_ns < self._started_ns:
-            _fail("progress write last commit precedes limiter start")
+        observation_floor = self._started_ns
+        if self._last_committed_write_ns is not None:
+            _ = _nonnegative_integer(
+                self._last_committed_write_ns,
+                "progress write last commit",
+            )
+            if self._last_committed_write_ns < self._started_ns:
+                _fail("progress write last commit precedes limiter start")
+            observation_floor = self._last_committed_write_ns
         _validate_observed_sample(
-            self._last_observed_ns,
-            self._last_committed_write_ns,
-            "progress write",
+            self._last_observed_ns, observation_floor, "progress write"
         )
 
     def _sample(self) -> int:

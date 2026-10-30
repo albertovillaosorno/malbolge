@@ -10108,6 +10108,47 @@ def test_monotonic_limiter_rejects_mandatory_publication_after_regression(
     assert len(writes) == expected_writes
 
 
+def test_timer_rejects_missing_accepted_clock_history() -> None:
+    """Resetting an accepted sample cannot excuse a backward timer reading."""
+    timer = progress.ProgressTimer.start(
+        clock=SequenceClock([100, 180, 160]),
+    )
+    expected_elapsed_ns = 80
+    assert timer.snapshot().wall_elapsed_ns == expected_elapsed_ns
+    observation_field = "_last_observed_ns"
+    setattr(timer, observation_field, None)
+    with pytest.raises(ERROR, match="last observation is missing"):
+        _ = timer.snapshot()
+
+
+def test_limiter_rejects_missing_accepted_clock_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A suppressed write cannot lose the observation guarding later polls."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    published: list[Path] = []
+
+    def publish(sidecar: progress.ProgressSidecar) -> Path:
+        del sidecar
+        published.append(destination)
+        return destination
+
+    limiter = progress.ProgressWriteLimiter.start(
+        100, clock=SequenceClock([100, 100, 101, 180, 160])
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", publish)
+        assert limiter.publish(candidate) == destination
+        assert limiter.publish(candidate) is None
+        observation_field = "_last_observed_ns"
+        setattr(limiter, observation_field, None)
+        with pytest.raises(ERROR, match="last observation is missing"):
+            _ = limiter.publish(candidate)
+    assert published == [destination]
+
+
 def test_monotonic_observation_floor_accepts_huge_clock_values(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
