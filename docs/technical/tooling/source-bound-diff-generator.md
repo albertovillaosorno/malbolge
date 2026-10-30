@@ -243,11 +243,17 @@ its
 
 return value is a success precondition rather than behavior data.
 
-A probe batch copies the candidate source into an isolated temporary mirror
-before
-execution. Programs receive the mirror path rather than the user input path. Any
-program that changes the mirror is rejected, while the original tree is verified
-unchanged. Compile-then-run programs are possible because one command may create
+A probe batch validates the candidate source as a regular-file-only tree and
+copies it into an isolated temporary mirror without following symbolic links.
+The mirror's complete byte snapshot must match the pre-copy source snapshot,
+including when post-run original-source immutability checks are disabled.
+Invalid trees, unexpected links, or copy drift fail within the probe error
+boundary before commands execute. This is a consistency check, not an atomic
+filesystem snapshot; caller coordination is required against concurrent writers.
+Programs receive the mirror path rather than the user input path. Any
+program that changes the mirror is rejected. When enabled, a separate post-run
+source comparison also verifies the original tree is unchanged. Compile-then-run
+programs are possible because one command may create
 a
 scratch executable consumed by a later command.
 

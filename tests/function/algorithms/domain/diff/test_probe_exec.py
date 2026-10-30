@@ -58,6 +58,12 @@ import pytest
 _PYTHON_TOOL = "python"
 _WINDOWS_OS_NAME = "nt"
 _ORIGINAL_TEXT = "before"
+_EXTERNAL_DATA = b"external-data"
+_OUTSIDE_BYTES = b"outside"
+_ADMITTED_INPUT = b"admitted"
+_LINK_CREATE_CODE = (
+    "import pathlib,sys;pathlib.Path(sys.argv[1]).symlink_to(sys.argv[2])"
+)
 _READ_BYTES_CODE = (
     "import pathlib,sys;"
     "sys.stdout.buffer.write(pathlib.Path(sys.argv[1]).read_bytes())"
@@ -422,6 +428,131 @@ def test_source_mutation_is_isolated_from_user_source(tmp_path: Path) -> None:
         target.read_text(encoding="utf-8") == _ORIGINAL_TEXT,
         "source was mutated",
     )
+
+
+def test_source_symlink_fails_before_mirror_even_without_immutability(
+    tmp_path: Path,
+) -> None:
+    """Reject external source links before mirroring content."""
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "secret.txt"
+    _ = secret.write_bytes(_EXTERNAL_DATA)
+    linked = source / "linked"
+    try:
+        linked.symlink_to(outside, target_is_directory=True)
+    except OSError, NotImplementedError:
+        pytest.skip("directory symlinks unavailable")
+
+    context = replace(
+        _context(source, tmp_path), enforce_source_immutable=False
+    )
+    program = ProbeProgram(
+        "linked-input",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    _READ_BYTES_CODE,
+                    PathArgument(ProbeRoot.SOURCE, "linked/secret.txt"),
+                ),
+                digest_stdout=True,
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match="symlinks"):
+        _ = run_probe_program(program, context)
+    _expect(secret.read_bytes() == _EXTERNAL_DATA, "external input changed")
+
+
+def test_probe_created_symlink_is_rejected_inside_execution_boundary(
+    tmp_path: Path,
+) -> None:
+    """Probe-created links are rejected through ProbeExecutionError."""
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside.txt"
+    _ = outside.write_bytes(_OUTSIDE_BYTES)
+    probe = tmp_path / "probe"
+    try:
+        probe.symlink_to(outside)
+    except OSError, NotImplementedError:
+        pytest.skip("file symlinks unavailable")
+    probe.unlink()
+    program = ProbeProgram(
+        "link-mirror",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    _LINK_CREATE_CODE,
+                    PathArgument(ProbeRoot.SOURCE, "created.txt"),
+                    PathArgument(ProbeRoot.REPOSITORY, "outside.txt"),
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match="isolated source mirror"):
+        _ = run_probe_program(program, _context(source, tmp_path))
+    _expect(outside.read_bytes() == _OUTSIDE_BYTES, "external file changed")
+
+
+def test_mirror_snapshot_catches_copy_time_source_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Do not execute a mirror whose bytes differ from the admitted source."""
+    source = tmp_path / "source"
+    source.mkdir()
+    input_file = source / "input.txt"
+    _ = input_file.write_bytes(_ADMITTED_INPUT)
+    actual_copytree = shutil.copytree
+
+    def mutate_mirror_after_copy(
+        source_root: Path, destination_root: Path, *, symlinks: bool = False
+    ) -> Path:
+        copied = actual_copytree(
+            source_root, destination_root, symlinks=symlinks
+        )
+        _ = (copied / "input.txt").write_bytes(b"injected")
+        return copied
+
+    monkeypatch.setattr(shutil, "copytree", mutate_mirror_after_copy)
+    context = replace(
+        _context(source, tmp_path), enforce_source_immutable=False
+    )
+    program = ProbeProgram(
+        "copy-time-drift",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    _READ_BYTES_CODE,
+                    PathArgument(ProbeRoot.SOURCE, "input.txt"),
+                ),
+                digest_stdout=True,
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match="changed while creating"):
+        _ = run_probe_program(program, context)
+    _expect(input_file.read_bytes() == _ADMITTED_INPUT, "source was modified")
+
+
+def test_missing_source_rejected_before_copy_without_immutability(
+    tmp_path: Path,
+) -> None:
+    """Optional post-run immutability does not disable source admission."""
+    missing = tmp_path / "missing"
+    context = replace(
+        _context(missing, tmp_path), enforce_source_immutable=False
+    )
+    with pytest.raises(ProbeExecutionError, match="source snapshot rejected"):
+        _ = run_probe_program(_program("missing", "pass"), context)
 
 
 def test_probe_records_reject_foreign_runtime_metadata() -> None:

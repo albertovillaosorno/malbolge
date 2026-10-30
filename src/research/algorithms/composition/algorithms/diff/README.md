@@ -145,9 +145,14 @@ tool
 IDs or artifacts beneath authorized roots; path arguments are structured under
 `source`, `repository`, or per-program `scratch` roots. Timeouts and captured
 output
-are bounded. Programs run against an isolated source mirror, and modifying that
-
-mirror invalidates the probe while leaving user input untouched.
+are bounded. Source trees are validated as regular-file-only before mirroring
+regardless of the optional post-run immutability policy. Mirroring never follows
+symlinks, and the copy must match the admitted byte-tree snapshot before any
+probe runs; mismatches or invalid trees fail in the probe execution boundary.
+Programs run against an isolated source mirror; changing the mirror invalidates
+the probe. The optional original-source immutability check separately verifies
+user input after execution. The pre-copy and mirror snapshots do not guarantee
+atomicity against concurrent external filesystem writers.
 
 `behavior_programs.py` authors identity baselines from the original source and
 bug

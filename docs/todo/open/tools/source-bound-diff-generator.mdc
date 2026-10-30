@@ -72,7 +72,11 @@ format.
   structured
   roots, bounded time/output, isolated source mirrors, and deterministic
   selected-
-  stdout transcripts.
+  stdout transcripts. Mirror admission now rejects symlinks and special trees
+  unconditionally, copies without dereferencing links, and verifies the mirror
+  byte-tree against the admitted pre-copy source even when post-run source
+  immutability checks are disabled. A concurrent copy-time filesystem race still
+  requires external coordination for fully atomic source snapshots.
 - Behavior authoring derives identity transcripts from source and distinct bug
   `present`/`fixed` transcripts from source versus corrected oracle; a third
   candidate transcript becomes `unknown` and fails closed.

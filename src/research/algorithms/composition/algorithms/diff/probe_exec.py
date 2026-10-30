@@ -47,9 +47,14 @@ from stat import S_ISREG
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - no shell; resolved executables only.
 import tempfile
 from typing import Protocol
+from typing import TYPE_CHECKING
 from typing import cast
 
+from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import snapshot_tree
+
+if TYPE_CHECKING:
+    from algorithms.diff.model import TreeSnapshot
 
 _ZERO = 0
 _ONE = 1
@@ -558,22 +563,54 @@ def _validate_probe_batch(
     return admitted
 
 
+def _snapshot_probe_tree(root: Path, context: str) -> TreeSnapshot:
+    """Validate a byte-tree before any probe or source mirror can use it.
+
+    Returns:
+        A regular-file-only tree snapshot.
+
+    Raises:
+        ProbeExecutionError: The tree is unreadable, linked, or unsafe.
+
+    """
+    try:
+        return snapshot_tree(root)
+    except ExactTreeError as error:
+        message = f"probe {context} snapshot rejected: {error}"
+        raise ProbeExecutionError(message) from error
+
+
 def _run_isolated_batch(
     programs: tuple[ProbeProgram, ...], context: ProbeRunContext
 ) -> tuple[ProbeTranscript, ...]:
+    source = _snapshot_probe_tree(context.source_root, "source")
     with tempfile.TemporaryDirectory(prefix="diff-probe-batch-") as batch:
         batch_root = Path(batch)
-        mirror_root = Path(
-            shutil.copytree(context.source_root, batch_root / "source")
-        )
+        try:
+            mirror_root = Path(
+                shutil.copytree(
+                    context.source_root,
+                    batch_root / "source",
+                    symlinks=True,
+                )
+            )
+        except OSError as error:
+            message = f"probe source mirror creation failed: {error}"
+            raise ProbeExecutionError(message) from error
         isolated = replace(
             context, source_root=mirror_root, enforce_source_immutable=False
         )
-        baseline = snapshot_tree(mirror_root)
+        baseline = _snapshot_probe_tree(mirror_root, "isolated source mirror")
+        if baseline != source:
+            message = "probe source tree changed while creating its mirror"
+            raise ProbeExecutionError(message)
         transcripts: list[ProbeTranscript] = []
         for program in programs:
             transcripts.append(_run_program(program, isolated))
-            if snapshot_tree(mirror_root) != baseline:
+            if (
+                _snapshot_probe_tree(mirror_root, "isolated source mirror")
+                != baseline
+            ):
                 message = "behavior probe modified its isolated source mirror"
                 raise ProbeExecutionError(message)
         return tuple(transcripts)
@@ -594,12 +631,15 @@ def run_probe_programs(
     """
     admitted = _validate_probe_batch(programs, context)
     before = (
-        snapshot_tree(context.source_root)
+        _snapshot_probe_tree(context.source_root, "source")
         if context.enforce_source_immutable
         else None
     )
     transcripts = _run_isolated_batch(admitted, context)
-    if before is not None and snapshot_tree(context.source_root) != before:
+    if (
+        before is not None
+        and _snapshot_probe_tree(context.source_root, "source") != before
+    ):
         message = "behavior probe modified the candidate source tree"
         raise ProbeExecutionError(message)
     return transcripts
