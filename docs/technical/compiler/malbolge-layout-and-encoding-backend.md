@@ -243,6 +243,19 @@ This is a **bounded, working ternary-stage-to-file path**, but it does not
 admit arbitrary ternary operations, source-C programs, guest heap, ABI return
 values, EOF, failed I/O, or unbounded control-flow/layout code-state revisits.
 
+### Canonical input-file pre-open refusal
+
+`--typed-file` and `--ternary-file` share one bounded regular-file reader.
+It first checks metadata on the resolved filesystem path before the open,
+so a stable Unix named pipe (with no writer) or symlink to that pipe fails
+rather than blocking inside `File::open`. A regular symlink remains valid;
+the opened handle still undergoes separate regular-file, length and canonical
+wire admission. A watchdog-protected process regression verifies prompt
+no-publication failure for both modes on raw and symlinked FIFO paths and
+real VM success from a symlink to a regular MCTI file. This check does not
+promise an atomic filesystem identity across a concurrent pathname swap;
+canonical bytes and final no-clobber publication are separately guarded.
+
 ### Direct canonical typed-IR publication
 
 The same `malbolge_layout` executable now exposes explicit `--typed-file`

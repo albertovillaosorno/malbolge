@@ -246,6 +246,16 @@ The direct typed file mode also passes the physical 4096-cell cap with one
 successful read and 4094 outputs, while the next cell is refused without a
 published artifact.
 
+Both canonical source-file modes first inspect the resolved filesystem
+entry **before opening it**. A stable FIFO or a symlink to one rejects as a
+nonregular file without waiting for a writer; an ordinary symlink to an
+existing bounded regular MCTI/MCTR file remains accepted. The opened file's
+own metadata and exact bytes are still checked independently. A Unix
+external-process regression covers all four FIFO/mode combinations with a
+bounded watchdog, then checks that a regular typed-file symlink executes
+unchanged guest byte I/O. This is a pre-open reliability guard, not a claim
+of race-free admission if another process swaps the path between checks.
+
 `--ternary-file` is mutually exclusive with individual decoded machine-op
 tokens. Its sole operand must be an existing, nonempty regular file with at
 most 1,048,576 bytes. The complete MCTR version-one stream is independently

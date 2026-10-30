@@ -196,6 +196,13 @@ emission.
   modes execute in the independent VM and actual binary-stdin runner.
   A direct MCTI file emits the exact maximum 4096-cell successful-byte
   trace (4094 outputs) and refuses 4097 cells without creating a target.
+- Shared MCTI/MCTR input handling now inspects resolved filesystem metadata
+  *before* opening the file, rejecting ordinary Unix FIFOs and links to
+  FIFOs without hanging on absent writers. External CLI process tests use
+  a watchdog to prove no final file in both source-wire modes, and verify
+  regular symlinked canonical typed input still publishes executable
+  source. The opened handle remains independently bounded and rechecked;
+  this is not an atomic claim under adversarial path replacement races.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

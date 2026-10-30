@@ -1393,3 +1393,96 @@ fn canonical_typed_file_latest_read_publishes_exact_4096_cell_limit() -> Result<
     }
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn canonical_wire_file_modes_reject_fifos_without_waiting_for_a_writer() -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let workspace = OwnedFixture::new()?;
+    let pipe = workspace.path("unreadable.fifo");
+    let link = workspace.path("fifo-link.mcti");
+    let created = Command::new("mkfifo")
+        .arg(&pipe)
+        .status()
+        .map_err(|error| format!("create FIFO fixture: {error}"))?;
+    if !created.success() {
+        return Err(String::from("mkfifo fixture refused"));
+    }
+    symlink(&pipe, &link).map_err(|error| format!("FIFO symlink: {error}"))?;
+    for (index, (mode, path)) in [
+        ("--typed-file", &pipe),
+        ("--ternary-file", &pipe),
+        ("--typed-file", &link),
+        ("--ternary-file", &link),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let target = workspace.path(&format!("refused-{index}.malbolge"));
+        let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+            .arg("--profile")
+            .arg(current_profile().id())
+            .arg("--output")
+            .arg(&target)
+            .arg("--")
+            .arg(mode)
+            .arg(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("FIFO publisher spawn: {error}"))?;
+        let started = Instant::now();
+        let result = loop {
+            if let Some(outcome) = child
+                .try_wait()
+                .map_err(|error| format!("FIFO publisher poll: {error}"))?
+            {
+                break outcome;
+            }
+            if started.elapsed() > Duration::from_secs(3) {
+                drop(child.kill());
+                drop(child.wait());
+                return Err(format!("{mode} blocked trying to open a FIFO input"));
+            }
+            thread::sleep(Duration::from_millis(10));
+        };
+        if result.success() || target.exists() {
+            return Err(format!("{mode} accepted non-regular FIFO source"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn canonical_typed_file_retains_regular_symlink_input_compatibility() -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+
+    let workspace = OwnedFixture::new()?;
+    let source = workspace.path("original.mcti");
+    let link = workspace.path("source-link.mcti");
+    let artifact = workspace.path("linked-source.malbolge");
+    fs::write(&source, wire(&fixture(1)?)?).map_err(|error| error.to_string())?;
+    symlink(&source, &link).map_err(|error| format!("regular input link: {error}"))?;
+    let result = publish_typed_wire(current_profile().id(), &link, &artifact, false, false)?;
+    if !result.status.success() {
+        return Err(format!(
+            "regular linked MCTI was rejected: {}",
+            String::from_utf8_lossy(&result.stderr)
+        ));
+    }
+    let source_bytes = fs::read(&artifact).map_err(|error| error.to_string())?;
+    let mut vm = ProfileMachine::from_source(current_profile(), &source_bytes, vec![255])
+        .map_err(|error| format!("linked canonical input VM: {error:?}"))?;
+    if !matches!(vm.run(3), Ok(RunOutcome::Terminated { steps: 3, .. }))
+        || vm.output() != [255]
+        || vm.input_consumed() != 1
+    {
+        return Err(String::from("linked typed input changed guest semantics"));
+    }
+    Ok(())
+}

@@ -277,6 +277,18 @@ fn publish_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn read_canonical_wire(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
+    // Opening a named pipe with no writer can block forever. Follow regular
+    // source symlinks, but reject non-file targets before attempting to open.
+    let path_metadata = fs::metadata(path)
+        .map_err(|error| format!("cannot inspect canonical {kind} path: {error}"))?;
+    if !path_metadata.is_file()
+        || path_metadata.len() == 0
+        || path_metadata.len() > MAX_CANONICAL_WIRE_BYTES
+    {
+        return Err(String::from(
+            "canonical wire must be a nonempty bounded regular file",
+        ));
+    }
     let file = fs::File::open(path)
         .map_err(|error| format!("cannot open canonical {kind} wire: {error}"))?;
     let metadata = file
