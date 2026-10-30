@@ -34,10 +34,13 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
+from dataclasses import field
 from dataclasses import replace
 from enum import StrEnum
 import hashlib
+import os
 from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
@@ -46,6 +49,9 @@ from stat import S_ISREG
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - no shell; resolved executables only.
 import tempfile
+import threading
+import time
+from typing import IO
 from typing import Protocol
 from typing import TYPE_CHECKING
 from typing import cast
@@ -65,6 +71,8 @@ _BACKSLASH = "\\"
 _PARENT = ".."
 _TOOL_BINDING_LENGTH = 2
 _NUL = "\x00"
+_READ_CHUNK_BYTES = 16_384
+_POLL_SECONDS = 0.005
 
 
 class _HashUpdater(Protocol):
@@ -479,36 +487,250 @@ def _command_argv(
     return [str(executable), *arguments]
 
 
-def _launch_command(
-    argv: list[str], command: ProbeCommand, scratch_root: Path
-) -> subprocess.CompletedProcess[bytes]:
-    """Run an admitted no-shell command inside the probe error boundary.
+@dataclass(slots=True)
+class _PipeCapture:
+    """Quota-guarded bytes from one child output pipe."""
+
+    limit: int
+    fragments: list[bytes] = field(default_factory=list)
+    size: int = 0
+    exceeded: bool = False
+    error: OSError | None = None
+
+
+@dataclass(slots=True)
+class _RunningProbe:
+    """One subprocess and its independently monitored pipe workers."""
+
+    process: subprocess.Popen[bytes]
+    stdout: _PipeCapture
+    stderr: _PipeCapture
+    readers: tuple[threading.Thread, threading.Thread]
+    writer: threading.Thread | None
+    stdin_errors: list[OSError]
+
+
+def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
+    """Store at most the remaining quota and one overflow sentinel.
 
     Returns:
-        Completed process with captured observations.
+        Whether more data can be read from the pipe.
+
+    """
+    remaining = capture.limit - capture.size
+    amount = max(_ONE, min(_READ_CHUNK_BYTES, remaining + _ONE))
+    fragment = os.read(stream.fileno(), amount)
+    if not fragment:
+        return False
+    if len(fragment) > remaining:
+        capture.exceeded = True
+        return False
+    capture.fragments.append(fragment)
+    capture.size += len(fragment)
+    return True
+
+
+def _drain_pipe(stream: IO[bytes], capture: _PipeCapture) -> None:
+    """Drain without retaining more than the configured byte quota."""
+    try:
+        again = True
+        while again:
+            again = _capture_fragment(stream, capture)
+    except OSError as error:
+        capture.error = error
+    finally:
+        stream.close()
+
+
+def _feed_stdin(stream: IO[bytes], data: bytes, errors: list[OSError]) -> None:
+    """Write stdin concurrently to support full-duplex children."""
+    try:
+        _ = stream.write(data)
+    except BrokenPipeError:
+        return
+    except OSError as error:
+        errors.append(error)
+    finally:
+        stream.close()
+
+
+def _stop_child(process: subprocess.Popen[bytes]) -> None:
+    """Stop and reap the immediate child after a probe boundary failure."""
+    if process.poll() is None:
+        with suppress(ProcessLookupError):
+            process.kill()
+    _ = process.wait()
+
+
+def _spawn_probe(
+    argv: list[str], scratch_root: Path
+) -> subprocess.Popen[bytes]:
+    """Start a no-shell probe, normalizing host launch errors.
+
+    Returns:
+        Running binary-mode child with three explicit pipes.
 
     Raises:
-        ProbeExecutionError: The command cannot start or exceeds its timeout.
+        ProbeExecutionError: The executable could not start.
 
     """
     try:
         # jig-ignore-next-line: indivisible reviewed identifier
-        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - explicit argv; shell disabled.
+        return subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] - explicit argv; shell disabled.
             argv,
             cwd=scratch_root,
-            input=command.stdin,
-            capture_output=True,
-            check=False,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             shell=False,
-            timeout=command.timeout_ms / 1000,
         )
-    except subprocess.TimeoutExpired as exc:
-        message = "probe command exceeded its timeout"
-        raise ProbeExecutionError(message) from exc
     except OSError as error:
         message = f"probe command launch failed: {error}"
         raise ProbeExecutionError(message) from error
-    return completed
+
+
+def _capture_pipes(
+    process: subprocess.Popen[bytes],
+) -> tuple[IO[bytes], IO[bytes]]:
+    """Recover required process pipe handles or reject the probe.
+
+    Returns:
+        Standard output and standard error pipe streams.
+
+    Raises:
+        ProbeExecutionError: A capture pipe is unavailable.
+
+    """
+    if process.stdout is None or process.stderr is None:
+        message = "probe subprocess capture pipes are unavailable"
+        raise ProbeExecutionError(message)
+    return process.stdout, process.stderr
+
+
+def _start_writer(
+    process: subprocess.Popen[bytes], data: bytes, errors: list[OSError]
+) -> threading.Thread | None:
+    """Close empty stdin immediately or send input asynchronously.
+
+    Returns:
+        Optional running writer thread.
+
+    Raises:
+        ProbeExecutionError: Stdin was not created.
+
+    """
+    stream = process.stdin
+    if stream is None:
+        message = "probe subprocess stdin pipe is unavailable"
+        raise ProbeExecutionError(message)
+    if not data:
+        stream.close()
+        return None
+    writer = threading.Thread(
+        target=_feed_stdin, args=(stream, data, errors), daemon=True
+    )
+    writer.start()
+    return writer
+
+
+def _start_capture(
+    process: subprocess.Popen[bytes], command: ProbeCommand
+) -> _RunningProbe:
+    """Start bounded readers and the full-duplex stdin writer.
+
+    Returns:
+        Process, stream states and active pipe workers.
+
+    """
+    stdout_pipe, stderr_pipe = _capture_pipes(process)
+    stdout = _PipeCapture(command.max_stdout_bytes)
+    stderr = _PipeCapture(command.max_stderr_bytes)
+    readers = (
+        threading.Thread(
+            target=_drain_pipe, args=(stdout_pipe, stdout), daemon=True
+        ),
+        threading.Thread(
+            target=_drain_pipe, args=(stderr_pipe, stderr), daemon=True
+        ),
+    )
+    for reader in readers:
+        reader.start()
+    stdin_errors: list[OSError] = []
+    writer = _start_writer(process, command.stdin, stdin_errors)
+    return _RunningProbe(process, stdout, stderr, readers, writer, stdin_errors)
+
+
+def _require_healthy_pipes(running: _RunningProbe) -> None:
+    """Reject output quotas and pipe errors before consuming more memory.
+
+    Raises:
+        ProbeExecutionError: A stream exceeded its quota or failed.
+
+    """
+    if running.stdout.exceeded:
+        message = "probe command exceeded stdout limit"
+        raise ProbeExecutionError(message)
+    if running.stderr.exceeded:
+        message = "probe command exceeded stderr limit"
+        raise ProbeExecutionError(message)
+    if (
+        running.stdout.error is not None
+        or running.stderr.error is not None
+        or running.stdin_errors
+    ):
+        message = "probe command pipe communication failed"
+        raise ProbeExecutionError(message)
+
+
+def _capture_complete(running: _RunningProbe) -> bool:
+    writer = running.writer
+    return (
+        running.process.poll() is not None
+        and all(not reader.is_alive() for reader in running.readers)
+        and (writer is None or not writer.is_alive())
+    )
+
+
+def _wait_for_bounded_pipes(running: _RunningProbe, timeout_ms: int) -> None:
+    """Monitor both byte quotas and the entire command wall deadline.
+
+    Raises:
+        ProbeExecutionError: A quota, pipe, or timeout failed.
+
+    """
+    deadline = time.monotonic() + timeout_ms / 1000
+    while True:
+        _require_healthy_pipes(running)
+        if _capture_complete(running):
+            return
+        if time.monotonic() >= deadline:
+            message = "probe command exceeded its timeout"
+            raise ProbeExecutionError(message)
+        time.sleep(_POLL_SECONDS)
+
+
+def _launch_command(
+    argv: list[str], command: ProbeCommand, scratch_root: Path
+) -> subprocess.CompletedProcess[bytes]:
+    """Bound streamed child stdout and stderr before making a transcript.
+
+    Returns:
+        Completed process with quota-admitted captured observations.
+
+    """
+    process = _spawn_probe(argv, scratch_root)
+    try:
+        running = _start_capture(process, command)
+        _wait_for_bounded_pipes(running, command.timeout_ms)
+        return subprocess.CompletedProcess(
+            argv,
+            process.wait(),
+            stdout=b"".join(running.stdout.fragments),
+            stderr=b"".join(running.stderr.fragments),
+        )
+    except Exception:
+        _stop_child(process)
+        raise
 
 
 def _run_command(

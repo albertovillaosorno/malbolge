@@ -145,9 +145,11 @@ tool
 IDs or artifacts beneath authorized roots; path arguments are structured under
 `source`, `repository`, or per-program `scratch` roots. Probe metadata
 rejects NUL argv/path/tool IDs before launching, and executable spawn failures
-stay inside the probe error boundary. Timeouts and output limits are currently
-checked with `subprocess.run`; output limits are *post-capture*, not live memory
-quotas, and incremental bounded capture remains unfinished. Source trees are
+stay inside the probe error boundary. No-shell child output pipes now stream
+into independent memory-guarded readers, aborting on the first byte over each
+stdout/stderr quota; stdin has a concurrent writer to avoid full-duplex
+backpressure deadlocks. Deadlines cover process and pipe completion. Child-tree
+cleanup beyond the immediate child remains unfinished. Source trees are
 validated as regular-file-only before mirroring
 regardless of the optional post-run immutability policy. Mirroring never follows
 symlinks, and the copy must match the admitted byte-tree snapshot before any

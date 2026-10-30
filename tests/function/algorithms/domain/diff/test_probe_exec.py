@@ -61,6 +61,8 @@ _ORIGINAL_TEXT = "before"
 _EXTERNAL_DATA = b"external-data"
 _OUTSIDE_BYTES = b"outside"
 _ADMITTED_INPUT = b"admitted"
+_STDOUT_NAME = "stdout"
+_STDERR_NAME = "stderr"
 _LINK_CREATE_CODE = (
     "import pathlib,sys;pathlib.Path(sys.argv[1]).symlink_to(sys.argv[2])"
 )
@@ -400,6 +402,68 @@ def test_output_limit_fails_closed(tmp_path: Path) -> None:
 
     with pytest.raises(ProbeExecutionError, match="stdout limit"):
         _ = run_probe_program(program, _context(source, tmp_path))
+
+
+@pytest.mark.parametrize("stream", [_STDOUT_NAME, _STDERR_NAME])
+def test_live_pipe_quota_interrupts_unbounded_output(
+    tmp_path: Path, stream: str
+) -> None:
+    """An overflowing child must fail by byte quota, not delayed timeout."""
+    source = tmp_path / "source"
+    source.mkdir()
+    descriptor = 1 if stream == _STDOUT_NAME else 2
+    code = f"import os;exec('while True: os.write({descriptor}, bytes(4096))')"
+    program = ProbeProgram(
+        "live-output-cap",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=("-c", code),
+                timeout_ms=600,
+                max_stdout_bytes=32,
+                max_stderr_bytes=32,
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match=f"{stream} limit"):
+        _ = run_probe_program(program, _context(source, tmp_path))
+
+
+def test_full_duplex_stdin_and_stdout_preserves_transcript(
+    tmp_path: Path,
+) -> None:
+    """Concurrent stdin delivery must not deadlock a writing child."""
+    source = tmp_path / "source"
+    source.mkdir()
+    payload = b"q" * 131_072
+    prefix = b"w" * 16_384
+    code = (
+        "import sys;"
+        "sys.stdout.buffer.write(b'w'*16384);"
+        "sys.stdout.buffer.flush();"
+        "data=sys.stdin.buffer.read();"
+        "sys.stdout.buffer.write(data[:8])"
+    )
+    command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", code),
+        stdin=payload,
+        timeout_ms=2_000,
+        max_stdout_bytes=16_392,
+        digest_stdout=True,
+    )
+    transcript = run_probe_program(
+        ProbeProgram("full-duplex", (command,)), _context(source, tmp_path)
+    )
+    expected_data = prefix + payload[:8]
+    expected = hashlib.sha256()
+    expected.update(b"O")
+    expected.update((0).to_bytes(8, byteorder="big"))
+    expected.update(len(expected_data).to_bytes(8, byteorder="big"))
+    expected.update(expected_data)
+    _expect(
+        transcript.digest == expected.digest(), "stdin/stdout transcript drift"
+    )
 
 
 def test_source_mutation_is_isolated_from_user_source(tmp_path: Path) -> None:

@@ -242,10 +242,12 @@ observation transcript. A command may instead require one exact exit code when
 its
 
 return value is a success precondition rather than behavior data. Executable
-spawn failures are wrapped as probe execution errors. The stdout/stderr limits
-are currently checked after `subprocess.run` completes capturing; they are not
-live subprocess output-memory quotas. Incremental bounded pipe capture and
-child-tree cleanup remain an open hardening task.
+spawn failures are wrapped as probe execution errors. Child stdout and stderr
+now use concurrent pipe readers that enforce output byte quotas. They abort
+overflowing commands before completion. A concurrent
+stdin writer preserves full-duplex behavior; the wall deadline covers child and
+pipe completion. Killing descendant processes beyond the immediate child remains
+an open cross-platform hardening task.
 
 A probe batch validates the candidate source as a regular-file-only tree and
 copies it into an isolated temporary mirror without following symbolic links.

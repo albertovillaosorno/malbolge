@@ -78,9 +78,10 @@ format.
   immutability checks are disabled. A concurrent copy-time filesystem race still
   requires external coordination for fully atomic source snapshots. Probe
   records now reject NUL-bearing command/path/tool inputs, and spawn failures
-  return ProbeExecutionError rather than exposing raw OSError. Output byte caps
-  are still checked after full `subprocess.run` capture; hard incremental pipe
-  quotas, bounded capture memory and descendant-process cleanup remain open.
+  return ProbeExecutionError rather than exposing raw OSError. Live bounded
+  pipe readers now stop retaining stdout/stderr at their declared quotas and
+  abort overflowing processes, with concurrent stdin and wall-deadline checks.
+  Cross-platform child-tree cleanup beyond the immediate process remains open.
 - Behavior authoring derives identity transcripts from source and distinct bug
   `present`/`fixed` transcripts from source versus corrected oracle; a third
   candidate transcript becomes `unknown` and fails closed.
