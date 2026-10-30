@@ -241,7 +241,11 @@ stdin, plus explicit flags selecting stdout and/or process exit code into the
 observation transcript. A command may instead require one exact exit code when
 its
 
-return value is a success precondition rather than behavior data.
+return value is a success precondition rather than behavior data. Executable
+spawn failures are wrapped as probe execution errors. The stdout/stderr limits
+are currently checked after `subprocess.run` completes capturing; they are not
+live subprocess output-memory quotas. Incremental bounded pipe capture and
+child-tree cleanup remain an open hardening task.
 
 A probe batch validates the candidate source as a regular-file-only tree and
 copies it into an isolated temporary mirror without following symbolic links.
@@ -259,7 +263,8 @@ scratch executable consumed by a later command.
 
 The executor validates the complete process description before snapshotting,
 copying, or launching anything: roots/enums, executable records, argv tuples,
-stdin bytes, exit codes, timeout/output limits, digest flags, program batches,
+NUL-free argv and rooted paths/tool identifiers, stdin bytes, exit codes,
+timeout/output limits, digest flags, program batches,
 tool bindings, and source-immutability flags all use exact admitted types.
 
 Behavior authoring runs identity programs on the original source. Bug programs

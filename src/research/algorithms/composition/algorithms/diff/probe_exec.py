@@ -64,6 +64,7 @@ _FRAME_LENGTH_BYTES = 8
 _BACKSLASH = "\\"
 _PARENT = ".."
 _TOOL_BINDING_LENGTH = 2
+_NUL = "\x00"
 
 
 class _HashUpdater(Protocol):
@@ -122,6 +123,9 @@ class ToolExecutable:
         if type(self.tool_id) is not str or not self.tool_id:
             message = "probe tool identifier must be a non-empty string"
             raise ProbeProgramError(message)
+        if _NUL in self.tool_id:
+            message = "probe tool identifier must not contain NUL bytes"
+            raise ProbeProgramError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +144,18 @@ class RootedExecutable:
 ProbeExecutable = ToolExecutable | RootedExecutable
 
 
+def _validate_argv_strings(arguments: tuple[ProbeArgument, ...]) -> None:
+    """Reject impossible platform argv bytes at record admission.
+
+    Raises:
+        ProbeProgramError: An argument contains a NUL character.
+
+    """
+    if any(_NUL in item for item in arguments if type(item) is str):
+        message = "probe argv strings must not contain NUL bytes"
+        raise ProbeProgramError(message)
+
+
 def _validate_command_shape(command: ProbeCommand) -> None:
     if type(command.executable) not in {ToolExecutable, RootedExecutable}:
         message = "probe executable must use an exact executable record"
@@ -156,6 +172,7 @@ def _validate_command_shape(command: ProbeCommand) -> None:
     if type(command.stdin) is not bytes:
         message = "probe stdin must use exact bytes"
         raise ProbeProgramError(message)
+    _validate_argv_strings(command.arguments)
 
 
 def _validate_command_integer(
@@ -247,6 +264,9 @@ def _validate_path(value: object, context: str) -> None:
     if not isinstance(value, Path):
         message = f"{context} must use a pathlib Path value"
         raise ProbeProgramError(message)
+    if _NUL in str(value):
+        message = f"{context} must not contain NUL bytes"
+        raise ProbeProgramError(message)
 
 
 def _validate_tool_binding(binding: object) -> tuple[str, Path]:
@@ -260,6 +280,9 @@ def _validate_tool_binding(binding: object) -> tuple[str, Path]:
     tool_id, tool_path = pair
     if type(tool_id) is not str or not tool_id:
         message = "probe tool identifiers must be non-empty strings"
+        raise ProbeProgramError(message)
+    if _NUL in tool_id:
+        message = "probe tool identifiers must not contain NUL bytes"
         raise ProbeProgramError(message)
     _validate_path(tool_path, "probe tool path")
     return tool_id, cast("Path", tool_path)
@@ -330,6 +353,9 @@ def _validate_relative_path(relative_path: object) -> None:
         message = "probe relative path must use the exact string type"
         raise ProbeProgramError(message)
     candidate = PurePosixPath(relative_path)
+    if _NUL in relative_path:
+        message = "probe relative paths must not contain NUL bytes"
+        raise ProbeProgramError(message)
     unsafe = (
         not relative_path
         or _BACKSLASH in relative_path
@@ -338,7 +364,9 @@ def _validate_relative_path(relative_path: object) -> None:
         or candidate.as_posix() != relative_path
     )
     if unsafe:
-        message = f"unsafe probe relative path: {relative_path!r}"
+        message = (
+            f"unsafe probe relative path (including NUL): {relative_path!r}"
+        )
         raise ProbeProgramError(message)
 
 
@@ -451,12 +479,18 @@ def _command_argv(
     return [str(executable), *arguments]
 
 
-def _run_command(
-    command: ProbeCommand,
-    context: ProbeRunContext,
-    scratch_root: Path,
-) -> _CommandResult:
-    argv = _command_argv(command, context, scratch_root)
+def _launch_command(
+    argv: list[str], command: ProbeCommand, scratch_root: Path
+) -> subprocess.CompletedProcess[bytes]:
+    """Run an admitted no-shell command inside the probe error boundary.
+
+    Returns:
+        Completed process with captured observations.
+
+    Raises:
+        ProbeExecutionError: The command cannot start or exceeds its timeout.
+
+    """
     try:
         # jig-ignore-next-line: indivisible reviewed identifier
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - explicit argv; shell disabled.
@@ -471,6 +505,19 @@ def _run_command(
     except subprocess.TimeoutExpired as exc:
         message = "probe command exceeded its timeout"
         raise ProbeExecutionError(message) from exc
+    except OSError as error:
+        message = f"probe command launch failed: {error}"
+        raise ProbeExecutionError(message) from error
+    return completed
+
+
+def _run_command(
+    command: ProbeCommand,
+    context: ProbeRunContext,
+    scratch_root: Path,
+) -> _CommandResult:
+    argv = _command_argv(command, context, scratch_root)
+    completed = _launch_command(argv, command, scratch_root)
     if len(completed.stdout) > command.max_stdout_bytes:
         message = "probe command exceeded stdout limit"
         raise ProbeExecutionError(message)

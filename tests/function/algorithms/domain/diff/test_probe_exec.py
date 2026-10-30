@@ -593,6 +593,47 @@ def test_probe_command_rejects_boolean_aliases_and_mutable_inputs() -> None:
             _ = build()
 
 
+def test_probe_rejects_nul_command_and_rooted_path_arguments() -> None:
+    """Malformed argv must fail at record admission, before process launch."""
+    with pytest.raises(ProbeProgramError, match="NUL"):
+        _ = ProbeCommand(
+            executable=ToolExecutable(_PYTHON_TOOL),
+            arguments=("--flag=" + chr(0),),
+        )
+    with pytest.raises(ProbeProgramError, match="NUL"):
+        _ = PathArgument(ProbeRoot.SOURCE, "bad" + chr(0) + "file.txt")
+    with pytest.raises(ProbeProgramError, match="NUL"):
+        _ = ToolExecutable("bad" + chr(0) + "tool")
+    with pytest.raises(ProbeProgramError, match="NUL"):
+        _ = ProbeRunContext(
+            Path("bad" + chr(0) + "source"),
+            Path("repo"),
+            (),
+        )
+    with pytest.raises(ProbeProgramError, match="NUL"):
+        _ = ProbeRunContext(
+            Path("source"),
+            Path("repo"),
+            (("bad" + chr(0) + "tool", Path("tool")),),
+        )
+
+
+def test_probe_executable_launch_failure_is_wrapped(tmp_path: Path) -> None:
+    """Regular but non-executable tool files remain inside probe errors."""
+    source = tmp_path / "source"
+    source.mkdir()
+    bad_executable = tmp_path / "text-only.exe"
+    _ = bad_executable.write_bytes(b"not an executable")
+    program = _program("bad-tool", "pass")
+    context = ProbeRunContext(
+        source_root=source,
+        repository_root=tmp_path,
+        tools=((_PYTHON_TOOL, bad_executable),),
+    )
+    with pytest.raises(ProbeExecutionError, match="launch failed"):
+        _ = run_probe_program(program, context)
+
+
 def test_probe_program_and_context_require_immutable_exact_records(
     tmp_path: Path,
 ) -> None:
