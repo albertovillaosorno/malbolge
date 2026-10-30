@@ -80,8 +80,9 @@ format.
   records now reject NUL-bearing command/path/tool inputs, and spawn failures
   return ProbeExecutionError rather than exposing raw OSError. Live bounded
   pipe readers now stop retaining stdout/stderr at their declared quotas and
-  abort overflowing processes, with concurrent stdin and wall-deadline checks.
-  All POSIX probes now terminate residual dedicated process-group descendants
+  abort overflowing processes, with concurrent stdin and wall-deadline checks
+  beginning before process launch (including delayed pipe setup). All POSIX
+  probes now terminate residual dedicated process-group descendants
   on success as well as failure, including helpers with independently closed
   stdio. Cross-platform Windows descendant cleanup and escaped POSIX sessions
   remain open hardening tasks.

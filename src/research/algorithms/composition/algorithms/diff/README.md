@@ -148,7 +148,8 @@ rejects NUL argv/path/tool IDs before launching, and executable spawn failures
 stay inside the probe error boundary. No-shell child output pipes now stream
 into independent memory-guarded readers, aborting on the first byte over each
 stdout/stderr quota; stdin has a concurrent writer to avoid full-duplex
-backpressure deadlocks. Deadlines cover process and pipe completion. On
+backpressure deadlocks. The wall deadline is established before launching the
+process and includes pipe setup, child completion, and stream draining. On
 POSIX, every completed, failed, or timed-out probe terminates its dedicated
 child session's remaining process-group members, including ordinary spawned
 helpers that closed stdio. Windows currently stops only the direct child on

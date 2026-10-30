@@ -40,6 +40,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
+import threading
 import time
 from typing import cast
 
@@ -477,6 +478,32 @@ def test_successful_probe_reaps_remaining_posix_descendants(
     _expect(started.exists(), "probe did not start its child")
     time.sleep(1.0)
     _expect(not late.exists(), "successful probe left descendant running")
+
+
+def test_probe_deadline_includes_pipe_setup_delay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wall budget starts before launch, not after pipe threads start."""
+    source = tmp_path / "source"
+    source.mkdir()
+    original_start = threading.Thread.start
+
+    def delayed_thread_start(thread: threading.Thread) -> None:
+        original_start(thread)
+        time.sleep(0.10)
+
+    monkeypatch.setattr(threading.Thread, "start", delayed_thread_start)
+    command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "print('done')"),
+        timeout_ms=40,
+        digest_stdout=True,
+    )
+    with pytest.raises(ProbeExecutionError, match="timeout"):
+        _ = run_probe_program(
+            ProbeProgram("delayed-setup", (command,)),
+            _context(source, tmp_path),
+        )
 
 
 def test_output_limit_fails_closed(tmp_path: Path) -> None:

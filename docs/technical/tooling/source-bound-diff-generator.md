@@ -245,8 +245,11 @@ return value is a success precondition rather than behavior data. Executable
 spawn failures are wrapped as probe execution errors. Child stdout and stderr
 now use concurrent pipe readers that enforce output byte quotas. They abort
 overflowing commands before completion. A concurrent
-stdin writer preserves full-duplex behavior; the wall deadline covers child and
-pipe completion. On POSIX, successful and failed commands terminate residual
+stdin writer preserves full-duplex behavior; the wall deadline starts before
+process launch and covers reader/writer setup, child and pipe completion.
+A child that already exited by the time delayed pipe setup finishes still fails
+if the elapsed wall budget has expired. On POSIX, completed and failed commands
+terminate residual
 members of their dedicated process group after capturing the leader result.
 Ordinary helpers that close their inherited pipes cannot continue running after
 success. Windows still stops only the direct child on failure; descendants that

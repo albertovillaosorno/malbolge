@@ -697,21 +697,20 @@ def _capture_complete(running: _RunningProbe) -> bool:
     )
 
 
-def _wait_for_bounded_pipes(running: _RunningProbe, timeout_ms: int) -> None:
-    """Monitor both byte quotas and the entire command wall deadline.
+def _wait_for_bounded_pipes(running: _RunningProbe, deadline: float) -> None:
+    """Monitor pipe quotas against the deadline established before launch.
 
     Raises:
         ProbeExecutionError: A quota, pipe, or timeout failed.
 
     """
-    deadline = time.monotonic() + timeout_ms / 1000
     while True:
         _require_healthy_pipes(running)
-        if _capture_complete(running):
-            return
         if time.monotonic() >= deadline:
             message = "probe command exceeded its timeout"
             raise ProbeExecutionError(message)
+        if _capture_complete(running):
+            return
         time.sleep(_POLL_SECONDS)
 
 
@@ -724,10 +723,11 @@ def _launch_command(
         Completed process with quota-admitted captured observations.
 
     """
+    deadline = time.monotonic() + command.timeout_ms / 1000
     process = _spawn_probe(argv, scratch_root)
     try:
         running = _start_capture(process, command)
-        _wait_for_bounded_pipes(running, command.timeout_ms)
+        _wait_for_bounded_pipes(running, deadline)
         completed = subprocess.CompletedProcess(
             argv,
             process.wait(),
