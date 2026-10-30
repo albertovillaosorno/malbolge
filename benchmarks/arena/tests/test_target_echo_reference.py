@@ -42,6 +42,7 @@ import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
+from typing import Any
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -61,6 +62,7 @@ ORIGINAL_TRIAL = "trial = 0"
 EXPECTED_OBSERVATIONS = 8
 EXPECTED_LEVELS = 2
 EXPECTED_TRIALS = 2
+SINGLE_PAIRED_TRIAL_ARMS = 2
 ARTIFACT_BYTES = "artifact_bytes"
 GRAPHICAL_LOW = 33
 GRAPHICAL_HIGH = 126
@@ -716,6 +718,80 @@ def test_real_postexecution_source_mutation_is_independently_rejected(
             assert checked["reported_failed_trials_not_replayed"] == 1
         finally:
             shutil.rmtree(directory)
+
+
+@pytest.mark.skipif(
+    not target_echo_reference.DEFAULT_EMITTER.is_file()
+    or not target_echo_reference.DEFAULT_RUNNER.is_file(),
+    reason="built Malbolge tools required",
+)
+def test_cli_opt_in_verifier_cost_publishes_four_objective_study(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Operator flags reach the real verifier-cost stage and its raw audit."""
+    original = target_echo_reference.run_study
+    generated: list[Path] = []
+    with tempfile.TemporaryDirectory(
+        dir=target_echo_reference._TEMP, prefix="arena-verifier-cli-tools-"
+    ) as tools:
+        emitter = Path(tools) / "malbolge_layout"
+        runner = Path(tools) / "malbolge"
+        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+
+        def route(
+            plan: target_echo_reference.StudyPlan,
+        ) -> tuple[Path, dict[str, Any]]:
+            result = original(plan, emitter=emitter, runner=runner)
+            generated.append(result[0])
+            return result
+
+        monkeypatch.setattr(target_echo_reference, "run_study", route)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "target-echo",
+                "--pairs",
+                "1",
+                "--trials",
+                "1",
+                "--input-mode",
+                "patterned",
+                "--measure-steps",
+                "--layout-mode",
+                "forward-skip",
+                "--measure-verifier",
+            ],
+        )
+        try:
+            assert target_echo_reference.main() == 0
+            output = json.loads(capsys.readouterr().out)
+            relative = output["study"]
+            study = json.loads(
+                (target_echo_reference._ROOT / relative).read_text()
+            )
+            assert (
+                study["study"]["id"]
+                == target_echo_reference.FORWARD_VERIFIER_COST_STUDY
+            )
+            assert all(
+                target_echo_reference.VERIFIER_NS in row["metrics"]
+                for row in study["observations"]
+            )
+            checked = target_echo_audit.audit(
+                relative,
+                options=target_echo_audit.AuditOptions(
+                    replay_candidates=True, emitter=emitter, runner=runner
+                ),
+            )
+            assert (
+                checked["target_sources_replayed"] == SINGLE_PAIRED_TRIAL_ARMS
+            )
+        finally:
+            for directory in generated:
+                shutil.rmtree(directory)
 
 
 @pytest.mark.parametrize(
