@@ -681,3 +681,38 @@ def test_stage_breakdown_counts_failed_trials_without_fabricated_memory_cost(
         assert report["paired"][0]["median_skip_minus_walk_bytes"] == {}
     finally:
         shutil.rmtree(folder)
+
+
+def test_paired_stage_rss_median_matches_trials_not_separate_arm_medians() -> (
+    None
+):
+    """The paired RSS metric must not subtract independent arm medians."""
+    kib = target_process.KIB_BYTES
+
+    def stage_values(value: int) -> dict[str, int]:
+        return dict.fromkeys(STAGES, value * kib)
+
+    walk = [
+        {"trial": trial, "stages": stage_values(value)}
+        for trial, value in enumerate((10, 10, 110))
+    ]
+    skip = [
+        {"trial": trial, "stages": stage_values(value)}
+        for trial, value in enumerate((110, 11, 111))
+    ]
+    rows = {(1, audit.WALK): walk, (1, audit.SKIP): skip}
+    summary = audit._stage_rss_pairs(rows)[0]
+    assert summary["both_verified"] == len(walk)
+    assert set(summary["median_skip_minus_walk_bytes"]) == set(STAGES)
+    for name in STAGES:
+        assert summary["median_skip_minus_walk_bytes"][name] == kib
+        # The medians of the two arms differ by 100 KiB, not 1 KiB.
+        assert summary["median_skip_minus_walk_bytes"][name] != 100 * kib
+
+    # If one candidate fails, its baseline cannot contribute to paired costs.
+    skip[0]["stages"] = None
+    summary = audit._stage_rss_pairs(rows)[0]
+    assert summary["both_verified"] == len(walk) - 1
+    assert all(
+        summary["median_skip_minus_walk_bytes"][name] == kib for name in STAGES
+    )
