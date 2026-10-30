@@ -60,6 +60,15 @@ from one byte to two, while failing host admission. Other invalid original
 counts, alternate legal glyphs, changed code or descriptor data, wrong
 source identities and malformed extents all reject at the host boundary.
 
+A second native VM regression restores each code image from an independently
+validated complete initial memory state, then compares guest and direct
+behavior across six input streams for **both** original pair counts: EOF,
+single byte, exact two bytes, and trailing surplus input. All 12 cases
+agree in stdout, consumed bytes, termination and exact step counts while
+preserving every CEB2 cell. Empty input does not consume a missing byte;
+extra input is left unread. This is bounded I/O evidence, not a proof for
+all possible byte streams or arbitrary source operations.
+
 This is still an *unrolled* program with one explicit branch, not an
 arbitrary bytecode interpreter: the guest does not calculate three-bit
 ranks, read the CEB2 count, maintain an instruction pointer, repeat a

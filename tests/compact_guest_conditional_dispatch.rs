@@ -595,3 +595,106 @@ fn conditional_dispatch_rejects_wrong_counts_unknown_opcodes_and_foreign_sources
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent two-way EOF/input parity"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "full-state VM replay with both instruction choices"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "EOF, one/two and surplus stream oracles"
+)]
+fn same_native_guest_code_matches_direct_for_eof_short_and_trailing_input() -> Result<(), String> {
+    for pairs in [1u32, 2] {
+        let (program, source) = candidate(pairs)?;
+        let direct = strategy::bridge::encode_successful_byte_echo(&program, current_profile())
+            .map_err(|error| format!("direct one/two echo lowering: {error:?}"))?;
+        let guest_initial = ProfileMachine::from_source(current_profile(), &source, Vec::new())
+            .map_err(|error| format!("source-bound guest preload: {error:?}"))?
+            .snapshot_state();
+        let direct_initial =
+            ProfileMachine::from_source(current_profile(), direct.source(), Vec::new())
+                .map_err(|error| format!("independent direct preload: {error:?}"))?
+                .snapshot_state();
+        let pair_count = usize::try_from(pairs).map_err(|error| error.to_string())?;
+        let steps = if pairs == 1 {
+            HALT_AFTER_ONE_STEPS
+        } else {
+            ECHO_TWICE_STEPS
+        };
+        let direct_steps = pair_count.saturating_mul(2).saturating_add(1);
+        for input in [
+            Vec::new(),
+            vec![0u8],
+            vec![255],
+            vec![0, 255],
+            vec![7, 129, 255],
+            vec![0, 1, 2, 3],
+        ] {
+            // Each execution starts from its own exact immutable loader
+            // checkpoint; never reuse a previous run's self-encrypted code.
+            let mut guest = ProfileMachine::from_state(
+                current_profile(),
+                guest_initial.memory().to_vec(),
+                input.clone(),
+                malbolge::ProfileRegisters::default(),
+            )
+            .map_err(|error| format!("restored guest VM: {error:?}"))?;
+            let mut baseline = ProfileMachine::from_state(
+                current_profile(),
+                direct_initial.memory().to_vec(),
+                input.clone(),
+                malbolge::ProfileRegisters::default(),
+            )
+            .map_err(|error| format!("restored direct VM: {error:?}"))?;
+            assert!(
+                matches!(guest.run(steps), Ok(RunOutcome::Terminated {
+                steps: committed, ..
+            }) if committed == steps),
+                "guest variant halts under EOF and surplus input"
+            );
+            assert!(
+                matches!(baseline.run(direct_steps), Ok(RunOutcome::Terminated {
+                steps: committed, ..
+            }) if committed == direct_steps),
+                "direct variant halts under same input"
+            );
+            assert_eq!(
+                guest.output(),
+                baseline.output(),
+                "both independent native programs produce identical bytes"
+            );
+            assert_eq!(
+                guest.output().len(),
+                pair_count,
+                "ECHO/HALT chosen by guest opcode preserves correct output count"
+            );
+            assert_eq!(
+                guest.input_consumed(),
+                baseline.input_consumed(),
+                "real guest consumes exactly what direct program consumed"
+            );
+            assert_eq!(
+                guest.input_consumed(),
+                input.len().min(pair_count),
+                "available input is consumed at most once per ECHO opcode"
+            );
+            for address in CEB2_START..SOURCE_CELLS {
+                let addr = u32::try_from(address).map_err(|error| error.to_string())?;
+                assert_eq!(
+                    guest
+                        .memory_word(addr)
+                        .map_err(|error| format!("guest protected memory: {error:?}"))?,
+                    u32::from(*source.get(address).ok_or("source-bound CEB2 cell")?),
+                    "both opcode branches must preserve all CEB2 physical words"
+                );
+            }
+        }
+    }
+    Ok(())
+}

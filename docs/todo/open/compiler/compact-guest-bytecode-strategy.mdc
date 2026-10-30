@@ -198,6 +198,9 @@ code-size explosion or compilation cost.
   and preserve all 102 CEB2 words. Changing only the second opcode makes
   the real guest branch differently yet fails host provenance admission;
   all other loader-valid alternatives, wrong counts and forged data fail.
+  A fresh twelve-case full-initial-state VM matrix also matches direct
+  EOF, short, exact and surplus-input semantics for both bound programs,
+  including consumed bytes and every intact CEB2 graphical data word.
   The compiler P2 task is still open pending a reusable generic interpreter.
 
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.

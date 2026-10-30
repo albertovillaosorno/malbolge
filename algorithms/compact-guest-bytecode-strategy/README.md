@@ -405,8 +405,12 @@ jump traces pass for input pairs `[0,255]` and `[128,129]`. Real general
 Malbolge CLI capsules confirm exact 86/88 steps and stdout, versus direct
 3/5 steps. Loader-valid opcode substitutions, descriptor changes, foreign
 identities and malformed/unsupported counts reject in the independent
-host verifier. This remains a bounded two-variant research pilot, not a
-loop, arbitrary decoder, in-guest digest check, or general C compiler.
+host verifier. Additional independent complete VM-state replays cover
+EOF, one-byte, two-byte and trailing-input streams for *both* variants;
+all twelve cases match direct stdout and input consumption while leaving
+102 CEB2 glyphs unmodified. This remains a bounded two-variant research
+pilot, not a loop, arbitrary decoder, in-guest digest check, or general C
+compiler.
 
 ## Status
 

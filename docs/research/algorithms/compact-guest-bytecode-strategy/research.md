@@ -547,6 +547,13 @@ changed source. Unsupported original counts, all alternate legal second
 opcode words, altered native source, mutated graphical descriptor cells,
 foreign source identities and truncated/excess source images are rejected.
 
+Twelve separate initial-memory guest/direct VM replays (six input streams
+for each one/two-pair original program) cover empty input, one byte,
+exact two-byte input and excess trailing bytes. They agree in exact stdout,
+input consumption, committed 86/88 vs 3/5 guest steps and preservation of
+all 102 CEB2 source-memory words. This broadens bounded I/O conformance
+without pretending that the 8-bit multi-byte input domain was exhausted.
+
 Exact design, source regions and the independently executable test suite
 are recorded in the v8 `conditional_dispatch.md` experiment note beside
 its source code.
