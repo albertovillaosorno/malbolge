@@ -1497,6 +1497,7 @@ def audit(
     answer = {
         "schema_version": 1,
         "study": relative_study,
+        "retained_study_sha256": snapshots[relative_study][0],
         "source_commit_reported": commit,
         "source_commit_object_verified": options.require_source_commit_object,
         "source_sha256": source_hashes,

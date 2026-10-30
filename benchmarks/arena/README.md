@@ -207,6 +207,13 @@ child timeouts remain `tool_failed`, never credited as successes. It also
 checks exact source length, graphical byte domain, the per-attempt output
 path, and exact executable identity before/after the study.
 
+After the producer calls the independent retained-study auditor, it reopens
+`study.json` through the same bounded, link-rejecting regular-file reader and
+requires its SHA-256 to equal the auditor's `retained_study_sha256` snapshot.
+A late replacement with different, still-valid JSON cannot enter the returned
+study or a successful producer report. This checks observed bytes, not atomic
+filesystem snapshots or the authenticity of retained performance samples.
+
 The reusable child transport separately supports **opt-in binary stdin** of at
 most 256 bytes; it checks type and length before process launch, sends raw
 bytes through a nonblocking short pipe, closes it to deliver EOF, and applies

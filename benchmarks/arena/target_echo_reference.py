@@ -1000,11 +1000,16 @@ def _audit_retained_study(path: Path) -> dict[str, Any]:
 
     relative = path.relative_to(_ROOT).as_posix()
     try:
-        _ = target_echo_audit.audit(relative)
+        checked = target_echo_audit.audit(relative)
     except target_echo_audit.TargetEchoAuditError as error:
         message = f"target echo source admission failed: {error}"
         raise TargetEchoStudyError(message) from error
-    return analyze.parse_document(path.read_text(encoding="utf-8"))
+    raw = evidence.read_bounded_regular(
+        _ROOT, relative, limit=target_echo_audit.MAX_STUDY_BYTES
+    )
+    if sha256(raw).hexdigest() != checked["retained_study_sha256"]:
+        _fail("target echo retained study changed after independent audit")
+    return analyze.parse_document(raw.decode("utf-8"))
 
 
 def _validate_verifier_measurement(plan: StudyPlan) -> None:

@@ -37,6 +37,7 @@
 from __future__ import annotations
 
 import copy
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -788,8 +789,11 @@ def test_real_retained_target_study_passes_offline_and_replay(
     retained: tuple[Path, dict[str, Any], str],
 ) -> None:
     """Static independent instruction decode precedes a real VM rerun."""
-    _, study, relative = retained
+    directory, study, relative = retained
     checked = audit.audit(relative)
+    assert checked["retained_study_sha256"] == sha256(
+        (directory / "study.json").read_bytes()
+    ).hexdigest()
     assert checked["verified_target_sources_checked"] == ROWS
     assert checked["target_sources_replayed"] == 0
     assert len(checked["source_sha256"]) == ROWS

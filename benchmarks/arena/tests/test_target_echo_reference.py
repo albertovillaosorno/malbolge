@@ -36,6 +36,7 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 import json
 from pathlib import Path
 import shutil
@@ -52,12 +53,14 @@ from benchmarks.arena import analyze
 from benchmarks.arena import evidence
 from benchmarks.arena import target_echo_audit
 from benchmarks.arena import target_echo_reference
+from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
 RAW_TAMPER = "raw"
+STUDY_LEAF = "study.json"
 ORIGINAL_TRIAL = "trial = 0"
 EXPECTED_OBSERVATIONS = 8
 EXPECTED_LEVELS = 2
@@ -110,6 +113,40 @@ def test_vm_step_receipt_admits_one_canonical_decimal() -> None:
         target_echo_reference._parse_step_receipt(b"malbolge-steps-v1:3\n")
         == EXPECTED_STEP_RECEIPT
     )
+
+
+@pytest.mark.parametrize("tamper_after_audit", [False, True])
+def test_publisher_uses_exact_audited_study_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    tamper_after_audit: bool,
+) -> None:
+    """A later valid JSON rewrite cannot replace independently audited bytes."""
+    original = sample_study(tmp_path)
+    path = tmp_path / STUDY_LEAF
+    raw = (json.dumps(original) + "\n").encode("utf-8")
+    _ = path.write_bytes(raw)
+    expected_hash = sha256(raw).hexdigest()
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+
+    def fake_audit(relative: str) -> dict[str, Any]:
+        assert relative == STUDY_LEAF
+        if tamper_after_audit:
+            altered = json.loads(raw)
+            altered["study"]["id"] = "valid-but-not-audited"
+            _ = path.write_text(json.dumps(altered), encoding="utf-8")
+        return {"retained_study_sha256": expected_hash}
+
+    monkeypatch.setattr(target_echo_audit, "audit", fake_audit)
+    if tamper_after_audit:
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="changed after independent audit",
+        ):
+            target_echo_reference._audit_retained_study(path)
+    else:
+        assert target_echo_reference._audit_retained_study(path) == original
 
 
 @pytest.fixture
