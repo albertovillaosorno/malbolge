@@ -5473,6 +5473,71 @@ def test_pointer_postpublication_inode_swap_reports_committed_failure(
     assert progress.read(destination) == sidecar
 
 
+def test_pointer_postpublication_same_inode_byte_mutation_is_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-size content mutation after durability cannot report success."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    original_sync = cast(
+        "Callable[..., None]", vars(progress)["_confirm_publication_durability"]
+    )
+    original = progress.encode(sidecar)
+    altered = original.replace(b'"units_completed":13', b'"units_completed":12')
+    assert altered != original
+    assert len(altered) == len(original)
+
+    def sync_then_mutate(
+        path: Path, *, context: str, platform: str = os.name
+    ) -> None:
+        original_sync(path, context=context, platform=platform)
+        _ = path.write_bytes(altered)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_confirm_publication_durability", sync_then_mutate
+        )
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=r"committed durably.*content changed",
+        ) as captured:
+            _ = progress.write_atomic(sidecar)
+    assert captured.value.published_path == destination
+    assert destination.read_bytes() == altered
+    assert (
+        progress.read(destination).units_completed
+        == sidecar.units_completed - 1
+    )
+
+
+def test_pointer_postpublication_reader_io_failure_is_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed final verification read must not deny a committed pointer."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    read_error = "injected committed progress read failure"
+
+    def failed_committed_read(
+        path: Path, context: str, *, max_bytes: int | None = None
+    ) -> bytes:
+        del path, context, max_bytes
+        raise OSError(read_error)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_read_regular_bytes", failed_committed_read)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=read_error,
+        ) as captured:
+            _ = progress.write_atomic(sidecar)
+    assert captured.value.published_path == destination
+    assert isinstance(captured.value.__cause__, OSError)
+    assert destination.read_bytes() == progress.encode(sidecar)
+
+
 def test_write_atomic_skips_cleanup_after_replace(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

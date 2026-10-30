@@ -144,8 +144,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   alias injection after fsync, during content read, and after verification
   reader closure on both pointer and checkpoint paths; after durable mutable
   pointer replacement the writer also rechecks regular single-link staged-inode
-  identity and size, preserving committed-path evidence on a late hard-link
-  injection or byte-identical inode replacement rather than reporting success;
+  identity, size, and exact canonical pointer bytes through a second bounded
+  raw read, preserving committed-path evidence on late hard-link injection,
+  byte-identical inode replacement, or same-size in-place byte rewrite rather
+  than falsely reporting success; committed verification costs one extra
+  pointer read bounded by the existing 1 MiB wire limit;
   byte-identical
   immutable generation collisions now also require single-link regular-file
   identity before and after the bounded collision read, rejecting pre-existing

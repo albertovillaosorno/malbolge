@@ -193,10 +193,17 @@ POSIX tests insert a hard-link alias at each boundary, including between hash
 completion and the final pathname check; none may publish the aliased inode.
 After mutable pointer replacement and durability sync, the writer also checks
 that its committed path still resolves to the previously staged regular inode,
-with the expected size and exactly one hard link. A late alias of the pointer or
-same-byte inode replacement no longer reports success: the writer returns the
-exact path with `ProgressSidecarCommittedError`. This is a diagnostic admission
-rather than rollback, and cannot block filesystem mutation after its last check.
+with the expected size and exactly one hard link. The pointer additionally
+receives a bounded post-publication raw read against its exact canonical bytes,
+with device/inode and link-count re-admission after that read. This closes the
+observed same-inode, same-size byte-rewrite window between staging verification
+and atomic replacement/durability confirmation, including a rewrite to a
+*different but still valid* progress JSON object. A late alias, identical-byte
+inode replacement, or changed pointer content no longer reports success: the
+writer returns the exact path with `ProgressSidecarCommittedError`. This costs
+an extra read of at most the already enforced 1 MiB pointer wire budget. It is
+a diagnostic admission rather than rollback, and cannot prevent filesystem
+mutation after its final check.
 The immutable POSIX publisher's intentional no-replace hard link happens only
 after these staging checks and is cleaned up when staging completes. After
 successfully confirming directory durability and removing the temporary entry,
