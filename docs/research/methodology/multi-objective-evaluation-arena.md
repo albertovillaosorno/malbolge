@@ -417,7 +417,9 @@ raw resource reading. Only `--retain-raw-rss`, combined with all v6 flags,
 selects `classic-patterned-forward-skip-raw-rss-v7` with the dedicated
 `classic-forward-jump-raw-rss-second-vm-v1` verifier. Every previously
 versioned study retains its original bytes, five v5-v7 objectives and
-bounded execution contract.
+bounded execution contract. Unexpected RSS reader/close faults produce typed
+target-process failures with their original causes, rather than escaping the
+producer's failure classification.
 
 Each successful v7 trial's schema-two canonical RSS receipt adds the actual
 captured GNU time `--format=%M` single-line output strings for emitter,

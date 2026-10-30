@@ -351,7 +351,14 @@ def _rss_report_bytes(path: Path) -> bytes:
         raw = evidence.read_bounded_regular(
             path.parent, path.name, limit=RSS_REPORT_LIMIT
         )
-    except (OSError, evidence.EvidenceError) as error:
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        evidence.EvidenceError,
+    ) as error:
         message = "bounded target GNU time RSS report missing or unsafe"
         raise TargetProcessError(message) from error
     return raw

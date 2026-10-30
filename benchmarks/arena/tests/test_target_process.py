@@ -36,6 +36,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
@@ -45,10 +46,12 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from benchmarks.arena import target_process
+from benchmarks.arena import evidence, target_process
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
+    from typing import IO
 
 POSIX_PLATFORM = "posix"
 LINUX_PLATFORM = "linux"
@@ -71,6 +74,31 @@ REPEAT_COUNT = 99
 
 def _child(source: str) -> list[str]:
     return [sys.executable, "-c", source]
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_measured_rss_reader_close_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Unexpected evidence cleanup faults must not bypass typed tool failure."""
+    report = tmp_path / "rss.txt"
+    _ = report.write_bytes(b"10\n")
+    original_open = evidence._open_evidence
+
+    @contextmanager
+    def fail_after_close(path: Path) -> Iterator[IO[bytes]]:
+        with original_open(path) as stream:
+            yield stream
+        raise fault("injected RSS receipt close failure")
+
+    monkeypatch.setattr(evidence, "_open_evidence", fail_after_close)
+    with pytest.raises(target_process.TargetProcessError, match="RSS report") as error:
+        target_process._rss_report_bytes(report)
+    assert type(error.value.__cause__) is fault
 
 
 def test_exact_bounded_output_and_stderr_roundtrip() -> None:
