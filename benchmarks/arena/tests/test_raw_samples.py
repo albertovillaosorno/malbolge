@@ -243,6 +243,31 @@ def test_malformed_incomplete_or_forged_raw_data_rejected(
         _check(doc, tmp_path)
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [b"," * 10_000 + b"\n", b'"unterminated\n' + b"a,\n" * 10_000],
+    ids=["column-flood", "multiline-header"],
+)
+def test_oversized_csv_header_rejected_before_csv_parser(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    raw: bytes,
+) -> None:
+    """A bounded input file must not expand into enormous header objects."""
+    record = _setup(tmp_path)["observations"][0]
+
+    def forbidden_reader(
+        source: StringIO, *, strict: bool
+    ) -> Iterator[list[str]]:
+        assert source is not None
+        assert strict
+        pytest.fail("raw CSV parser admitted an oversized logical header")
+
+    monkeypatch.setattr(raw_samples.csv, "reader", forbidden_reader)
+    with pytest.raises(raw_samples.RawSampleError, match="CSV header"):
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
+
+
 @pytest.mark.parametrize("version", [1, 2])
 def test_unreported_csv_rows_stop_at_first_excess_row(
     tmp_path: Path,

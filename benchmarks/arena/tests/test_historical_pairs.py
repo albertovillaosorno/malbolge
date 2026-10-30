@@ -46,6 +46,7 @@ from typing import Self
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from io import StringIO
 
 import pytest
@@ -268,6 +269,32 @@ def test_source_drift_rejected(
     directory = _copy_source(tmp_path, source)
     _alter(directory, filename, before=before, after=after)
     with pytest.raises(historical_pairs.HistoricalEvidenceError, match=reason):
+        historical_pairs.build_report(tmp_path, TEMP)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [b"," * 10_000 + b"\n", b'"unterminated\n' + b"a,\n" * 10_000],
+    ids=["column-flood", "multiline-header"],
+)
+def test_historical_csv_header_rejected_before_dict_reader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    raw: bytes,
+) -> None:
+    """Registered CSV headers cannot expand into huge field lists."""
+    directory = _copy_source(tmp_path, PREFIX)
+    _ = (directory / "raw.csv").write_bytes(raw)
+
+    def forbidden_reader(
+        source: StringIO, *, strict: bool
+    ) -> Iterator[dict[str, str]]:
+        assert source is not None
+        assert strict
+        pytest.fail("historical parser admitted an oversized logical header")
+
+    monkeypatch.setattr(historical_pairs.csv, "DictReader", forbidden_reader)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="CSV header"):
         historical_pairs.build_report(tmp_path, TEMP)
 
 

@@ -55,6 +55,7 @@ from benchmarks.arena import analyze, evidence, report_output
 from scripts.validate import benchmark_protocol, experiment_manifest
 
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
+MAX_CSV_HEADER_CHARS = 512
 MAX_HISTORICAL_REPETITIONS = 4096
 ASCII_DIGITS = frozenset(string.digits)
 HEX_DIGITS = frozenset(string.hexdigits.lower())
@@ -162,6 +163,15 @@ def _csv_shape(
         _fail("historical raw CSV contains incomplete rows")
 
 
+def _require_bounded_csv_header(text: str) -> None:
+    # Preflight the first physical line before DictReader builds fieldnames.
+    # An open quoted field may otherwise consume many newline-delimited rows.
+    prefix = text[: MAX_CSV_HEADER_CHARS + 1]
+    first_line = prefix.split("\n", maxsplit=1)[0].split("\r", maxsplit=1)[0]
+    if len(first_line) > MAX_CSV_HEADER_CHARS or first_line.count('"') % 2:
+        _fail("historical raw CSV header is invalid or exceeds its bound")
+
+
 def _bounded_csv_rows(
     reader: Iterator[dict[str, str]], expected_rows: int
 ) -> list[dict[str, str]]:
@@ -181,6 +191,7 @@ def _csv_rows(
 ) -> list[dict[str, str]]:
     if analyze.NUL in text:
         _fail("historical raw CSV cannot contain NUL")
+    _require_bounded_csv_header(text)
     try:
         reader = csv.DictReader(StringIO(text, newline=""), strict=True)
         fields = reader.fieldnames or []

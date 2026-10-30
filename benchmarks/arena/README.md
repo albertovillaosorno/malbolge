@@ -112,6 +112,12 @@ nonbinary/overlong chunks and read-stream failures reject without a report.
 These checks defend against observed races but do not provide a filesystem
 snapshot or authenticate the source. The caller must establish provenance.
 
+Arena raw CSV and historical paired CSV admit only headers whose first
+physical line is at most 512 characters with no unterminated quoted field.
+This bounded preflight runs before the CSV parser constructs header columns;
+together with trial-count admission it limits both header and row-list object
+amplification inside the already bounded file sizes.
+
 Arena evidence file readers now check regular-path and opened-descriptor
 identity, size, and modification/change timestamps before and after
 bounded reads, including a post-read ancestor-link admission. A replaced

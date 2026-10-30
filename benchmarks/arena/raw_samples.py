@@ -52,6 +52,7 @@ RAW_SCHEMA_VERSION: Final = "1"
 RAW_SCHEMA_VERSION_2: Final = "2"
 ENERGY: Final = "energy_uj"
 MAX_RAW_BYTES: Final = 16 * 1024 * 1024
+MAX_CSV_HEADER_CHARS: Final = 512
 IDENTITY_FIELDS: Final = (
     "schema_version",
     "algorithm",
@@ -118,6 +119,15 @@ def _header_schema(
     _fail(f"{label}: invalid arena-raw-v1/v2 CSV header")
 
 
+def _require_bounded_csv_header(text: str, label: str) -> None:
+    # Preflight the first physical line before csv.reader builds a field list.
+    # An open quoted field may otherwise consume many newline-delimited rows.
+    prefix = text[: MAX_CSV_HEADER_CHARS + 1]
+    first_line = prefix.split("\n", maxsplit=1)[0].split("\r", maxsplit=1)[0]
+    if len(first_line) > MAX_CSV_HEADER_CHARS or first_line.count('"') % 2:
+        _fail(f"{label}: invalid or oversized arena raw CSV header")
+
+
 def _limited_rows(
     reader: Iterator[list[str]], label: str, expected_rows: int
 ) -> list[tuple[str, ...]]:
@@ -135,6 +145,7 @@ def _csv_rows(
     *,
     expected_rows: int,
 ) -> tuple[str, tuple[str, ...], list[tuple[str, ...]]]:
+    _require_bounded_csv_header(text, label)
     try:
         reader = csv.reader(StringIO(text, newline=""), strict=True)
         header = next(reader, None)
