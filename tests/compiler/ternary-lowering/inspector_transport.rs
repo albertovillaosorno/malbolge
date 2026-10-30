@@ -51,6 +51,30 @@ use super::{
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
+// This file is included by multiple compiler test modules with independent
+// NEXT_ID counters. A PID and counter alone can collide in parallel tests.
+#[cfg(target_os = "linux")]
+fn fixture_namespace() -> String {
+    format!("{}-{:?}", id(), thread::current().id())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "different test threads must use different fixture names"
+)]
+fn test_fixture_namespaces_distinguish_parallel_threads() -> Result<(), String> {
+    let first = thread::spawn(fixture_namespace)
+        .join()
+        .map_err(|_error| String::from("first test thread panicked"))?;
+    let second = thread::spawn(fixture_namespace)
+        .join()
+        .map_err(|_error| String::from("second test thread panicked"))?;
+    assert_ne!(first, second);
+    Ok(())
+}
+
 fn interpreter() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     if cfg!(windows) {
@@ -105,7 +129,7 @@ fn isolated_python_ignores_poisoned_startup_modules() -> Result<(), String> {
     let index = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let directory = temp_dir().join(format!(
         "malbolge-ternary-inspector-poison-{}-{index}",
-        id()
+        fixture_namespace()
     ));
     create_dir_all(&directory)
         .map_err(|error| format!("create poison fixture: {error}"))?;
@@ -492,7 +516,7 @@ fn reaps_direct_inspector_child_after_deadline() -> Result<(), String> {
 fn admits_directory_qualified_relative_interpreter() -> Result<(), String> {
     let next = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let script = temp_dir()
-        .join(format!("malbolge-ternary-qualified-{}-{next}.py", id()));
+        .join(format!("malbolge-ternary-qualified-{}-{next}.py", fixture_namespace()));
     write(
         &script,
         "import sys\nsys.stdout.buffer.write(b'qualified')\n",
