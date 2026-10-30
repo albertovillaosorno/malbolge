@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
@@ -43,8 +44,6 @@ from dataclasses import dataclass
 from itertools import starmap
 from pathlib import Path
 from typing import Any, Never
-
-from scripts.validate import experiment_manifest
 
 from benchmarks.arena import (
     analyze,
@@ -54,6 +53,7 @@ from benchmarks.arena import (
     report_output,
 )
 from benchmarks.challenges import generate
+from scripts.validate import experiment_manifest
 
 _ROOT = Path(__file__).resolve().parents[2]
 MAX_ARTIFACT_INDEX_BYTES = 1024 * 1024
@@ -317,7 +317,7 @@ def _recorded_source_commit(
 
 
 def _require_git_commit(commit: str) -> None:
-    executable = shutil.which("git")
+    executable = shutil.which("git", path=os.defpath)
     if executable is None:
         _fail("host-C source commit admission requires local Git")
     try:

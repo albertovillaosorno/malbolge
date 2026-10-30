@@ -36,28 +36,28 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import dataclass
-from dataclasses import replace
-from hashlib import sha256
-from io import StringIO
 import json
-from pathlib import Path
+import os
 import platform
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
+from dataclasses import dataclass, replace
+from hashlib import sha256
+from io import StringIO
+from pathlib import Path
 from time import perf_counter_ns
-from typing import Any
-from typing import Never
+from typing import Any, Never
 
-from benchmarks.arena import analyze
-from benchmarks.arena import evidence
-from benchmarks.arena import raw_samples
-from benchmarks.arena import report_output
-from benchmarks.arena import target_process
-from scripts.validate import experiment_manifest
-from scripts.validate import target_profile
+from benchmarks.arena import (
+    analyze,
+    evidence,
+    raw_samples,
+    report_output,
+    target_process,
+)
+from scripts.validate import experiment_manifest, target_profile
 
 _ROOT = Path(__file__).resolve().parents[2]
 _TEMP = _ROOT / ".temp"
@@ -219,7 +219,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
 
 def _commit() -> str:
     try:
-        git = shutil.which("git")
+        git = shutil.which("git", path=os.defpath)
         if git is None:
             _fail("target echo reference requires Git")
         output = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
@@ -494,7 +494,9 @@ def _timed_source_verifier(path: Path, pairs: int, algorithm: str) -> int:
         Observed wall nanoseconds spent opening and checking one source.
 
     """
-    from benchmarks.arena import target_echo_audit  # ruff: ignore[import-outside-top-level]
+    from benchmarks.arena import (
+        target_echo_audit,  # ruff: ignore[import-outside-top-level]
+    )
 
     started = perf_counter_ns()
     source = evidence.read_bounded_regular(
@@ -522,7 +524,9 @@ def _timed_replay_verifier(
         TargetProcessError: The measured verifier child omitted an RSS sample.
 
     """
-    from benchmarks.arena import target_echo_audit  # ruff: ignore[import-outside-top-level]
+    from benchmarks.arena import (
+        target_echo_audit,  # ruff: ignore[import-outside-top-level]
+    )
 
     started = perf_counter_ns()
     peak = target_echo_audit.check_forward_vm_replay(
@@ -553,7 +557,9 @@ def _optional_verifier_cost(
 ) -> tuple[tuple[str, int | None, int | None], int | None]:
     if attempt[0] != analyze.VERIFIED or not context.measure_verifier:
         return attempt, None
-    from benchmarks.arena import target_echo_audit  # ruff: ignore[import-outside-top-level]
+    from benchmarks.arena import (
+        target_echo_audit,  # ruff: ignore[import-outside-top-level]
+    )
 
     timing = None
     try:
@@ -980,7 +986,9 @@ def _audit_retained_study(path: Path) -> dict[str, Any]:
 
     """
     # The read-only auditor owns inverse decoding, not the emitting backend.
-    from benchmarks.arena import target_echo_audit  # ruff: ignore[import-outside-top-level]
+    from benchmarks.arena import (
+        target_echo_audit,  # ruff: ignore[import-outside-top-level]
+    )
 
     relative = path.relative_to(_ROOT).as_posix()
     try:

@@ -35,27 +35,29 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import shutil
+import stat
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import sha256
-import json
-import os
 from pathlib import Path
-import shutil
-import stat
 from statistics import median
-import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-import sys
-import tomllib
-from typing import Any
-from typing import Never
+from typing import Any, Never
 
-from benchmarks.arena import analyze
-from benchmarks.arena import evidence
-from benchmarks.arena import raw_samples
-from benchmarks.arena import report_output
+import tomllib
+
+from benchmarks.arena import (
+    analyze,
+    evidence,
+    raw_samples,
+    report_output,
+    target_process,
+)
 from benchmarks.arena import target_echo_reference as producer
-from benchmarks.arena import target_process
 from scripts.validate import experiment_manifest
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -646,7 +648,7 @@ def _require_git_commit(commit: str) -> None:
         TargetEchoAuditError: Git is missing or cannot admit a commit object.
 
     """
-    executable = shutil.which("git")
+    executable = shutil.which("git", path=os.defpath)
     if executable is None:
         _fail("target audit source commit admission requires local Git")
     # Ambient Git object/database selectors cannot redirect local admission.

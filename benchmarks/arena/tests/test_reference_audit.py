@@ -688,7 +688,9 @@ def test_source_commit_object_check_requires_installed_git(
 ) -> None:
     """Unavailable Git cannot impersonate successful source-object review."""
     _, relative = live_pilot
-    monkeypatch.setattr(reference_audit.shutil, "which", lambda _: None)
+    monkeypatch.setattr(
+        reference_audit.shutil, "which", lambda *_args, **_kwargs: None
+    )
     with pytest.raises(
         reference_audit.ReferenceAuditError,
         match="requires local Git",

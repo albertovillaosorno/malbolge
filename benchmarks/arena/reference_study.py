@@ -36,29 +36,29 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import dataclass
-from dataclasses import field
-from hashlib import sha256
-from io import StringIO
 import json
-from pathlib import Path
+import os
 import platform
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
 import time
-from typing import Any
-from typing import Never
+from dataclasses import dataclass, field
+from hashlib import sha256
+from io import StringIO
+from pathlib import Path
+from typing import Any, Never
 
-from scripts.validate import experiment_manifest
-
-from benchmarks.arena import analyze
-from benchmarks.arena import evidence
-from benchmarks.arena import host_c_oracle
-from benchmarks.arena import raw_samples
-from benchmarks.arena import report_output
+from benchmarks.arena import (
+    analyze,
+    evidence,
+    host_c_oracle,
+    raw_samples,
+    report_output,
+)
 from benchmarks.challenges import generate
+from scripts.validate import experiment_manifest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _LOCAL = _ROOT / ".temp"
@@ -90,7 +90,7 @@ def _quote(text: str) -> str:
 
 
 def _commit() -> str:
-    executable = shutil.which("git")
+    executable = shutil.which("git", path=os.defpath)
     if executable is None:
         _fail("host-C reference study requires Git")
     try:

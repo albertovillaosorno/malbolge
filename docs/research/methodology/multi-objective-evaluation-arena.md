@@ -496,9 +496,12 @@ reported source provenance beyond syntactic cross-record agreement without
 claiming that a particular worktree or build actually executed. Git-specific
 environment variables are removed from the child lookup so inherited Git
 object-directory and worktree overrides cannot substitute another
-Git database. Neither static admission nor opt-in replay authenticates
-historical measurements, validates reported failures by reexecution, enforces
-aggregate
+Git database. All four source-commit producer/auditor lookups also resolve the
+Git executable through the OS-default `/bin:/usr/bin` search path; a fake
+caller-`PATH` Git cannot provide a forged SHA-1 or claim an absent commit
+object exists. This still trusts local Git and its object database.
+Neither static admission nor opt-in replay authenticates historical
+measurements, validates reported failures by reexecution, enforces aggregate
 resources, or proves arbitrary guest semantics. Missing original binaries can
 block replay while leaving the offline source evidence inspectable.
 
