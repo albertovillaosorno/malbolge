@@ -40,7 +40,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use malbolge::{
     ProfileDescriptor, ProfileMachine, RunOutcome, current_profile, decode_profile_instruction,
-    historical_profile, parse_capsule,
+    historical_profile, parse_capsule, target_profile,
 };
 
 const LAYOUT_CLI: &str = env!("CARGO_BIN_EXE_malbolge_layout");
@@ -218,11 +218,19 @@ fn scalar_crazy(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
 )]
 #[expect(
     clippy::cognitive_complexity,
-    reason = "profile, artifact framing, guest instructions and byte output checked"
+    clippy::too_many_lines,
+    reason = "all immutable profile identities and real guest effects are compared"
 )]
 fn real_emitted_malbolge_computes_non_echo_crazy_and_rotate_bytes() -> Result<(), String> {
     let fixture = Fixture::new()?;
-    for profile in [historical_profile(), current_profile()] {
+    let profiles = [
+        historical_profile(),
+        current_profile(),
+        target_profile("malbolge-2026.1").ok_or("missing versioned 2026.1")?,
+        target_profile("malbolge-2026.2").ok_or("missing versioned 2026.2")?,
+        target_profile("malbolge-2026.3").ok_or("missing versioned 2026.3")?,
+    ];
+    for profile in profiles {
         let raw_path = fixture.path(&format!("{}-raw.malbolge", profile.id()));
         let capsule_path = fixture.path(&format!("{}-capsule.malbolge", profile.id()));
         let raw = publish(profile.id(), &raw_path, false)?;
@@ -256,7 +264,17 @@ fn real_emitted_malbolge_computes_non_echo_crazy_and_rotate_bytes() -> Result<()
         assert_eq!(capsule.profile().fingerprint(), profile.fingerprint());
         assert_eq!(capsule.payload(), raw);
         let oracle = GuestOracle::from_source(profile, &raw)?;
-        for input in [0u8, 255] {
+        // The 14/15-trit versioned capsules are expensive to load. Exercise
+        // one binary high-byte on each immutable version and two boundary
+        // bytes on the canonical historical/current pair.
+        let inputs = if profile.id() == current_profile().id()
+            || profile.id() == historical_profile().id()
+        {
+            &[0u8, 255][..]
+        } else {
+            &[255u8][..]
+        };
+        for &input in inputs {
             let expected = oracle.output(input)?;
             // Historical raw and both profile capsules have direct CLI
             // dispatch. Modern raw is intentionally profile-unframed.
