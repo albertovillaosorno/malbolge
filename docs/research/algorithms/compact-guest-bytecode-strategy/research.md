@@ -364,6 +364,44 @@ address based on loaded source data. Subsequent control-flow and repeated
 execution would need independent verification, and no equivalent-program
 size or runtime Pareto conclusion is justified.
 
+## Results: Native Guest I/O Handlers Selected by CEB2 v5b (2026-10-29)
+
+Source separation alone did not prove useful computation. The follow-up
+places native `input@91`, `output@92`, `halt@93`, and `halt@107,108`
+in previously unreached pre-data code positions, without changing the
+211-cell source or its 102 protected CEB2 glyphs. With `i@81` reading
+bound count cell M[121], its value 90 (rank five) transfers to 91 and
+executes genuine `/`, `<`, `v`: one input byte echoed and halt after
+85 committed instructions. Values 106/107 (ranks six/seven) transfer to
+107/108 and halt after 83 steps without reading the supplied input.
+
+The host admits only source-bound counts with graphical rank 5/6/7,
+rejecting unsupported rank 0..4 rather than publishing code with unknown
+post-jump behavior. An independent verifier requires exact handler code,
+rebuilds the canonical separated v5 image, then rechecks its entire CEB2
+SHA-256 source/profile identity and graphical padding. Real profile-VM
+executions for counts 10/12/14 across input values 0/128/255 establish
+exact output, consumed input, step count, and all 102 untouched CEB2
+source-memory words. Changed handler glyphs and foreign source identity
+reject in independent host admission.
+
+A separate process-level test publishes exact admitted v5b graphical bytes
+with the canonical version-one `.malbolge` capsule library, then runs the
+actual general `malbolge --input-stdin --report-steps` entrypoint. For a
+rank-five bound source, real external stdin `0xff` is echoed byte-exact
+with 85 committed steps. For rank six, the process emits nothing and
+reports 83 steps. This rules out an in-test emulated I/O path while
+retaining the explicit limitation that the host still builds the source.
+
+**These are native Malbolge handlers selected by a descriptor value, not a
+virtual bytecode instruction dispatcher.** The guest uses the ASCII cell
+value as C directly. No operand decoding, repeat-count loop, guest
+source authentication, multi-byte echo equivalence, or reusable runtime
+is present. A 10-pair direct echo baseline has different observable
+semantics from the single-byte rank-five handler, and the two halt-only
+branches deliberately implement none of their advertised echo pairs.
+No Pareto speedup is claimed from this non-equivalent functionality.
+
 ## Threats to Validity
 
 The pilot has no guest interpreter, no real bytecode loader, no linked data

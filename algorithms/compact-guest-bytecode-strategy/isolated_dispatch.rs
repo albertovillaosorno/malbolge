@@ -63,6 +63,13 @@ pub const ISOLATED_TOTAL_CELLS: usize = 211;
 const OLD_PAYLOAD_START: usize = 41;
 const PAYLOAD_CELLS: usize = 102;
 
+// Reached code addresses 91..93 execute `/`, `<`, `v` for rank five.
+// Ranks six and seven jump directly to code address 107 or 108 and halt.
+// These handlers are a bounded *native instruction* demonstration, not a
+// decoder for arbitrary bytecode instructions nor a count-controlled loop.
+const HANDLER_OPCODES: [(usize, u8); 5] =
+    [(91, b'/'), (92, b'<'), (93, b'v'), (107, b'v'), (108, b'v')];
+
 /// Validates that every legal loaded count glyph points only to code cells.
 ///
 /// # Errors
@@ -183,4 +190,84 @@ pub fn admit_isolated_guest_dispatch(
         );
     }
     admit_guest_payload_probe(program, profile, &recovered)
+}
+
+fn admitted_handler_rank(source: &[u8]) -> Result<usize, GuestPayloadProbeError> {
+    let glyph = *source
+        .get(ISOLATED_COUNT_ADDRESS)
+        .ok_or(GuestPayloadProbeError::InvalidSource)?;
+    let rank = alphabet(ISOLATED_COUNT_ADDRESS)?
+        .iter()
+        .position(|&option| option == glyph)
+        .ok_or(GuestPayloadProbeError::InvalidGlyph {
+            position: ISOLATED_COUNT_ADDRESS,
+        })?;
+    if !(5..=7).contains(&rank) {
+        return Err(GuestPayloadProbeError::UnsupportedGuestHandlerRank { rank });
+    }
+    Ok(rank)
+}
+
+/// Emits three distinct real guest control-flow destinations for CEB2 ranks.
+///
+/// Rank five (`M[121]=90`) lands on real guest `/`, `<`, `v` at 91..93 and
+/// echoes **one** supplied byte. Rank six (`M[121]=106`) reaches `v@107`;
+/// rank seven (`M[121]=107`) reaches `v@108`. These are carefully placed
+/// native Malbolge handlers and do not decode the CEB2 rank *inside* the
+/// guest, nor execute the advertised number of echo operations. All five
+/// reached handler code glyphs live strictly before the 102-cell payload.
+///
+/// # Errors
+///
+/// Rejects source/profile mismatch, unsupported three-bit ranks 0..4,
+/// or unavailable positional instruction encodings.
+pub fn embed_isolated_guest_handlers(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+    candidate: &[u8],
+) -> Result<Vec<u8>, GuestPayloadProbeError> {
+    let mut source = embed_isolated_guest_dispatch(program, profile, candidate)?;
+    let _rank = admitted_handler_rank(&source)?;
+    for (position, opcode) in HANDLER_OPCODES {
+        let cell = source
+            .get_mut(position)
+            .ok_or(GuestPayloadProbeError::InvalidSource)?;
+        *cell = instruction_at(position, opcode)?;
+    }
+    Ok(source)
+}
+
+/// Independently admits exact guest handler code, payload and source binding.
+///
+/// Reconstitutes the fixed v5 no-op code from an untrusted handler source,
+/// delegates all source/profile SHA-256 checking to the established CEB2
+/// verifier, and admits only count ranks five through seven. The guest never
+/// performs any of these admission checks or computes a bytecode ordinal.
+///
+/// # Errors
+///
+/// Rejects changed handlers, altered graphical data, forged provenance,
+/// malformed source length, or an unsupported count selected for this pilot.
+pub fn admit_isolated_guest_handlers(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<[u8; BOUND_ECHO_MACRO_BYTES], GuestPayloadProbeError> {
+    if source.len() != ISOLATED_TOTAL_CELLS {
+        return Err(GuestPayloadProbeError::InvalidSource);
+    }
+    for (position, opcode) in HANDLER_OPCODES {
+        if source.get(position) != Some(&instruction_at(position, opcode)?) {
+            return Err(GuestPayloadProbeError::InvalidSource);
+        }
+    }
+    let _rank = admitted_handler_rank(source)?;
+    let mut restored = source.to_vec();
+    for (position, _opcode) in HANDLER_OPCODES {
+        let cell = restored
+            .get_mut(position)
+            .ok_or(GuestPayloadProbeError::InvalidSource)?;
+        *cell = instruction_at(position, b'o')?;
+    }
+    admit_isolated_guest_dispatch(program, profile, &restored)
 }

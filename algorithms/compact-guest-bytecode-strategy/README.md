@@ -245,6 +245,41 @@ anything inside the guest, loop or execute an echo trace. The v5 and direct
 lowering programs still have different semantics and are not a valid
 size/speedup comparison.
 
+## Count-selected real guest I/O handlers v5b (2026-10-29)
+
+The optional `pilot-v5-handlers.toml` experiment adds actual distinct guest
+work at three of the eight data-derived branch targets, without changing
+the 211-cell source size or 102-cell protected payload. Its fixed source
+code locations are `/` at 91 (input), `<` at 92 (output), `v` at 93,
+and `v` at 107/108. For source-bound pair counts whose CEB2 graphical
+count rank is 5, the guest indirect `i` selects 91 and genuinely reads,
+echoes, then halts after **85 steps**. For ranks 6 and 7, it selects
+107 or 108 and halts after **83 steps** with no input/output. The candidate
+is rejected at the host boundary for unsupported ranks 0–4; there is no
+implicit fallback to unverified code. Source/profile SHA-256 and all exact
+handler glyphs are re-admitted independently before publication.
+
+Normative VM tests cover bounded counts 10, 12 and 14 and input bytes
+0, 128 and 255. They check exact output, input consumption, termination,
+step counts and all 102 unchanged CEB2 memory words. Source count bits
+influence actual reached I/O, not merely a diagnostic register value.
+
+An end-to-end regression additionally frames both rank-five and rank-six
+sources in canonical `.malbolge` capsules and executes the **real** general
+Malbolge CLI with explicit binary stdin and `--report-steps`. The rank-five
+capsule emits exactly `0xff` and reports 85 steps; rank six emits no bytes
+and reports 83 steps. The host constructs the source and the guest performs
+the reached native instructions; the CLI does not emulate the handler.
+
+**This is not a bytecode interpreter.** The guest branches directly on
+loaded ASCII count glyphs to hand-written Malbolge instructions. It never
+computes the ordinal itself, decodes a bytecode opcode, counts iterations,
+authenticates source identity, or executes all 10/12/14 echo pairs. Only the
+selected rank-five route happens to echo **one** byte; the original direct
+10-pair program requires ten. The rank-six/seven routes deliberately halt
+without output. Neither output behavior nor size/runtime is semantically
+equivalent to the direct baseline.
+
 ## Status
 
 No VM-resident bytecode runtime has been implemented. No guest-interpreted

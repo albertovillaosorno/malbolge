@@ -48,8 +48,9 @@ use malbolge::{
 };
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, id};
+use std::process::{Command, Stdio, id};
 
 use strategy::bridge::ternary::{
     InputBlock, InputFunction, InputInstruction, InputScalarType, InputSourcePosition,
@@ -79,7 +80,8 @@ use guest_probe::{
 
 use isolated::{
     ISOLATED_COUNT_ADDRESS, ISOLATED_JUMP_POSITION, ISOLATED_NO_OPS, ISOLATED_PAYLOAD_START,
-    ISOLATED_TOTAL_CELLS, admit_isolated_guest_dispatch, embed_isolated_guest_dispatch,
+    ISOLATED_TOTAL_CELLS, admit_isolated_guest_dispatch, admit_isolated_guest_handlers,
+    embed_isolated_guest_dispatch, embed_isolated_guest_handlers,
     validate_isolated_dispatch_geometry,
 };
 
@@ -90,6 +92,8 @@ const GUEST_PROBE_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v3.toml");
 const ISOLATED_DISPATCH_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v5.toml");
+const ISOLATED_HANDLERS_CONFIG: &str =
+    include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v5-handlers.toml");
 const INDIRECT_DISPATCH_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v4.toml");
 
@@ -1918,4 +1922,220 @@ fn isolated_dispatch_v5_configuration_pins_non_equivalence_and_guest_work() {
             "missing pinned research invariant: {line}"
         );
     }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded dynamic guest IO handler execution"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "three distinct data-selected guest handlers"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "three complete guest handler/I-O witnesses"
+)]
+fn isolated_bound_count_selects_real_guest_echo_or_halt_handler() -> Result<(), String> {
+    for (pairs, expected_steps, expected_input_count, expected_code) in [
+        (10usize, 85usize, 1usize, 91u32),
+        (12, 83, 0, 107),
+        (14, 83, 0, 108),
+    ] {
+        let original = program(pairs)?;
+        let candidate = encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("bound {pairs}: {error:?}"))?;
+        let source = embed_isolated_guest_handlers(&original, current_profile(), &candidate)
+            .map_err(|error| format!("emit bound handlers {pairs}: {error:?}"))?;
+        assert_eq!(source.len(), 211, "handlers do not change data footprint");
+        let recovered = admit_isolated_guest_handlers(&original, current_profile(), &source)
+            .map_err(|error| format!("admit bound handlers {pairs}: {error:?}"))?;
+        assert_eq!(
+            recovered, candidate,
+            "all IO handlers retain CEB2 source digest"
+        );
+        let initial_glyph = u32::from(
+            *source
+                .get(ISOLATED_COUNT_ADDRESS)
+                .ok_or("descriptor count cell")?,
+        );
+        assert_eq!(
+            initial_glyph.saturating_add(1),
+            expected_code,
+            "guest source count cell selects actual handler entry"
+        );
+        for value in [0u8, 255, 128] {
+            let mut machine = ProfileMachine::from_source(current_profile(), &source, vec![value])
+                .map_err(|error| format!("profiled VM load {pairs}: {error:?}"))?;
+            let outcome = machine
+                .run(90)
+                .map_err(|error| format!("real guest handler {pairs}: {error:?}"))?;
+            assert!(
+                matches!(outcome, RunOutcome::Terminated { .. }),
+                "guest handler must actually halt without host IO callbacks"
+            );
+            let RunOutcome::Terminated {
+                steps: reported_steps,
+                ..
+            } = outcome
+            else {
+                return Err(format!("guest handler budget exceeded at n={pairs}"));
+            };
+            assert_eq!(
+                reported_steps, expected_steps,
+                "exact matched source-data-directed guest work at n={pairs}"
+            );
+            assert_eq!(
+                machine.input_consumed(),
+                expected_input_count,
+                "exact bounded guest input reads at n={pairs}"
+            );
+            let expected_output = if pairs == 10 { vec![value] } else { Vec::new() };
+            assert_eq!(
+                machine.output(),
+                expected_output,
+                "rank-five handler echoes one byte; ranks six/seven halt"
+            );
+            for pos in ISOLATED_PAYLOAD_START..ISOLATED_TOTAL_CELLS {
+                let address = u32::try_from(pos).map_err(|error| error.to_string())?;
+                assert_eq!(
+                    machine
+                        .memory_word(address)
+                        .map_err(|error| format!("payload {pos}: {error:?}"))?,
+                    u32::from(*source.get(pos).ok_or("payload byte")?),
+                    "guest input/output/halt handler must not modify CEB2 at {pos}"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "reject unsupported guest handler encodings"
+)]
+fn isolated_handler_host_rejects_unsupported_ranks_and_code_tampering() -> Result<(), String> {
+    for pairs in [32usize, 2, 4, 6, 8] {
+        let original = program(pairs)?;
+        let candidate = encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("candidate {pairs}: {error:?}"))?;
+        let code = embed_isolated_guest_handlers(&original, current_profile(), &candidate);
+        let expected_rank = (pairs >> 1usize) & 7usize;
+        assert_eq!(
+            code,
+            Err(GuestPayloadProbeError::UnsupportedGuestHandlerRank {
+                rank: expected_rank,
+            }),
+            "unsupported count rank must reject without an executable source"
+        );
+    }
+    let original = program(10)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("candidate: {error:?}"))?;
+    let source = embed_isolated_guest_handlers(&original, current_profile(), &candidate)
+        .map_err(|error| format!("emit: {error:?}"))?;
+    for position in [91usize, 92, 93, 107, 108] {
+        let mut changed = source.clone();
+        *changed.get_mut(position).ok_or("guest handler")? = b'!';
+        assert_eq!(
+            admit_isolated_guest_handlers(&original, current_profile(), &changed),
+            Err(GuestPayloadProbeError::InvalidSource),
+            "every changed code-handler cell must reject"
+        );
+    }
+    let mut other = original;
+    other.source_id = String::from("research/foreign-handler.c");
+    assert!(
+        admit_isolated_guest_handlers(&other, current_profile(), &source).is_err(),
+        "host must reject matching count with wrong source profile binding"
+    );
+    Ok(())
+}
+
+#[test]
+fn isolated_handlers_pilot_pins_guest_io_non_equivalence() {
+    for declaration in [
+        "schema = \"compact-guest-bytecode-pilot-v5-handlers\"",
+        "accepted_count_glyph_ranks = [5, 6, 7]",
+        "rank_5_handler = \"input@91-output@92-halt@93\"",
+        "rank_5_guest_steps = 85",
+        "rank_5_input_bytes = 1",
+        "rank_5_output_bytes = 1",
+        "rank_6_handler = \"halt@107\"",
+        "rank_7_handler = \"halt@108\"",
+        "source_payload_remains_unmodified = true",
+        "count_ordinal_guest_decoding = false",
+        "full_bytecode_interpreter_present = false",
+        "semantic_equivalence_to_n_pair_echo = false",
+    ] {
+        assert!(
+            ISOLATED_HANDLERS_CONFIG
+                .lines()
+                .any(|line| line == declaration),
+            "missing pinned handler assumption: {declaration}"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "actual external Malbolge guest handlers"
+)]
+fn source_selected_guest_handlers_run_through_real_general_malbolge_cli() -> Result<(), String> {
+    for (pairs, expected_output, exact_steps) in
+        [(10usize, vec![255u8], 85usize), (12, Vec::new(), 83)]
+    {
+        let owned = OwnedArtifactFixture::new(pairs.saturating_add(20_000))?;
+        let original = program(pairs)?;
+        let candidate = encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("bound {pairs}: {error:?}"))?;
+        let source = embed_isolated_guest_handlers(&original, current_profile(), &candidate)
+            .map_err(|error| format!("source: {error:?}"))?;
+        assert_eq!(
+            admit_isolated_guest_handlers(&original, current_profile(), &source),
+            Ok(candidate),
+            "public CLI only receives host-admitted source"
+        );
+        let capsule = malbolge::build_capsule(current_profile(), &source)
+            .map_err(|error| format!("capsule: {error}"))?;
+        let path = owned.path("isolated-handler.malbolge");
+        fs::write(&path, capsule).map_err(|error| format!("write: {error}"))?;
+        let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .env_remove("MALBOLGE_PROFILE_ADAPTIVE_WIDTH")
+            .env_remove("MALBOLGE_PROFILE_RESIDENT_WORKER")
+            .arg(&path)
+            .arg("--input-stdin")
+            .arg("--report-steps")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("actual runner start {pairs}: {error}"))?;
+        let mut stdin = child.stdin.take().ok_or("missing child stdin")?;
+        stdin
+            .write_all(&[255u8])
+            .map_err(|error| format!("input: {error}"))?;
+        drop(stdin);
+        let output = child
+            .wait_with_output()
+            .map_err(|error| format!("actual runner result: {error}"))?;
+        assert!(
+            output.status.success(),
+            "general CLI failed for n={pairs}: {output:?}"
+        );
+        assert_eq!(
+            output.stdout, expected_output,
+            "actual guest I/O differs from independent count-route oracle"
+        );
+        assert_eq!(
+            output.stderr,
+            format!("malbolge-steps-v1:{exact_steps}\n").as_bytes(),
+            "the external runner must receipt exact guest steps"
+        );
+    }
+    Ok(())
 }

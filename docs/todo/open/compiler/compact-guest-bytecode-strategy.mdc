@@ -134,6 +134,19 @@ code-size explosion or compilation cost.
   +68 reached steps vs v4 without performing any equivalent echo work;
   guest bytecode interpretation and provenance authentication remain open.
 
+- A second bounded v5b experiment makes three source-bound graphical
+  ranks select real native Malbolge handlers in the separated code area:
+  rank 5 reaches `/`, `<`, `v` and echoes exactly one byte in 85 steps;
+  ranks 6/7 halt with no I/O after 83 steps. Host publication rejects the
+  other five ranks, and exact handler code, CEB2 provenance and all 102
+  payload memory words remain independently checked. Tested counts 10/12/14
+  and bytes 0/128/255 are deliberately **not** equivalent to the n-pair
+  echo workload. This is guest data-selected I/O, not bytecode opcode
+  decoding, full iteration, or a reusable VM-inside-Malbolge runtime.
+  Both rank-five echo and rank-six halt are also observed through real
+  canonical capsules and the general Malbolge CLI with exact step receipts;
+  this proves real guest execution, not equivalence to the original source.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

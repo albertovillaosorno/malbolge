@@ -71,6 +71,11 @@ pub enum GuestPayloadProbeError {
     },
     /// All two pad bits on the final payload glyph must be zero.
     NoncanonicalPadding,
+    /// Exact known source rank has no permitted bounded guest handler.
+    UnsupportedGuestHandlerRank {
+        /// Position-dependent three-bit loader rank, from zero through seven.
+        rank: usize,
+    },
     /// Code/data regions would overlap or exceed a bounded graphical source.
     UnsupportedPosition,
 }
