@@ -508,6 +508,49 @@ loop, guest source authentication or larger program family has been
 implemented. CEB2 remains a host-bound descriptor, not a resident CEB2
 bytecode interpreter. This P2 task and its hypothesis remain open.
 
+## Results: Shared-Code Conditional Guest Dispatch v8 (2026-10-29)
+
+Version eight asks a stronger, falsifiable question than v7: can one
+byte-identical Malbolge *code* source execute either a one- or two-byte
+canonical echo trace based on **resident bytecode data**, rather than
+using differently emitted handler code for each source? The proposed
+fixed source has 227 graphical cells, with the same native `j@0`,
+`i@81`, `/@91`, `<@92`, `i@93`, and two alternative native handlers
+`v@88` and `/@105`, `<@106`, `v@107`. The first guest opcode is always
+`M[121]=90`. The **only code-region difference** between the emitted
+one/two-pair source images is `M[124]`, whose loader-valid graphical 87
+means HALT after the first echo, and 104 means ECHO a second byte.
+All 102 CEB2 descriptor glyphs occupy source cells 125–226 and are
+independently re-packed and admitted against canonical source/profile
+SHA-256. Mandatory Malbolge XLAT2 writes only code addresses 90 and
+87/104; the two opcode cells and CEB2 tail remain separate.
+
+Actual normative VM and general Malbolge CLI tests establish the cost:
+227 source cells and 86 guest steps versus direct 3 cells/3 steps for
+one pair, and 227 source cells/88 steps versus direct 5 cells/5 steps
+for two pairs. Thus adding a native HALT/ECHO
+choice does **not** demonstrate a space/time advantage. The guest reads
+graphical opcode ASCII as a numeric branch address; it does not calculate
+three-bit ordinals, interpret a general instruction stream, loop, read
+or validate the CEB2 count, or authenticate its own source. Code is
+constant across this specific pair of applications, but the descriptor
+and opcode are still preselected by the host.
+
+Both variants' reached `i@81` and `i@93` read real source words, encrypt
+only code cells and leave all 102 authenticated CEB2 positions unchanged.
+Successful input pairs `[0,255]` and `[128,129]` agree with independent
+direct lowering; the actual general CLI capsules report exact stdout
+and 86/88 versus 3/5 steps. A deliberate loader-valid change of only
+`M[124]` (87 to 104) makes the guest execute a second echo despite the
+original one-pair descriptor; host admission independently rejects that
+changed source. Unsupported original counts, all alternate legal second
+opcode words, altered native source, mutated graphical descriptor cells,
+foreign source identities and truncated/excess source images are rejected.
+
+Exact design, source regions and the independently executable test suite
+are recorded in the v8 `conditional_dispatch.md` experiment note beside
+its source code.
+
 ## Threats to Validity
 
 The pilot has no **reusable** guest interpreter or complete bytecode

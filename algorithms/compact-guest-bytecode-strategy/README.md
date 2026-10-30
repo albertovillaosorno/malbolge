@@ -383,6 +383,31 @@ CEB2 verification, bounded-loop termination, or independently established
 performance benefit for larger programs. The compiler P2 TODO remains
 open pending a reusable interpreter and equivalent multi-operation study.
 
+## Shared-code source-selected HALT/ECHO branch v8 (2026-10-29)
+
+`conditional_dispatch.rs`, `conditional_dispatch.md` and `pilot-v8.toml`
+extend the v7 data-dependent jump into a two-way **operation choice with
+one byte-identical native guest code island**. A source-bound canonical
+one-pair or two-pair echo program has the same first 124 loader cells;
+its second separately loaded graphical opcode at address 124 is either
+87, causing `i@93` to execute `v@88` after one echo, or 104, causing
+`i@93` to execute the second `/@105`, `<@106`, `v@107` echo handler.
+Both variants keep the same total 227 loader-valid cells, with 102
+source/profile-bound CEB2 descriptor cells at addresses 125–226.
+
+The guest reads actual physical source-resident opcode bytes to select
+HALT or ECHO, not a host callback or a new code emitter for each handler.
+Both CEB2 envelopes are independently admitted on the host; the selected
+second opcode must agree with the canonical original one/two-pair count.
+Changing only the opcode changes guest execution but is rejected by host
+admission. Real normative VM input/output parity and physical two-indirect
+jump traces pass for input pairs `[0,255]` and `[128,129]`. Real general
+Malbolge CLI capsules confirm exact 86/88 steps and stdout, versus direct
+3/5 steps. Loader-valid opcode substitutions, descriptor changes, foreign
+identities and malformed/unsupported counts reject in the independent
+host verifier. This remains a bounded two-variant research pilot, not a
+loop, arbitrary decoder, in-guest digest check, or general C compiler.
+
 ## Status
 
 No **reusable** VM-resident bytecode interpreter has been implemented.

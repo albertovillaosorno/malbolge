@@ -183,6 +183,23 @@ code-size explosion or compilation cost.
   makes the actual guest `i@93` choose code address 88 instead of 105,
   while the independent source verifier rejects the changed image.
 
+- Pilot v8 adds a **single shared native code island** for two distinct
+  source-bound canonical programs. After one real input/output, guest
+  `i@93` reads its second graphical opcode at `M[124]`: loader-valid 87
+  jumps to `v@88` and HALTs, while 104 jumps to `/@105`, `<@106`,
+  `v@107` for a second echo. All positions 0–123 are identical across
+  the two source variants; 102 SHA-256-bound CEB2 glyphs stay at 125–226.
+  Host admission cross-checks the selected opcode against the original
+  canonical pair count and profile, while the guest itself never verifies
+  SHA-256, decodes a packed ordinal or loops. Fixed 227 source cells and
+  86/88 guest steps versus direct 3/5 remain negative small-case costs.
+  Normative VM and actual general Malbolge CLI execute both source-bound
+  variants, match the direct one/two-pair output and committed step counts,
+  and preserve all 102 CEB2 words. Changing only the second opcode makes
+  the real guest branch differently yet fails host provenance admission;
+  all other loader-valid alternatives, wrong counts and forged data fail.
+  The compiler P2 task is still open pending a reusable generic interpreter.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
