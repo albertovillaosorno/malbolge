@@ -518,6 +518,49 @@ trial manifest together; the auditor only proves their current consistency.
 There is still no process-tree aggregate RSS, cgroup budget, energy/VRAM
 measurement or general C compiler proof.
 
+### Opt-in original GNU time peak-RSS lines (version seven)
+
+A new explicitly versioned extension makes the preceding v6 producer-normalized
+RSS bytes independently checkable against the *original tool output*.
+Request `--retain-raw-rss` **in addition to** every v6 flag:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_reference \
+  --pairs 1 4 16 64 --trials 3 --input-mode patterned \
+  --measure-steps --layout-mode forward-skip \
+  --measure-verifier --verifier-mode replay \
+  --limit-child-resources --measure-child-rss \
+  --retain-rss-stages --retain-raw-rss
+```
+
+The separate `classic-patterned-forward-skip-raw-rss-v7` study uses the
+`classic-forward-jump-raw-rss-second-vm-v1` verifier. It retains the same
+five Pareto objectives, matched inputs, limits, guest instruction receipt and
+optional exact VM replay as v6. All v1-v6 files and identities are unchanged
+when the new flag is absent. A raw-output request without retained per-stage
+RSS fails **before** any local study output is allocated.
+
+Version seven extends each successful trial's canonical `rss/<stem>.json`
+with `schema_version: 2` and a `raw_kib` map. The three strings contain the
+actual complete GNU time `--format=%M` file bytes for `emitter`, `primary_vm`
+and `verifier_vm`, including the terminating LF. The `[arena_rss]` trial
+manifest uses schema version two and continues to SHA-256 bind exact JSON
+bytes. The independent read-only auditor parses each original ASCII decimal
+line **without using the producer's RSS parser**, rejects malformed, missing,
+zero, negative, non-ASCII, multi-line, over-limit and inconsistent readings,
+converts KiB to bytes and compares each reported stage and the final
+`peak_rss_bytes`. Trial identity, raw CSV, inventory and post-replay byte
+snapshots remain mandatory.
+
+The original short-lived GNU time files are still deleted after reading; the
+**bytes they contained** are now retained in the per-trial JSON as source-
+reported data. This enables independent parsing and conversion checks; it
+**does not attest** that GNU time originally wrote those bytes or that a
+particular host kernel executed the claimed workload. A malicious producer
+could still forge all linked files and digests. It is not process-tree or
+study-wide RSS, hardware energy, VRAM, general C execution or a system CPU
+budget measurement.
+
 This is a real bounded demonstration of **forward control-flow work avoided**,
 not a loop, arbitrary branching, native CPU-instruction savings, statistically
 significant wall-time speedup, or optimization of compiled C. Measured host

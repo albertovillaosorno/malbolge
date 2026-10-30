@@ -107,6 +107,7 @@ FORWARD_LIMITED_REPLAY_STUDY = (
 )
 FORWARD_RSS_STUDY = "classic-patterned-forward-skip-limited-rss-v5"
 FORWARD_RSS_RECEIPTS_STUDY = "classic-patterned-forward-skip-rss-receipts-v6"
+FORWARD_RAW_RSS_STUDY = "classic-patterned-forward-skip-raw-rss-v7"
 SOURCE_VERIFIER_MODE = "source"
 REPLAY_VERIFIER_MODE = "replay"
 VERIFIER_MODES = (SOURCE_VERIFIER_MODE, REPLAY_VERIFIER_MODE)
@@ -117,6 +118,7 @@ FORWARD_REPLAY_VERIFIER = "classic-forward-jump-patterned-second-vm-v1"
 FORWARD_LIMITED_REPLAY_VERIFIER = "classic-forward-jump-limited-second-vm-v1"
 FORWARD_RSS_VERIFIER = "classic-forward-jump-limited-rss-second-vm-v1"
 FORWARD_RSS_RECEIPTS_VERIFIER = "classic-forward-jump-rss-receipts-second-vm-v1"
+FORWARD_RAW_RSS_VERIFIER = "classic-forward-jump-raw-rss-second-vm-v1"
 PEAK_RSS = "peak_rss_bytes"
 RSS_MEASURED_STAGES = 3
 JUMP_OPERATION = "jump"
@@ -142,6 +144,7 @@ class StudyPlan:
     limit_child_resources: bool = False
     measure_child_rss: bool = False
     retain_rss_stages: bool = False
+    retain_raw_rss: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +165,9 @@ class _Context:
     limit_child_resources: bool = False
     measure_child_rss: bool = False
     retain_rss_stages: bool = False
+    retain_raw_rss: bool = False
     rss_stages: list[int] | None = None
+    raw_rss_stages: list[bytes] | None = None
 
 
 def _fail(message: str) -> Never:
@@ -331,11 +336,23 @@ def _measure_guest_rss(
     stages = context.rss_stages
     if stages is None:
         _fail("target echo RSS measurement missing per-trial stage witness")
-    result, peak = target_process.invoke_with_input_limited_measured(
-        command,
-        _input_bytes(pairs, context.input_mode),
-        timeout_seconds=TIMEOUT_SECONDS,
-    )
+    if context.retain_raw_rss:
+        result, peak, raw = (
+            target_process.invoke_with_input_limited_measured_raw(
+                command,
+                _input_bytes(pairs, context.input_mode),
+                timeout_seconds=TIMEOUT_SECONDS,
+            )
+        )
+        if context.raw_rss_stages is None:
+            _fail("target echo raw RSS measurements need an owned stage list")
+        context.raw_rss_stages.append(raw)
+    else:
+        result, peak = target_process.invoke_with_input_limited_measured(
+            command,
+            _input_bytes(pairs, context.input_mode),
+            timeout_seconds=TIMEOUT_SECONDS,
+        )
     stages.append(peak)
     return result
 
@@ -390,9 +407,19 @@ def _emit_attempt(
         stages = context.rss_stages
         if stages is None:
             _fail("target echo RSS measurement missing per-trial stage witness")
-        result, peak = target_process.invoke_limited_measured(
-            command, timeout_seconds=TIMEOUT_SECONDS
-        )
+        if context.retain_raw_rss:
+            result, peak, raw = target_process.invoke_limited_measured_raw(
+                command, timeout_seconds=TIMEOUT_SECONDS
+            )
+            if context.raw_rss_stages is None:
+                _fail(
+                    "target echo raw RSS measurements need an owned stage list"
+                )
+            context.raw_rss_stages.append(raw)
+        else:
+            result, peak = target_process.invoke_limited_measured(
+                command, timeout_seconds=TIMEOUT_SECONDS
+            )
         stages.append(peak)
         return result
     return (
@@ -506,6 +533,7 @@ def _timed_replay_verifier(
             steps,
             context.limit_child_resources,
             context.measure_child_rss,
+            context.raw_rss_stages if context.retain_raw_rss else None,
         ),
     )
     if context.measure_child_rss:
@@ -592,14 +620,21 @@ def _finalize_attempt_metrics(
     return _admit_peak_rss(context, outcome, metrics), metrics
 
 
+def _complete_raw_rss_stages(context: _Context) -> bool:
+    if not context.retain_raw_rss:
+        return True
+    readings = context.raw_rss_stages
+    return readings is not None and len(readings) == RSS_MEASURED_STAGES
+
+
 def _admit_peak_rss(
     context: _Context, outcome: str, metrics: dict[str, int]
 ) -> str:
     if not context.measure_child_rss or outcome != analyze.VERIFIED:
         return outcome
-    stages = context.rss_stages
+    stages = context.rss_stages or []
     if (
-        stages is None
+        not _complete_raw_rss_stages(context)
         or len(stages) != RSS_MEASURED_STAGES
         or any(
             type(value) is not int
@@ -697,7 +732,7 @@ def _manifest(
             _fail("retained RSS stage receipt digest is required")
         lines.extend([
             "[arena_rss]",
-            "schema_version = 1",
+            f"schema_version = {2 if context.retain_raw_rss else 1}",
             f"sha256 = {quote(rss_hash)}",
             "",
         ])
@@ -746,9 +781,22 @@ def _write_rss_stages(
         "trial": row["trial"],
         "workload_sha256": case["workload_sha256"],
     }
+    receipt = {"schema_version": 1, "identity": identity, "stages": stages}
+    if context.retain_raw_rss:
+        raw = context.raw_rss_stages
+        if raw is None or len(raw) != RSS_MEASURED_STAGES:
+            _fail("retained raw RSS requires three complete GNU time reports")
+        receipt["schema_version"] = 2
+        receipt["raw_kib"] = dict(
+            zip(
+                ("emitter", "primary_vm", "verifier_vm"),
+                [item.decode("ascii") for item in raw],
+                strict=True,
+            )
+        )
     content = (
         json.dumps(
-            {"schema_version": 1, "identity": identity, "stages": stages},
+            receipt,
             sort_keys=True,
             separators=(",", ":"),
         )
@@ -770,7 +818,11 @@ def _write_attempt(
     stem = f"{algorithm}-pairs-{pairs}-trial-{trial}"
     artifact = context.directory / "candidates" / f"{stem}.malbolge"
     observed_context = (
-        replace(context, rss_stages=[])
+        replace(
+            context,
+            rss_stages=[],
+            raw_rss_stages=[] if context.retain_raw_rss else None,
+        )
         if context.measure_child_rss
         else context
     )
@@ -787,7 +839,9 @@ def _write_attempt(
         "trial": trial,
         "outcome": outcome,
         "verifier": (
-            FORWARD_RSS_RECEIPTS_VERIFIER
+            FORWARD_RAW_RSS_VERIFIER
+            if context.retain_raw_rss
+            else FORWARD_RSS_RECEIPTS_VERIFIER
             if context.retain_rss_stages
             else FORWARD_RSS_VERIFIER
             if context.measure_child_rss
@@ -810,7 +864,7 @@ def _write_attempt(
     raw = _raw_csv(row)
     (context.directory / "raw" / f"{stem}.csv").write_bytes(raw)
     receipt_hash = _write_rss_stages(
-        context,
+        observed_context,
         row,
         values=observed_context.rss_stages,
     )
@@ -830,7 +884,9 @@ def _make_document(
 ) -> dict[str, Any]:
     patterned = context.input_mode == PATTERNED_MODE
     study_id = (
-        FORWARD_RSS_RECEIPTS_STUDY
+        FORWARD_RAW_RSS_STUDY
+        if context.retain_raw_rss
+        else FORWARD_RSS_RECEIPTS_STUDY
         if context.retain_rss_stages
         else FORWARD_RSS_STUDY
         if context.measure_child_rss
@@ -970,6 +1026,13 @@ def _validate_rss_selection(plan: StudyPlan) -> None:
         _fail("target echo RSS receipts require measured child RSS")
 
 
+def _validate_raw_rss_selection(plan: StudyPlan) -> None:
+    if type(plan.retain_raw_rss) is not bool:
+        _fail("target echo raw RSS retention requires a boolean selection")
+    if plan.retain_raw_rss and not plan.retain_rss_stages:
+        _fail("target echo raw RSS retention requires per-stage RSS receipts")
+
+
 def _validate_study_options(plan: StudyPlan) -> None:
     _validate_input_mode(plan.input_mode)
     if type(plan.measure_steps) is not bool:
@@ -985,6 +1048,7 @@ def _validate_study_options(plan: StudyPlan) -> None:
         _fail("target echo forward-skip requires pattern and measured steps")
     _validate_verifier_measurement(plan)
     _validate_rss_selection(plan)
+    _validate_raw_rss_selection(plan)
 
 
 def run_study(
@@ -1015,6 +1079,7 @@ def run_study(
         limit_child_resources=plan.limit_child_resources,
         measure_child_rss=plan.measure_child_rss,
         retain_rss_stages=plan.retain_rss_stages,
+        retain_raw_rss=plan.retain_raw_rss,
     )
     if context.retain_rss_stages:
         (context.directory / "rss").mkdir()
@@ -1059,6 +1124,7 @@ def main() -> int:
     parser.add_argument("--limit-child-resources", action="store_true")
     parser.add_argument("--measure-child-rss", action="store_true")
     parser.add_argument("--retain-rss-stages", action="store_true")
+    parser.add_argument("--retain-raw-rss", action="store_true")
     args = parser.parse_args()
     try:
         directory, document = run_study(
@@ -1073,6 +1139,7 @@ def main() -> int:
                 args.limit_child_resources,
                 args.measure_child_rss,
                 args.retain_rss_stages,
+                args.retain_raw_rss,
             )
         )
         report_output.publish(

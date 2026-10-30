@@ -408,6 +408,30 @@ can still be forged by a producer controlling all study inputs. This is
 not per-study peak resident usage, process-tree aggregate containment,
 attested kernel metering, or validation of general target compilation.
 
+Version seven separates historical producer conversion from the retained
+raw resource reading. Only `--retain-raw-rss`, combined with all v6 flags,
+selects `classic-patterned-forward-skip-raw-rss-v7` with the dedicated
+`classic-forward-jump-raw-rss-second-vm-v1` verifier. Every previously
+versioned study retains its original bytes, five v5-v7 objectives and
+bounded execution contract.
+
+Each successful v7 trial's schema-two canonical RSS receipt adds the actual
+captured GNU time `--format=%M` single-line output strings for emitter,
+primary VM and second VM, with exact `[arena_rss]` schema-two SHA-256 linked
+through the run. The independent source auditor parses these strings into
+positive integer KiB with strict ASCII and line termination, proves that
+each reported byte value equals 1,024 times the source reading and that
+`peak_rss_bytes` is their maximum, rechecks unchanged run/raw/receipt bytes
+and optionally verifies target VM output. Wrong historical raw conversion,
+missing third-stage evidence, forged inconsistent tool text, non-ASCII and
+extra lines fail closed even if the attacker refreshes the manifest digest.
+
+The raw tool bytes are retained **by the producer**, not cryptographically
+signed by an independent kernel or a trusted resource agent. A producer
+controlling all study inputs can fabricate consistent observations. No
+aggregate process-tree RSS containment, cgroup budget, system energy, VRAM,
+calibrated host wall-time speedup or general guest C compilation is claimed.
+
 The earlier linear study remains a falsifiable source-size hypothesis (the
 nop-padded source should use one extra graphical code byte per pair), not a
 general compiler-size or performance result. Host wall times include compiler

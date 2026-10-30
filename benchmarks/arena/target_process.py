@@ -338,7 +338,7 @@ def require_child_rss_measurement() -> None:
         _fail("bounded target peak RSS requires GNU time")
 
 
-def _rss_report(path: Path) -> int:
+def _rss_report_bytes(path: Path) -> bytes:
     from benchmarks.arena import evidence  # ruff: ignore[import-outside-top-level]
 
     try:
@@ -348,6 +348,10 @@ def _rss_report(path: Path) -> int:
     except (OSError, evidence.EvidenceError) as error:
         message = "bounded target GNU time RSS report missing or unsafe"
         raise TargetProcessError(message) from error
+    return raw
+
+
+def _parse_rss_report(raw: bytes) -> int:
     if (
         not 1 <= len(raw) <= RSS_REPORT_LIMIT
         or not raw.endswith(b"\n")
@@ -360,12 +364,16 @@ def _rss_report(path: Path) -> int:
     return kib * KIB_BYTES
 
 
+def _rss_report(path: Path) -> int:
+    return _parse_rss_report(_rss_report_bytes(path))
+
+
 def _measured_limited(
     command: list[str],
     *,
     input_bytes: bytes | None,
     timeout_seconds: float,
-) -> tuple[sp.CompletedProcess[bytes], int]:
+) -> tuple[sp.CompletedProcess[bytes], int, bytes]:
     require_child_rss_measurement()
     time_executable = shutil.which(RSS_TOOL)
     if time_executable is None:
@@ -392,7 +400,8 @@ def _measured_limited(
         )
         if result.returncode != 0:
             _fail("bounded target GNU time requires successful child exit")
-        return result, _rss_report(report)
+        raw = _rss_report_bytes(report)
+        return result, _parse_rss_report(raw), raw
 
 
 def invoke_limited_measured(
@@ -406,11 +415,12 @@ def invoke_limited_measured(
         Exact guest streams/status and observed per-child peak RSS bytes.
 
     """
-    return _measured_limited(
+    result, peak, _ = _measured_limited(
         command,
         input_bytes=None,
         timeout_seconds=timeout_seconds,
     )
+    return result, peak
 
 
 def invoke_with_input_limited_measured(
@@ -427,8 +437,44 @@ def invoke_with_input_limited_measured(
     """
     if type(input_bytes) is not bytes or len(input_bytes) > MAX_STDIN_BYTES:
         _fail("bounded target input requires up to 256 exact bytes")
-    return _measured_limited(
+    result, peak, _ = _measured_limited(
         command,
         input_bytes=input_bytes,
         timeout_seconds=timeout_seconds,
+    )
+    return result, peak
+
+
+def invoke_limited_measured_raw(
+    command: list[str],
+    *,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+) -> tuple[sp.CompletedProcess[bytes], int, bytes]:
+    """Run limited child and retain the actual GNU-time report bytes.
+
+    Returns:
+        Child status and stdout/stderr, integer RSS bytes and raw GNU time.
+
+    """
+    return _measured_limited(
+        command, input_bytes=None, timeout_seconds=timeout_seconds
+    )
+
+
+def invoke_with_input_limited_measured_raw(
+    command: list[str],
+    input_bytes: bytes,
+    *,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+) -> tuple[sp.CompletedProcess[bytes], int, bytes]:
+    """Run limited binary-input child and retain its raw GNU-time report.
+
+    Returns:
+        Child status, measured RSS bytes and original GNU time file bytes.
+
+    """
+    if type(input_bytes) is not bytes or len(input_bytes) > MAX_STDIN_BYTES:
+        _fail("bounded target input requires up to 256 exact bytes")
+    return _measured_limited(
+        command, input_bytes=input_bytes, timeout_seconds=timeout_seconds
     )

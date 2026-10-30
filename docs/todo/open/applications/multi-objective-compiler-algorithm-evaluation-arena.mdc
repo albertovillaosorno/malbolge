@@ -245,6 +245,24 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   all original stage observations and self-reported digests remain
   forgeable together. Process-tree aggregate CPU/RAM quotas, hardware
   energy sampling and arbitrary guest C compilation remain open.
+- A separately versioned v7 raw-GNU-time RSS extension now opts in
+  through `--retain-raw-rss`, only when the complete limited v6 protocol
+  is also enabled. Successful trials preserve the *actual GNU time file
+  bytes* from each of the emitter, first VM and measured second VM in
+  `raw_kib` strings in their canonical schema-two RSS JSON receipts;
+  an `[arena_rss]` TOML schema-two SHA-256 binds each set to its unique
+  case/trial and raw CSV. The independent auditor re-parses exact ASCII
+  decimal LF-terminated tool output and compares all three converted
+  byte costs with the reported peak. Malformed, replaced, non-ASCII,
+  multiple-line, over-budget, and missing raw readings refuse admission;
+  this catches wrong conversion even when raw evidence hashes are updated.
+  Distinct `classic-patterned-forward-skip-raw-rss-v7` study and
+  `classic-forward-jump-raw-rss-second-vm-v1` oracle identities preserve
+  unchanged v1-v6 records and the same five Pareto dimensions.
+  The retained text is producer-reported, **not independent historical
+  GNU-time attestation**: entire linked reports remain forgeable together.
+  Whole-study CPU/RAM containment, trusted metering and genuine general C
+  guest compilation remain outstanding.
 - A separate read-only classic target audit now reopens local pilot
 - A separate read-only classic target audit now reopens local pilot
   studies, binds fixed producer research/manifest/case claims, complete

@@ -94,6 +94,7 @@ FORWARD_LIMITED_REPLAY_STUDY = (
 )
 FORWARD_RSS_STUDY = "classic-patterned-forward-skip-limited-rss-v5"
 FORWARD_RSS_RECEIPTS_STUDY = "classic-patterned-forward-skip-rss-receipts-v6"
+FORWARD_RAW_RSS_STUDY = "classic-patterned-forward-skip-raw-rss-v7"
 VERIFIER_NS = "verifier_ns"
 FORWARD_FAMILY = "bounded-classic-patterned-forward-skip-echo"
 FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
@@ -101,8 +102,10 @@ FORWARD_REPLAY_VERIFIER = "classic-forward-jump-patterned-second-vm-v1"
 FORWARD_LIMITED_REPLAY_VERIFIER = "classic-forward-jump-limited-second-vm-v1"
 FORWARD_RSS_VERIFIER = "classic-forward-jump-limited-rss-second-vm-v1"
 FORWARD_RSS_RECEIPTS_VERIFIER = "classic-forward-jump-rss-receipts-second-vm-v1"
+FORWARD_RAW_RSS_VERIFIER = "classic-forward-jump-raw-rss-second-vm-v1"
 RSS_STAGE_NAMES = ("emitter", "primary_vm", "verifier_vm")
 RSS_REPORT_LIMIT = 512
+MIN_TIME_LINE_BYTES = 2
 RSS_HASH_TABLE = "arena_rss"
 RSS_RECEIPT_DIR = "rss"
 PEAK_RSS = "peak_rss_bytes"
@@ -191,6 +194,7 @@ def _mode(document: dict[str, Any]) -> str:
         FORWARD_LIMITED_REPLAY_STUDY,
         FORWARD_RSS_STUDY,
         FORWARD_RSS_RECEIPTS_STUDY,
+        FORWARD_RAW_RSS_STUDY,
     }:
         return producer.PATTERNED_MODE
     if study_id in {EOF_STUDY, EOF_STEPS_STUDY}:
@@ -208,6 +212,7 @@ def _has_steps(document: dict[str, Any]) -> bool:
         FORWARD_LIMITED_REPLAY_STUDY,
         FORWARD_RSS_STUDY,
         FORWARD_RSS_RECEIPTS_STUDY,
+        FORWARD_RAW_RSS_STUDY,
     }
 
 
@@ -219,6 +224,7 @@ def _forward(document: dict[str, Any]) -> bool:
         FORWARD_LIMITED_REPLAY_STUDY,
         FORWARD_RSS_STUDY,
         FORWARD_RSS_RECEIPTS_STUDY,
+        FORWARD_RAW_RSS_STUDY,
     }
 
 
@@ -229,6 +235,7 @@ def _has_verifier_cost(document: dict[str, Any]) -> bool:
         FORWARD_LIMITED_REPLAY_STUDY,
         FORWARD_RSS_STUDY,
         FORWARD_RSS_RECEIPTS_STUDY,
+        FORWARD_RAW_RSS_STUDY,
     }
 
 
@@ -254,7 +261,9 @@ def _producer_study(document: dict[str, Any]) -> None:
     )
     if forward:
         study_id = (
-            FORWARD_RSS_RECEIPTS_STUDY
+            FORWARD_RAW_RSS_STUDY
+            if study["id"] == FORWARD_RAW_RSS_STUDY
+            else FORWARD_RSS_RECEIPTS_STUDY
             if study["id"] == FORWARD_RSS_RECEIPTS_STUDY
             else FORWARD_RSS_STUDY
             if study["id"] == FORWARD_RSS_STUDY
@@ -303,7 +312,12 @@ def _producer_study(document: dict[str, Any]) -> None:
                 VERIFIER_NS,
                 PEAK_RSS,
             ]
-            if study["id"] in {FORWARD_RSS_STUDY, FORWARD_RSS_RECEIPTS_STUDY}
+            if study["id"]
+            in {
+                FORWARD_RSS_STUDY,
+                FORWARD_RSS_RECEIPTS_STUDY,
+                FORWARD_RAW_RSS_STUDY,
+            }
             else ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS, VERIFIER_NS]
             if _has_verifier_cost(document)
             else ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS]
@@ -390,9 +404,9 @@ def _check_row(
     prefix: str,
     mode: str,
     *,
-    protocol: tuple[bool, bool, bool, bool, bool],
+    protocol: tuple[bool, bool, bool, bool, bool, bool],
 ) -> str:
-    forward, replay_cost, limited, rss, receipt = protocol
+    forward, replay_cost, limited, rss, receipt, raw_rss = protocol
     case = row["case"]
     algorithm = row["algorithm"]
     if algorithm not in (
@@ -402,7 +416,9 @@ def _check_row(
     if case != _expected_case(case["difficulty"], mode, forward=forward):
         _fail("target audit trial differs from the fixed echo case")
     expected_verifier = (
-        FORWARD_RSS_RECEIPTS_VERIFIER
+        FORWARD_RAW_RSS_VERIFIER
+        if raw_rss
+        else FORWARD_RSS_RECEIPTS_VERIFIER
         if receipt
         else FORWARD_RSS_VERIFIER
         if rss
@@ -491,6 +507,7 @@ def _check_peak_rss_claims(document: dict[str, Any]) -> None:
     measured = document["study"]["id"] in {
         FORWARD_RSS_STUDY,
         FORWARD_RSS_RECEIPTS_STUDY,
+        FORWARD_RAW_RSS_STUDY,
     }
     for row in document["observations"]:
         peak = row["metrics"].get(PEAK_RSS)
@@ -515,7 +532,9 @@ def _check_runtime_step_claims(document: dict[str, Any]) -> None:
         )
 
 
-def _protocol(document: dict[str, Any]) -> tuple[bool, bool, bool, bool, bool]:
+def _protocol(
+    document: dict[str, Any],
+) -> tuple[bool, bool, bool, bool, bool, bool]:
     study_id = document["study"]["id"]
     return (
         _forward(document),
@@ -525,15 +544,23 @@ def _protocol(document: dict[str, Any]) -> tuple[bool, bool, bool, bool, bool]:
             FORWARD_LIMITED_REPLAY_STUDY,
             FORWARD_RSS_STUDY,
             FORWARD_RSS_RECEIPTS_STUDY,
+            FORWARD_RAW_RSS_STUDY,
         },
         study_id
         in {
             FORWARD_LIMITED_REPLAY_STUDY,
             FORWARD_RSS_STUDY,
             FORWARD_RSS_RECEIPTS_STUDY,
+            FORWARD_RAW_RSS_STUDY,
         },
-        study_id in {FORWARD_RSS_STUDY, FORWARD_RSS_RECEIPTS_STUDY},
-        study_id == FORWARD_RSS_RECEIPTS_STUDY,
+        study_id
+        in {
+            FORWARD_RSS_STUDY,
+            FORWARD_RSS_RECEIPTS_STUDY,
+            FORWARD_RAW_RSS_STUDY,
+        },
+        study_id in {FORWARD_RSS_RECEIPTS_STUDY, FORWARD_RAW_RSS_STUDY},
+        study_id == FORWARD_RAW_RSS_STUDY,
     )
 
 
@@ -825,9 +852,21 @@ def _check_forward_replay_result(
 
 
 def _run_forward_guest(
-    command: list[str], payload: bytes, *, mode: tuple[bool, bool]
+    command: list[str],
+    payload: bytes,
+    *,
+    mode: tuple[bool, bool],
+    raw_rss: list[bytes] | None = None,
 ) -> tuple[sp.CompletedProcess[bytes], int | None]:
     limited, measured = mode
+    if measured and raw_rss is not None:
+        result, peak, raw = (
+            target_process.invoke_with_input_limited_measured_raw(
+                command, payload, timeout_seconds=producer.TIMEOUT_SECONDS
+            )
+        )
+        raw_rss.append(raw)
+        return result, peak
     if measured:
         return target_process.invoke_with_input_limited_measured(
             command, payload, timeout_seconds=producer.TIMEOUT_SECONDS
@@ -846,13 +885,14 @@ def _replay_forward_result(
     payload: bytes,
     *,
     steps: int,
-    options: tuple[bool, bool],
+    options: tuple[bool, bool, list[bytes] | None],
 ) -> int | None:
     runner, source = paths
     result, peak = _run_forward_guest(
         [str(runner), str(source), "--input-stdin", "--report-steps"],
         payload,
-        mode=options,
+        mode=options[:2],
+        raw_rss=options[2],
     )
     _check_forward_replay_result(result, payload, steps)
     return peak
@@ -872,7 +912,7 @@ def check_forward_vm_replay(
     runner: Path,
     *,
     case: tuple[int, str],
-    replay_options: tuple[int | None, bool, bool],
+    replay_options: tuple[int | None, bool, bool, list[bytes] | None],
 ) -> int | None:
     """Read/check the fixed source, then replay exact guest bytes and steps.
 
@@ -885,7 +925,7 @@ def check_forward_vm_replay(
 
     """
     pairs, algorithm = case
-    steps, limit_child_resources, measure_rss = replay_options
+    steps, limit_child_resources, measure_rss = replay_options[:3]
     relative = source.relative_to(_ROOT).as_posix()
     original = evidence.read_bounded_regular(
         _ROOT, relative, limit=producer.MAX_TARGET_BYTES
@@ -899,7 +939,7 @@ def check_forward_vm_replay(
         (runner, source),
         payload,
         steps=steps,
-        options=(limit_child_resources, measure_rss),
+        options=(limit_child_resources, measure_rss, replay_options[3]),
     )
     _assert_forward_source_stable(source, original)
     return peak
@@ -966,6 +1006,7 @@ def _replay(
                     FORWARD_LIMITED_REPLAY_STUDY,
                     FORWARD_RSS_STUDY,
                     FORWARD_RSS_RECEIPTS_STUDY,
+                    FORWARD_RAW_RSS_STUDY,
                 },
             ),
         )
@@ -974,11 +1015,18 @@ def _replay(
     return len(source_hashes)
 
 
+def _retained_rss_document(document: dict[str, Any]) -> bool:
+    return document["study"]["id"] in {
+        FORWARD_RSS_RECEIPTS_STUDY,
+        FORWARD_RAW_RSS_STUDY,
+    }
+
+
 def _rss_receipt_paths(
     document: dict[str, Any],
     prefix: str,
 ) -> set[str]:
-    if document["study"]["id"] != FORWARD_RSS_RECEIPTS_STUDY:
+    if not _retained_rss_document(document):
         return set()
     return {
         f"{prefix}/{RSS_RECEIPT_DIR}/{_row_stem(row)}.json"
@@ -992,7 +1040,7 @@ def _check_rss_receipt_inventory(
     prefix: str,
     names: set[str],
 ) -> None:
-    if document["study"]["id"] != FORWARD_RSS_RECEIPTS_STUDY:
+    if not _retained_rss_document(document):
         return
     expected = {
         f"{stem}.json"
@@ -1005,14 +1053,17 @@ def _check_rss_receipt_inventory(
     _check_directory(prefix, RSS_RECEIPT_DIR, expected)
 
 
-def _admit_rss_manifest_table(table: object) -> str:
+def _admit_rss_manifest_table(table: object, *, version: int) -> str:
     if not isinstance(table, dict) or set(table) != {
         "schema_version",
         "sha256",
     }:
         _fail("v6 target run is missing exact RSS receipt link")
-    if type(table["schema_version"]) is not int or table["schema_version"] != 1:
-        _fail("v6 RSS receipt manifest schema_version must be one")
+    if (
+        type(table["schema_version"]) is not int
+        or table["schema_version"] != version
+    ):
+        _fail("target RSS receipt manifest schema_version differs from study")
     digest = table["sha256"]
     if type(digest) is not str or len(digest) != DIGEST_HEX_LENGTH:
         _fail("v6 RSS receipt manifest requires lowercase SHA-256")
@@ -1021,7 +1072,11 @@ def _admit_rss_manifest_table(table: object) -> str:
     return digest
 
 
-def _rss_digest(record: dict[str, Any], *, required: bool) -> str | None:
+def _rss_digest(
+    record: dict[str, Any],
+    *,
+    version: int | None,
+) -> str | None:
     manifest = evidence.read_bounded_regular(
         _ROOT,
         record["experiment_manifest"],
@@ -1032,30 +1087,30 @@ def _rss_digest(record: dict[str, Any], *, required: bool) -> str | None:
     except (tomllib.TOMLDecodeError, UnicodeError) as error:
         message = "target RSS run manifest is invalid TOML"
         raise TargetEchoAuditError(message) from error
-    if not required:
+    if version is None:
         if table is not None:
-            _fail("non-v6 target run has unexpected RSS receipt link")
+            _fail("unmeasured target run has unexpected RSS receipt link")
         return None
-    return _admit_rss_manifest_table(table)
+    return _admit_rss_manifest_table(table, version=version)
 
 
-def _rss_record(data: bytes) -> dict[str, Any]:
+def _rss_record(data: bytes, *, raw: bool) -> dict[str, Any]:
     try:
         record = json.loads(data)
     except (UnicodeError, ValueError) as error:
         message = "v6 RSS stage receipt is not canonical JSON"
         raise TargetEchoAuditError(message) from error
-    if type(record) is not dict or set(record) != {
-        "schema_version",
-        "identity",
-        "stages",
-    }:
-        _fail("v6 RSS stage receipt must have exact fields")
+    expected = {"schema_version", "identity", "stages"}
+    if raw:
+        expected.add("raw_kib")
+    if type(record) is not dict or set(record) != expected:
+        _fail("target RSS stage receipt must have exact fields")
+    version = 2 if raw else 1
     if (
         type(record["schema_version"]) is not int
-        or record["schema_version"] != 1
+        or record["schema_version"] != version
     ):
-        _fail("v6 RSS stage receipt schema version is not one")
+        _fail("target RSS stage receipt schema version differs from study")
     return record
 
 
@@ -1081,11 +1136,49 @@ def _validate_rss_identity(
         _fail("v6 RSS stage receipt algorithm/workload must be strings")
 
 
+def _read_original_time_line(raw: object) -> int:
+    if type(raw) is not str or not raw.isascii():
+        _fail("v7 raw GNU time RSS must be ASCII text")
+    encoded = raw.encode("ascii")
+    if (
+        not MIN_TIME_LINE_BYTES
+        <= len(encoded)
+        <= target_process.RSS_REPORT_LIMIT
+        or not encoded.endswith(b"\n")
+        or not encoded[:-1].isdigit()
+    ):
+        _fail("v7 raw GNU time RSS is not one exact integer line")
+    kib = int(encoded[:-1])
+    if (
+        not 0
+        < kib
+        <= (
+            target_process.CHILD_VIRTUAL_MEMORY_BYTES
+            // target_process.KIB_BYTES
+        )
+    ):
+        _fail("v7 raw GNU time RSS exceeds child resource limits")
+    return kib * target_process.KIB_BYTES
+
+
+def _validate_original_time_readings(
+    raw_kib: object,
+    stages: dict[str, int],
+) -> None:
+    if type(raw_kib) is not dict or set(raw_kib) != set(RSS_STAGE_NAMES):
+        _fail("v7 GNU time raw RSS receipt has foreign stage names")
+    for stage in RSS_STAGE_NAMES:
+        if _read_original_time_line(raw_kib[stage]) != stages[stage]:
+            _fail("v7 raw GNU time RSS differs from reported per-stage bytes")
+
+
 def _validate_rss_stage_bytes(
     data: bytes,
     row: dict[str, Any],
+    *,
+    raw: bool,
 ) -> None:
-    record = _rss_record(data)
+    record = _rss_record(data, raw=raw)
     _validate_rss_identity(record["identity"], row)
     stages = record["stages"]
     if type(stages) is not dict or set(stages) != set(RSS_STAGE_NAMES):
@@ -1097,6 +1190,8 @@ def _validate_rss_stage_bytes(
         for value in stages.values()
     ):
         _fail("v6 RSS stage receipt has invalid measured bytes")
+    if raw:
+        _validate_original_time_readings(record["raw_kib"], stages)
     canonical = (
         json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
     ).encode("utf-8")
@@ -1109,11 +1204,13 @@ def _check_rss_receipts(
     prefix: str,
     names: set[str],
 ) -> None:
-    is_v6 = document["study"]["id"] == FORWARD_RSS_RECEIPTS_STUDY
+    raw = document["study"]["id"] == FORWARD_RAW_RSS_STUDY
+    retained = _retained_rss_document(document)
     _check_rss_receipt_inventory(document, prefix, names)
     for row in document["observations"]:
-        required = is_v6 and row["outcome"] == analyze.VERIFIED
-        digest = _rss_digest(row, required=required)
+        required = retained and row["outcome"] == analyze.VERIFIED
+        version = (2 if raw else 1) if required else None
+        digest = _rss_digest(row, version=version)
         if not required:
             continue
         relative = f"{prefix}/{RSS_RECEIPT_DIR}/{_row_stem(row)}.json"
@@ -1122,7 +1219,7 @@ def _check_rss_receipts(
         )
         if sha256(data).hexdigest() != digest:
             _fail("v6 RSS receipt digest differs from linked run manifest")
-        _validate_rss_stage_bytes(data, row)
+        _validate_rss_stage_bytes(data, row, raw=raw)
 
 
 def _snapshot_linked_inputs(
