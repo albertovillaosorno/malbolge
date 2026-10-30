@@ -689,6 +689,11 @@ without claiming raw-byte authenticity. Late in-place rewrites, deleted paths
 and symlink substitutions reject before the evidence preflight returns. As
 with other bounded rechecks, simultaneous writers can still race between
 separate reads; these checks do not authenticate measurements or file origin.
+The evidence CLI now carries the original bounded manifest/raw/bundle source
+fingerprints across report analysis and rechecks them after the study input,
+immediately before JSON publication. This closes a second mutable-source gap
+without rerunning expensive optional host-C oracle replay. The direct
+`validate_links` API preserves its existing report shape and first recheck.
 
 The shared evidence-file reader now checks the admitted regular file against
 its opened descriptor and verifies device/inode identity, byte length and

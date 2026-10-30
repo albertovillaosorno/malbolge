@@ -668,11 +668,25 @@ def _report_links(
     return report
 
 
+@dataclass(frozen=True, slots=True)
+class _EvidenceSnapshot:
+    context: _EvidenceContext
+    contents: dict[str, str] | None
+    bundle: _BundleInspection | None
+
+
+def _recheck_evidence_snapshot(snapshot: _EvidenceSnapshot) -> None:
+    if snapshot.bundle is not None:
+        _recheck_bundle_files(snapshot.context.root, snapshot.bundle)
+    _recheck_retained_links(snapshot.context, snapshot.contents)
+
+
 def validate_links(
     document: dict[str, Any],
     root: Path,
     *,
     policy: EvidencePolicy = DEFAULT_EVIDENCE_POLICY,
+    _snapshot_out: list[_EvidenceSnapshot] | None = None,
 ) -> dict[str, Any]:
     """Cross-check reported trials with bounded canonical run files.
 
@@ -720,9 +734,8 @@ def validate_links(
             contents,
             bundle=_BundleReports(bundle_sources, host_c_sources),
         )
-        if bundle_inspection is not None:
-            _recheck_bundle_files(root, bundle_inspection)
-        _recheck_retained_links(context, contents)
+        snapshot = _EvidenceSnapshot(context, contents, bundle_inspection)
+        _recheck_evidence_snapshot(snapshot)
     except (
         OSError,
         UnicodeError,
@@ -736,6 +749,8 @@ def validate_links(
     ) as error:
         message = f"linked arena evidence invalid: {error}"
         raise EvidenceError(message) from error
+    if _snapshot_out is not None:
+        _snapshot_out.append(snapshot)
     return report
 
 
@@ -775,6 +790,7 @@ def main() -> int:
     try:
         source = analyze.read_input(args.study)
         document = analyze.parse_document(source)
+        snapshots: list[_EvidenceSnapshot] = []
         checked = validate_links(
             document,
             args.root,
@@ -788,6 +804,7 @@ def main() -> int:
                     args.require_host_c_challenge_oracle
                 ),
             ),
+            _snapshot_out=snapshots,
         )
         report = analyze.analyze(
             document,
@@ -798,6 +815,9 @@ def main() -> int:
         if args.success_intervals_95:
             analyze.annotate_success_intervals(report)
         analyze.require_unchanged_study_input(args.study, source)
+        if len(snapshots) != 1:
+            _fail("evidence preflight did not retain an input snapshot")
+        _recheck_evidence_snapshot(snapshots[0])
     except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena evidence: {error}\n")
     report["evidence_preflight"] = checked

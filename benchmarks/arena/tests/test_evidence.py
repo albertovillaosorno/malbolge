@@ -233,6 +233,39 @@ def test_evidence_cli_rejects_late_manifest_drift_without_stdout(
     assert "run manifest changed" in failure.err
 
 
+def test_evidence_cli_rechecks_manifest_mutated_after_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Post-preflight report analysis cannot certify rewritten manifest bytes."""
+    doc = sample_study(tmp_path)
+    source = tmp_path / "study.json"
+    _ = source.write_text(json.dumps(doc), encoding="utf-8")
+    original_analyze = analyze.analyze
+
+    def rewrite_during_analysis(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_analyze(*args, **kwargs)
+        path = tmp_path / doc["observations"][0]["experiment_manifest"]
+        original = path.read_text(encoding="utf-8")
+        assert 'id = "baseline"' in original
+        _ = path.write_text(
+            original.replace('id = "baseline"', 'id = "caseline"', 1),
+            encoding="utf-8",
+        )
+        return report
+
+    monkeypatch.setattr(analyze, "analyze", rewrite_during_analysis)
+    monkeypatch.setattr(
+        sys, "argv", ["arena-evidence", str(source), "--root", str(tmp_path)]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    failure = capsys.readouterr()
+    assert not failure.out
+    assert "run manifest changed" in failure.err
+
+
 @pytest.mark.parametrize("tamper", ["missing", "symlink"])
 def test_default_raw_presence_rechecked_after_report(
     tmp_path: Path,

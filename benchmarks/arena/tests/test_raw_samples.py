@@ -207,6 +207,44 @@ def test_strict_raw_cli_rejects_late_byte_drift_without_stdout(
     assert "raw CSV changed" in failure.err
 
 
+def test_evidence_cli_rechecks_strict_csv_mutated_after_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A later analysis cannot publish a stale strict CSV-byte fingerprint."""
+    doc = _setup(tmp_path)
+    source = tmp_path / "study.json"
+    _ = source.write_text(json.dumps(doc), encoding="utf-8")
+    original_analyze = analyze.analyze
+
+    def rewrite_during_analysis(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_analyze(*args, **kwargs)
+        path = tmp_path / ROOT_LABEL
+        original = path.read_bytes()
+        assert b",20,10," in original
+        _ = path.write_bytes(original.replace(b",20,10,", b",21,10,", 1))
+        return report
+
+    monkeypatch.setattr(analyze, "analyze", rewrite_during_analysis)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(source),
+            "--root",
+            str(tmp_path),
+            "--require-raw-rows",
+        ],
+    )
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    failure = capsys.readouterr()
+    assert not failure.out
+    assert "raw CSV changed" in failure.err
+
+
 def test_old_identity_only_mode_remains_backward_compatible(
     tmp_path: Path,
 ) -> None:

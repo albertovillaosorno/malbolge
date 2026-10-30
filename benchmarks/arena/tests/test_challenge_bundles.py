@@ -390,6 +390,81 @@ def test_challenge_bundle_rechecks_during_host_c_replay(
         )
 
 
+def test_evidence_cli_rechecks_bundle_mutated_after_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An analyzed report cannot outlive changed challenge oracle bytes."""
+    document = _study(tmp_path)
+    source = tmp_path / "study.json"
+    _ = source.write_text(json.dumps(document), encoding="utf-8")
+    original_analyze = analyze.analyze
+
+    def rewrite_during_analysis(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_analyze(*args, **kwargs)
+        path = tmp_path / PREFIX / "oracle.bin"
+        original = path.read_bytes()
+        _ = path.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+        return report
+
+    monkeypatch.setattr(analyze, "analyze", rewrite_during_analysis)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(source),
+            "--root",
+            str(tmp_path),
+            "--challenge-root",
+            BUNDLE_ROOT,
+        ],
+    )
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    failure = capsys.readouterr()
+    assert not failure.out
+    assert "challenge bundle changed" in failure.err
+
+
+def test_post_analysis_recheck_does_not_repeat_host_c_oracle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Retained hashes are rechecked without expensive second host-C replay."""
+    document = _study(tmp_path)
+    source = tmp_path / "study.json"
+    _ = source.write_text(json.dumps(document), encoding="utf-8")
+    calls = 0
+
+    def replay_once(*args: Any, **kwargs: Any) -> dict[str, str]:
+        nonlocal calls
+        _ = (args, kwargs)
+        calls += 1
+        return {}
+
+    monkeypatch.setattr(evidence, "_replay_host_c_challenges", replay_once)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(source),
+            "--root",
+            str(tmp_path),
+            "--challenge-root",
+            BUNDLE_ROOT,
+            "--require-host-c-challenge-oracle",
+        ],
+    )
+    assert evidence.main() == 0
+    assert calls == 1
+    reported = json.loads(capsys.readouterr().out)
+    assert reported["evidence_preflight"]["regenerated_challenge_bundles"] == 1
+
+
 def _forged_repetition(
     root: Path,
     original: dict[str, Any],
