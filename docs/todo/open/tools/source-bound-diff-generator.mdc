@@ -68,6 +68,11 @@ format.
 - A conjunctive gate proves behavior-only clones cannot replace structural
   lineage
   and source lineage cannot replace failed compatibility behavior.
+- Portable structured repository-rooted argv and executable records now
+  reject paths resolving inside the original candidate source, including
+  symlink aliases, before process launch. This closes the typed-path source
+  mirror bypass even with post-run source immutability disabled; raw argv and
+  executable behavior remain trusted consumer inputs, not a sandbox.
 - Portable process probes now execute without shell interpolation, with
   structured
   roots, bounded time/output, isolated source mirrors, and deterministic

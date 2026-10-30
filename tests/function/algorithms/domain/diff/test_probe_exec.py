@@ -615,6 +615,68 @@ def test_source_mutation_is_isolated_from_user_source(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize("via_alias", [False, True])
+def test_repository_rooted_argument_cannot_modify_original_source(
+    tmp_path: Path, *, via_alias: bool
+) -> None:
+    """A repository-root path may not bypass the isolated source mirror."""
+    source = tmp_path / "source"
+    source.mkdir()
+    target = source / "input.txt"
+    _ = target.write_text(_ORIGINAL_TEXT, encoding="utf-8")
+    relative = "source/input.txt"
+    if via_alias:
+        alias = tmp_path / "alias"
+        try:
+            alias.symlink_to(source, target_is_directory=True)
+        except OSError, NotImplementedError:
+            pytest.skip("directory symlinks unavailable")
+        relative = "alias/input.txt"
+    context = replace(
+        _context(source, tmp_path), enforce_source_immutable=False
+    )
+    program = ProbeProgram(
+        "repository-source-alias",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    _MUTATE_CODE,
+                    PathArgument(ProbeRoot.REPOSITORY, relative),
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match="overlaps original source"):
+        _ = run_probe_program(program, context)
+    _expect(
+        target.read_text(encoding="utf-8") == _ORIGINAL_TEXT,
+        "repository-rooted argument modified original source",
+    )
+
+
+def test_repository_rooted_executable_cannot_alias_original_source(
+    tmp_path: Path,
+) -> None:
+    """Rooted executable records cannot bypass the source mirror."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _ = (source / "tool.bin").write_bytes(b"not launched")
+    program = ProbeProgram(
+        "repository-source-tool",
+        (
+            ProbeCommand(
+                executable=RootedExecutable(
+                    ProbeRoot.REPOSITORY, "source/tool.bin"
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match="overlaps original source"):
+        _ = run_probe_program(program, _context(source, tmp_path))
+
+
 def test_source_symlink_fails_before_mirror_even_without_immutability(
     tmp_path: Path,
 ) -> None:

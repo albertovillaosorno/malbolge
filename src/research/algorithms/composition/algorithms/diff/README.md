@@ -143,8 +143,13 @@ process
 commands with no shell interpolation. Executables are either logical consumer
 tool
 IDs or artifacts beneath authorized roots; path arguments are structured under
-`source`, `repository`, or per-program `scratch` roots. Probe metadata
-rejects NUL argv/path/tool IDs before launching, and executable spawn failures
+`source`, `repository`, or per-program `scratch` roots. Structured
+`repository` argv or executable paths resolving inside the original source
+(including linked aliases) reject before execution, preventing this path class
+from bypassing the protected `source` mirror even with post-run immutability
+checks disabled. Arbitrary raw string argv remains a trusted consumer contract,
+not a filesystem sandbox. Probe metadata rejects NUL argv/path/tool IDs before
+launching, and executable spawn failures
 stay inside the probe error boundary. No-shell child output pipes now stream
 into independent memory-guarded readers, aborting on the first byte over each
 stdout/stderr quota; stdin has a concurrent writer to avoid full-duplex

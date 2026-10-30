@@ -860,6 +860,46 @@ def _snapshot_probe_tree(root: Path, context: str) -> TreeSnapshot:
         raise ProbeExecutionError(message) from error
 
 
+def _require_repository_argument_disjoint(
+    argument: ProbeExecutable | ProbeArgument,
+    context: ProbeRunContext,
+    original_source: Path,
+) -> None:
+    """Reject structured repository paths aliasing the original source.
+
+    Raises:
+        ProbeExecutionError: The path resolves inside the original source tree.
+
+    """
+    if not isinstance(argument, (PathArgument, RootedExecutable)):
+        return
+    if argument.root is not ProbeRoot.REPOSITORY:
+        return
+    path = _rooted_path(argument, context, original_source)
+    try:
+        resolved = path.resolve()
+    except OSError as error:
+        message = f"probe repository argument resolution failed: {error}"
+        raise ProbeExecutionError(message) from error
+    if resolved.is_relative_to(original_source):
+        message = "probe repository path overlaps original source tree"
+        raise ProbeExecutionError(message)
+
+
+def _require_repository_paths_disjoint(
+    programs: tuple[ProbeProgram, ...], context: ProbeRunContext
+) -> None:
+    """Check structured repo paths before mirroring the admitted source."""
+    source = _resolved_root(context.source_root, "source")
+    for program in programs:
+        for command in program.commands:
+            _require_repository_argument_disjoint(
+                command.executable, context, source
+            )
+            for argument in command.arguments:
+                _require_repository_argument_disjoint(argument, context, source)
+
+
 def _run_isolated_batch(
     programs: tuple[ProbeProgram, ...], context: ProbeRunContext
 ) -> tuple[ProbeTranscript, ...]:
@@ -910,6 +950,7 @@ def run_probe_programs(
 
     """
     admitted = _validate_probe_batch(programs, context)
+    _require_repository_paths_disjoint(admitted, context)
     before = (
         _snapshot_probe_tree(context.source_root, "source")
         if context.enforce_source_immutable
