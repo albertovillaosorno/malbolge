@@ -32,7 +32,7 @@
 
 //! Crash-stale temporary-name collision regression coverage.
 
-use super::{MAX_STAGE_NAME_ATTEMPTS, publish_new};
+use super::{MAX_STAGE_NAME_ATTEMPTS, publish_new, publish_new_with_stage_hook};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -205,5 +205,73 @@ fn stale_symlink_stage_is_not_followed() -> Result<(), String> {
             .file_type()
             .is_symlink()
     );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "assert stage identity gate")]
+fn replaced_equal_byte_stage_is_rejected_and_preserved() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let foreign = output.with_file_name("replacement-stage");
+    fs::write(&foreign, b"ctO").map_err(|error| error.to_string())?;
+    let result = publish_new_with_stage_hook(&output, b"ctO", |staged| {
+        fs::remove_file(staged).map_err(|error| error.to_string())?;
+        fs::rename(&foreign, staged).map_err(|error| error.to_string())
+    });
+    assert!(result.is_err(), "foreign inode was published: {result:?}");
+    assert!(!output.exists());
+    assert_eq!(
+        fs::read(stage(&output, None)).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "assert stage identity gate")]
+fn substituted_stage_symlink_is_rejected_and_preserved() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let foreign = output.with_file_name("foreign-input");
+    fs::write(&foreign, b"ctO").map_err(|error| error.to_string())?;
+    let result = publish_new_with_stage_hook(&output, b"ctO", |staged| {
+        fs::remove_file(staged).map_err(|error| error.to_string())?;
+        std::os::unix::fs::symlink(&foreign, staged).map_err(|error| error.to_string())
+    });
+    assert!(result.is_err(), "foreign symlink was published: {result:?}");
+    assert!(!output.exists());
+    assert_eq!(
+        fs::read(&foreign).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert!(stage(&output, None).is_symlink());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "assert bounded stage reread")]
+fn grown_stage_rejects_before_an_unbounded_reread() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let result = publish_new_with_stage_hook(&output, b"ctO", |staged| {
+        fs::OpenOptions::new()
+            .write(true)
+            .open(staged)
+            .map_err(|error| error.to_string())?
+            .set_len(8 * 1024 * 1024 * 1024)
+            .map_err(|error| error.to_string())
+    });
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("staged output")),
+        "oversized stage reached publication: {result:?}"
+    );
+    assert!(!output.exists());
+    assert!(!stage(&output, None).exists());
     Ok(())
 }

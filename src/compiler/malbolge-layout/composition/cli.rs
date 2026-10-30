@@ -35,7 +35,7 @@
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, OpenOptions};
-use std::io::{self, Read as _, Write as _};
+use std::io::{self, Read as _, Seek as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, id};
 
@@ -324,6 +324,7 @@ fn open_fresh_stage(path: &Path, name: &str) -> Result<StageFile, String> {
             path.with_file_name(format!("{basename}-{attempt}"))
         };
         match OpenOptions::new()
+            .read(true)
             .write(true)
             .create_new(true)
             .open(&staged)
@@ -338,7 +339,59 @@ fn open_fresh_stage(path: &Path, name: &str) -> Result<StageFile, String> {
     ))
 }
 
+fn verify_fsynced_stage(
+    staged: &Path,
+    file: &mut fs::File,
+    initial: &fs::Metadata,
+    expected: &[u8],
+) -> Result<(), String> {
+    let check_identity = |opened: &fs::File| {
+        let descriptor = opened
+            .metadata()
+            .map_err(|error| format!("cannot inspect staged descriptor: {error}"))?;
+        let named = fs::symlink_metadata(staged)
+            .map_err(|error| format!("cannot inspect staged pathname: {error}"))?;
+        if !canonical_wire_metadata_matches(initial, &descriptor)
+            || !canonical_wire_metadata_matches(initial, &named)
+        {
+            return Err(String::from(
+                "staged output inode or contents changed after sync",
+            ));
+        }
+        Ok(())
+    };
+    let expected_len = u64::try_from(expected.len())
+        .map_err(|_error| String::from("staged output length exceeds host range"))?;
+    if !initial.is_file() || initial.len() != expected_len {
+        return Err(String::from(
+            "staged output size disagrees with verified source",
+        ));
+    }
+    check_identity(file)?;
+    file.rewind()
+        .map_err(|error| format!("cannot rewind staged descriptor: {error}"))?;
+    // Never reopen an attacker-swappable stage pathname (FIFO or symlink),
+    // and never allocate beyond the exact source length plus a one-byte probe.
+    let mut observed = Vec::new();
+    let _count = (&mut *file)
+        .take(expected_len.saturating_add(1))
+        .read_to_end(&mut observed)
+        .map_err(|error| format!("cannot reread staged descriptor: {error}"))?;
+    if observed != expected {
+        return Err(String::from("staged output differs from verified source"));
+    }
+    check_identity(file)
+}
+
 fn publish_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    publish_new_with_stage_hook(path, bytes, |_staged| Ok(()))
+}
+
+fn publish_new_with_stage_hook(
+    path: &Path,
+    bytes: &[u8],
+    after_sync: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
     if path.extension() != Some(OsStr::new(MALBOLGE_EXTENSION)) {
         return Err(String::from("output must have a .malbolge extension"));
     }
@@ -354,15 +407,34 @@ fn publish_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
             .map_err(|error| format!("stage write failed: {error}"))?;
         file.sync_all()
             .map_err(|error| format!("stage sync failed: {error}"))?;
-        drop(file);
-        if fs::read(&staged).map_err(|error| format!("stage reopen failed: {error}"))? != bytes {
-            return Err(String::from("staged output differs from verified source"));
-        }
+        let initial = file
+            .metadata()
+            .map_err(|error| format!("cannot inspect synced stage: {error}"))?;
+        after_sync(&staged)?;
+        verify_fsynced_stage(&staged, &mut file, &initial, bytes)?;
         fs::hard_link(&staged, path)
             .map_err(|error| format!("cannot publish new target: {error}"))?;
+        let opened = file
+            .metadata()
+            .map_err(|error| format!("cannot inspect published stage: {error}"))?;
+        let published = fs::symlink_metadata(path)
+            .map_err(|error| format!("cannot inspect published target: {error}"))?;
+        if !canonical_wire_metadata_matches(&opened, &published) {
+            return Err(String::from(
+                "published target inode changed after stage admission",
+            ));
+        }
         Ok(())
     })();
-    drop(fs::remove_file(&staged));
+    // Retire only our own original staging inode. A stage pathname swapped
+    // after the exclusive create belongs to the other writer and is preserved.
+    let opened = file.metadata();
+    drop(file);
+    if let (Ok(original), Ok(named)) = (opened, fs::symlink_metadata(&staged))
+        && canonical_wire_metadata_matches(&original, &named)
+    {
+        drop(fs::remove_file(&staged));
+    }
     outcome
 }
 

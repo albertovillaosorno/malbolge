@@ -119,8 +119,17 @@ A stable symlink to a regular source remains valid. These checks reject
 observed concurrent drift, not changes after the final admission check.
 
 The publisher creates a new same-directory staging file, flushes/syncs and
-reopens its exact graphical bytes, then uses a no-overwrite hard link to
-atomically reveal only a complete final `.malbolge`. Existing targets and
+rereads its exact graphical bytes through the original read/write descriptor,
+with an allocation budget of the expected source length plus one byte. It
+independently rechecks the synced descriptor's size, timestamps and identity
+against the nonfollowing staging pathname both before and after the bounded
+reread; the published hard link must still name the original staged inode.
+A pathname replaced with an equal-byte file or symlink cannot be certified,
+and cleanup only removes a still-matching original stage, preserving foreign
+substitutions. The final inode check detects observed link-stage substitutions
+but does not establish an atomic filesystem snapshot against ongoing writers.
+The no-overwrite hard link atomically reveals the final `.malbolge` only after
+staged content admission. Existing targets and
 symlinks are never replaced; invalid profiles, operands, paths or layout
 shapes fail closed. Process-level integration tests execute the built binary,
 reopen emitted files under historical/current canonical profiles with real
