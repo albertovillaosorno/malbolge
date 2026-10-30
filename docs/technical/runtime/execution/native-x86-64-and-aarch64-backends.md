@@ -1473,6 +1473,12 @@ prevent raw untrusted machine code from faulting outside the admitted entry.
 The zeroing work is bounded by the previous written prefix, not the whole
 potentially large executable allocation.
 
+An additional host-real Linux x86-64 probe executes an eight-byte `movzx`
+RIP-relative entry after a prior 64-byte copy wrote `0xb8` to byte eight.
+The native entry reads that physical trailing byte at runtime, returning zero
+after the shorter copy rather than the stale value 184. The worker still
+returns a valid MBNPC1 response and supports an independent future allocation.
+
 On real Linux x86-64, an RX+synced 64-byte allocation with just six copied
 bytes previously entered uncopied padding and killed the child. The new
 regression observes a non-mutating invalid-argument response at offsets six

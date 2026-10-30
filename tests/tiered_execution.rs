@@ -73358,6 +73358,60 @@ fn native_process_posix_worker_latest_code_copy_owns_entry_extent()
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
+fn native_process_posix_worker_shorter_copy_erases_executable_tail()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("live_short_copy_erases_tail")?;
+    let result = (|| -> Result<(), String> {
+        let worker = directory.join("native-process-worker-posix");
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("live tail probe spawn: {error:?}"))?;
+        let writable = posix_worker_allocate(&mut session)?;
+        let mut original = vec![0x90u8; 64];
+        *original
+            .get_mut(8)
+            .ok_or("missing original native byte eight")? = 0xb8;
+        // movzx eax, byte ptr [rip+1]; ret. Its loaded address is byte
+        // eight, just beyond this eight-byte replacement's copied extent.
+        let probe = vec![0x0f, 0xb6, 0x05, 0x01, 0, 0, 0, 0xc3];
+        for code in [original, probe] {
+            let copy = NativeProcessMemoryRequest::Copy {
+                code: code.clone().into_boxed_slice(),
+                mapping: writable,
+            };
+            let NativeProcessMemoryResponse::Copy(report) =
+                posix_worker_memory_exchange(&mut session, &copy)?
+            else {
+                return Err(String::from("tail probe copy failed"));
+            };
+            if report.copied_code() != code {
+                return Err(String::from("tail probe copy drifted"));
+            }
+        }
+        let NativeProcessMemoryResponse::Protect(executable) =
+            posix_worker_memory_exchange(
+                &mut session,
+                &NativeProcessMemoryRequest::Protect(writable),
+            )?
+        else {
+            return Err(String::from("tail probe RX transition failed"));
+        };
+        posix_worker_sync_executable(&mut session, executable)?;
+        // If the worker retained the old 0xb8 instruction at offset eight,
+        // the real x86 code would return 184 instead of the required zero.
+        assert_posix_worker_call_dispatch_status(&mut session, executable, 0)?;
+        posix_worker_release(&mut session, executable)?;
+        assert_posix_worker_allocates_and_releases(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
 fn native_process_posix_worker_zero_length_code_never_grants_entry()
 -> Result<(), String> {
     let (directory, host) =

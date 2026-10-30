@@ -975,6 +975,11 @@ A distinct single-resident lease cache
   Clearing is bounded by the old prefix rather than the entire allocation;
   it does not prove arbitrary native branches safe outside reviewed entries.
 
+  A host-real POSIX x86-64 instruction probe first writes `0xb8` to byte eight
+  in a 64-byte copy, then replaces it with an eight-byte RIP-relative `movzx`
+  and `ret`. The independently executed MBNPC1 entry returns zero, not stale
+  184, while preserving the child and its future allocation capacity.
+
   Nine forged Windows RX synchronization requests now reject stale IDs,
   off-by-one start addresses, invalid ranges, and truncated/extended frames.
   None calls the cache API; a valid full-range retry and release remain healthy.
