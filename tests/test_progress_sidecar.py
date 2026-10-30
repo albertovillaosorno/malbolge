@@ -9981,6 +9981,42 @@ def test_progress_limiter_rejects_orphan_committed_clock(
     assert not Path(first.progress_path).exists()
 
 
+def test_progress_limiter_rejects_invalid_cached_sidecar_before_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged cached record cannot silently authorize a fresh publication."""
+    valid = _sidecar(tmp_path)
+    destination = Path(valid.progress_path)
+    published: list[Path] = []
+
+    def publish(candidate: progress.ProgressSidecar) -> Path:
+        del candidate
+        published.append(destination)
+        return destination
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", publish)
+        for cached, diagnostic in (
+            (
+                replace(valid, schema="foreign-progress-v1"),
+                "unsupported progress schema",
+            ),
+            (replace(valid, wall_elapsed_ns=1), "do not exactly partition"),
+        ):
+            limiter = progress.ProgressWriteLimiter(
+                _clock=SequenceClock([101, 102]),
+                _minimum_interval_ns=10,
+                _started_ns=100,
+                _last_committed_write_ns=100,
+                _last_observed_ns=100,
+                _last_committed_sidecar=cached,
+            )
+            with pytest.raises(ERROR, match=diagnostic):
+                _ = limiter.publish(valid)
+    assert published == []
+
+
 def test_monotonic_timer_separates_every_scientific_phase() -> None:
     """Exclusive phases sum to wall time without UTC arithmetic."""
     clock = SequenceClock([100, 150, 170, 200, 230, 250, 290])

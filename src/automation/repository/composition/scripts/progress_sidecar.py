@@ -442,6 +442,9 @@ class ProgressWriteLimiter:
             or self._last_committed_write_ns is None
         ):
             _fail("progress write last committed sidecar is invalid")
+        # The cached record is an admission boundary, not just a type tag.
+        # Never let a malformed direct state be treated as a stale pointer.
+        _ = validate(self._last_committed_sidecar)
 
     def _validate_state(self) -> None:
         if not callable(self._clock):

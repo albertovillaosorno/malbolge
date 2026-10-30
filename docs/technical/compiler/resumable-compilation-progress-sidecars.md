@@ -468,8 +468,9 @@ it for a second job fails before rate suppression can hide a missing first
 publication; a separate job must create a separate limiter.
 
 Directly constructed limiter state also requires every prior-commit timestamp
-to have a matching exact-typed committed sidecar; an orphan timestamp cannot
-suppress a new job.
+to have a matching, fully validated committed sidecar; an orphan timestamp or
+malformed cached record cannot suppress a new job or authorize a write. Cached
+schema and timing corruption fail before sampling the clock or publishing.
 
 A failed post-commit clock sample retains committed-path evidence, falls back to
 the pre-write sample for throttling, and cannot mask an earlier durability
