@@ -124,6 +124,16 @@ code-size explosion or compilation cost.
   the original descriptor. Future runtime dispatch must preserve verified
   bytecode in spite of classic code-phase self-modification.
 
+- Version five addresses the v4 destructive code/data overlap for exactly
+  one guest indirect dispatch: `j@0`, 80 reached `o` steps, `i@81` and 27
+  code-padding cells place 102 re-ranked, SHA-256 source-bound CEB2 payload
+  glyphs at 109–210. Eight actual VM count-rank branches read source data
+  at 121 and encrypt only code cells, preserving every bound payload word.
+  Independent enumeration establishes the 80-no-op minimum **only** for the
+  specified layout template. The repair costs +68 loaded source cells and
+  +68 reached steps vs v4 without performing any equivalent echo work;
+  guest bytecode interpretation and provenance authentication remain open.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

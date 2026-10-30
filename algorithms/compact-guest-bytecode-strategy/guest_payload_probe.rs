@@ -75,7 +75,7 @@ pub enum GuestPayloadProbeError {
     UnsupportedPosition,
 }
 
-fn instruction_at(position: usize, opcode: u8) -> Result<u8, GuestPayloadProbeError> {
+pub(crate) fn instruction_at(position: usize, opcode: u8) -> Result<u8, GuestPayloadProbeError> {
     let pos =
         u32::try_from(position).map_err(|_error| GuestPayloadProbeError::UnsupportedPosition)?;
     let mut allowed = (GRAPHICAL_START..=GRAPHICAL_END)
@@ -89,7 +89,7 @@ fn instruction_at(position: usize, opcode: u8) -> Result<u8, GuestPayloadProbeEr
     Ok(glyph)
 }
 
-fn alphabet(position: usize) -> Result<[u8; 8], GuestPayloadProbeError> {
+pub(crate) fn alphabet(position: usize) -> Result<[u8; 8], GuestPayloadProbeError> {
     let pos =
         u32::try_from(position).map_err(|_error| GuestPayloadProbeError::UnsupportedPosition)?;
     let mut glyphs = [0u8; 8];
@@ -111,7 +111,9 @@ fn alphabet(position: usize) -> Result<[u8; 8], GuestPayloadProbeError> {
     Ok(glyphs)
 }
 
-fn guest_prefix(profile: &'static ProfileDescriptor) -> Result<Vec<u8>, GuestPayloadProbeError> {
+pub(crate) fn guest_prefix(
+    profile: &'static ProfileDescriptor,
+) -> Result<Vec<u8>, GuestPayloadProbeError> {
     let first = instruction_at(0, b'j')?;
     let base = usize::from(first).saturating_add(1);
     if base <= PREFIX_INSTRUCTIONS {

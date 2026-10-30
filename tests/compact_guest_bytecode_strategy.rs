@@ -35,6 +35,8 @@
 pub mod binding;
 #[path = "../algorithms/compact-guest-bytecode-strategy/guest_payload_probe.rs"]
 pub mod guest_probe;
+#[path = "../algorithms/compact-guest-bytecode-strategy/isolated_dispatch.rs"]
+pub mod isolated;
 #[path = "../algorithms/compact-guest-bytecode-strategy/graphical_residency.rs"]
 pub mod residency;
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_macro.rs"]
@@ -75,11 +77,19 @@ use guest_probe::{
     guest_read_address,
 };
 
+use isolated::{
+    ISOLATED_COUNT_ADDRESS, ISOLATED_JUMP_POSITION, ISOLATED_NO_OPS, ISOLATED_PAYLOAD_START,
+    ISOLATED_TOTAL_CELLS, admit_isolated_guest_dispatch, embed_isolated_guest_dispatch,
+    validate_isolated_dispatch_geometry,
+};
+
 const BOUND_PILOT_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v1.toml");
 
 const GUEST_PROBE_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v3.toml");
+const ISOLATED_DISPATCH_CONFIG: &str =
+    include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v5.toml");
 const INDIRECT_DISPATCH_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v4.toml");
 
@@ -1634,4 +1644,278 @@ fn indirect_jump_encrypts_descriptor_cell_and_breaks_original_source_binding() -
         "original CEB2 source binding no longer holds after guest XLAT2"
     );
     Ok(())
+}
+
+/// Independent normative VM check of guest-source separated code and CEB2 data.
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact guest jump and source trace"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "exact 82-step code/data separation witness"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "real profile-machine CEB2 preservation oracle"
+)]
+fn verify_isolated_guest_dispatch(pairs: usize) -> Result<u32, String> {
+    let original = program(pairs)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound {pairs}: {error:?}"))?;
+    let source = embed_isolated_guest_dispatch(&original, current_profile(), &candidate)
+        .map_err(|error| format!("emit separated {pairs}: {error:?}"))?;
+    assert_eq!(source.len(), ISOLATED_TOTAL_CELLS, "complete bound source");
+    let restored = admit_isolated_guest_dispatch(&original, current_profile(), &source)
+        .map_err(|error| format!("admit separated {pairs}: {error:?}"))?;
+    assert_eq!(restored, candidate, "source-bound CEB2 must round-trip");
+    for (position, &glyph) in source.iter().enumerate() {
+        assert!(
+            matches!(
+                decode_profile_instruction(
+                    u32::from(glyph),
+                    u32::try_from(position).map_err(|error| error.to_string())?
+                ),
+                Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+            ),
+            "loader-valid all cells for n={pairs} at position={position}"
+        );
+    }
+    let read_glyph = u32::from(
+        *source
+            .get(ISOLATED_COUNT_ADDRESS)
+            .ok_or("missing separated source count cell")?,
+    );
+    assert!(
+        read_glyph < u32::try_from(ISOLATED_PAYLOAD_START).map_err(|error| error.to_string())?,
+        "count-selected C cannot alias CEB2"
+    );
+    let mut vm = ProfileMachine::from_source(current_profile(), &source, Vec::new())
+        .map_err(|error| format!("loader {pairs}: {error:?}"))?;
+    let mut reached = None;
+    let outcome = vm
+        .run_traced(82, &mut |trace| {
+            if trace.before.registers.code_pointer == 81 {
+                reached = Some(*trace);
+            }
+        })
+        .map_err(|error| format!("real dispatch {pairs}: {error:?}"))?;
+    assert!(
+        matches!(outcome, RunOutcome::BudgetExhausted { steps: 82 }),
+        "guest commits j, eighty o and one i for n={pairs}"
+    );
+    let jump = reached.ok_or("missing genuine guest i trace")?;
+    assert_eq!(jump.decoded, Some(b'i'), "native indirect jump opcode");
+    assert_eq!(
+        jump.before.registers.code_pointer, 81,
+        "reached i at address 81"
+    );
+    assert_eq!(
+        jump.before.registers.data_pointer, 121,
+        "guest D points to CEB2 count"
+    );
+    assert_eq!(
+        jump.memory_reads
+            .data
+            .map(|read| (read.address, read.value)),
+        Some((121, read_glyph)),
+        "guest read physical descriptor count glyph"
+    );
+    assert_eq!(
+        jump.memory_delta.encryption.map(|write| write.address),
+        Some(read_glyph),
+        "XLAT2 physically rewrites a code cell only"
+    );
+    assert_eq!(
+        vm.registers().code_pointer,
+        read_glyph.saturating_add(1),
+        "CEB2 count glyph determines actual next guest fetch"
+    );
+    assert_eq!(
+        vm.registers().data_pointer,
+        122,
+        "D advances after true jump"
+    );
+    assert!(vm.output().is_empty(), "this is a control-flow-only probe");
+    let mut recovered_memory_image = source.clone();
+    for position in ISOLATED_PAYLOAD_START..ISOLATED_TOTAL_CELLS {
+        let addr = u32::try_from(position).map_err(|error| error.to_string())?;
+        let unchanged = vm
+            .memory_word(addr)
+            .map_err(|error| format!("VM tail {position}: {error:?}"))?;
+        assert_eq!(
+            unchanged,
+            u32::from(*source.get(position).ok_or("source tail")?),
+            "all 102 data glyphs must survive guest self-encryption at {position}"
+        );
+        *recovered_memory_image
+            .get_mut(position)
+            .ok_or("image tail")? = u8::try_from(unchanged).map_err(|error| error.to_string())?;
+    }
+    assert_eq!(
+        admit_isolated_guest_dispatch(&original, current_profile(), &recovered_memory_image),
+        Ok(candidate),
+        "untouched runtime payload must stay authenticated by the host"
+    );
+    Ok(read_glyph)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "full eight-rank guest code separation"
+)]
+fn isolated_dispatch_retains_bound_ce_b2_across_all_eight_guest_jumps() -> Result<(), String> {
+    assert_eq!(validate_isolated_dispatch_geometry(), Ok(()));
+    assert_eq!(ISOLATED_NO_OPS, 80);
+    assert_eq!(ISOLATED_JUMP_POSITION, 81);
+    assert_eq!(ISOLATED_PAYLOAD_START, 109);
+    assert_eq!(ISOLATED_COUNT_ADDRESS, 121);
+    assert_eq!(ISOLATED_TOTAL_CELLS, 211);
+    let mut observed = BTreeSet::new();
+    for (pairs, expected_value) in [
+        (32usize, 35u32),
+        (2, 41),
+        (4, 54),
+        (6, 71),
+        (8, 72),
+        (10, 90),
+        (12, 106),
+        (14, 107),
+    ] {
+        let actual = verify_isolated_guest_dispatch(pairs)?;
+        assert_eq!(
+            actual, expected_value,
+            "independent loader glyph rank/phase oracle at n={pairs}"
+        );
+        let _distinct = observed.insert(actual);
+    }
+    assert_eq!(observed.len(), 8, "all 8 rank branches must vary");
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "reference search of bounded code-data boundary"
+)]
+fn eighty_guest_noops_are_minimum_for_all_rank_separation_in_fixed_template() -> Result<(), String>
+{
+    // Independent reference: for a prefix 'j@0', N 'o', 'i@(N+1)',
+    // data begins at N+29, and count glyph appears at N+41. If any legal
+    // graphical glyph >= data start, that rank's XLAT2 writes payload.
+    for nop_count in 0usize..=80usize {
+        let payload_start = nop_count.saturating_add(29);
+        let count_address = nop_count.saturating_add(41);
+        let choices = (33u8..=126u8)
+            .filter(|byte| {
+                matches!(
+                    decode_profile_instruction(
+                        u32::from(*byte),
+                        u32::try_from(count_address).unwrap_or(u32::MAX)
+                    ),
+                    Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            choices.len(),
+            8,
+            "each loader position has exactly 8 glyphs"
+        );
+        let highest = choices.iter().copied().max().ok_or("missing alphabet")?;
+        assert_eq!(
+            usize::from(highest) < payload_start,
+            nop_count == 80,
+            "independent exhaustive 0..80 code/data separation bound at N={nop_count}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "host candidate corruption matrix"
+)]
+fn isolated_dispatch_rejects_forged_glyphs_and_source_identity() -> Result<(), String> {
+    let original = program(12)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("source: {error:?}"))?;
+    let source = embed_isolated_guest_dispatch(&original, current_profile(), &candidate)
+        .map_err(|error| format!("source: {error:?}"))?;
+    let mut corrupted_code = source.clone();
+    *corrupted_code.get_mut(ISOLATED_JUMP_POSITION).ok_or("i")? = b'!';
+    assert_eq!(
+        admit_isolated_guest_dispatch(&original, current_profile(), &corrupted_code),
+        Err(GuestPayloadProbeError::InvalidSource)
+    );
+    let mut corrupted_count = source.clone();
+    let original_glyph = *source.get(ISOLATED_COUNT_ADDRESS).ok_or("count")?;
+    let other = (33u8..=126u8)
+        .find(|&glyph| {
+            glyph != original_glyph
+                && matches!(
+                    decode_profile_instruction(u32::from(glyph), 121),
+                    Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                )
+        })
+        .ok_or("alternate valid count glyph")?;
+    *corrupted_count
+        .get_mut(ISOLATED_COUNT_ADDRESS)
+        .ok_or("new count")? = other;
+    assert!(
+        admit_isolated_guest_dispatch(&original, current_profile(), &corrupted_count).is_err(),
+        "loader admissibility is not enough for source-bound CEB2 acceptance"
+    );
+    for length in [0usize, 1, 81, 109, 121, 210] {
+        let short = source.get(..length).ok_or("truncated source")?;
+        assert_eq!(
+            admit_isolated_guest_dispatch(&original, current_profile(), short),
+            Err(GuestPayloadProbeError::InvalidSource)
+        );
+    }
+    let mut too_long = source.clone();
+    too_long.push(b'!');
+    assert_eq!(
+        admit_isolated_guest_dispatch(&original, current_profile(), &too_long),
+        Err(GuestPayloadProbeError::InvalidSource)
+    );
+    let mut foreign = original;
+    foreign.source_id = String::from("research/forged-ceb2.c");
+    assert!(
+        admit_isolated_guest_dispatch(&foreign, current_profile(), &source).is_err(),
+        "equal pair count but different source must reject"
+    );
+    assert!(
+        embed_isolated_guest_dispatch(&foreign, current_profile(), &candidate).is_err(),
+        "publisher must never embed a foreign bound source"
+    );
+    Ok(())
+}
+
+#[test]
+fn isolated_dispatch_v5_configuration_pins_non_equivalence_and_guest_work() {
+    for line in [
+        "schema = \"compact-guest-bytecode-pilot-v5\"",
+        "payload_cells = 102",
+        "reached_noops = 80",
+        "reached_indirect_jump_position = 81",
+        "source_pad_after_jump = 27",
+        "payload_start = 109",
+        "payload_count_glyph_address = 121",
+        "source_cells = 211",
+        "reached_guest_steps_for_jump = 82",
+        "full_eight_rank_source_separation = true",
+        "count_selected_jump_mutates_payload = false",
+        "bytecode_interpreter_present = false",
+        "semantic_echo_equivalence = false",
+    ] {
+        assert!(
+            ISOLATED_DISPATCH_CONFIG
+                .lines()
+                .any(|actual| actual == line),
+            "missing pinned research invariant: {line}"
+        );
+    }
 }

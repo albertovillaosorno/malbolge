@@ -320,6 +320,50 @@ future interpreter must protect or verify its bytecode despite classic
 instruction encryption; using a naive descriptor-region indirect jump as a
 bytecode dispatch loop would destroy the stream it is supposed to read.
 
+## Results: Source-separated Indirect Count Dispatch v5 (2026-10-29)
+
+To test whether the earlier code/data collision is structural or merely an
+artifact of co-locating code and bound data, v5 keeps the same eight-choice
+position-sensitive graphical payload but moves its start from 41 to **109**.
+The 211-cell source has `j@0`, 80 reached `o` instructions, `i@81`, 27
+unreached code `o` cells and 102 packed CEB2 data cells at 109–210.
+Actual Malbolge D reaches address 121, the same count-field ordinal 12,
+while C reaches 81 before the indirect jump. The source-cell choice at
+position 121 yields eight exact graphical values:
+`[35,41,54,71,72,90,106,107]` for the eight three-bit count ranks.
+Each is below 109; all initial jump-triggered XLAT2 source mutations stay
+in the code region, not the CEB2 tail. Guest C becomes `M[121]+1` after
+exactly 82 committed guest instructions, with no callback or staged address.
+
+The source encoder re-ranks the independently source-bound CEB2 38-byte
+descriptor at each new loader address rather than moving positional ASCII
+bytes. The host verifier independently re-ranks the entire new payload,
+checks exact code/padding glyphs and delegates final CEB2 provenance to the
+existing independent canonical-source/profile SHA-256 admission. All eight
+rank variants execute under the normative VM; traces prove genuine data
+reads, exact C/D and post-jump physical code-cell encryption, while every
+one of the 102 CEB2 payload words remains byte-for-byte unchanged. A fresh
+host reconstruction from the observed VM data region still admits against
+the original canonical source. Loader-valid candidate substitutions and
+foreign-source copies remain rejected.
+
+A separate reference search enumerates every loader-valid glyph at each
+possible count-cell phase for no-op counts from 0 through 80. For each
+0..79 at least one of eight glyph numeric targets is in the original
+payload region. At 80 all eight targets are below payload start 109.
+Thus **80 is minimal only in this precisely defined code template**, not a
+universal minimum for guest bytecode representation. Compared with v4, the
+isolation overhead is +68 source cells (211 vs 143) and +68 reached guest
+instructions before any application operation (82 vs 14). This is a
+measured preservation cost, not a measured execution benefit.
+
+The guest still does not decode the graphical three-bit count ordinal,
+execute even one meaningful bytecode opcode, authenticate CEB2, loop or
+reproduce an n-pair echo trace. It only selects and encrypts a *code*
+address based on loaded source data. Subsequent control-flow and repeated
+execution would need independent verification, and no equivalent-program
+size or runtime Pareto conclusion is justified.
+
 ## Threats to Validity
 
 The pilot has no guest interpreter, no real bytecode loader, no linked data

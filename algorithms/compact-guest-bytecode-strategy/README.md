@@ -208,6 +208,43 @@ original host CEB2 admission. A reusable guest runtime would need a design
 that avoids destructive code/data overlap or otherwise preserves a verified
 unmodified bytecode representation before indirect dispatch.
 
+## Protected-residency indirect dispatch v5 (2026-10-29)
+
+`isolated_dispatch.rs` and `pilot-v5.toml` implement a bounded negative-case
+repair for v4's confirmed XLAT2 destruction of resident CEB2 data. The new
+loader-accepted 211-cell source consists of `j@0`, eighty reached no-ops,
+`i@81`, 27 **unreached** code-padding no-ops, and a 102-cell CEB2 payload at
+positions 109–210. The initial `j` sets D=41; eighty reached no-ops bring D
+to the CEB2 count-bearing glyph at 121 (data ordinal 12). The genuine
+`i@81` reads `M[121]`, encrypts the count-selected source-code cell
+`M[M[121]]`, and advances C to `M[121]+1` after **82 actual VM steps**.
+
+The eight position-valid graphical values of `M[121]` are exactly
+35/41/54/71/72/90/106/107. All are strictly below the protected CEB2
+start at address 109, so every possible count-derived post-jump XLAT2
+write is confined to code. Source-position packing must be redone: literal
+original v4 tail glyphs cannot simply be copied to source position 109.
+The v5 host proposal preserves the 102 independent glyph ordinals and the
+independent admission reconstructs the original 38-byte CEB2 descriptor,
+checks canonical padding and revalidates its source/profile SHA-256 binding.
+
+Eight real profiled VM runs cover all count-glyph ranks and check exact guest
+reads, code-cell encryption targets, C/D register state, lack of output, and
+every unchanged one of the 102 resident data cells. The host independently
+re-admits the complete original payload reconstructed from actual guest
+memory. A separate exhaustive source-phase oracle checks no-op counts
+0 through 80; **80 is the first safe count** in this fixed `j` / repeated
+`o` / `i` / 27-pad positional template for *all eight* loader glyphs.
+This is not a general lower bound on Malbolge guest encodings.
+
+The separation costs **68 more source cells** (211 vs v4's 143) and
+**68 more reached guest steps** (82 vs v4's 14) before any useful bytecode
+work. It removes the *first-jump payload mutation* from v4; it does not
+prevent unrelated later code changes, interpret an opcode, authenticate
+anything inside the guest, loop or execute an echo trace. The v5 and direct
+lowering programs still have different semantics and are not a valid
+size/speedup comparison.
+
 ## Status
 
 No VM-resident bytecode runtime has been implemented. No guest-interpreted
