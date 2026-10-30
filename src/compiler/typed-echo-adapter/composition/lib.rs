@@ -254,6 +254,13 @@ fn compile_byte_trace(
     mode: ByteTraceMode,
 ) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
     let module = canonical_module(canonical).map_err(TypedEchoAdapterError::InvalidTypedIr)?;
+    // A canonical source-target identity is admission evidence, not a hint.
+    // Refuse profile drift before allocating/lowering an entire effect trace.
+    if module.target_profile() != profile.id() {
+        return Err(TypedEchoAdapterError::Layout(
+            bridge::ByteEchoBridgeError::ProfileMismatch,
+        ));
+    }
     let projection = project_byte_trace(&module, mode)?;
     let lowered = lower_typed_ir(&projection).map_err(TypedEchoAdapterError::Lowering)?;
     let ternary_bytes =

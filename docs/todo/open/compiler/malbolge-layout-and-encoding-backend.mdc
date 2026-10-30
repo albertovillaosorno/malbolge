@@ -189,6 +189,13 @@ emission.
   executes directly published MCTI capsule bytes with explicit 0/255/128
   binary stdin and exact repeated output; invalid typed option grammar
   fails without publication. No generic C, EOF, ABI or heap work is claimed.
+- Canonical MCTI v1 profile remains exactly `malbolge-2026`: selected
+  historical/immutable versioned profiles fail before typed-effect lowering
+  or artifact publication, even though the standalone layout library
+  supports their separate target identities. Both current-profile typed
+  modes execute in the independent VM and actual binary-stdin runner.
+  A direct MCTI file emits the exact maximum 4096-cell successful-byte
+  trace (4094 outputs) and refuses 4097 cells without creating a target.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

@@ -70,6 +70,19 @@ additionally feeds three binary guest bytes (including 0 and 255) and
 requires the expected repeated latest-byte output; grammar errors and
 trailing mixed-mode operands fail closed.
 
+Canonical MCTI wire version one is intentionally pinned to `malbolge-2026`
+and `malbolge-c32-v1`: unlike the lower-level VM and standalone layout
+encoder, this typed compiler stage does **not** admit historical or immutable
+versioned profile identities. The adapter now rejects a selected-profile
+drift immediately after full canonical typed admission, before source
+effect projection or ternary lowering. A real file-publisher regression
+checks both strict and latest-read current-profile capsules through the
+normative VM and actual binary-stdin runner, and rejects all four other
+registered profile selectors without publishing. Another regression
+publishes the entire 4096-cell latest-read trace (one read, 4094 outputs),
+checks exact `0xff` guest output and consumption, and refuses 4097 cells.
+This does not generalize the typed ABI or imply EOF semantics.
+
 For the original strict echo subset, canonical `MCTR` bytes remain consumable
 by the default `malbolge_layout --ternary-file` CLI. Its separate opt-in
 `--latest-byte-trace --ternary-file` path now accepts the latest-successful-read

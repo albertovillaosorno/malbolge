@@ -710,6 +710,13 @@ instruction.
   real general Malbolge CLI with binary stdin; exact repeated output and
   bad option-grammar rejection are independently observed. The default
   strict echo subdomain and successful-I/O-only limitation remain.
+- Canonical `MCTI` v1 still pins target profile `malbolge-2026`. Typed
+  lowering now checks the requested profile immediately after canonical
+  module admission, before effect projection. Process-level tests prove
+  strict/latest-read current-profile guest execution and fail-closed
+  historical/immutable-version profile selection, with no typed ABI
+  expansion. The direct file publisher reaches exactly 4096 target cells
+  with one input and 4094 byte outputs and refuses a 4097-cell file.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

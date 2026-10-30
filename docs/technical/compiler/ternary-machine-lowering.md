@@ -1149,6 +1149,17 @@ grammar fails closed. The path accepts only the existing void,
 one-function successful-byte sublanguage; this is not general typed-C to
 Malbolge lowering and does not implement EOF or guest ABI returns.
 
+Typed wire v1 retains the closed `malbolge-2026` target-profile identity.
+The typed adapter now rejects selected-profile mismatch immediately after
+complete canonical MCTI admission, before semantic effect projection or
+ternary lowering. It does not reinterpret historical/immutable profile IDs
+as current. Tests execute both strict and latest-read current MCTI capsules
+under the normative VM and the actual binary-stdin runner, and reject
+profile drift for the four noncurrent registered identities. End-to-end
+file emission reaches exactly 4096 graphical cells (one successful byte
+read followed by 4094 outputs); a 4097-cell request fails before creating
+any output, independently of the in-memory target-boundary tests.
+
 ### Authoritative Inputs
 
 The first implementation must consume existing identities without renaming or

@@ -236,7 +236,15 @@ executes a directly published typed latest-read capsule through the real
 `malbolge --input-stdin` runner, verifying binary `0x00`, `0xff` and `0x80`
 input with repeated outputs `0x00 0x00 0x80 0x80`. Hostile mode ordering,
 missing path and extra operands also reject before target publication.
-No EOF/error/guest ABI is added.
+No EOF/error/guest ABI is added. Canonical typed-IR v1 binds its target
+identity to **`malbolge-2026`**, even though the standalone machine-layout
+CLI supports historical and immutable versioned profiles. Typed-file mode
+therefore rejects profile selection drift (including those four other
+registered identities) before target effect projection; successful current
+profile capsules execute through both the normative VM and general runner.
+The direct typed file mode also passes the physical 4096-cell cap with one
+successful read and 4094 outputs, while the next cell is refused without a
+published artifact.
 
 `--ternary-file` is mutually exclusive with individual decoded machine-op
 tokens. Its sole operand must be an existing, nonempty regular file with at

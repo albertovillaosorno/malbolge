@@ -272,6 +272,16 @@ mode order, absent typed path and mixed trailing machine tokens are refused.
 This closes one artifact-adapter integration gap, not arbitrary C lowering,
 guest-runtime ABI, EOF or I/O failure semantics.
 
+The typed-file publisher remains bound to the original canonical MCTI-v1
+`malbolge-2026` profile, unlike the lower-level layout library which admits
+five registered VM identities. Selected historical/immutable profiles
+fail before source lowering and publication, rather than silently replacing
+the typed source's profile. Current-profile strict/latest-read capsules
+are independently reopened and executed by the normative VM and real
+binary-stdin runner. A physical source-capacity regression publishes an
+exactly 4096-cell MCTI trace and verifies all 4094 identical byte outputs;
+adding a single output cell fails without a final file.
+
 ### Remaining implementation
 
 Map admitted typed ternary operations and runtime/heap helpers onto real target

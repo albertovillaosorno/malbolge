@@ -41,7 +41,7 @@ use adapter::typed::{
     TypeEntry, TypeId, ValueId, canonical_bytes, canonical_module, validate_module,
 };
 use adapter::{TypedEchoAdapterError, compile_canonical_typed_echo};
-use malbolge::{ProfileMachine, RunOutcome, current_profile, historical_profile};
+use malbolge::{ProfileMachine, RunOutcome, current_profile, historical_profile, target_profile};
 use std::fs;
 use std::io::Write as _;
 use std::iter::repeat_n;
@@ -115,6 +115,14 @@ fn fixture_with_instructions(
     instructions: Vec<LocatedInstruction>,
     source_id: &str,
 ) -> Result<Module, String> {
+    fixture_with_profile(instructions, source_id, current_profile().id())
+}
+
+fn fixture_with_profile(
+    instructions: Vec<LocatedInstruction>,
+    source_id: &str,
+    profile_id: &str,
+) -> Result<Module, String> {
     let count = u32::try_from(instructions.len())
         .map_err(|error| format!("fixture operation count: {error}"))?;
     Ok(Module::new(ModuleSpec {
@@ -140,7 +148,7 @@ fn fixture_with_instructions(
         proof_obligations: Vec::new(),
         source_id: source_id.to_owned(),
         source_sha256: [0xb4; 32],
-        target_profile: String::from("malbolge-2026"),
+        target_profile: profile_id.to_owned(),
         types: vec![
             TypeEntry::new(TypeId::new(0), TypeDef::U8),
             TypeEntry::new(TypeId::new(1), TypeDef::function(Vec::new(), None, false)),
@@ -529,6 +537,13 @@ fn typed_ir_projection_binds_every_operation_ssa_and_source_span() -> Result<(),
 }
 
 fn latest_typed_fixture(steps: &[(bool, u32)]) -> Result<Module, String> {
+    latest_typed_fixture_for_profile(steps, current_profile().id())
+}
+
+fn latest_typed_fixture_for_profile(
+    steps: &[(bool, u32)],
+    profile_id: &str,
+) -> Result<Module, String> {
     let mut instructions = Vec::with_capacity(steps.len());
     for (index, (read, value)) in steps.iter().enumerate() {
         let begin = u32::try_from(index).map_err(|error| format!("source offset: {error}"))?;
@@ -547,7 +562,7 @@ fn latest_typed_fixture(steps: &[(bool, u32)]) -> Result<Module, String> {
             span(begin, begin.saturating_add(1)),
         ));
     }
-    fixture_with_instructions(instructions, "fixtures/typed-echo.c")
+    fixture_with_profile(instructions, "fixtures/typed-echo.c", profile_id)
 }
 
 fn verify_latest_typed_execution(
@@ -1146,6 +1161,235 @@ fn canonical_typed_file_mode_requires_exact_explicit_grammar() -> Result<(), Str
         .map_err(|error| format!("typed trailing token: {error}"))?;
     if rejected_extra.status.success() || target.exists() {
         return Err(String::from("typed file accepted a trailing machine token"));
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "each profile requires an independently serialized target, VM and external runner"
+)]
+fn verify_profile_bound_typed_capsule(
+    workspace: &OwnedFixture,
+    profile_id: &str,
+    latest: bool,
+) -> Result<(), String> {
+    let profile = target_profile(profile_id)
+        .ok_or_else(|| format!("missing registered profile {profile_id}"))?;
+    let (module, input, expected, consumed, steps) = if latest {
+        (
+            latest_typed_fixture_for_profile(
+                &[
+                    (true, 0),
+                    (false, 0),
+                    (false, 0),
+                    (true, 1),
+                    (true, 2),
+                    (false, 2),
+                ],
+                profile_id,
+            )?,
+            vec![0, 255, 128],
+            vec![0, 0, 128],
+            3,
+            7,
+        )
+    } else {
+        (
+            fixture_with_profile(effects(2)?, "fixtures/typed-echo.c", profile_id)?,
+            vec![0, 255],
+            vec![0, 255],
+            2,
+            5,
+        )
+    };
+    let canonical = wire(&module)?;
+    let compiled = if latest {
+        adapter::compile_canonical_typed_latest_byte_trace(&canonical, profile)
+    } else {
+        compile_canonical_typed_echo(&canonical, profile)
+    }
+    .map_err(|error| format!("{profile_id} typed lowering: {error:?}"))?;
+    let restored = canonical_ternary_program(compiled.ternary_bytes())
+        .map_err(|error| format!("{profile_id} canonical MCTR restoration: {error:?}"))?;
+    if restored.target_profile != profile_id
+        || restored.source_id != module.source_id()
+        || restored.source_sha256 != *module.source_sha256()
+        || compiled.layout().profile_id() != profile_id
+        || compiled.layout().profile_fingerprint() != profile.fingerprint()
+    {
+        return Err(format!("{profile_id} stage provenance drift"));
+    }
+    let typed_path = workspace.path(&format!("{profile_id}-{latest}.mcti"));
+    let capsule_path = workspace.path(&format!("{profile_id}-{latest}.malbolge"));
+    fs::write(&typed_path, canonical).map_err(|error| error.to_string())?;
+    let published = publish_typed_wire(profile_id, &typed_path, &capsule_path, latest, true)?;
+    if !published.status.success() {
+        return Err(format!(
+            "{profile_id} typed publication: {}",
+            String::from_utf8_lossy(&published.stderr)
+        ));
+    }
+    let output = fs::read(&capsule_path).map_err(|error| error.to_string())?;
+    let capsule = malbolge::parse_capsule(&output)
+        .map_err(|error| format!("{profile_id} independent capsule parse: {error}"))?
+        .ok_or("missing profile capsule from typed publisher")?;
+    if capsule.profile().id() != profile_id
+        || capsule.profile().fingerprint() != profile.fingerprint()
+        || capsule.payload() != compiled.layout().source()
+    {
+        return Err(format!("{profile_id} capsule identity or source mismatch"));
+    }
+    let mut vm = ProfileMachine::from_source(profile, capsule.payload(), input.clone())
+        .map_err(|error| format!("{profile_id} normative VM load: {error:?}"))?;
+    if !matches!(vm.run(steps),
+        Ok(RunOutcome::Terminated { steps: executed, .. }) if executed == steps)
+        || vm.input_consumed() != consumed
+        || vm.output() != expected
+    {
+        return Err(format!("{profile_id} normative typed VM result mismatch"));
+    }
+    let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&capsule_path)
+        .arg("--input-stdin")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("{profile_id} actual guest runner: {error}"))?;
+    let mut stdin = child.stdin.take().ok_or("missing guest stdin")?;
+    stdin
+        .write_all(&input)
+        .map_err(|error| format!("{profile_id} guest binary input: {error}"))?;
+    drop(stdin);
+    let observed = child
+        .wait_with_output()
+        .map_err(|error| format!("{profile_id} general runner result: {error}"))?;
+    if !observed.status.success() || observed.stdout != expected || !observed.stderr.is_empty() {
+        return Err(format!(
+            "{profile_id} actual guest output differs: {observed:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_file_profile_admission_is_fixed_to_v1_current_contract() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let current = current_profile().id();
+    verify_profile_bound_typed_capsule(&workspace, current, false)?;
+    verify_profile_bound_typed_capsule(&workspace, current, true)?;
+    let valid_current = wire(&fixture(1)?)?;
+    let wire_path = workspace.path("only-current.mcti");
+    fs::write(&wire_path, valid_current).map_err(|error| error.to_string())?;
+    for profile_id in [
+        "malbolge-1998",
+        "malbolge-2026.1",
+        "malbolge-2026.2",
+        "malbolge-2026.3",
+    ] {
+        let invalid_source =
+            fixture_with_profile(effects(1)?, "fixtures/typed-echo.c", profile_id)?;
+        if validate_module(&invalid_source) != Err(adapter::typed::ValidationError::ProfileIdentity)
+        {
+            return Err(format!("typed v1 source unexpectedly admits {profile_id}"));
+        }
+        let profile = target_profile(profile_id)
+            .ok_or_else(|| format!("missing registered profile {profile_id}"))?;
+        if compile_canonical_typed_echo(
+            &fs::read(&wire_path).map_err(|error| error.to_string())?,
+            profile,
+        ) != Err(TypedEchoAdapterError::Layout(
+            adapter::bridge::ByteEchoBridgeError::ProfileMismatch,
+        )) {
+            return Err(format!(
+                "typed v1 source incorrectly lowered for {profile_id}"
+            ));
+        }
+        let target = workspace.path(&format!("{profile_id}-forbidden.malbolge"));
+        let rejected = publish_typed_wire(profile_id, &wire_path, &target, false, true)?;
+        if rejected.status.success() || target.exists() {
+            return Err(format!(
+                "typed v1 file published wrong profile {profile_id}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_profile_mismatch_precedes_unsupported_effect_projection() -> Result<(), String> {
+    let canonical = wire(&latest_typed_fixture(&[(true, 0), (true, 1), (false, 0)])?)?;
+    if adapter::compile_canonical_typed_latest_byte_trace(&canonical, current_profile())
+        != Err(TypedEchoAdapterError::UnsupportedTypedIr)
+    {
+        return Err(String::from(
+            "unsupported stale SSA accepted on matching profile",
+        ));
+    }
+    if adapter::compile_canonical_typed_latest_byte_trace(
+        &canonical,
+        target_profile("malbolge-2026.1").ok_or("unregistered .1")?,
+    ) != Err(TypedEchoAdapterError::Layout(
+        adapter::bridge::ByteEchoBridgeError::ProfileMismatch,
+    )) {
+        return Err(String::from(
+            "profile drift did not reject before SSA lowering",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_file_latest_read_publishes_exact_4096_cell_limit() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let mut steps = Vec::with_capacity(4096);
+    steps.push((true, 0));
+    steps.extend(repeat_n((false, 0), 4094));
+    let canonical = wire(&latest_typed_fixture(&steps)?)?;
+    if canonical.len() > 1_048_576 {
+        return Err(String::from(
+            "maximum typed trace exceeds file admission limit",
+        ));
+    }
+    let wire_path = workspace.path("maximum-admitted.mcti");
+    fs::write(&wire_path, canonical).map_err(|error| error.to_string())?;
+    let target = workspace.path("exact-4096.malbolge");
+    let published = publish_typed_wire(current_profile().id(), &wire_path, &target, true, false)?;
+    if !published.status.success() {
+        return Err(format!(
+            "maximum canonical typed source refused: {}",
+            String::from_utf8_lossy(&published.stderr)
+        ));
+    }
+    let source = fs::read(&target).map_err(|error| error.to_string())?;
+    if source.len() != 4096 {
+        return Err(format!(
+            "expected 4096 guest cells, received {}",
+            source.len()
+        ));
+    }
+    let mut vm = ProfileMachine::from_source(current_profile(), &source, vec![255])
+        .map_err(|error| format!("maximum published VM load: {error:?}"))?;
+    if !matches!(vm.run(4096), Ok(RunOutcome::Terminated { steps: 4096, .. }))
+        || vm.input_consumed() != 1
+        || vm.output().len() != 4094
+        || vm.output().iter().any(|byte| *byte != 255)
+    {
+        return Err(String::from(
+            "maximum published guest trace did not execute",
+        ));
+    }
+    steps.push((false, 0));
+    let excessive = workspace.path("overflow.mcti");
+    fs::write(&excessive, wire(&latest_typed_fixture(&steps)?)?)
+        .map_err(|error| error.to_string())?;
+    let forbidden = workspace.path("overflow.malbolge");
+    let rejected = publish_typed_wire(current_profile().id(), &excessive, &forbidden, true, false)?;
+    if rejected.status.success() || forbidden.exists() {
+        return Err(String::from(
+            "4097-cell trace bypassed bounded source admission",
+        ));
     }
     Ok(())
 }
