@@ -246,8 +246,10 @@ spawn failures are wrapped as probe execution errors. Child stdout and stderr
 now use concurrent pipe readers that enforce output byte quotas. They abort
 overflowing commands before completion. A concurrent
 stdin writer preserves full-duplex behavior; the wall deadline covers child and
-pipe completion. Killing descendant processes beyond the immediate child remains
-an open cross-platform hardening task.
+pipe completion. On POSIX, failed or timed-out commands kill the child session's
+process group (including ordinary descendants). Windows still stops only the
+direct child; descendants that detach their POSIX session are also outside this
+scope. Cross-platform child-tree cleanup remains open.
 
 A probe batch validates the candidate source as a regular-file-only tree and
 copies it into an isolated temporary mirror without following symbolic links.

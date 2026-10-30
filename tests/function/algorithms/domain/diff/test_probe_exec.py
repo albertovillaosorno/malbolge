@@ -40,6 +40,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
+import time
 from typing import cast
 
 from algorithms.diff.probe_exec import PathArgument
@@ -63,6 +64,7 @@ _OUTSIDE_BYTES = b"outside"
 _ADMITTED_INPUT = b"admitted"
 _STDOUT_NAME = "stdout"
 _STDERR_NAME = "stderr"
+_POSIX_OS_NAME = "posix"
 _LINK_CREATE_CODE = (
     "import pathlib,sys;pathlib.Path(sys.argv[1]).symlink_to(sys.argv[2])"
 )
@@ -383,6 +385,51 @@ def test_timeout_fails_closed(tmp_path: Path) -> None:
 
     with pytest.raises(ProbeExecutionError, match="timeout"):
         _ = run_probe_program(program, _context(source, tmp_path))
+
+
+def test_timeout_terminates_probe_descendants_on_posix(tmp_path: Path) -> None:
+    """Probe timeout must not leave an inherited child process running."""
+    if os.name != _POSIX_OS_NAME:
+        pytest.skip("POSIX process groups unavailable")
+    source = tmp_path / "source"
+    source.mkdir()
+    started = tmp_path / "descendant-started"
+    late = tmp_path / "descendant-finished"
+    child_code = (
+        "import pathlib,sys,time;"
+        "pathlib.Path(sys.argv[1]).write_bytes(b'yes');"
+        "time.sleep(1.4);"
+        "pathlib.Path(sys.argv[2]).write_bytes(b'escaped')"
+    )
+    parent_code = (
+        "import subprocess,sys,time,pathlib;"
+        "subprocess.Popen([sys.executable,'-c',sys.argv[1],"
+        "sys.argv[2],sys.argv[3]],"
+        "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,"
+        "stderr=subprocess.DEVNULL);"
+        "p=pathlib.Path(sys.argv[2]);"
+        "exec('while not p.exists(): time.sleep(0.005)');"
+        "time.sleep(3)"
+    )
+    command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=(
+            "-c",
+            parent_code,
+            child_code,
+            PathArgument(ProbeRoot.REPOSITORY, started.name),
+            PathArgument(ProbeRoot.REPOSITORY, late.name),
+        ),
+        timeout_ms=650,
+    )
+    with pytest.raises(ProbeExecutionError, match="timeout"):
+        _ = run_probe_program(
+            ProbeProgram("descendant-timeout", (command,)),
+            _context(source, tmp_path),
+        )
+    _expect(started.exists(), "child had not started before timeout")
+    time.sleep(1.5)
+    _expect(not late.exists(), "probe descendant survived parent timeout")
 
 
 def test_output_limit_fails_closed(tmp_path: Path) -> None:

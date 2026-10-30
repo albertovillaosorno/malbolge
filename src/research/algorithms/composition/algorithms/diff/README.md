@@ -148,8 +148,10 @@ rejects NUL argv/path/tool IDs before launching, and executable spawn failures
 stay inside the probe error boundary. No-shell child output pipes now stream
 into independent memory-guarded readers, aborting on the first byte over each
 stdout/stderr quota; stdin has a concurrent writer to avoid full-duplex
-backpressure deadlocks. Deadlines cover process and pipe completion. Child-tree
-cleanup beyond the immediate child remains unfinished. Source trees are
+backpressure deadlocks. Deadlines cover process and pipe completion. On
+POSIX, failed or timed-out probes terminate the child session's process group;
+Windows currently stops only the direct child, and POSIX descendants that
+start detached sessions are outside this cleanup boundary. Source trees are
 validated as regular-file-only before mirroring
 regardless of the optional post-run immutability policy. Mirroring never follows
 symlinks, and the copy must match the admitted byte-tree snapshot before any

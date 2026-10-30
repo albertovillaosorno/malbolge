@@ -44,6 +44,7 @@ import os
 from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
+import signal
 from stat import S_ISREG
 
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -73,6 +74,7 @@ _TOOL_BINDING_LENGTH = 2
 _NUL = "\x00"
 _READ_CHUNK_BYTES = 16_384
 _POLL_SECONDS = 0.005
+_POSIX_OS_NAME = "posix"
 
 
 class _HashUpdater(Protocol):
@@ -555,8 +557,11 @@ def _feed_stdin(stream: IO[bytes], data: bytes, errors: list[OSError]) -> None:
 
 
 def _stop_child(process: subprocess.Popen[bytes]) -> None:
-    """Stop and reap the immediate child after a probe boundary failure."""
-    if process.poll() is None:
+    """Stop the POSIX probe process group or its direct Windows child."""
+    if os.name == _POSIX_OS_NAME:
+        with suppress(ProcessLookupError):
+            os.kill(-process.pid, int(signal.Signals["SIGKILL"]))
+    elif process.poll() is None:
         with suppress(ProcessLookupError):
             process.kill()
     _ = process.wait()
@@ -583,6 +588,7 @@ def _spawn_probe(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=False,
+            start_new_session=os.name == _POSIX_OS_NAME,
         )
     except OSError as error:
         message = f"probe command launch failed: {error}"
