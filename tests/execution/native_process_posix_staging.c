@@ -780,6 +780,25 @@ static int check_lifecycle_response_failures(void)
     mb_native_process_write_u64(&request[17], base);
     mb_native_process_write_u64(&request[25], 64U);
     request[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    // A failed response allocation after actual code copy must not grant
+    // executable entry authority to those unreported bytes.
+    mb_u8 copy[48] = {0};
+    memcpy(copy, request, 34U);
+    copy[8] = MB_NATIVE_PROCESS_MEMORY_COPY;
+    mb_native_process_write_u64(&copy[34], 6U);
+    memcpy(&copy[42], "ABCDEF", 6U);
+    fail_next_lifecycle_response = 32U;
+    response = NULL;
+    response_len = 0U;
+    if (mb_worker_handle_copy(&worker, copy, sizeof(copy),
+            &response, &response_len)
+        || response != NULL || response_len != 0U
+        || worker.mappings[0].copied_len != 0U
+        || memcmp(worker.mappings[0].base, "ABCDEF", 6U) != 0) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 7;
+    }
     fail_next_lifecycle_response = 35U;
     response = NULL;
     response_len = 0U;

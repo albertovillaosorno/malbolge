@@ -1455,6 +1455,8 @@ Native entry offsets must lie inside that copied interval as well as pass
 alignment, RX, and cache-synchronization admission. A later shorter or empty
 copy revokes any previously copied tail from raw-entry authority, and a failed
 copy-response allocation does not grant newly copied bytes executable entry.
+POSIX and simulated Win32 failure-injection fixtures independently confirm
+that an unreported copy can change bytes without granting callable authority.
 
 On real Linux x86-64, an RX+synced 64-byte allocation with just six copied
 bytes previously entered uncopied padding and killed the child. The new

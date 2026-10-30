@@ -1811,6 +1811,7 @@ static int check_unreportable_copy_sync_release(
             &response, &response_len) != 0
         || response != NULL || response_len != 0U
         || worker->count != 1U
+        || worker->mappings[0].copied_len != 0U
         || memcmp(worker->mappings[0].base, "ABCDEF", 6U) != 0) {
         mb_worker_free(response);
         return 2;
@@ -1844,7 +1845,8 @@ static int check_unreportable_copy_sync_release(
     if (!mb_worker_handle_sync(worker, request, 33U,
             &response, &response_len)
         || response_len != MB_NATIVE_PROCESS_MEMORY_SYNC_RESPONSE_BYTES
-        || sync_count != before_sync + 2U) {
+        || sync_count != before_sync + 2U
+        || worker->mappings[0].copied_len != 0U) {
         mb_worker_free(response);
         return 5;
     }

@@ -956,7 +956,9 @@ A distinct single-resident lease cache
   Both process workers also bind native entry offsets to the latest reported
   code-copy byte length rather than the allocation size. A failed or empty
   copy never grants entry, and a shorter replacement cannot reuse the prior
-  copied tail. Host-real POSIX tests reject uncopied padding (previously a
+  copied tail. Injected POSIX and Windows copy-response allocation failures
+  leave unreported bytes non-callable while retaining ownership. Host-real
+  POSIX tests reject uncopied padding (previously a
   child fault), stale code after a shorter replacement, and empty code, while
   preserving a healthy session and valid entry at byte zero.
 
