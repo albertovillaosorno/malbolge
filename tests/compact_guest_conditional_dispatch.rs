@@ -1192,6 +1192,113 @@ fn three_way_guest_capsules_match_direct_one_two_three_echo_cli() -> Result<(), 
     Ok(())
 }
 
+fn run_three_way_capsule_for_input(
+    path: &Path,
+    input: &[u8],
+    expected_steps: usize,
+) -> Result<Vec<u8>, String> {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(path)
+        .arg("--input-stdin")
+        .arg("--report-steps")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("spawn real Malbolge CLI: {error}"))?;
+    let mut stdin = child.stdin.take().ok_or("capsule child stdin missing")?;
+    stdin
+        .write_all(input)
+        .map_err(|error| format!("write capsule stdin: {error}"))?;
+    drop(stdin);
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("wait capsule child: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("CLI rejected source or input: {output:?}"));
+    }
+    if output.stderr != format!("malbolge-steps-v1:{expected_steps}\n").as_bytes() {
+        return Err(format!("CLI committed step receipt drifted: {output:?}"));
+    }
+    Ok(output.stdout)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real CLI EOF and surplus byte parity"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "independent CLI and VM oracle for all branch choices"
+)]
+fn three_way_capsules_match_direct_and_vm_on_stdin_boundaries() -> Result<(), String> {
+    let fixture = CapsuleFixture::new("v9-stdin")?;
+    let bytes = [0u8, 128, 255, 42];
+    for pairs in [1u32, 2, 3] {
+        let (program, source) = canonical_three_way_source(pairs)?;
+        let direct = strategy::bridge::encode_successful_byte_echo(&program, current_profile())
+            .map_err(|error| format!("direct n={pairs} lowering: {error:?}"))?;
+        let guest_path = fixture.root.join(format!("v9-guest-{pairs}.malbolge"));
+        let direct_path = fixture.root.join(format!("v9-direct-{pairs}.malbolge"));
+        for (path, image) in [
+            (&guest_path, source.as_slice()),
+            (&direct_path, direct.source()),
+        ] {
+            let capsule = malbolge::build_capsule(current_profile(), image)
+                .map_err(|error| format!("build source capsule n={pairs}: {error:?}"))?;
+            fs::write(path, capsule).map_err(|error| format!("publish test capsule: {error}"))?;
+        }
+        let count = usize::try_from(pairs).map_err(|error| error.to_string())?;
+        let direct_steps = count.saturating_mul(2).saturating_add(1);
+        let guest_steps = *triple::GUEST_STEPS
+            .get(count.saturating_sub(1))
+            .ok_or("three-way guest step bound")?;
+        let direct_initial =
+            ProfileMachine::from_source(current_profile(), direct.source(), Vec::new())
+                .map_err(|error| format!("direct initial state n={pairs}: {error:?}"))?
+                .snapshot_state();
+        for input in [
+            Vec::new(),
+            bytes
+                .get(..count.saturating_sub(1))
+                .ok_or("short input")?
+                .to_vec(),
+            bytes.get(..count).ok_or("exact input")?.to_vec(),
+            bytes
+                .get(..count.saturating_add(1))
+                .ok_or("surplus input")?
+                .to_vec(),
+            vec![255, 1, 2, 3],
+        ] {
+            let mut oracle = ProfileMachine::from_state(
+                current_profile(),
+                direct_initial.memory().to_vec(),
+                input.clone(),
+                malbolge::ProfileRegisters::default(),
+            )
+            .map_err(|error| format!("direct VM from pristine state: {error:?}"))?;
+            assert!(
+                matches!(oracle.run(direct_steps), Ok(RunOutcome::Terminated {
+                    steps: committed, ..
+                }) if committed == direct_steps),
+                "normative VM must terminate exactly before checking CLI"
+            );
+            let expected = oracle.output();
+            let direct_stdout =
+                run_three_way_capsule_for_input(&direct_path, &input, direct_steps)?;
+            let guest_stdout = run_three_way_capsule_for_input(&guest_path, &input, guest_steps)?;
+            assert_eq!(
+                direct_stdout, expected,
+                "direct CLI differs from normative VM"
+            );
+            assert_eq!(guest_stdout, expected, "guest CLI differs from direct VM");
+            assert_eq!(guest_stdout.len(), count, "EOF must preserve echo count");
+        }
+    }
+    Ok(())
+}
+
 #[test]
 #[expect(
     clippy::panic_in_result_fn,

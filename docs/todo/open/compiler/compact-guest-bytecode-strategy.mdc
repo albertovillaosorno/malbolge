@@ -226,6 +226,11 @@ code-size explosion or compilation cost.
   branch-specific step counts, byte output and consumed-byte parity, while
   102 source-bound CEB2 cells remain unchanged. The bounded samples do not
   establish equivalence for arbitrary input streams.
+  Fifteen additional real CLI stdin cases run both source-bound guest
+  capsules and independent direct capsules, comparing their output to a
+  separately restored normative direct VM. Thirty process executions pass
+  EOF, short, exact, surplus and high-byte input and exact step receipts;
+  the samples still do not establish unbounded byte-stream semantics.
 
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

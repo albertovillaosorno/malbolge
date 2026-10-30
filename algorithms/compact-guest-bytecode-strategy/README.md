@@ -452,6 +452,14 @@ step counts and every one of the 102 CEB2 data words survives. Each run
 restores the original loader image, so prior self-encryption cannot alter
 a later trial. These are finite input samples, not general stream parity.
 
+The real general `malbolge --input-stdin --report-steps` executable also
+passes **15** input variants (five per canonical count) covering EOF,
+short/exact and surplus stdin, including a high-byte stream. Both guest
+and direct capsules reproduce an independently reset direct-profile VM
+oracle for every output byte, and both emit their own exact committed step
+receipts (30 child executions total). This confirms process-level stdin
+semantics in the tested matrix but not arbitrary byte-stream equivalence.
+
 The three possible programs are **unrolled**, not a generic VM: the guest
 neither reads the packed CEB2 count nor decodes ordinal instructions,
 maintains a bytecode PC, loops, authenticates its own digest or supports
