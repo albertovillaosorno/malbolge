@@ -333,7 +333,9 @@ impl ChunkedProfileWord {
     /// # Errors
     ///
     /// Returns [`ChunkedProfileWordError::RecurrencePhase`] above phase five,
-    /// or [`ChunkedProfileWordError::WidthMismatch`] for different seed widths.
+    /// [`ChunkedProfileWordError::WidthMismatch`] for different seed widths,
+    /// or [`ChunkedProfileWordError::AllocationFailure`] for unavailable
+    /// output storage. Input seeds are borrowed, never cloned into new storage.
     pub fn recurrence_cell(
         older: &Self,
         previous: &Self,
@@ -355,14 +357,18 @@ impl ChunkedProfileWord {
         } else {
             positive_steps_mod_six
         };
-        let mut older_state = older.clone();
-        let mut previous_state = previous.clone();
-        let mut transition = 0u8;
-        while transition < transitions {
+        // Compute from borrowed seeds before owning any recurrence state.
+        // Cloning both wide seeds would allocate infallibly even though this
+        // API promises a typed result on a failed output reservation.
+        let mut older_state = older.crazy(previous)?;
+        if transitions == 1 {
+            return Ok(older_state);
+        }
+        let mut previous_state = previous.crazy(&older_state)?;
+        for _transition in 2..transitions {
             let next = older_state.crazy(&previous_state)?;
             older_state = previous_state;
             previous_state = next;
-            transition = transition.saturating_add(1);
         }
         Ok(previous_state)
     }

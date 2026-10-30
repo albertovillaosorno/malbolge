@@ -542,6 +542,36 @@ fn chunked_profile_word_recurrence_phase_matches_wide_words() -> TestResult {
 }
 
 #[test]
+fn chunked_profile_word_recurrence_borrows_wide_seed_words() -> TestResult {
+    for trits in [1usize, 5, 6, 21, 101, 1_001] {
+        let older = patterned_word(trits, 0)?;
+        let previous = patterned_word(trits, 1)?;
+        let original_older = older.clone();
+        let original_previous = previous.clone();
+        for phase in [1u8, 2, 3, 4, 5, 0] {
+            let transitions = if phase == 0 {
+                6
+            } else {
+                usize::from(phase)
+            };
+            check_equal(
+                &ChunkedProfileWord::recurrence_cell(&older, &previous, phase)
+                    .map_err(|error| error.to_string())?,
+                &wide_recurrence_oracle(&older, &previous, transitions)?,
+                "borrowed-seed recurrence matches independent oracle",
+            )?;
+        }
+        check_equal(&older, &original_older, "older seed remains unchanged")?;
+        check_equal(
+            &previous,
+            &original_previous,
+            "previous seed remains unchanged",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn chunked_profile_word_recurrence_state_is_six_periodic() -> TestResult {
     for older_trit in 0..3u64 {
         for previous_trit in 0..3u64 {

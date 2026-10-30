@@ -108,6 +108,13 @@ admission rule. Constructors accepting a width and checked crazy/projection
 operations reserve chunk storage fallibly, returning a typed resource failure
 when the host cannot allocate the requested word. This does not invent a
 semantic maximum trit width; concrete backends remain separately bounded.
+The six-phase wide-word recurrence now borrows both seed operands instead of
+infallibly cloning their chunk storage before the checked crazy transitions.
+A one-step recurrence reserves only its generated cell; later phases retain
+only their generated states, so allocation failure follows the same typed
+`AllocationFailure` result as crazy rather than an initial seed-copy panic.
+Independent trit-vector tests cover all six phases through N1001 without
+mutating the original seed words. The selected VM backend geometry is unchanged.
 
 This does not yet widen `ProfileMachine` memory or registers. Product tests show
 N10 through N20 equal the existing `u32` primitives, while independent
