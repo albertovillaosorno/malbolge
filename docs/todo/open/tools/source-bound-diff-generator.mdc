@@ -90,6 +90,10 @@ format.
   stdout/exit-code observation at authoring and direct-authored construction;
   selector-free compatibility preconditions remain allowed. This prevents
   premature side-effectful authoring and empty-transcript identity evidence.
+- Candidate behavior observation now re-snapshots the whole candidate source
+  after each identity, compatibility and bug probe group, rejecting persistent
+  between-group source drift before evidence can be combined. Transient external
+  filesystem races remain outside this non-atomic snapshot check.
 - Behavior authoring derives identity transcripts from source and distinct bug
   `present`/`fixed` transcripts from source versus corrected oracle; a third
   candidate transcript becomes `unknown` and fails closed.

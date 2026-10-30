@@ -51,14 +51,17 @@ from algorithms.diff.behavior_programs import evaluate_behavior_programs
 from algorithms.diff.behavior_programs import observe_behavior_programs
 from algorithms.diff.probe_exec import PathArgument
 from algorithms.diff.probe_exec import ProbeCommand
+from algorithms.diff.probe_exec import ProbeExecutionError
 from algorithms.diff.probe_exec import ProbeProgram
 from algorithms.diff.probe_exec import ProbeRoot
 from algorithms.diff.probe_exec import ProbeRunContext
 from algorithms.diff.probe_exec import ToolExecutable
+from algorithms.diff.probe_exec import run_probe_program
 import pytest
 
 if TYPE_CHECKING:
     from algorithms.diff.behavior import BehaviorProfile
+    from algorithms.diff.probe_exec import ProbeTranscript
 
 _PYTHON_TOOL = "python"
 _READ_BYTES = (
@@ -445,6 +448,40 @@ def test_unknown_bug_transcript_fails_closed(tmp_path: Path) -> None:
         minimum_similarity=0.80,
     )
     _expect(not evidence.admitted, "unknown bug state was admitted")
+
+
+@pytest.mark.parametrize(
+    "changed_after",
+    ["identity-stable", "runtime-capability", "historical-bug"],
+)
+def test_observation_rejects_source_changed_between_probes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    changed_after: str,
+) -> None:
+    """Identity from one source must not combine with a later bug state."""
+    authored, source, _ = _authored(tmp_path)
+    candidate = tmp_path / "switching-source"
+    for name in ("identity.txt", "runtime.flag", "bug-state.txt"):
+        _write(candidate, name, (source / name).read_bytes())
+
+    def switching_run(
+        program: ProbeProgram, run_context: ProbeRunContext
+    ) -> ProbeTranscript:
+        transcript = run_probe_program(program, run_context)
+        if program.probe_id == changed_after:
+            _write(candidate, "bug-state.txt", b"fixed")
+        return transcript
+
+    monkeypatch.setattr(
+        "algorithms.diff.behavior_programs.run_probe_program", switching_run
+    )
+    with pytest.raises(ProbeExecutionError, match="changed between probes"):
+        _ = evaluate_behavior_programs(
+            authored,
+            _context(candidate, tmp_path),
+            minimum_similarity=0.80,
+        )
 
 
 def test_failed_compatibility_program_rejects_candidate(tmp_path: Path) -> None:

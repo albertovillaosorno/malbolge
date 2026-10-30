@@ -287,7 +287,13 @@ on both original source and the local corrected oracle; their selected-stdout
 transcripts must differ. Those two digests become the portable `present` and
 `fixed`
 baselines. Candidate execution matching neither baseline produces `unknown` and
-fails closed. Compatibility programs contribute success/failure rather than an
+fails closed. Candidate behavior observation verifies one full source byte-tree
+snapshot before and after each identity, compatibility, and bug probe group;
+observed persistent mutation between groups rejects all combined evidence,
+rather than accepting identity and bug states from different candidate versions.
+This check is non-atomic; transient external writes between scans still need
+caller coordination. Compatibility programs contribute success/failure rather
+than an
 
 identity digest. Application-specific harnesses and logical tool resolution
 remain

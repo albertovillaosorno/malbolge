@@ -48,6 +48,8 @@ from algorithms.diff.behavior import CompatibilityProbe
 from algorithms.diff.behavior import IdentityObservation
 from algorithms.diff.behavior import IdentityProbe
 from algorithms.diff.behavior import evaluate_behavior
+from algorithms.diff.exact import ExactTreeError
+from algorithms.diff.exact import snapshot_tree
 from algorithms.diff.probe_exec import ProbeExecutionError
 from algorithms.diff.probe_exec import ProbeProgram
 from algorithms.diff.probe_exec import ProbeRunContext
@@ -59,6 +61,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from algorithms.diff.behavior import BehaviorEvidence
+    from algorithms.diff.model import TreeSnapshot
     from algorithms.diff.probe_exec import ProbeTranscript
 
 
@@ -537,6 +540,37 @@ def _observe_bugs(
     )
 
 
+def _snapshot_observed_source(root: Path) -> TreeSnapshot:
+    """Normalize tree snapshot failures to the behavior execution boundary.
+
+    Returns:
+        The full candidate byte-tree snapshot.
+
+    Raises:
+        ProbeExecutionError: The candidate tree is malformed or unreadable.
+
+    """
+    try:
+        return snapshot_tree(root)
+    except ExactTreeError as error:
+        message = f"behavior candidate tree changed between probes: {error}"
+        raise ProbeExecutionError(message) from error
+
+
+def _require_observed_source_unchanged(
+    root: Path, admitted: TreeSnapshot
+) -> None:
+    """Require the entire candidate tree to retain its admitted bytes.
+
+    Raises:
+        ProbeExecutionError: Candidate bytes changed between probe groups.
+
+    """
+    if _snapshot_observed_source(root) != admitted:
+        message = "behavior candidate tree changed between probes"
+        raise ProbeExecutionError(message)
+
+
 def observe_behavior_programs(
     authored: AuthoredBehaviorPrograms,
     context: ProbeRunContext,
@@ -554,10 +588,17 @@ def observe_behavior_programs(
         message = "behavior observation requires exact AuthoredBehaviorPrograms"
         raise BehaviorProgramError(message)
     context = _require_run_context(context, "behavior observation context")
+    admitted = _snapshot_observed_source(context.source_root)
+    identity = _observe_identity(authored.identity, context)
+    _require_observed_source_unchanged(context.source_root, admitted)
+    compatibility = _observe_compatibility(authored.compatibility, context)
+    _require_observed_source_unchanged(context.source_root, admitted)
+    bugs = _observe_bugs(authored.bugs, context)
+    _require_observed_source_unchanged(context.source_root, admitted)
     return BehaviorObservations(
-        identity=_observe_identity(authored.identity, context),
-        compatibility=_observe_compatibility(authored.compatibility, context),
-        bugs=_observe_bugs(authored.bugs, context),
+        identity=identity,
+        compatibility=compatibility,
+        bugs=bugs,
     )
 
 

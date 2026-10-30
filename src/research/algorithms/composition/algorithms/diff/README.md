@@ -172,8 +172,11 @@ output matching neither becomes `unknown`. Identity and bug program
 records must select at least one stdout or exit-code observation *before*
 authoring or direct authored-record admission. Programs with no selection fail
 closed rather than admitting the SHA-256 empty-transcript digest; compatibility
-programs remain permitted as success-only preconditions. The domain still owns
-the actual programs and tool bindings.
+programs remain permitted as success-only preconditions. Candidate observation
+snapshots the complete byte-tree before identity, compatibility and bug probes,
+rechecking after each class so evidence from persistently changed source trees
+cannot be combined. This does not supply atomic filesystem snapshots against
+concurrent writers. The domain still owns the actual programs and tool bindings.
 
 `gate.py` then requires both source-lineage admission and behavior admission.
 Tests
