@@ -158,6 +158,9 @@ code-size explosion or compilation cost.
   negative: 224 vs 3 source cells and 85 vs 3 executed instructions.
   This is **not** a general guest bytecode decoder, repeat-count loop,
   in-guest source authentication, or a multi-op interpreter; TODO is open.
+  Further independent full-state VM resets check 21 representative input
+  bytes plus EOF and trailing input against direct execution; they are
+  bounded samples rather than a 256-value exhaustive proof.
 
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

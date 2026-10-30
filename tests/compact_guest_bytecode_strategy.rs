@@ -2497,3 +2497,157 @@ fn changed_loader_valid_bytecode_opcode_rejects_without_fallback() -> Result<(),
     }
     Ok(())
 }
+
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "state-validated guest parity")]
+#[expect(clippy::too_many_lines, reason = "bounded VM state-restoration checks")]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "guest/direct VM boundary matrix"
+)]
+fn independent_vm_restores_cover_byte_boundary_matrix_for_single_opcode() -> Result<(), String> {
+    const BOUNDARY_VALUES: [u8; 21] = [
+        0, 1, 2, 15, 16, 31, 32, 63, 64, 95, 96, 127, 128, 159, 160, 191, 192, 223, 224, 254, 255,
+    ];
+    let original = program(1)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("CEB2: {error:?}"))?;
+    let guest_source = embed_single_echo_opcode(&original, current_profile(), &candidate)
+        .map_err(|error| format!("isolated opcode: {error:?}"))?;
+    assert_eq!(
+        admit_single_echo_opcode(&original, current_profile(), &guest_source),
+        Ok(candidate),
+        "only admitted bound source can enter VM"
+    );
+    let direct = strategy::bridge::encode_successful_byte_echo(&original, current_profile())
+        .map_err(|error| format!("separately admitted direct layout: {error:?}"))?;
+    // Load each large 15-trit memory only once. Each independent profile VM
+    // case reconstructs/validates an exact initial state, without relying on
+    // the prior self-encrypted code, consumed inputs or changed registers.
+    let guest_initial = ProfileMachine::from_source(current_profile(), &guest_source, Vec::new())
+        .map_err(|error| format!("guest memory loader: {error:?}"))?
+        .snapshot_state();
+    let direct_initial =
+        ProfileMachine::from_source(current_profile(), direct.source(), Vec::new())
+            .map_err(|error| format!("direct memory loader: {error:?}"))?
+            .snapshot_state();
+    let mut total_cases = 0usize;
+    for value in BOUNDARY_VALUES {
+        let mut guest = ProfileMachine::from_state(
+            current_profile(),
+            guest_initial.memory().to_vec(),
+            vec![value],
+            malbolge::ProfileRegisters::default(),
+        )
+        .map_err(|error| format!("guest {value} full-state admission: {error:?}"))?;
+        let mut direct_vm = ProfileMachine::from_state(
+            current_profile(),
+            direct_initial.memory().to_vec(),
+            vec![value],
+            malbolge::ProfileRegisters::default(),
+        )
+        .map_err(|error| format!("direct {value} full-state admission: {error:?}"))?;
+        assert!(
+            matches!(guest.run(85), Ok(RunOutcome::Terminated { steps: 85, .. })),
+            "one-byte guest {value} must reach one-opcode halt"
+        );
+        assert!(
+            matches!(
+                direct_vm.run(3),
+                Ok(RunOutcome::Terminated { steps: 3, .. })
+            ),
+            "direct byte {value} must reach 3-step halt"
+        );
+        assert_eq!(
+            guest.output(),
+            &[value],
+            "guest ECHO_ONE must echo each independently reset boundary byte"
+        );
+        assert_eq!(
+            guest.output(),
+            direct_vm.output(),
+            "the two independent VM code images must agree at byte {value}"
+        );
+        assert_eq!(
+            guest.input_consumed(),
+            direct_vm.input_consumed(),
+            "the two images must consume exactly one byte {value}"
+        );
+        assert_eq!(guest.input_consumed(), 1, "exactly one operand per opcode");
+        for address in [122u32, 123, 160, 223] {
+            assert_eq!(
+                guest
+                    .memory_word(address)
+                    .map_err(|error| format!("payload sample {address}: {error:?}"))?,
+                u32::from(
+                    *guest_source
+                        .get(usize::try_from(address).map_err(|error| error.to_string())?)
+                        .ok_or("payload sample")?
+                ),
+                "source-bound CEB2 memory must remain protected for {value}"
+            );
+        }
+        total_cases = total_cases.saturating_add(1);
+    }
+    assert_eq!(
+        total_cases,
+        BOUNDARY_VALUES.len(),
+        "all independently state-reset byte-boundary cases must run"
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "EOF and excess-input parity")]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "EOF/trailing VM parity oracles"
+)]
+fn guest_echo_one_opcode_agrees_with_direct_on_eof_and_trailing_input() -> Result<(), String> {
+    let original = program(1)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("original CEB2: {error:?}"))?;
+    let guest_source = embed_single_echo_opcode(&original, current_profile(), &candidate)
+        .map_err(|error| format!("encoded one-opcode source: {error:?}"))?;
+    let direct_source = strategy::bridge::encode_successful_byte_echo(&original, current_profile())
+        .map_err(|error| format!("independent direct one-pair layout: {error:?}"))?;
+    for input in [Vec::new(), vec![16u8, 32, 255]] {
+        let mut guest =
+            ProfileMachine::from_source(current_profile(), &guest_source, input.clone())
+                .map_err(|error| format!("guest load: {error:?}"))?;
+        let mut direct =
+            ProfileMachine::from_source(current_profile(), direct_source.source(), input.clone())
+                .map_err(|error| format!("direct load: {error:?}"))?;
+        assert!(
+            matches!(guest.run(85), Ok(RunOutcome::Terminated { steps: 85, .. })),
+            "guest ECHO_ONE terminates even with empty or excess input"
+        );
+        assert!(
+            matches!(direct.run(3), Ok(RunOutcome::Terminated { steps: 3, .. })),
+            "independent direct echo terminates in three steps"
+        );
+        assert_eq!(
+            guest.output(),
+            direct.output(),
+            "identical EOF or trailing-input stdout semantics"
+        );
+        assert_eq!(
+            guest.input_consumed(),
+            direct.input_consumed(),
+            "identical EOF or trailing-input consumption"
+        );
+        assert_eq!(
+            guest.input_consumed(),
+            usize::from(!input.is_empty()),
+            "EOF consumes nothing; excess input consumes one byte"
+        );
+        if let Some(first) = input.first() {
+            assert_eq!(
+                guest.output(),
+                &[*first],
+                "trailing input is never echoed by a one-opcode program"
+            );
+        }
+    }
+    Ok(())
+}

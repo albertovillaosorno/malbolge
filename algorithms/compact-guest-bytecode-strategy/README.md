@@ -303,6 +303,13 @@ memory cells. The separate general Malbolge CLI runs actual canonical
 capsules for both guest and direct code on 0, 128, 255, matching stdout
 and independently checked step receipts. No host callback implements I/O.
 
+A separate regression resets validated initial VM memory for **21 selected
+byte-boundary values**, exercising independent direct/guest state admission
+on each execution instead of reusing self-encrypted code. Further checks
+compare genuine EOF behavior and excess trailing input: both programs
+agree in stdout, termination and consumed-input count. This is a bounded
+matrix, not a claim that 256 VM input values were exhaustively replayed.
+
 An independent source verifier checks the exact opcode/code layout,
 reconstructs all 102 graphical CEB2 ranks from the **supplied** guest
 image, and re-admits the complete source/profile SHA-256 descriptor against

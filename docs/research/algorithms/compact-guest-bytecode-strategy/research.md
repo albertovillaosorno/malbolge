@@ -433,6 +433,15 @@ while every CEB2 source word remains unmodified. Actual **general CLI**
 execution of separately built `.malbolge` capsules agrees for input bytes
 0/128/255, with independently observed exact 85-step and 3-step receipts.
 
+An additional 21-point byte-boundary matrix reconstructs each normative
+VM from its own validated initial full-memory snapshot, then checks exact
+stdout, consumed input, 85-vs-3 step receipts and untouched CEB2 physical
+memory. Separate EOF and excess-trailing-input cases match the two guests
+in output, termination and input consumption. A proposed exhaustive
+256-value replay proved expensive under concurrent 15-trit VM memory
+validation and was deliberately replaced by the smaller bounded matrix;
+these tests do not assert exhaustive byte-domain equivalence.
+
 The measured equivalent workload is worse on both relevant simple cost
 axes: **224 vs 3 graphical source cells** (221-cell guest overhead) and
 **85 vs 3 guest steps** (82-step overhead) for one successful byte.
