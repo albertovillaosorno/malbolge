@@ -259,8 +259,10 @@ def test_raced_symlink_is_rejected_by_no_follow_descriptor_open(
         return original_open(target)
 
     monkeypatch.setattr(study_file, "_open_study", substitute_link)
-    with pytest.raises(OSError, match=r".+"):
+    with pytest.raises(analyze.ArenaError, match="stream access failed") as error:
         analyze.read_input(path)
+    assert isinstance(error.value.__cause__, study_file.StudyFileError)
+    assert isinstance(error.value.__cause__.__cause__, OSError)
 
 
 def test_in_place_rewrite_during_descriptor_read_fails_closed(
@@ -415,6 +417,61 @@ def test_study_stream_construction_preserves_primary_when_close_fails(
     assert str(primary) == "primary fdopen error"
     assert primary.__notes__ == [
         "arena input descriptor cleanup also failed: secondary descriptor close error"
+    ]
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_study_stream_close_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Read-complete stream cleanup failures cannot escape typed admission."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file._open_study
+
+    @contextmanager
+    def fail_close(target: Path) -> Iterator[BinaryIO]:
+        with original_open(target) as stream:
+            yield stream
+        raise fault("injected study stream close failure")
+
+    monkeypatch.setattr(study_file, "_open_study", fail_close)
+    with pytest.raises(study_file.StudyFileError, match="stream access failed") as error:
+        study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
+    assert type(error.value.__cause__) is fault
+
+
+def test_study_stream_close_does_not_hide_primary_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A simultaneous read and close fault must retain primary rejection."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file._open_study
+
+    @contextmanager
+    def fail_close(target: Path) -> Iterator[BinaryIO]:
+        try:
+            with original_open(target) as stream:
+                yield stream
+        finally:
+            raise ValueError("secondary study stream close error")
+
+    def fail_read(stream: BinaryIO, *, size: int) -> bytes:
+        _ = stream, size
+        raise study_file.StudyFileError("primary study read failure")
+
+    monkeypatch.setattr(study_file, "_open_study", fail_close)
+    monkeypatch.setattr(study_file, "_read_complete", fail_read)
+    with pytest.raises(study_file.StudyFileError, match="primary study read failure") as error:
+        study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
+    assert error.value.__notes__ == [
+        "arena input stream cleanup also failed: secondary study stream close error"
     ]
 
 

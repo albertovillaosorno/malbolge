@@ -134,16 +134,33 @@ def _read_descriptor(
     *,
     limit: int,
 ) -> tuple[bytes, os.stat_result]:
-    with _open_study(path) as stream:
-        opened = os.fstat(stream.fileno())
-        if not stat.S_ISREG(opened.st_mode) or _identity(opened) != _identity(before):
-            _fail("arena input changed between path and open")
-        if opened.st_size > limit:
-            _fail("arena input exceeds 16 MiB limit")
-        data = _read_complete(stream, size=opened.st_size)
-        completed = os.fstat(stream.fileno())
-        if _identity(completed) != _identity(opened):
-            _fail("arena input changed during read")
+    primary: Exception | None = None
+    try:
+        with _open_study(path) as stream:
+            try:
+                opened = os.fstat(stream.fileno())
+                if not stat.S_ISREG(opened.st_mode) or (
+                    _identity(opened) != _identity(before)
+                ):
+                    _fail("arena input changed between path and open")
+                if opened.st_size > limit:
+                    _fail("arena input exceeds 16 MiB limit")
+                data = _read_complete(stream, size=opened.st_size)
+                completed = os.fstat(stream.fileno())
+                if _identity(completed) != _identity(opened):
+                    _fail("arena input changed during read")
+            except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+                primary = error
+                raise
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        if primary is not None and error is not primary:
+            primary.add_note(f"arena input stream cleanup also failed: {error}")
+            error = primary
+        if isinstance(error, StudyFileError):
+            # It can be the rejected read, not the active close error.
+            raise error  # ruff: ignore[TRY201]
+        message = "arena input stream access failed"
+        raise StudyFileError(message) from error
     return data, opened
 
 

@@ -841,7 +841,10 @@ The original study records remain the result authority.
   replacement, FIFO/link substitution, file rewrite, short reads and both
   fail-closed CLI paths. File-stream constructor faults retain a typed rejection
   and original cause, close the untransferred descriptor, and preserve a failed
-  cleanup only as secondary evidence; neither CLI emits a report on failure.
+  cleanup only as secondary evidence. Close-only read-stream faults likewise
+  become typed failures; when read and close both fail, the original rejection
+  remains primary and cleanup is annotated as secondary. Neither CLI emits
+  a report on failure.
 - The retained evidence file reader applies the same descriptor ownership rule:
   injected stream-constructor exceptions have a typed evidence rejection,
   release the raw descriptor, and preserve any cleanup error as secondary
