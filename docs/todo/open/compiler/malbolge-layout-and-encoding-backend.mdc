@@ -206,6 +206,13 @@ emission.
   or publish invalid wires. Other OSes keep the pre-open path check plus
   independent descriptor admission and retain a pathname race limitation;
   the stress fixture is not exhaustive proof of every scheduling interleave.
+- The explicit `--identity-byte-trace` MCTI/MCTR file/stdin publisher
+  admits latest-input signed/unsigned eight-bit SSA bitcasts through
+  independent canonical ternary and target re-admission. Pure bitcasts
+  consume no guest code cells. The selected VM proves two byte patterns,
+  exact input count, output order and halt before atomic raw/capsule
+  no-clobber publication. Post-read stale SSA, invalid wire/profile and
+  other byte computation reject; older mode domains remain unchanged.
 - The separately selected `--zero-prefixed-byte-trace` canonical
   file/stdin publisher now combines real VM initial-zero output and latest
   successful read output in one positional source. It independently decodes

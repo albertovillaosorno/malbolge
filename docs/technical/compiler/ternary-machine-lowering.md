@@ -1119,6 +1119,30 @@ and latest-read domain guarantees are unchanged. This narrow bridge is
 publisher. It supplies no general nonzero constant, arbitrary guest
 computation, heap, C ABI or guest libc/EOF realization.
 
+### Canonical Eight-Bit SSA Identity-Bitcast Trace
+
+A separate `encode_latest_byte_identity_trace` Malbolge bridge now
+executes real byte input/output while admitting only four exact, typed
+8-bit representation casts: `u8` to `i8`, `i8` to `i8`, `i8` to `u8`,
+and `u8` to `u8`. Their ternary SSA source/target identity and source
+spans remain visible, but casting does not alter the accumulator bits
+and therefore emits no guest instructions. After each input the verifier
+invalidates every earlier alias; an output may name the input or an exact
+live `u8` alias only. A cast of old SSA after a later read rejects even
+when the typed IR itself is valid. This is proof of register aliasing,
+not guest memory or general stored-byte dataflow.
+
+`compile_canonical_typed_identity_byte_trace` projects exact
+`IntegerBitcast` semantics from independently decoded canonical MCTI,
+reencodes canonical MCTR and verifies target source under the existing
+linear layout. The CLI exposes this only under `--identity-byte-trace`
+for file/stdin MCTI or MCTR, requiring at least one input, cast, output,
+a void return and 4096 or fewer projected operations. Independent VM
+preflight compares two full-byte patterns and checks termination, output
+order and exact consumed input count. Strict, latest-read and zero-only
+subsets are unchanged. General arithmetic, EOF, failed I/O, heap, guest
+ABI and backward SSA replay remain outside this proof.
+
 ### Canonical Zero-Prefixed Successful-Byte Trace
 
 A separate verified `encode_zero_prefixed_latest_byte_trace` sublanguage

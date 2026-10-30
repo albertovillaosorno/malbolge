@@ -60,6 +60,18 @@ enum ZeroPrefixedEffect {
     Scalar(u32),
 }
 
+#[derive(Clone, Copy)]
+enum IdentityEffect {
+    Cast {
+        result: u32,
+        value: u32,
+        type_id: u32,
+    },
+    Input(u32),
+    Output(u32),
+    Zero(u32),
+}
+
 struct OwnedFixture {
     root: PathBuf,
 }
@@ -3116,6 +3128,461 @@ fn canonical_zero_prefixed_mixed_stream_never_publishes_before_eof() -> Result<(
         if fs::read(&target).map_err(|error| error.to_string())? != compiled.layout().source() {
             return Err(String::from("mixed canonical wire changed emitted source"));
         }
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "complete canonical signed-byte fixture"
+)]
+fn typed_identity_effects(effects: &[IdentityEffect]) -> Result<Module, String> {
+    let mut instructions = Vec::with_capacity(effects.len());
+    for (index, effect) in effects.iter().enumerate() {
+        let at = u32::try_from(index).map_err(|error| format!("typed cast span: {error}"))?;
+        let instruction = match effect {
+            IdentityEffect::Input(result) => Instruction::ByteInput {
+                result: ValueId::new(*result),
+                type_id: TypeId::new(0),
+            },
+            IdentityEffect::Cast {
+                result,
+                value,
+                type_id,
+            } => Instruction::Cast {
+                operation: adapter::typed::CastOp::IntegerBitcast,
+                result: ValueId::new(*result),
+                type_id: TypeId::new(*type_id),
+                value: ValueId::new(*value),
+            },
+            IdentityEffect::Output(value) => Instruction::ByteOutput {
+                value: ValueId::new(*value),
+            },
+            IdentityEffect::Zero(result) => Instruction::ConstantInteger {
+                constant: adapter::typed::IntegerConstant::new(8, vec![0]),
+                result: ValueId::new(*result),
+                type_id: TypeId::new(0),
+            },
+        };
+        instructions.push(LocatedInstruction::new(
+            instruction,
+            span(at, at.saturating_add(1)),
+        ));
+    }
+    let end = u32::try_from(effects.len().saturating_add(1))
+        .map_err(|error| format!("typed cast return span: {error}"))?;
+    Ok(Module::new(ModuleSpec {
+        abi_id: String::from("malbolge-c32-v1"),
+        format_version: adapter::typed::TYPED_IR_VERSION,
+        functions: vec![Function::new(FunctionSpec {
+            blocks: vec![BasicBlock::new(BasicBlockSpec {
+                id: BlockId::new(0),
+                instructions,
+                phis: Vec::new(),
+                span: span(0, end),
+                terminator: Terminator::Return { value: None },
+                terminator_span: span(end.saturating_sub(1), end),
+            })],
+            entry: BlockId::new(0),
+            id: FunctionId::new(0),
+            name: String::from("identity_byte_casts"),
+            parameters: Vec::new(),
+            signature: TypeId::new(1),
+            span: span(0, end),
+        })],
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from("fixtures/typed-identity-byte.c"),
+        source_sha256: [0xaf; 32],
+        target_profile: String::from("malbolge-2026"),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), TypeDef::U8),
+            TypeEntry::new(TypeId::new(1), TypeDef::function(Vec::new(), None, false)),
+            TypeEntry::new(TypeId::new(2), TypeDef::I8),
+        ],
+    }))
+}
+
+fn typed_identity_fixture() -> Result<Module, String> {
+    typed_identity_effects(&[
+        IdentityEffect::Input(0),
+        IdentityEffect::Cast {
+            result: 1,
+            value: 0,
+            type_id: 2,
+        },
+        IdentityEffect::Cast {
+            result: 2,
+            value: 1,
+            type_id: 2,
+        },
+        IdentityEffect::Cast {
+            result: 3,
+            value: 2,
+            type_id: 0,
+        },
+        IdentityEffect::Cast {
+            result: 4,
+            value: 3,
+            type_id: 0,
+        },
+        IdentityEffect::Output(4),
+        IdentityEffect::Output(0),
+        IdentityEffect::Input(5),
+        IdentityEffect::Cast {
+            result: 6,
+            value: 5,
+            type_id: 2,
+        },
+        IdentityEffect::Cast {
+            result: 7,
+            value: 6,
+            type_id: 0,
+        },
+        IdentityEffect::Output(7),
+    ])
+}
+
+#[test]
+fn canonical_typed_identity_casts_reach_genuine_vm_with_all_byte_bits() -> Result<(), String> {
+    let module = typed_identity_fixture()?;
+    let canonical = wire(&module)?;
+    if canonical_module(&canonical).map_err(|error| format!("typed alias decode: {error:?}"))?
+        != module
+    {
+        return Err(String::from("typed canonical alias bytes changed"));
+    }
+    let compiled =
+        adapter::compile_canonical_typed_identity_byte_trace(&canonical, current_profile())
+            .map_err(|error| format!("typed alias lowering: {error:?}"))?;
+    let admitted = canonical_ternary_program(compiled.ternary_bytes())
+        .map_err(|error| format!("typed alias independent MCTR: {error:?}"))?;
+    if admitted.source_id != module.source_id()
+        || admitted.source_sha256 != *module.source_sha256()
+        || admitted.target_profile != current_profile().id()
+    {
+        return Err(String::from("typed identity alias provenance drift"));
+    }
+    let independent =
+        adapter::bridge::encode_latest_byte_identity_trace(&admitted, current_profile())
+            .map_err(|error| format!("independent identity trace bridge: {error:?}"))?;
+    if independent != *compiled.layout() || compiled.layout().source().len() != 6 {
+        return Err(String::from(
+            "typed and ternary identity source disagreement",
+        ));
+    }
+    for (first, second) in [(0, 255), (255, 0), (128, 13), (42, 65)] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            compiled.layout().source(),
+            vec![first, second, 71],
+        )
+        .map_err(|error| format!("typed alias VM: {error:?}"))?;
+        if !matches!(vm.run(6), Ok(RunOutcome::Terminated { steps: 6, .. }))
+            || vm.output() != [first, first, second]
+            || vm.input_consumed() != 2
+        {
+            return Err(String::from("typed alias guest output/input mismatch"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "invalid SSA and strict legacy mode matrix"
+)]
+fn canonical_typed_identity_mode_refuses_unrealizable_aliases() -> Result<(), String> {
+    let good = wire(&typed_identity_fixture()?)?;
+    for old in [
+        compile_canonical_typed_echo(&good, current_profile()),
+        adapter::compile_canonical_typed_latest_byte_trace(&good, current_profile()),
+        adapter::compile_canonical_typed_zero_prefixed_latest_byte_trace(&good, current_profile()),
+    ] {
+        if old != Err(TypedEchoAdapterError::UnsupportedTypedIr) {
+            return Err(String::from("old canonical typed mode admitted casts"));
+        }
+    }
+    if adapter::compile_canonical_typed_identity_byte_trace(&good, historical_profile())
+        != Err(TypedEchoAdapterError::Layout(
+            adapter::bridge::ByteEchoBridgeError::ProfileMismatch,
+        ))
+    {
+        return Err(String::from("typed alias source foreign profile accepted"));
+    }
+    for effects in [
+        vec![IdentityEffect::Input(0), IdentityEffect::Output(0)],
+        vec![
+            IdentityEffect::Input(0),
+            IdentityEffect::Cast {
+                result: 1,
+                value: 0,
+                type_id: 0,
+            },
+        ],
+        vec![
+            IdentityEffect::Input(0),
+            IdentityEffect::Cast {
+                result: 1,
+                value: 0,
+                type_id: 0,
+            },
+            IdentityEffect::Input(2),
+            IdentityEffect::Output(1),
+        ],
+        vec![
+            IdentityEffect::Input(0),
+            IdentityEffect::Input(1),
+            IdentityEffect::Cast {
+                result: 2,
+                value: 0,
+                type_id: 0,
+            },
+            IdentityEffect::Output(2),
+        ],
+        vec![
+            IdentityEffect::Input(0),
+            IdentityEffect::Cast {
+                result: 1,
+                value: 0,
+                type_id: 0,
+            },
+            IdentityEffect::Zero(2),
+            IdentityEffect::Output(1),
+        ],
+    ] {
+        let wire_bytes = wire(&typed_identity_effects(&effects)?)?;
+        if adapter::compile_canonical_typed_identity_byte_trace(&wire_bytes, current_profile())
+            != Err(TypedEchoAdapterError::UnsupportedTypedIr)
+        {
+            return Err(String::from("typed identity accepted unproved SSA"));
+        }
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "external publisher requires wire and artifact medium selections"
+)]
+fn publish_identity_byte_wire(
+    profile: &str,
+    bytes: &[u8],
+    target: &Path,
+    typed: bool,
+    from_stdin: bool,
+    capsule: bool,
+) -> Result<Output, String> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"));
+    let _required = command
+        .arg("--profile")
+        .arg(profile)
+        .arg("--output")
+        .arg(target);
+    if capsule {
+        let _capsule = command.arg("--capsule");
+    }
+    let _mode = command.arg("--").arg("--identity-byte-trace");
+    if from_stdin {
+        let _stdin = command.arg(if typed {
+            "--typed-stdin"
+        } else {
+            "--ternary-stdin"
+        });
+    } else {
+        let path = target.with_extension(if typed { "mcti" } else { "mctr" });
+        fs::write(&path, bytes).map_err(|error| format!("identity wire write: {error}"))?;
+        let _path = command
+            .arg(if typed {
+                "--typed-file"
+            } else {
+                "--ternary-file"
+            })
+            .arg(path);
+    }
+    let mut child = command
+        .stdin(if from_stdin {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("identity publisher spawn: {error}"))?;
+    if from_stdin {
+        child
+            .stdin
+            .take()
+            .ok_or("identity stdin pipe absent")?
+            .write_all(bytes)
+            .map_err(|error| format!("identity wire feed: {error}"))?;
+    }
+    child
+        .wait_with_output()
+        .map_err(|error| format!("identity publisher exit: {error}"))
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "real MCTI/MCTR publisher and general VM cross-check"
+)]
+fn canonical_identity_byte_trace_publishes_capsule_file_and_raw_stdin() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&typed_identity_fixture()?)?;
+    let compiled =
+        adapter::compile_canonical_typed_identity_byte_trace(&canonical, current_profile())
+            .map_err(|error| format!("identity source fixture: {error:?}"))?;
+    let typed_target = workspace.path("identity-typed-capsule.malbolge");
+    let ternary_target = workspace.path("identity-mctr-raw.malbolge");
+    for (typed, bytes, target, capsule, stdin) in [
+        (true, canonical.as_slice(), &typed_target, true, false),
+        (
+            false,
+            compiled.ternary_bytes(),
+            &ternary_target,
+            false,
+            true,
+        ),
+    ] {
+        let result = publish_identity_byte_wire(
+            current_profile().id(),
+            bytes,
+            target,
+            typed,
+            stdin,
+            capsule,
+        )?;
+        if !result.status.success() {
+            return Err(format!(
+                "identity byte publisher refused: {}",
+                String::from_utf8_lossy(&result.stderr)
+            ));
+        }
+        let admitted = restored_canonical_stdin_source(
+            fs::read(target).map_err(|error| error.to_string())?,
+            capsule,
+        )?;
+        if admitted != compiled.layout().source() {
+            return Err(String::from("typed and ternary identity artifacts differ"));
+        }
+        let mut vm = ProfileMachine::from_source(current_profile(), &admitted, vec![0, 255, 71])
+            .map_err(|error| format!("published identity VM load: {error:?}"))?;
+        if !matches!(vm.run(6), Ok(RunOutcome::Terminated { steps: 6, .. }))
+            || vm.output() != [0, 0, 255]
+            || vm.input_consumed() != 2
+        {
+            return Err(String::from("published identity VM input/output mismatch"));
+        }
+    }
+    let mut runner = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&typed_target)
+        .arg("--input-stdin")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("identity general runner spawn: {error}"))?;
+    runner
+        .stdin
+        .take()
+        .ok_or("identity general guest stdin absent")?
+        .write_all(&[255, 128, 0])
+        .map_err(|error| format!("identity general guest input: {error}"))?;
+    let result = runner
+        .wait_with_output()
+        .map_err(|error| format!("identity general runner status: {error}"))?;
+    if !result.status.success() || result.stdout != [255, 255, 128] || !result.stderr.is_empty() {
+        return Err(format!(
+            "identity general runner effects mismatch: {result:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_identity_byte_cli_rejects_profile_drift_and_existing_file() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&typed_identity_fixture()?)?;
+    let wrong = workspace.path("wrong.malbolge");
+    let profile_rejected = publish_identity_byte_wire(
+        historical_profile().id(),
+        &canonical,
+        &wrong,
+        true,
+        true,
+        false,
+    )?;
+    if profile_rejected.status.success() || wrong.exists() {
+        return Err(String::from("identity publisher accepted foreign profile"));
+    }
+    let malformed = workspace.path("malformed.malbolge");
+    let malformed_rejected = publish_identity_byte_wire(
+        current_profile().id(),
+        b"invalid MCTR",
+        &malformed,
+        false,
+        false,
+        true,
+    )?;
+    if malformed_rejected.status.success() || malformed.exists() {
+        return Err(String::from("identity publisher accepted invalid MCTR"));
+    }
+    let occupied = workspace.path("occupied.malbolge");
+    let sentinel = b"never overwrite an existing file";
+    fs::write(&occupied, sentinel).map_err(|error| error.to_string())?;
+    let occupied_rejected = publish_identity_byte_wire(
+        current_profile().id(),
+        &canonical,
+        &occupied,
+        true,
+        false,
+        true,
+    )?;
+    if occupied_rejected.status.success()
+        || fs::read(&occupied).map_err(|error| error.to_string())? != sentinel
+    {
+        return Err(String::from("identity publisher clobbered target"));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_identity_byte_trace_exact_4096_cell_boundary() -> Result<(), String> {
+    let mut effects = vec![
+        IdentityEffect::Input(0),
+        IdentityEffect::Cast {
+            result: 1,
+            value: 0,
+            type_id: 0,
+        },
+    ];
+    effects.extend(repeat_n(IdentityEffect::Output(1), 4094));
+    let canonical = wire(&typed_identity_effects(&effects)?)?;
+    let compiled =
+        adapter::compile_canonical_typed_identity_byte_trace(&canonical, current_profile())
+            .map_err(|error| format!("max identity typed source: {error:?}"))?;
+    if compiled.layout().source().len() != 4096 {
+        return Err(String::from("typed identity full code capacity disagrees"));
+    }
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), compiled.layout().source(), vec![255])
+            .map_err(|error| format!("max typed identity VM: {error:?}"))?;
+    if !matches!(vm.run(4096), Ok(RunOutcome::Terminated { steps: 4096, .. }))
+        || vm.input_consumed() != 1
+        || vm.output().len() != 4094
+        || vm.output().iter().any(|byte| *byte != 255)
+    {
+        return Err(String::from("maximum typed identity guest output drift"));
+    }
+    effects.push(IdentityEffect::Output(1));
+    let excess = wire(&typed_identity_effects(&effects)?)?;
+    if adapter::compile_canonical_typed_identity_byte_trace(&excess, current_profile())
+        != Err(TypedEchoAdapterError::UnsupportedTypedIr)
+    {
+        return Err(String::from("typed identity accepted 4097 code cells"));
     }
     Ok(())
 }

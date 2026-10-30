@@ -267,6 +267,22 @@ publisher authenticate that an input retained the same pathname throughout
 validation. Independent canonical-byte checks and atomic no-clobber final
 publication remain distinct guarantees.
 
+### Signed/unsigned byte identity-cast artifact publication
+
+A distinct `--identity-byte-trace` canonical MCTI/MCTR file/stdin mode
+verifies exact eight-bit `IntegerBitcast` SSA aliases of the most recent
+successful input, preserving source spans and identity while emitting no
+opcode for the casts themselves. The independently checked bridge emits
+real input, output and halt instructions only; all old aliases invalidate
+at each later read. The publisher recomputes exact successful-byte
+output and consumption under two normative VM patterns, with the same
+4096-code-cell bound, independent layout/profile check and atomic
+no-clobber raw/capsule framing. Legacy echo, latest-read, initial-zero
+and zero-prefixed modes reject casts without the explicit opt-in.
+
+This realizes no host guest computation, byte-register storage, EOF/error
+handling, branch flow, arbitrary C lowering or callable guest ABI.
+
 ### Zero-prefixed successful-byte artifact publication
 
 The distinct `--zero-prefixed-byte-trace` mode accepts canonical MCTI or

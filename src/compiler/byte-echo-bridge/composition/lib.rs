@@ -44,6 +44,7 @@ pub mod layout;
 pub mod ternary;
 
 use malbolge::ProfileDescriptor;
+use std::collections::BTreeSet;
 
 use layout::{LinearLayout, LinearLayoutError, LinearOpcode, encode_linear_layout};
 use ternary::{
@@ -297,4 +298,73 @@ pub fn encode_zero_prefixed_latest_byte_trace(
     }
     operations.push(LinearOpcode::Halt);
     encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
+}
+
+/// Emits guest I/O while proving exact byte-bitcast SSA aliases remain live.
+///
+/// Only eight-bit signed/unsigned representation-preserving casts are allowed.
+/// Every new input invalidates previous aliases; casts emit no guest code.
+/// The trace needs at least one input, cast and output, and final void return.
+///
+/// # Errors
+/// Rejects noncanonical operations, stale aliases, other effects or bad layout.
+pub fn encode_latest_byte_identity_trace(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id() {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let Some((TernaryOperation::ReturnVoid { .. }, effects)) = function.operations.split_last()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if effects.len() > 4096 {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let mut aliases = BTreeSet::new();
+    let mut seen_cast = false;
+    let mut seen_output = false;
+    let mut operations = Vec::with_capacity(effects.len().saturating_add(1));
+    for effect in effects {
+        if let TernaryOperation::ByteInput { result, .. } = effect {
+            aliases.clear();
+            _ = aliases.insert(*result);
+            operations.push(LinearOpcode::InputWord);
+        } else if let TernaryOperation::ByteOutput { value, .. } = effect {
+            if !aliases.contains(value) {
+                return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+            }
+            seen_output = true;
+            operations.push(LinearOpcode::OutputByte);
+        } else if let Some((result, value)) = byte_bitcast_operands(effect) {
+            if !aliases.contains(&value) {
+                return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+            }
+            _ = aliases.insert(result);
+            seen_cast = true;
+        } else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    if aliases.is_empty() || !seen_cast || !seen_output {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    operations.push(LinearOpcode::Halt);
+    encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
+}
+
+const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32)> {
+    let (TernaryOperation::BitcastI8ToI8 { result, value, .. }
+    | TernaryOperation::BitcastI8ToU8 { result, value, .. }
+    | TernaryOperation::BitcastU8ToI8 { result, value, .. }
+    | TernaryOperation::BitcastU8ToU8 { result, value, .. }) = operation
+    else {
+        return None;
+    };
+    Some((*result, *value))
 }

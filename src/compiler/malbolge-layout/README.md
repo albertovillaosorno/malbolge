@@ -332,6 +332,30 @@ represented. A real split-wire regression confirms MCTI and MCTR mixed
 source remains unpublished both after partial data and after complete bytes
 until the input pipe closes with EOF. Only then may the exact target appear.
 
+### Explicit canonical byte identity-bitcast trace
+
+`--identity-byte-trace` accepts independently admitted canonical MCTR or
+MCTI input containing exact eight-bit signed/unsigned representation
+bitcasts. Bitcast SSA definitions are compile-time proof of identical
+accumulator bits, **not** emitted instructions. Only outputs referencing
+live aliases of the latest successful input can publish; a subsequent
+input invalidates earlier aliases.
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 --output .temp/identity.malbolge \
+  --capsule -- --identity-byte-trace --typed-file .temp/identity.mcti
+```
+
+This mode also supports `--ternary-file`, `--typed-stdin`, and
+`--ternary-stdin` with the shared one-MiB canonical read bound. The CLI
+independently re-decodes MCTR, re-encodes target code, checks profile and
+output/input-consumption patterns under the real VM, then atomically
+publishes raw/capsule output without overwriting an existing path. Strict,
+latest-read, initial-zero and zero-prefixed modes remain unchanged and
+cannot be mixed with this flag. No general signed-byte computation, EOF,
+failed I/O, memory, arbitrary C, or guest ABI is realized.
+
 ### Bounded canonical wire streaming on standard input
 
 Canonical MCTI and MCTR can also be supplied directly from a producer process

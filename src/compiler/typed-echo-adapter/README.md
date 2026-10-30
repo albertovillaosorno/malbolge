@@ -67,6 +67,27 @@ implements EOF, failed I/O, arithmetic, control flow or C source parsing.
 The typed source digest remains copied provenance, not authentication of
 external files.
 
+### Canonical signed/unsigned byte-bitcast trace
+
+The fifth byte-trace adapter mode
+`compile_canonical_typed_identity_byte_trace` accepts exactly one
+no-argument void-return canonical MCTI function with one phi-free block.
+It admits `ByteInput`, `ByteOutput` and exact eight-bit `IntegerBitcast`
+instructions between canonical `i8` and `u8`. Only aliases of the latest
+successful input remain executable in the machine accumulator. The
+source/SSA spans, source digest, ABI and profile identity survive ternary
+lowering, canonical MCTR re-admission and independent target encoding.
+
+The explicit CLI mode `--identity-byte-trace` accepts bounded MCTI/MCTR
+through `--typed-file`, `--ternary-file`, `--typed-stdin`, or
+`--ternary-stdin`. It proves exact byte I/O under two normative VM input
+patterns, compares the independently re-encoded typed and ternary sources,
+and uses existing atomic raw/capsule no-clobber publication. In particular,
+a signed-byte alias is *not* a successful `u8` output until it has been
+bitcast back; old zero-only, adjacent-echo and latest-read modes do not
+admit casts. No host callback, EOF, arithmetic, byte register file,
+branching or guest return ABI is implemented by this slice.
+
 ## Validation
 
 ```sh

@@ -76,6 +76,26 @@ cell over the target bound. The original strict echo, latest-read and
 initial-zero-only APIs are unchanged. The new mixed trace is deliberately
 not a general byte SSA register file, arithmetic lowering, heap or EOF.
 
+### Verified live byte-bitcast aliases
+
+The opt-in `encode_latest_byte_identity_trace` admits real successful-byte
+input/output with canonical MCTR `BitcastU8ToI8`, `BitcastI8ToI8`,
+`BitcastI8ToU8` and `BitcastU8ToU8` SSA effects. These are exact
+representation-only eight-bit aliases of the current accumulator; they
+produce no guest machine instruction. Outputs can name any live `u8`
+alias of the most recent input, including the original input SSA ID.
+Every subsequent input invalidates all previous aliases. A later cast or
+output of stale SSA cannot be reloaded without guest storage, and rejects.
+
+The bridge requires at least one input, one identity bitcast, one output,
+one final void return, complete canonical re-admission and selected-profile
+layout. An explicit bounded 4096-effect projection yields at most 4096
+actual guest code cells. The independent `byte_identity_trace_bridge`
+regression proves all four bitcasts, real 0/255/128 VM bytes, stale replay,
+profile mismatch, original strict/latest unchanged, and capacity limits.
+No host guest-byte simulation, general integer operation, EOF or guest ABI
+is implied.
+
 ## Limits
 
 The trace is equivalent **only on successful byte I/O**: every input must

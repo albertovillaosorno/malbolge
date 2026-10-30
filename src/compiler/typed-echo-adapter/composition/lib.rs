@@ -42,6 +42,7 @@ pub mod bridge;
 pub mod typed;
 
 use malbolge::ProfileDescriptor;
+use std::collections::BTreeSet;
 
 use bridge::layout::LinearLayout;
 use bridge::ternary::{
@@ -50,8 +51,8 @@ use bridge::ternary::{
     canonical_ternary_bytes, canonical_ternary_program, lower_typed_ir,
 };
 use typed::{
-    CanonicalDecodeError, Instruction, Module, SourcePosition, SourceSpan, Terminator, TypeDef,
-    TypeId, canonical_module,
+    CanonicalDecodeError, CastOp, Instruction, Module, SourcePosition, SourceSpan, Terminator,
+    TypeDef, TypeId, canonical_module,
 };
 
 /// A refused canonical typed-IR read, typed subset, ternary state or layout.
@@ -93,6 +94,7 @@ impl CompiledTypedEcho {
 #[derive(Clone, Copy)]
 enum ByteTraceMode {
     AdjacentEcho,
+    IdentityByteBitcast,
     InitialZero,
     LatestRead,
     ZeroPrefixedLatest,
@@ -315,6 +317,87 @@ fn project_zero_prefixed_effects(
     Ok(instructions)
 }
 
+// A u8/i8 representation bitcast is a new SSA name for the same eight bits.
+// Once another input overwrites A, no old alias is realizable without memory.
+fn project_identity_bitcast_effects(
+    module: &Module,
+    original: &[typed::LocatedInstruction],
+) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
+    if original.is_empty() || original.len() > 4096 {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    let mut aliases = BTreeSet::new();
+    let mut seen_cast = false;
+    let mut seen_output = false;
+    let mut instructions = Vec::with_capacity(original.len());
+    for located in original {
+        if let Instruction::ByteInput { result, type_id } = located.instruction() {
+            if !is_byte_type(module, *type_id) {
+                return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+            }
+            aliases.clear();
+            _ = aliases.insert(*result);
+            instructions.push(InputInstruction::ByteInput {
+                result: result.value(),
+                span: project_span(located.span()),
+                type_kind: InputScalarType::U8,
+            });
+        } else if let Instruction::ByteOutput { value } = located.instruction() {
+            if !aliases.contains(value) {
+                return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+            }
+            seen_output = true;
+            instructions.push(InputInstruction::ByteOutput {
+                span: project_span(located.span()),
+                value: value.value(),
+            });
+        } else if let Instruction::Cast {
+            operation: CastOp::IntegerBitcast,
+            result,
+            type_id,
+            value,
+        } = located.instruction()
+        {
+            if !aliases.contains(value) {
+                return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+            }
+            let kind = byte_bitcast_kind(module, *type_id)?;
+            _ = aliases.insert(*result);
+            seen_cast = true;
+            instructions.push(InputInstruction::IntegerBitcast {
+                result: result.value(),
+                span: project_span(located.span()),
+                type_kind: kind,
+                value: value.value(),
+            });
+        } else {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        }
+    }
+    if aliases.is_empty() || !seen_cast || !seen_output {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    Ok(instructions)
+}
+
+fn byte_bitcast_kind(
+    module: &Module,
+    id: TypeId,
+) -> Result<InputScalarType, TypedEchoAdapterError> {
+    for entry in module.types() {
+        if entry.id() == id {
+            return if entry.definition() == &TypeDef::I8 {
+                Ok(InputScalarType::I8)
+            } else if entry.definition() == &TypeDef::U8 {
+                Ok(InputScalarType::U8)
+            } else {
+                Err(TypedEchoAdapterError::UnsupportedTypedIr)
+            };
+        }
+    }
+    Err(TypedEchoAdapterError::UnsupportedTypedIr)
+}
+
 fn project_byte_trace(
     module: &Module,
     mode: ByteTraceMode,
@@ -347,6 +430,9 @@ fn project_byte_trace(
         ByteTraceMode::LatestRead => project_latest_effects(module, block.instructions())?,
         ByteTraceMode::ZeroPrefixedLatest => {
             project_zero_prefixed_effects(module, block.instructions())?
+        }
+        ByteTraceMode::IdentityByteBitcast => {
+            project_identity_bitcast_effects(module, block.instructions())?
         }
     };
     Ok(TypedIrInput {
@@ -414,6 +500,9 @@ fn compile_byte_trace(
         }
         ByteTraceMode::ZeroPrefixedLatest => {
             bridge::encode_zero_prefixed_latest_byte_trace(&independently_admitted, profile)
+        }
+        ByteTraceMode::IdentityByteBitcast => {
+            bridge::encode_latest_byte_identity_trace(&independently_admitted, profile)
         }
     }
     .map_err(TypedEchoAdapterError::Layout)?;
@@ -496,4 +585,23 @@ pub fn compile_canonical_typed_zero_prefixed_latest_byte_trace(
     profile: &'static ProfileDescriptor,
 ) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
     compile_byte_trace(canonical, profile, ByteTraceMode::ZeroPrefixedLatest)
+}
+
+/// Lowers an admitted canonical byte I/O trace with exact eight-bit SSA casts.
+///
+/// `IntegerBitcast` operations between `u8` and `i8` are representation-only
+/// and create new aliases of A, without emitting guest instructions. Every
+/// output must reference a still-live unsigned-byte alias of the most recent
+/// successful input; later input invalidates all earlier aliases. No EOF,
+/// general computation, byte storage, or guest return/ABI claim is made.
+///
+/// # Errors
+///
+/// Rejects unsupported effects/casts/SSA, invalid canonical MCTI/MCTR,
+/// profile drift, and unadmitted address-sensitive target source.
+pub fn compile_canonical_typed_identity_byte_trace(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(canonical, profile, ByteTraceMode::IdentityByteBitcast)
 }

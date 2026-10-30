@@ -42,8 +42,8 @@ use std::process::{ExitCode, id};
 use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile};
 
 use crate::bridge::{
-    encode_initial_zero_outputs, encode_successful_byte_echo, encode_successful_latest_byte_trace,
-    encode_zero_prefixed_latest_byte_trace,
+    encode_initial_zero_outputs, encode_latest_byte_identity_trace, encode_successful_byte_echo,
+    encode_successful_latest_byte_trace, encode_zero_prefixed_latest_byte_trace,
     ternary::{TernaryOperation, canonical_ternary_program},
 };
 use crate::layout::{
@@ -51,8 +51,8 @@ use crate::layout::{
     encode_auto_padded_forward_layout, encode_linear_layout,
 };
 use crate::typed_adapter::{
-    compile_canonical_typed_echo, compile_canonical_typed_initial_zero_outputs,
-    compile_canonical_typed_latest_byte_trace,
+    compile_canonical_typed_echo, compile_canonical_typed_identity_byte_trace,
+    compile_canonical_typed_initial_zero_outputs, compile_canonical_typed_latest_byte_trace,
     compile_canonical_typed_zero_prefixed_latest_byte_trace,
 };
 
@@ -66,6 +66,7 @@ const TERNARY_FILE_ARG: &str = "--ternary-file";
 const LATEST_BYTE_TRACE_ARG: &str = "--latest-byte-trace";
 const INITIAL_ZERO_OUTPUT_ARG: &str = "--initial-zero-output";
 const ZERO_PREFIXED_BYTE_TRACE_ARG: &str = "--zero-prefixed-byte-trace";
+const IDENTITY_BYTE_TRACE_ARG: &str = "--identity-byte-trace";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
 const TERNARY_STDIN_ARG: &str = "--ternary-stdin";
@@ -93,6 +94,7 @@ struct CommandSpec {
 #[derive(Clone, Copy, Debug)]
 enum ByteTraceMode {
     AdjacentEcho,
+    IdentityByteBitcast,
     InitialZero,
     LatestRead,
     ZeroPrefixedLatest,
@@ -183,11 +185,14 @@ fn parse_canonical_source(
     let (kind, mode) = if first == OsStr::new(LATEST_BYTE_TRACE_ARG)
         || first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG)
         || first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG)
+        || first == OsStr::new(IDENTITY_BYTE_TRACE_ARG)
     {
         let mode = if first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG) {
             ByteTraceMode::InitialZero
         } else if first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG) {
             ByteTraceMode::ZeroPrefixedLatest
+        } else if first == OsStr::new(IDENTITY_BYTE_TRACE_ARG) {
+            ByteTraceMode::IdentityByteBitcast
         } else {
             ByteTraceMode::LatestRead
         };
@@ -245,6 +250,7 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
         || first == OsStr::new(LATEST_BYTE_TRACE_ARG)
         || first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG)
         || first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG)
+        || first == OsStr::new(IDENTITY_BYTE_TRACE_ARG)
     {
         return parse_canonical_source(first, arguments);
     } else {
@@ -425,6 +431,7 @@ fn verified_ternary_bytes(
         ByteTraceMode::ZeroPrefixedLatest => {
             encode_zero_prefixed_latest_byte_trace(&program, profile)
         }
+        ByteTraceMode::IdentityByteBitcast => encode_latest_byte_identity_trace(&program, profile),
     }
     .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
     if layout.profile_id() != profile.id() || layout.profile_fingerprint() != profile.fingerprint()
@@ -489,6 +496,9 @@ fn verified_typed_bytes(
         }
         ByteTraceMode::ZeroPrefixedLatest => {
             compile_canonical_typed_zero_prefixed_latest_byte_trace(typed_bytes, profile)
+        }
+        ByteTraceMode::IdentityByteBitcast => {
+            compile_canonical_typed_identity_byte_trace(typed_bytes, profile)
         }
     }
     .map_err(|error| format!("canonical typed byte bridge rejected: {error:?}"))?;
