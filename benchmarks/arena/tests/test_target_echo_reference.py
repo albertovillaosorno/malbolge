@@ -653,6 +653,71 @@ def test_timed_independent_verifier_failure_cannot_record_verified_cost(
             shutil.rmtree(directory)
 
 
+@pytest.mark.skipif(
+    not target_echo_reference.DEFAULT_EMITTER.is_file()
+    or not target_echo_reference.DEFAULT_RUNNER.is_file(),
+    reason="built Malbolge tools required",
+)
+def test_real_postexecution_source_mutation_is_independently_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Correct VM stdout cannot admit a source changed before verification."""
+    original = target_echo_reference._timed_source_verifier
+
+    def mutate_skipped_cell(path: Path, pairs: int, algorithm: str) -> int:
+        if algorithm == target_echo_reference.SKIP:
+            source = bytearray(path.read_bytes())
+            skipped_position = target_echo_reference.SKIPPED_NOOPS // 2
+            source[skipped_position] = (
+                GRAPHICAL_LOW
+                if source[skipped_position] != GRAPHICAL_LOW
+                else GRAPHICAL_LOW + 1
+            )
+            path.write_bytes(source)
+        return original(path, pairs, algorithm)
+
+    monkeypatch.setattr(
+        target_echo_reference, "_timed_source_verifier", mutate_skipped_cell
+    )
+    with tempfile.TemporaryDirectory(
+        dir=target_echo_reference._TEMP,
+        prefix="arena-verifier-mutation-test-",
+    ) as tools:
+        emitter = Path(tools) / "malbolge_layout"
+        runner = Path(tools) / "malbolge"
+        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        directory, document = target_echo_reference.run_study(
+            target_echo_reference.StudyPlan(
+                (1,),
+                1,
+                target_echo_reference.PATTERNED_MODE,
+                measure_steps=True,
+                layout_mode=target_echo_reference.FORWARD_SKIP_LAYOUT,
+                measure_verifier=True,
+            ),
+            emitter=emitter,
+            runner=runner,
+        )
+        try:
+            assert [row["outcome"] for row in document["observations"]] == [
+                analyze.VERIFIED,
+                analyze.VERIFIER_REJECTED,
+            ]
+            assert document["observations"][1]["metrics"].keys() == {
+                "elapsed_ns"
+            }
+            checked = target_echo_audit.audit(
+                (directory / "study.json")
+                .relative_to(target_echo_reference._ROOT)
+                .as_posix()
+            )
+            assert checked["verified_target_sources_checked"] == 1
+            assert checked["reported_failed_trials_not_replayed"] == 1
+        finally:
+            shutil.rmtree(directory)
+
+
 @pytest.mark.parametrize(
     "plan",
     [
