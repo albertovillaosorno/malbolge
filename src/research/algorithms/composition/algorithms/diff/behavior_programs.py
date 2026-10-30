@@ -35,6 +35,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace
+from pathlib import Path
+import shutil
+import tempfile
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -58,7 +62,6 @@ from algorithms.diff.probe_exec import run_probe_programs
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from pathlib import Path
 
     from algorithms.diff.behavior import BehaviorEvidence
     from algorithms.diff.model import TreeSnapshot
@@ -571,6 +574,38 @@ def _require_observed_source_unchanged(
         raise ProbeExecutionError(message)
 
 
+def _admit_observation_mirror(
+    context: ProbeRunContext, mirror: Path, admitted: TreeSnapshot
+) -> ProbeRunContext:
+    """Freeze the observed source for all identity and bug probes.
+
+    Returns:
+        An immutable admitted mirror context for the entire probe observation.
+
+    Raises:
+        ProbeExecutionError: The mirror cannot be copied or matched to source.
+
+    """
+    try:
+        _ = shutil.copytree(context.source_root, mirror, symlinks=True)
+    except OSError as error:
+        message = f"behavior candidate mirror failed: {error}"
+        raise ProbeExecutionError(message) from error
+    if _snapshot_observed_source(mirror) != admitted:
+        message = "behavior candidate tree changed while creating mirror"
+        raise ProbeExecutionError(message)
+    _require_observed_source_unchanged(context.source_root, admitted)
+    return replace(context, source_root=mirror, enforce_source_immutable=True)
+
+
+def _require_observation_sources_unchanged(
+    source: Path, mirror: Path, admitted: TreeSnapshot
+) -> None:
+    """Verify both original and observation mirror after one probe class."""
+    _require_observed_source_unchanged(source, admitted)
+    _require_observed_source_unchanged(mirror, admitted)
+
+
 def observe_behavior_programs(
     authored: AuthoredBehaviorPrograms,
     context: ProbeRunContext,
@@ -589,17 +624,28 @@ def observe_behavior_programs(
         raise BehaviorProgramError(message)
     context = _require_run_context(context, "behavior observation context")
     admitted = _snapshot_observed_source(context.source_root)
-    identity = _observe_identity(authored.identity, context)
-    _require_observed_source_unchanged(context.source_root, admitted)
-    compatibility = _observe_compatibility(authored.compatibility, context)
-    _require_observed_source_unchanged(context.source_root, admitted)
-    bugs = _observe_bugs(authored.bugs, context)
-    _require_observed_source_unchanged(context.source_root, admitted)
-    return BehaviorObservations(
-        identity=identity,
-        compatibility=compatibility,
-        bugs=bugs,
-    )
+    with tempfile.TemporaryDirectory(
+        prefix="diff-behavior-source-"
+    ) as temporary:
+        mirror = Path(temporary) / "source"
+        mirrored = _admit_observation_mirror(context, mirror, admitted)
+        identity = _observe_identity(authored.identity, mirrored)
+        _require_observation_sources_unchanged(
+            context.source_root, mirror, admitted
+        )
+        compatibility = _observe_compatibility(authored.compatibility, mirrored)
+        _require_observation_sources_unchanged(
+            context.source_root, mirror, admitted
+        )
+        bugs = _observe_bugs(authored.bugs, mirrored)
+        _require_observation_sources_unchanged(
+            context.source_root, mirror, admitted
+        )
+        return BehaviorObservations(
+            identity=identity,
+            compatibility=compatibility,
+            bugs=bugs,
+        )
 
 
 def evaluate_behavior_programs(

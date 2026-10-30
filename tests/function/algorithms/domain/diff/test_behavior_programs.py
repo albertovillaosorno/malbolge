@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+import shutil
 import sys
 from typing import TYPE_CHECKING
 from typing import cast
@@ -64,6 +65,10 @@ if TYPE_CHECKING:
     from algorithms.diff.probe_exec import ProbeTranscript
 
 _PYTHON_TOOL = "python"
+_IDENTITY_A = "identity-a"
+_IDENTITY_B = "identity-b"
+_CHANGED_SECOND_BYTES = b"different"
+_STABLE_IDENTITY_BYTES = b"stable"
 _READ_BYTES = (
     "import pathlib,sys;"
     "sys.stdout.buffer.write(pathlib.Path(sys.argv[1]).read_bytes())"
@@ -482,6 +487,79 @@ def test_observation_rejects_source_changed_between_probes(
             _context(candidate, tmp_path),
             minimum_similarity=0.80,
         )
+
+
+def test_observation_keeps_one_source_view_across_identity_probes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A flip-and-restore candidate cannot blend separate identity snapshots."""
+    source = tmp_path / "source"
+    oracle = tmp_path / "oracle"
+    candidate = tmp_path / "candidate"
+    for root in (source, oracle):
+        _write(root, "first.txt", b"first")
+        _write(root, "second.txt", b"second")
+    _write(candidate, "first.txt", b"first")
+    _write(candidate, "second.txt", _CHANGED_SECOND_BYTES)
+    programs = BehaviorPrograms(
+        identity=(
+            _read_program(_IDENTITY_A, "first.txt"),
+            _read_program(_IDENTITY_B, "second.txt"),
+        ),
+        compatibility=(),
+        bugs=(),
+    )
+    authored = author_behavior_programs(
+        programs, _context(source, tmp_path), _context(oracle, tmp_path)
+    )
+
+    def flip_during_identity(
+        program: ProbeProgram, run_context: ProbeRunContext
+    ) -> ProbeTranscript:
+        transcript = run_probe_program(program, run_context)
+        if program.probe_id == _IDENTITY_A:
+            _write(candidate, "second.txt", b"second")
+        elif program.probe_id == _IDENTITY_B:
+            _write(candidate, "second.txt", _CHANGED_SECOND_BYTES)
+        return transcript
+
+    monkeypatch.setattr(
+        "algorithms.diff.behavior_programs.run_probe_program",
+        flip_during_identity,
+    )
+    evidence = evaluate_behavior_programs(
+        authored, _context(candidate, tmp_path), minimum_similarity=1.0
+    )
+    _expect(not evidence.admitted, "interleaved source versions were admitted")
+    _expect(
+        (candidate / "second.txt").read_bytes() == _CHANGED_SECOND_BYTES,
+        "candidate was not restored by interleaving fixture",
+    )
+
+
+def test_observation_rejects_copy_time_mirror_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A changed copied byte tree is rejected before any probe executes."""
+    authored, source, _ = _authored(tmp_path)
+    copied_tree = shutil.copytree
+
+    def changed_copy(
+        source_root: Path, destination: Path, *, symlinks: bool = False
+    ) -> Path:
+        copied = copied_tree(source_root, destination, symlinks=symlinks)
+        _write(copied, "identity.txt", b"drift during copy")
+        return copied
+
+    monkeypatch.setattr(shutil, "copytree", changed_copy)
+    with pytest.raises(
+        ProbeExecutionError, match="changed while creating mirror"
+    ):
+        _ = observe_behavior_programs(authored, _context(source, tmp_path))
+    _expect(
+        (source / "identity.txt").read_bytes() == _STABLE_IDENTITY_BYTES,
+        "authoring source changed during mirror rejection",
+    )
 
 
 def test_failed_compatibility_program_rejects_candidate(tmp_path: Path) -> None:

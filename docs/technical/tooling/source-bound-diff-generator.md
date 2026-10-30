@@ -288,14 +288,15 @@ transcripts must differ. Those two digests become the portable `present` and
 `fixed`
 baselines. Candidate execution matching neither baseline produces `unknown` and
 fails closed. Candidate behavior observation verifies one full source byte-tree
-snapshot before and after each identity, compatibility, and bug probe group;
-observed persistent mutation between groups rejects all combined evidence,
-rather than accepting identity and bug states from different candidate versions.
-This check is non-atomic; transient external writes between scans still need
-caller coordination. Compatibility programs contribute success/failure rather
-than an
-
-identity digest. Application-specific harnesses and logical tool resolution
+snapshot before copying one dedicated observation source mirror (symlinks are
+not followed), and the mirror must match that admitted snapshot before probes.
+All identity, compatibility, and bug programs run against the same mirror, which
+prevents interleaved live source edits from combining probe evidence from
+different source versions. Original candidate and mirror snapshots are rechecked
+after each probe group. The copy is not atomic; external source writers can race
+the snapshot/copy boundary and still require caller coordination.
+Compatibility programs contribute success/failure rather than an identity
+digest. Application-specific harnesses and logical tool resolution
 remain
 consumer policy; the generic engine only owns execution and transcript
 semantics.
