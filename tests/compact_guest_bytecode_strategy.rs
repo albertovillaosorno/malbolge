@@ -41,7 +41,8 @@ pub mod residency;
 pub mod strategy;
 
 use malbolge::{
-    ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, historical_profile,
+    ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, encrypt_profile_cell,
+    historical_profile,
 };
 use std::collections::BTreeSet;
 use std::fs;
@@ -1579,4 +1580,58 @@ fn indirect_dispatch_v4_config_does_not_claim_bytecode_interpretation() {
             "missing v4 bound declaration: {line}"
         );
     }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "negative guest code/data overlap witness"
+)]
+fn indirect_jump_encrypts_descriptor_cell_and_breaks_original_source_binding() -> Result<(), String>
+{
+    let original = program(12)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound source: {error:?}"))?;
+    let source = embed_guest_indirect_dispatch_probe(&original, current_profile(), &candidate)
+        .map_err(|error| format!("source: {error:?}"))?;
+    let encrypted_address = usize::from(*source.get(53).ok_or("count glyph")?);
+    assert!(
+        (41..143).contains(&encrypted_address),
+        "code/data overlap inside CEB2"
+    );
+    let original_cell = *source
+        .get(encrypted_address)
+        .ok_or("original target cell")?;
+    let encrypted_cell = encrypt_profile_cell(u32::from(original_cell))
+        .ok_or("XLAT2 cannot encrypt graphical source")?;
+    assert_ne!(
+        encrypted_cell,
+        u32::from(original_cell),
+        "this witnessed dispatch must mutate the descriptor code/data cell"
+    );
+    let mut vm = ProfileMachine::from_source(current_profile(), &source, Vec::new())
+        .map_err(|error| format!("normative loader: {error:?}"))?;
+    let result = vm
+        .run(14)
+        .map_err(|error| format!("guest dispatch: {error:?}"))?;
+    assert!(
+        matches!(result, RunOutcome::BudgetExhausted { steps: 14 }),
+        "source dispatch must be committed before checking data destruction"
+    );
+    let actual_cell = vm
+        .memory_word(u32::try_from(encrypted_address).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("encrypted physical cell: {error:?}"))?;
+    assert_eq!(
+        actual_cell, encrypted_cell,
+        "profile VM must encrypt the source-resident bytecode cell"
+    );
+    let mut mutated_image = source;
+    *mutated_image
+        .get_mut(encrypted_address)
+        .ok_or("modified cell")? = u8::try_from(actual_cell).map_err(|error| error.to_string())?;
+    assert!(
+        admit_guest_indirect_dispatch_probe(&original, current_profile(), &mutated_image).is_err(),
+        "original CEB2 source binding no longer holds after guest XLAT2"
+    );
+    Ok(())
 }

@@ -200,6 +200,14 @@ loop, or provides semantic equivalence. Reached-step counts are bounded
 witnesses, not a complete workload cost. The 143-cell source is not a
 measured size or throughput advantage over the direct echo baseline.
 
+The indirect jump also exposes a **code/data collision**: `i` immediately
+XLAT2-encrypts the cell at `C = M[53]`, which is itself inside the bound
+CEB2 graphical payload. An explicit negative VM witness checks the changed
+physical memory word and shows that the post-jump source no longer passes
+original host CEB2 admission. A reusable guest runtime would need a design
+that avoids destructive code/data overlap or otherwise preserves a verified
+unmodified bytecode representation before indirect dispatch.
+
 ## Status
 
 No VM-resident bytecode runtime has been implemented. No guest-interpreted

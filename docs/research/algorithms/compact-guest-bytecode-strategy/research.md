@@ -310,6 +310,16 @@ notion that placing a descriptor alone provides an equivalent compact
 execution strategy. No size, compilation-time, or guest-step advantage may
 be inferred from this non-equivalent diagnostic.
 
+A directly reproduced negative case strengthens the code/data warning: the
+`i` transition XLAT2-encrypts `M[initial M[53]]` **inside the original CEB2
+payload** before the following instruction fetch. The committed word differs
+from the exact source glyph and the resulting memory-backed image is no
+longer admissible as the original bound CEB2 source. This is an actual
+resident-code/data mutation cost, not hypothetical VM design overhead. A
+future interpreter must protect or verify its bytecode despite classic
+instruction encryption; using a naive descriptor-region indirect jump as a
+bytecode dispatch loop would destroy the stream it is supposed to read.
+
 ## Threats to Validity
 
 The pilot has no guest interpreter, no real bytecode loader, no linked data

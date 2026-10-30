@@ -119,6 +119,10 @@ code-size explosion or compilation cost.
   reached guest target but fails source-bound host verification. This is
   **not** guest bytecode decoding, a loop, source authentication, or
   equivalent echo execution; no compact-runtime size/speed win follows.
+  A traced negative case also proves actual XLAT2 self-encryption mutates a
+  bound CEB2 source cell before the following fetch, breaking admission of
+  the original descriptor. Future runtime dispatch must preserve verified
+  bytecode in spite of classic code-phase self-modification.
 
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
