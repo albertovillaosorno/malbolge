@@ -67,7 +67,13 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
         ReportOutputError: The writer or flush did not complete the record.
 
     """
-    record = json.dumps(report, sort_keys=True, indent=2) + "\n"
+    try:
+        # Fully render strict JSON before touching stdout: even nested nonfinite
+        # costs must not produce an invalid but apparently successful report.
+        record = json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n"
+    except (TypeError, ValueError, OverflowError, RecursionError) as error:
+        message = f"arena report JSON serialization failed: {error}"
+        raise ReportOutputError(message) from error
     try:
         written = stream.write(record)
     except (

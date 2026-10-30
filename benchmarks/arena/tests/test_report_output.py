@@ -145,6 +145,69 @@ def test_writer_and_flush_exceptions_are_typed_failures(
     assert not output.flushed
 
 
+@pytest.mark.parametrize("nonfinite", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_nested_costs_fail_before_any_stdout(
+    nonfinite: float,
+) -> None:
+    """A formally successful arena report must be standards-compliant JSON."""
+    output = _FakeStream("healthy")
+    with pytest.raises(
+        report_output.ReportOutputError, match="JSON serialization"
+    ) as error:
+        report_output.publish({"curves": [{"costs": [nonfinite]}]}, output)
+    assert isinstance(error.value.__cause__, ValueError)
+    assert output.records == []
+    assert not output.flushed
+
+
+@pytest.mark.parametrize("invalid_kind", ["cycle", "unsupported"])
+def test_unrenderable_report_fails_as_typed_prepublication_error(
+    invalid_kind: str,
+) -> None:
+    """Corrupted analysis objects cannot escape typed operator failure."""
+    output = _FakeStream("healthy")
+    if invalid_kind == "cycle":
+        values: list[object] = []
+        values.append(values)
+        report = {"results": values}
+    else:
+        report = {"results": object()}
+    with pytest.raises(
+        report_output.ReportOutputError, match="JSON serialization"
+    ) as error:
+        report_output.publish(report, output)
+    assert isinstance(error.value.__cause__, (ValueError, TypeError))
+    assert output.records == []
+    assert not output.flushed
+
+
+def test_both_arena_clis_reject_nonfinite_report_without_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A malformed analyzed result must produce a nonzero CLI status."""
+    document = sample_study(tmp_path)
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+
+    def invalid_analysis(*args: object, **kwargs: object) -> dict[str, object]:
+        del args, kwargs
+        return {"costs": [{"time_ns": float("nan")}]}
+
+    monkeypatch.setattr(analyze, "analyze", invalid_analysis)
+    for arguments, entry in (
+        (["arena", str(path)], analyze.main),
+        (["arena-evidence", str(path), "--root", str(tmp_path)], evidence.main),
+    ):
+        monkeypatch.setattr(analyze.sys, "argv", arguments)
+        with pytest.raises(SystemExit, match="2"):
+            entry()
+        captured = capsys.readouterr()
+        assert not captured.out
+        assert "arena report JSON serialization failed" in captured.err
+
+
 def test_partial_stream_output_cannot_be_recalled_after_failure() -> None:
     """A shortened record may already have reached a broken stdout sink."""
     output = _FakeStream("short")

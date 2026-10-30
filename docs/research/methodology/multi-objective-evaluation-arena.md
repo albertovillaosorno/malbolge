@@ -834,10 +834,13 @@ The original study records remain the result authority.
   identity, exact resource declarations, v2 energy CSV, matched reported
   accelerator identity, and deterministic challenge regeneration. Independent
   negative oracle and raw-digest mutations fail before report publication.
-- `benchmarks/arena/report_output.py` checks exact text-write character
-  counts and flush status on both arena CLI reports. Deterministic broken
-  writer fixtures reject short/overstated/malformed counts and flush errors,
-  distinguishing nonzero operator failure from impossible stdout rollback.
+- `benchmarks/arena/report_output.py` fully renders strict JSON before touching
+  stdout: nested NaN/infinity, cyclic or otherwise unrenderable report values
+  become typed operator failures without emitting a partial record. It checks
+  exact text-write character counts and flush status across arena CLIs.
+  Deterministic broken writer fixtures reject short/overstated/malformed counts
+  and flush errors, distinguishing nonzero operator failure from impossible
+  stdout rollback once actual writing has begun.
 - `benchmarks/arena/study_file.py` guards bounded study JSON input with
   before/after descriptor and pathname identity, and nonblocking/no-follow
   open flags when available. Deterministic race regressions check ordinary
