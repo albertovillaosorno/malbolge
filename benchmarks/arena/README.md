@@ -1044,7 +1044,10 @@ python3.14 -B -m benchmarks.arena.historical_pairs \
 ```
 
 The adapter reads only canonical, non-symlink research files under the selected
-root, with an individual 4 MiB input cap. It reuses the version-one experiment
+root, with an individual 4 MiB input cap. It admits at most 4,096 registered
+repetitions and stops parsing raw CSV after the first row beyond the required
+two strategies per repetition, preventing row-object amplification within that
+byte limit. It reuses the version-one experiment
 and benchmark-protocol parsers, requires the exact paired trial population,
 checks preregistered baselines, matched workload/host/profile identities,
 and compares retained quality-map and structural counts against the recorded

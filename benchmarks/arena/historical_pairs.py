@@ -48,12 +48,14 @@ from typing import TYPE_CHECKING, Any, Never
 import tomllib
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from collections.abc import Sequence
 
 from benchmarks.arena import analyze, evidence, report_output
 from scripts.validate import benchmark_protocol, experiment_manifest
 
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
+MAX_HISTORICAL_REPETITIONS = 4096
 ASCII_DIGITS = frozenset(string.digits)
 HEX_DIGITS = frozenset(string.hexdigits.lower())
 ELAPSED_SOURCE_FIELD = "elapsed_nanoseconds"
@@ -151,17 +153,29 @@ def _csv_shape(
         _fail("historical raw CSV contains incomplete rows")
 
 
+def _bounded_csv_rows(
+    reader: Iterator[dict[str, str]], expected_rows: int
+) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    for row in reader:
+        if len(records) >= expected_rows:
+            _fail("historical raw CSV has more rows than registered trials")
+        records.append(row)
+    return records
+
+
 def _csv_rows(
     text: str,
     *,
     registered_fields: frozenset[str],
+    expected_rows: int,
 ) -> list[dict[str, str]]:
     if analyze.NUL in text:
         _fail("historical raw CSV cannot contain NUL")
     try:
         reader = csv.DictReader(StringIO(text, newline=""), strict=True)
-        records = list(reader)
         fields = reader.fieldnames or []
+        records = _bounded_csv_rows(reader, expected_rows)
     except csv.Error as error:
         message = f"malformed historical raw CSV: {error}"
         raise HistoricalEvidenceError(message) from error
@@ -420,14 +434,18 @@ def _load_source(root: Path, relative: str) -> _StudySources:
     extension_name = next(
         name for name in EXTENSION_CONFIG if name in manifest_data
     )
+    protocol = benchmark_protocol.parse_protocol(benchmark_text)
+    if protocol.repetitions > MAX_HISTORICAL_REPETITIONS:
+        _fail("historical registered repetitions exceed bounded study limit")
     return _StudySources(
         manifest_data=manifest_data,
         benchmark_data=tomllib.loads(benchmark_text),
         manifest=experiment_manifest.parse_manifest(manifest_text),
-        protocol=benchmark_protocol.parse_protocol(benchmark_text),
+        protocol=protocol,
         records=_csv_rows(
             sources["raw.csv"][0],
             registered_fields=REGISTERED_RAW_COLUMNS[extension_name],
+            expected_rows=2 * protocol.repetitions,
         ),
         fingerprints={name: sources[name][1] for name in names},
         source_commit=sources["source-commit.txt"][0],

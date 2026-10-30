@@ -41,6 +41,11 @@ import json
 import sys
 from hashlib import sha256
 from pathlib import Path
+from typing import Self
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from io import StringIO
 
 import pytest
 
@@ -262,6 +267,62 @@ def test_source_drift_rejected(
     directory = _copy_source(tmp_path, source)
     _alter(directory, filename, before=before, after=after)
     with pytest.raises(historical_pairs.HistoricalEvidenceError, match=reason):
+        historical_pairs.build_report(tmp_path, TEMP)
+
+
+@pytest.mark.parametrize("source", [PREFIX, REUSE])
+def test_historical_raw_rows_stop_at_first_unregistered_trial(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+) -> None:
+    """A 4 MiB CSV limit cannot hide unlimited row-object expansion."""
+    directory = _copy_source(tmp_path, source)
+    raw_file = directory / "raw.csv"
+    _ = raw_file.write_bytes(raw_file.read_bytes() + b",\n" * 100_000)
+    real_reader = historical_pairs.csv.DictReader
+    consumed = 0
+    first_unregistered = 2 * PAIR_COUNT + 1
+
+    class CountedReader:
+        def __init__(self, text: StringIO, *, strict: bool) -> None:
+            self.actual = real_reader(text, strict=strict)
+            self.fieldnames = self.actual.fieldnames
+
+        def __iter__(self) -> Self:
+            return self
+
+        def __next__(self) -> dict[str, str | None]:
+            nonlocal consumed
+            item = next(self.actual)
+            consumed += 1
+            if consumed > first_unregistered:
+                pytest.fail("historical parser consumed unregistered CSV rows")
+            return item
+
+    monkeypatch.setattr(historical_pairs.csv, "DictReader", CountedReader)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="more rows"
+    ):
+        historical_pairs.build_report(tmp_path, TEMP)
+    assert consumed == first_unregistered
+
+
+@pytest.mark.parametrize("source", [PREFIX, REUSE])
+def test_preregistered_repetitions_exceeding_admission_limit_rejected(
+    tmp_path: Path, source: str
+) -> None:
+    """An absurd registered count cannot defeat the CSV row-object cap."""
+    directory = _copy_source(tmp_path, source)
+    _alter(
+        directory,
+        "benchmark.toml",
+        before="repetitions = 5",
+        after=f"repetitions = {historical_pairs.MAX_HISTORICAL_REPETITIONS + 1}",
+    )
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="bounded study limit"
+    ):
         historical_pairs.build_report(tmp_path, TEMP)
 
 
