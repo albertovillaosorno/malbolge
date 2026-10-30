@@ -2668,6 +2668,7 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
     Raises:
         ProgressSidecarCommittedError: If publication commits before a later
             durability or cleanup operation fails.
+        ProgressSidecarError: If validation, staging, or publication fails.
 
     """
     validated = validate(sidecar)
@@ -2688,6 +2689,10 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
                 destination, payload, held_lock=lock_stream
             )
         except ProgressSidecarCommittedError:
+            raise
+        except ProgressSidecarError:
+            # The staged verifier already attached the original I/O cause and
+            # any secondary reader-close notes. Do not rewrap this typed error.
             raise
         except _OUTPUT_STREAM_ERRORS as error:
             _fail(f"progress sidecar publication failed: {error}")

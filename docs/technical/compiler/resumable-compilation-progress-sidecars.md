@@ -183,6 +183,10 @@ they do not claim an atomic filesystem snapshot or protection against
 concurrent rewriting after the final comparison (a pathname race remains).
 This check incurs an additional full staged-file read and hashing pass per
 publication, and does not by itself authenticate the original caller payload.
+Failures already classified as `ProgressSidecarError` by the staged reader
+retain their original exception cause and secondary descriptor-close notes
+through the mutable pointer publisher; unclassified raw writer and filesystem
+errors still receive the pointer-publication error boundary.
 
 The persistent writer-lock file also receives regular-descriptor admission and
 nonblocking/no-follow opens where available. Its lock-path recheck after

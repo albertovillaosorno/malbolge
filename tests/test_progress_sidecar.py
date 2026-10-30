@@ -5868,6 +5868,108 @@ def test_same_size_progress_mutation_keeps_prior_durable_pointer(
     assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
 
 
+def test_staged_reader_close_failure_rejects_immutable_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Successful content verification still requires clean reader closure."""
+    destination = tmp_path / "checkpoint.bin"
+    payload = b"expected-checkpoint"
+    original_close = os.close
+    close_failure = "injected staged reader close failure"
+    failed = False
+
+    def reject_reader_close(descriptor: int) -> None:
+        nonlocal failed
+        observed = os.fstat(descriptor)
+        original_close(descriptor)
+        if stat.S_ISREG(observed.st_mode) and observed.st_size == len(payload):
+            failed = True
+            raise RuntimeError(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "close", reject_reader_close)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        with pytest.raises(ERROR, match="descriptor close failed") as captured:
+            _ = writer(destination, payload, platform=os.name)
+    assert failed
+    assert isinstance(captured.value.__cause__, RuntimeError)
+    assert close_failure in str(captured.value)
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_staged_reader_close_fault_cannot_mask_primary_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Content-read failure stays primary if descriptor cleanup also fails."""
+    destination = tmp_path / "checkpoint.bin"
+    payload = b"expected-checkpoint"
+    original_close = os.close
+    read_failure = "injected staged primary read failure"
+    close_failure = "injected staged secondary close failure"
+
+    def reject_reader_close(descriptor: int) -> None:
+        observed = os.fstat(descriptor)
+        original_close(descriptor)
+        if stat.S_ISREG(observed.st_mode) and observed.st_size == len(payload):
+            raise RuntimeError(close_failure)
+
+    def reject_reader_read(descriptor: int, size: int) -> bytes:
+        del descriptor, size
+        raise OSError(read_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "close", reject_reader_close)
+        context.setattr(os, "read", reject_reader_read)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        with pytest.raises(ERROR, match=read_failure) as captured:
+            _ = writer(destination, payload, platform=os.name)
+    assert isinstance(captured.value.__cause__, OSError)
+    assert getattr(captured.value, "__notes__", None) == [
+        f"progress temporary descriptor close also failed: {close_failure}"
+    ]
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_pointer_staged_reader_preserves_original_io_error_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A typed staged-reader rejection must retain its original I/O cause."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    read_failure = "injected mutable reader I/O failure"
+    close_failure = "injected mutable reader close failure"
+    original_close = os.close
+    staged_size = len(progress.encode(sidecar))
+
+    def reject_staged_read(descriptor: int, size: int) -> bytes:
+        del descriptor, size
+        raise OSError(read_failure)
+
+    def reject_staged_close(descriptor: int) -> None:
+        observed = os.fstat(descriptor)
+        original_close(descriptor)
+        if stat.S_ISREG(observed.st_mode) and observed.st_size == staged_size:
+            raise RuntimeError(close_failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "read", reject_staged_read)
+        context.setattr(os, "close", reject_staged_close)
+        with pytest.raises(ERROR, match=read_failure) as captured:
+            _ = progress.write_atomic(sidecar)
+    assert isinstance(captured.value.__cause__, OSError)
+    assert str(captured.value.__cause__) == read_failure
+    assert getattr(captured.value, "__notes__", None) == [
+        f"progress temporary descriptor close also failed: {close_failure}"
+    ]
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
 def _inject_temporary_descriptor_admission_failure(
     context: pytest.MonkeyPatch,
     staged_descriptors: list[int],
