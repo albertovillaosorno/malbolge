@@ -36,6 +36,10 @@
 
 from __future__ import annotations
 
+import csv
+from io import StringIO
+from random import Random
+
 import pytest
 
 from benchmarks.arena import csv_admission
@@ -71,3 +75,24 @@ def test_csv_record_field_admission_matches_registered_limit(
 ) -> None:
     """Quoted separators must not count as CSV column separators."""
     assert csv_admission.within_column_limit(text, maximum) is admitted
+
+
+def test_seeded_csv_writer_preserves_quoted_delimiter_counts() -> None:
+    """Independently generated escaped CSV rows preserve the real field cap."""
+    # Seeded pseudo-randomness only synthesizes reproducible test cases.
+    random = Random(8675309)  # ruff: ignore[suspicious-non-cryptographic-random-usage]
+    alphabet = ("a", "b", "c", ",", '"', "\n", "\r", " ", "")
+    for _ in range(300):
+        count = random.randint(1, 12)
+        fields = [
+            "".join(
+                random.choice(alphabet) for _ in range(random.randint(0, 25))
+            )
+            for _ in range(count)
+        ]
+        buffer = StringIO(newline="")
+        csv.writer(buffer, lineterminator="\n").writerow(fields)
+        text = buffer.getvalue()
+        assert csv_admission.within_column_limit(text, count)
+        if count > 1:
+            assert not csv_admission.within_column_limit(text, count - 1)
