@@ -66,6 +66,21 @@ class BehaviorProgramError(ValueError):
     """Raised when behavior programs cannot form an unambiguous profile."""
 
 
+def _require_selected_program(program: ProbeProgram, context: str) -> None:
+    """Require at least one observation in an identity or bug program.
+
+    Raises:
+        BehaviorProgramError: No command selects stdout or exit status.
+
+    """
+    if not any(
+        command.digest_stdout or command.digest_exit_code
+        for command in program.commands
+    ):
+        message = f"{context} program requires a selected observation"
+        raise BehaviorProgramError(message)
+
+
 @dataclass(frozen=True, slots=True)
 class BugProgram:
     """Portable probe program plus the correction it conditionally controls."""
@@ -83,6 +98,7 @@ class BugProgram:
         if type(self.program) is not ProbeProgram:
             message = "bug behavior program requires an exact ProbeProgram"
             raise BehaviorProgramError(message)
+        _require_selected_program(self.program, "bug")
         if type(self.correction_id) is not str or not self.correction_id:
             message = "bug behavior program requires a correction identifier"
             raise BehaviorProgramError(message)
@@ -96,6 +112,13 @@ def _require_program_tuple(value: object, context: str) -> None:
     if any(type(item) is not ProbeProgram for item in items):
         message = f"{context} contains a foreign probe program"
         raise BehaviorProgramError(message)
+
+
+def _require_identity_program_tuple(value: object, context: str) -> None:
+    _require_program_tuple(value, context)
+    programs = cast("tuple[ProbeProgram, ...]", value)
+    for program in programs:
+        _require_selected_program(program, "identity")
 
 
 def _require_bug_program_tuple(value: object) -> None:
@@ -125,7 +148,9 @@ class BehaviorPrograms:
             BehaviorProgramError: Program identifiers violate profile policy.
 
         """
-        _require_program_tuple(self.identity, "identity behavior programs")
+        _require_identity_program_tuple(
+            self.identity, "identity behavior programs"
+        )
         _require_program_tuple(
             self.compatibility,
             "compatibility behavior programs",
@@ -187,6 +212,7 @@ class AuthoredBugProgram:
 
         """
         _ = _require_exact_probe_program(self.program, "authored bug")
+        _require_selected_program(self.program, "authored bug")
         _ = _require_correction_identifier(self.correction_id, "authored bug")
         present = _require_authored_digest(
             self.present_digest,
@@ -220,7 +246,9 @@ class AuthoredBehaviorPrograms:
         if type(self.profile) is not BehaviorProfile:
             message = "authored behavior requires an exact BehaviorProfile"
             raise BehaviorProgramError(message)
-        _require_program_tuple(self.identity, "authored identity programs")
+        _require_identity_program_tuple(
+            self.identity, "authored identity programs"
+        )
         _require_program_tuple(
             self.compatibility,
             "authored compatibility programs",

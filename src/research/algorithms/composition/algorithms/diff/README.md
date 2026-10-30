@@ -168,8 +168,12 @@ bug
 baselines from both original source and corrected oracle. A bug program must
 produce
 distinct selected-stdout transcript digests for `present` and `fixed`; candidate
-output matching neither becomes `unknown`. Compatibility programs are success
-preconditions. The domain still owns the actual programs and tool bindings.
+output matching neither becomes `unknown`. Identity and bug program
+records must select at least one stdout or exit-code observation *before*
+authoring or direct authored-record admission. Programs with no selection fail
+closed rather than admitting the SHA-256 empty-transcript digest; compatibility
+programs remain permitted as success-only preconditions. The domain still owns
+the actual programs and tool bindings.
 
 `gate.py` then requires both source-lineage admission and behavior admission.
 Tests

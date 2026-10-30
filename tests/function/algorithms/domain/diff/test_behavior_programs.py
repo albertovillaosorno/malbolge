@@ -287,6 +287,60 @@ def test_authored_behavior_records_reject_foreign_incoherent_inputs(
         )
 
 
+def test_identity_and_bug_programs_require_selected_transcripts(
+    tmp_path: Path,
+) -> None:
+    """Admit transcript selectors before any authoring process executes."""
+    unselected = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "print('unselected output')"),
+    )
+    identity = ProbeProgram("identity-stable", (unselected,))
+    with pytest.raises(BehaviorProgramError, match="selected observation"):
+        _ = BehaviorPrograms(identity=(identity,), compatibility=(), bugs=())
+
+    bug = ProbeProgram("historical-bug", (unselected,))
+    with pytest.raises(BehaviorProgramError, match="selected observation"):
+        _ = BehaviorPrograms(
+            identity=(_read_program("identity-stable", "identity.txt"),),
+            compatibility=(),
+            bugs=(BugProgram(bug, "fix-historical-bug"),),
+        )
+    with pytest.raises(BehaviorProgramError, match="selected observation"):
+        _ = AuthoredBugProgram(bug, "fix-historical-bug", b"present", b"fixed")
+
+    authored, _, _ = _authored(tmp_path)
+    with pytest.raises(BehaviorProgramError, match="selected observation"):
+        _ = AuthoredBehaviorPrograms(
+            profile=authored.profile,
+            identity=(identity,),
+            compatibility=authored.compatibility,
+            bugs=authored.bugs,
+        )
+
+    _ = BehaviorPrograms(
+        identity=(_read_program("identity-stable", "identity.txt"),),
+        compatibility=(ProbeProgram("runtime-capability", (unselected,)),),
+        bugs=(),
+    )
+    exit_only = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "raise SystemExit(7)"),
+        digest_exit_code=True,
+        expected_exit_code=None,
+    )
+    _ = BehaviorPrograms(
+        identity=(ProbeProgram("exit-identity", (exit_only,)),),
+        compatibility=(),
+        bugs=(
+            BugProgram(
+                ProbeProgram("exit-bug", (exit_only,)),
+                "fix-exit-bug",
+            ),
+        ),
+    )
+
+
 def test_behavior_program_apis_reject_foreign_records_before_execution(
     tmp_path: Path,
 ) -> None:

@@ -86,6 +86,10 @@ format.
   on success as well as failure, including helpers with independently closed
   stdio. Cross-platform Windows descendant cleanup and escaped POSIX sessions
   remain open hardening tasks.
+- Identity and bug behavior program records now require at least one selected
+  stdout/exit-code observation at authoring and direct-authored construction;
+  selector-free compatibility preconditions remain allowed. This prevents
+  premature side-effectful authoring and empty-transcript identity evidence.
 - Behavior authoring derives identity transcripts from source and distinct bug
   `present`/`fixed` transcripts from source versus corrected oracle; a third
   candidate transcript becomes `unknown` and fails closed.

@@ -276,6 +276,11 @@ NUL-free argv and rooted paths/tool identifiers, stdin bytes, exit codes,
 timeout/output limits, digest flags, program batches,
 tool bindings, and source-immutability flags all use exact admitted types.
 
+Behavior authoring rejects identity and bug programs without at least one
+stdout or exit-code transcript selector when constructing their typed records,
+before any source or oracle processes execute. Direct authored records enforce
+the same condition to prevent empty-transcript digests from masquerading as
+identity or bug evidence. Compatibility success-only probes need no selector.
 Behavior authoring runs identity programs on the original source. Bug programs
 run
 on both original source and the local corrected oracle; their selected-stdout
