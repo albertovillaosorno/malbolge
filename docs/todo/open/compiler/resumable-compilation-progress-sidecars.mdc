@@ -95,6 +95,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   plus foreign or overlong raw read chunks and final byte-length mismatch,
   with compact accumulation of highly fragmented raw reads and an observed-
   inode-bound read even for opaque checkpoint state,
+  now also caps every individual raw read request at 65,536 bytes, avoiding
+  untrusted sparse-inode-sized single allocations without limiting the total
+  checkpoint payload; sparse 8 GiB admission and multi-chunk real state tests
+  preserve incomplete-read rejection and exact committed state,
   non-`OSError` read-stream close failures are secondary to a prior read
   failure rather than replacing the primary error,
   close-only `ValueError` and `RuntimeError` on pointer or checkpoint

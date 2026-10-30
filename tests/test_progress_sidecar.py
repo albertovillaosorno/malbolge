@@ -56,6 +56,7 @@ from typing import override
 from urllib.parse import unquote_to_bytes
 
 import pytest
+
 from scripts import progress_sidecar as progress
 
 if TYPE_CHECKING:
@@ -73,6 +74,7 @@ ERROR = progress.ProgressSidecarError
 SCHEMA_FIELD = '"schema":"malbolge-progress-v1"'
 PROGRESS_NAME = "program.malbolge.progress.json"
 SIDECAR_WIRE_LIMIT = 1_048_576
+RAW_READ_CHUNK_BYTES = 65_536
 CHECKPOINT_NAME = "program.malbolge.checkpoint.00000000000000000001"
 PARTIAL_NAME = "program.malbolge.partial.00000000000000000001"
 OUTPUT_CHANGE = "output"
@@ -512,6 +514,31 @@ class ShortChunkReadStream:
 
     def close(self) -> None:
         """Close the exact descriptor transferred to the stream."""
+        os.close(self.descriptor)
+
+
+@dataclass(slots=True)
+class RecordingReadStream:
+    """Observe each raw read size without allocating a sparse file's span."""
+
+    descriptor: int
+    requests: list[int]
+    stop_before_read: bool = False
+
+    def read(self, size: int = -1) -> bytes:
+        """Read actual bounded bytes, or stop before an unsafe allocation.
+
+        Returns:
+            The requested regular-file chunk or a simulated early EOF.
+
+        """
+        self.requests.append(size)
+        if self.stop_before_read:
+            return b""
+        return os.read(self.descriptor, size)
+
+    def close(self) -> None:
+        """Close the exact acquired descriptor once."""
         os.close(self.descriptor)
 
 
@@ -1901,6 +1928,75 @@ def test_checkpoint_read_recovers_many_one_byte_raw_chunks(
     assert streams[0].calls == len(checkpoint) + 1
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(opened[0])
+
+
+def test_sparse_checkpoint_never_requests_unbounded_read_allocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A sparse inode must not cause a giant FileIO.read allocation."""
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=b"small", partial=None
+    )
+    assert sidecar.checkpoint_path is not None
+    checkpoint_path = Path(sidecar.checkpoint_path)
+    # Sparse extension reserves no large checkpoint payload in the test.
+    with checkpoint_path.open("wb") as stream:
+        _ = stream.truncate(1 << 33)
+    observed: list[RecordingReadStream] = []
+
+    def guarded_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> RecordingReadStream:
+        assert (mode, closefd) == ("rb", True)
+        result = RecordingReadStream(descriptor, [], stop_before_read=True)
+        observed.append(result)
+        return result
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", guarded_stream)
+        with pytest.raises(ERROR, match="incomplete file read"):
+            _ = progress.read_checkpoint_generation(sidecar)
+    assert len(observed) == 1
+    assert observed[0].requests == [RAW_READ_CHUNK_BYTES]
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(observed[0].descriptor)
+
+
+def test_checkpoint_streams_multiple_bounded_chunks_without_total_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A legitimate large opaque checkpoint survives chunked reading."""
+    checkpoint = b"verified-byte-stream" * 16_384
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    observed: list[RecordingReadStream] = []
+
+    def record_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> RecordingReadStream:
+        assert (mode, closefd) == ("rb", True)
+        result = RecordingReadStream(descriptor, [])
+        observed.append(result)
+        return result
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", record_stream)
+        assert progress.read_checkpoint_generation(sidecar) == (
+            checkpoint,
+            None,
+        )
+    assert len(observed) == 1
+    assert len(observed[0].requests) == (
+        len(checkpoint) // RAW_READ_CHUNK_BYTES + 1
+    )
+    assert max(observed[0].requests) == RAW_READ_CHUNK_BYTES
+    assert min(observed[0].requests) > 0
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(observed[0].descriptor)
 
 
 @pytest.mark.parametrize(

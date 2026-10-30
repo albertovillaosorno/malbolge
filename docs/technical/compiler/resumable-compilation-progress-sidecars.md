@@ -112,8 +112,12 @@ atomic filesystem snapshot.
 
 Both pointer and opaque checkpoint reads are bounded by the opened inode's
 observed byte length plus one sentinel byte, never a fabricated global limit
-on state size. Repeated small chunks accumulate in a compact byte buffer
-instead of retaining a separate Python list entry per read.
+on state size. Each raw `FileIO.read()` request is additionally bounded to
+65,536 bytes, so a giant sparse inode cannot force a giant single allocation
+before EOF, size or digest admission. Repeated small chunks accumulate in a
+compact byte buffer instead of retaining a separate Python list entry per read.
+The total validated opaque state is still returned in RAM; this is a per-read
+allocation bound, not a total-memory cap or streaming checkpoint codec.
 
 These are bounded admission checks, not a promise of immunity to subsequent
 filesystem mutation after the stream closes. Descriptor read errors remain

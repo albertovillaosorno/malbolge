@@ -98,6 +98,7 @@ _FOLLOW_FLAG: Final = "--follow"
 _FOLLOW_ARGUMENT_COUNT: Final = 2
 _FOLLOW_INTERVAL_SECONDS: Final = 1.0
 _MAX_SIDECAR_BYTES: Final = 1_048_576
+_RAW_READ_CHUNK_BYTES: Final = 65_536
 _JOB_IDENTITY_FIELD_COUNT: Final = 3
 WINDOWS_PLATFORM: Final = "nt"
 _NUL_PATH_CHARACTER: Final = "\x00"
@@ -1823,7 +1824,9 @@ def _read_with_budget(
     assembled = bytearray()
     remaining = read_size
     while remaining > 0:
-        chunk = _read_raw_chunk(stream, remaining)
+        # A sparse inode can claim terabytes while carrying no useful data.
+        # Never pass that untrusted count as one FileIO allocation request.
+        chunk = _read_raw_chunk(stream, min(remaining, _RAW_READ_CHUNK_BYTES))
         if not chunk:
             break
         assembled.extend(chunk)
