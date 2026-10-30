@@ -11,7 +11,7 @@
 # - Owns:
 #   - Bounded measured classic Malbolge EOF-echo geometry reference study.
 # - Must-Not:
-#   - Claim general C lowering, independent historical attestation, or budgets.
+#   - Claim C lowering, historical attestation or study-wide resource caps.
 # - Allows:
 #   - Inputs: explicit local emitter/VM executables and bounded echo sizes.
 #   - Outputs: ignored local target code, run/raw receipts and arena study JSON.
@@ -51,14 +51,13 @@ from time import perf_counter_ns
 from typing import Any
 from typing import Never
 
-from scripts.validate import experiment_manifest
-from scripts.validate import target_profile
-
 from benchmarks.arena import analyze
 from benchmarks.arena import evidence
 from benchmarks.arena import raw_samples
 from benchmarks.arena import report_output
 from benchmarks.arena import target_process
+from scripts.validate import experiment_manifest
+from scripts.validate import target_profile
 
 _ROOT = Path(__file__).resolve().parents[2]
 _TEMP = _ROOT / ".temp"
@@ -103,6 +102,9 @@ FORWARD_ALGORITHMS = (WALK, SKIP)
 FORWARD_STUDY = "classic-patterned-forward-skip-steps-v1"
 FORWARD_VERIFIER_COST_STUDY = "classic-patterned-forward-skip-verifier-cost-v2"
 FORWARD_REPLAY_COST_STUDY = "classic-patterned-forward-skip-replay-cost-v3"
+FORWARD_LIMITED_REPLAY_STUDY = (
+    "classic-patterned-forward-skip-limited-replay-v4"
+)
 SOURCE_VERIFIER_MODE = "source"
 REPLAY_VERIFIER_MODE = "replay"
 VERIFIER_MODES = (SOURCE_VERIFIER_MODE, REPLAY_VERIFIER_MODE)
@@ -110,6 +112,7 @@ VERIFIER_NS = "verifier_ns"
 FORWARD_FAMILY = "bounded-classic-patterned-forward-skip-echo"
 FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
 FORWARD_REPLAY_VERIFIER = "classic-forward-jump-patterned-second-vm-v1"
+FORWARD_LIMITED_REPLAY_VERIFIER = "classic-forward-jump-limited-second-vm-v1"
 JUMP_OPERATION = "jump"
 SKIPPED_NOOPS = 98
 WALKED_NOOPS = SKIPPED_NOOPS + 1
@@ -130,6 +133,7 @@ class StudyPlan:
     layout_mode: str = LINEAR_LAYOUT
     measure_verifier: bool = False
     verifier_mode: str = SOURCE_VERIFIER_MODE
+    limit_child_resources: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +151,7 @@ class _Context:
     layout_mode: str = LINEAR_LAYOUT
     measure_verifier: bool = False
     verifier_mode: str = SOURCE_VERIFIER_MODE
+    limit_child_resources: bool = False
 
 
 def _fail(message: str) -> Never:
@@ -317,14 +322,23 @@ def _run_guest(
         command.append("--input-stdin")
     if context.measure_steps:
         command.append("--report-steps")
-    return (
-        _invoke(command)
-        if context.input_mode == EOF_MODE
-        else target_process.invoke_with_input(
-            command,
-            _input_bytes(pairs, context.input_mode),
-            timeout_seconds=TIMEOUT_SECONDS,
+    if context.input_mode == EOF_MODE:
+        return (
+            target_process.invoke_limited(
+                command, timeout_seconds=TIMEOUT_SECONDS
+            )
+            if context.limit_child_resources
+            else _invoke(command)
         )
+    method = (
+        target_process.invoke_with_input_limited
+        if context.limit_child_resources
+        else target_process.invoke_with_input
+    )
+    return method(
+        command,
+        _input_bytes(pairs, context.input_mode),
+        timeout_seconds=TIMEOUT_SECONDS,
     )
 
 
@@ -361,7 +375,13 @@ def _classify_attempt(
         and operations[0] == JUMP_OPERATION
     ):
         command.append("--auto-layout")
-    emitted = _invoke([*command, *operations])
+    emitted = (
+        target_process.invoke_limited(
+            [*command, *operations], timeout_seconds=TIMEOUT_SECONDS
+        )
+        if context.limit_child_resources
+        else _invoke([*command, *operations])
+    )
     if emitted.returncode != 0 or emitted.stdout or not path.is_file():
         return "tool_failed", None, None
     source = evidence.read_bounded_regular(
@@ -435,7 +455,10 @@ def _timed_replay_verifier(
 
     started = perf_counter_ns()
     target_echo_audit.check_forward_vm_replay(
-        path, context.runner, case=case, steps=steps
+        path,
+        context.runner,
+        case=case,
+        replay_options=(steps, context.limit_child_resources),
     )
     return perf_counter_ns() - started
 
@@ -620,7 +643,9 @@ def _write_attempt(
         "trial": trial,
         "outcome": outcome,
         "verifier": (
-            FORWARD_REPLAY_VERIFIER
+            FORWARD_LIMITED_REPLAY_VERIFIER
+            if context.limit_child_resources
+            else FORWARD_REPLAY_VERIFIER
             if context.measure_verifier
             and context.verifier_mode == REPLAY_VERIFIER_MODE
             else FORWARD_VERIFIER
@@ -650,7 +675,9 @@ def _make_document(
 ) -> dict[str, Any]:
     patterned = context.input_mode == PATTERNED_MODE
     study_id = (
-        FORWARD_REPLAY_COST_STUDY
+        FORWARD_LIMITED_REPLAY_STUDY
+        if context.limit_child_resources
+        else FORWARD_REPLAY_COST_STUDY
         if context.measure_verifier
         and context.verifier_mode == REPLAY_VERIFIER_MODE
         else FORWARD_VERIFIER_COST_STUDY
@@ -748,6 +775,16 @@ def _validate_verifier_measurement(plan: StudyPlan) -> None:
         _fail("target echo verifier mode must be source or replay")
     if plan.verifier_mode == REPLAY_VERIFIER_MODE and not plan.measure_verifier:
         _fail("target echo replay verifier requires measured verifier cost")
+    _validate_child_resource_selection(plan)
+
+
+def _validate_child_resource_selection(plan: StudyPlan) -> None:
+    if type(plan.limit_child_resources) is not bool:
+        _fail("target echo child resource controls require boolean selection")
+    if plan.limit_child_resources and (
+        not plan.measure_verifier or plan.verifier_mode != REPLAY_VERIFIER_MODE
+    ):
+        _fail("target echo child limits require measured verifier replay")
 
 
 def _validate_study_options(plan: StudyPlan) -> None:
@@ -780,6 +817,8 @@ def run_study(
     """
     _validate_plan(plan)
     _validate_study_options(plan)
+    if plan.limit_child_resources:
+        target_process.require_child_resource_controls()
     context = replace(
         _prepare_context(emitter, runner),
         input_mode=plan.input_mode,
@@ -787,6 +826,7 @@ def run_study(
         layout_mode=plan.layout_mode,
         measure_verifier=plan.measure_verifier,
         verifier_mode=plan.verifier_mode,
+        limit_child_resources=plan.limit_child_resources,
     )
     observations = [
         _write_attempt(context, pairs, trial, algorithm=algorithm)
@@ -826,6 +866,7 @@ def main() -> int:
     parser.add_argument(
         "--verifier-mode", choices=VERIFIER_MODES, default=SOURCE_VERIFIER_MODE
     )
+    parser.add_argument("--limit-child-resources", action="store_true")
     args = parser.parse_args()
     try:
         directory, document = run_study(
@@ -837,6 +878,7 @@ def main() -> int:
                 args.layout_mode,
                 args.measure_verifier,
                 args.verifier_mode,
+                args.limit_child_resources,
             )
         )
         report_output.publish(

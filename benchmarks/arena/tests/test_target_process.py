@@ -37,6 +37,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from time import monotonic
@@ -52,6 +53,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 POSIX_PLATFORM = "posix"
+LINUX_PLATFORM = "linux"
+PRLIMIT_AVAILABLE = shutil.which("prlimit") is not None
+ADDRESS_LIMIT_OUTPUT = b"blocked"
 pytestmark = pytest.mark.skipif(
     os.name != POSIX_PLATFORM, reason="bounded target subprocess requires POSIX"
 )
@@ -261,3 +265,155 @@ def test_invalid_deadline_and_limits_reject_before_launch(
                 stderr_limit=err,
             )
     assert not launched
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM or not PRLIMIT_AVAILABLE,
+    reason="requires Linux with util-linux prlimit",
+)
+def test_limited_child_inherits_strict_kernel_resource_ceiling() -> None:
+    """The actual child sees Linux-enforced address, CPU and file ceilings."""
+    source = (
+        "import resource; "
+        "limits=(resource.RLIMIT_AS,resource.RLIMIT_CPU,"
+        "resource.RLIMIT_FSIZE); "
+        "print(','.join(str(resource.getrlimit(key)[0]) for key in limits))"
+    )
+    result = target_process.invoke_limited(
+        _child(source),
+        timeout_seconds=LARGE_TIMEOUT_SECONDS,
+    )
+    assert result.returncode == 0
+    actual = tuple(int(value) for value in result.stdout.strip().split(b","))
+    assert actual == (
+        target_process.CHILD_VIRTUAL_MEMORY_BYTES,
+        target_process.CHILD_CPU_SECONDS,
+        target_process.CHILD_OUTPUT_FILE_BYTES,
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM or not PRLIMIT_AVAILABLE,
+    reason="requires Linux with util-linux prlimit",
+)
+def test_limited_child_output_file_size_is_kernel_enforced(
+    tmp_path: Path,
+) -> None:
+    """A process cannot create a file beyond its configured hard RLIMIT."""
+    large = target_process.CHILD_OUTPUT_FILE_BYTES + 1
+    file = tmp_path / "overlarge"
+    source = (
+        "import pathlib; "
+        f"pathlib.Path({str(file)!r}).write_bytes(bytes({large}))"
+    )
+    result = target_process.invoke_limited(
+        _child(source),
+        timeout_seconds=LARGE_TIMEOUT_SECONDS,
+    )
+    assert result.returncode != 0
+    assert file.stat().st_size <= target_process.CHILD_OUTPUT_FILE_BYTES
+
+
+def test_child_limit_opt_in_rejects_nonboolean_before_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No falsey aliases may silently disable claimed child enforcement."""
+    launched = False
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        nonlocal launched
+        _ = (args, kwargs)
+        launched = True
+
+    monkeypatch.setattr(target_process.sp, "Popen", forbidden)
+    with pytest.raises(target_process.TargetProcessError, match="boolean"):
+        target_process._limited_command(  # ruff: ignore[private-member-access]
+            _child("print('never')"), enforce=cast("bool", 1)
+        )
+    assert not launched
+
+
+@pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="uses Linux prlimit")
+def test_missing_limiter_cannot_launch_limited_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing mandatory Linux limiter is failure, not an unbounded run."""
+
+    def unavailable(name: str) -> None:
+        _ = name
+
+    monkeypatch.setattr(target_process.shutil, "which", unavailable)
+    with pytest.raises(target_process.TargetProcessError, match="prlimit"):
+        target_process.invoke_limited(_child("print('never')"))
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM or not PRLIMIT_AVAILABLE,
+    reason="requires Linux with util-linux prlimit",
+)
+def test_limited_binary_input_survives_kernel_resource_admission() -> None:
+    """The limited child still receives exact binary stdin and EOF."""
+    data = bytes(range(target_process.MAX_STDIN_BYTES))
+    result = target_process.invoke_with_input_limited(
+        _child("import sys;sys.stdout.buffer.write(sys.stdin.buffer.read())"),
+        data,
+        timeout_seconds=LARGE_TIMEOUT_SECONDS,
+    )
+    assert result.returncode == 0
+    assert result.stdout == data
+    assert result.stderr == NO_STDOUT
+
+
+@pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="uses Linux prlimit")
+def test_missing_limiter_cannot_launch_binary_input_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No silent fallback to an unbounded runner when prlimit is absent."""
+    monkeypatch.setattr(target_process.shutil, "which", lambda *_: None)
+    with pytest.raises(target_process.TargetProcessError, match="prlimit"):
+        target_process.invoke_with_input_limited(_child("print('never')"), b"x")
+
+
+@pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="uses Linux prlimit")
+def test_missing_limiter_is_admitted_before_target_process_creation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Limiter preflight must run before creating any child process."""
+    launched = False
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        nonlocal launched
+        _ = (args, kwargs)
+        launched = True
+
+    monkeypatch.setattr(target_process.sp, "Popen", forbidden)
+    monkeypatch.setattr(target_process.shutil, "which", lambda *_: None)
+    with pytest.raises(target_process.TargetProcessError, match="prlimit"):
+        target_process.invoke_limited(_child("print('never')"))
+    assert not launched
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM or not PRLIMIT_AVAILABLE,
+    reason="requires Linux with util-linux prlimit",
+)
+def test_limited_child_virtual_address_space_cannot_exceed_kernel_ceiling() -> (
+    None
+):
+    """A private virtual mapping beyond the hard address cap fails closed."""
+    beyond = target_process.CHILD_VIRTUAL_MEMORY_BYTES + 1
+    source = (
+        "import mmap,sys\n"
+        "try:\n"
+        f"    mapping=mmap.mmap(-1,{beyond})\n"
+        "except (OSError,MemoryError):\n"
+        "    sys.stdout.write('blocked')\n"
+        "else:\n"
+        "    mapping.close()\n"
+        "    sys.stdout.write('unbounded')\n"
+    )
+    result = target_process.invoke_limited(
+        _child(source), timeout_seconds=LARGE_TIMEOUT_SECONDS
+    )
+    assert result.returncode == 0
+    assert result.stdout == ADDRESS_LIMIT_OUTPUT

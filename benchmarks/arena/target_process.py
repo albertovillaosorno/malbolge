@@ -11,7 +11,7 @@
 # - Owns:
 #   - Bounded POSIX child process capture for target emitters and VM replay.
 # - Must-Not:
-#   - Assert study-wide memory or full descendant containment.
+#   - Assert study-wide memory/RSS or full descendant containment.
 # - Allows:
 #   - Inputs: explicit child arguments, deadline and stream limits.
 #   - Outputs: complete stdout/stderr/status, or a typed failure.
@@ -23,7 +23,7 @@
 # - Summary:
 #   - Bounded dual-stream capture without unbounded communicate allocations.
 # - Description:
-#   - One cumulative wall deadline, exact output quotas, isolated child group.
+#   - One wall deadline, output quotas, isolated child group, optional prlimit.
 # - Usage:
 #   - invoke([absolute_program, *args], timeout_seconds=15).
 # - Defaults:
@@ -40,7 +40,9 @@ import math
 import os
 from pathlib import Path
 import selectors
+import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+import sys
 from time import monotonic
 from typing import Never
 
@@ -52,6 +54,11 @@ MAX_STDIN_BYTES = 256
 READ_CHUNK_BYTES = 64 * 1024
 POSIX_PLATFORM = "posix"
 GROUP_KILL_SIGNAL = 9
+LINUX_PLATFORM = "linux"
+LIMITER_NAME = "prlimit"
+CHILD_VIRTUAL_MEMORY_BYTES = 1024 * 1024 * 1024
+CHILD_CPU_SECONDS = 8
+CHILD_OUTPUT_FILE_BYTES = 8 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +66,7 @@ class _ProcessLimits:
     timeout_seconds: float
     stdout_limit: int
     stderr_limit: int
+    enforce_child_limits: bool = False
 
 
 class TargetProcessError(sp.SubprocessError):
@@ -84,6 +92,31 @@ def _admit_limits(
         _fail("bounded target process requires nonnegative stdout limit")
     if type(stderr_limit) is not int or stderr_limit < 0:
         _fail("bounded target process requires nonnegative stderr limit")
+
+
+def _limited_command(command: list[str], *, enforce: bool) -> list[str]:
+    if type(enforce) is not bool:
+        _fail("bounded child limits require a boolean selection")
+    if not enforce:
+        return command
+    if sys.platform != LINUX_PLATFORM:
+        _fail("bounded target child resource controls require Linux")
+    utility = shutil.which(LIMITER_NAME)
+    if utility is None:
+        _fail("bounded target child resource controls require prlimit")
+    return [
+        utility,
+        f"--as={CHILD_VIRTUAL_MEMORY_BYTES}:{CHILD_VIRTUAL_MEMORY_BYTES}",
+        f"--cpu={CHILD_CPU_SECONDS}:{CHILD_CPU_SECONDS}",
+        f"--fsize={CHILD_OUTPUT_FILE_BYTES}:{CHILD_OUTPUT_FILE_BYTES}",
+        "--",
+        *command,
+    ]
+
+
+def require_child_resource_controls() -> None:
+    """Refuse a limited study when Linux or mandatory prlimit is missing."""
+    _ = _limited_command([], enforce=True)
 
 
 def _terminate_group(child: sp.Popen[bytes]) -> None:
@@ -171,9 +204,10 @@ def _run(
         limits.stdout_limit,
         limits.stderr_limit,
     )
+    prepared = _limited_command(command, enforce=limits.enforce_child_limits)
     started = monotonic()
     child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
-        command,
+        prepared,
         shell=False,
         cwd=_ROOT,
         stdin=sp.PIPE if input_bytes is not None else sp.DEVNULL,
@@ -236,6 +270,57 @@ def invoke_with_input(
             timeout_seconds,
             DEFAULT_STDOUT_LIMIT,
             DEFAULT_STDERR_LIMIT,
+        ),
+        input_bytes=input_bytes,
+    )
+
+
+def invoke_limited(
+    command: list[str],
+    *,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+    stdout_limit: int = DEFAULT_STDOUT_LIMIT,
+    stderr_limit: int = DEFAULT_STDERR_LIMIT,
+) -> sp.CompletedProcess[bytes]:
+    """Run one Linux child with inherited enforced RLIMIT_AS/CPU/FSIZE.
+
+    Returns:
+        Exact bounded child output/exit status under physical per-child caps.
+
+    """
+    return _run(
+        command,
+        limits=_ProcessLimits(
+            timeout_seconds,
+            stdout_limit,
+            stderr_limit,
+            enforce_child_limits=True,
+        ),
+        input_bytes=None,
+    )
+
+
+def invoke_with_input_limited(
+    command: list[str],
+    input_bytes: bytes,
+    *,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+) -> sp.CompletedProcess[bytes]:
+    """Run one Linux resource-limited child with exact bounded binary stdin.
+
+    Returns:
+        Complete bounded captured output and child return code.
+
+    """
+    if type(input_bytes) is not bytes or len(input_bytes) > MAX_STDIN_BYTES:
+        _fail("bounded target input requires up to 256 exact bytes")
+    return _run(
+        command,
+        limits=_ProcessLimits(
+            timeout_seconds,
+            DEFAULT_STDOUT_LIMIT,
+            DEFAULT_STDERR_LIMIT,
+            enforce_child_limits=True,
         ),
         input_bytes=input_bytes,
     )

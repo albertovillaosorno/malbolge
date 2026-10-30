@@ -192,6 +192,22 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   optional later replay. This is a repeat process running the **same VM**, not
   independently implemented semantics, attested timing, whole-study resource
   enforcement or target C compiler validation. Old cohort protocols remain.
+- A separately opt-in Linux v4 physically limited target protocol now
+  executes each real source emitter, primary normative VM and second
+  measured replay VM under inherited `prlimit` RLIMIT_AS=1 GiB virtual
+  address space, RLIMIT_CPU=8 seconds and RLIMIT_FSIZE=8 MiB file output.
+  A missing limiter rejects the study before local output setup. Exact
+  binary stdin, 15-second wall deadline, bounded stdout/stderr and
+  ordinary process-group cleanup remain in place. A distinct v4 study ID
+  and oracle bind the resource-limited protocol without rewriting v1-v3
+  study results; the read-only audit preserves strict raw/run receipts and
+  optionally replays accepted source under the same physical child caps.
+  Real host tests inspect actual RLIMIT values and enforce the output-file
+  cap, reject an unavailable limiter, and verify complete original-
+  workload/guest-step behavior. This is **not** observed resident memory,
+  a process-tree/cgroup aggregate quota, past-execution attestation or a
+  solution for arbitrary C translation; CPU/RAM resource metrics are still
+  pending. The four original Pareto dimensions remain honest measurements.
 - A separate read-only classic target audit now reopens local pilot
 - A separate read-only classic target audit now reopens local pilot
   studies, binds fixed producer research/manifest/case claims, complete

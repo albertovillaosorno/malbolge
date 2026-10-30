@@ -384,6 +384,47 @@ limits nor native wall-time speedups are proven. The existing static-only
 `--measure-verifier` default (source mode), three-objective forward-skip mode,
 and earlier linear cohorts remain unchanged.
 
+### Opt-in Linux per-child resource controls (version four)
+
+The next fixed target protocol physically caps each spawned child process
+while preserving the source-and-second-VM verification from version three:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_reference \
+  --pairs 1 4 16 64 --trials 3 --input-mode patterned \
+  --measure-steps --layout-mode forward-skip \
+  --measure-verifier --verifier-mode replay --limit-child-resources
+```
+
+Only this opt-in creates the independent
+`classic-patterned-forward-skip-limited-replay-v4` study and
+`classic-forward-jump-limited-second-vm-v1` verifier identities. The
+producer requires Linux with util-linux `prlimit` **before allocating study
+output**. It then launches the source emitter, first normative VM, and
+separate measured verifier VM behind explicit Linux `RLIMIT_AS`, `RLIMIT_CPU`,
+and `RLIMIT_FSIZE` controls inherited by each ordinary descendant. The
+read-only auditor uses the same limiter for optional VM replay of a v4 study.
+
+Each limited child has a hard 1 GiB **virtual address-space** limit, an
+8-second CPU-time limit and an 8 MiB output-file-size limit. The existing
+15-second cumulative wall deadline and exact 4 KiB stdout / 16 KiB stderr
+pipe quotas remain, with isolated process groups and best-effort cleanup.
+Missing Linux support or `prlimit` fails closed; no unbounded fallback is
+permitted in this mode. A child exceeding a kernel-enforced cap fails the
+attempt rather than receiving a verified performance result.
+
+These are **per-process inherited limits**, not observed peak RSS, hardware
+energy readings, whole-study memory, CPU-time sum across processes, or a
+cgroup-enforced process-tree quota. Detached descendants remain outside the
+ordinary process-group cleanup guarantee. The returned timing and claims
+about past enforcement cannot be authenticated by the offline auditor;
+replaying on Linux with `prlimit` demonstrates present behavior, not the past.
+
+The new v4 study/oracle identities prevent accidental mixing with unlimited
+v3 replay and v2 source-only costs, but operator-controlled study records can
+still be forged. The other study modes and their original raw CSV shapes
+remain unchanged.
+
 This is a real bounded demonstration of **forward control-flow work avoided**,
 not a loop, arbitrary branching, native CPU-instruction savings, statistically
 significant wall-time speedup, or optimization of compiled C. Measured host

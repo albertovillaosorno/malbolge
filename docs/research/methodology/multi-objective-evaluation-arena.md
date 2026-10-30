@@ -324,6 +324,34 @@ it cannot authenticate the original measured duration. This is a real second
 execution, not a distinct independent interpreter, arbitrary C translation,
 physically enforced whole-study budgets or an attested performance estimate.
 
+A separate v4 target study adds **actually enforced per-child Linux
+resource ceilings** to the measured source-plus-second-VM replay protocol.
+Only `--limit-child-resources` combined with the v3 forward-skip replay
+flags activates `classic-patterned-forward-skip-limited-replay-v4` and the
+separate `classic-forward-jump-limited-second-vm-v1` oracle identity.
+
+Before creating any study output, the producer requires Linux and `prlimit`;
+source emission, first VM execution and measured second VM execution each
+run with inherited hard `RLIMIT_AS=1 GiB` virtual-address-space, `RLIMIT_CPU=8`
+seconds, and `RLIMIT_FSIZE=8 MiB` regular-output-file quotas. Their existing
+15-second wall deadline, bounded stdout/stderr capture and process-group
+cleanup are unchanged. An optional later audit VM replay applies the same
+child resource controls, ensuring it does not silently downgrade to an
+unlimited check.
+
+Real subprocess regressions inspect kernel-visible limit values, exceed the
+hard output-file cap, preserve 256 binary input bytes and EOF, and demonstrate
+rejection when `prlimit` is unavailable. The static auditor enforces v4 study
+and verifier identity separately from v3, while exact raw CSV and run
+manifests retain the successful four-cost observations without claiming
+additional unmeasured resource metrics.
+
+These per-child ceilings do **not**
+measure peak resident memory, contain detached descendants, impose aggregate
+study-wide CPU/RAM caps, or prove that any historical producer actually ran
+under the claimed policy. This remains a bounded classic echo study, not
+general C compilation, full guest-program proof or performance attestation.
+
 The earlier linear study remains a falsifiable source-size hypothesis (the
 nop-padded source should use one extra graphical code byte per pair), not a
 general compiler-size or performance result. Host wall times include compiler
