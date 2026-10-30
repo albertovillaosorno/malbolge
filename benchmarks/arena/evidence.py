@@ -743,7 +743,8 @@ def main() -> int:
     parser.add_argument("--success-intervals-95", action="store_true")
     args = parser.parse_args()
     try:
-        document = analyze.parse_document(analyze.read_input(args.study))
+        source = analyze.read_input(args.study)
+        document = analyze.parse_document(source)
         checked = validate_links(
             document,
             args.root,
@@ -766,6 +767,7 @@ def main() -> int:
         )
         if args.success_intervals_95:
             analyze.annotate_success_intervals(report)
+        analyze.require_unchanged_study_input(args.study, source)
     except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena evidence: {error}\n")
     report["evidence_preflight"] = checked

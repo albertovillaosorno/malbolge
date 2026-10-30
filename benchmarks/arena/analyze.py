@@ -826,6 +826,17 @@ def read_input(path: Path) -> str:
     return data.decode("utf-8")
 
 
+def require_unchanged_study_input(path: Path, original: str) -> None:
+    """Reject an input rewritten since the first bounded admission.
+
+    Raises:
+        ArenaError: The retained path no longer has the original bytes.
+
+    """
+    if read_input(path) != original:
+        raise ArenaError("arena study input changed after initial admission")
+
+
 def main() -> int:
     """Read one bounded study input and write deterministic JSON to stdout.
 
@@ -841,7 +852,8 @@ def main() -> int:
     parser.add_argument("--success-intervals-95", action="store_true")
     args = parser.parse_args()
     try:
-        document = parse_document(read_input(args.input))
+        source = read_input(args.input)
+        document = parse_document(source)
         report = analyze(
             document,
             median_intervals_95=args.median_intervals_95,
@@ -850,6 +862,7 @@ def main() -> int:
         )
         if args.success_intervals_95:
             annotate_success_intervals(report)
+        require_unchanged_study_input(args.input, source)
     except (ArenaError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena: {error}\n")
     try:

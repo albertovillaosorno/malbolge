@@ -39,7 +39,7 @@ from __future__ import annotations
 import json
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -77,6 +77,108 @@ def test_unchanged_regular_study_retains_original_json_bytes(
         path,
         limit=analyze.MAX_INPUT_BYTES,
     ) == original.encode("utf-8")
+
+
+def _same_length_study_rewrite(path: Path) -> None:
+    contents = path.read_text(encoding="utf-8")
+    document = json.loads(contents)
+    old = document["study"]["id"]
+    document["study"]["id"] = ("z" if old[0] != "z" else "y") + old[1:]
+    changed = json.dumps(document, sort_keys=True)
+    assert len(changed.encode("utf-8")) == len(contents.encode("utf-8"))
+    _ = path.write_text(changed, encoding="utf-8")
+
+
+@pytest.mark.parametrize("cli", ["analyze", "evidence"])
+def test_cli_rechecks_study_after_analysis_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cli: str,
+) -> None:
+    """Same-size study rewrites after completed analysis cannot publish."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_analyze = analyze.analyze
+
+    def rewrite_after_analysis(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_analyze(*args, **kwargs)
+        _same_length_study_rewrite(path)
+        return report
+
+    monkeypatch.setattr(analyze, "analyze", rewrite_after_analysis)
+    entry = analyze.main if cli == "analyze" else evidence.main
+    args = ["arena", str(path)]
+    if cli == "evidence":
+        args.extend(("--root", str(tmp_path)))
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit, match="2"):
+        entry()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "study input changed" in output.err
+
+
+def test_evidence_cli_rechecks_study_mutated_during_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Slow evidence validation cannot reattribute a replaced study."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_validate = evidence.validate_links
+
+    def rewrite_after_preflight(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        result = original_validate(*args, **kwargs)
+        _same_length_study_rewrite(path)
+        return result
+
+    monkeypatch.setattr(evidence, "validate_links", rewrite_after_preflight)
+    monkeypatch.setattr(
+        sys, "argv", ["arena-evidence", str(path), "--root", str(tmp_path)]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "study input changed" in output.err
+
+
+@pytest.mark.parametrize("cli", ["analyze", "evidence"])
+@pytest.mark.parametrize("tamper", ["missing", "symlink"])
+def test_cli_rechecks_study_path_after_analysis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cli: str,
+    tamper: str,
+) -> None:
+    """Late missing and linked study paths cannot publish a stale report."""
+    path = tmp_path / STABLE_INPUT
+    original_bytes = _study(path).encode("utf-8")
+    original_analyze = analyze.analyze
+
+    def tamper_after_analysis(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_analyze(*args, **kwargs)
+        path.unlink()
+        if tamper == "symlink":
+            target = tmp_path / SUBSTITUTED
+            _ = target.write_bytes(original_bytes)
+            path.symlink_to(target)
+        return report
+
+    monkeypatch.setattr(analyze, "analyze", tamper_after_analysis)
+    entry = analyze.main if cli == "analyze" else evidence.main
+    args = ["arena", str(path)]
+    if cli == "evidence":
+        args.extend(("--root", str(tmp_path)))
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit, match="2"):
+        entry()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "arena" in output.err
 
 
 class _FragmentedStudyStream:

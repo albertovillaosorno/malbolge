@@ -669,6 +669,12 @@ complete read. POSIX nonblocking/no-follow open flags reject raced FIFO and
 linked leaves; injected regular-file replacements and mid-read writes fail
 before either CLI emits partial JSON. This narrows the initial study-file
 admission race without proving an atomic filesystem snapshot or record origin.
+Both arena CLIs additionally re-read and compare the original exact study
+bytes after report analysis, immediately before stdout publication. A changed,
+removed, or linked study path rejects without emitting results, including
+same-length in-place rewrites during slow evidence preflight. A same-byte
+replacement remains indistinguishable from its original inode. This is a
+bounded final check, not a lock or post-publication immutability claim.
 The study input reader now consumes the admitted inode size across bounded
 short chunks rather than interpreting one short read as a complete file.
 Premature EOF, nonbyte or overlong chunks, and five injected read-stream
