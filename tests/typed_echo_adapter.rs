@@ -47,6 +47,8 @@ use std::io::Write as _;
 use std::iter::repeat_n;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio, id};
+#[cfg(target_os = "linux")]
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static TEST_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -1850,6 +1852,127 @@ fn canonical_typed_stdin_keeps_target_absent_until_valid_eof() -> Result<(), Str
         .map_err(|error| format!("MCTI semantic baseline: {error:?}"))?;
     if fs::read(&target).map_err(|error| error.to_string())? != compiled.layout().source() {
         return Err(String::from("fragmented stdin changed encoded guest bytes"));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn cycle_canonical_file_alias(
+    still_running: &AtomicBool,
+    alias: &Path,
+    regular: &Path,
+    pipe: &Path,
+) -> Result<usize, String> {
+    use std::os::unix::fs::symlink;
+    use std::thread;
+    use std::time::Duration;
+
+    let staged = alias.with_extension("replacement");
+    let mut cycles = 0usize;
+    while still_running.load(Ordering::Relaxed) {
+        for target in [pipe, regular] {
+            symlink(target, &staged)
+                .map_err(|error| format!("stage canonical alias switch: {error}"))?;
+            fs::rename(&staged, alias)
+                .map_err(|error| format!("atomically switch canonical alias: {error}"))?;
+            cycles = cycles.saturating_add(1);
+        }
+        thread::sleep(Duration::from_micros(100));
+    }
+    Ok(cycles)
+}
+
+#[cfg(target_os = "linux")]
+fn reject_swapped_canonical_file_alias(
+    alias: &Path,
+    target: &Path,
+    typed: bool,
+) -> Result<(), String> {
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+        .arg("--profile")
+        .arg(current_profile().id())
+        .arg("--output")
+        .arg(target)
+        .arg("--")
+        .arg(if typed {
+            "--typed-file"
+        } else {
+            "--ternary-file"
+        })
+        .arg(alias)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("racing canonical-file spawn: {error}"))?;
+    let started = Instant::now();
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("racing canonical-file poll: {error}"))?
+        {
+            if status.success() || target.exists() {
+                return Err(String::from(
+                    "swapped invalid wire published a final target",
+                ));
+            }
+            return Ok(());
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            drop(child.kill());
+            drop(child.wait());
+            return Err(String::from(
+                "canonical file open blocked during regular-to-FIFO alias swap",
+            ));
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn canonical_file_modes_survive_atomic_regular_fifo_symlink_replacement() -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+    use std::sync::Arc;
+    use std::thread;
+
+    let workspace = OwnedFixture::new()?;
+    let regular = workspace.path("invalid-wire.mcti");
+    let pipe = workspace.path("writerless.fifo");
+    let alias = workspace.path("swapping-wire.mcti");
+    fs::write(&regular, b"wrong-wire-of-bounded-length")
+        .map_err(|error| format!("racing regular fixture: {error}"))?;
+    let created = Command::new("mkfifo")
+        .arg(&pipe)
+        .status()
+        .map_err(|error| format!("racing FIFO fixture: {error}"))?;
+    if !created.success() {
+        return Err(String::from("racing FIFO fixture unavailable"));
+    }
+    symlink(&regular, &alias).map_err(|error| format!("initial racing symlink: {error}"))?;
+    let still_running = Arc::new(AtomicBool::new(true));
+    let toggler = {
+        let running = Arc::clone(&still_running);
+        let racing_alias = alias.clone();
+        thread::spawn(move || cycle_canonical_file_alias(&running, &racing_alias, &regular, &pipe))
+    };
+    let observed = (|| -> Result<(), String> {
+        for (i, typed) in [true, false].into_iter().cycle().take(32).enumerate() {
+            let target = workspace.path(&format!("refused-racing-{i}.malbolge"));
+            reject_swapped_canonical_file_alias(&alias, &target, typed)?;
+        }
+        Ok(())
+    })();
+    still_running.store(false, Ordering::Relaxed);
+    let switches = toggler
+        .join()
+        .map_err(|_error| String::from("canonical alias toggler panicked"))??;
+    observed?;
+    if switches < 8 {
+        return Err(format!("insufficient concurrent alias swaps: {switches}"));
     }
     Ok(())
 }

@@ -243,18 +243,29 @@ This is a **bounded, working ternary-stage-to-file path**, but it does not
 admit arbitrary ternary operations, source-C programs, guest heap, ABI return
 values, EOF, failed I/O, or unbounded control-flow/layout code-state revisits.
 
-### Canonical input-file pre-open refusal
+### Canonical input-file nonblocking descriptor admission
 
 `--typed-file` and `--ternary-file` share one bounded regular-file reader.
-It first checks metadata on the resolved filesystem path before the open,
-so a stable Unix named pipe (with no writer) or symlink to that pipe fails
-rather than blocking inside `File::open`. A regular symlink remains valid;
-the opened handle still undergoes separate regular-file, length and canonical
-wire admission. A watchdog-protected process regression verifies prompt
-no-publication failure for both modes on raw and symlinked FIFO paths and
-real VM success from a symlink to a regular MCTI file. This check does not
-promise an atomic filesystem identity across a concurrent pathname swap;
-canonical bytes and final no-clobber publication are separately guarded.
+On Linux/Android it calls a safe Rust `OpenOptionsExt` reader with the
+platform's `O_NONBLOCK` status bit, and admits the *opened descriptor*
+only if it is a nonempty regular file no larger than 1 MiB. Consequently
+stable FIFOs and writerless FIFOs substituted for a regular path immediately
+before open cannot stall; a regular-file symlink remains permitted. The
+handle's exact bounded bytes are canonical-admitted separately, irrespective
+of how its path name was changed concurrently. On other platforms, a
+resolved-path metadata check still precedes ordinary open, followed by the
+same descriptor check; it cannot guarantee no blocking under pathname swaps.
+
+Watchdog-protected subprocess tests verify immediate refusal for raw and
+symlinked writerless FIFOs in MCTI/MCTR modes; a regular linked typed file
+still executes under the VM. A Linux stress regression atomically alternates
+a candidate symlink between a corrupt regular file and a writerless FIFO
+while 32 separate publisher instances check both modes. Every instance
+rejects before output and finishes without blocking. The stress test does
+not exhaustively force every possible race interleaving, nor does the
+publisher authenticate that an input retained the same pathname throughout
+validation. Independent canonical-byte checks and atomic no-clobber final
+publication remain distinct guarantees.
 
 ### Canonical wire streaming publication
 

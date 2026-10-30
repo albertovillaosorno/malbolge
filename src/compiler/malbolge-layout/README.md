@@ -246,15 +246,25 @@ The direct typed file mode also passes the physical 4096-cell cap with one
 successful read and 4094 outputs, while the next cell is refused without a
 published artifact.
 
-Both canonical source-file modes first inspect the resolved filesystem
-entry **before opening it**. A stable FIFO or a symlink to one rejects as a
-nonregular file without waiting for a writer; an ordinary symlink to an
-existing bounded regular MCTI/MCTR file remains accepted. The opened file's
-own metadata and exact bytes are still checked independently. A Unix
-external-process regression covers all four FIFO/mode combinations with a
-bounded watchdog, then checks that a regular typed-file symlink executes
-unchanged guest byte I/O. This is a pre-open reliability guard, not a claim
-of race-free admission if another process swaps the path between checks.
+Both canonical file modes accept only bounded nonempty regular files.
+On **Linux and Android**, the publisher opens the candidate with native
+`O_NONBLOCK` and checks the resulting **file descriptor** before reading,
+so a named pipe (even one substituted for a regular symlink just before
+open) cannot block on an absent writer. The open uses only safe Rust
+`OpenOptionsExt`; no new FFI or dependency is required. The 1 MiB limit,
+exact read length and canonical MCTI/MCTR admission still apply to the
+actual opened bytes. Ordinary symlinks to regular files remain supported.
+On other platforms the earlier resolved-path metadata check precedes open,
+followed by an independent descriptor check: it rejects stable FIFOs but
+does **not** close the pathname-swap window.
+
+Real subprocess tests reject FIFO and FIFO-symlink inputs in both wire
+modes, preserve valid regular symlinks, and repeatedly switch a candidate
+symlink atomically between a bounded invalid file and a writerless FIFO
+while both publisher modes execute. No swapped invalid input may block or
+publish. This is bounded race stress, not exhaustive scheduling proof or
+an authenticated stable pathname; a replaced regular file still requires
+independent canonical byte admission.
 
 ### Bounded canonical wire streaming on standard input
 

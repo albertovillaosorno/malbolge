@@ -303,20 +303,45 @@ fn publish_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
     outcome
 }
 
+// On Linux/Android use nonblocking open first, *then* inspect the actual
+// opened descriptor. A writerless FIFO (or one substituted for a regular
+// symlink) cannot block acquisition; subsequent fstat refuses that handle.
+// Ordinary regular-file symlinks remain valid.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn open_canonical_file(path: &Path) -> io::Result<fs::File> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    // Linux asm-generic fcntl.h: O_NONBLOCK = 1 << 11. Regular files ignore
+    // this status bit for reads; FIFO opens cannot wait for a writer.
+    const LINUX_O_NONBLOCK: i32 = 1 << 11;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(LINUX_O_NONBLOCK)
+        .open(path)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn open_canonical_file(path: &Path) -> io::Result<fs::File> {
+    fs::File::open(path)
+}
+
 fn read_canonical_wire(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
-    // Opening a named pipe with no writer can block forever. Follow regular
-    // source symlinks, but reject non-file targets before attempting to open.
-    let path_metadata = fs::metadata(path)
-        .map_err(|error| format!("cannot inspect canonical {kind} path: {error}"))?;
-    if !path_metadata.is_file()
-        || path_metadata.len() == 0
-        || path_metadata.len() > MAX_CANONICAL_WIRE_BYTES
+    // Linux/Android open the descriptor nonblocking and inspect that very
+    // handle. Other platforms retain the bounded pre-open pathname guard.
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
-        return Err(String::from(
-            "canonical wire must be a nonempty bounded regular file",
-        ));
+        let path_metadata = fs::metadata(path)
+            .map_err(|error| format!("cannot inspect canonical {kind} path: {error}"))?;
+        if !path_metadata.is_file()
+            || path_metadata.len() == 0
+            || path_metadata.len() > MAX_CANONICAL_WIRE_BYTES
+        {
+            return Err(String::from(
+                "canonical wire must be a nonempty bounded regular file",
+            ));
+        }
     }
-    let file = fs::File::open(path)
+    let file = open_canonical_file(path)
         .map_err(|error| format!("cannot open canonical {kind} wire: {error}"))?;
     let metadata = file
         .metadata()

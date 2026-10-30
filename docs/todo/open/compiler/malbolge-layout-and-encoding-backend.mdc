@@ -196,13 +196,16 @@ emission.
   modes execute in the independent VM and actual binary-stdin runner.
   A direct MCTI file emits the exact maximum 4096-cell successful-byte
   trace (4094 outputs) and refuses 4097 cells without creating a target.
-- Shared MCTI/MCTR input handling now inspects resolved filesystem metadata
-  *before* opening the file, rejecting ordinary Unix FIFOs and links to
-  FIFOs without hanging on absent writers. External CLI process tests use
-  a watchdog to prove no final file in both source-wire modes, and verify
-  regular symlinked canonical typed input still publishes executable
-  source. The opened handle remains independently bounded and rechecked;
-  this is not an atomic claim under adversarial path replacement races.
+- Shared MCTI/MCTR file handling on Linux/Android now opens with safe Rust
+  `O_NONBLOCK`, then checks the **opened descriptor** as bounded regular
+  input before reading or verifying canonical bytes. This closes the
+  writerless-FIFO pathname-swap blocking window without rejecting ordinary
+  regular-file symlinks. Stable FIFO and symlinked FIFO inputs reject in
+  both publisher modes; 32 external-process Linux stress invocations under
+  concurrent atomic regular-file/FIFO symlink swaps also refuse to block
+  or publish invalid wires. Other OSes keep the pre-open path check plus
+  independent descriptor admission and retain a pathname race limitation;
+  the stress fixture is not exhaustive proof of every scheduling interleave.
 - The verified artifact emitter now also takes bounded canonical MCTI or
   MCTR bytes through explicit `--typed-stdin` / `--ternary-stdin` modes,
   including opt-in `--latest-byte-trace`. Zero path operands and EOF are
