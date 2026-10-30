@@ -699,8 +699,16 @@ instruction.
   Single-output source seeds cannot be reused because adding `<` changes
   loader-expanded data; two-output layouts are independently re-admitted
   and executed in the normative VM. Typed MCTI/MCTR and raw/capsule
-  publication reject unseeded values and three-output shapes. This is
+  publication reject unseeded values and unproved output counts. This is
   not arbitrary literal materialization or guest byte storage.
+- Bounded third- and fourth-output literal rotation tables now prove 21 and
+  24 distinct nonzero guest byte values respectively, each under its own
+  positional `j`, `*`, repeated `<`, `v` source. An ignored optimized scan
+  independently checks all 26 short phases for four outputs, including
+  duplicated values, while the default normative VM, canonical typed/MCTR
+  and raw/capsule CLI tests cover selected short/high witnesses and reject
+  other counts and unseeded bytes. No arbitrary constant synthesis, C ABI,
+  EOF, control flow or guest byte storage is implied.
 - A fifth opt-in canonical typed/MCTR identity-byte bridge admits only
   eight-bit signed/unsigned `IntegerBitcast` SSA aliases of the latest
   successful guest input. Casts preserve all eight accumulator bits and

@@ -99,13 +99,16 @@ is implied.
 ### Verified nonzero byte literal rotation
 
 The separate opt-in `encode_rotated_byte_literal` admits exactly one
-`MaterializeU8(value)`, one, two or three `ByteOutput`s of that SSA
+`MaterializeU8(value)`, one to four `ByteOutput`s of that SSA
 identity, and `ReturnVoid`. For one output, it admits only these
 current-profile nonzero bytes: `4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22,
 23, 251, 253`. For exactly two identical outputs, a **different** table
 admits `55, 64, 65, 66, 163, 164, 165, 182, 183, 200`. For exactly three
 identical outputs, an independently witnessed table admits `3, 4, 5, 6, 7,
 8, 9, 11, 18, 19, 20, 21, 22, 23, 24, 25, 144, 145, 146, 251, 252`.
+For exactly four identical outputs, a separately checked table admits
+`40, 41, 42, 43, 44, 57, 64, 65, 66, 161, 162, 168, 175, 176, 178, 182,
+184, 185, 186, 187, 191, 192, 196, 201`.
 
 A profile-specific *proposed* no-op prefix precedes `j`, `*`, the actual
 `<` outputs, and `v`. The canonical loader expands the complete graphical
@@ -116,7 +119,8 @@ data word into A, and the
 guest outputs emit the unchanged accumulator. The independent layout checker
 proves source/data separation and a fresh normative VM checks every emitted
 byte, exact halt, and zero input consumption before accepting a source.
-Other literals, zero/four outputs, extra effects and foreign profiles reject.
+Other literals, zero/five-or-more outputs, extra effects and foreign profiles
+reject.
 This does not implement arbitrary constants or an SSA byte register.
 
 The three-output witnesses derive from a bounded independent scan of no-op
@@ -129,6 +133,16 @@ witness for each. Reproduce the deliberately slower independent search with:
 ```sh
 cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_three_output_rotation_witnesses -- --ignored
+```
+
+The four-output witnesses independently scan the same `0..26` source-prefix
+range with four consecutive guest `<` instructions; all 26 phases halt with
+four identical nonzero outputs and yield 24 distinct values. The seed table
+retains the first, shortest successful prefix for each value. Reproduce via:
+
+```sh
+cargo test --release --locked --test rotated_byte_constant_bridge \
+  independently_rederive_four_output_rotation_witnesses -- --ignored
 ```
 
 The default regressions replay representative phases and refuse unproved

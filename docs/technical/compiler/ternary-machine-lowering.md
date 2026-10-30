@@ -1122,7 +1122,7 @@ computation, heap, C ABI or guest libc/EOF realization.
 ### First Verified Nonzero Guest U8 Literal
 
 An opt-in `encode_rotated_byte_literal` bridge admits one exact
-`MaterializeU8` with one or two same-SSA `ByteOutput`s, then `ReturnVoid`.
+`MaterializeU8` with one to four same-SSA `ByteOutput`s, then `ReturnVoid`.
 For one output, 14 current-profile nonzero bytes are realized:
 `4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253`. A bounded
 graphical no-op prefix,
@@ -1138,10 +1138,15 @@ For exactly two outputs, a separate seed table realizes ten different
 values: `55, 64, 65, 66, 163, 164, 165, 182, 183, 200`. The second
 positional `<` changes loader expansion, so a one-output seed cannot be
 reused. The independent layout check and real VM compare both output bytes.
-Three outputs, unseeded values and mixed SSA effects still reject.
+Separate third- and fourth-output seed tables realize 21 and 24 distinct
+nonzero values respectively. Each count re-derives its own graphical source;
+replaying another output count's no-op prefix is not trusted. The four-output
+`0..26` phase scan retains 24 shortest-prefix seeds with actual VM equality,
+termination and zero input. Five or more outputs, unseeded values and mixed
+SSA effects still reject.
 
 `compile_canonical_typed_rotated_byte_literal` projects complete
-canonical MCTI with one `u8 ConstantInteger`, one or two matching
+canonical MCTI with one `u8 ConstantInteger`, one to four matching
 `ByteOutput`s and final void return. Canonical MCTR re-admission and source
 comparison
 retain source/SSA/ABI/target provenance. The standalone CLI adds explicit
@@ -1150,7 +1155,7 @@ independent publisher-level two-pattern VM check before raw/capsule
 no-clobber publication. Legacy zero, latest read and identity-cast
 modes are unchanged. This is only a finite current-profile literal
 witness, not guest arithmetic, storage, arbitrary constant
-materialization, EOF, repeated byte output or general C lowering.
+materialization, EOF, arbitrary-length repeated output or general C lowering.
 
 ### Canonical Eight-Bit SSA Identity-Bitcast Trace
 

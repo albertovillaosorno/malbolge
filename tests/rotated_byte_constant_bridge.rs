@@ -75,6 +75,36 @@ const SHORT_TRIPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
     (23, 25),
 ];
 
+// All successful short four-output phases; repeated bytes remain observable.
+const SHORT_QUADRUPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
+    (43, 0),
+    (182, 1),
+    (168, 2),
+    (44, 3),
+    (175, 4),
+    (162, 5),
+    (42, 6),
+    (176, 7),
+    (161, 8),
+    (40, 9),
+    (176, 10),
+    (162, 11),
+    (41, 12),
+    (178, 13),
+    (187, 14),
+    (66, 15),
+    (192, 16),
+    (185, 17),
+    (64, 18),
+    (191, 19),
+    (186, 20),
+    (65, 21),
+    (196, 22),
+    (184, 23),
+    (57, 24),
+    (201, 25),
+];
+
 const fn pos(byte: u32) -> InputSourcePosition {
     InputSourcePosition {
         byte,
@@ -307,6 +337,44 @@ fn witnessed_triple_literals_reuse_the_real_rotated_accumulator() -> Result<(), 
 }
 
 #[test]
+fn witnessed_four_output_literals_reuse_guest_rotation() -> Result<(), String> {
+    for (byte, padding) in [(43, 0), (182, 1), (192, 16), (201, 25)] {
+        let admitted = source(byte, 4)?;
+        let layout = encode_rotated_byte_literal(&admitted, current_profile())
+            .map_err(|error| format!("four-output {byte} rejected: {error:?}"))?;
+        if layout.source().len() != padding + 7
+            || layout.executed_code_positions().len() != padding + 7
+            || layout
+                .data_write_positions()
+                .iter()
+                .filter(|position| position.is_some())
+                .count()
+                != 1
+        {
+            return Err(format!("four-output {byte} geometry drift"));
+        }
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), layout.source(), vec![0, 255, 128])
+                .map_err(|error| format!("four-output {byte} guest load: {error:?}"))?;
+        if !matches!(vm.run(padding + 7),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == padding + 7)
+            || vm.output() != [byte; 4]
+            || vm.input_consumed() != 0
+        {
+            return Err(format!("four-output {byte} guest execution diverged"));
+        }
+    }
+    for (byte, outputs) in [(43, 1), (43, 2), (43, 3), (43, 5), (3, 4)] {
+        if encode_rotated_byte_literal(&source(byte, outputs)?, current_profile())
+            != Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+        {
+            return Err(format!("unproved four-output seed {byte} x{outputs}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 #[ignore = "full short-phase source/VM search: run optimized with --ignored"]
 fn independently_rederive_three_output_rotation_witnesses() -> Result<(), String> {
     use bridge::layout::{LinearOpcode, encode_linear_layout};
@@ -347,6 +415,52 @@ fn independently_rederive_three_output_rotation_witnesses() -> Result<(), String
     }
     if witnessed.as_slice() != SHORT_TRIPLE_ROTATION_WITNESSES {
         return Err(format!("triple source/VM witness drift: {witnessed:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "bounded four-output witness scan: run optimized with --ignored"]
+fn independently_rederive_four_output_rotation_witnesses() -> Result<(), String> {
+    use bridge::layout::{LinearOpcode, encode_linear_layout};
+
+    let mut witnessed = Vec::new();
+    for padding in 0..26 {
+        let mut operations = vec![LinearOpcode::NoOperation; padding];
+        operations.extend([
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::RotateData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::OutputByte,
+            LinearOpcode::OutputByte,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        let Ok(layout) = encode_linear_layout(current_profile(), &operations) else {
+            continue;
+        };
+        let Ok(mut vm) =
+            ProfileMachine::from_source(current_profile(), layout.source(), Vec::new())
+        else {
+            continue;
+        };
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+        {
+            continue;
+        }
+        let [first, second, third, fourth] = vm.output() else {
+            continue;
+        };
+        if *first != 0 && first == second && first == third && first == fourth {
+            witnessed.push((*first, padding));
+        }
+    }
+    if witnessed.as_slice() != SHORT_QUADRUPLE_ROTATION_WITNESSES {
+        return Err(format!(
+            "four-output source/VM witness drift: {witnessed:?}"
+        ));
     }
     Ok(())
 }
