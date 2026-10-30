@@ -9,11 +9,11 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Exact two-way guest bytecode HALT-versus-ECHO behavior and independent checks.
+//   - Exact two- and three-way guest bytecode choices and independent checks.
 // - Must-Not:
 //   - Re-run the separate compact test module or claim a general bytecode VM.
 // - Allows:
-//   - Inputs: canonical source-bound echo-one/two programs, actual profile VM.
+//   - Inputs: source-bound one/two/three echo programs and actual profile VM.
 //   - Outputs: tests and externally executed canonical .malbolge capsules.
 //   - Side effects: owned project .temp fixture creation and cleanup.
 // - Split-When:
@@ -21,15 +21,15 @@
 // - Merge-When:
 //   - Multi-variant runtime testing becomes production compiler validation.
 // - Summary:
-//   - Two distinct canonical source programs share byte-identical guest code.
+//   - Three source-bound programs share code with two guest branch operands.
 // - Description:
-//   - Physical guest source byte 87 or 104 selects HALT or second input/output.
+//   - Two loaded graphical operands select one, two or three echo handlers.
 // - Usage:
 //   - cargo test --locked --test compact_guest_conditional_dispatch
 // - Defaults:
 //   - Fail closed on source/profile/candidate/guest-VM discrepancies.
 
-//! Independently verified two-way graphical guest bytecode data dispatch.
+//! Independently verified two- and three-way graphical guest data dispatch.
 
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_binding.rs"]
 pub mod binding;
@@ -894,6 +894,107 @@ fn one_shared_code_image_selects_three_different_echo_lengths_from_guest_data() 
                         .map_err(|error| format!("CEB2 after guest execution: {error:?}"))?,
                     u32::from(*source.get(position).ok_or("bound data glyph")?),
                     "all SHA-256-bound graphical data positions must survive guest XLAT2"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent three-way EOF/input parity"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "six input boundaries across all three guest branches"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "full-state guest and direct VM oracles"
+)]
+fn three_way_guest_matches_direct_for_eof_short_exact_and_surplus_input() -> Result<(), String> {
+    for pairs in [1u32, 2, 3] {
+        let (program, source) = canonical_three_way_source(pairs)?;
+        let direct = strategy::bridge::encode_successful_byte_echo(&program, current_profile())
+            .map_err(|error| format!("independent direct n={pairs}: {error:?}"))?;
+        let guest_initial = ProfileMachine::from_source(current_profile(), &source, Vec::new())
+            .map_err(|error| format!("three-way guest preload n={pairs}: {error:?}"))?
+            .snapshot_state();
+        let direct_initial =
+            ProfileMachine::from_source(current_profile(), direct.source(), Vec::new())
+                .map_err(|error| format!("direct preload n={pairs}: {error:?}"))?
+                .snapshot_state();
+        let pair_count = usize::try_from(pairs).map_err(|error| error.to_string())?;
+        let guest_steps = *triple::GUEST_STEPS
+            .get(pair_count.saturating_sub(1))
+            .ok_or("three-way guest step budget")?;
+        let direct_steps = pair_count.saturating_mul(2).saturating_add(1);
+        for input in [
+            Vec::new(),
+            vec![0u8],
+            vec![255],
+            vec![0, 255],
+            vec![0, 128, 255],
+            vec![0, 1, 2, 3],
+        ] {
+            // Recreate both machines from their own pristine loader image;
+            // prior guest self-encryption must never leak into another trial.
+            let mut guest = ProfileMachine::from_state(
+                current_profile(),
+                guest_initial.memory().to_vec(),
+                input.clone(),
+                malbolge::ProfileRegisters::default(),
+            )
+            .map_err(|error| format!("restored three-way guest n={pairs}: {error:?}"))?;
+            let mut baseline = ProfileMachine::from_state(
+                current_profile(),
+                direct_initial.memory().to_vec(),
+                input.clone(),
+                malbolge::ProfileRegisters::default(),
+            )
+            .map_err(|error| format!("restored direct n={pairs}: {error:?}"))?;
+            assert!(
+                matches!(guest.run(guest_steps), Ok(RunOutcome::Terminated {
+                    steps: committed, ..
+                }) if committed == guest_steps),
+                "three-way guest must halt at the exact branch-specific step"
+            );
+            assert!(
+                matches!(baseline.run(direct_steps), Ok(RunOutcome::Terminated {
+                    steps: committed, ..
+                }) if committed == direct_steps),
+                "independent direct source must halt at exact echo count"
+            );
+            assert_eq!(
+                guest.output(),
+                baseline.output(),
+                "guest/direct byte output n={pairs}"
+            );
+            assert_eq!(
+                guest.output().len(),
+                pair_count,
+                "guest outputs one byte per encoded operation even on EOF"
+            );
+            assert_eq!(
+                guest.input_consumed(),
+                baseline.input_consumed(),
+                "guest and direct consume identical input"
+            );
+            assert_eq!(
+                guest.input_consumed(),
+                input.len().min(pair_count),
+                "EOF and trailing input must not alter consumed-byte count"
+            );
+            for address in triple::CEB2_START..triple::SOURCE_CELLS {
+                let addr = u32::try_from(address).map_err(|error| error.to_string())?;
+                assert_eq!(
+                    guest
+                        .memory_word(addr)
+                        .map_err(|error| format!("three-way protected memory: {error:?}"))?,
+                    u32::from(*source.get(address).ok_or("original CEB2 source cell")?),
+                    "all three guest branches preserve source-bound CEB2"
                 );
             }
         }

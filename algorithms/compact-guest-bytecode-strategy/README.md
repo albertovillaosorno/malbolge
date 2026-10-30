@@ -443,6 +443,15 @@ Compared with independent direct source, the 230-cell guest costs
 **230/86 versus 3/3**, **230/89 versus 5/5**, and **230/91 versus 7/7**
 (source cells / native VM steps). These are negative small-program
 results, not code-size compression or increased runtime throughput.
+A separate full-initial-state replay matrix now runs all three branches
+against independently lowered direct Malbolge over six input streams each:
+empty, one byte (including 0 and 255), two bytes, three bytes and surplus
+input. All **18** guest/direct comparisons agree on stdout and consumed
+bytes, including EOF, while both VMs terminate at their exact distinct
+step counts and every one of the 102 CEB2 data words survives. Each run
+restores the original loader image, so prior self-encryption cannot alter
+a later trial. These are finite input samples, not general stream parity.
+
 The three possible programs are **unrolled**, not a generic VM: the guest
 neither reads the packed CEB2 count nor decodes ordinal instructions,
 maintains a bytecode PC, loops, authenticates its own digest or supports

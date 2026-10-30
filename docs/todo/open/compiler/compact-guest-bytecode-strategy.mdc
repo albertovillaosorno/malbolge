@@ -220,6 +220,12 @@ code-size explosion or compilation cost.
   reusable decoder, iteration loop or in-guest source authentication.
   Physical 230-cell sources and slower small-case execution reject a
   size/speed win here; larger code economics remain unmeasured.
+  An additional full-initial-state regression separately replays all
+  three counts against independent direct lowering for six empty, short,
+  exact or trailing input streams apiece. All 18 comparisons retain exact
+  branch-specific step counts, byte output and consumed-byte parity, while
+  102 source-bound CEB2 cells remain unchanged. The bounded samples do not
+  establish equivalence for arbitrary input streams.
 
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
