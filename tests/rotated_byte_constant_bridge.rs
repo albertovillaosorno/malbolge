@@ -23,7 +23,7 @@
 // - Summary:
 //   - Proves nonzero values come from real relocated guest data rotation.
 // - Description:
-//   - Verifies 14 admitted bytes and rejects unproved literals and profiles.
+//   - Verifies selected one-, two-, and three-output seeds and rejects drift.
 // - Usage:
 //   - cargo test --locked --test rotated_byte_constant_bridge.
 // - Defaults:
@@ -44,6 +44,36 @@ use bridge::{
     encode_successful_latest_byte_trace,
 };
 use malbolge::{ProfileMachine, RunOutcome, current_profile, historical_profile};
+
+// Every successful short phase, including later duplicate-byte prefixes.
+const SHORT_TRIPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
+    (146, 0),
+    (25, 1),
+    (7, 2),
+    (145, 3),
+    (24, 4),
+    (9, 5),
+    (144, 6),
+    (22, 7),
+    (8, 8),
+    (8, 9),
+    (22, 10),
+    (7, 11),
+    (7, 12),
+    (21, 13),
+    (6, 14),
+    (252, 15),
+    (20, 16),
+    (5, 17),
+    (252, 18),
+    (19, 19),
+    (4, 20),
+    (251, 21),
+    (18, 22),
+    (3, 23),
+    (11, 24),
+    (23, 25),
+];
 
 const fn pos(byte: u32) -> InputSourcePosition {
     InputSourcePosition {
@@ -233,6 +263,90 @@ fn seeded_literals_repeat_guest_output_without_new_rotation() -> Result<(), Stri
         {
             return Err(format!("unproved seeded shape {byte} x{outputs} admitted"));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn witnessed_triple_literals_reuse_the_real_rotated_accumulator() -> Result<(), String> {
+    // Distinct phases, including a new small byte and high-bit bytes.
+    for (byte, padding) in [(146, 0), (7, 2), (252, 15), (3, 23), (23, 25)] {
+        let admitted = source(byte, 3)?;
+        let layout = encode_rotated_byte_literal(&admitted, current_profile())
+            .map_err(|error| format!("triple {byte} target rejected: {error:?}"))?;
+        if layout.source().len() != padding + 6
+            || layout.executed_code_positions().len() != padding + 6
+            || layout
+                .data_write_positions()
+                .iter()
+                .filter(|position| position.is_some())
+                .count()
+                != 1
+        {
+            return Err(format!("triple {byte} source or memory geometry drift"));
+        }
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), layout.source(), vec![255, 0, 128])
+                .map_err(|error| format!("triple {byte} guest load: {error:?}"))?;
+        if !matches!(vm.run(padding + 6),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == padding + 6)
+            || vm.output() != [byte, byte, byte]
+            || vm.input_consumed() != 0
+        {
+            return Err(format!("triple {byte} guest output or halt diverged"));
+        }
+    }
+    for (byte, outputs) in [(3, 1), (3, 2), (146, 2), (252, 4), (183, 3)] {
+        if encode_rotated_byte_literal(&source(byte, outputs)?, current_profile())
+            != Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+        {
+            return Err(format!("unproven triple shape {byte} x{outputs} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "full short-phase source/VM search: run optimized with --ignored"]
+fn independently_rederive_three_output_rotation_witnesses() -> Result<(), String> {
+    use bridge::layout::{LinearOpcode, encode_linear_layout};
+
+    // Finite 0..26 no-op prefixes only. This is not a claim that all 94
+    // decoder phases or all 256 literal values have been synthesized.
+    let mut witnessed = Vec::new();
+    for padding in 0..26 {
+        let mut operations = vec![LinearOpcode::NoOperation; padding];
+        operations.extend([
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::RotateData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::OutputByte,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        let Ok(layout) = encode_linear_layout(current_profile(), &operations) else {
+            continue;
+        };
+        let Ok(mut vm) =
+            ProfileMachine::from_source(current_profile(), layout.source(), Vec::new())
+        else {
+            continue;
+        };
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+        {
+            continue;
+        }
+        let [first, second, third] = vm.output() else {
+            continue;
+        };
+        if *first != 0 && first == second && first == third {
+            witnessed.push((*first, padding));
+        }
+    }
+    if witnessed.as_slice() != SHORT_TRIPLE_ROTATION_WITNESSES {
+        return Err(format!("triple source/VM witness drift: {witnessed:?}"));
     }
     Ok(())
 }

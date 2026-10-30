@@ -3610,7 +3610,15 @@ fn typed_rotated_literal_module(byte: u8) -> Result<Module, String> {
 
 #[test]
 fn canonical_typed_rotated_nonzero_literals_execute_guest_data_rotation() -> Result<(), String> {
-    for (byte, outputs) in [(23, 1), (253, 1), (183, 2), (64, 2)] {
+    for (byte, outputs) in [
+        (23, 1),
+        (253, 1),
+        (183, 2),
+        (64, 2),
+        (146, 3),
+        (3, 3),
+        (252, 3),
+    ] {
         let typed = typed_rotated_literal_module_with_outputs(byte, outputs)?;
         let canonical = wire(&typed)?;
         if canonical_module(&canonical).map_err(|error| format!("seeded MCTI decode: {error:?}"))?
@@ -3675,7 +3683,14 @@ fn canonical_typed_rotated_literal_rejects_unproved_constants() -> Result<(), St
                 adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
             ),
         ),
-        (183, 3, TypedEchoAdapterError::UnsupportedTypedIr),
+        (
+            183,
+            3,
+            TypedEchoAdapterError::Layout(
+                adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
+            ),
+        ),
+        (183, 4, TypedEchoAdapterError::UnsupportedTypedIr),
     ] {
         let canonical = wire(&typed_rotated_literal_module_with_outputs(byte, outputs)?)?;
         if adapter::compile_canonical_typed_rotated_byte_literal(&canonical, current_profile())
@@ -3855,6 +3870,15 @@ fn seeded_byte_literal_canonical_publisher_and_real_runner() -> Result<(), Strin
 fn seeded_double_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
     let workspace = OwnedFixture::new()?;
     for case in [(183, 2, true, false, true), (64, 2, false, true, true)] {
+        verify_seeded_publisher_case(&workspace, case)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_triple_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for case in [(146, 3, true, false, true), (3, 3, false, true, true)] {
         verify_seeded_publisher_case(&workspace, case)?;
     }
     Ok(())
