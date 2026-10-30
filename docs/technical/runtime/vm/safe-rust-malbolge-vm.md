@@ -125,6 +125,10 @@ their output buffers use the same fallible reservation helper rather than
 infallible `vec![]`/`to_vec()` allocations. Their existing independent
 cross-width and exhaustive boundary tests consume these typed results; classic
 `Word` and the selected `ProfileMachine` API and behavior are unchanged.
+An exhaustive classic N10 bridge now independently compares all 59,049 word
+values against trit-vector rotation, successor, low-byte, and modulo-94
+reference calculations. These tests verify the chunked value representation,
+not the separate full-memory or I/O interpreter transition engine.
 
 This does not yet widen `ProfileMachine` memory or registers. Product tests show
 N10 through N20 equal the existing `u32` primitives, while independent

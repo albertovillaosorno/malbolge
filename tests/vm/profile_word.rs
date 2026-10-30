@@ -541,6 +541,35 @@ fn chunked_profile_word_exhausts_six_trit_transitions() -> TestResult {
 }
 
 #[test]
+fn chunked_profile_word_exhausts_n10_arithmetic_and_residues() -> TestResult {
+    for value in 0..59_049u64 {
+        let word = ChunkedProfileWord::from_u64(10, value)
+            .map_err(|error| error.to_string())?;
+        check_equal(
+            &word.rotate().map_err(|error| error.to_string())?,
+            &wide_rotate_oracle(&word)?,
+            "all classic-width rotations match trit-level oracle",
+        )?;
+        check_equal(
+            &word.successor().map_err(|error| error.to_string())?,
+            &wide_successor_oracle(&word)?,
+            "all classic-width successors match trit-level oracle",
+        )?;
+        check_equal(
+            &word.low_byte(),
+            &wide_low_byte_oracle(&word)?,
+            "all classic-width low bytes match trit-level oracle",
+        )?;
+        check_equal(
+            &word.residue(94),
+            &wide_residue_oracle(&word, 94),
+            "all classic-width decode residues match trit-level oracle",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn chunked_profile_word_recurrence_phase_matches_all_trit_states() -> TestResult
 {
     for older_trit in 0..3u64 {
