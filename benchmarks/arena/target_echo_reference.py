@@ -94,6 +94,18 @@ PATTERNED_STEPS_STUDY = "classic-patterned-byte-echo-steps-v2"
 STEPS_PREFIX = b"malbolge-steps-v1:"
 RUNTIME_STEPS = "runtime_steps"
 MAX_STEPS_DIGITS = 20
+LINEAR_LAYOUT = "linear"
+FORWARD_SKIP_LAYOUT = "forward-skip"
+LAYOUT_MODES = (LINEAR_LAYOUT, FORWARD_SKIP_LAYOUT)
+WALK = "walk-padding-echo"
+SKIP = "jump-skip-padding-echo"
+FORWARD_ALGORITHMS = (WALK, SKIP)
+FORWARD_STUDY = "classic-patterned-forward-skip-steps-v1"
+FORWARD_FAMILY = "bounded-classic-patterned-forward-skip-echo"
+FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
+JUMP_OPERATION = "jump"
+SKIPPED_NOOPS = 98
+WALKED_NOOPS = SKIPPED_NOOPS + 1
 
 
 class TargetEchoStudyError(ValueError):
@@ -108,6 +120,7 @@ class StudyPlan:
     trials: int
     input_mode: str = EOF_MODE
     measure_steps: bool = False
+    layout_mode: str = LINEAR_LAYOUT
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +135,7 @@ class _Context:
     runner: Path
     input_mode: str = EOF_MODE
     measure_steps: bool = False
+    layout_mode: str = LINEAR_LAYOUT
 
 
 def _fail(message: str) -> Never:
@@ -219,7 +233,26 @@ def _parse_step_receipt(stderr: bytes) -> int:
     return int(digits)
 
 
-def _operations(pairs: int, algorithm: str, mode: str = EOF_MODE) -> list[str]:
+def _algorithms(layout_mode: str) -> tuple[str, str]:
+    return (
+        FORWARD_ALGORITHMS if layout_mode == FORWARD_SKIP_LAYOUT else ALGORITHMS
+    )
+
+
+def _operations(
+    pairs: int,
+    algorithm: str,
+    mode: str = EOF_MODE,
+    *,
+    layout_mode: str = LINEAR_LAYOUT,
+) -> list[str]:
+    if layout_mode == FORWARD_SKIP_LAYOUT:
+        echo = ["input", "output"] * (pairs + 1) + ["halt"]
+        return (
+            ["nop"] * WALKED_NOOPS + echo
+            if algorithm == WALK
+            else [JUMP_OPERATION, *echo]
+        )
     step = ["input", "output"]
     if algorithm == CANDIDATE:
         step.insert(0, "nop")
@@ -231,8 +264,16 @@ def _invoke(command: list[str]) -> sp.CompletedProcess[bytes]:
     return target_process.invoke(command, timeout_seconds=TIMEOUT_SECONDS)
 
 
-def _case(pairs: int, mode: str = EOF_MODE) -> dict[str, Any]:
-    if mode == EOF_MODE:
+def _case(
+    pairs: int, mode: str = EOF_MODE, layout_mode: str = LINEAR_LAYOUT
+) -> dict[str, Any]:
+    if layout_mode == FORWARD_SKIP_LAYOUT:
+        payload = _input_bytes(pairs, mode)
+        workload = (
+            f"classic-forward-skip-byte-v1:pairs={pairs}:"
+            f"input={payload.hex()}:eof-after"
+        ).encode("ascii")
+    elif mode == EOF_MODE:
         workload = f"classic-eof-echo-v1:pairs={pairs}:empty-input".encode(
             "ascii"
         )
@@ -243,7 +284,13 @@ def _case(pairs: int, mode: str = EOF_MODE) -> dict[str, Any]:
             f"input={payload.hex()}:eof-after"
         ).encode("ascii")
     return {
-        "family": FAMILY if mode == EOF_MODE else PATTERNED_FAMILY,
+        "family": (
+            FORWARD_FAMILY
+            if layout_mode == FORWARD_SKIP_LAYOUT
+            else FAMILY
+            if mode == EOF_MODE
+            else PATTERNED_FAMILY
+        ),
         "version": 1,
         "difficulty": pairs,
         "seed": 0,
@@ -290,15 +337,20 @@ def _classify_attempt(
     *,
     pairs: int,
 ) -> tuple[str, int | None, int | None]:
-    emitted = _invoke([
+    command = [
         str(context.emitter),
         "--profile",
         PROFILE,
         "--output",
         str(path),
         "--",
-        *operations,
-    ])
+    ]
+    if (
+        context.layout_mode == FORWARD_SKIP_LAYOUT
+        and operations[0] == JUMP_OPERATION
+    ):
+        command.append("--auto-layout")
+    emitted = _invoke([*command, *operations])
     if emitted.returncode != 0 or emitted.stdout or not path.is_file():
         return "tool_failed", None, None
     source = evidence.read_bounded_regular(
@@ -306,7 +358,12 @@ def _classify_attempt(
         path.relative_to(_ROOT).as_posix(),
         limit=MAX_TARGET_BYTES,
     )
-    if len(source) != len(operations) or not all(
+    expected_length = (
+        2 * (pairs + 1) + WALKED_NOOPS + 1
+        if context.layout_mode == FORWARD_SKIP_LAYOUT
+        else len(operations)
+    )
+    if len(source) != expected_length or not all(
         GRAPHICAL_LOW <= byte <= GRAPHICAL_HIGH for byte in source
     ):
         return analyze.VERIFIER_REJECTED, None, None
@@ -343,7 +400,12 @@ def _measure(
         outcome, size, steps = _classify_attempt(
             path,
             context,
-            _operations(pairs, algorithm, context.input_mode),
+            _operations(
+                pairs,
+                algorithm,
+                context.input_mode,
+                layout_mode=context.layout_mode,
+            ),
             pairs=pairs,
         )
     except OSError, sp.SubprocessError, evidence.EvidenceError:
@@ -470,11 +532,15 @@ def _write_attempt(
     }.get(outcome, analyze.NOT_RUN)
     row = {
         "algorithm": algorithm,
-        "case": _case(pairs, context.input_mode),
+        "case": _case(pairs, context.input_mode, context.layout_mode),
         "trial": trial,
         "outcome": outcome,
         "verifier": (
-            VERIFIER if context.input_mode == EOF_MODE else PATTERNED_VERIFIER
+            FORWARD_VERIFIER
+            if context.layout_mode == FORWARD_SKIP_LAYOUT
+            else VERIFIER
+            if context.input_mode == EOF_MODE
+            else PATTERNED_VERIFIER
         ),
         "verifier_verdict": verdict,
         "experiment_manifest": f"{context.prefix}/runs/{stem}.toml",
@@ -497,7 +563,9 @@ def _make_document(
 ) -> dict[str, Any]:
     patterned = context.input_mode == PATTERNED_MODE
     study_id = (
-        (PATTERNED_STEPS_STUDY if patterned else EOF_STEPS_STUDY)
+        FORWARD_STUDY
+        if context.layout_mode == FORWARD_SKIP_LAYOUT
+        else (PATTERNED_STEPS_STUDY if patterned else EOF_STEPS_STUDY)
         if context.measure_steps
         else (PATTERNED_STUDY if patterned else "classic-eof-echo-geometry-v1")
     )
@@ -506,21 +574,34 @@ def _make_document(
         "study": {
             "id": study_id,
             "question": (
-                "Does padding worsen the classic patterned byte-echo frontier?"
+                "Can a forward jump skip otherwise executed graphical padding?"
+                if context.layout_mode == FORWARD_SKIP_LAYOUT
+                else (
+                    "Does padding worsen the classic patterned "
+                    "byte-echo frontier?"
+                )
                 if patterned
                 else (
                     "Does redundant no-op padding worsen the "
                     "classic VM frontier?"
                 )
             ),
-            "hypothesis": "Direct code is smaller than no-op padded code.",
+            "hypothesis": (
+                "Equal-sized forward-jump code executes fewer guest steps."
+                if context.layout_mode == FORWARD_SKIP_LAYOUT
+                else "Direct code is smaller than no-op padded code."
+            ),
             "rejection_observation": (
-                "Padded code is not larger or direct fails "
+                "Jump changes source size, fails output, or saves no VM work."
+                if context.layout_mode == FORWARD_SKIP_LAYOUT
+                else "Padded code is not larger or direct fails "
                 "its patterned-byte oracle."
                 if patterned
                 else "Padded code is not larger or direct fails its EOF oracle."
             ),
-            "baseline": BASELINE,
+            "baseline": (
+                WALK if context.layout_mode == FORWARD_SKIP_LAYOUT else BASELINE
+            ),
             "stage": "measured-classic-malbolge-code-and-vm",
             "target_profile": PROFILE,
             "host": context.host,
@@ -577,16 +658,30 @@ def run_study(
     _validate_input_mode(plan.input_mode)
     if type(plan.measure_steps) is not bool:
         _fail("target echo requires a boolean measure_steps selection")
+    if (
+        type(plan.layout_mode) is not str
+        or plan.layout_mode not in LAYOUT_MODES
+    ):
+        _fail("target echo layout mode must be linear or forward-skip")
+    if plan.layout_mode == FORWARD_SKIP_LAYOUT and (
+        plan.input_mode != PATTERNED_MODE or not plan.measure_steps
+    ):
+        _fail("target echo forward-skip requires pattern and measured steps")
     context = replace(
         _prepare_context(emitter, runner),
         input_mode=plan.input_mode,
         measure_steps=plan.measure_steps,
+        layout_mode=plan.layout_mode,
     )
     observations = [
         _write_attempt(context, pairs, trial, algorithm=algorithm)
         for pairs in plan.pairs
         for trial in range(plan.trials)
-        for algorithm in (ALGORITHMS if trial % 2 == 0 else ALGORITHMS[::-1])
+        for algorithm in (
+            _algorithms(plan.layout_mode)
+            if trial % 2 == 0
+            else _algorithms(plan.layout_mode)[::-1]
+        )
     ]
     document = _make_document(context, observations)
     path = context.directory / "study.json"
@@ -609,6 +704,9 @@ def main() -> int:
     parser.add_argument("--trials", type=int, default=2)
     parser.add_argument("--input-mode", choices=INPUT_MODES, default=EOF_MODE)
     parser.add_argument("--measure-steps", action="store_true")
+    parser.add_argument(
+        "--layout-mode", choices=LAYOUT_MODES, default=LINEAR_LAYOUT
+    )
     args = parser.parse_args()
     try:
         directory, document = run_study(
@@ -617,6 +715,7 @@ def main() -> int:
                 args.trials,
                 args.input_mode,
                 args.measure_steps,
+                args.layout_mode,
             )
         )
         report_output.publish(

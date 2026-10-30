@@ -267,6 +267,46 @@ for each verified candidate: this is an exact semantic fact of the admitted
 subset, **not** a general property of Malbolge. The extra dimension is useful
 for reproducible measurement infrastructure, not an independent speedup claim.
 
+### Forward-jump runtime-work comparison (opt-in)
+
+To compare **equal-sized real `.malbolge` sources** with different executed
+instruction counts, request the separate forward-skip study:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_reference \
+  --pairs 1 4 16 64 --trials 2 --input-mode patterned \
+  --measure-steps --layout-mode forward-skip
+```
+
+The control `walk-padding-echo` emits 99 executed no-ops before the patterned
+input/output sequence and final EOF/`halt`. The alternate
+`jump-skip-padding-echo` calls the existing verified `malbolge_layout`
+`--auto-layout jump` publisher, emitting one jump plus 98 skipped graphical
+no-ops before the **same** executable byte-echo suffix. Both sources have
+`102 + 2*pairs` physical code bytes. But the committed Malbolge VM executes
+`102 + 2*pairs` versus `4 + 2*pairs` guest steps, a fixed saving of **98
+instructions** with equal code size. At `pairs=64` the two counted values are
+230 and 132 guest instructions for 230 source bytes each. Source size is
+thus *not* always a valid runtime-work proxy.
+
+The independently authored auditor requires the precise first jump byte
+(`0x62`, so the normative classic jump target is address 99), checks all 98
+intermediate cells as skipped positional `nop`s using the frozen XLAT1 decode
+table, and checks every reachable input/output/`halt` instruction. It rejects
+forged same-length graphical cells and mismatched guest-step claims, even if
+study JSON and raw CSV are internally consistent. Optional replay uses the
+recorded hashed VM binary and requires the full patterned-byte-plus-EOF
+stdout and original exact step receipt. The new fixed study ID is
+`classic-patterned-forward-skip-steps-v1`, with a separate family, oracle,
+SHA-256 challenge identity, hypothesis and paired algorithm cohort; the
+existing linear EOF/patterned modes remain unchanged.
+
+This is a real bounded demonstration of **forward control-flow work avoided**,
+not a loop, arbitrary branching, native CPU-instruction savings, statistically
+significant wall-time speedup, or optimization of compiled C. Measured host
+elapsed time includes compiler and VM process startup. Memory/power limits
+are only declared, not physically enforced across the study.
+
 Both modes are still only bounded classic I/O shapes: neither claims arbitrary
 C lowering, arbitrary guest bytecode, calibrated speedup, authenticated
 historical execution, or a physically enforced study-wide RAM quota.

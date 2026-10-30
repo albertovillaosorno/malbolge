@@ -148,6 +148,22 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   examples source bytes and VM steps coincide, so this is measurement
   infrastructure, not evidence of control-flow optimization or physical
   CPU/RAM budgets.
+- A distinct optional measured `--layout-mode forward-skip` classic
+  study compares an executed 99-nop prefix against a true forward jump over
+  98 non-executed graphical no-ops, followed by the same variable patterned
+  binary I/O and final EOF. The emitter uses its already verified symbolic
+  auto-layout jump encoding; the independently authored auditor reconstructs
+  the initial `i` operand, fixed destination 99, 98 skipped positional no-ops,
+  full reachable suffix and exact normative VM `runtime_steps` from source
+  bytes, without trusting publisher layout metadata. Sources in both arms
+  have `102 + 2*pairs` bytes, but the VM executes `102 + 2*pairs` vs
+  `4 + 2*pairs` steps; at 64 input bytes each source has 230 cells but
+  completes in 230 vs 132 guest steps. A separate fixed study/case/oracle ID
+  keeps earlier EOF/patterned cohorts unchanged. Retained raw CSV, manifests
+  and optional exact-binary replay preserve the original stdout and stderr
+  step receipt; tampered skipped no-op glyphs and jump operands reject. This
+  is genuine bounded forward-control work saved, not arbitrary loops, C
+  compilation, physical CPU savings or authenticated host performance.
 - A separate read-only classic target audit now reopens local pilot
   studies, binds fixed producer research/manifest/case claims, complete
   paired repetition plans and exact run/raw/candidate inventories, and

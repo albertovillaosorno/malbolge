@@ -256,11 +256,38 @@ historic execution. No memory instrumentation, worktree attestation, general
 bytecode compiler, profile-independent execution, or physical resource
 enforcement is implied.
 
-This is a falsifiable source-size hypothesis (the nop-padded source should
-use one extra graphical code byte per pair), not a general compiler-size or
-performance result. Host wall times include compiler process startup,
-code emission, runner startup, and VM execution; the recorded resource budget
-is declared but not enforced study-wide, no hardware-level attestation or
+A distinct preregistered forward-jump study extends the target I/O subset
+to **strictly forward, non-revisited code** and makes real `runtime_steps`
+differ from code size. The control walks through 99 executed graphical
+no-ops before `pairs + 1` input/output steps (including final EOF), while
+the `malbolge_layout --auto-layout jump` proposal enters an equal-sized
+source with one forward jump and 98 skipped no-op cells. Both run the same
+`00 FF A8 5A 80 01 7F FE` periodic input oracle followed by the canonical
+EOF byte. Both contain exactly `102 + 2*pairs` source cells; the true
+normative VM count is `102 + 2*pairs` for the walking control and
+`4 + 2*pairs` for the jumping candidate. At difficulty 64 the real counts
+are 230 vs 132. The hypothesis is rejected if size differs, output fails,
+or the jump saves no VM instructions. The study fixes an independent source
+fingerprint, case family, oracle and study ID, and retains paired trials,
+strict CSV/TOML evidence, original VM step receipts and optional replay.
+
+The independent source auditor reconstructs the target from the initial
+source cell's *actual integer value* `0x62`, checks that jump target 99
+skips exactly 98 graphical no-ops, verifies the position-sensitive classic
+opcode of every source cell, and checks expected counted semantic steps.
+Mutable source is admitted only for a single forward jump; later revisits,
+loops, conditional control flow and data relocation are not supported by
+this small cohort. Replayed output and complete stderr step receipt must
+match the original retained claim. This establishes a genuine code-size vs
+runtime-work tradeoff but not host speedup (elapsed times mix process startup
+and code emission), energy savings, or verified arbitrary compilation.
+
+The earlier linear study remains a falsifiable source-size hypothesis (the
+nop-padded source should use one extra graphical code byte per pair), not a
+general compiler-size or performance result. Host wall times include compiler
+process startup, code emission, runner startup, and VM execution. The recorded
+resource budget is declared but not enforced study-wide; no hardware
+attestation or
 statistical speedup inference is claimed, and the source bytes do not carry
 modern capsule identity. Neither classic I/O check independently proves
 C-to-Malbolge translation, arithmetic correctness, heap/call linking, or

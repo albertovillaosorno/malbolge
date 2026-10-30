@@ -64,6 +64,8 @@ REPLAYED = 8
 MAX_PHASE_TRIALS = 2
 FRONTIERS = 2
 INVALID_SOURCE = 33
+SECOND_INVALID_SOURCE = 34
+JUMP_CORRUPTION = "jump"
 DIFFICULTY = 1
 FORGED_TRIAL = 999
 ELAPSED = "elapsed_ns"
@@ -190,6 +192,48 @@ def counted_study(
             shutil.rmtree(directory)
 
 
+@pytest.fixture
+def forward_skip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[Path, dict[str, Any], str]]:
+    """Generate actual same-size jump/step cohorts using pinned tools.
+
+    Yields:
+        Local study directory, retained document, canonical study path.
+
+    """
+    if (
+        not producer.DEFAULT_EMITTER.is_file()
+        or not producer.DEFAULT_RUNNER.is_file()
+    ):
+        pytest.skip("repository Malbolge emitter and VM are not available")
+    with tempfile.TemporaryDirectory(
+        dir=producer._TEMP, prefix="arena-forward-test-tools-"
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        runner = Path(tool_directory) / "malbolge"
+        emitter.hardlink_to(producer.DEFAULT_EMITTER)
+        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
+        monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
+        directory, document = producer.run_study(
+            producer.StudyPlan(
+                (1, 4, 16, 64),
+                1,
+                producer.PATTERNED_MODE,
+                measure_steps=True,
+                layout_mode=producer.FORWARD_SKIP_LAYOUT,
+            ),
+            emitter=emitter,
+            runner=runner,
+        )
+        try:
+            relative = (directory / "study.json").relative_to(producer._ROOT)
+            yield directory, document, relative.as_posix()
+        finally:
+            shutil.rmtree(directory)
+
+
 def _save(directory: Path, document: dict[str, Any]) -> None:
     (directory / "study.json").write_text(
         json.dumps(document, sort_keys=True),
@@ -215,6 +259,110 @@ def _recheck_generic(document: dict[str, Any]) -> None:
             require_budget_agreement=True,
         ),
     )
+
+
+def test_forward_jump_and_walk_have_equal_code_size_but_distinct_work(
+    forward_skip: tuple[Path, dict[str, Any], str],
+) -> None:
+    """Actual retained programs expose an independently replayable tradeoff."""
+    directory, document, relative = forward_skip
+    assert document["study"]["id"] == producer.FORWARD_STUDY
+    assert document["study"]["baseline"] == producer.WALK
+    assert document["study"]["objectives"] == [
+        "elapsed_ns",
+        ARTIFACT_BYTES,
+        "runtime_steps",
+    ]
+    assert len(document["observations"]) == ROWS
+    for pairs in (1, 4, 16, 64):
+        level = {
+            row["algorithm"]: row
+            for row in document["observations"]
+            if row["case"]["difficulty"] == pairs
+        }
+        walked, skipped = level[producer.WALK], level[producer.SKIP]
+        assert walked["outcome"] == analyze.VERIFIED
+        assert skipped["outcome"] == analyze.VERIFIED
+        assert (
+            walked["metrics"][ARTIFACT_BYTES]
+            == skipped["metrics"][ARTIFACT_BYTES]
+        )
+        assert (
+            walked["metrics"]["runtime_steps"]
+            == walked["metrics"][ARTIFACT_BYTES]
+        )
+        assert (
+            skipped["metrics"]["runtime_steps"] + producer.SKIPPED_NOOPS
+            == (walked["metrics"]["runtime_steps"])
+        )
+        source = _first_source(directory, {"observations": [skipped]})
+        data = source.read_bytes()
+        assert data[0] + 1 == producer.SKIPPED_NOOPS + 1
+        assert len(data) == skipped["metrics"][ARTIFACT_BYTES]
+        assert all(
+            audit._decoded_instruction(data[pos], pos) == ord("o")
+            for pos in range(1, producer.SKIPPED_NOOPS + 1)
+        )
+    checked = audit.audit(relative)
+    assert checked["verified_target_sources_checked"] == ROWS
+    replay = audit.audit(
+        relative,
+        options=audit.AuditOptions(
+            replay_candidates=True,
+            require_source_commit_object=True,
+        ),
+    )
+    assert replay["target_sources_replayed"] == ROWS
+    assert replay["source_commit_object_verified"] is True
+
+
+@pytest.mark.parametrize("corruption", ["jump", "skipped-padding"])
+def test_forward_skipped_source_tampering_fails_after_valid_raw_links(
+    forward_skip: tuple[Path, dict[str, Any], str],
+    corruption: str,
+) -> None:
+    """A same-length graphical source forgery cannot pass source admission."""
+    directory, document, relative = forward_skip
+    skip_row = next(
+        row
+        for row in document["observations"]
+        if row["algorithm"] == producer.SKIP
+    )
+    source = _first_source(directory, {"observations": [skip_row]})
+    forged = bytearray(source.read_bytes())
+    if corruption == JUMP_CORRUPTION:
+        forged[0] += 1
+    else:
+        index = producer.SKIPPED_NOOPS // 2
+        forged[index] = (
+            INVALID_SOURCE
+            if forged[index] != INVALID_SOURCE
+            else SECOND_INVALID_SOURCE
+        )
+    source.write_bytes(forged)
+    _recheck_generic(document)
+    with pytest.raises(
+        audit.TargetEchoAuditError,
+        match=r"jump target|source instruction",
+    ):
+        audit.audit(relative)
+
+
+def test_forward_jump_forged_step_savings_rejected_by_static_oracle(
+    forward_skip: tuple[Path, dict[str, Any], str],
+) -> None:
+    """Changed saved VM work cannot get a smaller Pareto cost for free."""
+    directory, document, relative = forward_skip
+    altered = copy.deepcopy(document)
+    jump_row = next(
+        row
+        for row in altered["observations"]
+        if row["algorithm"] == producer.SKIP
+    )
+    jump_row["metrics"]["runtime_steps"] -= 1
+    _save(directory, altered)
+    with pytest.raises(audit.TargetEchoAuditError, match="runtime step claim"):
+        audit.audit(relative)
 
 
 def test_counted_vm_study_has_three_actual_costs_and_replay(

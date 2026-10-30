@@ -597,6 +597,26 @@ def test_changed_producer_pattern_fails_independent_oracle_even_if_linked(
             (1,), 1, target_echo_reference.EOF_MODE, cast("bool", 1)
         ),
         target_echo_reference.StudyPlan((1,), BOOL_TRIAL_ALIAS),
+        target_echo_reference.StudyPlan(
+            (1,),
+            1,
+            target_echo_reference.EOF_MODE,
+            measure_steps=True,
+            layout_mode=target_echo_reference.FORWARD_SKIP_LAYOUT,
+        ),
+        target_echo_reference.StudyPlan(
+            (1,),
+            1,
+            target_echo_reference.PATTERNED_MODE,
+            layout_mode=target_echo_reference.FORWARD_SKIP_LAYOUT,
+        ),
+        target_echo_reference.StudyPlan(
+            (1,),
+            1,
+            target_echo_reference.PATTERNED_MODE,
+            measure_steps=True,
+            layout_mode="unknown",
+        ),
     ],
 )
 def test_invalid_plan_refuses_before_creating_study(

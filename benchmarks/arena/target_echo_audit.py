@@ -76,6 +76,7 @@ SOURCE_INSTRUCTIONS = {
     "output": ord("<"),
     "nop": ord("o"),
     "halt": ord("v"),
+    "jump": ord("i"),
 }
 # Independently authored frozen classic XLAT1 mapping, not emitter output.
 EOF_STUDY = "classic-eof-echo-geometry-v1"
@@ -84,6 +85,15 @@ EOF_STEPS_STUDY = "classic-eof-echo-steps-v2"
 PATTERNED_STEPS_STUDY = "classic-patterned-byte-echo-steps-v2"
 STEPS_REPORT_PREFIX = b"malbolge-steps-v1:"
 RUNTIME_STEPS = "runtime_steps"
+FORWARD_STUDY = "classic-patterned-forward-skip-steps-v1"
+FORWARD_FAMILY = "bounded-classic-patterned-forward-skip-echo"
+FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
+WALK = "walk-padding-echo"
+SKIP = "jump-skip-padding-echo"
+FORWARD_ALGORITHMS = (WALK, SKIP)
+SKIPPED_NOOPS = 98
+WALKED_NOOPS = SKIPPED_NOOPS + 1
+FORWARD_JUMP_TARGET = SKIPPED_NOOPS + 1
 PATTERNED_FAMILY = "bounded-classic-patterned-byte-echo"
 PATTERNED_VERIFIER = "classic-malbolge-vm-exact-patterned-byte-v1"
 # Independently fixed vector; do not defer to the producing algorithm.
@@ -150,7 +160,7 @@ def _document(relative: str) -> tuple[dict[str, Any], str]:
 
 def _mode(document: dict[str, Any]) -> str:
     study_id = document["study"]["id"]
-    if study_id in {PATTERNED_STUDY, PATTERNED_STEPS_STUDY}:
+    if study_id in {PATTERNED_STUDY, PATTERNED_STEPS_STUDY, FORWARD_STUDY}:
         return producer.PATTERNED_MODE
     if study_id in {EOF_STUDY, EOF_STEPS_STUDY}:
         return producer.EOF_MODE
@@ -158,7 +168,19 @@ def _mode(document: dict[str, Any]) -> str:
 
 
 def _has_steps(document: dict[str, Any]) -> bool:
-    return document["study"]["id"] in {EOF_STEPS_STUDY, PATTERNED_STEPS_STUDY}
+    return document["study"]["id"] in {
+        EOF_STEPS_STUDY,
+        PATTERNED_STEPS_STUDY,
+        FORWARD_STUDY,
+    }
+
+
+def _forward(document: dict[str, Any]) -> bool:
+    return document["study"]["id"] == FORWARD_STUDY
+
+
+def _algorithms(document: dict[str, Any]) -> tuple[str, str]:
+    return FORWARD_ALGORITHMS if _forward(document) else producer.ALGORITHMS
 
 
 def _pattern_bytes(pairs: int) -> bytes:
@@ -171,26 +193,37 @@ def _producer_study(document: dict[str, Any]) -> None:
     study = document["study"]
     patterned = _mode(document) == producer.PATTERNED_MODE
     steps = _has_steps(document)
+    forward = _forward(document)
     study_id = (
         (PATTERNED_STEPS_STUDY if patterned else EOF_STEPS_STUDY)
         if steps
         else (PATTERNED_STUDY if patterned else EOF_STUDY)
     )
+    if forward:
+        study_id = FORWARD_STUDY
     expected = {
         "id": study_id,
         "question": (
-            "Does padding worsen the classic patterned byte-echo frontier?"
+            "Can a forward jump skip otherwise executed graphical padding?"
+            if forward
+            else "Does padding worsen the classic patterned byte-echo frontier?"
             if patterned
             else "Does redundant no-op padding worsen the classic VM frontier?"
         ),
-        "hypothesis": "Direct code is smaller than no-op padded code.",
+        "hypothesis": (
+            "Equal-sized forward-jump code executes fewer guest steps."
+            if forward
+            else "Direct code is smaller than no-op padded code."
+        ),
         "rejection_observation": (
-            "Padded code is not larger or direct fails "
+            "Jump changes source size, fails output, or saves no VM work."
+            if forward
+            else "Padded code is not larger or direct fails "
             "its patterned-byte oracle."
             if patterned
             else "Padded code is not larger or direct fails its EOF oracle."
         ),
-        "baseline": producer.BASELINE,
+        "baseline": WALK if forward else producer.BASELINE,
         "stage": "measured-classic-malbolge-code-and-vm",
         "target_profile": producer.PROFILE,
         "budget": {
@@ -217,8 +250,16 @@ def _producer_study(document: dict[str, Any]) -> None:
         _fail("target study has an invalid producer toolchain fingerprint")
 
 
-def _expected_case(pairs: int, mode: str = producer.EOF_MODE) -> dict[str, Any]:
-    if mode == producer.EOF_MODE:
+def _expected_case(
+    pairs: int, mode: str = producer.EOF_MODE, *, forward: bool = False
+) -> dict[str, Any]:
+    if forward:
+        payload = _pattern_bytes(pairs)
+        identity = (
+            f"classic-forward-skip-byte-v1:pairs={pairs}:"
+            f"input={payload.hex()}:eof-after"
+        ).encode("ascii")
+    elif mode == producer.EOF_MODE:
         identity = f"classic-eof-echo-v1:pairs={pairs}:empty-input".encode(
             "ascii"
         )
@@ -229,9 +270,13 @@ def _expected_case(pairs: int, mode: str = producer.EOF_MODE) -> dict[str, Any]:
             f"input={payload.hex()}:eof-after"
         ).encode("ascii")
     return {
-        "family": producer.FAMILY
-        if mode == producer.EOF_MODE
-        else PATTERNED_FAMILY,
+        "family": (
+            FORWARD_FAMILY
+            if forward
+            else producer.FAMILY
+            if mode == producer.EOF_MODE
+            else PATTERNED_FAMILY
+        ),
         "version": 1,
         "difficulty": pairs,
         "seed": 0,
@@ -240,8 +285,19 @@ def _expected_case(pairs: int, mode: str = producer.EOF_MODE) -> dict[str, Any]:
 
 
 def _expected_operations(
-    pairs: int, algorithm: str, mode: str = producer.EOF_MODE
+    pairs: int,
+    algorithm: str,
+    mode: str = producer.EOF_MODE,
+    *,
+    forward: bool = False,
 ) -> list[str]:
+    if forward:
+        echo = ["input", "output"] * (pairs + 1) + ["halt"]
+        return (
+            ["nop"] * WALKED_NOOPS + echo
+            if algorithm == WALK
+            else ["jump", *["nop"] * SKIPPED_NOOPS, *echo]
+        )
     chunk = ["input", "output"]
     if algorithm == producer.CANDIDATE:
         chunk = ["nop", *chunk]
@@ -254,15 +310,23 @@ def _row_stem(row: dict[str, Any]) -> str:
     return f"{row["algorithm"]}-pairs-{case["difficulty"]}-trial-{row["trial"]}"
 
 
-def _check_row(row: dict[str, Any], prefix: str, mode: str) -> str:
+def _check_row(
+    row: dict[str, Any], prefix: str, mode: str, *, forward: bool
+) -> str:
     case = row["case"]
     algorithm = row["algorithm"]
-    if algorithm not in producer.ALGORITHMS:
+    if algorithm not in (
+        FORWARD_ALGORITHMS if forward else producer.ALGORITHMS
+    ):
         _fail("target audit trial has a foreign algorithm")
-    if case != _expected_case(case["difficulty"], mode):
+    if case != _expected_case(case["difficulty"], mode, forward=forward):
         _fail("target audit trial differs from the fixed echo case")
     expected_verifier = (
-        producer.VERIFIER if mode == producer.EOF_MODE else PATTERNED_VERIFIER
+        FORWARD_VERIFIER
+        if forward
+        else producer.VERIFIER
+        if mode == producer.EOF_MODE
+        else PATTERNED_VERIFIER
     )
     if row["verifier"] != expected_verifier:
         _fail("target audit trial differs from the fixed echo oracle")
@@ -284,20 +348,22 @@ def _check_levels(rows: list[dict[str, Any]]) -> set[int]:
     return levels
 
 
-def _check_plan(rows: list[dict[str, Any]]) -> tuple[set[int], set[int]]:
+def _check_plan(
+    rows: list[dict[str, Any]], *, algorithm_count: int = 2
+) -> tuple[set[int], set[int]]:
     levels = _check_levels(rows)
     trials = {row["trial"] for row in rows}
     if not 1 <= len(trials) <= producer.MAX_TRIALS:
         _fail("target audit requires one to three trial indices")
     if trials != set(range(len(trials))):
         _fail("target audit requires consecutive repetition indices")
-    if len(rows) != len(levels) * len(trials) * len(producer.ALGORITHMS):
+    if len(rows) != len(levels) * len(trials) * algorithm_count:
         _fail("target audit requires complete matched echo repetitions")
     return levels, trials
 
 
 def _check_one_step_claim(
-    row: dict[str, Any], *, measured: bool, mode: str
+    row: dict[str, Any], *, measured: bool, mode: str, forward: bool = False
 ) -> None:
     actual = row["metrics"].get(RUNTIME_STEPS)
     if not measured or row["outcome"] != analyze.VERIFIED:
@@ -306,9 +372,14 @@ def _check_one_step_claim(
     else:
         expected = len(
             _expected_operations(
-                row["case"]["difficulty"], row["algorithm"], mode
+                row["case"]["difficulty"],
+                row["algorithm"],
+                mode,
+                forward=forward,
             )
         )
+        if forward and row["algorithm"] == SKIP:
+            expected -= SKIPPED_NOOPS
         if actual != expected:
             _fail("target runtime step claim differs from decoded source")
 
@@ -316,21 +387,26 @@ def _check_one_step_claim(
 def _check_runtime_step_claims(document: dict[str, Any]) -> None:
     measured = _has_steps(document)
     mode = _mode(document)
+    forward = _forward(document)
     for row in document["observations"]:
-        _check_one_step_claim(row, measured=measured, mode=mode)
+        _check_one_step_claim(
+            row, measured=measured, mode=mode, forward=forward
+        )
 
 
 def _producer_rows(document: dict[str, Any], prefix: str) -> set[str]:
     rows = document["observations"]
-    levels, trials = _check_plan(rows)
+    algorithms = _algorithms(document)
+    levels, trials = _check_plan(rows, algorithm_count=len(algorithms))
     _check_runtime_step_claims(document)
     mode = _mode(document)
-    names = {_check_row(row, prefix, mode) for row in rows}
+    forward = _forward(document)
+    names = {_check_row(row, prefix, mode, forward=forward) for row in rows}
     expected = {
         f"{algorithm}-pairs-{level}-trial-{trial}"
         for level in levels
         for trial in trials
-        for algorithm in producer.ALGORITHMS
+        for algorithm in algorithms
     }
     if names != expected:
         _fail("target audit lacks a required paired trial")
@@ -426,12 +502,28 @@ def _decoded_instruction(cell: int, position: int) -> int:
     return CLASSIC_DECODE[phase]
 
 
-def _admit_source_bytes(source: bytes, row: dict[str, Any], mode: str) -> None:
+def _check_forward_jump(source: bytes, row: dict[str, Any]) -> None:
+    if row["algorithm"] != SKIP:
+        return
+    if not source or source[0] + 1 != FORWARD_JUMP_TARGET:
+        _fail("target audit forward jump target differs from source operand")
+
+
+def _admit_source_bytes(
+    source: bytes,
+    row: dict[str, Any],
+    mode: str,
+    *,
+    forward: bool = False,
+) -> None:
     operations = _expected_operations(
         row["case"]["difficulty"],
         row["algorithm"],
         mode,
+        forward=forward,
     )
+    if forward:
+        _check_forward_jump(source, row)
     if len(source) != len(operations):
         _fail("target audit source length differs from echo layout")
     if any(
@@ -446,7 +538,11 @@ def _admit_source_bytes(source: bytes, row: dict[str, Any], mode: str) -> None:
 
 
 def _check_source(
-    row: dict[str, Any], prefix: str, mode: str
+    row: dict[str, Any],
+    prefix: str,
+    mode: str,
+    *,
+    forward: bool = False,
 ) -> tuple[str, str]:
     relative = f"{prefix}/candidates/{_row_stem(row)}.malbolge"
     source = evidence.read_bounded_regular(
@@ -454,7 +550,7 @@ def _check_source(
         relative,
         limit=producer.MAX_TARGET_BYTES,
     )
-    _admit_source_bytes(source, row, mode)
+    _admit_source_bytes(source, row, mode, forward=forward)
     return relative, sha256(source).hexdigest()
 
 
@@ -482,9 +578,12 @@ def _source_checks(
     _candidate_files(prefix, names)
     fingerprints: dict[str, str] = {}
     mode = _mode(document)
+    forward = _forward(document)
     for row in document["observations"]:
         if row["outcome"] == analyze.VERIFIED:
-            relative, fingerprint = _check_source(row, prefix, mode)
+            relative, fingerprint = _check_source(
+                row, prefix, mode, forward=forward
+            )
             fingerprints[relative] = fingerprint
     return fingerprints
 
@@ -522,7 +621,7 @@ def _replay_execution(
     row: dict[str, Any], runner: Path, source: Path
 ) -> tuple[sp.CompletedProcess[bytes], bytes]:
     pairs = row["case"]["difficulty"]
-    patterned = row["case"]["family"] == PATTERNED_FAMILY
+    patterned = row["case"]["family"] in {PATTERNED_FAMILY, FORWARD_FAMILY}
     receipt = row["metrics"].get(RUNTIME_STEPS) is not None
     if not patterned and not receipt:
         return (
