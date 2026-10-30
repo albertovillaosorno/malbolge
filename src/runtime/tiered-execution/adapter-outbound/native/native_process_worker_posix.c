@@ -64,6 +64,7 @@ struct mb_worker_mapping {
     mb_u8 *reservation;
     size_t reservation_len;
     enum mb_native_process_memory_permission permission;
+    int protected_reported;
     int synchronized;
 };
 
@@ -313,6 +314,7 @@ static int mb_worker_handle_allocate(
         .reservation = reservation,
         .reservation_len = reservation_len,
         .permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE,
+        .protected_reported = 0,
         .synchronized = 0,
     };
     worker->count += 1U;
@@ -463,6 +465,8 @@ static int mb_worker_handle_protect(
     bytes[34] = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE;
     *response = bytes;
     *response_len = MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES;
+    // A real RX transition is not caller-admitted until its report exists.
+    mapping->protected_reported = 1;
     return 1;
 }
 
@@ -486,6 +490,7 @@ static int mb_worker_handle_sync(
     const mb_u64 start = mb_native_process_read_u64(&request[17]);
     if (mapping == NULL
         || mapping->permission != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE
+        || !mapping->protected_reported
         || !mb_worker_size_from_u64(
             mb_native_process_read_u64(&request[25]),
             &sync_len)

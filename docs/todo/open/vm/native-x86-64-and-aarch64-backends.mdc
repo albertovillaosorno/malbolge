@@ -953,6 +953,13 @@ A distinct single-resident lease cache
   fixtures now request synchronization explicitly; Windows COFF compilation
   continues to admit both x86-64 and AArch64 targets.
 
+  Independently of OS page state, both native worker backends now deny cache
+  synchronization after an RX protection transition whose success report was
+  not delivered. The retained RX memory can still be released, but cannot
+  receive call authority via a forged raw sync. POSIX and Windows injected
+  allocation failures and Windows contradictory old-protection reports prove
+  no cache operation or synchronization grant occurs on that path.
+
   Both process workers also bind native entry offsets to the latest reported
   code-copy byte length rather than the allocation size. A failed or empty
   copy never grants entry, and a shorter replacement cannot reuse the prior

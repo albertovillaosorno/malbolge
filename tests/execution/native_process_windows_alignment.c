@@ -594,6 +594,24 @@ static int check_protect_report_mismatch(struct mb_worker_state *worker)
         return 2;
     }
     mb_worker_free(response);
+    if (worker->mappings[0].protected_reported) {
+        return 5;
+    }
+    // The unexpected previous page-protection report cannot grant RX
+    // synchronization, even though VirtualProtect already changed the page.
+    const size_t before_sync = sync_count;
+    response = NULL;
+    len = 0U;
+    if (!mb_worker_handle_sync(worker, request, 33U,
+            &response, &len)
+        || response == NULL
+        || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+        || sync_count != before_sync || worker->mappings[0].synchronized) {
+        mb_worker_free(response);
+        return 6;
+    }
+    mb_worker_free(response);
     mb_native_process_write_u64(&request[34], 6U);
     memcpy(&request[42], "ABCDEF", 6U);
     if (!mb_worker_handle_copy(worker, request, 48U, &response, &len)
@@ -1771,6 +1789,22 @@ static int check_unreportable_mapping_cleanup(
             != MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE) {
         return 4;
     }
+    // The OS made the mapping RX even though there was no report. The
+    // worker must not grant instruction-cache or raw-entry authority.
+    const size_t before_sync = sync_count;
+    response = NULL;
+    len = 0U;
+    if (!mb_worker_handle_sync(worker, request, 33U,
+            &response, &len)
+        || response == NULL
+        || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+        || sync_count != before_sync || worker->mappings[0].synchronized) {
+        mb_worker_free(response);
+        mb_worker_release_all(worker);
+        return 6;
+    }
+    mb_worker_free(response);
     mb_worker_release_all(worker);
     return worker->count == 0U
         && reservation_count == reservations_before + 2U

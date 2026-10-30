@@ -1442,6 +1442,15 @@ full-range instruction-cache synchronization authorizes MBNPC1 dispatch.
 A direct call against an RX-but-unsynchronized mapping returns the unchanged
 invalid-argument response without executing code or changing guest buffers.
 
+Even a real OS-level RW-to-RX transition is not eligible for subsequent cache
+synchronization until the corresponding protection success frame is allocated
+and reported. If that response allocation fails, the worker retains an RX
+mapping for release but rejects forged raw sync requests without cache effects.
+The Windows worker also rejects sync after a contradictory old-protection
+report from `VirtualProtect`, although the OS-level transition succeeded.
+POSIX and simulated Windows fault-injection harnesses exercise these negative
+boundaries while leaving already reported RX-to-sync transitions unchanged.
+
 The host-real POSIX regression first dispatches one valid RX machine-code stub
 before synchronization and observes that rejection with an unpoisoned child.
 It then synchronizes the same mapping, invokes that same stub successfully,

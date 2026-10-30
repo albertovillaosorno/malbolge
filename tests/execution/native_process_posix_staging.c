@@ -868,6 +868,23 @@ static int check_lifecycle_response_failures(void)
         mb_worker_release_all(&worker);
         return 4;
     }
+    // The OS changed this mapping to RX, but no successful protection
+    // report was returned: a forged raw sync must not grant call authority.
+    const int synchronized_before = worker.mappings[0].synchronized;
+    mb_u8 *unreported_sync = NULL;
+    size_t unreported_sync_len = 0U;
+    if (!mb_worker_handle_sync(&worker, request, 33U,
+            &unreported_sync, &unreported_sync_len)
+        || unreported_sync == NULL
+        || unreported_sync_len
+            != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || unreported_sync[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+        || worker.mappings[0].synchronized != synchronized_before) {
+        mb_test_free(unreported_sync);
+        mb_worker_release_all(&worker);
+        return 10;
+    }
+    mb_test_free(unreported_sync);
     fail_next_lifecycle_response = 10U;
     if (mb_worker_handle_release(&worker, request, 33U,
             &response, &response_len)
