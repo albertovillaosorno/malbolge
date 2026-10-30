@@ -40,6 +40,7 @@ from collections import Counter
 import json
 import os
 from pathlib import Path
+from shlex import quote
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import tempfile
@@ -208,6 +209,40 @@ def test_second_execution_source_rewrite_rejects_after_guest_success(
         assert audit.audit(relative)["reported_failed_trials_not_replayed"] == 1
     finally:
         shutil.rmtree(directory)
+
+
+def test_second_vm_uses_fresh_exec_process_not_in_process_recheck(
+    pinned_tools: tuple[Path, Path],
+) -> None:
+    """A wrapper records distinct OS PIDs for primary and verifier runs."""
+    with tempfile.TemporaryDirectory(
+        dir=producer._TEMP, prefix="arena-replay-process-proof-"
+    ) as folder:
+        directory = Path(folder)
+        marker = directory / "runner-pids.txt"
+        wrapped = directory / "vm-instrumented"
+        wrapped.write_text(
+            "#!/bin/sh\n"
+            f"printf '%s\\n' \"$$\" >> {quote(str(marker))}\n"
+            f'exec {quote(str(pinned_tools[1]))} "$@"\n',
+            encoding="utf-8",
+        )
+        wrapped.chmod(0o700)
+        retained, document, relative = _real_study((pinned_tools[0], wrapped))
+        try:
+            assert len(document["observations"]) == TRIAL_COUNT
+            assert all(
+                row["outcome"] == analyze.VERIFIED
+                for row in document["observations"]
+            )
+            pids = [int(line) for line in marker.read_text().splitlines()]
+            assert len(pids) == TWO_EXECUTIONS * TRIAL_COUNT
+            assert all(pid > 0 for pid in pids)
+            assert len(set(pids)) == len(pids)
+            report = audit.audit(relative)
+            assert report["verified_target_sources_checked"] == TRIAL_COUNT
+        finally:
+            shutil.rmtree(retained)
 
 
 def test_real_second_execution_costs_and_paired_differences(
