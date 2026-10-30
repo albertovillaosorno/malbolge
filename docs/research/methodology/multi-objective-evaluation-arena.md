@@ -598,6 +598,12 @@ provide Malbolge candidate verification.
 
 Post-run audit now rejects disagreement among source-commit claims in the
 retained per-trial manifests, even if all other record identity fields match.
+The host-C auditor now fingerprints bounded run-manifest bytes before
+independent link preflight and rechecks all those fingerprints after
+report analysis. A manifest rewrite between preflight and source-commit
+reporting (or during report assembly) rejects rather than publishing
+mixed-time provenance. These repeated reads detect observed drift, not
+an atomic filesystem snapshot or authenticated historical authorship.
 It also requires the producer's fixed run method, implementation/configuration
 paths, output directory and no-accelerator declaration. Valid but foreign
 research metadata fails the producer-specific audit; this is a consistency

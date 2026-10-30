@@ -41,6 +41,7 @@ import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from dataclasses import dataclass
+from hashlib import sha256
 from itertools import starmap
 from pathlib import Path
 from typing import Any, Never
@@ -107,6 +108,7 @@ class _AuditData:
     failed_diagnostics: int
     commit: str
     resource_record_version: int
+    manifest_fingerprints: dict[str, bytes]
 
 
 DEFAULT_AUDIT_OPTIONS = AuditOptions()
@@ -287,8 +289,9 @@ def _recorded_source_commit(
     document: dict[str, Any],
     *,
     require_git_object: bool,
-) -> str:
+) -> tuple[str, dict[str, bytes]]:
     commits: set[str] = set()
+    fingerprints: dict[str, bytes] = {}
     paths = {row["experiment_manifest"] for row in document["observations"]}
     for relative in sorted(paths):
         data = evidence.read_bounded_regular(
@@ -296,6 +299,7 @@ def _recorded_source_commit(
             relative,
             limit=evidence.MAX_MANIFEST_BYTES,
         )
+        fingerprints[relative] = sha256(data).digest()
         manifest = experiment_manifest.parse_manifest(data.decode("utf-8"))
         if manifest.run is None:
             _fail("host-C audit source commit requires a recorded run")
@@ -313,7 +317,17 @@ def _recorded_source_commit(
     commit = next(iter(commits))
     if require_git_object:
         _require_git_commit(commit)
-    return commit
+    return commit, fingerprints
+
+
+def _require_unchanged_manifests(fingerprints: dict[str, bytes]) -> None:
+    """Reject retained run-manifest drift across a host-C audit pass."""
+    for relative, fingerprint in sorted(fingerprints.items()):
+        data = evidence.read_bounded_regular(
+            _ROOT, relative, limit=evidence.MAX_MANIFEST_BYTES
+        )
+        if sha256(data).digest() != fingerprint:
+            _fail("host-C run manifest changed during audit")
 
 
 def _require_git_commit(commit: str) -> None:
@@ -430,6 +444,12 @@ def _admit_data(
 ) -> _AuditData:
     document = _load_study(relative_study)
     _check_stage(document, prefix)
+    # Bind the reported source revision to the same retained manifest bytes
+    # admitted by the subsequent independent link preflight.
+    commit, manifest_fingerprints = _recorded_source_commit(
+        document,
+        require_git_object=options.require_source_commit_object,
+    )
     checked = evidence.validate_links(
         document,
         _ROOT,
@@ -439,10 +459,6 @@ def _admit_data(
             challenge_root=f"{prefix}/bundles",
             require_host_c_challenge_oracle=options.replay_oracles,
         ),
-    )
-    commit = _recorded_source_commit(
-        document,
-        require_git_object=options.require_source_commit_object,
     )
     artifacts = _check_artifact_index(
         _read_json(
@@ -473,6 +489,7 @@ def _admit_data(
         failed_diagnostics,
         commit,
         resource_record,
+        manifest_fingerprints,
     )
 
 
@@ -539,6 +556,7 @@ def audit(
             else 0
         )
         report = analyze.analyze(data.document)
+        _require_unchanged_manifests(data.manifest_fingerprints)
     except (
         analyze.ArenaError,
         evidence.EvidenceError,

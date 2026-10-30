@@ -40,7 +40,7 @@ import json
 import shutil
 import sys
 from hashlib import sha256
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -640,6 +640,45 @@ def test_host_c_audit_rejects_foreign_recorded_output_root(
         reference_audit.ReferenceAuditError,
         match="producer provenance",
     ):
+        reference_audit.audit(relative)
+
+
+@pytest.mark.parametrize("mutation_point", ["after_preflight", "after_analysis"])
+def test_host_c_audit_rejects_manifest_drift_between_checks(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    mutation_point: str,
+) -> None:
+    """A later reread must not change the preflight-approved Git provenance."""
+    directory, relative = live_pilot
+    original_commit = reference_audit.audit(relative)["recorded_source_commit"]
+    assert original_commit != FAKE_SOURCE_COMMIT
+
+    def replace_commits() -> None:
+        _rewrite_manifest_commit(directory, original_commit, FAKE_SOURCE_COMMIT)
+
+    if mutation_point == "after_preflight":
+        preflight = evidence.validate_links
+
+        def mutate_after_preflight(
+            document: dict[str, Any], root: Path, *, policy: evidence.EvidencePolicy
+        ) -> dict[str, Any]:
+            result = preflight(document, root, policy=policy)
+            replace_commits()
+            return result
+
+        monkeypatch.setattr(evidence, "validate_links", mutate_after_preflight)
+    else:
+        analyze_report = analyze.analyze
+
+        def mutate_after_analysis(document: dict[str, Any]) -> dict[str, Any]:
+            result = analyze_report(document)
+            replace_commits()
+            return result
+
+        monkeypatch.setattr(analyze, "analyze", mutate_after_analysis)
+
+    with pytest.raises(reference_audit.ReferenceAuditError, match="manifest.*changed"):
         reference_audit.audit(relative)
 
 
