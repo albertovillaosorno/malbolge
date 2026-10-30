@@ -5569,7 +5569,7 @@ def test_immutable_collision_mismatched_payload_preserves_retained_alias(
 ) -> None:
     """A mismatched collision must not unlink an unproven temp-like alias."""
     destination = tmp_path / "existing-checkpoint"
-    alias = tmp_path / f".{destination.name}.foreign.tmp"
+    alias = tmp_path / f".{destination.name}.foreignd.tmp"
     original = b"unrelated-checkpoint"
     _ = destination.write_bytes(original)
     os.link(destination, alias)
@@ -5591,7 +5591,7 @@ def test_immutable_collision_large_mismatch_preserves_retained_alias(
 ) -> None:
     """Oversized collided bytes cannot trigger retained-alias deletion."""
     destination = tmp_path / "existing-checkpoint"
-    alias = tmp_path / f".{destination.name}.not-ours.tmp"
+    alias = tmp_path / f".{destination.name}.notours0.tmp"
     original = b"longer-than-proposed-checkpoint"
     _ = destination.write_bytes(original)
     os.link(destination, alias)
@@ -5694,6 +5694,31 @@ def test_retained_alias_recovery_matches_literal_destination(
     assert destination.read_bytes() == payload
     assert destination.stat().st_nlink == 1
     assert not alias.exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link collision requires POSIX filesystem semantics",
+)
+@pytest.mark.parametrize(
+    "foreign_suffix", ["manual", "a", "abc1234", "abc123456", "abc!1234"]
+)
+def test_retained_stage_recovery_rejects_non_mkstemp_alias_names(
+    tmp_path: Path,
+    foreign_suffix: str,
+) -> None:
+    """A loosely matching temporary-looking user alias is not recovery state."""
+    destination = tmp_path / "checkpoint"
+    alias = tmp_path / f".{destination.name}.{foreign_suffix}.tmp"
+    payload = b"durable-generation"
+    _ = destination.write_bytes(payload)
+    os.link(destination, alias)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    with pytest.raises(ERROR, match="external hard link"):
+        _ = writer(destination, payload, platform=os.name)
+    assert destination.stat().st_nlink > 1
+    assert alias.read_bytes() == payload
+    assert destination.stat().st_ino == alias.stat().st_ino
 
 
 @pytest.mark.skipif(

@@ -152,7 +152,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   or concurrently rewritten alias without publication, then re-admitted before
   durable generation reuse so retry after cleanup failure remains recoverable;
   staging-alias scans escape glob metacharacters in literal output names,
-  with POSIX rejection and positive recovery tests for `?`, `*`, and `[` names;
+  with POSIX rejection and positive recovery tests for `?`, `*`, and `[` names,
+  and rejects arbitrary temporary-looking aliases lacking the pinned Python
+  3.14 eight-character candidate-token spelling (not provenance authentication);
   immutable checkpoint/partial readers now also require single-link regular
   pathname identity before and after the bounded read, rejecting foreign
   aliases attached initially or after content collection and same-byte inode

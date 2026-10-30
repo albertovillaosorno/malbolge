@@ -2496,6 +2496,8 @@ def _admit_collided_immutable_inode(destination: Path) -> os.stat_result:
 
 
 _RETAINED_STAGING_LINK_COUNT = 2
+# Python 3.14's mkstemp candidate alphabet is not arbitrary glob text.
+_RETAINED_STAGING_TOKEN = re.compile(r"[a-z0-9_]{8}")
 
 
 def _find_retained_immutable_stage(
@@ -2508,8 +2510,12 @@ def _find_retained_immutable_stage(
 
     """
     matches: list[Path] = []
-    literal_prefix = escape_glob(f".{destination.name}.")
+    raw_prefix = f".{destination.name}."
+    literal_prefix = escape_glob(raw_prefix)
     for candidate in destination.parent.glob(f"{literal_prefix}*.tmp"):
+        token = candidate.name.removeprefix(raw_prefix).removesuffix(".tmp")
+        if _RETAINED_STAGING_TOKEN.fullmatch(token) is None:
+            continue
         try:
             observed = candidate.stat(follow_symlinks=False)
         except OSError, ValueError, RuntimeError:

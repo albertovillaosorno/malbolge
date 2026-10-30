@@ -837,8 +837,13 @@ these selectors once a product C-to-Malbolge pipeline exists.
   foreign alias without that narrow recovery path remains rejected. Recovery
   scans escape the destination's literal filename before applying the suffix
   wildcard: `?`, `*`, and `[` in a valid POSIX filename cannot match unrelated
-  siblings and cause their hard links to be removed. Legitimate retained
-  aliases for these literal filenames remain recoverable.
+  siblings and cause their hard links to be removed. Furthermore, recovery
+  accepts only the eight-character lowercase/digit/underscore temporary token
+  format emitted by the pinned Python 3.14 `mkstemp`, not arbitrary
+  temporary-looking suffixes. Legitimate retained aliases for these literal
+  filenames remain recoverable. The token is only an accidental-match guard,
+  not proof that a same-pattern entry was created by this writer; an adversary
+  with directory-write access and the expected spelling can still forge it.
   If the destination disappears or becomes unreadable during the collision
   check, publication fails with the stable sidecar error rather than leaking
   a raw filesystem exception. These checks remain subject to post-admission
