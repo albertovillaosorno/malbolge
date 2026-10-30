@@ -5684,6 +5684,190 @@ def test_progress_temporary_substitution_fails_before_publication(
     assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
 
 
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+def test_same_size_staged_progress_mutation_fails_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A changed staged payload must not publish merely because size matches."""
+    original_write = cast(
+        "Callable[[int, bytes], None]",
+        vars(progress)["_write_payload_descriptor"],
+    )
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+
+    def mutate_staged_bytes(descriptor: int, payload: bytes) -> None:
+        original_write(descriptor, payload)
+        staged = tuple(destination.parent.glob(f".{destination.name}.*.tmp"))
+        assert len(staged) == 1
+        corrupted = bytes([payload[0] ^ 1]) + payload[1:]
+        assert len(corrupted) == len(payload)
+        _ = staged[0].write_bytes(corrupted)
+
+    def publish() -> Path:
+        if kind == TEMP_MUTABLE:
+            return progress.write_atomic(sidecar)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        return writer(destination, b"expected-checkpoint", platform=os.name)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_write_payload_descriptor", mutate_staged_bytes
+        )
+        with pytest.raises(ERROR, match=r"temporary.*(content|bytes)"):
+            _ = publish()
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_progress_temporary_hash_reads_in_bounded_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifying a larger opaque checkpoint never requests huge raw reads."""
+    payload = bytes(range(256)) * 1_025
+    destination = tmp_path / "checkpoint.bin"
+    requested: list[int] = []
+    original_read = os.read
+
+    def tracked_read(descriptor: int, size: int) -> bytes:
+        if os.fstat(descriptor).st_size == len(payload):
+            requested.append(size)
+        return original_read(descriptor, size)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "read", tracked_read)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        assert writer(destination, payload, platform=os.name) == destination
+        assert destination.read_bytes() == payload
+    minimum_reads = len(payload) // RAW_READ_CHUNK_BYTES + 1
+    assert len(requested) >= minimum_reads
+    assert requested[-1] == 1
+    assert all(1 <= size <= RAW_READ_CHUNK_BYTES for size in requested)
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+def test_progress_temporary_rejects_incomplete_staged_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A short staging verification is not an accepted publication."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    original_read = os.read
+    failed = False
+
+    def premature_eof(descriptor: int, size: int) -> bytes:
+        nonlocal failed
+        if not failed and size > 1:
+            failed = True
+            return b""
+        return original_read(descriptor, size)
+
+    def publish() -> Path:
+        if kind == TEMP_MUTABLE:
+            return progress.write_atomic(sidecar)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        return writer(destination, b"expected-checkpoint", platform=os.name)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "read", premature_eof)
+        with pytest.raises(ERROR, match="incomplete staged bytes"):
+            _ = publish()
+    assert failed
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+TEMP_OVERLONG_READ = "overlong"
+TEMP_WRONG_READ_TYPE = "wrong-type"
+TEMP_READ_ERROR = "os-error"
+
+
+@pytest.mark.parametrize(
+    "fault", [TEMP_OVERLONG_READ, TEMP_WRONG_READ_TYPE, TEMP_READ_ERROR]
+)
+def test_progress_staged_reader_fault_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    """An untrusted staged read must not publish malformed or partial bytes."""
+    destination = tmp_path / "checkpoint.bin"
+    payload = b"expected-checkpoint"
+    original_read = os.read
+    injected = False
+
+    def malformed_read(descriptor: int, size: int) -> bytes:
+        nonlocal injected
+        if not injected and size > 1:
+            injected = True
+            if fault == TEMP_OVERLONG_READ:
+                return b"X" * (size + 1)
+            if fault == TEMP_WRONG_READ_TYPE:
+                return cast("bytes", cast("object", "foreign-text"))
+            message = "injected staged reader failure"
+            raise OSError(message)
+        return original_read(descriptor, size)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "read", malformed_read)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        with pytest.raises(ERROR, match="progress temporary"):
+            _ = writer(destination, payload, platform=os.name)
+    assert injected
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_same_size_progress_mutation_keeps_prior_durable_pointer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A corrupted second staging write cannot overwrite valid progress."""
+    previous = _sidecar(tmp_path)
+    destination = progress.write_atomic(previous)
+    candidate = replace(
+        previous,
+        active_elapsed_ns=previous.active_elapsed_ns + 1,
+        wall_elapsed_ns=previous.wall_elapsed_ns + 1,
+        units_completed=previous.units_completed + 1,
+        updated_at="2026-08-06T14:00:02Z",
+    )
+    original_write = cast(
+        "Callable[[int, bytes], None]",
+        vars(progress)["_write_payload_descriptor"],
+    )
+
+    def rewrite_staged_payload(descriptor: int, payload: bytes) -> None:
+        original_write(descriptor, payload)
+        stages = tuple(destination.parent.glob(f".{destination.name}.*.tmp"))
+        assert len(stages) == 1
+        overwritten = b"X" + payload[1:]
+        assert len(overwritten) == len(payload)
+        _ = stages[0].write_bytes(overwritten)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_write_payload_descriptor", rewrite_staged_payload
+        )
+        with pytest.raises(ERROR, match="progress temporary content"):
+            _ = progress.write_atomic(candidate)
+    assert progress.read(destination) == previous
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
 def _inject_temporary_descriptor_admission_failure(
     context: pytest.MonkeyPatch,
     staged_descriptors: list[int],

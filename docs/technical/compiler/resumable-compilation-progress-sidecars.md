@@ -165,15 +165,24 @@ Mutable and immutable writers now capture the device and inode of the fresh
 `mkstemp` descriptor before transferring it to the payload stream. After file
 sync and stream close, and before pointer replacement or immutable linking,
 they require the temporary pathname to remain a regular, unlinked entry with
-the same device, inode, and exact expected byte length. Substituting a regular
-file, substituting a symlink, or truncating the original inode fails before
-publication in both paths. Temporary cleanup still runs on rejection.
+the same device, inode, and exact expected byte length. Both writers now
+reopen that temporary through a nonfollowing, nonblocking descriptor, check the
+stable pathname/inode and modification timestamps, and independently SHA-256
+compare the complete staged bytes against the original payload using raw reads
+capped at 64 KiB each. This catches a same-inode, same-length rewrite that
+previously passed inode/size admission, while keeping opaque checkpoint size
+unbounded and peak *additional* verification buffering independent of payload
+length. A short read or a changed inode/time also rejects. Substituting a
+regular file, a symlink, or truncating the original inode still fails before
+publication in both paths. Temporary cleanup runs on rejection.
 
 If descriptor identity admission fails before ownership transfer, the raw
 descriptor is closed with cleanup exceptions kept secondary to the primary
 error. The temporary checks constrain the observed prepublication window;
 they do not claim an atomic filesystem snapshot or protection against
-same-length in-place rewriting after the check.
+concurrent rewriting after the final comparison (a pathname race remains).
+This check incurs an additional full staged-file read and hashing pass per
+publication, and does not by itself authenticate the original caller payload.
 
 The persistent writer-lock file also receives regular-descriptor admission and
 nonblocking/no-follow opens where available. Its lock-path recheck after

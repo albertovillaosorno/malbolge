@@ -129,6 +129,14 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   length admission before replace or no-replace linking; real regular-file,
   symlink, and same-inode length substitutions reject both publisher routes,
   while descriptor admission failure closes its raw fd before stream transfer,
+  additional staged-byte SHA-256 verification on both mutable and immutable
+  publications now rejects same-inode, same-size content substitutions before
+  linking/replacement, using at most 64 KiB raw read requests, stable
+  descriptor/path and pre/post timestamp admission, incomplete/overlong read
+  rejection, and primary-error-preserving descriptor cleanup without bounding
+  the opaque checkpoint size; tests cover both forged staging routes, large
+  read chunking and injected premature EOF; post-check races remain out of
+  scope,
   stable read with read-before-close
   failure precedence plus writer-lock lifecycle,
   pre-publication filesystem failures, exact committed-path evidence for

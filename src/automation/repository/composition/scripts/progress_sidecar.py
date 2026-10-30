@@ -2216,21 +2216,148 @@ def _temporary_descriptor_identity(descriptor: int) -> tuple[int, int]:
     return opened.st_dev, opened.st_ino
 
 
-def _verify_written_temporary(
-    temporary: Path, identity: tuple[int, int], expected_size: int
+def _admit_temporary_inode(
+    observed: os.stat_result, identity: tuple[int, int], expected_size: int
 ) -> None:
-    """Reject a substituted staging inode before rename or no-replace link."""
+    """Require the same regular staging inode with its expected byte count."""
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or (observed.st_dev, observed.st_ino) != identity
+        or observed.st_size != expected_size
+    ):
+        _fail("progress temporary inode or size changed during staging")
+
+
+def _read_staged_chunk(descriptor: int, requested: int) -> bytes:
+    """Reject malformed raw reads, including simulated unsupported streams.
+
+    Returns:
+        One valid bounded read chunk.
+
+    """
+    chunk = os.read(descriptor, requested)
+    if type(chunk) is not bytes or len(chunk) > requested:
+        _fail("progress temporary returned invalid read bytes")
+    return chunk
+
+
+def _staged_digest(descriptor: int, expected_size: int) -> bytes:
+    """Hash bounded staged bytes, rejecting missing or extra file content.
+
+    Returns:
+        SHA-256 digest of exactly the declared number of bytes.
+
+    """
+    digest = sha256()
+    remaining = expected_size
+    while remaining:
+        chunk = _read_staged_chunk(
+            descriptor, min(remaining, _RAW_READ_CHUNK_BYTES)
+        )
+        if not chunk:
+            _fail("progress temporary has incomplete staged bytes")
+        digest.update(chunk)
+        remaining -= len(chunk)
+    if _read_staged_chunk(descriptor, 1):
+        _fail("progress temporary size changed during staging")
+    return digest.digest()
+
+
+def _verify_staged_content(
+    temporary: Path,
+    descriptor: int,
+    identity: tuple[int, int],
+    *,
+    payload: bytes,
+) -> None:
+    """Bind staged bytes and stable file identity to the original payload."""
+    _verify_opened_read_identity(temporary, descriptor, "progress temporary")
+    initial = os.fstat(descriptor)
+    _admit_temporary_inode(initial, identity, len(payload))
+    staged_digest = _staged_digest(descriptor, len(payload))
+    _verify_opened_read_identity(
+        temporary, descriptor, "progress temporary", phase="content check"
+    )
+    final = os.fstat(descriptor)
+    if (
+        final.st_size != initial.st_size
+        or final.st_mtime_ns != initial.st_mtime_ns
+        or final.st_ctime_ns != initial.st_ctime_ns
+    ):
+        _fail("progress temporary contents changed during verification")
+    if staged_digest != sha256(payload).digest():
+        _fail("progress temporary content does not match staged bytes")
+
+
+def _close_staged_reader(descriptor: int) -> None:
+    """Preserve the earlier staged-read error over descriptor-close failure."""
+    primary_error = sys.exception()
+    try:
+        os.close(descriptor)
+    except (OSError, ValueError, RuntimeError) as error:
+        if primary_error is not None:
+            primary_error.add_note(
+                f"progress temporary descriptor close also failed: {error}"
+            )
+        else:
+            _fail_with_source(
+                f"progress temporary descriptor close failed: {error}", error
+            )
+
+
+def _open_staged_reader(temporary: Path) -> int:
+    """Open a nonfollowing, nonblocking reader for staged content.
+
+    Returns:
+        File descriptor owned by the verifying caller.
+
+    """
+    flags = os.O_RDONLY
+    flags |= cast("int", getattr(os, "O_NONBLOCK", 0))
+    flags |= cast("int", getattr(os, "O_NOFOLLOW", 0))
+    flags |= cast("int", getattr(os, "O_BINARY", 0))
+    try:
+        return os.open(temporary, flags)
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail_with_source(
+            f"progress temporary cannot be verified: {error}", error
+        )
+
+
+def _verify_written_temporary(
+    temporary: Path, identity: tuple[int, int], payload: bytes
+) -> None:
+    """Recheck the staged pathname and all bytes before publication.
+
+    A same-inode, same-length overwrite evades inode/size-only admission.
+    Opaque checkpoint size remains unbounded; verification reads are 64 KiB.
+
+    Raises:
+        ProgressSidecarError: If the staging inode or contents are invalid.
+
+    """
     _reject_path_redirect(temporary, "progress temporary")
     try:
         current = temporary.stat(follow_symlinks=False)
     except (OSError, ValueError, RuntimeError) as error:
-        _fail(f"progress temporary identity cannot be verified: {error}")
-    if (
-        not stat.S_ISREG(current.st_mode)
-        or (current.st_dev, current.st_ino) != identity
-        or current.st_size != expected_size
-    ):
-        _fail("progress temporary inode or size changed during staging")
+        _fail_with_source(
+            f"progress temporary identity cannot be verified: {error}", error
+        )
+    _admit_temporary_inode(current, identity, len(payload))
+    descriptor = _open_staged_reader(temporary)
+    try:
+        try:
+            _verify_staged_content(
+                temporary, descriptor, identity, payload=payload
+            )
+        except ProgressSidecarError:
+            raise
+        except _READ_STREAM_ERRORS as error:
+            _fail_with_source(
+                f"progress temporary verification failed: {error}", error
+            )
+    finally:
+        _close_staged_reader(descriptor)
     _reject_path_redirect(temporary, "progress temporary")
 
 
@@ -2253,7 +2380,7 @@ def _write_atomic_bytes(
         temporary_identity = _temporary_descriptor_identity(descriptor)
         _write_payload_descriptor(descriptor, payload)
         _reject_path_redirect(destination, "progress sidecar")
-        _verify_written_temporary(temporary, temporary_identity, len(payload))
+        _verify_written_temporary(temporary, temporary_identity, payload)
         if held_lock is not None:
             _verify_acquired_writer_lock(
                 _writer_lock_path(destination), held_lock
@@ -2412,7 +2539,7 @@ def _write_immutable(
         temporary_identity = _temporary_descriptor_identity(descriptor)
         _write_payload_descriptor(descriptor, payload)
         _reject_path_redirect(destination, "immutable progress payload")
-        _verify_written_temporary(temporary, temporary_identity, len(payload))
+        _verify_written_temporary(temporary, temporary_identity, payload)
         _publish_immutable_payload(
             temporary,
             destination,
