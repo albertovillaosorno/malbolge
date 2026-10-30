@@ -820,9 +820,12 @@ these selectors once a product C-to-Malbolge pipeline exists.
   One narrow recovery case preserves post-commit cleanup failure semantics: if
   the collision has exactly two links, and the extra link is the sole
   same-inode sibling matching the writer's temporary naming convention, the
-  retry unlinks that leftover temporary entry, then rechecks single-link
-  identity before reusing the byte-identical durable checkpoint. A foreign
-  alias without that safe cleanup path remains rejected.
+  retry first validates the collided bytes through a bounded, stable-inode
+  read against the proposed generation. It then rechecks the collided inode,
+  link count, timestamps, and alias identity before unlinking that staging
+  entry and rechecking single-link identity. A mismatched, oversized, or
+  concurrently rewritten collision leaves the suspected alias untouched; a
+  foreign alias without that narrow recovery path remains rejected.
   If the destination disappears or becomes unreadable during the collision
   check, publication fails with the stable sidecar error rather than leaking
   a raw filesystem exception. These checks remain subject to post-admission

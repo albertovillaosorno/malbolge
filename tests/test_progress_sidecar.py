@@ -5564,6 +5564,86 @@ def test_immutable_collision_rejects_foreign_hardlink_alias(
     os.name == progress.WINDOWS_PLATFORM,
     reason="Hard-link collision requires POSIX filesystem semantics",
 )
+def test_immutable_collision_mismatched_payload_preserves_retained_alias(
+    tmp_path: Path,
+) -> None:
+    """A mismatched collision must not unlink an unproven temp-like alias."""
+    destination = tmp_path / "existing-checkpoint"
+    alias = tmp_path / f".{destination.name}.foreign.tmp"
+    original = b"unrelated-checkpoint"
+    _ = destination.write_bytes(original)
+    os.link(destination, alias)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    with pytest.raises(ERROR, match="already differs"):
+        _ = writer(destination, b"requested-checkpoint", platform=os.name)
+    assert destination.read_bytes() == original
+    assert alias.read_bytes() == original
+    assert destination.stat().st_ino == alias.stat().st_ino
+    assert destination.stat().st_nlink > 1
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link collision requires POSIX filesystem semantics",
+)
+def test_immutable_collision_large_mismatch_preserves_retained_alias(
+    tmp_path: Path,
+) -> None:
+    """Oversized collided bytes cannot trigger retained-alias deletion."""
+    destination = tmp_path / "existing-checkpoint"
+    alias = tmp_path / f".{destination.name}.not-ours.tmp"
+    original = b"longer-than-proposed-checkpoint"
+    _ = destination.write_bytes(original)
+    os.link(destination, alias)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    with pytest.raises(ERROR, match="exceeds maximum byte length"):
+        _ = writer(destination, b"small", platform=os.name)
+    assert destination.read_bytes() == original
+    assert alias.read_bytes() == original
+    assert destination.stat().st_ino == alias.stat().st_ino
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link collision requires POSIX filesystem semantics",
+)
+def test_retained_alias_change_after_content_check_preserved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concurrent change after comparison must not unlink the alias."""
+    destination = tmp_path / "existing-checkpoint"
+    alias = tmp_path / f".{destination.name}.retained.tmp"
+    original = b"original-checkpoint"
+    mutated = b"modified-checkpoint"
+    assert len(original) == len(mutated)
+    _ = destination.write_bytes(original)
+    os.link(destination, alias)
+    read_bytes = cast(
+        "Callable[..., bytes]", vars(progress)["_read_regular_bytes"]
+    )
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+
+    def mutate_after_read(
+        path: Path, context: str, *, max_bytes: int | None = None
+    ) -> bytes:
+        received = read_bytes(path, context, max_bytes=max_bytes)
+        _ = path.write_bytes(mutated)
+        return received
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_read_regular_bytes", mutate_after_read)
+        with pytest.raises(ERROR, match="collision inode changed"):
+            _ = writer(destination, original, platform=os.name)
+    assert destination.read_bytes() == mutated
+    assert alias.read_bytes() == mutated
+    assert destination.stat().st_ino == alias.stat().st_ino
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link collision requires POSIX filesystem semantics",
+)
 def test_immutable_collision_rejects_new_alias_during_read(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

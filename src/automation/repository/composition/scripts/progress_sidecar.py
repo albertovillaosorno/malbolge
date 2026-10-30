@@ -2521,8 +2521,33 @@ def _find_retained_immutable_stage(
     return matches[0] if len(matches) == 1 else None
 
 
-def _repair_retained_immutable_stage(destination: Path) -> None:
-    """Remove a single staging-pattern alias before collision admission."""
+def _verify_retained_immutable_alias(
+    destination: Path, alias: Path, previous: os.stat_result
+) -> None:
+    """Require unchanged collision and alias identity after payload read."""
+    current = destination.stat(follow_symlinks=False)
+    if (
+        current.st_dev,
+        current.st_ino,
+        current.st_nlink,
+        current.st_ctime_ns,
+        current.st_mtime_ns,
+    ) != (
+        previous.st_dev,
+        previous.st_ino,
+        previous.st_nlink,
+        previous.st_ctime_ns,
+        previous.st_mtime_ns,
+    ):
+        _fail("immutable progress payload collision inode changed")
+    _reject_path_redirect(alias, "immutable progress temporary")
+    linked = alias.stat(follow_symlinks=False)
+    if (linked.st_dev, linked.st_ino) != (previous.st_dev, previous.st_ino):
+        _fail("immutable progress temporary changed before recovery cleanup")
+
+
+def _repair_retained_immutable_stage(destination: Path, payload: bytes) -> None:
+    """Clean a matching staging alias only after its bytes are admitted."""
     observed = destination.stat(follow_symlinks=False)
     if (
         not stat.S_ISREG(observed.st_mode)
@@ -2534,13 +2559,19 @@ def _repair_retained_immutable_stage(destination: Path) -> None:
     )
     if alias is None:
         return
-    _reject_path_redirect(alias, "immutable progress temporary")
+    existing = _read_regular_bytes(
+        destination, "immutable progress payload", max_bytes=len(payload)
+    )
+    if existing != payload:
+        _fail(f"immutable progress payload already differs: {destination}")
+    # A different candidate or a changed collision must not lose the alias.
+    _verify_retained_immutable_alias(destination, alias, observed)
     alias.unlink()
 
 
 def _admit_existing_immutable(destination: Path, payload: bytes) -> None:
     try:
-        _repair_retained_immutable_stage(destination)
+        _repair_retained_immutable_stage(destination, payload)
         initial = _admit_collided_immutable_inode(destination)
         existing = _read_regular_bytes(
             destination,
