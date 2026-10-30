@@ -222,9 +222,17 @@ def _commit() -> str:
         git = shutil.which("git", path=os.defpath)
         if git is None:
             _fail("target echo reference requires Git")
+        # Source revision must belong to this checkout, not an ambient Git dir.
+        clean_env = {
+            name: value
+            for name, value in os.environ.items()
+            if not name.startswith("GIT_")
+        }
         output = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [git, "rev-parse", "HEAD"],
             cwd=_ROOT,
+            stdin=sp.DEVNULL,
+            env=clean_env,
             capture_output=True,
             check=True,
             timeout=5,

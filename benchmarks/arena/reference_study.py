@@ -93,10 +93,16 @@ def _commit() -> str:
     executable = shutil.which("git", path=os.defpath)
     if executable is None:
         _fail("host-C reference study requires Git")
+    # Caller Git selectors cannot redirect a source provenance lookup.
+    clean_env = {
+        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
+    }
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [executable, "rev-parse", "HEAD"],
             cwd=_ROOT,
+            stdin=sp.DEVNULL,
+            env=clean_env,
             shell=False,
             check=True,
             capture_output=True,

@@ -653,8 +653,10 @@ actual **commit** object. It rejects missing, foreign-type or unavailable
 objects without changing the default offline audit. This confirms only that
 the recorded Git object exists locally; it does not authenticate historical
 execution, prove the worktree was clean, or verify a cryptographic signature.
-The lookup clears inherited `GIT_*` environment overrides so ambient object
-or repository selectors cannot substitute another local Git database.
+Both source-revision producers and the opt-in object lookup clear inherited
+`GIT_*` environment overrides, so ambient repository and object-store
+selectors cannot substitute another Git database. The system-path Git
+binary is required; this is local provenance, not source attestation.
 Both opt-in switches may be combined on the same command.
 
 The exact executable hashes and Git revision are recorded as **claimed
@@ -779,6 +781,9 @@ as a Git **commit** object in the selected local repository. This is opt-in
 because shallow clones and archived studies might not retain the object.
 An existing object proves neither that the benchmark executed those exact
 sources nor that its host/toolchain or measurements were authenticated.
+The host-C source producer and optional audit use the system-path Git
+executable and strip inherited `GIT_*` repository/object-store overrides
+before consulting the selected checkout.
 
 The audit now also requires each recorded run's method class, implementation,
 configuration, output root, and accelerator declaration to match the fixed

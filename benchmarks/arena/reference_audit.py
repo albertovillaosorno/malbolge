@@ -320,10 +320,16 @@ def _require_git_commit(commit: str) -> None:
     executable = shutil.which("git", path=os.defpath)
     if executable is None:
         _fail("host-C source commit admission requires local Git")
+    # Foreign GIT_DIR and object alternates cannot satisfy local admission.
+    clean_env = {
+        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
+    }
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [executable, "cat-file", "-t", commit],
             cwd=_ROOT,
+            stdin=sp.DEVNULL,
+            env=clean_env,
             check=False,
             shell=False,
             capture_output=True,

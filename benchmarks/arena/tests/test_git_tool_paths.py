@@ -107,3 +107,98 @@ def test_audits_refuse_fake_git_commit_object(poisoned_git_path: None) -> None:
     actual = reference_study._commit()
     reference_audit._require_git_commit(actual)
     target_echo_audit._require_git_commit(actual)
+
+
+@pytest.fixture
+def foreign_git_commit(tmp_path: Path) -> tuple[Path, str]:
+    """Create an unrelated valid commit in a test-local Git object database.
+
+    Returns:
+        Its Git directory and SHA-1 commit identity.
+
+    """
+    git = shutil.which("git", path=os.defpath)
+    assert git is not None
+    foreign = tmp_path / "unrelated-repository"
+    sp.run(
+        [git, "-c", "init.defaultBranch=main", "init", "-q", str(foreign)],
+        check=True,
+        capture_output=True,
+        timeout=5,
+    )
+    sp.run(
+        [
+            git,
+            "-C",
+            str(foreign),
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.name=Arena Test",
+            "-c",
+            "user.email=arena-test@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "unrelated commit",
+        ],
+        check=True,
+        capture_output=True,
+        timeout=5,
+    )
+    commit = sp.run(
+        [git, "-C", str(foreign), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    ).stdout.strip()
+    assert len(commit) == 40
+    return foreign / ".git", commit
+
+
+@pytest.mark.skipif(
+    shutil.which("git", path=os.defpath) is None,
+    reason="requires a system-path Git executable",
+)
+def test_producers_ignore_ambient_git_directory(
+    foreign_git_commit: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Git revision provenance must not switch to the caller's foreign repo."""
+    git_dir, foreign = foreign_git_commit
+    git = shutil.which("git", path=os.defpath)
+    assert git is not None
+    expected = sp.run(
+        [git, "rev-parse", "HEAD"],
+        cwd=reference_study._ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    ).stdout.strip()
+    assert foreign != expected
+    monkeypatch.setenv("GIT_DIR", str(git_dir))
+    monkeypatch.setenv("GIT_WORK_TREE", str(git_dir.parent))
+    assert reference_study._commit() == expected
+    assert target_echo_reference._commit() == expected
+
+
+@pytest.mark.parametrize("selector", ["GIT_DIR", "GIT_ALTERNATE_OBJECT_DIRECTORIES"])
+@pytest.mark.skipif(
+    shutil.which("git", path=os.defpath) is None,
+    reason="requires a system-path Git executable",
+)
+def test_audits_refuse_ambient_foreign_git_objects(
+    foreign_git_commit: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    selector: str,
+) -> None:
+    """Repository and object-store selectors cannot forge local presence."""
+    git_dir, foreign = foreign_git_commit
+    source = git_dir if selector == "GIT_DIR" else git_dir / "objects"
+    monkeypatch.setenv(selector, str(source))
+    with pytest.raises(reference_audit.ReferenceAuditError, match="not a local Git"):
+        reference_audit._require_git_commit(foreign)
+    with pytest.raises(target_echo_audit.TargetEchoAuditError, match="not a local Git"):
+        target_echo_audit._require_git_commit(foreign)
