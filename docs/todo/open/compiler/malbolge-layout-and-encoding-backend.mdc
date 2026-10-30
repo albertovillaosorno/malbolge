@@ -203,6 +203,17 @@ emission.
   regular symlinked canonical typed input still publishes executable
   source. The opened handle remains independently bounded and rechecked;
   this is not an atomic claim under adversarial path replacement races.
+- The verified artifact emitter now also takes bounded canonical MCTI or
+  MCTR bytes through explicit `--typed-stdin` / `--ternary-stdin` modes,
+  including opt-in `--latest-byte-trace`. Zero path operands and EOF are
+  required; the read caps at one MiB plus one overflow byte before canonical
+  admission. The stdin and regular-file paths converge on the same typed
+  projection, independent MCTR source re-encoding, normative VM two-pattern
+  preflight and atomic no-clobber raw/capsule publisher. Real-process tests
+  compare both wire types and effect modes byte-for-byte against file input,
+  including actual guest output, and reject empty/oversize/forged mode and
+  occupied targets. This is only a finite compiler-input stream, not
+  arbitrary C streaming or guest EOF/runtime realization.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

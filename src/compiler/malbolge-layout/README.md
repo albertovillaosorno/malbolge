@@ -256,6 +256,40 @@ bounded watchdog, then checks that a regular typed-file symlink executes
 unchanged guest byte I/O. This is a pre-open reliability guard, not a claim
 of race-free admission if another process swaps the path between checks.
 
+### Bounded canonical wire streaming on standard input
+
+Canonical MCTI and MCTR can also be supplied directly from a producer process
+without a caller-managed intermediate file:
+
+```sh
+cat .temp/echo.mcti | cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 --output .temp/streamed.malbolge \
+  --capsule -- --typed-stdin
+cat .temp/latest-read.mctr | cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 --output .temp/trace.malbolge \
+  --capsule -- --latest-byte-trace --ternary-stdin
+```
+
+`--typed-stdin` and `--ternary-stdin` are **explicit**, mutually exclusive
+source modes, each requiring zero path operands. Both accept a nonempty
+canonical binary wire of at most **1,048,576 bytes**, read through the input
+stream until EOF or the first overflow byte. Empty/truncated/noncanonical,
+wrong-profile, unsupported SSA/effect flow and oversized streams refuse
+publication. The default modes remain strict adjacent echoes; opt into the
+latest-read subset only with `--latest-byte-trace` directly before the stdin
+mode. These are compiler-input pipes, **not** executable guest byte stdin
+(`malbolge --input-stdin` is a separate runtime action). Neither new mode
+makes raw C source or a C ABI executable.
+
+The publisher reuses the exact independently re-decoded MCTR source, normative
+VM termination and two successful-byte trace checks, optional profile capsule
+and atomic no-clobber output stage already used for regular-file inputs.
+Tests compare real subprocess stdin and file outputs byte-for-byte across
+MCTI/MCTR strict and latest-read examples; error cases do not create or
+overwrite the final file. A writer must eventually close its pipe: an
+unclosed stdin stream can legitimately wait for its upstream producer, unlike
+the forbidden implicit opening of FIFO paths in the regular-file modes.
+
 `--ternary-file` is mutually exclusive with individual decoded machine-op
 tokens. Its sole operand must be an existing, nonempty regular file with at
 most 1,048,576 bytes. The complete MCTR version-one stream is independently

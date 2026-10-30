@@ -62,6 +62,8 @@ const MAX_CANONICAL_WIRE_BYTES: u64 = 1_048_576;
 const TERNARY_FILE_ARG: &str = "--ternary-file";
 const LATEST_BYTE_TRACE_ARG: &str = "--latest-byte-trace";
 const TYPED_FILE_ARG: &str = "--typed-file";
+const TYPED_STDIN_ARG: &str = "--typed-stdin";
+const TERNARY_STDIN_ARG: &str = "--ternary-stdin";
 const AUTO_LAYOUT_ARG: &str = "--auto-layout";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 
@@ -69,7 +71,9 @@ const MALBOLGE_EXTENSION: &str = "malbolge";
 enum SourceSpec {
     AutoLayout(Vec<PaddedForwardStep>),
     CanonicalTernaryFile { path: PathBuf, mode: ByteTraceMode },
+    CanonicalTernaryStdin { mode: ByteTraceMode },
     CanonicalTypedFile { path: PathBuf, mode: ByteTraceMode },
+    CanonicalTypedStdin { mode: ByteTraceMode },
     MachineOperations(Vec<LinearOpcode>),
 }
 
@@ -159,31 +163,37 @@ fn parse_auto_layout(arguments: &mut impl Iterator<Item = OsString>) -> Result<S
     Ok(SourceSpec::AutoLayout(operations))
 }
 
-fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<SourceSpec, String> {
-    let first = arguments
-        .next()
-        .ok_or("missing machine operations or canonical wire argument")?;
-    let source = if first == OsStr::new(AUTO_LAYOUT_ARG) {
-        return parse_auto_layout(arguments);
-    } else if first == OsStr::new(TERNARY_FILE_ARG)
-        || first == OsStr::new(TYPED_FILE_ARG)
-        || first == OsStr::new(LATEST_BYTE_TRACE_ARG)
-    {
-        let (kind, mode) = if first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
-            (
-                arguments
-                    .next()
-                    .ok_or("missing --ternary-file or --typed-file mode")?,
-                ByteTraceMode::LatestRead,
-            )
-        } else {
-            (first, ByteTraceMode::AdjacentEcho)
-        };
-        if kind != OsStr::new(TERNARY_FILE_ARG) && kind != OsStr::new(TYPED_FILE_ARG) {
-            return Err(String::from(
-                "--latest-byte-trace requires --ternary-file or --typed-file <path>",
-            ));
+fn parse_canonical_source(
+    first: OsString,
+    arguments: &mut impl Iterator<Item = OsString>,
+) -> Result<SourceSpec, String> {
+    let (kind, mode) = if first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
+        (
+            arguments
+                .next()
+                .ok_or("missing canonical wire input mode")?,
+            ByteTraceMode::LatestRead,
+        )
+    } else {
+        (first, ByteTraceMode::AdjacentEcho)
+    };
+    let uses_file = kind == OsStr::new(TERNARY_FILE_ARG) || kind == OsStr::new(TYPED_FILE_ARG);
+    let uses_stdin = kind == OsStr::new(TERNARY_STDIN_ARG) || kind == OsStr::new(TYPED_STDIN_ARG);
+    if !uses_file && !uses_stdin {
+        return Err(String::from(
+            "--latest-byte-trace requires --ternary-file, --typed-file, --ternary-stdin or --typed-stdin",
+        ));
+    }
+    let source = if uses_stdin {
+        if arguments.next().is_some() {
+            return Err(String::from("canonical stdin mode accepts no input path"));
         }
+        if kind == OsStr::new(TERNARY_STDIN_ARG) {
+            SourceSpec::CanonicalTernaryStdin { mode }
+        } else {
+            SourceSpec::CanonicalTypedStdin { mode }
+        }
+    } else {
         let path = PathBuf::from(arguments.next().ok_or("missing canonical wire path")?);
         if arguments.next().is_some() {
             return Err(String::from(
@@ -195,6 +205,23 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
         } else {
             SourceSpec::CanonicalTypedFile { path, mode }
         }
+    };
+    Ok(source)
+}
+
+fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<SourceSpec, String> {
+    let first = arguments
+        .next()
+        .ok_or("missing machine operations or canonical wire argument")?;
+    let source = if first == OsStr::new(AUTO_LAYOUT_ARG) {
+        return parse_auto_layout(arguments);
+    } else if first == OsStr::new(TERNARY_FILE_ARG)
+        || first == OsStr::new(TYPED_FILE_ARG)
+        || first == OsStr::new(TERNARY_STDIN_ARG)
+        || first == OsStr::new(TYPED_STDIN_ARG)
+        || first == OsStr::new(LATEST_BYTE_TRACE_ARG)
+    {
+        return parse_canonical_source(first, arguments);
     } else {
         let first_token = first
             .into_string()
@@ -314,6 +341,26 @@ fn read_canonical_wire(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+fn read_canonical_stdin(kind: &str) -> Result<Vec<u8>, String> {
+    // Input must finish (EOF), but memory is bounded even if the writer
+    // supplies an unlimited stream. Never publish until canonical admission.
+    let mut bytes = Vec::new();
+    let _read = io::stdin()
+        .lock()
+        .take(MAX_CANONICAL_WIRE_BYTES.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("cannot read canonical {kind} stdin: {error}"))?;
+    if bytes.is_empty()
+        || u64::try_from(bytes.len()).map_err(|_error| "canonical stdin length overflow")?
+            > MAX_CANONICAL_WIRE_BYTES
+    {
+        return Err(String::from(
+            "canonical stdin must be nonempty and at most 1 MiB",
+        ));
+    }
+    Ok(bytes)
+}
+
 fn verified_ternary_bytes(
     bytes: &[u8],
     mode: ByteTraceMode,
@@ -359,16 +406,15 @@ fn verified_ternary_bytes(
     })
 }
 
-fn verified_typed_source(
-    path: &Path,
+fn verified_typed_bytes(
+    typed_bytes: &[u8],
     mode: ByteTraceMode,
     profile: &'static malbolge::ProfileDescriptor,
 ) -> Result<VerifiedSource, String> {
-    let typed_bytes = read_canonical_wire(path, "typed")?;
     let compiled = match mode {
-        ByteTraceMode::AdjacentEcho => compile_canonical_typed_echo(&typed_bytes, profile),
+        ByteTraceMode::AdjacentEcho => compile_canonical_typed_echo(typed_bytes, profile),
         ByteTraceMode::LatestRead => {
-            compile_canonical_typed_latest_byte_trace(&typed_bytes, profile)
+            compile_canonical_typed_latest_byte_trace(typed_bytes, profile)
         }
     }
     .map_err(|error| format!("canonical typed byte bridge rejected: {error:?}"))?;
@@ -435,7 +481,13 @@ fn verified_source(
             verified_ternary_bytes(&read_canonical_wire(path, "ternary")?, *mode, profile)
         }
         SourceSpec::CanonicalTypedFile { path, mode } => {
-            verified_typed_source(path, *mode, profile)
+            verified_typed_bytes(&read_canonical_wire(path, "typed")?, *mode, profile)
+        }
+        SourceSpec::CanonicalTernaryStdin { mode } => {
+            verified_ternary_bytes(&read_canonical_stdin("ternary")?, *mode, profile)
+        }
+        SourceSpec::CanonicalTypedStdin { mode } => {
+            verified_typed_bytes(&read_canonical_stdin("typed")?, *mode, profile)
         }
     }
 }

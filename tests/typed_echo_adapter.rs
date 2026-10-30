@@ -1486,3 +1486,308 @@ fn canonical_typed_file_retains_regular_symlink_input_compatibility() -> Result<
     }
     Ok(())
 }
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "canonical stdin runner independently selects wire, mode and output framing"
+)]
+fn publish_canonical_stdin(
+    profile: &str,
+    canonical: &[u8],
+    target: &Path,
+    typed: bool,
+    latest: bool,
+    capsule: bool,
+) -> Result<Output, String> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"));
+    let _profile = command
+        .arg("--profile")
+        .arg(profile)
+        .arg("--output")
+        .arg(target);
+    if capsule {
+        let _capsule = command.arg("--capsule");
+    }
+    let _separator = command.arg("--");
+    if latest {
+        let _latest = command.arg("--latest-byte-trace");
+    }
+    let _mode = command.arg(if typed {
+        "--typed-stdin"
+    } else {
+        "--ternary-stdin"
+    });
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("canonical stdin publication spawn: {error}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or("canonical stdin pipe unavailable")?
+        .write_all(canonical)
+        .map_err(|error| format!("canonical stdin feed: {error}"))?;
+    child
+        .wait_with_output()
+        .map_err(|error| format!("canonical stdin publication completion: {error}"))
+}
+
+fn restored_canonical_stdin_source(published: Vec<u8>, capsule: bool) -> Result<Vec<u8>, String> {
+    if !capsule {
+        return Ok(published);
+    }
+    let parsed = malbolge::parse_capsule(&published)
+        .map_err(|error| format!("canonical stdin capsule: {error}"))?
+        .ok_or("canonical stdin capsule marker absent")?;
+    if parsed.profile() != current_profile() {
+        return Err(String::from("canonical stdin capsule profile drift"));
+    }
+    Ok(parsed.payload().to_vec())
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "the real file and stdin publishers must agree in both byte-flow sublanguages"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "integration matrix exercises both IR formats and publication framings"
+)]
+fn canonical_stdin_pub_matches_file_artefacts_in_both_byte_trace_modes() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for (latest, typed_module) in [
+        (false, fixture(2)?),
+        (
+            true,
+            latest_typed_fixture(&[
+                (true, 0),
+                (false, 0),
+                (false, 0),
+                (true, 1),
+                (true, 2),
+                (false, 2),
+            ])?,
+        ),
+    ] {
+        let typed_wire = wire(&typed_module)?;
+        let compiled = if latest {
+            adapter::compile_canonical_typed_latest_byte_trace(&typed_wire, current_profile())
+        } else {
+            compile_canonical_typed_echo(&typed_wire, current_profile())
+        }
+        .map_err(|error| format!("canonical byte-trace lowering: {error:?}"))?;
+        let typed_path = workspace.path(&format!("typed-{latest}.mcti"));
+        let ternary_path = workspace.path(&format!("ternary-{latest}.mctr"));
+        fs::write(&typed_path, &typed_wire).map_err(|error| error.to_string())?;
+        fs::write(&ternary_path, compiled.ternary_bytes()).map_err(|error| error.to_string())?;
+        for typed in [true, false] {
+            let capsule = latest;
+            let kind = if typed { "typed" } else { "ternary" };
+            let published_path = workspace.path(&format!("stdin-{kind}-{latest}.malbolge"));
+            let baseline_path = workspace.path(&format!("file-{kind}-{latest}.malbolge"));
+            let bytes = if typed {
+                &typed_wire
+            } else {
+                compiled.ternary_bytes()
+            };
+            let from_stdin = publish_canonical_stdin(
+                current_profile().id(),
+                bytes,
+                &published_path,
+                typed,
+                latest,
+                capsule,
+            )?;
+            let from_file = if typed {
+                publish_typed_wire(
+                    current_profile().id(),
+                    &typed_path,
+                    &baseline_path,
+                    latest,
+                    capsule,
+                )?
+            } else {
+                publish_ternary_wire(
+                    current_profile().id(),
+                    &ternary_path,
+                    &baseline_path,
+                    latest,
+                    capsule,
+                )?
+            };
+            if !from_stdin.status.success() || !from_file.status.success() {
+                return Err(format!(
+                    "{kind} {latest} stdin/file failure: stdin={from_stdin:?}, file={from_file:?}"
+                ));
+            }
+            let published = fs::read(published_path).map_err(|error| error.to_string())?;
+            let baseline = fs::read(baseline_path).map_err(|error| error.to_string())?;
+            if published != baseline {
+                return Err(format!("{kind} {latest} stdin/file code bytes differ"));
+            }
+            let executable = restored_canonical_stdin_source(published, capsule)?;
+            if executable != compiled.layout().source() {
+                return Err(format!("{kind} {latest} target source drift"));
+            }
+            let mut vm =
+                ProfileMachine::from_source(current_profile(), &executable, vec![0, 255, 128])
+                    .map_err(|error| format!("{kind} real VM load: {error:?}"))?;
+            let expected = if latest {
+                vec![0, 0, 128]
+            } else {
+                vec![0, 255]
+            };
+            let steps = if latest { 7 } else { 5 };
+            if !matches!(vm.run(steps),
+                Ok(RunOutcome::Terminated { steps: executed, .. }) if executed == steps)
+                || vm.output() != expected
+                || vm.input_consumed() != (if latest { 3 } else { 2 })
+            {
+                return Err(format!("{kind} {latest} canonical stdin guest mismatch"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_stdin_modes_reject_missing_bounded_or_corrupt_wire_without_publication()
+-> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let valid = wire(&fixture(1)?)?;
+    let output = workspace.path("rejected.malbolge");
+    for (typed, bytes) in [
+        (true, Vec::new()),
+        (false, Vec::new()),
+        (true, vec![0xff; 1_048_577]),
+        (false, vec![0xff; 1_048_577]),
+        (true, vec![0x4d, 0x43, 0x54, 0x49, 0]),
+        (false, valid.clone()),
+    ] {
+        let result =
+            publish_canonical_stdin(current_profile().id(), &bytes, &output, typed, false, true)?;
+        if result.status.success() || output.exists() {
+            return Err(String::from(
+                "invalid canonical stdin unexpectedly published",
+            ));
+        }
+    }
+    let compiled = compile_canonical_typed_echo(&valid, current_profile())
+        .map_err(|error| format!("negative-test MCTR fixture: {error:?}"))?;
+    for (typed, wire) in [
+        (true, valid.clone()),
+        (false, compiled.ternary_bytes().to_vec()),
+    ] {
+        let rejected = publish_canonical_stdin(
+            historical_profile().id(),
+            &wire,
+            &output,
+            typed,
+            false,
+            true,
+        )?;
+        if rejected.status.success() || output.exists() {
+            return Err(String::from(
+                "canonical stdin accepted source-profile drift",
+            ));
+        }
+    }
+    let stale = wire(&latest_typed_fixture(&[(true, 0), (true, 1), (false, 0)])?)?;
+    let unsupported =
+        publish_canonical_stdin(current_profile().id(), &stale, &output, true, true, false)?;
+    if unsupported.status.success() || output.exists() {
+        return Err(String::from("latest stdin accepted stale typed SSA output"));
+    }
+    let sentinel = b"existing output cannot be replaced by stdin";
+    fs::write(&output, sentinel).map_err(|error| error.to_string())?;
+    let refused =
+        publish_canonical_stdin(current_profile().id(), &valid, &output, true, false, false)?;
+    if refused.status.success() || fs::read(output).map_err(|error| error.to_string())? != sentinel
+    {
+        return Err(String::from("canonical stdin overwrote existing output"));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_stdin_modes_require_exact_zero_argument_grammar() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let target = workspace.path("bad-grammar.malbolge");
+    for modes in [
+        vec!["--typed-stdin", "unexpected.mcti"],
+        vec!["--ternary-stdin", "unexpected.mctr"],
+        vec!["--latest-byte-trace", "--typed-stdin", "nop"],
+        vec!["--latest-byte-trace", "--ternary-stdin", "--capsule"],
+        vec!["--typed-stdin", "--ternary-stdin"],
+    ] {
+        let result = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+            .arg("--profile")
+            .arg(current_profile().id())
+            .arg("--output")
+            .arg(&target)
+            .arg("--")
+            .args(modes)
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|error| format!("invalid canonical stdin options: {error}"))?;
+        if result.status.success() || target.exists() {
+            return Err(String::from("malformed stdin grammar admitted output"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_stdin_capsule_executes_in_real_general_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let target = workspace.path("from-typed-pipe.malbolge");
+    let typed = wire(&latest_typed_fixture(&[
+        (true, 0),
+        (false, 0),
+        (false, 0),
+        (true, 1),
+        (true, 2),
+        (false, 2),
+    ])?)?;
+    let publication =
+        publish_canonical_stdin(current_profile().id(), &typed, &target, true, true, true)?;
+    if !publication.status.success() {
+        return Err(format!(
+            "typed stdin capsule rejected: {}",
+            String::from_utf8_lossy(&publication.stderr)
+        ));
+    }
+    let binary = fs::read(&target).map_err(|error| error.to_string())?;
+    let capsule = malbolge::parse_capsule(&binary)
+        .map_err(|error| format!("streamed capsule parser: {error}"))?
+        .ok_or("streamed MCTI capsule missing")?;
+    if capsule.profile() != current_profile() || capsule.payload().len() != 7 {
+        return Err(String::from("streamed capsule profile/length changed"));
+    }
+    let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&target)
+        .arg("--input-stdin")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("real general Malbolge runner: {error}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or("guest runner missing stdin")?
+        .write_all(&[0, 255, 128])
+        .map_err(|error| format!("real guest binary feed: {error}"))?;
+    let executed = child
+        .wait_with_output()
+        .map_err(|error| format!("real guest output: {error}"))?;
+    if !executed.status.success() || executed.stdout != [0, 0, 128] || !executed.stderr.is_empty() {
+        return Err(format!(
+            "streamed typed capsule runner changed semantics: {executed:?}"
+        ));
+    }
+    Ok(())
+}

@@ -256,6 +256,28 @@ real VM success from a symlink to a regular MCTI file. This check does not
 promise an atomic filesystem identity across a concurrent pathname swap;
 canonical bytes and final no-clobber publication are separately guarded.
 
+### Canonical wire streaming publication
+
+The verified file emitter now has explicit `--typed-stdin` (MCTI) and
+`--ternary-stdin` (MCTR) source modes, with optional preceding
+`--latest-byte-trace`. Each takes zero path operands and reads up to
+1,048,577 bytes through standard input, rejecting empty wires and byte
+counts above 1 MiB before parsing or publishing. The input producer must
+close the stream to supply EOF. Neither regular-file mode accepts FIFOs;
+streaming is deliberately opt-in so callers cannot accidentally block on a
+path that merely looks file-like.
+
+Both streams rejoin the *existing* canonical module/ternary decoder,
+profile admission, independently re-encoded position-sensitive source,
+normative VM execution and two deterministic successful-byte input checks.
+Raw and capsule outputs reuse the original staged no-overwrite publisher.
+External process regressions compare stdin and regular-file output bytes,
+reopen capsules, execute the generated source under the real normative VM,
+and reject empty, oversized, malformed, wrong-kind and trailing-option
+inputs without final artifacts or overwrites. This is a bounded producer
+interface, not a generic guest runtime, C compiler or unbounded stream
+transformer; it does not implement EOF I/O semantics inside the guest.
+
 ### Direct canonical typed-IR publication
 
 The same `malbolge_layout` executable now exposes explicit `--typed-file`
