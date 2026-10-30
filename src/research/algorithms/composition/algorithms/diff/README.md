@@ -409,6 +409,13 @@ inside the compatible error boundary. Named corrections can bind to semantic
 edit indexes; behavior routes apply or skip those edits while unbound or missing
 routes reject before staging. Target-only path conflicts, opaque-file drift, and
 postcondition failure also reject before publication.
+Before publication the entire candidate tree is re-snapshotted and checked
+against the snapshot taken before staging. The staged file tree is also checked
+again after the consumer postcondition, which must be read-only. Persistent file
+changes, additions, removals, and symlinks detected at these checks abort and
+clean the staging tree. This protects against callback-induced drift, not a
+concurrent writer racing the final check and atomic rename; a fully stable
+filesystem view still requires external coordination.
 
 The semantic matcher no longer uses quadratic-prone generic sequence matching.
 It

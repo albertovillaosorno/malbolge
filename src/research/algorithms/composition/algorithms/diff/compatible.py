@@ -49,6 +49,7 @@ from algorithms.diff.admission import AdmissionPolicy
 from algorithms.diff.admission import IdentityTree
 from algorithms.diff.admission import evaluate_admission
 from algorithms.diff.behavior import BehaviorEvidence
+from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import snapshot_tree
 from algorithms.diff.gate import require_transform_admission
@@ -1152,6 +1153,45 @@ def _admit(request: CompatibleMaterializeRequest) -> TransformAdmissionEvidence:
     return require_transform_admission(source_evidence, request.behavior)
 
 
+def _snapshot_compatible_tree(root: Path, context: str) -> TreeSnapshot:
+    try:
+        return snapshot_tree(root)
+    except ExactTreeError as error:
+        message = f"compatible {context} snapshot failed: {error}"
+        raise CompatiblePlanError(message) from error
+
+
+def _require_tree_unchanged(
+    root: Path, baseline: TreeSnapshot, context: str
+) -> None:
+    """Reject observable source or staging changes before publication.
+
+    Raises:
+        CompatiblePlanError: The file tree changed or became invalid.
+
+    """
+    try:
+        current = snapshot_tree(root)
+    except ExactTreeError as error:
+        message = f"compatible {context} tree changed during staging: {error}"
+        raise CompatiblePlanError(message) from error
+    if current != baseline:
+        message = f"compatible {context} tree changed during staging"
+        raise CompatiblePlanError(message)
+
+
+def _check_staged_output(
+    request: CompatibleMaterializeRequest,
+    candidate: TreeSnapshot,
+    staging: Path,
+) -> None:
+    """Run the quality callback without permitting input or output drift."""
+    staged = _snapshot_compatible_tree(staging, "staging")
+    _require_postcondition(request.postcondition, staging)
+    _require_tree_unchanged(request.candidate_root, candidate, "candidate")
+    _require_tree_unchanged(staging, staged, "staging")
+
+
 def _cleanup_compatible_staging(path: Path) -> str | None:
     try:
         shutil.rmtree(path)
@@ -1189,13 +1229,13 @@ def materialize_compatible_plan(
     request = _require_materialize_request(request)
     admitted = _admit(request)
     _require_correction_routes(request.plan, request.behavior)
-    candidate = snapshot_tree(request.candidate_root)
+    candidate = _snapshot_compatible_tree(request.candidate_root, "candidate")
     candidate_paths = frozenset(item.path for item in candidate.files)
     _require_literal_conflicts_absent(request, candidate_paths)
     staging = _prepare_staging(request.output_root)
     try:
         _populate_staging(request, candidate, staging)
-        _require_postcondition(request.postcondition, staging)
+        _check_staged_output(request, candidate, staging)
         _publish_compatible_output(staging, request.output_root)
     except Exception as error:
         cleanup_error = _cleanup_compatible_staging(staging)

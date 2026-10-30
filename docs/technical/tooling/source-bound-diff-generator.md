@@ -519,6 +519,13 @@ plan.
 Named bug corrections can now be bound to deterministic semantic edit indexes.
 Materialization requires every bound correction to receive exactly one
 behavior `apply` or `skip` route and rejects routes for unbound corrections.
+The candidate byte-tree snapshot is captured before staging and checked again
+after the optional read-only postcondition. Staged file bytes are also
+re-snapshotted across that callback. Observed source or staging changes,
+additions, removals, or symlinks reject before publication and trigger owned
+staging cleanup. These checks are not an atomic snapshot and cannot prevent a
+concurrent writer racing the final check-to-rename gap; external coordination
+remains necessary.
 Skipped edits preserve upstream fixes while unconditional semantic edits still
 apply. Consumer domains still need to author those bindings, and target-only
 bytes remain local authoring material until compatible source-bound

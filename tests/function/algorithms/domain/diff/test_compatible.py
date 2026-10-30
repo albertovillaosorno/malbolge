@@ -81,6 +81,9 @@ _FIXED_CANDIDATE_CODE = b"extra ; alpha = new ; omega tail"
 _FOREIGN_OUTPUT = b"foreign-output"
 _FOREIGN_STAGING = b"foreign-writer"
 _EXPECTED_MIXED_EDITS = 2
+_CHANGE_MODIFY = "modify"
+_CHANGE_CREATE = "create"
+_CHANGE_DELETE = "delete"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -489,6 +492,114 @@ def test_compatible_tree_preserves_candidate_and_target_topology(
     )
     _expect(
         not (output / "removed.cfg").exists(), "historical removal was undone"
+    )
+
+
+@pytest.mark.parametrize(
+    "change", [_CHANGE_MODIFY, _CHANGE_CREATE, _CHANGE_DELETE]
+)
+def test_candidate_change_in_postcondition_prevents_publication(
+    tmp_path: Path, change: str
+) -> None:
+    """An admitted tree must not drift while a postcondition is running."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+
+    def changing_postcondition(staging: Path) -> bool:
+        _expect(
+            (staging / "upstream.cfg").read_bytes() == _CANDIDATE_ONLY,
+            "candidate-only input was not staged before the callback",
+        )
+        if change == _CHANGE_MODIFY:
+            _write(candidate, "upstream.cfg", b"changed after admission")
+        elif change == _CHANGE_CREATE:
+            _write(candidate, "new-upstream.cfg", b"added after admission")
+        else:
+            (candidate / "upstream.cfg").unlink()
+        return True
+
+    request = replace(
+        _request(candidate, plan, output),
+        postcondition=changing_postcondition,
+    )
+    with pytest.raises(CompatiblePlanError, match="candidate tree changed"):
+        _ = materialize_compatible_plan(request)
+    _expect(not output.exists(), "changed candidate published stale output")
+    _expect(
+        not (tmp_path / ".out.compatible-staging").exists(),
+        "candidate change left staging behind",
+    )
+
+
+@pytest.mark.parametrize(
+    "change", [_CHANGE_MODIFY, _CHANGE_CREATE, _CHANGE_DELETE]
+)
+def test_postcondition_must_not_change_staged_output(
+    tmp_path: Path, change: str
+) -> None:
+    """A passing quality callback must not rewrite the accepted output tree."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+
+    def tampering_postcondition(staging: Path) -> bool:
+        if change == _CHANGE_MODIFY:
+            _ = (staging / "code.src").write_bytes(b"unvalidated change")
+        elif change == _CHANGE_CREATE:
+            _write(staging, "postcondition.bin", b"unvalidated addition")
+        else:
+            (staging / "created.bin").unlink()
+        return True
+
+    request = replace(
+        _request(candidate, plan, output),
+        postcondition=tampering_postcondition,
+    )
+    with pytest.raises(CompatiblePlanError, match="staging tree changed"):
+        _ = materialize_compatible_plan(request)
+    _expect(not output.exists(), "postcondition published unvalidated bytes")
+    _expect(
+        not (tmp_path / ".out.compatible-staging").exists(),
+        "postcondition change left staging behind",
+    )
+
+
+@pytest.mark.parametrize("in_candidate", [True, False])
+def test_postcondition_symlink_rejection_does_not_follow_external_file(
+    tmp_path: Path, *, in_candidate: bool
+) -> None:
+    """Source and staged output symlink swaps fail without escaping the tree."""
+    outside = tmp_path / "outside.bin"
+    _ = outside.write_bytes(_FOREIGN_OUTPUT)
+    probe = tmp_path / "probe"
+    try:
+        probe.symlink_to(outside)
+    except OSError, NotImplementedError:
+        pytest.skip("filesystem symlinks unavailable")
+    probe.unlink()
+
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+
+    def linking_postcondition(staging: Path) -> bool:
+        target = (candidate if in_candidate else staging) / "upstream.cfg"
+        target.unlink()
+        target.symlink_to(outside)
+        return True
+
+    request = replace(
+        _request(candidate, plan, output),
+        postcondition=linking_postcondition,
+    )
+    with pytest.raises(CompatiblePlanError, match="tree changed"):
+        _ = materialize_compatible_plan(request)
+    _expect(not output.exists(), "linked candidate published output")
+    _expect(outside.read_bytes() == _FOREIGN_OUTPUT, "external file changed")
+    _expect(
+        not (tmp_path / ".out.compatible-staging").exists(),
+        "linked staging was not cleaned",
     )
 
 
