@@ -37,10 +37,10 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
-from pathlib import Path
 import sys
+from hashlib import sha256
+from pathlib import Path
 
 import pytest
 
@@ -337,3 +337,48 @@ def test_historical_cli_prints_no_partial_result_on_bad_source(
     rejected = capsys.readouterr()
     assert not rejected.out
     assert rejected.err.startswith("arena historical evidence:")
+
+
+class _BrokenReportStream:
+    """Simulate text-stream completion claims independently of the importer."""
+
+    def __init__(self, mode: str) -> None:
+        self.mode = mode
+        self.written: list[str] = []
+        self.flushed = False
+
+    def write(self, record: str) -> int:
+        """Accept a record prefix or report an untrustworthy write count."""
+        if self.mode == "write-error":
+            raise OSError("injected historical stdout failure")
+        accepted = len(record) // 2 if self.mode == "short" else len(record)
+        self.written.append(record[:accepted])
+        if self.mode == "boolean":
+            return True
+        return accepted
+
+    def flush(self) -> None:
+        """Record successful flushing or inject a late stream failure."""
+        if self.mode == "flush-error":
+            raise RuntimeError("injected historical flush failure")
+        self.flushed = True
+
+
+@pytest.mark.parametrize("mode", ["short", "boolean", "write-error", "flush-error"])
+def test_historical_cli_requires_confirmed_report_output(
+    mode: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A valid imported study cannot produce a zero exit on a failed writer."""
+    output = _BrokenReportStream(mode)
+    monkeypatch.setattr(
+        sys, "argv", ["historical-pairs", BASE + PREFIX, "--root", str(REPO)]
+    )
+    monkeypatch.setattr(historical_pairs.sys, "stdout", output)
+    with pytest.raises(SystemExit, match="2"):
+        historical_pairs.main()
+    assert not output.flushed
+    diagnostic = capsys.readouterr().err
+    assert "arena historical evidence:" in diagnostic
+    assert "stdout" in diagnostic

@@ -36,26 +36,22 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
+import string
+import sys
 from dataclasses import dataclass
 from hashlib import sha256
 from io import StringIO
-import json
 from pathlib import Path
-import string
-import sys
+from typing import TYPE_CHECKING, Any, Never
+
 import tomllib
-from typing import Any
-from typing import Never
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-from scripts.validate import benchmark_protocol
-from scripts.validate import experiment_manifest
-
-from benchmarks.arena import analyze
-from benchmarks.arena import evidence
+from benchmarks.arena import analyze, evidence, report_output
+from scripts.validate import benchmark_protocol, experiment_manifest
 
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
 ASCII_DIGITS = frozenset(string.digits)
@@ -599,15 +595,16 @@ def main() -> int:
     args = parser.parse_args()
     try:
         report = build_report(args.root, args.source)
+        report_output.publish(report, sys.stdout)
     except (
         HistoricalEvidenceError,
         experiment_manifest.ExperimentManifestError,
         benchmark_protocol.BenchmarkProtocolError,
+        report_output.ReportOutputError,
         OSError,
         UnicodeError,
     ) as error:
         parser.exit(2, f"arena historical evidence: {error}\n")
-    _ = sys.stdout.write(json.dumps(report, sort_keys=True, indent=2) + "\n")
     return 0
 
 

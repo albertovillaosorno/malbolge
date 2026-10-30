@@ -1046,6 +1046,11 @@ must agree with the experiment-run commit. Only the registered CSV column sets
 are admitted. It fingerprints the exact experiment, benchmark, raw and source
 commit file bytes in `historical_evidence.source_sha256`.
 
+Its operator report uses the same checked text publication as the primary arena
+CLIs: a short, boolean, or failed stdout write, or a failed flush, exits
+nonzero rather than reporting successful delivery. A prefix already written
+to a broken stdout stream cannot be recalled; this is not atomic output.
+
 The prefix-decomposition record has a baseline timing median of 831,921,051 ns
 and a candidate timing median of 835,180,632 ns. Prefix decomposition reports
 2 of 5 paired timing wins and 8,742 verifier calls instead of 8,836; the
