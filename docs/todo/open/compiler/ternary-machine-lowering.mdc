@@ -778,6 +778,14 @@ instruction.
   historical/immutable-version profile selection, with no typed ABI
   expansion. The direct file publisher reaches exactly 4096 target cells
   with one input and 4094 byte outputs and refuses a 4097-cell file.
+- The finite guest-rotation bridge now verifies exact five-output constant
+  traces for 18 distinct current-profile nonzero bytes. An independent
+  26-phase short-prefix scan checked real VM halt, zero input consumption,
+  and five identical output bytes per phase; shortest-prefix seed admission
+  rejects all 238 other byte values. Canonical MCTI-to-MCTR typed adapter,
+  raw/capsule publisher and real runner tests exercise five-output positives
+  and unsupported sixth-output or mismatched-source negatives. This is a
+  bounded witness subset, not arbitrary byte materialization.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

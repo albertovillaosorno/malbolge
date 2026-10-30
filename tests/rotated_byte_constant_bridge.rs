@@ -106,6 +106,36 @@ const SHORT_QUADRUPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
     (201, 25),
 ];
 
+// All successful short five-output phases, including duplicated bytes.
+const SHORT_QUINTUPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
+    (10, 0),
+    (7, 1),
+    (24, 2),
+    (9, 3),
+    (9, 4),
+    (23, 5),
+    (9, 6),
+    (8, 7),
+    (22, 8),
+    (7, 9),
+    (142, 10),
+    (21, 11),
+    (6, 12),
+    (141, 13),
+    (10, 14),
+    (6, 15),
+    (140, 16),
+    (10, 17),
+    (4, 18),
+    (139, 19),
+    (9, 20),
+    (12, 21),
+    (138, 22),
+    (25, 23),
+    (9, 24),
+    (137, 25),
+];
+
 const fn pos(byte: u32) -> InputSourcePosition {
     InputSourcePosition {
         byte,
@@ -417,6 +447,84 @@ fn four_output_seed_table_admits_exactly_the_witnessed_byte_domain() -> Result<(
 }
 
 #[test]
+fn witnessed_five_output_literals_use_guest_rotation() -> Result<(), String> {
+    for (byte, padding) in [(10, 0), (142, 10), (140, 16), (137, 25)] {
+        let admitted = source(byte, 5)?;
+        let layout = encode_rotated_byte_literal(&admitted, current_profile())
+            .map_err(|error| format!("five-output {byte} rejected: {error:?}"))?;
+        if layout.source().len() != padding + 8
+            || layout.executed_code_positions().len() != padding + 8
+            || layout
+                .data_write_positions()
+                .iter()
+                .filter(|item| item.is_some())
+                .count()
+                != 1
+        {
+            return Err(format!("five-output {byte} geometry drift"));
+        }
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), layout.source(), vec![255, 0, 128])
+                .map_err(|error| format!("five-output {byte} guest load: {error:?}"))?;
+        if !matches!(vm.run(padding + 8),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == padding + 8)
+            || vm.output() != [byte; 5]
+            || vm.input_consumed() != 0
+        {
+            return Err(format!("five-output {byte} guest VM mismatch"));
+        }
+    }
+    for (byte, outputs) in [(10, 4), (43, 5), (137, 4), (10, 6)] {
+        if encode_rotated_byte_literal(&source(byte, outputs)?, current_profile())
+            != Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+        {
+            return Err(format!("unproved five-output shape {byte} x{outputs}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn five_output_seed_table_admits_only_shortest_witnessed_byte_domain() -> Result<(), String> {
+    let mut expected = BTreeMap::new();
+    for (byte, padding) in SHORT_QUINTUPLE_ROTATION_WITNESSES {
+        _ = expected.entry(*byte).or_insert(*padding);
+    }
+    let mut actual = BTreeMap::new();
+    for byte in u8::MIN..=u8::MAX {
+        match encode_rotated_byte_literal(&source(byte, 5)?, current_profile()) {
+            Ok(layout) => {
+                let Some(padding) = expected.get(&byte) else {
+                    return Err(format!("unwitnessed five-output {byte} admitted"));
+                };
+                if layout.source().len() != padding + 8
+                    || layout.executed_code_positions().len() != padding + 8
+                    || layout
+                        .data_write_positions()
+                        .iter()
+                        .filter(|item| item.is_some())
+                        .count()
+                        != 1
+                {
+                    return Err(format!("five-output {byte} geometry drift"));
+                }
+                _ = actual.insert(byte, layout.source().len() - 8);
+            }
+            Err(ByteEchoBridgeError::UnsupportedEffectTrace) => {
+                if expected.contains_key(&byte) {
+                    return Err(format!("witnessed five-output {byte} rejected"));
+                }
+            }
+            Err(error) => return Err(format!("five-output {byte} unexpected: {error:?}")),
+        }
+    }
+    if actual != expected {
+        return Err(format!("five-output admitted domain drift: {actual:?}"));
+    }
+    Ok(())
+}
+
+#[test]
 #[ignore = "full short-phase source/VM search: run optimized with --ignored"]
 fn independently_rederive_three_output_rotation_witnesses() -> Result<(), String> {
     use bridge::layout::{LinearOpcode, encode_linear_layout};
@@ -502,6 +610,53 @@ fn independently_rederive_four_output_rotation_witnesses() -> Result<(), String>
     if witnessed.as_slice() != SHORT_QUADRUPLE_ROTATION_WITNESSES {
         return Err(format!(
             "four-output source/VM witness drift: {witnessed:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "bounded five-output witness scan: run optimized with --ignored"]
+fn independently_rederive_five_output_rotation_witnesses() -> Result<(), String> {
+    use bridge::layout::{LinearOpcode, encode_linear_layout};
+
+    let mut witnessed = Vec::new();
+    for padding in 0..26 {
+        let mut operations = vec![LinearOpcode::NoOperation; padding];
+        operations.extend([
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::RotateData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::OutputByte,
+            LinearOpcode::OutputByte,
+            LinearOpcode::OutputByte,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        let Ok(layout) = encode_linear_layout(current_profile(), &operations) else {
+            continue;
+        };
+        let Ok(mut vm) =
+            ProfileMachine::from_source(current_profile(), layout.source(), Vec::new())
+        else {
+            continue;
+        };
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+        {
+            continue;
+        }
+        let [first, second, third, fourth, fifth] = vm.output() else {
+            continue;
+        };
+        if *first != 0 && first == second && first == third && first == fourth && first == fifth {
+            witnessed.push((*first, padding));
+        }
+    }
+    if witnessed.as_slice() != SHORT_QUINTUPLE_ROTATION_WITNESSES {
+        return Err(format!(
+            "five-output source/VM witness drift: {witnessed:?}"
         ));
     }
     Ok(())

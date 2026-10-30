@@ -143,6 +143,29 @@ const ROTATED_QUADRUPLE_BYTE_SEEDS: &[(u8, usize)] = &[
     (201, 25),
 ];
 
+/// Five outputs have different positional decode and loader-expanded data.
+/// This table keeps the first witness for each value from a 26-phase VM scan.
+const ROTATED_QUINTUPLE_BYTE_SEEDS: &[(u8, usize)] = &[
+    (10, 0),
+    (7, 1),
+    (24, 2),
+    (9, 3),
+    (23, 5),
+    (8, 7),
+    (22, 8),
+    (142, 10),
+    (21, 11),
+    (6, 12),
+    (141, 13),
+    (140, 16),
+    (4, 18),
+    (139, 19),
+    (12, 21),
+    (138, 22),
+    (25, 23),
+    (137, 25),
+];
+
 /// A failed pre-layout admission, semantic bridge, or final target admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ByteEchoBridgeError {
@@ -461,9 +484,9 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
     Some((*result, *value))
 }
 
-/// Emits a nonzero `u8` one to four times using guest data rotation.
+/// Emits a nonzero `u8` one to five times using guest data rotation.
 ///
-/// Accepts one `MaterializeU8` with one to four same-SSA `ByteOutput`s and
+/// Accepts one `MaterializeU8` with one to five same-SSA `ByteOutput`s and
 /// `ReturnVoid` for the current profile. A bounded source-address-specific
 /// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
 /// memory word; the guest `*` changes its own accumulator, not the host.
@@ -509,6 +532,7 @@ pub fn encode_rotated_byte_literal(
         2 => ROTATED_DOUBLE_BYTE_SEEDS,
         3 => ROTATED_TRIPLE_BYTE_SEEDS,
         4 => ROTATED_QUADRUPLE_BYTE_SEEDS,
+        5 => ROTATED_QUINTUPLE_BYTE_SEEDS,
         _ => return Err(ByteEchoBridgeError::UnsupportedEffectTrace),
     };
     let Some((byte, padding)) = seeds
