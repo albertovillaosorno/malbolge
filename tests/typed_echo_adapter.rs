@@ -3623,6 +3623,10 @@ fn canonical_typed_rotated_nonzero_literals_execute_guest_data_rotation() -> Res
         (10, 5),
         (142, 5),
         (137, 5),
+        (47, 6),
+        (200, 6),
+        (21, 7),
+        (253, 7),
     ] {
         let typed = typed_rotated_literal_module_with_outputs(byte, outputs)?;
         let canonical = wire(&typed)?;
@@ -3726,23 +3730,24 @@ fn canonical_typed_rotated_literal_rejects_unproved_constants() -> Result<(), St
 }
 
 #[test]
-fn canonical_typed_five_output_literal_rejects_unwitnessed_and_sixth_output() -> Result<(), String>
-{
-    for byte in [43, 183, 255] {
-        let canonical = wire(&typed_rotated_literal_module_with_outputs(byte, 5)?)?;
+fn canonical_typed_rotated_literal_rejects_unwitnessed_output_counts() -> Result<(), String> {
+    for (byte, outputs) in [(43, 5), (183, 5), (255, 5), (21, 6), (47, 7)] {
+        let canonical = wire(&typed_rotated_literal_module_with_outputs(byte, outputs)?)?;
         if adapter::compile_canonical_typed_rotated_byte_literal(&canonical, current_profile())
             != Err(TypedEchoAdapterError::Layout(
                 adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
             ))
         {
-            return Err(format!("typed unwitnessed fifth output {byte} admitted"));
+            return Err(format!(
+                "typed unwitnessed output {byte} x{outputs} admitted"
+            ));
         }
     }
-    let sixth = wire(&typed_rotated_literal_module_with_outputs(10, 6)?)?;
-    if adapter::compile_canonical_typed_rotated_byte_literal(&sixth, current_profile())
+    let eighth = wire(&typed_rotated_literal_module_with_outputs(10, 8)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&eighth, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed sixth output admitted"));
+        return Err(String::from("typed eighth output admitted"));
     }
     Ok(())
 }
@@ -3930,6 +3935,20 @@ fn seeded_four_output_literal_canonical_publisher_and_real_runner() -> Result<()
 fn seeded_five_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
     let workspace = OwnedFixture::new()?;
     for case in [(10, 5, true, false, true), (137, 5, false, true, true)] {
+        verify_seeded_publisher_case(&workspace, case)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_six_and_seven_output_canonical_publisher_and_real_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for case in [
+        (47, 6, true, false, true),
+        (200, 6, false, true, true),
+        (21, 7, true, false, true),
+        (253, 7, false, true, true),
+    ] {
         verify_seeded_publisher_case(&workspace, case)?;
     }
     Ok(())

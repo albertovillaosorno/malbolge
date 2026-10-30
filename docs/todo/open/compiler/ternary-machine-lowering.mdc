@@ -786,6 +786,13 @@ instruction.
   raw/capsule publisher and real runner tests exercise five-output positives
   and unsupported sixth-output or mismatched-source negatives. This is a
   bounded witness subset, not arbitrary byte materialization.
+- Separate six- and seven-output guest-rotation scans confirm all 26
+  independently generated short layouts per count execute on the normative
+  VM, halt with exact identical nonzero output and consume zero input.
+  The admitted shortest-prefix tables cover 19 and 18 distinct byte values
+  respectively, with complete 256-value rejection tests for the 237 and
+  238 other bytes. Canonical MCTI/MCTR, raw/capsule CLI and real runner
+  exercise both counts. Eight or more outputs still refuse admission.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

@@ -136,6 +136,66 @@ const SHORT_QUINTUPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
     (137, 25),
 ];
 
+// All 26 successful short sextuple phases, including byte repeats.
+const SHORT_SEXTUPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
+    (47, 0),
+    (47, 1),
+    (175, 2),
+    (42, 3),
+    (41, 4),
+    (177, 5),
+    (40, 6),
+    (40, 7),
+    (176, 8),
+    (162, 9),
+    (41, 10),
+    (178, 11),
+    (177, 12),
+    (66, 13),
+    (200, 14),
+    (176, 15),
+    (64, 16),
+    (200, 17),
+    (177, 18),
+    (65, 19),
+    (190, 20),
+    (186, 21),
+    (63, 22),
+    (191, 23),
+    (185, 24),
+    (61, 25),
+];
+
+// All 26 successful short septuple phases, including byte repeats.
+const SHORT_SEPTUPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
+    (21, 0),
+    (9, 1),
+    (8, 2),
+    (23, 3),
+    (8, 4),
+    (8, 5),
+    (22, 6),
+    (7, 7),
+    (7, 8),
+    (21, 9),
+    (6, 10),
+    (6, 11),
+    (20, 12),
+    (253, 13),
+    (5, 14),
+    (19, 15),
+    (251, 16),
+    (4, 17),
+    (18, 18),
+    (9, 19),
+    (9, 20),
+    (17, 21),
+    (12, 22),
+    (8, 23),
+    (16, 24),
+    (10, 25),
+];
+
 const fn pos(byte: u32) -> InputSourcePosition {
     InputSourcePosition {
         byte,
@@ -524,6 +584,104 @@ fn five_output_seed_table_admits_only_shortest_witnessed_byte_domain() -> Result
     Ok(())
 }
 
+fn check_six_seven_output_seed_domain(
+    outputs: usize,
+    witnesses: &[(u8, usize)],
+) -> Result<(), String> {
+    let mut expected = BTreeMap::new();
+    for (byte, padding) in witnesses {
+        _ = expected.entry(*byte).or_insert(*padding);
+    }
+    let mut admitted = BTreeMap::new();
+    for byte in u8::MIN..=u8::MAX {
+        match encode_rotated_byte_literal(&source(byte, outputs)?, current_profile()) {
+            Ok(layout) => {
+                let Some(padding) = expected.get(&byte) else {
+                    return Err(format!("unwitnessed {byte} x{outputs} admitted"));
+                };
+                let expected_len = padding.saturating_add(outputs).saturating_add(3);
+                if layout.source().len() != expected_len
+                    || layout.executed_code_positions().len() != expected_len
+                    || layout
+                        .data_write_positions()
+                        .iter()
+                        .filter(|position| position.is_some())
+                        .count()
+                        != 1
+                {
+                    return Err(format!("seeded {byte} x{outputs} geometry drift"));
+                }
+                _ = admitted.insert(
+                    byte,
+                    layout
+                        .source()
+                        .len()
+                        .saturating_sub(outputs.saturating_add(3)),
+                );
+            }
+            Err(ByteEchoBridgeError::UnsupportedEffectTrace) => {
+                if expected.contains_key(&byte) {
+                    return Err(format!("witnessed {byte} x{outputs} rejected"));
+                }
+            }
+            Err(error) => return Err(format!("seeded {byte} x{outputs}: {error:?}")),
+        }
+    }
+    if admitted != expected {
+        return Err(format!("{outputs}-output domain drift: {admitted:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn six_and_seven_output_seed_tables_admit_only_shortest_witnessed_bytes() -> Result<(), String> {
+    check_six_seven_output_seed_domain(6, SHORT_SEXTUPLE_ROTATION_WITNESSES)?;
+    check_six_seven_output_seed_domain(7, SHORT_SEPTUPLE_ROTATION_WITNESSES)
+}
+
+#[test]
+fn witnessed_six_and_seven_output_literals_execute_guest_rotation() -> Result<(), String> {
+    for (byte, padding, outputs) in [
+        (47, 0, 6),
+        (200, 14, 6),
+        (61, 25, 6),
+        (21, 0, 7),
+        (253, 13, 7),
+        (10, 25, 7),
+    ] {
+        let layout = encode_rotated_byte_literal(&source(byte, outputs)?, current_profile())
+            .map_err(|error| format!("seeded {byte} x{outputs}: {error:?}"))?;
+        if layout.source().len() != padding + outputs + 3
+            || layout
+                .data_write_positions()
+                .iter()
+                .filter(|position| position.is_some())
+                .count()
+                != 1
+        {
+            return Err(format!("guest seeded {byte} x{outputs} geometry drift"));
+        }
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), layout.source(), vec![0, 255, 128])
+                .map_err(|error| format!("guest {byte} x{outputs}: {error:?}"))?;
+        if !matches!(vm.run(padding + outputs + 3),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == padding + outputs + 3)
+            || vm.input_consumed() != 0
+            || vm.output() != vec![byte; outputs]
+        {
+            return Err(format!("guest repeated output {byte} x{outputs} diverged"));
+        }
+    }
+    for (byte, outputs) in [(21, 6), (47, 7), (47, 5), (10, 8)] {
+        if encode_rotated_byte_literal(&source(byte, outputs)?, current_profile())
+            != Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+        {
+            return Err(format!("unsupported seeded {byte} x{outputs} admitted"));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 #[ignore = "full short-phase source/VM search: run optimized with --ignored"]
 fn independently_rederive_three_output_rotation_witnesses() -> Result<(), String> {
@@ -657,6 +815,96 @@ fn independently_rederive_five_output_rotation_witnesses() -> Result<(), String>
     if witnessed.as_slice() != SHORT_QUINTUPLE_ROTATION_WITNESSES {
         return Err(format!(
             "five-output source/VM witness drift: {witnessed:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "bounded six-output rotation scan: run optimized with --ignored"]
+fn independently_rederive_six_output_rotation_witnesses() -> Result<(), String> {
+    use bridge::layout::{LinearOpcode, encode_linear_layout};
+    use std::iter::repeat_n;
+
+    let mut witnessed = Vec::new();
+    for padding in 0..26 {
+        let mut operations = vec![LinearOpcode::NoOperation; padding];
+        operations.extend([LinearOpcode::RelocateDataPointer, LinearOpcode::RotateData]);
+        operations.extend(repeat_n(LinearOpcode::OutputByte, 6));
+        operations.push(LinearOpcode::Halt);
+        let Ok(layout) = encode_linear_layout(current_profile(), &operations) else {
+            continue;
+        };
+        let Ok(mut vm) =
+            ProfileMachine::from_source(current_profile(), layout.source(), Vec::new())
+        else {
+            continue;
+        };
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+        {
+            continue;
+        }
+        let &[first, second, third, fourth, fifth, sixth] = vm.output() else {
+            continue;
+        };
+        if first != 0
+            && first == second
+            && first == third
+            && first == fourth
+            && first == fifth
+            && first == sixth
+        {
+            witnessed.push((first, padding));
+        }
+    }
+    if witnessed.as_slice() != SHORT_SEXTUPLE_ROTATION_WITNESSES {
+        return Err(format!("six-output source/VM witness drift: {witnessed:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "bounded seven-output rotation scan: run optimized with --ignored"]
+fn independently_rederive_seven_output_rotation_witnesses() -> Result<(), String> {
+    use bridge::layout::{LinearOpcode, encode_linear_layout};
+    use std::iter::repeat_n;
+
+    let mut witnessed = Vec::new();
+    for padding in 0..26 {
+        let mut operations = vec![LinearOpcode::NoOperation; padding];
+        operations.extend([LinearOpcode::RelocateDataPointer, LinearOpcode::RotateData]);
+        operations.extend(repeat_n(LinearOpcode::OutputByte, 7));
+        operations.push(LinearOpcode::Halt);
+        let Ok(layout) = encode_linear_layout(current_profile(), &operations) else {
+            continue;
+        };
+        let Ok(mut vm) =
+            ProfileMachine::from_source(current_profile(), layout.source(), Vec::new())
+        else {
+            continue;
+        };
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+        {
+            continue;
+        }
+        let &[first, second, third, fourth, fifth, sixth, seventh] = vm.output() else {
+            continue;
+        };
+        if first != 0
+            && [second, third, fourth, fifth, sixth, seventh]
+                .iter()
+                .all(|byte| *byte == first)
+        {
+            witnessed.push((first, padding));
+        }
+    }
+    if witnessed.as_slice() != SHORT_SEPTUPLE_ROTATION_WITNESSES {
+        return Err(format!(
+            "seven-output source/VM witness drift: {witnessed:?}"
         ));
     }
     Ok(())

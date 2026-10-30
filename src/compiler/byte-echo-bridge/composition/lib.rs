@@ -166,6 +166,51 @@ const ROTATED_QUINTUPLE_BYTE_SEEDS: &[(u8, usize)] = &[
     (137, 25),
 ];
 
+/// Six-output loader expansion has its own shortest valid VM witnesses.
+const ROTATED_SEXTUPLE_BYTE_SEEDS: &[(u8, usize)] = &[
+    (47, 0),
+    (175, 2),
+    (42, 3),
+    (41, 4),
+    (177, 5),
+    (40, 6),
+    (176, 8),
+    (162, 9),
+    (178, 11),
+    (66, 13),
+    (200, 14),
+    (64, 16),
+    (65, 19),
+    (190, 20),
+    (186, 21),
+    (63, 22),
+    (191, 23),
+    (185, 24),
+    (61, 25),
+];
+
+/// Seven-output loader expansion has its own shortest valid VM witnesses.
+const ROTATED_SEPTUPLE_BYTE_SEEDS: &[(u8, usize)] = &[
+    (21, 0),
+    (9, 1),
+    (8, 2),
+    (23, 3),
+    (22, 6),
+    (7, 7),
+    (6, 10),
+    (20, 12),
+    (253, 13),
+    (5, 14),
+    (19, 15),
+    (251, 16),
+    (4, 17),
+    (18, 18),
+    (17, 21),
+    (12, 22),
+    (16, 24),
+    (10, 25),
+];
+
 /// A failed pre-layout admission, semantic bridge, or final target admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ByteEchoBridgeError {
@@ -484,9 +529,9 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
     Some((*result, *value))
 }
 
-/// Emits a nonzero `u8` one to five times using guest data rotation.
+/// Emits a nonzero `u8` one to seven times using guest data rotation.
 ///
-/// Accepts one `MaterializeU8` with one to five same-SSA `ByteOutput`s and
+/// Accepts one `MaterializeU8` with one to seven same-SSA `ByteOutput`s and
 /// `ReturnVoid` for the current profile. A bounded source-address-specific
 /// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
 /// memory word; the guest `*` changes its own accumulator, not the host.
@@ -533,6 +578,8 @@ pub fn encode_rotated_byte_literal(
         3 => ROTATED_TRIPLE_BYTE_SEEDS,
         4 => ROTATED_QUADRUPLE_BYTE_SEEDS,
         5 => ROTATED_QUINTUPLE_BYTE_SEEDS,
+        6 => ROTATED_SEXTUPLE_BYTE_SEEDS,
+        7 => ROTATED_SEPTUPLE_BYTE_SEEDS,
         _ => return Err(ByteEchoBridgeError::UnsupportedEffectTrace),
     };
     let Some((byte, padding)) = seeds
