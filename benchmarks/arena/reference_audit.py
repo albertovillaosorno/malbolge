@@ -564,6 +564,16 @@ def audit(
         )
         if sha256(current).digest() != data.study_fingerprint:
             _fail("host-C retained study JSON changed during audit")
+        # Recheck original native binary claims after any optional rebuild or
+        # oracle replay. The preflight may have admitted bytes that are no
+        # longer present when this report is returned.
+        if (
+            reference_study.check_retained_artifacts(
+                data.document, data.artifacts
+            )
+            != data.verified_binaries
+        ):
+            _fail("host-C retained artifact count changed during audit")
     except (
         analyze.ArenaError,
         evidence.EvidenceError,

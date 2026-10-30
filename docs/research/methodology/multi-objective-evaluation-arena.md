@@ -606,6 +606,11 @@ mixed-time provenance. The retained `study.json` bytes are also
 fingerprinted at initial bounded parse and rechecked after report assembly,
 so a mid-audit rewrite of the study question, objective policy or observed
 trials cannot silently receive a report for the previously opened document.
+Successful native binaries are also independently re-admitted against the
+original exact path, size and SHA-256 identity after any optional rebuild,
+oracle replay and report analysis; overwritten binaries cannot retain a
+successful checked-artifact count. The second bounded read costs additional
+I/O but never executes a retained binary.
 These repeated reads detect observed drift, not an atomic filesystem
 snapshot or authenticated historical authorship.
 It also requires the producer's fixed run method, implementation/configuration

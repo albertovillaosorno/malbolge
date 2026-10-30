@@ -724,6 +724,52 @@ def test_host_c_audit_rejects_study_json_rewrite_during_audit(
         reference_audit.audit(relative)
 
 
+@pytest.mark.parametrize("mutation_point", ["after_binary_check", "after_analysis"])
+def test_host_c_audit_rejects_retained_binary_rewrite_during_audit(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    mutation_point: str,
+) -> None:
+    """An admitted native artifact cannot drift before the audit reports it."""
+    directory, relative = live_pilot
+    executable = next((directory / "candidates").iterdir())
+
+    def rewrite_executable() -> None:
+        _ = executable.write_bytes(executable.read_bytes() + b"forged")
+
+    if mutation_point == "after_binary_check":
+        check_artifacts = reference_study.check_retained_artifacts
+        called = False
+
+        def mutate_after_check(
+            document: dict[str, Any], artifacts: dict[str, dict[str, str]]
+        ) -> int:
+            nonlocal called
+            result = check_artifacts(document, artifacts)
+            if not called:
+                called = True
+                rewrite_executable()
+            return result
+
+        monkeypatch.setattr(
+            reference_study, "check_retained_artifacts", mutate_after_check
+        )
+    else:
+        analyze_report = analyze.analyze
+
+        def mutate_after_analysis(document: dict[str, Any]) -> dict[str, Any]:
+            result = analyze_report(document)
+            rewrite_executable()
+            return result
+
+        monkeypatch.setattr(analyze, "analyze", mutate_after_analysis)
+
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="retained executable differs"
+    ):
+        reference_audit.audit(relative)
+
+
 def test_opt_in_git_object_check_rejects_missing_recorded_commit(
     live_pilot: tuple[Path, str],
 ) -> None:
