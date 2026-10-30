@@ -356,6 +356,29 @@ latest-read, initial-zero and zero-prefixed modes remain unchanged and
 cannot be mixed with this flag. No general signed-byte computation, EOF,
 failed I/O, memory, arbitrary C, or guest ABI is realized.
 
+### Guest-computed finite nonzero byte literals
+
+An explicit `--seeded-byte-literal` canonical MCTI or MCTR file/stdin mode
+admits one source `u8` constant followed by one same-SSA output. This
+is the first bounded nonzero constant realization: only 14 independently
+proven `malbolge-2026` values have a safe no-op/`j`/`*`/`<`/`v` layout.
+Each candidate source is re-admitted, then the *real normative VM* verifies
+exact termination, a single output byte and zero input consumption before
+the existing atomic no-overwrite raw/capsule publication. A current-
+profile capsule selects `malbolge-2026` in the general runner. Raw source
+has no profile identity: do **not** execute it under the runner's default
+historical profile and mistake that result for current-profile evidence.
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 --output .temp/seeded.malbolge \
+  --capsule -- --seeded-byte-literal --typed-file .temp/seeded.mcti
+```
+
+This mode is separate from strict echo, identity-bitcast, latest-read,
+initial-zero and zero-prefixed traces. Other constants, multiple writes,
+input consumption, guest heap, EOF and general C arithmetic still reject.
+
 ### Bounded canonical wire streaming on standard input
 
 Canonical MCTI and MCTR can also be supplied directly from a producer process

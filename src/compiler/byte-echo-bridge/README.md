@@ -96,6 +96,23 @@ profile mismatch, original strict/latest unchanged, and capacity limits.
 No host guest-byte simulation, general integer operation, EOF or guest ABI
 is implied.
 
+### Verified nonzero byte literal rotation
+
+The separate opt-in `encode_rotated_byte_literal` accepts exactly one
+`MaterializeU8(value)`, `ByteOutput` of that SSA identity, and `ReturnVoid`.
+It admits only these nonzero byte values for `malbolge-2026`:
+`4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253`.
+
+A profile-specific *proposed* no-op prefix precedes `j`, `*`, `<`, `v`.
+The canonical loader expands the graphical source into guest memory;
+`j` relocates D beyond all source positions; the **guest** `*` rotates
+that real data word into A, which the guest `<` emits. This is not a
+host print of the requested literal or a mock guest register. The exact
+code/data placement and the observed output byte are independently
+rechecked in a fresh normative VM before source is returned. Inputs are
+not consumed. Unsupported literals, extra outputs and mismatched profiles
+reject; repeated output or general constants do not follow from this pilot.
+
 ## Limits
 
 The trace is equivalent **only on successful byte I/O**: every input must

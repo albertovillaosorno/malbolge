@@ -43,13 +43,32 @@ pub mod layout;
 #[path = "../../ternary-lowering/composition/lib.rs"]
 pub mod ternary;
 
-use malbolge::ProfileDescriptor;
+use malbolge::{ProfileDescriptor, ProfileMachine, RunOutcome, current_profile};
 use std::collections::BTreeSet;
 
 use layout::{LinearLayout, LinearLayoutError, LinearOpcode, encode_linear_layout};
 use ternary::{
     TernaryOperation, TernaryProgram, TernaryProgramValidationError, validate_ternary_program,
 };
+
+/// Profile-specific `(byte, graphical no-op prefix)` rotation witnesses.
+/// Every candidate is independently re-executed by the normative VM.
+const ROTATED_BYTE_SEEDS: &[(u8, usize)] = &[
+    (4, 23),
+    (5, 20),
+    (6, 16),
+    (9, 7),
+    (10, 4),
+    (11, 1),
+    (18, 24),
+    (19, 21),
+    (20, 18),
+    (21, 6),
+    (22, 3),
+    (23, 0),
+    (251, 22),
+    (253, 19),
+];
 
 /// A failed pre-layout admission, semantic bridge, or final target admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -367,4 +386,69 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
         return None;
     };
     Some((*result, *value))
+}
+
+/// Emits one nonzero `u8` from actual guest relocated data rotation.
+///
+/// Accepts exactly one `MaterializeU8` with one same-SSA `ByteOutput` and
+/// `ReturnVoid` for the current profile. A bounded source-address-specific
+/// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
+/// memory word; the guest `*` changes its own accumulator, not the host.
+/// This admits only the witness values above and checks every proposed
+/// result against independent VM execution before returning a source.
+///
+/// # Errors
+///
+/// Refuses invalid shape/provenance, foreign profiles, unsupported literals,
+/// overlapping data/code, wrong output, guest input, or nontermination.
+pub fn encode_rotated_byte_literal(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id()
+        || profile.id() != current_profile().id()
+        || profile.fingerprint() != current_profile().fingerprint()
+    {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let [
+        TernaryOperation::MaterializeU8 { result, scalar, .. },
+        TernaryOperation::ByteOutput { value, .. },
+        TernaryOperation::ReturnVoid { .. },
+    ] = function.operations.as_slice()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if result != value {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let Some((byte, padding)) = ROTATED_BYTE_SEEDS
+        .iter()
+        .copied()
+        .find(|(byte, _)| *byte == scalar.bits())
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let mut operations = vec![LinearOpcode::NoOperation; padding];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let mut vm = ProfileMachine::from_source(profile, layout.source(), Vec::new())
+        .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    if !matches!(vm.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+        || vm.input_consumed() != 0
+        || vm.output() != [byte]
+    {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    Ok(layout)
 }

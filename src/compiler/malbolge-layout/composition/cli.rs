@@ -42,8 +42,9 @@ use std::process::{ExitCode, id};
 use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile};
 
 use crate::bridge::{
-    encode_initial_zero_outputs, encode_latest_byte_identity_trace, encode_successful_byte_echo,
-    encode_successful_latest_byte_trace, encode_zero_prefixed_latest_byte_trace,
+    encode_initial_zero_outputs, encode_latest_byte_identity_trace, encode_rotated_byte_literal,
+    encode_successful_byte_echo, encode_successful_latest_byte_trace,
+    encode_zero_prefixed_latest_byte_trace,
     ternary::{TernaryOperation, canonical_ternary_program},
 };
 use crate::layout::{
@@ -53,6 +54,7 @@ use crate::layout::{
 use crate::typed_adapter::{
     compile_canonical_typed_echo, compile_canonical_typed_identity_byte_trace,
     compile_canonical_typed_initial_zero_outputs, compile_canonical_typed_latest_byte_trace,
+    compile_canonical_typed_rotated_byte_literal,
     compile_canonical_typed_zero_prefixed_latest_byte_trace,
 };
 
@@ -67,6 +69,7 @@ const LATEST_BYTE_TRACE_ARG: &str = "--latest-byte-trace";
 const INITIAL_ZERO_OUTPUT_ARG: &str = "--initial-zero-output";
 const ZERO_PREFIXED_BYTE_TRACE_ARG: &str = "--zero-prefixed-byte-trace";
 const IDENTITY_BYTE_TRACE_ARG: &str = "--identity-byte-trace";
+const SEEDED_BYTE_LITERAL_ARG: &str = "--seeded-byte-literal";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
 const TERNARY_STDIN_ARG: &str = "--ternary-stdin";
@@ -97,6 +100,7 @@ enum ByteTraceMode {
     IdentityByteBitcast,
     InitialZero,
     LatestRead,
+    RotatedLiteral,
     ZeroPrefixedLatest,
 }
 
@@ -109,6 +113,7 @@ enum SuccessfulByteEffect {
 
 enum SourceEffectWitness {
     InitialZero { outputs: usize },
+    RotatedLiteral { byte: u8 },
     SuccessfulByteTrace(Vec<SuccessfulByteEffect>),
 }
 
@@ -186,6 +191,7 @@ fn parse_canonical_source(
         || first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG)
         || first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG)
         || first == OsStr::new(IDENTITY_BYTE_TRACE_ARG)
+        || first == OsStr::new(SEEDED_BYTE_LITERAL_ARG)
     {
         let mode = if first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG) {
             ByteTraceMode::InitialZero
@@ -193,6 +199,8 @@ fn parse_canonical_source(
             ByteTraceMode::ZeroPrefixedLatest
         } else if first == OsStr::new(IDENTITY_BYTE_TRACE_ARG) {
             ByteTraceMode::IdentityByteBitcast
+        } else if first == OsStr::new(SEEDED_BYTE_LITERAL_ARG) {
+            ByteTraceMode::RotatedLiteral
         } else {
             ByteTraceMode::LatestRead
         };
@@ -251,6 +259,7 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
         || first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG)
         || first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG)
         || first == OsStr::new(IDENTITY_BYTE_TRACE_ARG)
+        || first == OsStr::new(SEEDED_BYTE_LITERAL_ARG)
     {
         return parse_canonical_source(first, arguments);
     } else {
@@ -417,6 +426,10 @@ fn read_canonical_stdin(kind: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "source-bound mode-dependent VM witnesses"
+)]
 fn verified_ternary_bytes(
     bytes: &[u8],
     mode: ByteTraceMode,
@@ -432,6 +445,7 @@ fn verified_ternary_bytes(
             encode_zero_prefixed_latest_byte_trace(&program, profile)
         }
         ByteTraceMode::IdentityByteBitcast => encode_latest_byte_identity_trace(&program, profile),
+        ByteTraceMode::RotatedLiteral => encode_rotated_byte_literal(&program, profile),
     }
     .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
     if layout.profile_id() != profile.id() || layout.profile_fingerprint() != profile.fingerprint()
@@ -445,7 +459,14 @@ fn verified_ternary_bytes(
         .first()
         .ok_or("bridge accepted no ternary function")?
         .operations;
-    let effect_witness = if matches!(mode, ByteTraceMode::InitialZero) {
+    let effect_witness = if matches!(mode, ByteTraceMode::RotatedLiteral) {
+        let [TernaryOperation::MaterializeU8 { scalar, .. }, ..] = operations.as_slice() else {
+            return Err(String::from("missing seeded byte scalar"));
+        };
+        Some(SourceEffectWitness::RotatedLiteral {
+            byte: scalar.bits(),
+        })
+    } else if matches!(mode, ByteTraceMode::InitialZero) {
         Some(SourceEffectWitness::InitialZero {
             outputs: operations
                 .iter()
@@ -499,6 +520,9 @@ fn verified_typed_bytes(
         }
         ByteTraceMode::IdentityByteBitcast => {
             compile_canonical_typed_identity_byte_trace(typed_bytes, profile)
+        }
+        ByteTraceMode::RotatedLiteral => {
+            compile_canonical_typed_rotated_byte_literal(typed_bytes, profile)
         }
     }
     .map_err(|error| format!("canonical typed byte bridge rejected: {error:?}"))?;
@@ -655,6 +679,26 @@ fn verify_initial_zero_outputs(
     Ok(())
 }
 
+// The bridge proposes a seed; publication repeats the complete VM witness.
+fn verify_rotated_literal(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    byte: u8,
+) -> Result<(), String> {
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
+            .map_err(|error| format!("seeded literal guest load: {error:?}"))?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != 0
+            || vm.output() != [byte]
+        {
+            return Err(String::from("rotated literal guest output disagrees"));
+        }
+    }
+    Ok(())
+}
+
 fn execute(spec: &CommandSpec) -> Result<(), String> {
     let profile = target_profile(&spec.profile).ok_or("unknown canonical target profile")?;
     let artifact = verified_source(&spec.source, profile)?;
@@ -672,6 +716,9 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
         }
         Some(SourceEffectWitness::InitialZero { outputs }) => {
             verify_initial_zero_outputs(profile, &artifact, *outputs)?;
+        }
+        Some(SourceEffectWitness::RotatedLiteral { byte }) => {
+            verify_rotated_literal(profile, &artifact, *byte)?;
         }
         None => {}
     }

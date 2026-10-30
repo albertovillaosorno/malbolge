@@ -267,6 +267,21 @@ publisher authenticate that an input retained the same pathname throughout
 validation. Independent canonical-byte checks and atomic no-clobber final
 publication remain distinct guarantees.
 
+### Genuine Nonzero Byte Constant Artifact Pilot
+
+The explicit `--seeded-byte-literal` mode admits one verified nonzero
+`u8` literal and one matching output via canonical MCTI or MCTR file/
+stdin. A declared 14-value current-profile seed table proposes the
+address-sensitive no-op prefix before `j`, `*`, output and halt. Both the
+linear layout admission and independent normative VM must prove safe
+code/data separation, exact one-byte output and zero consumed input.
+Raw and version-one capsule publication retains the existing atomic
+no-overwrite semantics. General-runner process tests select the current
+profile through a capsule; raw graphical source carries no profile ID and
+can produce different values under the runner's historical default.
+The guest computes the byte without a host-provided result. Other profiles,
+unknown literals, additional effects and arbitrary arithmetic reject.
+
 ### Signed/unsigned byte identity-cast artifact publication
 
 A distinct `--identity-byte-trace` canonical MCTI/MCTR file/stdin mode

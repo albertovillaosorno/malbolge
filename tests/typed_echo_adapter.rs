@@ -68,6 +68,10 @@ enum IdentityEffect {
         type_id: u32,
     },
     Input(u32),
+    Literal {
+        result: u32,
+        byte: u8,
+    },
     Output(u32),
     Zero(u32),
 }
@@ -3158,6 +3162,11 @@ fn typed_identity_effects(effects: &[IdentityEffect]) -> Result<Module, String> 
             IdentityEffect::Output(value) => Instruction::ByteOutput {
                 value: ValueId::new(*value),
             },
+            IdentityEffect::Literal { result, byte } => Instruction::ConstantInteger {
+                constant: adapter::typed::IntegerConstant::new(8, vec![*byte]),
+                result: ValueId::new(*result),
+                type_id: TypeId::new(0),
+            },
             IdentityEffect::Zero(result) => Instruction::ConstantInteger {
                 constant: adapter::typed::IntegerConstant::new(8, vec![0]),
                 result: ValueId::new(*result),
@@ -3583,6 +3592,278 @@ fn canonical_identity_byte_trace_exact_4096_cell_boundary() -> Result<(), String
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
         return Err(String::from("typed identity accepted 4097 code cells"));
+    }
+    Ok(())
+}
+
+fn typed_rotated_literal_module(byte: u8) -> Result<Module, String> {
+    typed_identity_effects(&[
+        IdentityEffect::Literal { result: 0, byte },
+        IdentityEffect::Output(0),
+    ])
+}
+
+#[test]
+fn canonical_typed_rotated_nonzero_literals_execute_guest_data_rotation() -> Result<(), String> {
+    for byte in [23, 253] {
+        let typed = typed_rotated_literal_module(byte)?;
+        let canonical = wire(&typed)?;
+        if canonical_module(&canonical).map_err(|error| format!("seeded MCTI decode: {error:?}"))?
+            != typed
+        {
+            return Err(String::from("seeded literal MCTI roundtrip drift"));
+        }
+        let compiled =
+            adapter::compile_canonical_typed_rotated_byte_literal(&canonical, current_profile())
+                .map_err(|error| format!("seeded typed {byte} admission: {error:?}"))?;
+        let mctr = canonical_ternary_program(compiled.ternary_bytes())
+            .map_err(|error| format!("seeded MCTR admission: {error:?}"))?;
+        if mctr.source_sha256 != *typed.source_sha256()
+            || mctr.source_id != typed.source_id()
+            || mctr.target_profile != current_profile().id()
+        {
+            return Err(String::from("seeded typed source/profile drift"));
+        }
+        let admitted = adapter::bridge::encode_rotated_byte_literal(&mctr, current_profile())
+            .map_err(|error| format!("seeded independent target: {error:?}"))?;
+        if admitted != *compiled.layout() {
+            return Err(String::from("seeded typed and MCTR source mismatch"));
+        }
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), admitted.source(), vec![255, 0, 128])
+                .map_err(|error| format!("seeded typed guest load: {error:?}"))?;
+        if !matches!(vm.run(admitted.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { steps, .. })
+                if steps == admitted.executed_code_positions().len())
+            || vm.output() != [byte]
+            || vm.input_consumed() != 0
+        {
+            return Err(format!("seeded typed real guest did not print {byte}"));
+        }
+        if compile_canonical_typed_echo(&canonical, current_profile()).is_ok()
+            || adapter::compile_canonical_typed_initial_zero_outputs(&canonical, current_profile())
+                .is_ok()
+        {
+            return Err(String::from("legacy typed mode accepted nonzero"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_rotated_literal_rejects_unproved_constants() -> Result<(), String> {
+    for byte in [0, 1, 7, 24, 42, 128, 255] {
+        let canonical = wire(&typed_rotated_literal_module(byte)?)?;
+        if adapter::compile_canonical_typed_rotated_byte_literal(&canonical, current_profile())
+            != Err(TypedEchoAdapterError::Layout(
+                adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
+            ))
+        {
+            return Err(format!("typed nonwitness literal {byte} admitted"));
+        }
+    }
+    let canonical = wire(&typed_rotated_literal_module(23)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&canonical, historical_profile())
+        != Err(TypedEchoAdapterError::Layout(
+            adapter::bridge::ByteEchoBridgeError::ProfileMismatch,
+        ))
+    {
+        return Err(String::from(
+            "typed seeded literal accepted foreign profile",
+        ));
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "canonical wire type and target framing are independent process choices"
+)]
+fn publish_seeded_byte_literal(
+    profile: &str,
+    bytes: &[u8],
+    target: &Path,
+    typed: bool,
+    stdin: bool,
+    capsule: bool,
+) -> Result<Output, String> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"));
+    let _required = command
+        .arg("--profile")
+        .arg(profile)
+        .arg("--output")
+        .arg(target);
+    if capsule {
+        let _capsule = command.arg("--capsule");
+    }
+    let _mode = command.arg("--").arg("--seeded-byte-literal");
+    if stdin {
+        let _input = command.arg(if typed {
+            "--typed-stdin"
+        } else {
+            "--ternary-stdin"
+        });
+    } else {
+        let wire_path = target.with_extension(if typed { "mcti" } else { "mctr" });
+        fs::write(&wire_path, bytes)
+            .map_err(|error| format!("seeded literal fixture write: {error}"))?;
+        let _path = command
+            .arg(if typed {
+                "--typed-file"
+            } else {
+                "--ternary-file"
+            })
+            .arg(wire_path);
+    }
+    let mut child = command
+        .stdin(if stdin { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("seeded literal publisher spawn: {error}"))?;
+    if stdin {
+        child
+            .stdin
+            .take()
+            .ok_or("seeded literal stdin pipe absent")?
+            .write_all(bytes)
+            .map_err(|error| format!("feed seeded literal canonical wire: {error}"))?;
+    }
+    child
+        .wait_with_output()
+        .map_err(|error| format!("seeded literal publisher status: {error}"))
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "raw-source and versioned capsule profile boundary"
+)]
+fn seeded_byte_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for (literal, typed, stdin, capsule) in [
+        (23, true, false, true),
+        (253, false, true, false),
+        (253, false, true, true),
+    ] {
+        let canonical = wire(&typed_rotated_literal_module(literal)?)?;
+        let compiled =
+            adapter::compile_canonical_typed_rotated_byte_literal(&canonical, current_profile())
+                .map_err(|error| format!("publisher seeded source: {error:?}"))?;
+        let bytes = if typed {
+            canonical.as_slice()
+        } else {
+            compiled.ternary_bytes()
+        };
+        let file = workspace.path(&format!("seeded-{literal}-capsule-{capsule}.malbolge"));
+        let outcome = publish_seeded_byte_literal(
+            current_profile().id(),
+            bytes,
+            &file,
+            typed,
+            stdin,
+            capsule,
+        )?;
+        if !outcome.status.success() {
+            return Err(format!(
+                "seeded literal process rejected: {}",
+                String::from_utf8_lossy(&outcome.stderr)
+            ));
+        }
+        let source = restored_canonical_stdin_source(
+            fs::read(&file).map_err(|error| error.to_string())?,
+            capsule,
+        )?;
+        if source != compiled.layout().source() {
+            return Err(String::from(
+                "typed and MCTR seeded graphical source diverged",
+            ));
+        }
+        // Raw graphical source has no profile metadata. Verify it with the
+        // selected normative current VM; only capsules can select a modern
+        // profile in the general runner without an explicit profile option.
+        let mut vm = ProfileMachine::from_source(current_profile(), &source, vec![255, 0, 128])
+            .map_err(|error| format!("seeded raw guest load: {error:?}"))?;
+        if !matches!(vm.run(compiled.layout().executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { steps, .. })
+                if steps == compiled.layout().executed_code_positions().len())
+            || vm.output() != [literal]
+            || vm.input_consumed() != 0
+        {
+            return Err(String::from("seeded current-profile VM mismatch"));
+        }
+        if capsule {
+            let mut runner = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+                .arg(&file)
+                .arg("--input-stdin")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|error| format!("seeded guest runner spawn: {error}"))?;
+            runner
+                .stdin
+                .take()
+                .ok_or("seeded runner stdin pipe missing")?
+                .write_all(&[255, 0, 128])
+                .map_err(|error| format!("seeded guest stdin: {error}"))?;
+            let run = runner
+                .wait_with_output()
+                .map_err(|error| format!("seeded runner exit: {error}"))?;
+            if !run.status.success() || run.stdout != [literal] || !run.stderr.is_empty() {
+                return Err(format!(
+                    "guest runner did not compute literal {literal}: {run:?}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_literal_publisher_refuses_unsupported_or_occupied_artifacts() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let correct = wire(&typed_rotated_literal_module(23)?)?;
+    let wrong_profile = workspace.path("seed-wrong-profile.malbolge");
+    let profile_outcome = publish_seeded_byte_literal(
+        historical_profile().id(),
+        &correct,
+        &wrong_profile,
+        true,
+        false,
+        false,
+    )?;
+    if profile_outcome.status.success() || wrong_profile.exists() {
+        return Err(String::from("seeded publisher admitted foreign profile"));
+    }
+    let unsupported = workspace.path("seed-unsupported.malbolge");
+    let wrong = wire(&typed_rotated_literal_module(24)?)?;
+    let unsupported_outcome = publish_seeded_byte_literal(
+        current_profile().id(),
+        &wrong,
+        &unsupported,
+        true,
+        true,
+        true,
+    )?;
+    if unsupported_outcome.status.success() || unsupported.exists() {
+        return Err(String::from("seeded publisher admitted unproved 24"));
+    }
+    let existing = workspace.path("seed-occupied.malbolge");
+    let sentinel = b"no-clobber seeded literal";
+    fs::write(&existing, sentinel).map_err(|error| error.to_string())?;
+    let existing_outcome = publish_seeded_byte_literal(
+        current_profile().id(),
+        &correct,
+        &existing,
+        true,
+        false,
+        true,
+    )?;
+    if existing_outcome.status.success()
+        || fs::read(&existing).map_err(|error| error.to_string())? != sentinel
+    {
+        return Err(String::from("seeded publisher overwrote occupied output"));
     }
     Ok(())
 }

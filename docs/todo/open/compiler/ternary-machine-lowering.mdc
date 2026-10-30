@@ -686,6 +686,14 @@ instruction.
   It is a library-only target witness; the canonical typed adapter and
   file publisher are not wired to it, and nonzero scalar realization,
   guest C ABI, heap and EOF remain unimplemented.
+- An opt-in seeded nonzero `u8` literal pilot now executes real guest
+  `j` relocated loader data and `*` rotation before one byte output.
+  Canonical MCTI/MCTR SSA provenance and independent layout admission
+  are preserved; 14 current-profile values have seed-specific guest VM
+  output witnesses, while unknown values and extra operations reject.
+  `--seeded-byte-literal` publishes MCTI/MCTR file/stdin raw/capsules only
+  after exact output/no-input VM preflight. This is not general arithmetic,
+  arbitrary constant materialization, repeated output or guest ABI.
 - A fifth opt-in canonical typed/MCTR identity-byte bridge admits only
   eight-bit signed/unsigned `IntegerBitcast` SSA aliases of the latest
   successful guest input. Casts preserve all eight accumulator bits and

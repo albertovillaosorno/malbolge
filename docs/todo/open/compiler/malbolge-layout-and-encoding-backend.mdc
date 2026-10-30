@@ -206,6 +206,13 @@ emission.
   or publish invalid wires. Other OSes keep the pre-open path check plus
   independent descriptor admission and retain a pathname race limitation;
   the stress fixture is not exhaustive proof of every scheduling interleave.
+- The separate `--seeded-byte-literal` compiler publisher admits one
+  complete current-profile typed/MCTR `u8` literal-output function for
+  14 independently verified nonzero guest rotation seeds. Real `j`, `*`,
+  byte output and halt steps, exact source/data separation and observed
+  output bytes are VM-checked before atomic raw/capsule publication.
+  Unsupported values/profile drift and multiple outputs still reject;
+  old zero/latest/identity modes remain strict.
 - The explicit `--identity-byte-trace` MCTI/MCTR file/stdin publisher
   admits latest-input signed/unsigned eight-bit SSA bitcasts through
   independent canonical ternary and target re-admission. Pure bitcasts

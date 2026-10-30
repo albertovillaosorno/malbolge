@@ -1119,6 +1119,31 @@ and latest-read domain guarantees are unchanged. This narrow bridge is
 publisher. It supplies no general nonzero constant, arbitrary guest
 computation, heap, C ABI or guest libc/EOF realization.
 
+### First Verified Nonzero Guest U8 Literal
+
+An opt-in `encode_rotated_byte_literal` bridge now admits one exact
+`MaterializeU8` with same-SSA `ByteOutput`, then `ReturnVoid`. Only
+14 current-profile nonzero bytes are realized: `4, 5, 6, 9, 10, 11,
+18, 19, 20, 21, 22, 23, 251, 253`. A bounded graphical no-op prefix,
+`j` relocation, `*` rotate, output and halt execute in the actual guest
+VM. Source-dependent loader-expanded data is rotated into accumulator
+A; the byte does **not** originate in host output logic. The existing
+independent layout verifier checks source decode, exact source/data
+separation and post-step code encryption. A fresh normative VM then
+checks the proposed nonzero output, halt step and zero input consumption.
+No unsupported value may become an invented immediate instruction.
+
+`compile_canonical_typed_rotated_byte_literal` projects complete
+canonical MCTI with one `u8 ConstantInteger`, one matching `ByteOutput`
+and final void return; canonical MCTR re-admission and source comparison
+retain source/SSA/ABI/target provenance. The standalone CLI adds explicit
+`--seeded-byte-literal` for canonical MCTI/MCTR file or stdin, with an
+independent publisher-level two-pattern VM check before raw/capsule
+no-clobber publication. Legacy zero, latest read and identity-cast
+modes are unchanged. This is only a finite current-profile one-byte
+literal witness, not guest arithmetic, storage, arbitrary constant
+materialization, EOF, repeated byte output or general C lowering.
+
 ### Canonical Eight-Bit SSA Identity-Bitcast Trace
 
 A separate `encode_latest_byte_identity_trace` Malbolge bridge now
