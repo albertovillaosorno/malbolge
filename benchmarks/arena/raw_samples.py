@@ -41,6 +41,10 @@ from io import StringIO
 from typing import Any
 from typing import Final
 from typing import Never
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 from benchmarks.arena import analyze
 
@@ -114,18 +118,32 @@ def _header_schema(
     _fail(f"{label}: invalid arena-raw-v1/v2 CSV header")
 
 
+def _limited_rows(
+    reader: Iterator[list[str]], label: str, expected_rows: int
+) -> list[tuple[str, ...]]:
+    rows: list[tuple[str, ...]] = []
+    for row in reader:
+        if len(rows) >= expected_rows:
+            _fail(f"{label}: raw CSV has more rows than reported trials")
+        rows.append(tuple(row))
+    return rows
+
+
 def _csv_rows(
     text: str,
     label: str,
+    *,
+    expected_rows: int,
 ) -> tuple[str, tuple[str, ...], list[tuple[str, ...]]]:
     try:
         reader = csv.reader(StringIO(text, newline=""), strict=True)
         header = next(reader, None)
         version, metrics = _header_schema(header, label)
-        return version, metrics, [tuple(row) for row in reader]
+        rows = _limited_rows(reader, label, expected_rows)
     except csv.Error as error:
         message = f"{label}: invalid arena raw CSV quotes: {error}"
         raise RawSampleError(message) from error
+    return version, metrics, rows
 
 
 def _decode_raw(raw: bytes, label: str) -> str:
@@ -153,7 +171,9 @@ def check_rows(
 
     """
     text = _decode_raw(raw, label)
-    version, metrics, actual_rows = _csv_rows(text, label)
+    version, metrics, actual_rows = _csv_rows(
+        text, label, expected_rows=len(observations)
+    )
     if any(
         len(row) != len(IDENTITY_FIELDS) + len(metrics) for row in actual_rows
     ):

@@ -54,6 +54,7 @@ from benchmarks.arena import raw_samples
 from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 ROOT_LABEL = "evidence/baseline.csv"
@@ -75,6 +76,7 @@ EMPTY = "empty"
 OVERSIZED = "oversized"
 ALGORITHM_COUNT = 2
 ROW_MISMATCH = "raw CSV trial/metric rows differ"
+CSV_FIRST_EXCESS_ROW = 3
 ENERGY_METRIC = "energy_uj"
 BASELINE_NAME = "baseline"
 MISSING_ENERGY = "missing"
@@ -239,6 +241,36 @@ def test_malformed_incomplete_or_forged_raw_data_rejected(
     _ = (tmp_path / ROOT_LABEL).write_bytes(_invalid_raw(kind, row))
     with pytest.raises(evidence.EvidenceError, match=INVALID_RAW_ROW):
         _check(doc, tmp_path)
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_unreported_csv_rows_stop_at_first_excess_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    version: int,
+) -> None:
+    """Reject a tiny CSV row bomb before materializing all unreported rows."""
+    record = _setup(tmp_path)["observations"][0]
+    expected = _render([record]) if version == 1 else _render_v2([record])
+    hostile = expected + b"\n" * 100_000
+    reader = raw_samples.csv.reader
+    consumed = 0
+
+    def bounded_reader(
+        source: StringIO, *, strict: bool
+    ) -> Iterator[list[str]]:
+        nonlocal consumed
+        for row in reader(source, strict=strict):
+            consumed += 1
+            if consumed > CSV_FIRST_EXCESS_ROW:
+                pytest.fail("CSV parser read past the first unreported row")
+            yield row
+
+    monkeypatch.setattr(raw_samples.csv, "reader", bounded_reader)
+    with pytest.raises(raw_samples.RawSampleError, match="more rows"):
+        raw_samples.check_rows(hostile, [record], ROOT_LABEL)
+    # Header + the one reported trial + the first unexpected empty row.
+    assert consumed == CSV_FIRST_EXCESS_ROW
 
 
 def test_multiple_trials_sharing_one_csv_are_matched_as_complete_set(

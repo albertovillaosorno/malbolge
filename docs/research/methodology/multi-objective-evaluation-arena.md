@@ -764,7 +764,10 @@ The original study records remain the result authority.
   and malformed/oversized manifests fail closed.
 - `benchmarks/arena/raw_samples.py` optionally matches retained CSV content
   exactly against the reported trial set. Synthetic regressions cover missing,
-  extra, duplicate and mismatched rows, plus malformed CSV inputs.
+  extra, duplicate and mismatched rows, plus malformed CSV inputs. The
+  parser rejects the first row beyond the reported trial count instead of
+  materializing attacker-controlled numbers of CSV rows from a 16 MiB file;
+  this limits row-object amplification, not retained-source authenticity.
 - `benchmarks/arena/trial_runs.py` admits a versioned per-trial manifest
   extension under strict opt-in preflight. Synthetic regressions check
   distinct trial-run bindings, raw-file digests, complete shared CSVs, malformed
