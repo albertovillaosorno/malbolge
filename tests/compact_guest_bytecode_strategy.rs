@@ -3114,3 +3114,102 @@ fn two_guest_opcodes_match_direct_on_eof_short_and_trailing_input() -> Result<()
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real second graphical guest dispatch mutation witness"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "native guest branch versus host trust boundary"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "real two-code-pointer trace witness"
+)]
+fn loader_valid_second_opcode_mutation_redirects_actual_guest_but_fails_host_admission()
+-> Result<(), String> {
+    let original = program(2)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("source-bound two-pair descriptor: {error:?}"))?;
+    let source = embed_two_echo_opcodes(&original, current_profile(), &candidate)
+        .map_err(|error| format!("original exact guest source: {error:?}"))?;
+    let mut changed = source.clone();
+    let original_glyph = *changed
+        .get(SECOND_OPCODE_ADDRESS)
+        .ok_or("original second guest opcode")?;
+    assert_eq!(original_glyph, 104, "normative second source glyph");
+    // Graphical 87 is a valid loader cell at position 124. The actual guest
+    // uses its *numeric word*, redirecting second C to address 88 instead of
+    // 105. No host-provided VM register or mock instruction is involved.
+    let forged_glyph = 87u8;
+    assert_eq!(
+        decode_profile_instruction(u32::from(forged_glyph), 124),
+        Some(b'/'),
+        "mutated second opcode remains a graphical loader-valid source word"
+    );
+    *changed
+        .get_mut(SECOND_OPCODE_ADDRESS)
+        .ok_or("second opcode cell")? = forged_glyph;
+    assert_eq!(
+        admit_two_echo_opcodes(&original, current_profile(), &source),
+        Ok(candidate),
+        "original source remains bound and admitted"
+    );
+    assert_eq!(
+        admit_two_echo_opcodes(&original, current_profile(), &changed),
+        Err(TwoOpcodeError::InvalidSource),
+        "host rejects mutated code identity before publication"
+    );
+    for (test_source, expected_word) in [(&source, 104u32), (&changed, 87u32)] {
+        let mut machine = ProfileMachine::from_source(current_profile(), test_source, vec![0, 255])
+            .map_err(|error| format!("normative VM load: {error:?}"))?;
+        let mut second = None;
+        let outcome = machine
+            .run_traced(85, &mut |event| {
+                if event.before.registers.code_pointer == 93 {
+                    second = Some(*event);
+                }
+            })
+            .map_err(|error| format!("guest second jump: {error:?}"))?;
+        assert!(
+            matches!(outcome, RunOutcome::BudgetExhausted { steps: 85 }),
+            "run exactly to the second native indirect jump, before handler"
+        );
+        let jump = second.ok_or("missing second reached guest indirect trace")?;
+        assert_eq!(jump.decoded, Some(b'i'), "must genuinely execute i@93");
+        assert_eq!(
+            jump.before.registers.data_pointer, 124,
+            "second opcode is read from source position 124"
+        );
+        assert_eq!(
+            jump.memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((124, expected_word)),
+            "real guest reads changed graphical word"
+        );
+        assert_eq!(
+            jump.memory_delta.encryption.map(|write| write.address),
+            Some(expected_word),
+            "self-encryption follows actual guest target C"
+        );
+        assert_eq!(
+            machine.registers().code_pointer,
+            expected_word.saturating_add(1),
+            "guest control flow follows actual source byte, not host source check"
+        );
+        assert_eq!(
+            machine.output(),
+            &[0u8],
+            "first operation is unaffected by the later opcode change"
+        );
+        assert_eq!(
+            machine.input_consumed(),
+            1,
+            "first byte was truly consumed before second dispatch"
+        );
+    }
+    Ok(())
+}

@@ -488,6 +488,16 @@ by `min(input_length, 2)`, successful halt and 88-vs-5 instruction counts.
 Sampled CEB2 physical words are unchanged even on EOF/trailing input.
 This is additional bounded evidence, not a proof over all input streams.
 
+A negative loader-valid runtime witness replaces the second graphical
+opcode cell `M[124]` from 104 to 87, keeping its loader phase valid.
+The normative VM still executes the first input/output operation and
+enters the actual second indirect `i@93`, but reads 87 and therefore
+sets C to **88**, not the unmodified 105; XLAT2 targets memory cell 87.
+The host verifier rejects the tampered source independently. The altered
+VM is deliberately stopped after its 85th step, before attempting any
+further unintended guest instructions. This shows physical, source-data
+control of the *second* branch and an explicit host/guest trust boundary.
+
 The semantically equivalent successful two-pair sample costs
 **227 vs 5 source cells** and **88 vs 5 guest steps** for guest opcode
 execution versus direct code: +222 cells and +83 steps. This does not

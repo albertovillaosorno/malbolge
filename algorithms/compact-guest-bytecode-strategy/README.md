@@ -348,7 +348,14 @@ remains unchanged after actual two-operation guest execution. Independent
 host admission reconstructs exact descriptor bytes from the *supplied*
 source and rejects unsupported pair counts, changes to code or either
 opcode, all loader-valid alternate opcode glyphs, mutations of data and
-foreign canonical source identity. Host admission, not the guest,
+foreign canonical source identity.
+A separate adversarial VM run changes *only* the second opcode glyph from
+104 to another loader-admissible byte, 87, at position 124. The first
+real guest read/output remains unchanged, but `i@93` now relocates C to
+88 rather than 105 and encrypts a different physical code cell. The
+independent source verifier rejects the mutated image before publication.
+This proves the second branch depends on actual resident opcode data, not
+a staged host decision or an emulated dispatcher. Host admission, not the guest,
 authenticates the original two-pair program and selected profile.
 
 Compared with an independently emitted **two-pair** direct baseline, real
