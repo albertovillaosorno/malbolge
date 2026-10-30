@@ -103,6 +103,145 @@ def test_measured_rss_reader_close_fault_is_typed(
     assert type(evidence_failure.__cause__) is fault
 
 
+def test_group_cleanup_signal_error_is_typed_after_child_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failure to signal descendants cannot be misreported as success."""
+
+    def refuse_group_signal(group: int, signal: int) -> None:
+        del group, signal
+        raise PermissionError("injected group signal refusal")
+
+    monkeypatch.setattr(target_process.os, "kill", refuse_group_signal)
+    with pytest.raises(target_process.TargetProcessError, match="cleanup") as error:
+        target_process.invoke(
+            _child("print('produced')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    assert isinstance(error.value.__cause__, PermissionError)
+
+
+def test_group_cleanup_failure_preserves_primary_output_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup exceptions must not erase the observed output-budget breach."""
+
+    def refuse_group_signal(group: int, signal: int) -> None:
+        del group, signal
+        raise PermissionError("injected group signal refusal")
+
+    monkeypatch.setattr(target_process.os, "kill", refuse_group_signal)
+    with pytest.raises(target_process.TargetProcessError, match="stdout") as error:
+        target_process.invoke(
+            _child("import os;os.write(1,b'x'*4096)"),
+            stdout_limit=STDOUT_LIMIT,
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    assert any("cleanup also failed" in note for note in error.value.__notes__)
+
+
+def test_refused_group_signal_still_reaps_direct_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A denied group signal must not bypass the direct-child fallback."""
+
+    class ChildProbe:
+        pid = 123456
+
+        def __init__(self) -> None:
+            self.events: list[str] = []
+
+        def poll(self) -> None:
+            self.events.append("poll")
+
+        def kill(self) -> None:
+            self.events.append("kill")
+
+        def wait(self) -> int:
+            self.events.append("wait")
+            return 0
+
+    def refuse_group_signal(group: int, signal: int) -> None:
+        del group, signal
+        raise PermissionError("injected group signal refusal")
+
+    monkeypatch.setattr(target_process.os, "kill", refuse_group_signal)
+    probe = ChildProbe()
+    with pytest.raises(PermissionError, match="group signal refusal"):
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", probe)
+        )
+    assert probe.events == ["poll", "kill", "wait"]
+
+
+def test_stream_close_faults_preserve_primary_failure_and_attempt_all_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unexpected cleanup errors cannot mask an output-budget failure."""
+    closed: list[str] = []
+
+    class RejectingStream:
+        closed = False
+
+        def __init__(self, label: str) -> None:
+            self.label = label
+
+        def close(self) -> None:
+            closed.append(self.label)
+            raise OSError(f"injected {self.label} close failure")
+
+    class ChildProbe:
+        stdin = RejectingStream("stdin")
+        stdout = RejectingStream("stdout")
+        stderr = RejectingStream("stderr")
+
+    monkeypatch.setattr(target_process, "_terminate_group", lambda _child: None)
+    with pytest.raises(target_process.TargetProcessError, match="primary") as error:
+        try:
+            raise target_process.TargetProcessError("primary output rejection")
+        finally:
+            target_process._finish_child(  # ruff: ignore[private-member-access]
+                cast("sp.Popen[bytes]", ChildProbe())
+            )
+    assert closed == ["stdin", "stdout", "stderr"]
+    assert sum(
+        "cleanup also failed" in note for note in error.value.__notes__
+    ) == 3
+
+
+def test_secondary_direct_reap_failure_remains_in_primary_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both a refused group signal and direct kill refusal remain observable."""
+
+    class ChildProbe:
+        pid = 123456
+        stdin = None
+        stdout = None
+        stderr = None
+
+        def poll(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            raise PermissionError("direct kill denied")
+
+    def refuse_group_signal(group: int, signal: int) -> None:
+        del group, signal
+        raise PermissionError("group signal denied")
+
+    monkeypatch.setattr(target_process.os, "kill", refuse_group_signal)
+    with pytest.raises(target_process.TargetProcessError, match="primary") as error:
+        try:
+            raise target_process.TargetProcessError("primary output rejection")
+        finally:
+            target_process._finish_child(  # ruff: ignore[private-member-access]
+                cast("sp.Popen[bytes]", ChildProbe())
+            )
+    assert any("group signal denied" in note for note in error.value.__notes__)
+    assert any("direct kill denied" in note for note in error.value.__notes__)
+
+
 def test_exact_bounded_output_and_stderr_roundtrip() -> None:
     """Both separately bounded streams retain complete exact bytes."""
     result = target_process.invoke(

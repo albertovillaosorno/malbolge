@@ -816,7 +816,10 @@ The original study records remain the result authority.
   linked leaves, schema type drift and corrupted JSON.
 - Linux host-C children now inherit kernel-enforced `RLIMIT_AS`,
   `RLIMIT_CPU`, and `RLIMIT_FSIZE` under util-linux `prlimit`, with separate
-  process-group wall-timeout cleanup. Real subprocess tests exercise limits,
+  process-group wall-timeout cleanup. Refused group signals no longer skip
+  direct-child termination or stream cleanup: a cleanup-only fault is a typed
+  rejection, while an earlier output-budget or deadline failure stays primary
+  with secondary cleanup diagnostics. Real subprocess tests exercise limits,
   successful and timed-out descendants, and unavailable resource tools;
   these controls do not cover aggregate system resource consumption.
 - `benchmarks/arena/host_c_oracle.py` optionally compiles canonical

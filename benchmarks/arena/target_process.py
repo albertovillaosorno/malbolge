@@ -131,12 +131,33 @@ def require_child_resource_controls() -> None:
 
 def _terminate_group(child: sp.Popen[bytes]) -> None:
     # Never signal an unrelated process: each child owns a fresh session.
-    with suppress(ProcessLookupError):
+    group_error: OSError | None = None
+    try:
         os.kill(-child.pid, GROUP_KILL_SIGNAL)
-    if child.poll() is None:
-        with suppress(ProcessLookupError):
-            child.kill()
-    _ = child.wait()
+    except ProcessLookupError:
+        pass
+    except OSError as error:
+        group_error = error
+
+    # A refused group signal must not skip direct-child termination and reap.
+    direct_error: OSError | None = None
+    try:
+        if child.poll() is None:
+            with suppress(ProcessLookupError):
+                child.kill()
+    except OSError as error:
+        direct_error = error
+    if direct_error is None:
+        try:
+            _ = child.wait()
+        except OSError as error:
+            direct_error = error
+    if group_error is not None:
+        if direct_error is not None:
+            group_error.add_note(f"direct child cleanup also failed: {direct_error}")
+        raise group_error
+    if direct_error is not None:
+        raise direct_error
 
 
 def _read_ready(
@@ -197,10 +218,30 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
 
 
 def _finish_child(child: sp.Popen[bytes]) -> None:
-    _terminate_group(child)
+    primary = sys.exception()
+    cleanup_errors: list[Exception] = []
+    try:
+        _terminate_group(child)
+    except (OSError, ValueError, RuntimeError, sp.SubprocessError) as error:
+        cleanup_errors.append(error)
     for stream in (child.stdin, child.stdout, child.stderr):
         if stream is not None and not stream.closed:
-            stream.close()
+            try:
+                stream.close()
+            except (OSError, ValueError, RuntimeError) as error:
+                cleanup_errors.append(error)
+    if not cleanup_errors:
+        return
+    if primary is not None:
+        for error in cleanup_errors:
+            primary.add_note(f"bounded target cleanup also failed: {error}")
+            for detail in getattr(error, "__notes__", ()):
+                primary.add_note(f"bounded target cleanup detail: {detail}")
+        return
+    for error in cleanup_errors[1:]:
+        cleanup_errors[0].add_note(f"additional cleanup failure: {error}")
+    message = f"bounded target cleanup failed: {cleanup_errors[0]}"
+    raise TargetProcessError(message) from cleanup_errors[0]
 
 
 def _run(
