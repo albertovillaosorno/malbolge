@@ -94,7 +94,9 @@ format.
   pipe readers now stop retaining stdout/stderr at their declared quotas and
   abort overflowing processes. Read/write/close failures in pipe workers,
   including invalid-stream exceptions, now reject rather than silently accept
-  incomplete observations. Concurrent stdin and wall-deadline checks begin
+  incomplete observations. Reader and stdin worker completion is now explicit,
+  so unexpected uncaught worker exits also reject instead of producing an
+  incomplete digest. Concurrent stdin and wall-deadline checks begin
   beginning before process launch (including delayed pipe setup). All POSIX
   probes now terminate residual dedicated process-group descendants
   on success as well as failure, including helpers with independently closed

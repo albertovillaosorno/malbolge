@@ -155,7 +155,10 @@ into independent memory-guarded readers, aborting on the first byte over each
 stdout/stderr quota; stdin has a concurrent writer to avoid full-duplex
 backpressure deadlocks. Unexpected read/write/close stream errors are recorded
 by pipe workers, including invalid/closed-descriptor failures, rather than
-accepting truncated selected stdout when a worker exits. The wall deadline is
+accepting truncated selected stdout when a worker exits. Reader and stdin writer
+workers now explicitly acknowledge successful termination; an unexpected worker
+exit without that acknowledgment also rejects its transcript. The wall deadline
+is
 established before launching the
 process and includes pipe setup, child completion, and stream draining. On
 POSIX, every completed, failed, or timed-out probe terminates its dedicated

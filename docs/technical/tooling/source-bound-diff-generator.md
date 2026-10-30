@@ -252,7 +252,9 @@ now use concurrent pipe readers that enforce output byte quotas. They abort
 overflowing commands before completion. Pipe read/write/close failures are
 recorded by worker threads and reject the transcript, including ordinary
 unexpected invalid-stream errors that previously killed a reader thread without
-marking its capture incomplete. A concurrent
+marking its capture incomplete. Each reader and the nonempty stdin writer also
+mark explicit clean completion; unexpected worker exits lacking that marker
+cannot be confused with successful pipe capture. A concurrent
 stdin writer preserves full-duplex behavior; the wall deadline starts before
 process launch and covers reader/writer setup, child and pipe completion.
 A child that already exited by the time delayed pipe setup finishes still fails

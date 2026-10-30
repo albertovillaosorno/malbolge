@@ -498,6 +498,7 @@ class _PipeCapture:
     size: int = 0
     exceeded: bool = False
     error: Exception | None = None
+    finished: bool = False
 
 
 @dataclass(slots=True)
@@ -510,6 +511,7 @@ class _RunningProbe:
     readers: tuple[threading.Thread, threading.Thread]
     writer: threading.Thread | None
     stdin_errors: list[Exception]
+    stdin_complete: threading.Event
 
 
 def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
@@ -545,16 +547,23 @@ def _drain_pipe(stream: IO[bytes], capture: _PipeCapture) -> None:
             stream.close()
         except (OSError, ValueError, RuntimeError) as error:
             capture.error = error
+    capture.finished = True
 
 
 def _feed_stdin(
-    stream: IO[bytes], data: bytes, errors: list[Exception]
+    stream: IO[bytes],
+    data: bytes,
+    errors: list[Exception],
+    *,
+    completed: threading.Event,
 ) -> None:
-    """Write stdin concurrently and record stream errors."""
+    """Write stdin and acknowledge only a clean worker completion."""
+    wrote = False
     try:
         _ = stream.write(data)
+        wrote = True
     except BrokenPipeError:
-        return
+        wrote = True
     except (OSError, ValueError, RuntimeError) as error:
         errors.append(error)
     finally:
@@ -562,6 +571,8 @@ def _feed_stdin(
             stream.close()
         except (OSError, ValueError, RuntimeError) as error:
             errors.append(error)
+    if wrote and not errors:
+        completed.set()
 
 
 def _stop_child(process: subprocess.Popen[bytes]) -> None:
@@ -622,7 +633,11 @@ def _capture_pipes(
 
 
 def _start_writer(
-    process: subprocess.Popen[bytes], data: bytes, errors: list[Exception]
+    process: subprocess.Popen[bytes],
+    data: bytes,
+    errors: list[Exception],
+    *,
+    completed: threading.Event,
 ) -> threading.Thread | None:
     """Close empty stdin immediately or send input asynchronously.
 
@@ -641,7 +656,11 @@ def _start_writer(
         stream.close()
         return None
     writer = threading.Thread(
-        target=_feed_stdin, args=(stream, data, errors), daemon=True
+        target=_feed_stdin,
+        args=(stream, data, errors),
+        kwargs={"completed": completed},
+        name="probe-stdin-writer",
+        daemon=True,
     )
     writer.start()
     return writer
@@ -670,8 +689,13 @@ def _start_capture(
     for reader in readers:
         reader.start()
     stdin_errors: list[Exception] = []
-    writer = _start_writer(process, command.stdin, stdin_errors)
-    return _RunningProbe(process, stdout, stderr, readers, writer, stdin_errors)
+    stdin_complete = threading.Event()
+    writer = _start_writer(
+        process, command.stdin, stdin_errors, completed=stdin_complete
+    )
+    return _RunningProbe(
+        process, stdout, stderr, readers, writer, stdin_errors, stdin_complete
+    )
 
 
 def _require_healthy_pipes(running: _RunningProbe) -> None:
@@ -692,6 +716,30 @@ def _require_healthy_pipes(running: _RunningProbe) -> None:
         or running.stderr.error is not None
         or running.stdin_errors
     ):
+        message = "probe command pipe communication failed"
+        raise ProbeExecutionError(message)
+    _require_finished_workers(running)
+
+
+def _require_finished_workers(running: _RunningProbe) -> None:
+    """Reject capture workers that terminate without clean completion.
+
+    Raises:
+        ProbeExecutionError: A worker quit without reporting its outcome.
+
+    """
+    captures = (running.stdout, running.stderr)
+    reader_failed = any(
+        not reader.is_alive() and not capture.finished
+        for reader, capture in zip(running.readers, captures, strict=True)
+    )
+    writer = running.writer
+    writer_failed = (
+        writer is not None
+        and not writer.is_alive()
+        and not running.stdin_complete.is_set()
+    )
+    if reader_failed or writer_failed:
         message = "probe command pipe communication failed"
         raise ProbeExecutionError(message)
 

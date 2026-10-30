@@ -66,6 +66,7 @@ _ADMITTED_INPUT = b"admitted"
 _STDOUT_NAME = "stdout"
 _STDERR_NAME = "stderr"
 _POSIX_OS_NAME = "posix"
+_PROBE_WRITER_THREAD_NAME = "probe-stdin-writer"
 _LINK_CREATE_CODE = (
     "import pathlib,sys;pathlib.Path(sys.argv[1]).symlink_to(sys.argv[2])"
 )
@@ -573,6 +574,64 @@ def test_unexpected_pipe_reader_failure_rejects_probe(
     program = _program("failed-output-reader", "pass")
     with pytest.raises(ProbeExecutionError, match="pipe communication failed"):
         _ = run_probe_program(program, _context(source, tmp_path))
+
+
+def test_uncaught_reader_thread_failure_rejects_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unexpected worker exits must not produce a valid empty transcript."""
+    source = tmp_path / "source"
+    source.mkdir()
+    read = os.read
+    uncaught: list[BaseException | None] = []
+
+    def record_uncaught(args: threading.ExceptHookArgs) -> None:
+        uncaught.append(args.exc_value)
+
+    def crashing_read(fd: int, count: int) -> bytes:
+        if threading.current_thread() is not threading.main_thread():
+            message = "unanticipated capture failure"
+            raise TypeError(message)
+        return read(fd, count)
+
+    monkeypatch.setattr(threading, "excepthook", record_uncaught)
+    monkeypatch.setattr(os, "read", crashing_read)
+    program = _program("uncaught-output-reader", "pass")
+    with pytest.raises(ProbeExecutionError, match="pipe communication failed"):
+        _ = run_probe_program(program, _context(source, tmp_path))
+    _expect(bool(uncaught), "worker exception fixture was not exercised")
+
+
+def test_uncaught_stdin_writer_failure_rejects_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An aborted stdin worker must not leave an admitted observation."""
+    source = tmp_path / "source"
+    source.mkdir()
+    original_run = threading.Thread.run
+    uncaught: list[BaseException | None] = []
+
+    def record_uncaught(args: threading.ExceptHookArgs) -> None:
+        uncaught.append(args.exc_value)
+
+    def crashing_writer(thread: threading.Thread) -> None:
+        if thread.name == _PROBE_WRITER_THREAD_NAME:
+            message = "unanticipated stdin failure"
+            raise TypeError(message)
+        original_run(thread)
+
+    monkeypatch.setattr(threading, "excepthook", record_uncaught)
+    monkeypatch.setattr(threading.Thread, "run", crashing_writer)
+    command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "pass"),
+        stdin=b"input",
+        digest_stdout=True,
+    )
+    program = ProbeProgram("uncaught-stdin-writer", (command,))
+    with pytest.raises(ProbeExecutionError, match="pipe communication failed"):
+        _ = run_probe_program(program, _context(source, tmp_path))
+    _expect(bool(uncaught), "stdin worker failure was not exercised")
 
 
 @pytest.mark.parametrize("stream", [_STDOUT_NAME, _STDERR_NAME])
