@@ -42,7 +42,7 @@ use layout::{
 };
 use malbolge::{
     ProfileMachine, ProfileRegisters, RunOutcome, current_profile, decode_profile_instruction,
-    encrypt_profile_cell, historical_profile,
+    encrypt_profile_cell, historical_profile, target_profile,
 };
 
 fn verify_data_write_witness(
@@ -1866,5 +1866,113 @@ fn auto_relocation_guest_crazy_and_rotate_compute_independent_output() -> Result
             );
         }
     }
+    Ok(())
+}
+
+/// Independent first-fit oracle for one `j` whose D remains equal to C.
+/// For an unchanged NOP prefix, the instruction reads its own graphical
+/// byte, which must exceed the **complete** final code boundary.
+fn expected_auto_relocation_phase(suffix_nops: usize) -> Result<Option<usize>, String> {
+    for phase in 0..94usize {
+        let address = u32::try_from(phase).map_err(|error| error.to_string())?;
+        let byte = (33u8..=126)
+            .find(|byte| decode_profile_instruction(u32::from(*byte), address) == Some(b'j'))
+            .ok_or("missing normative j decoder phase")?;
+        let full_length = phase.saturating_add(suffix_nops).saturating_add(2);
+        if usize::from(byte) >= full_length {
+            return Ok(Some(phase));
+        }
+    }
+    Ok(None)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test helper intentionally asserts each first-fit source-map invariant"
+)]
+fn assert_auto_relocation_suffix(
+    profile: &'static malbolge::ProfileDescriptor,
+    suffix_nops: usize,
+) -> Result<bool, String> {
+    use PaddedForwardStep::{AutoRelocate, Instruction};
+    let mut logical = vec![AutoRelocate];
+    logical.resize(
+        suffix_nops.saturating_add(1),
+        Instruction(LinearOpcode::NoOperation),
+    );
+    logical.push(Instruction(LinearOpcode::Halt));
+    let expected = expected_auto_relocation_phase(suffix_nops)?;
+    let result = encode_auto_padded_forward_layout(profile, &logical);
+    let Some(phase) = expected else {
+        assert_eq!(
+            result,
+            Err(LinearLayoutError::UnsafeDataPlacement),
+            "impossible relocation must refuse source overlap"
+        );
+        return Ok(false);
+    };
+    let layout = result.map_err(|error| {
+        format!(
+            "{} with {suffix_nops} source nop cells: {error:?}",
+            profile.id(),
+        )
+    })?;
+    let code = u32::try_from(phase).map_err(|error| error.to_string())?;
+    assert_eq!(
+        layout.logical_code_positions().first(),
+        Some(&code),
+        "symbolic relocation target is not the earliest safe decoder phase"
+    );
+    assert_eq!(
+        layout.source_cell_origins().get(phase),
+        Some(&PaddedCellOrigin::Logical(0)),
+        "source cell origin lost the logical relocation",
+    );
+    assert_eq!(
+        layout.operations().get(phase),
+        Some(&LinearOpcode::RelocateDataPointer),
+        "selected source phase does not contain the requested relocation",
+    );
+    assert_eq!(
+        layout.operations().len(),
+        phase.saturating_add(suffix_nops).saturating_add(2),
+        "emitter did not account for the entire post-relocation source",
+    );
+    assert_eq!(
+        layout.layout().data_pointer_positions().get(phase),
+        Some(&code),
+        "D must equal C before the first explicit relocation",
+    );
+    Ok(true)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "all accepted and impossible placement boundaries are asserted"
+)]
+fn auto_relocate_first_fit_matches_all_profile_decoder_phases_and_suffix_sizes()
+-> Result<(), String> {
+    let profiles = [
+        historical_profile(),
+        current_profile(),
+        target_profile("malbolge-2026.1").ok_or("missing 2026.1")?,
+        target_profile("malbolge-2026.2").ok_or("missing 2026.2")?,
+        target_profile("malbolge-2026.3").ok_or("missing 2026.3")?,
+    ];
+    let mut accepted = 0usize;
+    let mut rejected = 0usize;
+    for profile in profiles {
+        for suffix_nops in 0..=130usize {
+            if assert_auto_relocation_suffix(profile, suffix_nops)? {
+                accepted = accepted.saturating_add(1);
+            } else {
+                rejected = rejected.saturating_add(1);
+            }
+        }
+    }
+    assert!(accepted > 0);
+    assert!(rejected > 0);
+    assert_eq!(accepted.saturating_add(rejected), 655);
     Ok(())
 }
