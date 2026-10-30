@@ -109,6 +109,15 @@ result under the selected normative `ProfileMachine` with empty input. A halt
 must occur at the exact admitted execution-witness step count before the
 source is published.
 
+Canonical typed and ternary file inputs use an opened regular descriptor with
+a strict nonzero 1 MiB limit. The publisher admits descriptor/path metadata
+before and after its bounded read, rejecting observed inode replacement or
+same-sized in-place rewrites even if the original byte count still matches.
+On POSIX the admission compares device/inode and nanosecond modification and
+change stamps; Windows uses available file identity and write/change stamps.
+A stable symlink to a regular source remains valid. These checks reject
+observed concurrent drift, not changes after the final admission check.
+
 The publisher creates a new same-directory staging file, flushes/syncs and
 reopens its exact graphical bytes, then uses a no-overwrite hard link to
 atomically reveal only a complete final `.malbolge`. Existing targets and

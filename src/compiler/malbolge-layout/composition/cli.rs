@@ -365,7 +365,59 @@ fn open_canonical_file(path: &Path) -> io::Result<fs::File> {
     fs::File::open(path)
 }
 
+// A bounded read is not a stable snapshot unless the opened file and its
+// source pathname still identify the same unchanged inode afterwards.
+#[cfg(unix)]
+fn canonical_wire_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.dev() == after.dev()
+        && before.ino() == after.ino()
+        && before.len() == after.len()
+        && before.mtime() == after.mtime()
+        && before.mtime_nsec() == after.mtime_nsec()
+        && before.ctime() == after.ctime()
+        && before.ctime_nsec() == after.ctime_nsec()
+}
+
+#[cfg(windows)]
+fn canonical_wire_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.volume_serial_number().is_some()
+        && before.volume_serial_number() == after.volume_serial_number()
+        && before.file_index().is_some()
+        && before.file_index() == after.file_index()
+        && before.last_write_time() == after.last_write_time()
+        && before.change_time() == after.change_time()
+}
+
+#[cfg(not(any(unix, windows)))]
+fn canonical_wire_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.modified().ok().is_some()
+        && before.modified().ok() == after.modified().ok()
+}
+
 fn read_canonical_wire(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
+    read_canonical_wire_with_reader(path, kind, |file, bytes| {
+        file.take(MAX_CANONICAL_WIRE_BYTES.saturating_add(1))
+            .read_to_end(bytes)
+    })
+}
+
+fn read_canonical_wire_with_reader(
+    path: &Path,
+    kind: &str,
+    read: impl FnOnce(&mut fs::File, &mut Vec<u8>) -> io::Result<usize>,
+) -> Result<Vec<u8>, String> {
     // Linux/Android open the descriptor nonblocking and inspect that very
     // handle. Other platforms retain the bounded pre-open pathname guard.
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
@@ -381,7 +433,7 @@ fn read_canonical_wire(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
             ));
         }
     }
-    let file = open_canonical_file(path)
+    let mut file = open_canonical_file(path)
         .map_err(|error| format!("cannot open canonical {kind} wire: {error}"))?;
     let metadata = file
         .metadata()
@@ -391,10 +443,13 @@ fn read_canonical_wire(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
             "canonical wire must be a nonempty bounded regular file",
         ));
     }
+    let before = fs::metadata(path)
+        .map_err(|error| format!("cannot inspect canonical {kind} path: {error}"))?;
+    if !canonical_wire_metadata_matches(&metadata, &before) {
+        return Err(String::from("canonical wire changed during read"));
+    }
     let mut bytes = Vec::new();
-    let _bytes_read = file
-        .take(MAX_CANONICAL_WIRE_BYTES.saturating_add(1))
-        .read_to_end(&mut bytes)
+    let _bytes_read = read(&mut file, &mut bytes)
         .map_err(|error| format!("cannot read canonical {kind} wire: {error}"))?;
     let length = u64::try_from(bytes.len())
         .map_err(|_error| String::from("ternary wire length overflow"))?;
@@ -402,6 +457,16 @@ fn read_canonical_wire(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
         return Err(String::from(
             "ternary wire read length disagrees with bounded file",
         ));
+    }
+    let after = file
+        .metadata()
+        .map_err(|error| format!("cannot recheck canonical {kind} wire: {error}"))?;
+    let current = fs::metadata(path)
+        .map_err(|error| format!("cannot recheck canonical {kind} path: {error}"))?;
+    if !canonical_wire_metadata_matches(&metadata, &after)
+        || !canonical_wire_metadata_matches(&metadata, &current)
+    {
+        return Err(String::from("canonical wire changed during read"));
     }
     Ok(bytes)
 }
@@ -770,3 +835,7 @@ pub fn run() -> ExitCode {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/compiler/layout/canonical_wire_read.rs"]
+mod canonical_wire_read_tests;
