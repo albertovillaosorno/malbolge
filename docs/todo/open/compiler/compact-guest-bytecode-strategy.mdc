@@ -147,6 +147,18 @@ code-size explosion or compilation cost.
   canonical capsules and the general Malbolge CLI with exact step receipts;
   this proves real guest execution, not equivalence to the original source.
 
+- Version-six one-opcode research now admits a true **complete one-pair echo**
+  workload: a distinct loader-valid `ECHO_ONE` cell at guest address 121
+  selects the native input/output/halt handler through a real reached `i`.
+  All 102 source-bound CEB2 glyphs are preserved in a separate 122–223
+  data region. Independent host admission rejects foreign counts, changed
+  code/opcode/data and digest mismatches. Actual normative VM and general
+  CLI execute a matching successful one-byte stdout/input trace compared
+  with independently emitted direct code. The bounded comparative cost is
+  negative: 224 vs 3 source cells and 85 vs 3 executed instructions.
+  This is **not** a general guest bytecode decoder, repeat-count loop,
+  in-guest source authentication, or a multi-op interpreter; TODO is open.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

@@ -402,6 +402,48 @@ semantics from the single-byte rank-five handler, and the two halt-only
 branches deliberately implement none of their advertised echo pairs.
 No Pareto speedup is claimed from this non-equivalent functionality.
 
+## Results: Complete One-Operation Guest Bytecode v6 (2026-10-29)
+
+The prior v5b handler branches produced diagnostic I/O unrelated to their
+advertised CEB2 pair count. To obtain a first **equivalent** workload,
+version six adds a separate three-bit graphical `ECHO_ONE` opcode at guest
+D address 121, before the independently source-bound CEB2 descriptor.
+The exact 224-cell source places SHA-256-bound 38-byte CEB2 data into
+loader-admissible glyphs at positions 122–223. The source's fixed guest
+instructions remain `j@0`, eighty `o`, `i@81`, followed by an unreached
+native code area with `/@91`, `<@92`, `v@93`. Actual opcode rank 5 at
+address 121 is graphical word 90, so the reached guest `i` uses loaded
+memory to jump to 91. The guest reads one supplied byte, writes it once
+and halts after exactly 85 VM instructions; all descriptor words survive.
+
+This probe accepts only the original canonical echo **pair count one**,
+verified through CEB2's existing source/profile digest. The independent
+host verifier reconstructs all 102 phase-specific payload glyph ranks
+from actual supplied bytes, checks exact positional code/opcode and
+re-admits original canonical CEB2 provenance. All unsupported counts and
+forged or loader-admissible mutated code/data reject before publication.
+No CEB2 hash is calculated *inside* guest Malbolge execution.
+
+An independently emitted direct compiler baseline occupies 3 graphical
+cells and takes 3 VM instructions to read/echo/halt. Normative guest/direct
+VM replay for input bytes 0, 1, 127, 128, 255 agrees in exact stdout and
+consumed input. The trace additionally verifies the guest reads opcode
+word 90 at D=121 and physically self-encrypts only code at address 90,
+while every CEB2 source word remains unmodified. Actual **general CLI**
+execution of separately built `.malbolge` capsules agrees for input bytes
+0/128/255, with independently observed exact 85-step and 3-step receipts.
+
+The measured equivalent workload is worse on both relevant simple cost
+axes: **224 vs 3 graphical source cells** (221-cell guest overhead) and
+**85 vs 3 guest steps** (82-step overhead) for one successful byte.
+This is a genuine negative small-program result, not a size/performance
+benefit. Guest code dispatches on the numerical value of one positional
+graphical opcode, without interpreting a general instruction stream,
+decoding the ordinal arithmetically, looping over CEB2's count, reading
+multiple bytes, authenticating its own source, or supporting arbitrary C.
+The P2 compact-bytecode task stays open pending larger, truly equivalent
+programs and a reusable guest bytecode runtime.
+
 ## Threats to Validity
 
 The pilot has no guest interpreter, no real bytecode loader, no linked data

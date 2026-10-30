@@ -39,6 +39,8 @@ pub mod guest_probe;
 pub mod isolated;
 #[path = "../algorithms/compact-guest-bytecode-strategy/graphical_residency.rs"]
 pub mod residency;
+#[path = "../algorithms/compact-guest-bytecode-strategy/single_opcode.rs"]
+pub mod single;
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_macro.rs"]
 pub mod strategy;
 
@@ -84,12 +86,18 @@ use isolated::{
     embed_isolated_guest_dispatch, embed_isolated_guest_handlers,
     validate_isolated_dispatch_geometry,
 };
+use single::{
+    SINGLE_CEB2_START, SINGLE_ECHO_GUEST_STEPS, SINGLE_ECHO_OPCODE_RANK, SINGLE_OPCODE_ADDRESS,
+    SINGLE_SOURCE_CELLS, SingleOpcodeError, admit_single_echo_opcode, embed_single_echo_opcode,
+};
 
 const BOUND_PILOT_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v1.toml");
 
 const GUEST_PROBE_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v3.toml");
+const SINGLE_OPCODE_CONFIG: &str =
+    include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v6.toml");
 const ISOLATED_DISPATCH_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v5.toml");
 const ISOLATED_HANDLERS_CONFIG: &str =
@@ -2135,6 +2143,356 @@ fn source_selected_guest_handlers_run_through_real_general_malbolge_cli() -> Res
             output.stderr,
             format!("malbolge-steps-v1:{exact_steps}\n").as_bytes(),
             "the external runner must receipt exact guest steps"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real guest/direct 1-op semantic parity"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "full guest trace, source-bound data and direct oracle"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "disjoint native opcode and source checks"
+)]
+fn one_guest_bytecode_opcode_matches_independent_complete_one_pair_echo() -> Result<(), String> {
+    let original = program(1)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("CEB2: {error:?}"))?;
+    let source = embed_single_echo_opcode(&original, current_profile(), &candidate)
+        .map_err(|error| format!("emit guest opcode: {error:?}"))?;
+    assert_eq!(source.len(), SINGLE_SOURCE_CELLS, "exact emitted size");
+    assert_eq!(SINGLE_SOURCE_CELLS, 224);
+    assert_eq!(SINGLE_CEB2_START, 122);
+    assert_eq!(SINGLE_OPCODE_ADDRESS, 121);
+    assert_eq!(SINGLE_ECHO_OPCODE_RANK, 5);
+    assert_eq!(
+        source.get(121),
+        Some(&90),
+        "literal loader graphical opcode"
+    );
+    assert_eq!(
+        admit_single_echo_opcode(&original, current_profile(), &source),
+        Ok(candidate),
+        "recover exact CEB2 from 102 re-ranked data cells"
+    );
+    for (index, &glyph) in source.iter().enumerate() {
+        let position = u32::try_from(index).map_err(|error| error.to_string())?;
+        assert!(
+            matches!(
+                decode_profile_instruction(u32::from(glyph), position),
+                Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+            ),
+            "all code/opcode/data positions must satisfy canonical loader {index}"
+        );
+    }
+    let direct = strategy::bridge::encode_successful_byte_echo(&original, current_profile())
+        .map_err(|error| format!("independent direct layout: {error:?}"))?;
+    assert_eq!(direct.source().len(), 3, "one pair direct code is 3 cells");
+    for byte in [0u8, 1, 127, 128, 255] {
+        let mut guest = ProfileMachine::from_source(current_profile(), &source, vec![byte])
+            .map_err(|error| format!("guest loader: {error:?}"))?;
+        let mut indirect = None;
+        let outcome = guest
+            .run_traced(SINGLE_ECHO_GUEST_STEPS, &mut |event| {
+                if event.before.registers.code_pointer == 81 {
+                    indirect = Some(*event);
+                }
+            })
+            .map_err(|error| format!("guest VM: {error:?}"))?;
+        assert!(
+            matches!(outcome, RunOutcome::Terminated { steps: 85, .. }),
+            "full guest opcode must terminate, not exhaust its budget"
+        );
+        let event = indirect.ok_or("missing reached bytecode dispatch")?;
+        assert_eq!(event.decoded, Some(b'i'), "real VM indirect opcode");
+        assert_eq!(
+            event.before.registers.data_pointer, 121,
+            "physical opcode operand at D=121"
+        );
+        assert_eq!(
+            event
+                .memory_reads
+                .data
+                .map(|read| (read.address, read.value)),
+            Some((121, 90)),
+            "read actual embedded opcode from guest memory"
+        );
+        assert_eq!(
+            event.memory_delta.encryption.map(|write| write.address),
+            Some(90),
+            "native jump mutates code, not bytecode"
+        );
+        assert_eq!(guest.output(), &[byte], "guest byte-for-byte echo oracle");
+        assert_eq!(guest.input_consumed(), 1, "exact one input byte");
+        let mut baseline =
+            ProfileMachine::from_source(current_profile(), direct.source(), vec![byte])
+                .map_err(|error| format!("direct source loader: {error:?}"))?;
+        assert!(
+            matches!(baseline.run(3), Ok(RunOutcome::Terminated { steps: 3, .. })),
+            "direct one-pair baseline must perform exactly three guest steps"
+        );
+        assert_eq!(
+            guest.output(),
+            baseline.output(),
+            "equivalent one-byte trace for actual direct and bytecode guest"
+        );
+        assert_eq!(
+            guest.input_consumed(),
+            baseline.input_consumed(),
+            "equivalent successful input consumption for guest and direct"
+        );
+        let mut restored_image = source.clone();
+        for index in SINGLE_CEB2_START..SINGLE_SOURCE_CELLS {
+            let address = u32::try_from(index).map_err(|error| error.to_string())?;
+            let actual_word = guest
+                .memory_word(address)
+                .map_err(|error| format!("guest data {index}: {error:?}"))?;
+            assert_eq!(
+                actual_word,
+                u32::from(*source.get(index).ok_or("source CEB2 glyph")?),
+                "all 102 CEB2 glyphs remain unmodified by guest opcode {index}"
+            );
+            *restored_image.get_mut(index).ok_or("restored CEB2")? =
+                u8::try_from(actual_word).map_err(|error| error.to_string())?;
+        }
+        assert_eq!(
+            admit_single_echo_opcode(&original, current_profile(), &restored_image),
+            Ok(candidate),
+            "source-bound CEB2 remains intact in real guest VM"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source-bound bytecode rejection matrix"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "all source/data tampering and unsupported counts"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "all malformed count/code/data cases"
+)]
+fn one_guest_opcode_rejects_nontrivial_count_and_changed_code_or_payload() -> Result<(), String> {
+    for pairs in [2usize, 7, 10, 64] {
+        let original = program(pairs)?;
+        let candidate = encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("encode: {error:?}"))?;
+        assert_eq!(
+            embed_single_echo_opcode(&original, current_profile(), &candidate),
+            Err(SingleOpcodeError::UnsupportedEchoCount),
+            "all non-single echo programs must be rejected without output"
+        );
+    }
+    let original = program(1)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("encode: {error:?}"))?;
+    let source = embed_single_echo_opcode(&original, current_profile(), &candidate)
+        .map_err(|error| format!("emit: {error:?}"))?;
+    for position in [0usize, 1, 80, 81, 91, 92, 93, 120, 121] {
+        let mut wrong = source.clone();
+        *wrong.get_mut(position).ok_or("code position")? = b'!';
+        assert_eq!(
+            admit_single_echo_opcode(&original, current_profile(), &wrong),
+            Err(SingleOpcodeError::InvalidSource),
+            "changed exact opcode/native code must reject at {position}"
+        );
+    }
+    for position in [122usize, 123, 224 - 1] {
+        let mut wrong = source.clone();
+        let original_glyph = *wrong.get(position).ok_or("data position")?;
+        let replacement = (33u8..=126u8)
+            .find(|&glyph| {
+                glyph != original_glyph
+                    && matches!(
+                        decode_profile_instruction(
+                            u32::from(glyph),
+                            u32::try_from(position).unwrap_or(u32::MAX)
+                        ),
+                        Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                    )
+            })
+            .ok_or("second loader-valid data glyph")?;
+        *wrong.get_mut(position).ok_or("changed data cell")? = replacement;
+        assert!(
+            admit_single_echo_opcode(&original, current_profile(), &wrong).is_err(),
+            "even loader-admissible mutated descriptor must fail binding"
+        );
+    }
+    for shortened in [0usize, 1, 91, 121, 122, 223] {
+        assert_eq!(
+            admit_single_echo_opcode(
+                &original,
+                current_profile(),
+                source.get(..shortened).ok_or("source prefix")?
+            ),
+            Err(SingleOpcodeError::InvalidSource),
+            "truncated source rejects"
+        );
+    }
+    let mut extended = source.clone();
+    extended.push(b'!');
+    assert_eq!(
+        admit_single_echo_opcode(&original, current_profile(), &extended),
+        Err(SingleOpcodeError::InvalidSource),
+        "excess source cells reject"
+    );
+    let mut foreign = original;
+    foreign.source_id = String::from("research/forged-echo-one.c");
+    assert!(
+        admit_single_echo_opcode(&foreign, current_profile(), &source).is_err(),
+        "source identity is included in host SHA-256 provenance check"
+    );
+    Ok(())
+}
+
+#[test]
+fn single_guest_echo_opcode_config_pins_complete_bounded_semantics() {
+    for declaration in [
+        "schema = \"compact-guest-bytecode-pilot-v6\"",
+        "source_cells = 224",
+        "code_prefix_and_opcode_cells = 122",
+        "opcode_address = 121",
+        "opcode_rank = 5",
+        "opcode_graphical_word = 90",
+        "opcode_name = \"ECHO_ONE\"",
+        "protected_descriptor_start = 122",
+        "protected_descriptor_cells = 102",
+        "required_original_echo_pairs = 1",
+        "guest_steps = 85",
+        "full_single_operation_semantic_parity = true",
+        "bytecode_count_loop_present = false",
+        "guest_source_authentication_present = false",
+        "multi_operation_interpreter_present = false",
+    ] {
+        assert!(
+            SINGLE_OPCODE_CONFIG.lines().any(|line| line == declaration),
+            "missing pinned one-opcode research constraint: {declaration}"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real CLI direct-vs-bytecode parity"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "both real capsule publishers and stdin runners"
+)]
+fn one_opcode_is_equivalent_to_direct_echo_through_general_malbolge_cli() -> Result<(), String> {
+    let fixture = OwnedArtifactFixture::new(31_001)?;
+    let original = program(1)?;
+    let bound = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound original: {error:?}"))?;
+    let guest_source = embed_single_echo_opcode(&original, current_profile(), &bound)
+        .map_err(|error| format!("guest opcode source: {error:?}"))?;
+    assert_eq!(
+        admit_single_echo_opcode(&original, current_profile(), &guest_source),
+        Ok(bound),
+        "only source-bound admitted program is published"
+    );
+    let direct = strategy::bridge::encode_successful_byte_echo(&original, current_profile())
+        .map_err(|error| format!("direct compiler: {error:?}"))?;
+    for (basename, payload) in [
+        ("direct.malbolge", direct.source()),
+        ("guest-opcode.malbolge", guest_source.as_slice()),
+    ] {
+        let capsule = malbolge::build_capsule(current_profile(), payload)
+            .map_err(|error| format!("capsule {basename}: {error:?}"))?;
+        fs::write(fixture.path(basename), capsule)
+            .map_err(|error| format!("write capsule {basename}: {error}"))?;
+    }
+    for byte in [0u8, 128, 255] {
+        let mut outputs = Vec::new();
+        for (basename, expected_steps) in
+            [("direct.malbolge", 3usize), ("guest-opcode.malbolge", 85)]
+        {
+            let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+                .env_remove("MALBOLGE_PROFILE_ADAPTIVE_WIDTH")
+                .env_remove("MALBOLGE_PROFILE_RESIDENT_WORKER")
+                .arg(fixture.path(basename))
+                .arg("--input-stdin")
+                .arg("--report-steps")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|error| format!("start {basename}: {error}"))?;
+            let mut stdin = child.stdin.take().ok_or("missing native runner stdin")?;
+            stdin
+                .write_all(&[byte])
+                .map_err(|error| format!("send {basename} input: {error}"))?;
+            drop(stdin);
+            let output = child
+                .wait_with_output()
+                .map_err(|error| format!("wait {basename}: {error}"))?;
+            assert!(
+                output.status.success(),
+                "real CLI failed on {basename}, byte {byte}: {output:?}"
+            );
+            assert_eq!(
+                output.stdout,
+                [byte],
+                "guest/direct external source must echo the exact input byte"
+            );
+            assert_eq!(
+                output.stderr,
+                format!("malbolge-steps-v1:{expected_steps}\n").as_bytes(),
+                "real runner step receipt must match independent exact work"
+            );
+            outputs.push(output.stdout);
+        }
+        assert_eq!(
+            outputs.first(),
+            outputs.get(1),
+            "two independent native CLI processes must produce same stdout"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "loader-valid alternative opcode tampering"
+)]
+fn changed_loader_valid_bytecode_opcode_rejects_without_fallback() -> Result<(), String> {
+    let original = program(1)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound: {error:?}"))?;
+    let source = embed_single_echo_opcode(&original, current_profile(), &candidate)
+        .map_err(|error| format!("opcode source: {error:?}"))?;
+    let expected = *source
+        .get(SINGLE_OPCODE_ADDRESS)
+        .ok_or("opcode source glyph")?;
+    for byte in (33u8..=126u8).filter(|&glyph| {
+        glyph != expected
+            && matches!(
+                decode_profile_instruction(u32::from(glyph), 121),
+                Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+            )
+    }) {
+        let mut different = source.clone();
+        *different
+            .get_mut(SINGLE_OPCODE_ADDRESS)
+            .ok_or("opcode cell")? = byte;
+        assert_eq!(
+            admit_single_echo_opcode(&original, current_profile(), &different),
+            Err(SingleOpcodeError::InvalidSource),
+            "alternative loader-valid bytecode opcode {byte} must reject"
         );
     }
     Ok(())

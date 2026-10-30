@@ -280,6 +280,47 @@ selected rank-five route happens to echo **one** byte; the original direct
 without output. Neither output behavior nor size/runtime is semantically
 equivalent to the direct baseline.
 
+## Single-operation source-bound guest bytecode v6 (2026-10-29)
+
+`single_opcode.rs` and `pilot-v6.toml` introduce a **separate graphical
+operation** instead of deriving a branch from one of the CEB2 count bits.
+The host admits only an independently canonical, source/profile-bound
+**one-pair** echo program, encoded as the complete 38-byte CEB2 descriptor.
+The 224-cell Malbolge source contains `j@0`, 80 reached no-ops, `i@81`,
+an explicit loader-valid **`ECHO_ONE` opcode** at data position 121
+(ordinal 5, actual graphical word 90), and fixed native `/@91`, `<@92`,
+`v@93` handlers. Every original CEB2 payload glyph is re-ranked for its
+new loader position in an untouched 102-cell data region at 122–223.
+
+In the real guest, the `i@81` instruction reads the encoded opcode from
+`M[121]` and transfers C to the graphical value plus one, **91**; `/`,
+`<`, `v` then consume exactly one byte, emit the same byte, and halt after
+**85 VM steps**. The 3-cell direct one-pair compiler baseline performs the
+same successful one-byte trace in **3 steps**. Tests compare independently
+emitted sources under the normative VM for bytes 0, 1, 127, 128, 255,
+including input consumption and physical preservation of all 102 CEB2
+memory cells. The separate general Malbolge CLI runs actual canonical
+capsules for both guest and direct code on 0, 128, 255, matching stdout
+and independently checked step receipts. No host callback implements I/O.
+
+An independent source verifier checks the exact opcode/code layout,
+reconstructs all 102 graphical CEB2 ranks from the **supplied** guest
+image, and re-admits the complete source/profile SHA-256 descriptor against
+the separately trusted original one-pair source. Unsupported pair counts,
+foreign identities, invalid lengths, changed code or opcode cells, and
+loader-valid descriptor-glyph mutations are rejected. This verifier runs
+on the host; guest code does not compute SHA-256 or authenticate itself.
+
+**Limited positive result:** One explicitly encoded operation has the same
+successful one-byte stdout/input-consumption semantics as direct one-pair
+echo. This is the first comparable guest workload here, but costs **221
+more loaded source cells** (224 vs 3) and **82 more guest steps** (85 vs 3).
+It falsifies any size/step advantage for this small workload. The opcode
+is dispatched through the graphical glyph's numeric value, not decoded via
+runtime arithmetic. It has no bytecode loop, repeated instructions, second
+opcode, unbounded program coverage or compilation advantage. General
+interpreter feasibility and the P2 TODO remain open.
+
 ## Status
 
 No VM-resident bytecode runtime has been implemented. No guest-interpreted
