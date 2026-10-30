@@ -2372,6 +2372,26 @@ def _verify_written_temporary(
     _admit_temporary_path(temporary, identity, len(payload))
 
 
+def _confirm_mutable_postpublication_identity(
+    destination: Path, identity: tuple[int, int], payload_size: int
+) -> None:
+    """Check the committed pointer still owns its staged inode exclusively.
+
+    Raises:
+        ProgressSidecarCommittedError: If the pointer was replaced or linked
+            after the durable publication but before final admission.
+
+    """
+    try:
+        _admit_temporary_path(destination, identity, payload_size)
+    except _OUTPUT_STREAM_ERRORS as error:
+        message = (
+            "progress sidecar committed durably but final identity "
+            f"admission failed: {error}"
+        )
+        raise ProgressSidecarCommittedError(message, destination) from error
+
+
 def _write_atomic_bytes(
     destination: Path,
     payload: bytes,
@@ -2407,6 +2427,9 @@ def _write_atomic_bytes(
             temporary,
             replaced=replaced,
         )
+    _confirm_mutable_postpublication_identity(
+        destination, temporary_identity, len(payload)
+    )
     return destination
 
 

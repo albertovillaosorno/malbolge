@@ -5403,6 +5403,76 @@ def test_checkpoint_generation_reports_committed_temp_cleanup_failure(
     assert not tuple(tmp_path.glob(f".{checkpoint_path.name}.*.tmp"))
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX hard-link injection requires native link publication",
+)
+def test_pointer_postpublication_hardlink_reports_committed_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A published pointer with a foreign alias cannot report success."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    alias = tmp_path / "foreign-progress-pointer-alias"
+    original_sync = cast(
+        "Callable[..., None]", vars(progress)["_confirm_publication_durability"]
+    )
+
+    def sync_then_link(
+        path: Path, *, context: str, platform: str = os.name
+    ) -> None:
+        original_sync(path, context=context, platform=platform)
+        os.link(path, alias)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_confirm_publication_durability", sync_then_link
+        )
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=r"committed durably.*hard link",
+        ) as captured:
+            _ = progress.write_atomic(sidecar)
+    assert captured.value.published_path == destination
+    assert destination.read_bytes() == alias.read_bytes()
+    assert progress.read(destination) == sidecar
+
+
+def test_pointer_postpublication_inode_swap_reports_committed_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A byte-identical replacement after pointer durability is not success."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    replacement = tmp_path / "replacement-progress-pointer"
+    _ = replacement.write_bytes(progress.encode(sidecar))
+    replacement_inode = replacement.stat().st_ino
+    original_sync = cast(
+        "Callable[..., None]", vars(progress)["_confirm_publication_durability"]
+    )
+
+    def sync_then_swap(
+        path: Path, *, context: str, platform: str = os.name
+    ) -> None:
+        original_sync(path, context=context, platform=platform)
+        _ = replacement.replace(path)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_confirm_publication_durability", sync_then_swap
+        )
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=r"committed durably.*inode or size changed",
+        ) as captured:
+            _ = progress.write_atomic(sidecar)
+    assert captured.value.published_path == destination
+    assert destination.stat().st_ino == replacement_inode
+    assert progress.read(destination) == sidecar
+
+
 def test_write_atomic_skips_cleanup_after_replace(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

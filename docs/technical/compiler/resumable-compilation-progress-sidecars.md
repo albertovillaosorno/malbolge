@@ -191,6 +191,12 @@ Regular-inode and single-hard-link admission is repeated before reopening,
 after hashing on the open descriptor, and after reader closure. Deterministic
 POSIX tests insert a hard-link alias at each boundary, including between hash
 completion and the final pathname check; none may publish the aliased inode.
+After mutable pointer replacement and durability sync, the writer also checks
+that its committed path still resolves to the previously staged regular inode,
+with the expected size and exactly one hard link. A late alias of the pointer or
+same-byte inode replacement no longer reports success: the writer returns the
+exact path with `ProgressSidecarCommittedError`. This is a diagnostic admission
+rather than rollback, and cannot block filesystem mutation after its last check.
 The immutable POSIX publisher's intentional no-replace hard link happens only
 after these staging checks and is cleaned up when staging completes. After
 successfully confirming directory durability and removing the temporary entry,
