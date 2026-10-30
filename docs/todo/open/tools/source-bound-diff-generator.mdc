@@ -81,9 +81,10 @@ format.
   return ProbeExecutionError rather than exposing raw OSError. Live bounded
   pipe readers now stop retaining stdout/stderr at their declared quotas and
   abort overflowing processes, with concurrent stdin and wall-deadline checks.
-  Failed POSIX probes now terminate their dedicated child process group;
-  cross-platform Windows descendant cleanup and escaped POSIX sessions remain
-  open hardening tasks.
+  All POSIX probes now terminate residual dedicated process-group descendants
+  on success as well as failure, including helpers with independently closed
+  stdio. Cross-platform Windows descendant cleanup and escaped POSIX sessions
+  remain open hardening tasks.
 - Behavior authoring derives identity transcripts from source and distinct bug
   `present`/`fixed` transcripts from source versus corrected oracle; a third
   candidate transcript becomes `unknown` and fails closed.

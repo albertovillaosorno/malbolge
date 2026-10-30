@@ -432,6 +432,53 @@ def test_timeout_terminates_probe_descendants_on_posix(tmp_path: Path) -> None:
     _expect(not late.exists(), "probe descendant survived parent timeout")
 
 
+def test_successful_probe_reaps_remaining_posix_descendants(
+    tmp_path: Path,
+) -> None:
+    """A successful leader cannot leave a still-running helper behind."""
+    if os.name != _POSIX_OS_NAME:
+        pytest.skip("POSIX process groups unavailable")
+    source = tmp_path / "source"
+    source.mkdir()
+    started = tmp_path / "helper-started"
+    late = tmp_path / "helper-finished"
+    child_code = (
+        "import pathlib,sys,time;"
+        "pathlib.Path(sys.argv[1]).write_bytes(b'yes');"
+        "time.sleep(0.8);"
+        "pathlib.Path(sys.argv[2]).write_bytes(b'escaped')"
+    )
+    parent_code = (
+        "import pathlib,subprocess,sys,time;"
+        "subprocess.Popen([sys.executable,'-c',sys.argv[1],"
+        "sys.argv[2],sys.argv[3]],"
+        "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,"
+        "stderr=subprocess.DEVNULL);"
+        "p=pathlib.Path(sys.argv[2]);"
+        "exec('while not p.exists(): time.sleep(0.005)');"
+        "print('parent complete')"
+    )
+    command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=(
+            "-c",
+            parent_code,
+            child_code,
+            PathArgument(ProbeRoot.REPOSITORY, started.name),
+            PathArgument(ProbeRoot.REPOSITORY, late.name),
+        ),
+        timeout_ms=2_000,
+        digest_stdout=True,
+    )
+    _ = run_probe_program(
+        ProbeProgram("success-descendant", (command,)),
+        _context(source, tmp_path),
+    )
+    _expect(started.exists(), "probe did not start its child")
+    time.sleep(1.0)
+    _expect(not late.exists(), "successful probe left descendant running")
+
+
 def test_output_limit_fails_closed(tmp_path: Path) -> None:
     """Bound captured output before transform-controlled memory growth."""
     source = tmp_path / "source"

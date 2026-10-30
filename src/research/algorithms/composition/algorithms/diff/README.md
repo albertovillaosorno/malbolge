@@ -149,10 +149,11 @@ stay inside the probe error boundary. No-shell child output pipes now stream
 into independent memory-guarded readers, aborting on the first byte over each
 stdout/stderr quota; stdin has a concurrent writer to avoid full-duplex
 backpressure deadlocks. Deadlines cover process and pipe completion. On
-POSIX, failed or timed-out probes terminate the child session's process group;
-Windows currently stops only the direct child, and POSIX descendants that
-start detached sessions are outside this cleanup boundary. Source trees are
-validated as regular-file-only before mirroring
+POSIX, every completed, failed, or timed-out probe terminates its dedicated
+child session's remaining process-group members, including ordinary spawned
+helpers that closed stdio. Windows currently stops only the direct child on
+failure; POSIX descendants starting detached sessions remain outside
+cleanup. Source trees are validated as regular-file-only before mirroring
 regardless of the optional post-run immutability policy. Mirroring never follows
 symlinks, and the copy must match the admitted byte-tree snapshot before any
 probe runs; mismatches or invalid trees fail in the probe execution boundary.

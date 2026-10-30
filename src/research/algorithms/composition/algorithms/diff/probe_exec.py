@@ -728,7 +728,7 @@ def _launch_command(
     try:
         running = _start_capture(process, command)
         _wait_for_bounded_pipes(running, command.timeout_ms)
-        return subprocess.CompletedProcess(
+        completed = subprocess.CompletedProcess(
             argv,
             process.wait(),
             stdout=b"".join(running.stdout.fragments),
@@ -737,6 +737,11 @@ def _launch_command(
     except Exception:
         _stop_child(process)
         raise
+    else:
+        # A successful leader may have left detached-stdio descendants in its
+        # dedicated POSIX process group. Do not let them outlive the probe.
+        _stop_child(process)
+        return completed
 
 
 def _run_command(
