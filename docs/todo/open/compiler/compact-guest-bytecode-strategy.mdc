@@ -109,6 +109,17 @@ code-size explosion or compilation cost.
   runs both, independently checking distinct output bytes and exact 16-step
   receipts; this is still a diagnostic data probe, not bytecode execution.
 
+- The bounded version-four **indirect-dispatch** pilot now has real guest
+  control flow depend on an admitted source-resident CEB2 count glyph:
+  `i@13` reads `M[53]`, post-jump encryption targets the loaded glyph
+  address, and the 15th guest fetch executes `M[53] + 1` inside the CEB2
+  data region. The experiment covers all eight possible three-bit count
+  glyph ranks, using nonzero source-bound echo pair counts and independent
+  exact target addresses. A loader-valid count-glyph mutation changes the
+  reached guest target but fails source-bound host verification. This is
+  **not** guest bytecode decoding, a loop, source authentication, or
+  equivalent echo execution; no compact-runtime size/speed win follows.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

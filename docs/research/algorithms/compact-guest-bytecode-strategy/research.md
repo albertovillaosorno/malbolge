@@ -277,6 +277,39 @@ runtime footprint `R` required to execute arbitrary stored bytecode.
 A complete guest decoder and looping echo interpreter with independent
 end-to-end semantic verification are still required for P2 adoption.
 
+## Results: Guest Indirect Dispatch into CEB2 Data v4 (2026-10-29)
+
+A fourth test changes the reached guest operation at code position 13 from
+`*` (v3's data rotation) to `i` (native indirect code jump), retaining the
+same source-bound, host-verified 38-byte CEB2 descriptor mapped into 102
+loader-valid glyphs at positions 41–142. The actual VM first executes `j`
+(source glyph 40 at address zero), then twelve no-ops to position D at 53.
+The reached `i` reads the stored count glyph `M[53]`, assigns it to C and
+performs canonical XLAT2 encryption on `M[C]` before incrementing C. The
+next fetched and executed code is at `initial M[53] + 1`, inside the
+resident CEB2 data tail. Crucially, the guest program chooses this target
+from the descriptor's physical value; the host does not pass it a branch.
+
+An eight-way test exhausts the three-bit rank encoded at descriptor bits
+36–38 (little-endian count bits 3, 2, 1). Nonzero echo pair counts
+32/2/4/6/8/10/12/14 produce independently calculated guest target code
+addresses 46/47/65/81/82/104/110/123. Normative VM traces demonstrate
+the exact code/data register state, physical read, post-jump source-cell
+encryption, and first instruction fetch and decode at those variable target
+positions. The CEB2 host verifier still rejects a loader-admissible changed
+count glyph, while the actual guest jump demonstrably follows the tampered
+value. This provides an observed control-flow effect that v3's rotation
+probe alone did not provide.
+
+The experiment does not implement any bytecode VM. The target *Malbolge
+code* is taken verbatim from descriptor glyph positions and decoded with
+XLAT1, rather than interpreting an application bytecode operation. No loop,
+count termination, source authentication or input byte-echo equivalence
+exists. The fixed 143-cell source is an exploratory counterexample to the
+notion that placing a descriptor alone provides an equivalent compact
+execution strategy. No size, compilation-time, or guest-step advantage may
+be inferred from this non-equivalent diagnostic.
+
 ## Threats to Validity
 
 The pilot has no guest interpreter, no real bytecode loader, no linked data

@@ -69,8 +69,9 @@ use residency::{
 };
 
 use guest_probe::{
-    GuestPayloadProbeError, admit_guest_payload_probe, embed_guest_payload_probe,
-    guest_probe_source_cells, guest_read_address,
+    GuestPayloadProbeError, admit_guest_indirect_dispatch_probe, admit_guest_payload_probe,
+    embed_guest_indirect_dispatch_probe, embed_guest_payload_probe, guest_probe_source_cells,
+    guest_read_address,
 };
 
 const BOUND_PILOT_CONFIG: &str =
@@ -78,6 +79,8 @@ const BOUND_PILOT_CONFIG: &str =
 
 const GUEST_PROBE_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v3.toml");
+const INDIRECT_DISPATCH_CONFIG: &str =
+    include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v4.toml");
 
 const RESIDENT_PILOT_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v2.toml");
@@ -1351,4 +1354,229 @@ fn real_general_malbolge_cli_runs_current_profile_resident_data_probe() -> Resul
     let count_sixty_four = externally_run_guest_payload_probe(64)?;
     assert_ne!(count_seven, count_sixty_four);
     Ok(())
+}
+
+/// Proves that the real profile VM chooses its next fetched instruction from
+/// an admitted CEB2 count-bearing source cell rather than host-side staging.
+#[expect(clippy::panic_in_result_fn, reason = "source-bound guest jump receipt")]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "reached guest data/code/encryption assertions"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "exact guest indirect read/jump/fetch trace"
+)]
+fn verify_guest_count_indirect_dispatch(pairs: usize) -> Result<u32, String> {
+    let original = program(pairs)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound {pairs}: {error:?}"))?;
+    let source = embed_guest_indirect_dispatch_probe(&original, current_profile(), &candidate)
+        .map_err(|error| format!("embedded dispatch {pairs}: {error:?}"))?;
+    assert_eq!(source.len(), 143, "same resident CEB2 placement");
+    assert_eq!(source.get(13).copied(), Some(85), "jumps via XLAT1 i@13");
+    let read_glyph = u32::from(*source.get(53).ok_or("missing count glyph")?);
+    let fetched_address = read_glyph.saturating_add(1);
+    assert!(
+        (41..143).contains(&fetched_address),
+        "must fetch stored data as code"
+    );
+    let recovered = admit_guest_indirect_dispatch_probe(&original, current_profile(), &source)
+        .map_err(|error| format!("host source binding {pairs}: {error:?}"))?;
+    assert_eq!(recovered, candidate, "independent source binding");
+    let mut vm = ProfileMachine::from_source(current_profile(), &source, Vec::new())
+        .map_err(|error| format!("normative loader {pairs}: {error:?}"))?;
+    let mut events = Vec::new();
+    let prefix = vm
+        .run_traced(14, &mut |event| events.push(*event))
+        .map_err(|error| format!("normative guest dispatch {pairs}: {error:?}"))?;
+    assert!(
+        matches!(prefix, RunOutcome::BudgetExhausted { steps: 14 }),
+        "guest must reach code-pointer jump on its fourteenth step"
+    );
+    assert_eq!(
+        events.len(),
+        14,
+        "13 prefix operations and one indirect jump"
+    );
+    let jump = events.get(13).ok_or("missing reached guest jump")?;
+    assert_eq!(jump.decoded, Some(b'i'), "real jump-code instruction");
+    assert_eq!(
+        jump.before.registers.code_pointer, 13,
+        "jump source address"
+    );
+    assert_eq!(
+        jump.before.registers.data_pointer, 53,
+        "count cell data address"
+    );
+    assert_eq!(
+        jump.memory_reads
+            .data
+            .map(|read| (read.address, read.value)),
+        Some((53, read_glyph)),
+        "semantic read from loaded CEB2 source"
+    );
+    assert_eq!(
+        jump.memory_reads.encryption.map(|read| read.address),
+        Some(read_glyph),
+        "post-jump XLAT2 targets operand-selected C"
+    );
+    assert_eq!(
+        jump.memory_delta.encryption.map(|write| write.address),
+        Some(read_glyph),
+        "actual source cell mutated by jump encryption"
+    );
+    assert_eq!(
+        vm.registers().code_pointer,
+        fetched_address,
+        "actual guest C advances from payload-selected C"
+    );
+    assert_eq!(vm.registers().data_pointer, 54, "guest D successor after i");
+    assert!(
+        vm.output().is_empty(),
+        "dispatch prefix must not produce echo output"
+    );
+    let original_target_byte = *source
+        .get(usize::try_from(fetched_address).map_err(|error| error.to_string())?)
+        .ok_or("missing guest target")?;
+    let mut fetched = None;
+    let _result = vm
+        .step_traced(&mut |event| fetched = Some(*event))
+        .map_err(|error| format!("indirect payload fetch {pairs}: {error:?}"))?;
+    let reached = fetched.ok_or("missing guest indirect fetch receipt")?;
+    assert_eq!(
+        reached.before.registers.code_pointer, fetched_address,
+        "fetched code must come from descriptor-selected address"
+    );
+    assert_eq!(
+        reached
+            .memory_reads
+            .fetch
+            .map(|read| (read.address, read.value)),
+        Some((fetched_address, u32::from(original_target_byte))),
+        "guest executes a fetched descriptor glyph, not staged host code"
+    );
+    assert_eq!(
+        reached.decoded,
+        decode_profile_instruction(u32::from(original_target_byte), fetched_address),
+        "execution decodes the original resident graphical byte at selected phase"
+    );
+    Ok(fetched_address)
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exhaust all eight graphical count ranks"
+)]
+fn all_eight_loader_valid_count_glyphs_drive_distinct_guest_dispatch_targets() -> Result<(), String>
+{
+    // Bits 36..38 select low-byte count bits 3, 2, 1: (n >> 1) & 7.
+    // Rank zero uses n=32 rather than invalid zero echo pairs.
+    let mut observed = BTreeSet::new();
+    for (pairs, exact_target) in [
+        (32usize, 46u32),
+        (2, 47),
+        (4, 65),
+        (6, 81),
+        (8, 82),
+        (10, 104),
+        (12, 110),
+        (14, 123),
+    ] {
+        let reached = verify_guest_count_indirect_dispatch(pairs)?;
+        assert_eq!(
+            reached, exact_target,
+            "independent count-rank oracle for n={pairs}"
+        );
+        let _distinct = observed.insert(reached);
+    }
+    assert_eq!(
+        observed.len(),
+        8,
+        "all count glyph ordinals dispatch differently"
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "guest/host tampering boundary")]
+fn loader_valid_count_mutation_redirects_guest_but_fails_source_bound_admission()
+-> Result<(), String> {
+    let program = program(12)?;
+    let candidate = encode_bound_echo_macro(&program, current_profile())
+        .map_err(|error| format!("candidate: {error:?}"))?;
+    let original = embed_guest_indirect_dispatch_probe(&program, current_profile(), &candidate)
+        .map_err(|error| format!("source: {error:?}"))?;
+    let mut tampered = original.clone();
+    let old_count = *tampered.get(53).ok_or("original count byte")?;
+    let replacement = (33u8..=126u8)
+        .find(|&byte| {
+            byte != old_count
+                && matches!(
+                    decode_profile_instruction(u32::from(byte), 53),
+                    Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                )
+        })
+        .ok_or("no alternate loader-valid count glyph")?;
+    *tampered.get_mut(53).ok_or("replacement count byte")? = replacement;
+    assert!(
+        admit_guest_indirect_dispatch_probe(&program, current_profile(), &tampered).is_err(),
+        "malformed CEB2 cannot pass independently bound host admission"
+    );
+    let mut vm_before = ProfileMachine::from_source(current_profile(), &original, Vec::new())
+        .map_err(|error| format!("original loader: {error:?}"))?;
+    let mut vm_after = ProfileMachine::from_source(current_profile(), &tampered, Vec::new())
+        .map_err(|error| format!("tampered loader: {error:?}"))?;
+    assert!(matches!(
+        vm_before.run(14),
+        Ok(RunOutcome::BudgetExhausted { steps: 14 })
+    ));
+    assert!(matches!(
+        vm_after.run(14),
+        Ok(RunOutcome::BudgetExhausted { steps: 14 })
+    ));
+    assert_ne!(
+        vm_before.registers().code_pointer,
+        vm_after.registers().code_pointer,
+        "guest dispatch must be controlled by actual CEB2 glyph"
+    );
+    assert_eq!(
+        vm_after.registers().code_pointer,
+        u32::from(replacement).saturating_add(1)
+    );
+    let mut wrong_dispatch = original.clone();
+    *wrong_dispatch.get_mut(13).ok_or("dispatch code")? = b'!';
+    assert_eq!(
+        admit_guest_indirect_dispatch_probe(&program, current_profile(), &wrong_dispatch),
+        Err(GuestPayloadProbeError::InvalidSource)
+    );
+    let mut foreign = program;
+    foreign.source_id = String::from("research/forged-count-source.c");
+    assert!(admit_guest_indirect_dispatch_probe(&foreign, current_profile(), &original).is_err());
+    Ok(())
+}
+
+#[test]
+fn indirect_dispatch_v4_config_does_not_claim_bytecode_interpretation() {
+    for line in [
+        "schema = \"compact-guest-bytecode-pilot-v4\"",
+        "source_cells = 143",
+        "count_glyph_memory_address = 53",
+        "first_indirect_jump_step = 14",
+        "first_data_selected_fetch_step = 15",
+        "jump_target = \"initial_M[53] + 1\"",
+        "indirect_dispatch_is_guest_executed = true",
+        "packed_ordinal_decoded_by_guest = false",
+        "count_loop_present = false",
+        "bytecode_interpreter_present = false",
+        "semantic_equivalence_to_echo_trace = false",
+    ] {
+        assert!(
+            INDIRECT_DISPATCH_CONFIG
+                .lines()
+                .any(|actual| actual == line),
+            "missing v4 bound declaration: {line}"
+        );
+    }
 }

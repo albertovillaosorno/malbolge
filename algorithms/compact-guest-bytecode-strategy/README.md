@@ -172,6 +172,34 @@ predicted from each literal count glyph; `--report-steps` confirms exactly
 the experiment and framed with the existing capsule API, **not** emitted by
 a production bytecode compiler or decoded by a bytecode interpreter.
 
+## Guest-controlled indirect dispatch v4 (2026-10-29)
+
+`pilot-v4.toml` and the v4 helpers in `guest_payload_probe.rs` go beyond the
+v3 data-to-accumulator read. The same 143-cell, loader-valid CEB2 resident
+image now executes a genuine `i` at code position 13. The initial `j` and
+twelve `o` steps position guest D at 53, and `i` reads that *source-backed*
+count glyph, sets C to its numeric word, encrypts the newly targeted code
+cell, and advances C to `M[53] + 1`. The 15th guest step therefore fetches
+and executes a target **inside the original descriptor source region**.
+There is no external callback or staged host-controlled machine register.
+
+The experiment spans all eight encodable three-bit count ranks using source
+repeat counts 32/2/4/6/8/10/12/14. The independent ordinal oracle predicts
+next executed code addresses 46/47/65/81/82/104/110/123. The normative VM
+step trace checks the physical data read at 53, pointer relocation, target
+XLAT2 encryption, actual post-jump C, fetched source glyph, and decoded
+instruction at each address. An alternative loader-admissible count glyph
+changes the actual jump target but independently fails the host-side CEB2
+source-binding check. Every target remains within the 102-cell descriptor.
+
+**This is a data-driven indirect Malbolge jump, not a bytecode interpreter.**
+The guest executes the selected descriptor *glyph as a native Malbolge
+instruction*: it never decodes the three-bit ordinal into a bytecode opcode,
+interprets a complete CEB2 macro, validates SHA-256, implements an echo
+loop, or provides semantic equivalence. Reached-step counts are bounded
+witnesses, not a complete workload cost. The 143-cell source is not a
+measured size or throughput advantage over the direct echo baseline.
+
 ## Status
 
 No VM-resident bytecode runtime has been implemented. No guest-interpreted

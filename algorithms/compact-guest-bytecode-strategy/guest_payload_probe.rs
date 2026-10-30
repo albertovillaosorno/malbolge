@@ -251,3 +251,61 @@ pub fn admit_guest_payload_probe(
         .map_err(GuestPayloadProbeError::Binding)?;
     Ok(candidate)
 }
+
+/// Publishes a bounded guest-indirect-dispatch experiment based on CEB2 data.
+///
+/// After the same real `j` relocation and twelve no-ops as the v3 probe,
+/// position 13 executes `i` instead of `*`. This reads `M[53]` from the
+/// resident descriptor and relocates C to that *graphical glyph's numeric
+/// word*. The profile VM encrypts `M[C]`, then increments C. Its very next
+/// fetched instruction is at `M[53] + 1`, a position in the original CEB2
+/// descriptor tail, not an opcode chosen by the host. It is an exploratory
+/// **indirect data-dependent code fetch**, not decoding the packed rank or
+/// implementing an echo interpreter. Host-side provenance must be verified
+/// separately; this guest code does not authenticate the descriptor.
+///
+/// # Errors
+///
+/// Rejects noncanonical upstream source/candidate, or an unsupported exact
+/// graphical encoding of `i` at the fixed dispatch instruction position.
+pub fn embed_guest_indirect_dispatch_probe(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+    candidate: &[u8],
+) -> Result<Vec<u8>, GuestPayloadProbeError> {
+    let mut source = embed_guest_payload_probe(program, profile, candidate)?;
+    let dispatch = instruction_at(NO_OP_COUNT.saturating_add(1), b'i')?;
+    let slot = source
+        .get_mut(NO_OP_COUNT.saturating_add(1))
+        .ok_or(GuestPayloadProbeError::InvalidSource)?;
+    *slot = dispatch;
+    Ok(source)
+}
+
+/// Separately verifies the exact CEB2-bearing source used for guest dispatch.
+///
+/// Unlike the guest, the host re-admits the full descriptor against a trusted
+/// canonical ternary program and selected profile. The only permitted
+/// difference from the v3 resident source is code position 13, where `i`
+/// replaces the original `*`. This function is **not** a guest interpreter.
+///
+/// # Errors
+///
+/// Rejects a wrong dispatch cell, all mutated suffix/code glyphs, shifted
+/// source, foreign profile or unbound source identity.
+pub fn admit_guest_indirect_dispatch_probe(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<[u8; BOUND_ECHO_MACRO_BYTES], GuestPayloadProbeError> {
+    let position = NO_OP_COUNT.saturating_add(1);
+    if source.get(position) != Some(&instruction_at(position, b'i')?) {
+        return Err(GuestPayloadProbeError::InvalidSource);
+    }
+    let mut reverted = source.to_vec();
+    let slot = reverted
+        .get_mut(position)
+        .ok_or(GuestPayloadProbeError::InvalidSource)?;
+    *slot = instruction_at(position, b'*')?;
+    admit_guest_payload_probe(program, profile, &reverted)
+}
