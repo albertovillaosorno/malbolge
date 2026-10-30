@@ -1054,7 +1054,10 @@ and compares retained quality-map and structural counts against the recorded
 measurement declarations. The independent retained `source-commit.txt` pin
 must agree with the experiment-run commit. Only the registered CSV column sets
 are admitted. It fingerprints the exact experiment, benchmark, raw and source
-commit file bytes in `historical_evidence.source_sha256`.
+commit file bytes in `historical_evidence.source_sha256`, then reopens all four
+bounded sources and rejects any changed digest before report publication. This
+protects observed source consistency, not atomic snapshots, external
+provenance, or authenticated timings.
 
 Its operator report uses the same checked text publication as the primary arena
 CLIs: a short, boolean, or failed stdout write, or a failed flush, exits

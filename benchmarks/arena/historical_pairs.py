@@ -124,6 +124,15 @@ def _source(root: Path, relative: str) -> tuple[str, str]:
     return raw.decode("utf-8"), sha256(raw).hexdigest()
 
 
+def _recheck_source_fingerprints(
+    root: Path, relative: str, fingerprints: dict[str, str]
+) -> None:
+    for name, original in fingerprints.items():
+        _, current = _source(root, f"{relative}/{name}")
+        if current != original:
+            _fail(f"historical source changed before report: {name}")
+
+
 def _integer(text: object, field: str) -> int:
     if not isinstance(text, str) or not text:
         _fail(f"invalid historical numeric field: {field}")
@@ -578,6 +587,7 @@ def _build_report(root: Path, relative: str) -> dict[str, Any]:
             "parity; no new execution or independent verifier replay."
         ),
     }
+    _recheck_source_fingerprints(root, relative, sources.fingerprints)
     return report
 
 

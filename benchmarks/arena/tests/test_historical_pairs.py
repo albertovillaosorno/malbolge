@@ -33,7 +33,7 @@
 """Checks historical source-reported timing pairs without new measurements."""
 
 # Test assertions intentionally use pytest policy.
-# ruff: file-ignore[assert]
+# ruff: file-ignore[assert,private-member-access]
 
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ import json
 import sys
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 from typing import Self
 from typing import TYPE_CHECKING
 
@@ -322,6 +323,36 @@ def test_preregistered_repetitions_exceeding_admission_limit_rejected(
     )
     with pytest.raises(
         historical_pairs.HistoricalEvidenceError, match="bounded study limit"
+    ):
+        historical_pairs.build_report(tmp_path, TEMP)
+
+
+@pytest.mark.parametrize("source", [PREFIX, REUSE])
+@pytest.mark.parametrize(
+    "filename", ["experiment.toml", "benchmark.toml", "raw.csv", "source-commit.txt"]
+)
+def test_historical_source_changes_during_report_are_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    source: str,
+    filename: str,
+) -> None:
+    """A reported source SHA cannot describe a file replaced after admission."""
+    directory = _copy_source(tmp_path, source)
+    original = historical_pairs._admitted_document
+
+    def rewritten(
+        sources: historical_pairs._StudySources, relative: str
+    ) -> dict[str, Any]:
+        document = original(sources, relative)
+        target = directory / filename
+        _ = target.write_bytes(target.read_bytes() + b"\n")
+        return document
+
+    monkeypatch.setattr(historical_pairs, "_admitted_document", rewritten)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="changed before report"
     ):
         historical_pairs.build_report(tmp_path, TEMP)
 
