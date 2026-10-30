@@ -497,7 +497,7 @@ class _PipeCapture:
     fragments: list[bytes] = field(default_factory=list)
     size: int = 0
     exceeded: bool = False
-    error: OSError | None = None
+    error: Exception | None = None
 
 
 @dataclass(slots=True)
@@ -509,7 +509,7 @@ class _RunningProbe:
     stderr: _PipeCapture
     readers: tuple[threading.Thread, threading.Thread]
     writer: threading.Thread | None
-    stdin_errors: list[OSError]
+    stdin_errors: list[Exception]
 
 
 def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
@@ -533,27 +533,35 @@ def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
 
 
 def _drain_pipe(stream: IO[bytes], capture: _PipeCapture) -> None:
-    """Drain without retaining more than the configured byte quota."""
+    """Drain within the quota, recording read and close failures."""
     try:
         again = True
         while again:
             again = _capture_fragment(stream, capture)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         capture.error = error
     finally:
-        stream.close()
+        try:
+            stream.close()
+        except (OSError, ValueError, RuntimeError) as error:
+            capture.error = error
 
 
-def _feed_stdin(stream: IO[bytes], data: bytes, errors: list[OSError]) -> None:
-    """Write stdin concurrently to support full-duplex children."""
+def _feed_stdin(
+    stream: IO[bytes], data: bytes, errors: list[Exception]
+) -> None:
+    """Write stdin concurrently and record stream errors."""
     try:
         _ = stream.write(data)
     except BrokenPipeError:
         return
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         errors.append(error)
     finally:
-        stream.close()
+        try:
+            stream.close()
+        except (OSError, ValueError, RuntimeError) as error:
+            errors.append(error)
 
 
 def _stop_child(process: subprocess.Popen[bytes]) -> None:
@@ -614,7 +622,7 @@ def _capture_pipes(
 
 
 def _start_writer(
-    process: subprocess.Popen[bytes], data: bytes, errors: list[OSError]
+    process: subprocess.Popen[bytes], data: bytes, errors: list[Exception]
 ) -> threading.Thread | None:
     """Close empty stdin immediately or send input asynchronously.
 
@@ -661,7 +669,7 @@ def _start_capture(
     )
     for reader in readers:
         reader.start()
-    stdin_errors: list[OSError] = []
+    stdin_errors: list[Exception] = []
     writer = _start_writer(process, command.stdin, stdin_errors)
     return _RunningProbe(process, stdout, stderr, readers, writer, stdin_errors)
 

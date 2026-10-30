@@ -555,6 +555,26 @@ def test_output_limit_fails_closed(tmp_path: Path) -> None:
         _ = run_probe_program(program, _context(source, tmp_path))
 
 
+def test_unexpected_pipe_reader_failure_rejects_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dead capture workers must not silently accept a partial transcript."""
+    source = tmp_path / "source"
+    source.mkdir()
+    read = os.read
+
+    def crashing_read(fd: int, count: int) -> bytes:
+        if threading.current_thread() is not threading.main_thread():
+            message = "synthetic reader failure"
+            raise ValueError(message)
+        return read(fd, count)
+
+    monkeypatch.setattr(os, "read", crashing_read)
+    program = _program("failed-output-reader", "pass")
+    with pytest.raises(ProbeExecutionError, match="pipe communication failed"):
+        _ = run_probe_program(program, _context(source, tmp_path))
+
+
 @pytest.mark.parametrize("stream", [_STDOUT_NAME, _STDERR_NAME])
 def test_live_pipe_quota_interrupts_unbounded_output(
     tmp_path: Path, stream: str
