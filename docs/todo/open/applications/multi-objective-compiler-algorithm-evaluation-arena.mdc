@@ -164,6 +164,18 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   step receipt; tampered skipped no-op glyphs and jump operands reject. This
   is genuine bounded forward-control work saved, not arbitrary loops, C
   compilation, physical CPU savings or authenticated host performance.
+- A new opt-in four-objective `classic-patterned-forward-skip-
+  verifier-cost-v2` study records actual monotonic nanoseconds spent in
+  independently decoded bounded source admission, including the regular
+  candidate read, jump/skip/source-position verifier, and exact source length.
+  Per-trial `verifier_ns` is linked through raw CSV, per-run manifests and
+  paired cost/Pareto analysis. The offline auditor requires a positive cost
+  on every v2 verified candidate, rejects foreign or failed-trial cost claims,
+  and can independently re-admit source and replay VM output/step receipts.
+  The new protocol is explicit, so earlier target study IDs and CSV contents
+  retain their original shape. This is one uncalibrated static-checking cost,
+  not complete VM semantic verification, physically enforced resources,
+  authenticated historical timing or general C translation.
 - A separate read-only classic target audit now reopens local pilot
   studies, binds fixed producer research/manifest/case claims, complete
   paired repetition plans and exact run/raw/candidate inventories, and

@@ -86,6 +86,8 @@ PATTERNED_STEPS_STUDY = "classic-patterned-byte-echo-steps-v2"
 STEPS_REPORT_PREFIX = b"malbolge-steps-v1:"
 RUNTIME_STEPS = "runtime_steps"
 FORWARD_STUDY = "classic-patterned-forward-skip-steps-v1"
+FORWARD_VERIFIER_COST_STUDY = "classic-patterned-forward-skip-verifier-cost-v2"
+VERIFIER_NS = "verifier_ns"
 FORWARD_FAMILY = "bounded-classic-patterned-forward-skip-echo"
 FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
 WALK = "walk-padding-echo"
@@ -160,7 +162,12 @@ def _document(relative: str) -> tuple[dict[str, Any], str]:
 
 def _mode(document: dict[str, Any]) -> str:
     study_id = document["study"]["id"]
-    if study_id in {PATTERNED_STUDY, PATTERNED_STEPS_STUDY, FORWARD_STUDY}:
+    if study_id in {
+        PATTERNED_STUDY,
+        PATTERNED_STEPS_STUDY,
+        FORWARD_STUDY,
+        FORWARD_VERIFIER_COST_STUDY,
+    }:
         return producer.PATTERNED_MODE
     if study_id in {EOF_STUDY, EOF_STEPS_STUDY}:
         return producer.EOF_MODE
@@ -172,11 +179,19 @@ def _has_steps(document: dict[str, Any]) -> bool:
         EOF_STEPS_STUDY,
         PATTERNED_STEPS_STUDY,
         FORWARD_STUDY,
+        FORWARD_VERIFIER_COST_STUDY,
     }
 
 
 def _forward(document: dict[str, Any]) -> bool:
-    return document["study"]["id"] == FORWARD_STUDY
+    return document["study"]["id"] in {
+        FORWARD_STUDY,
+        FORWARD_VERIFIER_COST_STUDY,
+    }
+
+
+def _has_verifier_cost(document: dict[str, Any]) -> bool:
+    return document["study"]["id"] == FORWARD_VERIFIER_COST_STUDY
 
 
 def _algorithms(document: dict[str, Any]) -> tuple[str, str]:
@@ -200,7 +215,11 @@ def _producer_study(document: dict[str, Any]) -> None:
         else (PATTERNED_STUDY if patterned else EOF_STUDY)
     )
     if forward:
-        study_id = FORWARD_STUDY
+        study_id = (
+            FORWARD_VERIFIER_COST_STUDY
+            if _has_verifier_cost(document)
+            else FORWARD_STUDY
+        )
     expected = {
         "id": study_id,
         "question": (
@@ -231,7 +250,9 @@ def _producer_study(document: dict[str, Any]) -> None:
             "memory_bytes": producer.BUDGET_MIB * 1_048_576,
         },
         "objectives": (
-            ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS]
+            ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS, VERIFIER_NS]
+            if _has_verifier_cost(document)
+            else ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS]
             if steps
             else ["elapsed_ns", "artifact_bytes"]
         ),
@@ -384,6 +405,21 @@ def _check_one_step_claim(
             _fail("target runtime step claim differs from decoded source")
 
 
+def _check_verifier_cost_claims(document: dict[str, Any]) -> None:
+    timed = _has_verifier_cost(document)
+    for row in document["observations"]:
+        actual = row["metrics"].get(VERIFIER_NS)
+        if timed and row["outcome"] == analyze.VERIFIED:
+            if (
+                type(actual) is not int
+                or actual <= 0
+                or actual > row["metrics"]["elapsed_ns"]
+            ):
+                _fail("target verifier timing is missing or invalid")
+        elif actual is not None:
+            _fail("untimed or unverified target trial claims verifier cost")
+
+
 def _check_runtime_step_claims(document: dict[str, Any]) -> None:
     measured = _has_steps(document)
     mode = _mode(document)
@@ -399,6 +435,7 @@ def _producer_rows(document: dict[str, Any], prefix: str) -> set[str]:
     algorithms = _algorithms(document)
     levels, trials = _check_plan(rows, algorithm_count=len(algorithms))
     _check_runtime_step_claims(document)
+    _check_verifier_cost_claims(document)
     mode = _mode(document)
     forward = _forward(document)
     names = {_check_row(row, prefix, mode, forward=forward) for row in rows}
@@ -507,6 +544,20 @@ def _check_forward_jump(source: bytes, row: dict[str, Any]) -> None:
         return
     if not source or source[0] + 1 != FORWARD_JUMP_TARGET:
         _fail("target audit forward jump target differs from source operand")
+
+
+def check_forward_candidate_source(
+    source: bytes, *, pairs: int, algorithm: str
+) -> None:
+    """Admit source bytes with the independent fixed jump/echo decoder."""
+    if algorithm not in FORWARD_ALGORITHMS:
+        _fail("target verifier received an unrecognized forward algorithm")
+    row = {
+        "algorithm": algorithm,
+        "case": {"difficulty": pairs},
+        "metrics": {"artifact_bytes": len(source)},
+    }
+    _admit_source_bytes(source, row, producer.PATTERNED_MODE, forward=True)
 
 
 def _admit_source_bytes(

@@ -70,6 +70,10 @@ JUMP_CORRUPTION = "jump"
 SKIPPED_CORRUPTION = "skipped-padding"
 REACHABLE_CORRUPTION = "reachable-input"
 RUNTIME_STEPS = "runtime_steps"
+VERIFIER_COST_METRIC = "verifier_ns"
+LEGACY_TAMPER = "legacy"
+ZERO_TAMPER = "zero"
+EXCESS_TAMPER = "exceeds-total"
 EXPECTED_GUEST_SAVINGS = 98
 ALL_BYTE_VALUES = 256
 INPUT_WINDOW_BYTES = 64
@@ -241,6 +245,49 @@ def forward_skip(
             shutil.rmtree(directory)
 
 
+@pytest.fixture
+def timed_forward(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[Path, dict[str, Any], str]]:
+    """Produce one actual four-objective source verification cohort.
+
+    Yields:
+        Retained study directory, canonical document, relative study path.
+
+    """
+    if (
+        not producer.DEFAULT_EMITTER.is_file()
+        or not producer.DEFAULT_RUNNER.is_file()
+    ):
+        pytest.skip("built layout emitter and VM are required")
+    with tempfile.TemporaryDirectory(
+        dir=producer._TEMP, prefix="arena-verifier-test-tools-"
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        runner = Path(tool_directory) / "malbolge"
+        emitter.hardlink_to(producer.DEFAULT_EMITTER)
+        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
+        monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
+        directory, document = producer.run_study(
+            producer.StudyPlan(
+                (1, 64),
+                2,
+                producer.PATTERNED_MODE,
+                measure_steps=True,
+                layout_mode=producer.FORWARD_SKIP_LAYOUT,
+                measure_verifier=True,
+            ),
+            emitter=emitter,
+            runner=runner,
+        )
+        try:
+            relative = (directory / "study.json").relative_to(producer._ROOT)
+            yield directory, document, relative.as_posix()
+        finally:
+            shutil.rmtree(directory)
+
+
 def _save(directory: Path, document: dict[str, Any]) -> None:
     (directory / "study.json").write_text(
         json.dumps(document, sort_keys=True),
@@ -266,6 +313,69 @@ def _recheck_generic(document: dict[str, Any]) -> None:
             require_budget_agreement=True,
         ),
     )
+
+
+def test_timed_source_verifier_retains_four_real_costs_and_replays(
+    timed_forward: tuple[Path, dict[str, Any], str],
+) -> None:
+    """Actual independent decode cost is linked, paired and replayable."""
+    _, document, relative = timed_forward
+    assert document["study"]["id"] == producer.FORWARD_VERIFIER_COST_STUDY
+    assert document["study"]["objectives"] == [
+        "elapsed_ns",
+        ARTIFACT_BYTES,
+        RUNTIME_STEPS,
+        "verifier_ns",
+    ]
+    assert len(document["observations"]) == ROWS
+    for row in document["observations"]:
+        assert row["outcome"] == analyze.VERIFIED
+        assert type(row["metrics"]["verifier_ns"]) is int
+        assert row["metrics"]["verifier_ns"] > 0
+        assert row["metrics"]["verifier_ns"] <= row["metrics"]["elapsed_ns"]
+    pairs = analyze.analyze(document)["paired_baseline_comparisons"]
+    assert len(pairs) == FRONTIERS
+    assert all(VERIFIER_COST_METRIC in row["cost_differences"] for row in pairs)
+    admitted = audit.audit(
+        relative,
+        options=audit.AuditOptions(
+            replay_candidates=True,
+            require_source_commit_object=True,
+        ),
+    )
+    assert admitted["target_sources_replayed"] == ROWS
+    assert admitted["source_commit_object_verified"] is True
+    assert admitted["evidence_preflight"]["raw_rows_matched"] == ROWS
+
+
+@pytest.mark.parametrize(
+    "tamper", ["missing", ZERO_TAMPER, LEGACY_TAMPER, EXCESS_TAMPER]
+)
+def test_static_audit_rejects_missing_forged_or_unmeasured_verifier_cost(
+    timed_forward: tuple[Path, dict[str, Any], str],
+    tamper: str,
+) -> None:
+    """A metric claim cannot move between new and old verifier protocols."""
+    directory, document, relative = timed_forward
+    forged = copy.deepcopy(document)
+    if tamper == LEGACY_TAMPER:
+        forged["study"]["id"] = producer.FORWARD_STUDY
+        forged["study"]["objectives"].remove("verifier_ns")
+    elif tamper == ZERO_TAMPER:
+        forged["observations"][0]["metrics"]["verifier_ns"] = 0
+    elif tamper == EXCESS_TAMPER:
+        row = forged["observations"][0]
+        row["metrics"]["verifier_ns"] = row["metrics"]["elapsed_ns"] + 1
+    else:
+        del forged["observations"][0]["metrics"]["verifier_ns"]
+    if tamper == EXCESS_TAMPER:
+        with pytest.raises(audit.TargetEchoAuditError, match="verifier timing"):
+            audit._check_verifier_cost_claims(forged)
+    _save(directory, forged)
+    with pytest.raises(
+        audit.TargetEchoAuditError, match=r"verifier|objective|metric"
+    ):
+        audit.audit(relative)
 
 
 def test_forward_jump_and_walk_have_equal_code_size_but_distinct_work(

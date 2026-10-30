@@ -101,6 +101,8 @@ WALK = "walk-padding-echo"
 SKIP = "jump-skip-padding-echo"
 FORWARD_ALGORITHMS = (WALK, SKIP)
 FORWARD_STUDY = "classic-patterned-forward-skip-steps-v1"
+FORWARD_VERIFIER_COST_STUDY = "classic-patterned-forward-skip-verifier-cost-v2"
+VERIFIER_NS = "verifier_ns"
 FORWARD_FAMILY = "bounded-classic-patterned-forward-skip-echo"
 FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
 JUMP_OPERATION = "jump"
@@ -121,6 +123,7 @@ class StudyPlan:
     input_mode: str = EOF_MODE
     measure_steps: bool = False
     layout_mode: str = LINEAR_LAYOUT
+    measure_verifier: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +139,7 @@ class _Context:
     input_mode: str = EOF_MODE
     measure_steps: bool = False
     layout_mode: str = LINEAR_LAYOUT
+    measure_verifier: bool = False
 
 
 def _fail(message: str) -> Never:
@@ -388,6 +392,46 @@ def _classify_attempt(
     )
 
 
+def _timed_source_verifier(path: Path, pairs: int, algorithm: str) -> int:
+    """Time only the independently decoded source admission, not VM replay.
+
+    Returns:
+        Observed wall nanoseconds spent opening and checking one source.
+
+    """
+    from benchmarks.arena import target_echo_audit  # ruff: ignore[import-outside-top-level]
+
+    started = perf_counter_ns()
+    source = evidence.read_bounded_regular(
+        _ROOT, path.relative_to(_ROOT).as_posix(), limit=MAX_TARGET_BYTES
+    )
+    target_echo_audit.check_forward_candidate_source(
+        source, pairs=pairs, algorithm=algorithm
+    )
+    return perf_counter_ns() - started
+
+
+def _optional_verifier_cost(
+    path: Path,
+    context: _Context,
+    attempt: tuple[str, int | None, int | None],
+    *,
+    case: tuple[int, str],
+) -> tuple[tuple[str, int | None, int | None], int | None]:
+    if attempt[0] != analyze.VERIFIED or not context.measure_verifier:
+        return attempt, None
+    from benchmarks.arena import target_echo_audit  # ruff: ignore[import-outside-top-level]
+
+    timing = None
+    try:
+        timing = _timed_source_verifier(path, *case)
+    except target_echo_audit.TargetEchoAuditError:
+        attempt = (analyze.VERIFIER_REJECTED, None, None)
+    except OSError, evidence.EvidenceError:
+        attempt = ("tool_failed", None, None)
+    return attempt, timing
+
+
 def _measure(
     path: Path,
     context: _Context,
@@ -410,11 +454,16 @@ def _measure(
         )
     except OSError, sp.SubprocessError, evidence.EvidenceError:
         outcome, size, steps = "tool_failed", None, None
+    (outcome, size, steps), verification_ns = _optional_verifier_cost(
+        path, context, (outcome, size, steps), case=(pairs, algorithm)
+    )
     metrics = {"elapsed_ns": perf_counter_ns() - started}
     if size is not None:
         metrics["artifact_bytes"] = size
     if steps is not None:
         metrics[RUNTIME_STEPS] = steps
+    if verification_ns is not None and outcome == analyze.VERIFIED:
+        metrics[VERIFIER_NS] = verification_ns
     return outcome, metrics
 
 
@@ -563,7 +612,9 @@ def _make_document(
 ) -> dict[str, Any]:
     patterned = context.input_mode == PATTERNED_MODE
     study_id = (
-        FORWARD_STUDY
+        FORWARD_VERIFIER_COST_STUDY
+        if context.measure_verifier
+        else FORWARD_STUDY
         if context.layout_mode == FORWARD_SKIP_LAYOUT
         else (PATTERNED_STEPS_STUDY if patterned else EOF_STEPS_STUDY)
         if context.measure_steps
@@ -611,7 +662,9 @@ def _make_document(
                 "memory_bytes": BUDGET_MIB * 1_048_576,
             },
             "objectives": (
-                ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS]
+                ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS, VERIFIER_NS]
+                if context.measure_verifier
+                else ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS]
                 if context.measure_steps
                 else ["elapsed_ns", "artifact_bytes"]
             ),
@@ -642,6 +695,29 @@ def _audit_retained_study(path: Path) -> dict[str, Any]:
     return analyze.parse_document(path.read_text(encoding="utf-8"))
 
 
+def _validate_verifier_measurement(plan: StudyPlan) -> None:
+    if type(plan.measure_verifier) is not bool:
+        _fail("target echo requires a boolean verifier timing selection")
+    if plan.measure_verifier and plan.layout_mode != FORWARD_SKIP_LAYOUT:
+        _fail("target echo verifier cost requires the forward-skip study")
+
+
+def _validate_study_options(plan: StudyPlan) -> None:
+    _validate_input_mode(plan.input_mode)
+    if type(plan.measure_steps) is not bool:
+        _fail("target echo requires a boolean measure_steps selection")
+    if (
+        type(plan.layout_mode) is not str
+        or plan.layout_mode not in LAYOUT_MODES
+    ):
+        _fail("target echo layout mode must be linear or forward-skip")
+    if plan.layout_mode == FORWARD_SKIP_LAYOUT and (
+        plan.input_mode != PATTERNED_MODE or not plan.measure_steps
+    ):
+        _fail("target echo forward-skip requires pattern and measured steps")
+    _validate_verifier_measurement(plan)
+
+
 def run_study(
     plan: StudyPlan,
     *,
@@ -655,23 +731,13 @@ def run_study(
 
     """
     _validate_plan(plan)
-    _validate_input_mode(plan.input_mode)
-    if type(plan.measure_steps) is not bool:
-        _fail("target echo requires a boolean measure_steps selection")
-    if (
-        type(plan.layout_mode) is not str
-        or plan.layout_mode not in LAYOUT_MODES
-    ):
-        _fail("target echo layout mode must be linear or forward-skip")
-    if plan.layout_mode == FORWARD_SKIP_LAYOUT and (
-        plan.input_mode != PATTERNED_MODE or not plan.measure_steps
-    ):
-        _fail("target echo forward-skip requires pattern and measured steps")
+    _validate_study_options(plan)
     context = replace(
         _prepare_context(emitter, runner),
         input_mode=plan.input_mode,
         measure_steps=plan.measure_steps,
         layout_mode=plan.layout_mode,
+        measure_verifier=plan.measure_verifier,
     )
     observations = [
         _write_attempt(context, pairs, trial, algorithm=algorithm)
@@ -707,6 +773,7 @@ def main() -> int:
     parser.add_argument(
         "--layout-mode", choices=LAYOUT_MODES, default=LINEAR_LAYOUT
     )
+    parser.add_argument("--measure-verifier", action="store_true")
     args = parser.parse_args()
     try:
         directory, document = run_study(
@@ -716,6 +783,7 @@ def main() -> int:
                 args.input_mode,
                 args.measure_steps,
                 args.layout_mode,
+                args.measure_verifier,
             )
         )
         report_output.publish(

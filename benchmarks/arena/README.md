@@ -301,6 +301,43 @@ stdout and original exact step receipt. The new fixed study ID is
 SHA-256 challenge identity, hypothesis and paired algorithm cohort; the
 existing linear EOF/patterned modes remain unchanged.
 
+### Opt-in per-source verifier-cost measurement
+
+For a fourth real (but uncalibrated) objective, request an explicit
+independent source-verifier timing on the same matched forward-jump workloads:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_reference \
+  --pairs 1 4 16 64 --trials 3 --input-mode patterned \
+  --measure-steps --layout-mode forward-skip --measure-verifier
+```
+
+The separately versioned
+`classic-patterned-forward-skip-verifier-cost-v2` protocol times one
+**post-VM, read-only source-admission pass** per successful candidate. The
+observed nanoseconds include a bounded regular-file read plus independent
+position-sensitive classic XLAT1 decoding and the mandatory real jump-target,
+skipped-padding and executed-suffix checks. The producer calls the auditor's
+fixed-source verifier rather than trusting the emitter to check itself. The
+measured `verifier_ns` is retained as a fourth Pareto cost in JSON and the
+exact `arena-raw-v1` CSV, while `elapsed_ns` includes that extra pass.
+An independently rejected source loses verified status; a failed or
+unmeasured trial must not claim verifier cost. The offline audit rejects any
+missing/nonpositive successful verifier duration, any duration exceeding the
+trial's total elapsed time, any extraneous duration in an older study or
+failed trial, and inconsistent linked CSV evidence. The
+operator can also opt into the same exact-binary VM replay and Git-object
+checks as the earlier study.
+
+**Scope:** This times only bounded static source admission, not full guest
+semantic verification, VM execution, historical replay, physical memory,
+or a cryptographically authenticated timing measurement. On busy hosts these
+small nanosecond samples are scheduling-sensitive. They are retained as raw
+samples, not a significant compiler/verifier speedup claim. This option is
+restricted to `--layout-mode forward-skip` with patterned binary input and
+`--measure-steps`; the legacy linear and three-objective forward-skip IDs
+remain byte-compatible.
+
 This is a real bounded demonstration of **forward control-flow work avoided**,
 not a loop, arbitrary branching, native CPU-instruction savings, statistically
 significant wall-time speedup, or optimization of compiled C. Measured host

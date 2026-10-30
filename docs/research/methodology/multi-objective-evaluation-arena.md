@@ -282,6 +282,25 @@ match the original retained claim. This establishes a genuine code-size vs
 runtime-work tradeoff but not host speedup (elapsed times mix process startup
 and code emission), energy savings, or verified arbitrary compilation.
 
+An additional **explicitly opt-in** target protocol measures actual
+per-candidate static verifier cost, with a distinct
+`classic-patterned-forward-skip-verifier-cost-v2` study ID and a fourth
+`verifier_ns` Pareto objective. For each successful bounded forward-jump
+candidate, the producer invokes the independent read-only source checker,
+which reopens the regular candidate bytes and checks every position-sensitive
+classic opcode, fixed jump operand, skipped padding, reached code and exact
+source length. Its monotonic elapsed nanoseconds are measured separately and
+included in the total trial duration. The independent read-only auditor
+requires a positive measured verifier cost no greater than the complete
+trial duration for each verified v2 candidate, rejects the metric in older
+cohorts and failed trials, and binds the exact
+value through the existing CSV/run evidence. This protocol measures **only
+static source admission**, not the complete semantic oracle, actual VM replay,
+CPU instructions or a physical memory budget. Source-reported timing cannot be
+independently authenticated by the later audit; host scheduling variance
+requires multiple controlled samples before any verifier speedup inference.
+The original three-cost and two-cost studies are unchanged.
+
 The earlier linear study remains a falsifiable source-size hypothesis (the
 nop-padded source should use one extra graphical code byte per pair), not a
 general compiler-size or performance result. Host wall times include compiler

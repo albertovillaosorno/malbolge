@@ -49,6 +49,7 @@ import pytest
 
 from benchmarks.arena import analyze
 from benchmarks.arena import evidence
+from benchmarks.arena import target_echo_audit
 from benchmarks.arena import target_echo_reference
 
 if TYPE_CHECKING:
@@ -581,6 +582,77 @@ def test_changed_producer_pattern_fails_independent_oracle_even_if_linked(
                 shutil.rmtree(directory)
 
 
+@pytest.mark.skipif(
+    not target_echo_reference.DEFAULT_EMITTER.is_file()
+    or not target_echo_reference.DEFAULT_RUNNER.is_file(),
+    reason="built Malbolge tools required",
+)
+@pytest.mark.parametrize("expected", [analyze.VERIFIER_REJECTED, "tool_failed"])
+def test_timed_independent_verifier_failure_cannot_record_verified_cost(
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verification rejection and I/O failure retain distinct outcomes."""
+    original = target_echo_reference._timed_source_verifier
+
+    def selective_failure(path: Path, pairs: int, algorithm: str) -> int:
+        if algorithm == target_echo_reference.SKIP:
+            if expected == analyze.VERIFIER_REJECTED:
+                raise target_echo_audit.TargetEchoAuditError
+            raise OSError
+        return original(path, pairs, algorithm)
+
+    monkeypatch.setattr(
+        target_echo_reference, "_timed_source_verifier", selective_failure
+    )
+    with tempfile.TemporaryDirectory(
+        dir=target_echo_reference._TEMP,
+        prefix="arena-verifier-failure-test-",
+    ) as tools:
+        emitter = Path(tools) / "malbolge_layout"
+        runner = Path(tools) / "malbolge"
+        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        directory, document = target_echo_reference.run_study(
+            target_echo_reference.StudyPlan(
+                (1,),
+                1,
+                target_echo_reference.PATTERNED_MODE,
+                measure_steps=True,
+                layout_mode=target_echo_reference.FORWARD_SKIP_LAYOUT,
+                measure_verifier=True,
+            ),
+            emitter=emitter,
+            runner=runner,
+        )
+        try:
+            outcomes = {
+                row["algorithm"]: row for row in document["observations"]
+            }
+            assert (
+                outcomes[target_echo_reference.WALK]["outcome"]
+                == analyze.VERIFIED
+            )
+            assert outcomes[target_echo_reference.SKIP]["outcome"] == expected
+            failed = outcomes[target_echo_reference.SKIP]
+            assert failed["metrics"].keys() == {"elapsed_ns"}
+            assert failed["verifier_verdict"] == (
+                analyze.REJECTED
+                if expected == analyze.VERIFIER_REJECTED
+                else analyze.NOT_RUN
+            )
+            assert (
+                target_echo_audit.audit(
+                    (directory / "study.json")
+                    .relative_to(target_echo_reference._ROOT)
+                    .as_posix()
+                )["reported_failed_trials_not_replayed"]
+                == 1
+            )
+        finally:
+            shutil.rmtree(directory)
+
+
 @pytest.mark.parametrize(
     "plan",
     [
@@ -595,6 +667,28 @@ def test_changed_producer_pattern_fails_independent_oracle_even_if_linked(
         target_echo_reference.StudyPlan((1,), 1, cast("str", BOOL_TRIAL_ALIAS)),
         target_echo_reference.StudyPlan(
             (1,), 1, target_echo_reference.EOF_MODE, cast("bool", 1)
+        ),
+        target_echo_reference.StudyPlan(
+            (1,),
+            1,
+            target_echo_reference.EOF_MODE,
+            measure_verifier=True,
+        ),
+        target_echo_reference.StudyPlan(
+            (1,),
+            1,
+            target_echo_reference.PATTERNED_MODE,
+            measure_steps=True,
+            layout_mode=target_echo_reference.FORWARD_SKIP_LAYOUT,
+            measure_verifier=cast("bool", 1),
+        ),
+        target_echo_reference.StudyPlan(
+            (1,),
+            1,
+            target_echo_reference.PATTERNED_MODE,
+            measure_steps=True,
+            layout_mode=target_echo_reference.LINEAR_LAYOUT,
+            measure_verifier=True,
         ),
         target_echo_reference.StudyPlan((1,), BOOL_TRIAL_ALIAS),
         target_echo_reference.StudyPlan(
