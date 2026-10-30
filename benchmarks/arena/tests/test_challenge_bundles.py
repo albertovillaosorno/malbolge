@@ -331,6 +331,65 @@ def test_challenge_bundle_cli_never_emits_partial_report_after_drift(
     assert CHALLENGE_MISMATCH in failure.err
 
 
+@pytest.mark.parametrize("filename", challenge_bundles.BUNDLE_FILES)
+def test_challenge_bundle_rechecks_mutation_after_report_assembly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+) -> None:
+    """An accepted bundle cannot drift while the preflight report is built."""
+    document = _study(tmp_path)
+    admitted = analyze.parse_document(json.dumps(document))
+    original_report = evidence._report_links
+
+    def mutate_after_report(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_report(*args, **kwargs)
+        path = tmp_path / PREFIX / filename
+        previous = path.read_bytes()
+        _ = path.write_bytes(previous[:-1] + bytes([previous[-1] ^ 1]))
+        return report
+
+    monkeypatch.setattr(evidence, "_report_links", mutate_after_report)
+    with pytest.raises(evidence.EvidenceError, match="challenge bundle changed"):
+        evidence.validate_links(
+            admitted,
+            tmp_path,
+            policy=evidence.EvidencePolicy(challenge_root=BUNDLE_ROOT),
+        )
+
+
+@pytest.mark.parametrize("filename", challenge_bundles.BUNDLE_FILES)
+def test_challenge_bundle_rechecks_during_host_c_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+) -> None:
+    """Later host-C replay cannot certify bytes altered after generation."""
+    document = _study(tmp_path)
+    admitted = analyze.parse_document(json.dumps(document))
+
+    def mutate_during_replay(
+        _document: dict[str, Any],
+        _sources: dict[str, str],
+        _root: str,
+    ) -> dict[str, str]:
+        path = tmp_path / PREFIX / filename
+        previous = path.read_bytes()
+        _ = path.write_bytes(previous[:-1] + bytes([previous[-1] ^ 1]))
+        return {}
+
+    monkeypatch.setattr(evidence, "_replay_host_c_challenges", mutate_during_replay)
+    with pytest.raises(evidence.EvidenceError, match="challenge bundle changed"):
+        evidence.validate_links(
+            admitted,
+            tmp_path,
+            policy=evidence.EvidencePolicy(
+                challenge_root=BUNDLE_ROOT,
+                require_host_c_challenge_oracle=True,
+            ),
+        )
+
+
 def _forged_repetition(
     root: Path,
     original: dict[str, Any],

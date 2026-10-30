@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from hashlib import sha256
 import os
 from pathlib import Path
 import stat
@@ -58,6 +59,11 @@ from benchmarks.arena import report_output
 from benchmarks.arena import trial_runs
 
 MAX_MANIFEST_BYTES = 1 * 1024 * 1024
+BUNDLE_FILE_LIMITS = {
+    "program.c": challenge_bundles.MAX_SOURCE_BYTES,
+    "oracle.bin": challenge_bundles.ORACLE_BYTES,
+    "manifest.json": challenge_bundles.MAX_MANIFEST_BYTES,
+}
 RUN_RECORD_KIND = experiment_manifest.RUN_RECORD_KIND
 RUN_OUTCOMES = {
     "verified": "success",
@@ -445,13 +451,20 @@ def _bundle_directory(case: dict[str, Any], relative_root: str) -> str:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _BundleInspection:
+    sources: dict[str, str]
+    retained_sha256: dict[str, str]
+
+
 def _bundle_inspection(
     document: dict[str, Any],
     root: Path,
     relative_root: str,
-) -> dict[str, str]:
+) -> _BundleInspection:
     _ = _segments(relative_root)
     results: dict[str, str] = {}
+    retained_sha256: dict[str, str] = {}
     cases: set[tuple[str, int, int, int]] = set()
     for row in document["observations"]:
         case = row["case"]
@@ -469,14 +482,9 @@ def _bundle_inspection(
         cases.add(key)
         if len(cases) > challenge_bundles.MAX_BUNDLE_CASES:
             _fail("too many distinct challenge bundles for replay")
-        limits = {
-            "program.c": challenge_bundles.MAX_SOURCE_BYTES,
-            "oracle.bin": challenge_bundles.ORACLE_BYTES,
-            "manifest.json": challenge_bundles.MAX_MANIFEST_BYTES,
-        }
         files = {
             name: _bundle_source(
-                root, f"{directory}/{name}", limit=limits[name]
+                root, f"{directory}/{name}", limit=BUNDLE_FILE_LIMITS[name]
             )
             for name in challenge_bundles.BUNDLE_FILES
         }
@@ -485,7 +493,20 @@ def _bundle_inspection(
             document["study"]["target_profile"],
             files,
         )
-    return results
+        for name, contents in files.items():
+            retained_sha256[f"{directory}/{name}"] = sha256(contents).hexdigest()
+    return _BundleInspection(results, retained_sha256)
+
+
+def _recheck_bundle_files(root: Path, inspection: _BundleInspection) -> None:
+    # Reopen all three original names after subsequent oracle/report work.
+    # Metadata consistency during an individual read cannot rule out a later
+    # same-length replacement or a rewrite between distinct pipeline stages.
+    for relative, expected in inspection.retained_sha256.items():
+        name = relative.rsplit("/", 1)[1]
+        current = _bundle_source(root, relative, limit=BUNDLE_FILE_LIMITS[name])
+        if sha256(current).hexdigest() != expected:
+            _fail(f"challenge bundle changed after replay: {relative}")
 
 
 def _replay_host_c_challenges(
@@ -647,10 +668,13 @@ def validate_links(
         for row in document["observations"]:
             _admit_observation(row, context)
         contents = _checked_contents(document, context)
-        bundle_sources = (
+        bundle_inspection = (
             _bundle_inspection(document, root, policy.challenge_root)
             if policy.challenge_root is not None
             else None
+        )
+        bundle_sources = (
+            bundle_inspection.sources if bundle_inspection is not None else None
         )
         host_c_sources = (
             _replay_host_c_challenges(
@@ -661,6 +685,14 @@ def validate_links(
             and policy.challenge_root is not None
             else None
         )
+        report = _report_links(
+            context,
+            document,
+            contents,
+            bundle=_BundleReports(bundle_sources, host_c_sources),
+        )
+        if bundle_inspection is not None:
+            _recheck_bundle_files(root, bundle_inspection)
     except (
         OSError,
         UnicodeError,
@@ -674,12 +706,7 @@ def validate_links(
     ) as error:
         message = f"linked arena evidence invalid: {error}"
         raise EvidenceError(message) from error
-    return _report_links(
-        context,
-        document,
-        contents,
-        bundle=_BundleReports(bundle_sources, host_c_sources),
-    )
+    return report
 
 
 def _publish_cli_report(

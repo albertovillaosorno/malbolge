@@ -848,6 +848,12 @@ The original study records remain the result authority.
   challenge bundle, binding workload digests to reproducible C source. Synthetic
   regressions cover missing and altered files, canonical profile and difficulty
   identities, unsafe paths, repeated-trial digest drift and fail-closed CLI.
+  The arena now retains the original SHA-256 of all three bounded source,
+  oracle and manifest files per distinct challenge and reopens every retained
+  path after optional host-C replay and report assembly. In-place same-length
+  mutations during either stage reject before returning a preflight report;
+  these two bounded reads do not establish an atomic snapshot against ongoing
+  writers or promise post-return filesystem immutability.
 - One end-to-end synthetic admission test composes strict per-trial run
   identity, exact resource declarations, v2 energy CSV, matched reported
   accelerator identity, and deterministic challenge regeneration. Independent
