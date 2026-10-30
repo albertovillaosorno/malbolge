@@ -338,6 +338,52 @@ restricted to `--layout-mode forward-skip` with patterned binary input and
 `--measure-steps`; the legacy linear and three-objective forward-skip IDs
 remain byte-compatible.
 
+### Opt-in second-VM verifier replay cost (version three)
+
+To measure the *dynamic* guest-verification pass rather than just the static
+source decoder, select the additional versioned replay protocol:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_reference \
+  --pairs 1 4 16 64 --trials 3 --input-mode patterned \
+  --measure-steps --layout-mode forward-skip \
+  --measure-verifier --verifier-mode replay
+```
+
+The `classic-patterned-forward-skip-replay-cost-v3` identity admits its own
+`classic-forward-jump-patterned-second-vm-v1` oracle, distinct from the static
+v2 source-only study. Each *already successful* trial is then independently
+read with the same fixed classic graphical source decoder and **executed a
+second time in a fresh, bounded normative VM subprocess**. The verifier checks
+the complete deterministic patterned binary output followed by EOF, the
+single exact `malbolge-steps-v1` receipt, and the original source bytes again
+after replay. Incorrect output or a changed source rejects that candidate;
+nonzero runner exits, malformed/missing instrumentation or subprocess resource
+failures are `tool_failed`, never credited as guest semantic success.
+
+`verifier_ns` measures that full static-check-plus-repeat-run wall interval,
+including VM process startup, pipe input/output, stdout and stderr validation,
+and post-run source rechecking. Total `elapsed_ns` includes both the primary
+production VM run and the separate verifier run. Every accepted observation
+retains the fourth objective through JSON and raw CSV. Invalid plan combinations
+(replay without `--measure-verifier`, non-forward layout, non-patterned input,
+or absent step reporting) fail before launching any target work.
+
+The offline audit binds the v3 ID to its separately named oracle, exact
+three-trial maximum matched cohorts, source bytes, raw metric and budget
+receipts, and optionally replays verified sources again. A forged report with
+only its study ID switched between v2 and v3 therefore fails oracle admission.
+The auditor does **not** authenticate historical execution or timing; a writer
+who can forge the study, manifests and CSV can still claim false measurements.
+
+This is *repeat execution using the same normative VM binary*, **not** an
+independent second VM implementation or a proof for arbitrary guest programs.
+The scope remains bounded classic forward-jump echo programs. The observed
+verification wall time is host/load dependent, and neither aggregate RAM/CPU
+limits nor native wall-time speedups are proven. The existing static-only
+`--measure-verifier` default (source mode), three-objective forward-skip mode,
+and earlier linear cohorts remain unchanged.
+
 This is a real bounded demonstration of **forward control-flow work avoided**,
 not a loop, arbitrary branching, native CPU-instruction savings, statistically
 significant wall-time speedup, or optimization of compiled C. Measured host

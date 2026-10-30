@@ -288,6 +288,50 @@ def timed_forward(
             shutil.rmtree(directory)
 
 
+@pytest.fixture
+def replay_forward(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[Path, dict[str, Any], str]]:
+    """Generate an actual source-plus-second-VM verifier-cost study.
+
+    Yields:
+        Retained study directory, document and canonical relative location.
+
+    """
+    if (
+        not producer.DEFAULT_EMITTER.is_file()
+        or not producer.DEFAULT_RUNNER.is_file()
+    ):
+        pytest.skip("built Malbolge emitter and VM required")
+    with tempfile.TemporaryDirectory(
+        dir=producer._TEMP, prefix="arena-replay-cost-tools-"
+    ) as tools:
+        emitter = Path(tools) / "malbolge_layout"
+        runner = Path(tools) / "malbolge"
+        emitter.hardlink_to(producer.DEFAULT_EMITTER)
+        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
+        monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
+        directory, document = producer.run_study(
+            producer.StudyPlan(
+                (1, 4, 16, 64),
+                1,
+                producer.PATTERNED_MODE,
+                measure_steps=True,
+                layout_mode=producer.FORWARD_SKIP_LAYOUT,
+                measure_verifier=True,
+                verifier_mode=producer.REPLAY_VERIFIER_MODE,
+            ),
+            emitter=emitter,
+            runner=runner,
+        )
+        try:
+            relative = (directory / "study.json").relative_to(producer._ROOT)
+            yield directory, document, relative.as_posix()
+        finally:
+            shutil.rmtree(directory)
+
+
 def _save(directory: Path, document: dict[str, Any]) -> None:
     (directory / "study.json").write_text(
         json.dumps(document, sort_keys=True),
@@ -313,6 +357,74 @@ def _recheck_generic(document: dict[str, Any]) -> None:
             require_budget_agreement=True,
         ),
     )
+
+
+def test_replay_verifier_measures_second_normative_vm_with_true_work_savings(
+    replay_forward: tuple[Path, dict[str, Any], str],
+) -> None:
+    """Second execution measures guest oracle cost, not just static parsing."""
+    _, document, relative = replay_forward
+    assert document["study"]["id"] == producer.FORWARD_REPLAY_COST_STUDY
+    assert document["study"]["objectives"] == [
+        ELAPSED,
+        ARTIFACT_BYTES,
+        RUNTIME_STEPS,
+        VERIFIER_COST_METRIC,
+    ]
+    assert len(document["observations"]) == ROWS
+    for row in document["observations"]:
+        assert row["outcome"] == analyze.VERIFIED
+        assert (
+            0 < row["metrics"][VERIFIER_COST_METRIC] <= row["metrics"][ELAPSED]
+        )
+    for level in (1, 4, 16, 64):
+        rows = {
+            row["algorithm"]: row
+            for row in document["observations"]
+            if row["case"]["difficulty"] == level
+        }
+        walked, skipped = rows[producer.WALK], rows[producer.SKIP]
+        assert (
+            walked["metrics"][ARTIFACT_BYTES]
+            == skipped["metrics"][ARTIFACT_BYTES]
+        )
+        assert (
+            walked["metrics"][RUNTIME_STEPS] - skipped["metrics"][RUNTIME_STEPS]
+            == EXPECTED_GUEST_SAVINGS
+        )
+    report = audit.audit(
+        relative,
+        options=audit.AuditOptions(
+            replay_candidates=True,
+            require_source_commit_object=True,
+        ),
+    )
+    assert report["target_sources_replayed"] == ROWS
+    assert report["source_commit_object_verified"] is True
+    assert report["evidence_preflight"]["raw_rows_matched"] == ROWS
+
+
+@pytest.mark.parametrize(
+    "wrong_id", [producer.FORWARD_STUDY, producer.FORWARD_VERIFIER_COST_STUDY]
+)
+def test_replay_cost_study_cannot_be_renamed_to_earlier_protocol(
+    replay_forward: tuple[Path, dict[str, Any], str],
+    wrong_id: str,
+) -> None:
+    """A real replay-cost report cannot silently masquerade as older modes."""
+    directory, document, relative = replay_forward
+    forged = copy.deepcopy(document)
+    forged["study"]["id"] = wrong_id
+    if wrong_id == producer.FORWARD_STUDY:
+        forged["study"]["objectives"].remove(VERIFIER_COST_METRIC)
+    _save(directory, forged)
+    if wrong_id == producer.FORWARD_STUDY:
+        with pytest.raises(audit.TargetEchoAuditError, match="verifier cost"):
+            audit._check_verifier_cost_claims(forged)
+    with pytest.raises(
+        audit.TargetEchoAuditError, match=r"verifier cost|fixed echo oracle"
+    ):
+        audit.audit(relative)
 
 
 def test_timed_source_verifier_retains_four_real_costs_and_replays(

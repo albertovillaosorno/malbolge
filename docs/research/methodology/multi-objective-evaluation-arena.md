@@ -301,6 +301,29 @@ independently authenticated by the later audit; host scheduling variance
 requires multiple controlled samples before any verifier speedup inference.
 The original three-cost and two-cost studies are unchanged.
 
+A third, *dynamic verifier-cost* protocol makes the missing VM oracle time
+explicit rather than conflating it with static checking. Only
+`--measure-verifier --verifier-mode replay` creates the separate
+`classic-patterned-forward-skip-replay-cost-v3` study and the
+`classic-forward-jump-patterned-second-vm-v1` run oracle. After a correct
+production run, each candidate is re-opened, decoded by the independent
+source checker, and executed by a second bounded **process of the same
+normative Malbolge VM** with fresh patterned binary input. The second run
+must reproduce exact guest bytes, final EOF and strict step receipt, and the
+original graphical source must remain stable after replay. A semantic output
+mismatch or changed candidate is rejected; runner/receipt faults become tool
+failures. Only fully admitted cases receive `verifier_ns`, which now includes
+source decoding, process startup, repeat VM execution, pipe transfer and
+post-replay evidence admission. `elapsed_ns` includes the primary and second
+VM runs, so these costs describe one *verified attempt*, not comparable
+single-execution wall times. The v3 verifier name and stable study ID jointly
+prevent accidental relabeling of v2 source-only observations with only an ID
+change. The read-only auditor binds source/metric/manifest/CSV identity and
+can execute the retained guest again with the recorded binary fingerprint;
+it cannot authenticate the original measured duration. This is a real second
+execution, not a distinct independent interpreter, arbitrary C translation,
+physically enforced whole-study budgets or an attested performance estimate.
+
 The earlier linear study remains a falsifiable source-size hypothesis (the
 nop-padded source should use one extra graphical code byte per pair), not a
 general compiler-size or performance result. Host wall times include compiler

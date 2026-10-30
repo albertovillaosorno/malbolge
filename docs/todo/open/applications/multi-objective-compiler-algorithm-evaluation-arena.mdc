@@ -176,6 +176,23 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   retain their original shape. This is one uncalibrated static-checking cost,
   not complete VM semantic verification, physically enforced resources,
   authenticated historical timing or general C translation.
+- An opt-in v3 replay-verifier-cost protocol now measures actual elapsed
+  nanoseconds for the independent source checker **plus a second, fresh,
+  bounded normative Malbolge VM process** on every successful forward-skip
+  candidate. The source is decoded before replay and checked again after;
+  the second process must reproduce the complete patterned binary/EOF oracle
+  and strict guest instruction receipt. Semantic mismatches reject candidates;
+  missing receipts, runner exits and bounded-process failures become tool
+  failures with no successful verifier-cost credit. This has its own fixed
+  `classic-patterned-forward-skip-replay-cost-v3` study ID and
+  `classic-forward-jump-patterned-second-vm-v1` verifier identity: simple
+  v2/v3 report relabeling fails audit rather than silently mixing static-only
+  and repeat-execution measurements. The fourth `verifier_ns` objective is
+  retained through original raw CSV/run manifests, paired reports and strict
+  optional later replay. This is a repeat process running the **same VM**, not
+  independently implemented semantics, attested timing, whole-study resource
+  enforcement or target C compiler validation. Old cohort protocols remain.
+- A separate read-only classic target audit now reopens local pilot
 - A separate read-only classic target audit now reopens local pilot
   studies, binds fixed producer research/manifest/case claims, complete
   paired repetition plans and exact run/raw/candidate inventories, and

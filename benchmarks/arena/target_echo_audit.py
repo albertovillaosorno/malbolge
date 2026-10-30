@@ -87,9 +87,11 @@ STEPS_REPORT_PREFIX = b"malbolge-steps-v1:"
 RUNTIME_STEPS = "runtime_steps"
 FORWARD_STUDY = "classic-patterned-forward-skip-steps-v1"
 FORWARD_VERIFIER_COST_STUDY = "classic-patterned-forward-skip-verifier-cost-v2"
+FORWARD_REPLAY_COST_STUDY = "classic-patterned-forward-skip-replay-cost-v3"
 VERIFIER_NS = "verifier_ns"
 FORWARD_FAMILY = "bounded-classic-patterned-forward-skip-echo"
 FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
+FORWARD_REPLAY_VERIFIER = "classic-forward-jump-patterned-second-vm-v1"
 WALK = "walk-padding-echo"
 SKIP = "jump-skip-padding-echo"
 FORWARD_ALGORITHMS = (WALK, SKIP)
@@ -109,6 +111,10 @@ CLASSIC_DECODE = (
 
 class TargetEchoAuditError(ValueError):
     """Retained target echo evidence is inconsistent or unverifiable."""
+
+
+class TargetReplayToolError(sp.SubprocessError):
+    """The second VM run did not produce a valid tool-level step receipt."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +173,7 @@ def _mode(document: dict[str, Any]) -> str:
         PATTERNED_STEPS_STUDY,
         FORWARD_STUDY,
         FORWARD_VERIFIER_COST_STUDY,
+        FORWARD_REPLAY_COST_STUDY,
     }:
         return producer.PATTERNED_MODE
     if study_id in {EOF_STUDY, EOF_STEPS_STUDY}:
@@ -180,6 +187,7 @@ def _has_steps(document: dict[str, Any]) -> bool:
         PATTERNED_STEPS_STUDY,
         FORWARD_STUDY,
         FORWARD_VERIFIER_COST_STUDY,
+        FORWARD_REPLAY_COST_STUDY,
     }
 
 
@@ -187,11 +195,15 @@ def _forward(document: dict[str, Any]) -> bool:
     return document["study"]["id"] in {
         FORWARD_STUDY,
         FORWARD_VERIFIER_COST_STUDY,
+        FORWARD_REPLAY_COST_STUDY,
     }
 
 
 def _has_verifier_cost(document: dict[str, Any]) -> bool:
-    return document["study"]["id"] == FORWARD_VERIFIER_COST_STUDY
+    return document["study"]["id"] in {
+        FORWARD_VERIFIER_COST_STUDY,
+        FORWARD_REPLAY_COST_STUDY,
+    }
 
 
 def _algorithms(document: dict[str, Any]) -> tuple[str, str]:
@@ -216,7 +228,9 @@ def _producer_study(document: dict[str, Any]) -> None:
     )
     if forward:
         study_id = (
-            FORWARD_VERIFIER_COST_STUDY
+            FORWARD_REPLAY_COST_STUDY
+            if study["id"] == FORWARD_REPLAY_COST_STUDY
+            else FORWARD_VERIFIER_COST_STUDY
             if _has_verifier_cost(document)
             else FORWARD_STUDY
         )
@@ -332,8 +346,13 @@ def _row_stem(row: dict[str, Any]) -> str:
 
 
 def _check_row(
-    row: dict[str, Any], prefix: str, mode: str, *, forward: bool
+    row: dict[str, Any],
+    prefix: str,
+    mode: str,
+    *,
+    protocol: tuple[bool, bool],
 ) -> str:
+    forward, replay_cost = protocol
     case = row["case"]
     algorithm = row["algorithm"]
     if algorithm not in (
@@ -343,7 +362,9 @@ def _check_row(
     if case != _expected_case(case["difficulty"], mode, forward=forward):
         _fail("target audit trial differs from the fixed echo case")
     expected_verifier = (
-        FORWARD_VERIFIER
+        FORWARD_REPLAY_VERIFIER
+        if replay_cost
+        else FORWARD_VERIFIER
         if forward
         else producer.VERIFIER
         if mode == producer.EOF_MODE
@@ -438,7 +459,11 @@ def _producer_rows(document: dict[str, Any], prefix: str) -> set[str]:
     _check_verifier_cost_claims(document)
     mode = _mode(document)
     forward = _forward(document)
-    names = {_check_row(row, prefix, mode, forward=forward) for row in rows}
+    replay_cost = document["study"]["id"] == FORWARD_REPLAY_COST_STUDY
+    names = {
+        _check_row(row, prefix, mode, protocol=(forward, replay_cost))
+        for row in rows
+    }
     expected = {
         f"{algorithm}-pairs-{level}-trial-{trial}"
         for level in levels
@@ -696,6 +721,53 @@ def _replay_execution(
         ),
         payload + bytes([producer.CLASSIC_EOF_BYTE]),
     )
+
+
+def _check_forward_replay_result(
+    result: sp.CompletedProcess[bytes], payload: bytes, steps: int
+) -> None:
+    if result.returncode != 0:
+        message = "target replay executable failed"
+        raise TargetReplayToolError(message)
+    receipt = STEPS_REPORT_PREFIX + str(steps).encode("ascii") + b"\n"
+    if result.stderr != receipt:
+        message = "target replay VM step receipt is invalid"
+        raise TargetReplayToolError(message)
+    if result.stdout != payload + bytes([producer.CLASSIC_EOF_BYTE]):
+        _fail("target replay VM output differs from independent byte oracle")
+
+
+def check_forward_vm_replay(
+    source: Path, runner: Path, *, case: tuple[int, str], steps: int | None
+) -> None:
+    """Read/check the fixed source, then replay exact guest bytes and steps.
+
+    The second VM uses the same normative executable, not another engine.
+    Invalid output or source bytes reject the candidate; invalid tool status
+    or step receipts reject the measurement as an instrumentation failure.
+
+    """
+    pairs, algorithm = case
+    relative = source.relative_to(_ROOT).as_posix()
+    original = evidence.read_bounded_regular(
+        _ROOT, relative, limit=producer.MAX_TARGET_BYTES
+    )
+    check_forward_candidate_source(original, pairs=pairs, algorithm=algorithm)
+    expected_steps = 2 * pairs + (102 if algorithm == WALK else 4)
+    if type(steps) is not int or steps != expected_steps:
+        _fail("target replay requested inconsistent guest instruction count")
+    payload = _pattern_bytes(pairs)
+    result = target_process.invoke_with_input(
+        [str(runner), str(source), "--input-stdin", "--report-steps"],
+        payload,
+        timeout_seconds=producer.TIMEOUT_SECONDS,
+    )
+    _check_forward_replay_result(result, payload, steps)
+    after = evidence.read_bounded_regular(
+        _ROOT, relative, limit=producer.MAX_TARGET_BYTES
+    )
+    if after != original:
+        _fail("target replay changed candidate source after admission")
 
 
 def _replay_one(

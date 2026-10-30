@@ -725,11 +725,19 @@ def test_real_postexecution_source_mutation_is_independently_rejected(
     or not target_echo_reference.DEFAULT_RUNNER.is_file(),
     reason="built Malbolge tools required",
 )
+@pytest.mark.parametrize(
+    "mode",
+    [
+        target_echo_reference.SOURCE_VERIFIER_MODE,
+        target_echo_reference.REPLAY_VERIFIER_MODE,
+    ],
+)
 def test_cli_opt_in_verifier_cost_publishes_four_objective_study(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    mode: str,
 ) -> None:
-    """Operator flags reach the real verifier-cost stage and its raw audit."""
+    """Operator flags reach the selected verifier-cost stage and raw audit."""
     original = target_echo_reference.run_study
     generated: list[Path] = []
     with tempfile.TemporaryDirectory(
@@ -763,6 +771,8 @@ def test_cli_opt_in_verifier_cost_publishes_four_objective_study(
                 "--layout-mode",
                 "forward-skip",
                 "--measure-verifier",
+                "--verifier-mode",
+                mode,
             ],
         )
         try:
@@ -772,9 +782,10 @@ def test_cli_opt_in_verifier_cost_publishes_four_objective_study(
             study = json.loads(
                 (target_echo_reference._ROOT / relative).read_text()
             )
-            assert (
-                study["study"]["id"]
-                == target_echo_reference.FORWARD_VERIFIER_COST_STUDY
+            assert study["study"]["id"] == (
+                target_echo_reference.FORWARD_REPLAY_COST_STUDY
+                if mode == target_echo_reference.REPLAY_VERIFIER_MODE
+                else target_echo_reference.FORWARD_VERIFIER_COST_STUDY
             )
             assert all(
                 target_echo_reference.VERIFIER_NS in row["metrics"]
@@ -830,6 +841,32 @@ def test_cli_opt_in_verifier_cost_publishes_four_objective_study(
             measure_steps=True,
             layout_mode=target_echo_reference.LINEAR_LAYOUT,
             measure_verifier=True,
+        ),
+        target_echo_reference.StudyPlan(
+            (1,),
+            1,
+            target_echo_reference.PATTERNED_MODE,
+            measure_steps=True,
+            layout_mode=target_echo_reference.FORWARD_SKIP_LAYOUT,
+            verifier_mode=target_echo_reference.REPLAY_VERIFIER_MODE,
+        ),
+        target_echo_reference.StudyPlan(
+            (1,),
+            1,
+            target_echo_reference.PATTERNED_MODE,
+            measure_steps=True,
+            layout_mode=target_echo_reference.FORWARD_SKIP_LAYOUT,
+            measure_verifier=True,
+            verifier_mode="unknown",
+        ),
+        target_echo_reference.StudyPlan(
+            (1,),
+            1,
+            target_echo_reference.PATTERNED_MODE,
+            measure_steps=True,
+            layout_mode=target_echo_reference.FORWARD_SKIP_LAYOUT,
+            measure_verifier=True,
+            verifier_mode=cast("str", BOOL_TRIAL_ALIAS),
         ),
         target_echo_reference.StudyPlan((1,), BOOL_TRIAL_ALIAS),
         target_echo_reference.StudyPlan(

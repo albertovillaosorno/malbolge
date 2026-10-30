@@ -102,9 +102,14 @@ SKIP = "jump-skip-padding-echo"
 FORWARD_ALGORITHMS = (WALK, SKIP)
 FORWARD_STUDY = "classic-patterned-forward-skip-steps-v1"
 FORWARD_VERIFIER_COST_STUDY = "classic-patterned-forward-skip-verifier-cost-v2"
+FORWARD_REPLAY_COST_STUDY = "classic-patterned-forward-skip-replay-cost-v3"
+SOURCE_VERIFIER_MODE = "source"
+REPLAY_VERIFIER_MODE = "replay"
+VERIFIER_MODES = (SOURCE_VERIFIER_MODE, REPLAY_VERIFIER_MODE)
 VERIFIER_NS = "verifier_ns"
 FORWARD_FAMILY = "bounded-classic-patterned-forward-skip-echo"
 FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
+FORWARD_REPLAY_VERIFIER = "classic-forward-jump-patterned-second-vm-v1"
 JUMP_OPERATION = "jump"
 SKIPPED_NOOPS = 98
 WALKED_NOOPS = SKIPPED_NOOPS + 1
@@ -124,6 +129,7 @@ class StudyPlan:
     measure_steps: bool = False
     layout_mode: str = LINEAR_LAYOUT
     measure_verifier: bool = False
+    verifier_mode: str = SOURCE_VERIFIER_MODE
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +146,7 @@ class _Context:
     measure_steps: bool = False
     layout_mode: str = LINEAR_LAYOUT
     measure_verifier: bool = False
+    verifier_mode: str = SOURCE_VERIFIER_MODE
 
 
 def _fail(message: str) -> Never:
@@ -411,6 +418,28 @@ def _timed_source_verifier(path: Path, pairs: int, algorithm: str) -> int:
     return perf_counter_ns() - started
 
 
+def _timed_replay_verifier(
+    path: Path,
+    context: _Context,
+    case: tuple[int, str],
+    *,
+    steps: int | None,
+) -> int:
+    """Time independent source admission and a second exact VM execution.
+
+    Returns:
+        Wall nanoseconds of the entire verifier pass, including VM startup.
+
+    """
+    from benchmarks.arena import target_echo_audit  # ruff: ignore[import-outside-top-level]
+
+    started = perf_counter_ns()
+    target_echo_audit.check_forward_vm_replay(
+        path, context.runner, case=case, steps=steps
+    )
+    return perf_counter_ns() - started
+
+
 def _optional_verifier_cost(
     path: Path,
     context: _Context,
@@ -424,10 +453,16 @@ def _optional_verifier_cost(
 
     timing = None
     try:
-        timing = _timed_source_verifier(path, *case)
+        timing = (
+            _timed_replay_verifier(path, context, case, steps=attempt[2])
+            if context.verifier_mode == REPLAY_VERIFIER_MODE
+            else _timed_source_verifier(path, *case)
+        )
+    except target_echo_audit.TargetReplayToolError:
+        attempt = ("tool_failed", None, None)
     except target_echo_audit.TargetEchoAuditError:
         attempt = (analyze.VERIFIER_REJECTED, None, None)
-    except OSError, evidence.EvidenceError:
+    except OSError, sp.SubprocessError, evidence.EvidenceError:
         attempt = ("tool_failed", None, None)
     return attempt, timing
 
@@ -585,7 +620,10 @@ def _write_attempt(
         "trial": trial,
         "outcome": outcome,
         "verifier": (
-            FORWARD_VERIFIER
+            FORWARD_REPLAY_VERIFIER
+            if context.measure_verifier
+            and context.verifier_mode == REPLAY_VERIFIER_MODE
+            else FORWARD_VERIFIER
             if context.layout_mode == FORWARD_SKIP_LAYOUT
             else VERIFIER
             if context.input_mode == EOF_MODE
@@ -612,7 +650,10 @@ def _make_document(
 ) -> dict[str, Any]:
     patterned = context.input_mode == PATTERNED_MODE
     study_id = (
-        FORWARD_VERIFIER_COST_STUDY
+        FORWARD_REPLAY_COST_STUDY
+        if context.measure_verifier
+        and context.verifier_mode == REPLAY_VERIFIER_MODE
+        else FORWARD_VERIFIER_COST_STUDY
         if context.measure_verifier
         else FORWARD_STUDY
         if context.layout_mode == FORWARD_SKIP_LAYOUT
@@ -700,6 +741,13 @@ def _validate_verifier_measurement(plan: StudyPlan) -> None:
         _fail("target echo requires a boolean verifier timing selection")
     if plan.measure_verifier and plan.layout_mode != FORWARD_SKIP_LAYOUT:
         _fail("target echo verifier cost requires the forward-skip study")
+    if (
+        type(plan.verifier_mode) is not str
+        or plan.verifier_mode not in VERIFIER_MODES
+    ):
+        _fail("target echo verifier mode must be source or replay")
+    if plan.verifier_mode == REPLAY_VERIFIER_MODE and not plan.measure_verifier:
+        _fail("target echo replay verifier requires measured verifier cost")
 
 
 def _validate_study_options(plan: StudyPlan) -> None:
@@ -738,6 +786,7 @@ def run_study(
         measure_steps=plan.measure_steps,
         layout_mode=plan.layout_mode,
         measure_verifier=plan.measure_verifier,
+        verifier_mode=plan.verifier_mode,
     )
     observations = [
         _write_attempt(context, pairs, trial, algorithm=algorithm)
@@ -774,6 +823,9 @@ def main() -> int:
         "--layout-mode", choices=LAYOUT_MODES, default=LINEAR_LAYOUT
     )
     parser.add_argument("--measure-verifier", action="store_true")
+    parser.add_argument(
+        "--verifier-mode", choices=VERIFIER_MODES, default=SOURCE_VERIFIER_MODE
+    )
     args = parser.parse_args()
     try:
         directory, document = run_study(
@@ -784,6 +836,7 @@ def main() -> int:
                 args.measure_steps,
                 args.layout_mode,
                 args.measure_verifier,
+                args.verifier_mode,
             )
         )
         report_output.publish(
