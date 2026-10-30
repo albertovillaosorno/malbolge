@@ -164,10 +164,13 @@ staging therefore fails closed before committing a redirected generation.
 Mutable and immutable writers now capture the device and inode of the fresh
 `mkstemp` descriptor before transferring it to the payload stream. After file
 sync and stream close, and before pointer replacement or immutable linking,
-they require the temporary pathname to remain a regular, unlinked entry with
-the same device, inode, and exact expected byte length. Both writers now
-reopen that temporary through a nonfollowing, nonblocking descriptor, check the
-stable pathname/inode and modification timestamps, and independently SHA-256
+they require the temporary pathname to remain a regular, non-symlink entry
+with the same device, inode, exact expected byte length, and **one hard link**.
+This prevents a staged inode already accessible through another pathname from
+becoming a published pointer or checkpoint that can later be mutated through
+its alias. Both writers reopen that temporary through a nonfollowing,
+nonblocking descriptor, check stable pathname/inode and modification timestamps,
+and independently SHA-256
 compare the complete staged bytes against the original payload using raw reads
 capped at 64 KiB each. This catches a same-inode, same-length rewrite that
 previously passed inode/size admission, while keeping opaque checkpoint size
@@ -175,6 +178,12 @@ unbounded and peak *additional* verification buffering independent of payload
 length. A short read or a changed inode/time also rejects. Substituting a
 regular file, a symlink, or truncating the original inode still fails before
 publication in both paths. Temporary cleanup runs on rejection.
+Regular-inode and single-hard-link admission is repeated before reopening,
+after hashing on the open descriptor, and after reader closure. Deterministic
+POSIX tests insert a hard-link alias at each boundary, including between hash
+completion and the final pathname check; none may publish the aliased inode.
+The immutable POSIX publisher's intentional no-replace hard link happens only
+after these staging checks and is cleaned up when staging completes.
 
 If descriptor identity admission fails before ownership transfer, the raw
 descriptor is closed with cleanup exceptions kept secondary to the primary

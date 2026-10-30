@@ -5726,6 +5726,116 @@ def test_same_size_staged_progress_mutation_fails_before_publication(
     assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link substitution requires POSIX filesystem semantics",
+)
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+def test_progress_staging_hardlink_alias_rejected_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A linked staged inode would make final progress mutable by its alias."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    alias = tmp_path / "foreign-staged-hardlink"
+    original_write = cast(
+        "Callable[[int, bytes], None]",
+        vars(progress)["_write_payload_descriptor"],
+    )
+
+    def link_staged_inode(descriptor: int, payload: bytes) -> None:
+        original_write(descriptor, payload)
+        staged = tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+        assert len(staged) == 1
+        os.link(staged[0], alias)
+        assert alias.stat().st_ino == staged[0].stat().st_ino
+
+    def publish() -> Path:
+        if kind == TEMP_MUTABLE:
+            return progress.write_atomic(sidecar)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        return writer(destination, b"expected-checkpoint", platform=os.name)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_write_payload_descriptor", link_staged_inode
+        )
+        with pytest.raises(ERROR, match=r"temporary.*link"):
+            _ = publish()
+    assert alias.exists()
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link substitution requires POSIX filesystem semantics",
+)
+def test_progress_staging_hardlink_during_digest_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A new alias during content hashing fails final inode admission."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    alias = tmp_path / "foreign-during-read-hardlink"
+    original_chunk = cast(
+        "Callable[[int, int], bytes]", vars(progress)["_read_staged_chunk"]
+    )
+
+    def inject_link(descriptor: int, requested: int) -> bytes:
+        if not alias.exists():
+            staged = tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+            assert len(staged) == 1
+            os.link(staged[0], alias)
+        return original_chunk(descriptor, requested)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_read_staged_chunk", inject_link)
+        with pytest.raises(ERROR, match=r"temporary.*link"):
+            _ = progress.write_atomic(sidecar)
+    assert alias.exists()
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link substitution requires POSIX filesystem semantics",
+)
+def test_progress_staging_hardlink_after_reader_close_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-read pathname admission blocks a newly linked staging inode."""
+    destination = tmp_path / "checkpoint.bin"
+    alias = tmp_path / "foreign-after-close-hardlink"
+    original_close = cast(
+        "Callable[[int], None]", vars(progress)["_close_staged_reader"]
+    )
+
+    def close_then_link(descriptor: int) -> None:
+        original_close(descriptor)
+        staged = tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+        assert len(staged) == 1
+        os.link(staged[0], alias)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_close_staged_reader", close_then_link)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        with pytest.raises(ERROR, match=r"temporary.*link"):
+            _ = writer(destination, b"expected-checkpoint", platform=os.name)
+    assert alias.exists()
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
 def test_progress_temporary_hash_reads_in_bounded_chunks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

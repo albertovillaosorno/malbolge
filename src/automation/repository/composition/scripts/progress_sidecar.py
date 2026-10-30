@@ -2226,6 +2226,8 @@ def _admit_temporary_inode(
         or observed.st_size != expected_size
     ):
         _fail("progress temporary inode or size changed during staging")
+    if observed.st_nlink != 1:
+        _fail("progress temporary gained an external hard link during staging")
 
 
 def _read_staged_chunk(descriptor: int, requested: int) -> bytes:
@@ -2279,6 +2281,7 @@ def _verify_staged_content(
         temporary, descriptor, "progress temporary", phase="content check"
     )
     final = os.fstat(descriptor)
+    _admit_temporary_inode(final, identity, len(payload))
     if (
         final.st_size != initial.st_size
         or final.st_mtime_ns != initial.st_mtime_ns
@@ -2324,6 +2327,20 @@ def _open_staged_reader(temporary: Path) -> int:
         )
 
 
+def _admit_temporary_path(
+    temporary: Path, identity: tuple[int, int], expected_size: int
+) -> None:
+    """Check pathname redirects and exclusive staged-inode ownership."""
+    _reject_path_redirect(temporary, "progress temporary")
+    try:
+        current = temporary.stat(follow_symlinks=False)
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail_with_source(
+            f"progress temporary identity cannot be verified: {error}", error
+        )
+    _admit_temporary_inode(current, identity, expected_size)
+
+
 def _verify_written_temporary(
     temporary: Path, identity: tuple[int, int], payload: bytes
 ) -> None:
@@ -2336,14 +2353,7 @@ def _verify_written_temporary(
         ProgressSidecarError: If the staging inode or contents are invalid.
 
     """
-    _reject_path_redirect(temporary, "progress temporary")
-    try:
-        current = temporary.stat(follow_symlinks=False)
-    except (OSError, ValueError, RuntimeError) as error:
-        _fail_with_source(
-            f"progress temporary identity cannot be verified: {error}", error
-        )
-    _admit_temporary_inode(current, identity, len(payload))
+    _admit_temporary_path(temporary, identity, len(payload))
     descriptor = _open_staged_reader(temporary)
     try:
         try:
@@ -2358,7 +2368,7 @@ def _verify_written_temporary(
             )
     finally:
         _close_staged_reader(descriptor)
-    _reject_path_redirect(temporary, "progress temporary")
+    _admit_temporary_path(temporary, identity, len(payload))
 
 
 def _write_atomic_bytes(

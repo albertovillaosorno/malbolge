@@ -138,7 +138,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   read chunking, forged raw read results, early EOF, reader-close failures,
   and primary-error/cause precedence; typed staged-reader errors now retain
   their I/O causes across the mutable pointer publication boundary; post-check
-  races remain out of scope,
+  races remain out of scope; exclusive single-hard-link admission now rejects
+  foreign hard-link aliases of the staging inode before and after hashing and
+  again after reader closure, with POSIX fail-before-publication tests covering
+  alias injection after fsync, during content read, and after verification
+  reader closure on both pointer and checkpoint paths,
   stable read with read-before-close
   failure precedence plus writer-lock lifecycle,
   pre-publication filesystem failures, exact committed-path evidence for
