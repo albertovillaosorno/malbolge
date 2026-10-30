@@ -60,9 +60,10 @@ from benchmarks.arena import target_process
 POSIX = "posix"
 WRONG_OUTPUT = "wrong-output"
 MISSING_STEPS = "missing-steps"
+WRONG_STEPS = "wrong-steps"
 BAD_EXIT = "bad-exit"
 TIMEOUT = "timeout"
-REPLAY_MODES = (WRONG_OUTPUT, MISSING_STEPS, BAD_EXIT, TIMEOUT)
+REPLAY_MODES = (WRONG_OUTPUT, MISSING_STEPS, WRONG_STEPS, BAD_EXIT, TIMEOUT)
 JUMP_NAME = "jump-skip-padding-echo"
 TWO_EXECUTIONS = 2
 TRIAL_COUNT = 2
@@ -119,18 +120,16 @@ def _real_study(
 def _forged_second_result(
     failure: str, result: sp.CompletedProcess[bytes]
 ) -> sp.CompletedProcess[bytes]:
+    status, output, receipt = result.returncode, result.stdout, result.stderr
     if failure == WRONG_OUTPUT:
-        return sp.CompletedProcess(
-            result.args,
-            result.returncode,
-            b"not-the-byte-oracle",
-            result.stderr,
-        )
-    if failure == MISSING_STEPS:
-        return sp.CompletedProcess(
-            result.args, result.returncode, result.stdout, b""
-        )
-    return sp.CompletedProcess(result.args, 9, result.stdout, result.stderr)
+        output = b"not-the-byte-oracle"
+    elif failure == MISSING_STEPS:
+        receipt = b""
+    elif failure == WRONG_STEPS:
+        receipt = b"malbolge-steps-v1:999\n"
+    else:
+        status = 9
+    return sp.CompletedProcess(result.args, status, output, receipt)
 
 
 @pytest.mark.parametrize("failure", REPLAY_MODES)
