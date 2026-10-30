@@ -152,6 +152,44 @@ def patterned(
             shutil.rmtree(directory)
 
 
+@pytest.fixture(params=[producer.EOF_MODE, producer.PATTERNED_MODE])
+def counted_study(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[Path, dict[str, Any], str]]:
+    """Retain real counted-instruction target studies for two input modes.
+
+    Yields:
+        The source root, counted study, and canonical relative path.
+
+    """
+    if (
+        not producer.DEFAULT_EMITTER.is_file()
+        or not producer.DEFAULT_RUNNER.is_file()
+    ):
+        pytest.skip("built emitter and normative VM required")
+    mode = str(request.param)
+    with tempfile.TemporaryDirectory(
+        dir=producer._TEMP, prefix="arena-counted-test-tools-"
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        runner = Path(tool_directory) / "malbolge"
+        emitter.hardlink_to(producer.DEFAULT_EMITTER)
+        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
+        monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
+        directory, document = producer.run_study(
+            producer.StudyPlan((1, 4), 2, mode, measure_steps=True),
+            emitter=emitter,
+            runner=runner,
+        )
+        try:
+            relative = (directory / "study.json").relative_to(producer._ROOT)
+            yield directory, document, relative.as_posix()
+        finally:
+            shutil.rmtree(directory)
+
+
 def _save(directory: Path, document: dict[str, Any]) -> None:
     (directory / "study.json").write_text(
         json.dumps(document, sort_keys=True),
@@ -177,6 +215,83 @@ def _recheck_generic(document: dict[str, Any]) -> None:
             require_budget_agreement=True,
         ),
     )
+
+
+def test_counted_vm_study_has_three_actual_costs_and_replay(
+    counted_study: tuple[Path, dict[str, Any], str],
+) -> None:
+    """Both input modes report and independently replay exact VM step counts."""
+    _, document, relative = counted_study
+    assert document["study"]["id"] in {
+        producer.EOF_STEPS_STUDY,
+        producer.PATTERNED_STEPS_STUDY,
+    }
+    assert document["study"]["objectives"] == [
+        "elapsed_ns",
+        ARTIFACT_BYTES,
+        "runtime_steps",
+    ]
+    assert all(
+        row["outcome"] == analyze.VERIFIED for row in document["observations"]
+    )
+    assert all(
+        row["metrics"]["runtime_steps"] == row["metrics"][ARTIFACT_BYTES]
+        for row in document["observations"]
+    )
+    offline = audit.audit(relative)
+    assert offline["verified_target_sources_checked"] == ROWS
+    replay = audit.audit(
+        relative,
+        options=audit.AuditOptions(
+            replay_candidates=True,
+            require_source_commit_object=True,
+        ),
+    )
+    assert replay["target_sources_replayed"] == ROWS
+    assert replay["source_commit_object_verified"] is True
+    assert len(replay["pareto_frontiers"]) == FRONTIERS
+
+
+def test_forged_vm_steps_fail_independent_static_admission(
+    counted_study: tuple[Path, dict[str, Any], str],
+) -> None:
+    """A false step counter is not authorized by a plausible study JSON."""
+    directory, document, relative = counted_study
+    forged = copy.deepcopy(document)
+    forged["observations"][0]["metrics"]["runtime_steps"] += 1
+    _save(directory, forged)
+    with pytest.raises(audit.TargetEchoAuditError, match="runtime step claim"):
+        audit.audit(relative)
+
+
+def test_replay_rejects_changed_vm_receipt_with_correct_guest_stdout(
+    counted_study: tuple[Path, dict[str, Any], str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replayed program must preserve full stderr counter, not just stdout."""
+    _, _, relative = counted_study
+    original = audit._replay_execution
+
+    def altered(
+        row: dict[str, Any], runner: Path, source: Path
+    ) -> tuple[sp.CompletedProcess[bytes], bytes]:
+        outcome, expected = original(row, runner, source)
+        assert outcome.stdout == expected
+        return (
+            sp.CompletedProcess(
+                outcome.args,
+                outcome.returncode,
+                outcome.stdout,
+                b"malbolge-steps-v1:0\n",
+            ),
+            expected,
+        )
+
+    monkeypatch.setattr(audit, "_replay_execution", altered)
+    with pytest.raises(audit.TargetEchoAuditError, match="step receipt"):
+        audit.audit(
+            relative, options=audit.AuditOptions(replay_candidates=True)
+        )
 
 
 def test_patterned_source_audit_replays_real_input_and_eof(

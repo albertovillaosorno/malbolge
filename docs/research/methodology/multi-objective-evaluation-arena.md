@@ -231,8 +231,27 @@ The read-only auditor independently reconstructs the fixed byte vector,
 checks positional classic decode for every instruction and, when requested,
 replays retained successful sources through the same exact hashed toolchain.
 The original empty-input EOF mode is byte-identical and backward compatible.
-No memory instrumentation, worktree attestation, general bytecode compiler,
-profile-independent execution, or physical resource enforcement is implied.
+
+A separate **opt-in** `--measure-steps` study now obtains actual normative VM
+`RunOutcome` instruction counts through `malbolge --report-steps` stderr,
+rather than projecting instruction count only from the generated source's
+length. The CLI adds per-chunk counts exactly, including the terminating step,
+refuses integer overflow, and leaves default output unchanged. The arena
+requires a complete canonical machine-readable receipt, retains its integer
+in `runtime_steps`, and adds that metric to a three-cost Pareto comparison.
+The two version-two study identities bind this changed measurement contract
+without invalidating older EOF and patterned studies. Inverse classic source
+decode independently establishes the exact expected count on the admitted
+straight-line I/O subset and rejects forged or missing runtime measurements;
+replay additionally checks the full stderr receipt against the original
+count using the exact recorded VM binary. Forged study-count and replay-count
+regressions distinguish production correctness from independent audit. In this narrow linear subset, each emitted source byte is
+executed exactly once, so guest steps and source bytes are perfectly
+correlated. There is no new evidence about general program control-flow
+runtime work, physical power, CPU throughput or independently authenticated
+historic execution. No memory instrumentation, worktree attestation, general
+bytecode compiler, profile-independent execution, or physical resource
+enforcement is implied.
 
 This is a falsifiable source-size hypothesis (the nop-padded source should
 use one extra graphical code byte per pair), not a general compiler-size or

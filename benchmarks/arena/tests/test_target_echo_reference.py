@@ -66,10 +66,46 @@ GRAPHICAL_HIGH = 126
 BOOL_TRIAL_ALIAS = True
 OUTPUT_ARGUMENT = "--output"
 TOOL_FAILED = "tool_failed"
+FORGED_COUNT = 999
+EXPECTED_STEP_RECEIPT = 3
 PATTERNED_LEVEL_COUNT = 4
 PATTERNED_MAX_PAIR_COUNT = 64
 PATTERNED_DIRECT_BYTES = 131
 PATTERNED_PADDED_BYTES = 196
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        b"",
+        b"malbolge-steps-v1:\n",
+        b"malbolge-steps-v1:01\n",
+        b"malbolge-steps-v1:-1\n",
+        b"malbolge-steps-v1:1.0\n",
+        b"malbolge-steps-v1:1\r\n",
+        b"malbolge-steps-v1:3\nmalbolge-steps-v1:4\n",
+        b"malbolge-steps-v1:3\nnoise",
+        b"malbolge-steps-v1:999999999999999999999\n",
+        b"malbolge-steps-v1:\xff\n",
+    ],
+)
+def test_vm_step_receipt_rejects_ambiguous_or_unbounded_counter(
+    receipt: bytes,
+) -> None:
+    """No extra diagnostics or alternate decimal spellings certify steps."""
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match=r"step receipt|step count",
+    ):
+        target_echo_reference._parse_step_receipt(receipt)
+
+
+def test_vm_step_receipt_admits_one_canonical_decimal() -> None:
+    """Canonical reporter wire bytes remain reproducible."""
+    assert (
+        target_echo_reference._parse_step_receipt(b"malbolge-steps-v1:3\n")
+        == EXPECTED_STEP_RECEIPT
+    )
 
 
 @pytest.fixture
@@ -238,6 +274,70 @@ def test_producer_rejects_forged_graphical_source_and_vm_agreement(
     finally:
         for directory in directories:
             shutil.rmtree(directory)
+
+
+@pytest.mark.skipif(
+    not target_echo_reference.DEFAULT_EMITTER.is_file(),
+    reason="built Malbolge layout emitter missing",
+)
+def test_wrong_external_vm_step_receipt_does_not_publish_success(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Plausible stdout and consistent reported counters cannot bypass audit."""
+    runner = tmp_path / "forged-counter-vm"
+    runner.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "sys.stdout.buffer.write(bytes([0,168]))\n"
+        "sys.stderr.buffer.write(b'malbolge-steps-v1:999\\n')\n"
+    )
+    runner.chmod(0o700)
+    directories: list[Path] = []
+    original = target_echo_reference._prepare_context
+
+    def capture_context(
+        emitter: Path, vm: Path
+    ) -> target_echo_reference._Context:
+        context = original(emitter, vm)
+        directories.append(context.directory)
+        return context
+
+    monkeypatch.setattr(
+        target_echo_reference, "_prepare_context", capture_context
+    )
+    with tempfile.TemporaryDirectory(
+        dir=target_echo_reference._TEMP,
+        prefix="arena-steps-test-tools-",
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        try:
+            with pytest.raises(
+                target_echo_reference.TargetEchoStudyError,
+                match="runtime step claim",
+            ):
+                target_echo_reference.run_study(
+                    target_echo_reference.StudyPlan(
+                        (1,),
+                        1,
+                        target_echo_reference.PATTERNED_MODE,
+                        measure_steps=True,
+                    ),
+                    emitter=emitter,
+                    runner=runner,
+                )
+            assert len(directories) == 1
+            rows = json.loads(
+                (directories[0] / "study.json").read_text(encoding="utf-8")
+            )["observations"]
+            assert all(row["outcome"] == analyze.VERIFIED for row in rows)
+            assert all(
+                row["metrics"]["runtime_steps"] == FORGED_COUNT for row in rows
+            )
+        finally:
+            for directory in directories:
+                shutil.rmtree(directory)
 
 
 @pytest.mark.skipif(
@@ -446,6 +546,9 @@ def test_changed_producer_pattern_fails_independent_oracle_even_if_linked(
         target_echo_reference.StudyPlan((True,), 1),
         target_echo_reference.StudyPlan((1,), 1, "arbitrary"),
         target_echo_reference.StudyPlan((1,), 1, cast("str", BOOL_TRIAL_ALIAS)),
+        target_echo_reference.StudyPlan(
+            (1,), 1, target_echo_reference.EOF_MODE, cast("bool", 1)
+        ),
         target_echo_reference.StudyPlan((1,), BOOL_TRIAL_ALIAS),
     ],
 )

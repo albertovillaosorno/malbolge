@@ -80,6 +80,10 @@ SOURCE_INSTRUCTIONS = {
 # Independently authored frozen classic XLAT1 mapping, not emitter output.
 EOF_STUDY = "classic-eof-echo-geometry-v1"
 PATTERNED_STUDY = "classic-patterned-byte-echo-geometry-v1"
+EOF_STEPS_STUDY = "classic-eof-echo-steps-v2"
+PATTERNED_STEPS_STUDY = "classic-patterned-byte-echo-steps-v2"
+STEPS_REPORT_PREFIX = b"malbolge-steps-v1:"
+RUNTIME_STEPS = "runtime_steps"
 PATTERNED_FAMILY = "bounded-classic-patterned-byte-echo"
 PATTERNED_VERIFIER = "classic-malbolge-vm-exact-patterned-byte-v1"
 # Independently fixed vector; do not defer to the producing algorithm.
@@ -146,11 +150,15 @@ def _document(relative: str) -> tuple[dict[str, Any], str]:
 
 def _mode(document: dict[str, Any]) -> str:
     study_id = document["study"]["id"]
-    if study_id == PATTERNED_STUDY:
+    if study_id in {PATTERNED_STUDY, PATTERNED_STEPS_STUDY}:
         return producer.PATTERNED_MODE
-    if study_id == EOF_STUDY:
+    if study_id in {EOF_STUDY, EOF_STEPS_STUDY}:
         return producer.EOF_MODE
     _fail("target audit has unrecognized classic echo study mode")
+
+
+def _has_steps(document: dict[str, Any]) -> bool:
+    return document["study"]["id"] in {EOF_STEPS_STUDY, PATTERNED_STEPS_STUDY}
 
 
 def _pattern_bytes(pairs: int) -> bytes:
@@ -162,8 +170,14 @@ def _pattern_bytes(pairs: int) -> bytes:
 def _producer_study(document: dict[str, Any]) -> None:
     study = document["study"]
     patterned = _mode(document) == producer.PATTERNED_MODE
+    steps = _has_steps(document)
+    study_id = (
+        (PATTERNED_STEPS_STUDY if patterned else EOF_STEPS_STUDY)
+        if steps
+        else (PATTERNED_STUDY if patterned else EOF_STUDY)
+    )
     expected = {
-        "id": PATTERNED_STUDY if patterned else EOF_STUDY,
+        "id": study_id,
         "question": (
             "Does padding worsen the classic patterned byte-echo frontier?"
             if patterned
@@ -183,7 +197,11 @@ def _producer_study(document: dict[str, Any]) -> None:
             "time_ns": producer.BUDGET_SECONDS * 1_000_000_000,
             "memory_bytes": producer.BUDGET_MIB * 1_048_576,
         },
-        "objectives": ["elapsed_ns", "artifact_bytes"],
+        "objectives": (
+            ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS]
+            if steps
+            else ["elapsed_ns", "artifact_bytes"]
+        ),
     }
     if any(study[name] != value for name, value in expected.items()):
         _fail("target study differs from the classic echo producer policy")
@@ -278,9 +296,34 @@ def _check_plan(rows: list[dict[str, Any]]) -> tuple[set[int], set[int]]:
     return levels, trials
 
 
+def _check_one_step_claim(
+    row: dict[str, Any], *, measured: bool, mode: str
+) -> None:
+    actual = row["metrics"].get(RUNTIME_STEPS)
+    if not measured or row["outcome"] != analyze.VERIFIED:
+        if actual is not None:
+            _fail("unmeasured or failed target trial claims guest steps")
+    else:
+        expected = len(
+            _expected_operations(
+                row["case"]["difficulty"], row["algorithm"], mode
+            )
+        )
+        if actual != expected:
+            _fail("target runtime step claim differs from decoded source")
+
+
+def _check_runtime_step_claims(document: dict[str, Any]) -> None:
+    measured = _has_steps(document)
+    mode = _mode(document)
+    for row in document["observations"]:
+        _check_one_step_claim(row, measured=measured, mode=mode)
+
+
 def _producer_rows(document: dict[str, Any], prefix: str) -> set[str]:
     rows = document["observations"]
     levels, trials = _check_plan(rows)
+    _check_runtime_step_claims(document)
     mode = _mode(document)
     names = {_check_row(row, prefix, mode) for row in rows}
     expected = {
@@ -465,10 +508,43 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
     return "local-compiler-vm-sha256:" + digest.hexdigest()
 
 
-def _invoke_runner(runner: Path, source: Path) -> sp.CompletedProcess[bytes]:
+def _invoke_runner_command(command: list[str]) -> sp.CompletedProcess[bytes]:
     return target_process.invoke(
-        [str(runner), str(source)],
-        timeout_seconds=producer.TIMEOUT_SECONDS,
+        command, timeout_seconds=producer.TIMEOUT_SECONDS
+    )
+
+
+def _invoke_runner(runner: Path, source: Path) -> sp.CompletedProcess[bytes]:
+    return _invoke_runner_command([str(runner), str(source)])
+
+
+def _replay_execution(
+    row: dict[str, Any], runner: Path, source: Path
+) -> tuple[sp.CompletedProcess[bytes], bytes]:
+    pairs = row["case"]["difficulty"]
+    patterned = row["case"]["family"] == PATTERNED_FAMILY
+    receipt = row["metrics"].get(RUNTIME_STEPS) is not None
+    if not patterned and not receipt:
+        return (
+            _invoke_runner(runner, source),
+            bytes([producer.CLASSIC_EOF_BYTE]) * pairs,
+        )
+    command = [str(runner), str(source)]
+    if patterned:
+        command.append("--input-stdin")
+    if receipt:
+        command.append("--report-steps")
+    if not patterned:
+        return (
+            _invoke_runner_command(command),
+            bytes([producer.CLASSIC_EOF_BYTE]) * pairs,
+        )
+    payload = _pattern_bytes(pairs)
+    return (
+        target_process.invoke_with_input(
+            command, payload, timeout_seconds=producer.TIMEOUT_SECONDS
+        ),
+        payload + bytes([producer.CLASSIC_EOF_BYTE]),
     )
 
 
@@ -479,25 +555,16 @@ def _replay_one(
     *,
     runner: Path,
 ) -> None:
-    mode = (
-        producer.PATTERNED_MODE
-        if row["case"]["family"] == PATTERNED_FAMILY
-        else producer.EOF_MODE
-    )
-    pairs = row["case"]["difficulty"]
-    if mode == producer.EOF_MODE:
-        execution = _invoke_runner(runner, _ROOT / relative)
-        expected = bytes([producer.CLASSIC_EOF_BYTE]) * pairs
-    else:
-        payload = _pattern_bytes(pairs)
-        execution = target_process.invoke_with_input(
-            [str(runner), str(_ROOT / relative), "--input-stdin"],
-            payload,
-            timeout_seconds=producer.TIMEOUT_SECONDS,
-        )
-        expected = payload + bytes([producer.CLASSIC_EOF_BYTE])
+    measured_steps = row["metrics"].get(RUNTIME_STEPS)
+    execution, expected = _replay_execution(row, runner, _ROOT / relative)
     if execution.returncode != 0 or execution.stdout != expected:
         _fail(f"target audit VM replay rejected retained source: {relative}")
+    if measured_steps is not None:
+        expected_stderr = (
+            STEPS_REPORT_PREFIX + str(measured_steps).encode("ascii") + b"\n"
+        )
+        if execution.stderr != expected_stderr:
+            _fail("target audit VM replay step receipt differs from count")
     current = evidence.read_bounded_regular(
         _ROOT,
         relative,

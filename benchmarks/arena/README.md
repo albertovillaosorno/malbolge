@@ -237,6 +237,35 @@ instruction sequence, and optionally replays it through the recorded exact
 runner binary using the same strict byte/EOF oracle. The legacy/default
 `--input-mode eof` study identity, source lengths and verifier remain unchanged.
 
+To additionally measure executed guest instructions as an actual VM-reported
+third Pareto objective, enable the **opt-in version-two** steps receipt:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_reference \
+  --pairs 1 4 16 64 --trials 2 --input-mode patterned --measure-steps
+```
+
+The real `malbolge --report-steps` runner sums normative `RunOutcome` counts
+across interpreter chunks, includes the terminating instruction, and writes a
+single canonical `malbolge-steps-v1:<decimal>` stderr line upon successful
+execution. The arena producer admits only exact ASCII decimal receipts with no
+prefix/suffix garbage, leading zeros or extra lines, and retains that measured
+integer as `runtime_steps` beside elapsed time and source byte count. A missing
+or malformed receipt cannot qualify as verified. Distinct version-two study
+identities (`classic-eof-echo-steps-v2` and
+`classic-patterned-byte-echo-steps-v2`) make this new three-objective protocol
+explicit. Legacy v1 producer calls and retained reports stay byte-compatible.
+The independent auditor checks the study's fixed step-count policy against
+its separately decoded straight-line source (no jumps in this pilot), refuses
+step values in unmeasured or failed trials, and optionally replays each actual
+candidate with the same exact VM binary and `--report-steps` flag. Replayed
+stdout and the full byte-for-byte step receipt must match the retained claim;
+a mismatched replay or forged study is rejected before publication. For these
+fixed linear source layouts the observed `runtime_steps` equals `artifact_bytes`
+for each verified candidate: this is an exact semantic fact of the admitted
+subset, **not** a general property of Malbolge. The extra dimension is useful
+for reproducible measurement infrastructure, not an independent speedup claim.
+
 Both modes are still only bounded classic I/O shapes: neither claims arbitrary
 C lowering, arbitrary guest bytecode, calibrated speedup, authenticated
 historical execution, or a physically enforced study-wide RAM quota.

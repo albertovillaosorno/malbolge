@@ -134,6 +134,20 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   curves, exact-binary replay and the unchanged EOF-only mode, but remain
   narrow classic I/O shapes that do not verify arbitrary C, bytecode
   execution, or physical whole-study resource budgets.
+- An optional version-two classic study now requests actual VM instruction
+  counts through `malbolge --report-steps`; this sums normative per-chunk
+  `RunOutcome` counts and preserves raw guest stdout. The producer parses one
+  strict decimal stderr receipt and records `runtime_steps` as a third Pareto
+  cost. New, distinct EOF/patterned version-two study IDs preserve the old
+  two-objective studies unchanged. The independent read-only auditor checks
+  that successful linear sources execute their decoded instruction count
+  exactly, forbids unmeasured/failed step claims, and can replay every
+  retained successful source with the exact hashed VM and byte-for-byte
+  step receipt comparison. Real eight-trial tests and negative forged
+  measurements establish this narrow boundary. In these straight-line
+  examples source bytes and VM steps coincide, so this is measurement
+  infrastructure, not evidence of control-flow optimization or physical
+  CPU/RAM budgets.
 - A separate read-only classic target audit now reopens local pilot
   studies, binds fixed producer research/manifest/case claims, complete
   paired repetition plans and exact run/raw/candidate inventories, and

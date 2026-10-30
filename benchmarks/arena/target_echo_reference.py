@@ -89,6 +89,11 @@ PATTERN_BYTES = (0, 255, 168, 90, 128, 1, 127, 254)
 PATTERNED_FAMILY = "bounded-classic-patterned-byte-echo"
 PATTERNED_VERIFIER = "classic-malbolge-vm-exact-patterned-byte-v1"
 PATTERNED_STUDY = "classic-patterned-byte-echo-geometry-v1"
+EOF_STEPS_STUDY = "classic-eof-echo-steps-v2"
+PATTERNED_STEPS_STUDY = "classic-patterned-byte-echo-steps-v2"
+STEPS_PREFIX = b"malbolge-steps-v1:"
+RUNTIME_STEPS = "runtime_steps"
+MAX_STEPS_DIGITS = 20
 
 
 class TargetEchoStudyError(ValueError):
@@ -102,6 +107,7 @@ class StudyPlan:
     pairs: tuple[int, ...]
     trials: int
     input_mode: str = EOF_MODE
+    measure_steps: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +121,7 @@ class _Context:
     emitter: Path
     runner: Path
     input_mode: str = EOF_MODE
+    measure_steps: bool = False
 
 
 def _fail(message: str) -> Never:
@@ -197,6 +204,21 @@ def _input_bytes(pairs: int, mode: str) -> bytes:
     )
 
 
+def _parse_step_receipt(stderr: bytes) -> int:
+    if (
+        not stderr.startswith(STEPS_PREFIX)
+        or not stderr.endswith(b"\n")
+        or stderr.count(b"\n") != 1
+    ):
+        _fail("target VM returned no canonical step receipt")
+    digits = stderr[len(STEPS_PREFIX) : -1]
+    if not 1 <= len(digits) <= MAX_STEPS_DIGITS or not digits.isdigit():
+        _fail("target VM returned malformed step count")
+    if len(digits) > 1 and digits.startswith(b"0"):
+        _fail("target VM returned noncanonical step count")
+    return int(digits)
+
+
 def _operations(pairs: int, algorithm: str, mode: str = EOF_MODE) -> list[str]:
     step = ["input", "output"]
     if algorithm == CANDIDATE:
@@ -229,13 +251,45 @@ def _case(pairs: int, mode: str = EOF_MODE) -> dict[str, Any]:
     }
 
 
+def _run_guest(
+    context: _Context, path: Path, pairs: int
+) -> sp.CompletedProcess[bytes]:
+    command = [str(context.runner), str(path)]
+    if context.input_mode == PATTERNED_MODE:
+        command.append("--input-stdin")
+    if context.measure_steps:
+        command.append("--report-steps")
+    return (
+        _invoke(command)
+        if context.input_mode == EOF_MODE
+        else target_process.invoke_with_input(
+            command,
+            _input_bytes(pairs, context.input_mode),
+            timeout_seconds=TIMEOUT_SECONDS,
+        )
+    )
+
+
+def _verified_steps(
+    execution: sp.CompletedProcess[bytes],
+    context: _Context,
+    outcome: str,
+) -> tuple[str, int | None]:
+    if outcome != analyze.VERIFIED or not context.measure_steps:
+        return outcome, None
+    try:
+        return outcome, _parse_step_receipt(execution.stderr)
+    except TargetEchoStudyError:
+        return analyze.VERIFIER_REJECTED, None
+
+
 def _classify_attempt(
     path: Path,
     context: _Context,
     operations: list[str],
     *,
     pairs: int,
-) -> tuple[str, int | None]:
+) -> tuple[str, int | None, int | None]:
     emitted = _invoke([
         str(context.emitter),
         "--profile",
@@ -246,7 +300,7 @@ def _classify_attempt(
         *operations,
     ])
     if emitted.returncode != 0 or emitted.stdout or not path.is_file():
-        return "tool_failed", None
+        return "tool_failed", None, None
     source = evidence.read_bounded_regular(
         _ROOT,
         path.relative_to(_ROOT).as_posix(),
@@ -255,21 +309,12 @@ def _classify_attempt(
     if len(source) != len(operations) or not all(
         GRAPHICAL_LOW <= byte <= GRAPHICAL_HIGH for byte in source
     ):
-        return analyze.VERIFIER_REJECTED, None
-    payload = _input_bytes(pairs, context.input_mode)
-    execution = (
-        _invoke([str(context.runner), str(path)])
-        if context.input_mode == EOF_MODE
-        else target_process.invoke_with_input(
-            [str(context.runner), str(path), "--input-stdin"],
-            payload,
-            timeout_seconds=TIMEOUT_SECONDS,
-        )
-    )
+        return analyze.VERIFIER_REJECTED, None, None
+    execution = _run_guest(context, path, pairs)
     expected = (
         bytes([CLASSIC_EOF_BYTE]) * pairs
         if context.input_mode == EOF_MODE
-        else payload + bytes([CLASSIC_EOF_BYTE])
+        else _input_bytes(pairs, context.input_mode) + bytes([CLASSIC_EOF_BYTE])
     )
     outcome = (
         "tool_failed"
@@ -278,7 +323,12 @@ def _classify_attempt(
         if execution.stdout == expected
         else analyze.VERIFIER_REJECTED
     )
-    return outcome, len(source) if outcome == analyze.VERIFIED else None
+    outcome, measured_steps = _verified_steps(execution, context, outcome)
+    return (
+        outcome,
+        len(source) if outcome == analyze.VERIFIED else None,
+        measured_steps if outcome == analyze.VERIFIED else None,
+    )
 
 
 def _measure(
@@ -290,17 +340,19 @@ def _measure(
 ) -> tuple[str, dict[str, int]]:
     started = perf_counter_ns()
     try:
-        outcome, size = _classify_attempt(
+        outcome, size, steps = _classify_attempt(
             path,
             context,
             _operations(pairs, algorithm, context.input_mode),
             pairs=pairs,
         )
     except OSError, sp.SubprocessError, evidence.EvidenceError:
-        outcome, size = "tool_failed", None
+        outcome, size, steps = "tool_failed", None, None
     metrics = {"elapsed_ns": perf_counter_ns() - started}
     if size is not None:
         metrics["artifact_bytes"] = size
+    if steps is not None:
+        metrics[RUNTIME_STEPS] = steps
     return outcome, metrics
 
 
@@ -444,12 +496,15 @@ def _make_document(
     observations: list[dict[str, Any]],
 ) -> dict[str, Any]:
     patterned = context.input_mode == PATTERNED_MODE
+    study_id = (
+        (PATTERNED_STEPS_STUDY if patterned else EOF_STEPS_STUDY)
+        if context.measure_steps
+        else (PATTERNED_STUDY if patterned else "classic-eof-echo-geometry-v1")
+    )
     return {
         "schema_version": 1,
         "study": {
-            "id": PATTERNED_STUDY
-            if patterned
-            else "classic-eof-echo-geometry-v1",
+            "id": study_id,
             "question": (
                 "Does padding worsen the classic patterned byte-echo frontier?"
                 if patterned
@@ -474,7 +529,11 @@ def _make_document(
                 "time_ns": BUDGET_SECONDS * 1_000_000_000,
                 "memory_bytes": BUDGET_MIB * 1_048_576,
             },
-            "objectives": ["elapsed_ns", "artifact_bytes"],
+            "objectives": (
+                ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS]
+                if context.measure_steps
+                else ["elapsed_ns", "artifact_bytes"]
+            ),
         },
         "observations": observations,
     }
@@ -516,8 +575,12 @@ def run_study(
     """
     _validate_plan(plan)
     _validate_input_mode(plan.input_mode)
+    if type(plan.measure_steps) is not bool:
+        _fail("target echo requires a boolean measure_steps selection")
     context = replace(
-        _prepare_context(emitter, runner), input_mode=plan.input_mode
+        _prepare_context(emitter, runner),
+        input_mode=plan.input_mode,
+        measure_steps=plan.measure_steps,
     )
     observations = [
         _write_attempt(context, pairs, trial, algorithm=algorithm)
@@ -545,10 +608,16 @@ def main() -> int:
     parser.add_argument("--pairs", type=int, nargs="+", default=[1, 4, 16])
     parser.add_argument("--trials", type=int, default=2)
     parser.add_argument("--input-mode", choices=INPUT_MODES, default=EOF_MODE)
+    parser.add_argument("--measure-steps", action="store_true")
     args = parser.parse_args()
     try:
         directory, document = run_study(
-            StudyPlan(tuple(args.pairs), args.trials, args.input_mode)
+            StudyPlan(
+                tuple(args.pairs),
+                args.trials,
+                args.input_mode,
+                args.measure_steps,
+            )
         )
         report_output.publish(
             {
