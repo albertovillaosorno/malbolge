@@ -682,6 +682,48 @@ def test_host_c_audit_rejects_manifest_drift_between_checks(
         reference_audit.audit(relative)
 
 
+@pytest.mark.parametrize("mutation_point", ["after_preflight", "after_analysis"])
+def test_host_c_audit_rejects_study_json_rewrite_during_audit(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    mutation_point: str,
+) -> None:
+    """Report admission must refer to the same study JSON the caller supplied."""
+    directory, relative = live_pilot
+    original_question = reference_audit.PRODUCER_RESEARCH_CLAIMS["question"]
+
+    def rewrite_study() -> None:
+        path = directory / "study.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        assert document["study"]["question"] == original_question
+        document["study"]["question"] = "forged research question"
+        _ = path.write_text(json.dumps(document), encoding="utf-8")
+
+    if mutation_point == "after_preflight":
+        preflight = evidence.validate_links
+
+        def mutate_after_preflight(
+            document: dict[str, Any], root: Path, *, policy: evidence.EvidencePolicy
+        ) -> dict[str, Any]:
+            checked = preflight(document, root, policy=policy)
+            rewrite_study()
+            return checked
+
+        monkeypatch.setattr(evidence, "validate_links", mutate_after_preflight)
+    else:
+        analyze_report = analyze.analyze
+
+        def mutate_after_analysis(document: dict[str, Any]) -> dict[str, Any]:
+            report = analyze_report(document)
+            rewrite_study()
+            return report
+
+        monkeypatch.setattr(analyze, "analyze", mutate_after_analysis)
+
+    with pytest.raises(reference_audit.ReferenceAuditError, match="study JSON.*changed"):
+        reference_audit.audit(relative)
+
+
 def test_opt_in_git_object_check_rejects_missing_recorded_commit(
     live_pilot: tuple[Path, str],
 ) -> None:

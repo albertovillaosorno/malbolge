@@ -109,6 +109,7 @@ class _AuditData:
     commit: str
     resource_record_version: int
     manifest_fingerprints: dict[str, bytes]
+    study_fingerprint: bytes
 
 
 DEFAULT_AUDIT_OPTIONS = AuditOptions()
@@ -171,13 +172,13 @@ def _read_json(relative: str, *, limit: int) -> object:
         raise ReferenceAuditError(message) from error
 
 
-def _load_study(relative: str) -> dict[str, Any]:
+def _load_study(relative: str) -> tuple[dict[str, Any], bytes]:
     raw = evidence.read_bounded_regular(
         _ROOT,
         relative,
         limit=analyze.MAX_INPUT_BYTES,
     )
-    return analyze.parse_document(raw.decode("utf-8"))
+    return analyze.parse_document(raw.decode("utf-8")), sha256(raw).digest()
 
 
 def _check_trials(
@@ -442,7 +443,7 @@ def _admit_data(
     prefix: str,
     options: AuditOptions,
 ) -> _AuditData:
-    document = _load_study(relative_study)
+    document, study_fingerprint = _load_study(relative_study)
     _check_stage(document, prefix)
     # Bind the reported source revision to the same retained manifest bytes
     # admitted by the subsequent independent link preflight.
@@ -490,6 +491,7 @@ def _admit_data(
         commit,
         resource_record,
         manifest_fingerprints,
+        study_fingerprint,
     )
 
 
@@ -557,6 +559,11 @@ def audit(
         )
         report = analyze.analyze(data.document)
         _require_unchanged_manifests(data.manifest_fingerprints)
+        current = evidence.read_bounded_regular(
+            _ROOT, relative_study, limit=analyze.MAX_INPUT_BYTES
+        )
+        if sha256(current).digest() != data.study_fingerprint:
+            _fail("host-C retained study JSON changed during audit")
     except (
         analyze.ArenaError,
         evidence.EvidenceError,

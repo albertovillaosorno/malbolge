@@ -602,8 +602,12 @@ The host-C auditor now fingerprints bounded run-manifest bytes before
 independent link preflight and rechecks all those fingerprints after
 report analysis. A manifest rewrite between preflight and source-commit
 reporting (or during report assembly) rejects rather than publishing
-mixed-time provenance. These repeated reads detect observed drift, not
-an atomic filesystem snapshot or authenticated historical authorship.
+mixed-time provenance. The retained `study.json` bytes are also
+fingerprinted at initial bounded parse and rechecked after report assembly,
+so a mid-audit rewrite of the study question, objective policy or observed
+trials cannot silently receive a report for the previously opened document.
+These repeated reads detect observed drift, not an atomic filesystem
+snapshot or authenticated historical authorship.
 It also requires the producer's fixed run method, implementation/configuration
 paths, output directory and no-accelerator declaration. Valid but foreign
 research metadata fails the producer-specific audit; this is a consistency
