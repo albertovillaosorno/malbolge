@@ -1095,6 +1095,30 @@ The default artifact-publisher ternary-file mode remains strict adjacent
 echo. An explicit `--latest-byte-trace --ternary-file` mode also accepts the
 verified latest-read subset, under the same successful-I/O-only condition.
 
+### Bounded Initial-Zero Guest Output
+
+An independent opt-in bridge now admits exactly one canonical MCTR function
+containing a single `MaterializeU8(0)` SSA definition, one or more
+`ByteOutput` instructions all using that same SSA identity, and final
+`ReturnVoid`. On the normative `malbolge-2026` VM the initial accumulator is
+zero, so this *specific* scalar is already materialized by guest initial
+state. The bridge emits one real `OutputByte` per write and a real halt;
+there is no byte input, host-implemented print operation, or guest-memory
+emulation. The `MaterializeU8` provenance is retained in canonical ternary
+IR even though it does not need an executable target code cell.
+
+Independent MCTR encode/decode followed by normative VM execution proves
+exact outputs and no input consumption for 1, 2, 7 and 64 writes. A physical
+4096-cell trace emits 4095 actual zero bytes and terminates in exactly
+4096 steps. One more output cell rejects. Canonical provenance, SSA
+materialization identity, source profile and scalar bits are checked;
+nonzero/missing scalar values, additional valid materializations,
+undefined output IDs and profile mismatches reject. Original strict echo
+and latest-read domain guarantees are unchanged. This narrow bridge is
+**not yet reachable** through the canonical typed MCTI adapter or CLI file
+publisher. It supplies no general nonzero constant, arbitrary guest
+computation, heap, C ABI or guest libc/EOF realization.
+
 ### Canonical Typed-IR Byte-Echo Adapter
 
 The separate `typed-echo-adapter` now closes the earlier gap where a caller

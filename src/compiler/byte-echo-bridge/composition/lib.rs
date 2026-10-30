@@ -172,3 +172,60 @@ pub fn encode_successful_latest_byte_trace(
     operations.push(LinearOpcode::Halt);
     encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
 }
+
+/// Emits an exact nonempty zero-byte output trace using the VM's initial A=0.
+///
+/// The source is one verified `MaterializeU8(0)` SSA definition, followed by
+/// one or more outputs of **that same** SSA byte and a final `ReturnVoid`.
+/// `MaterializeU8(0)` needs no guest instruction because the normative VM
+/// initializes its accumulator to zero. Each output is still a real guest
+/// `<` instruction, followed by one guest halt. Neither a host print nor a
+/// fabricated guest byte register is involved. No byte input is consumed.
+///
+/// This opt-in bridge does **not** alter strict echo or latest-read semantics.
+/// Only the original initial zero constant is admitted: a nonzero scalar,
+/// rewritten value, older SSA identity, additional constant or other target
+/// operation needs separate executable dataflow proof. Source provenance
+/// remains in the canonical ternary input; code slots only cover guest work.
+///
+/// # Errors
+///
+/// Rejects invalid/profile-mismatched ternary source, unsupported or absent
+/// zero output, and target code longer than the linear layout capacity.
+pub fn encode_initial_zero_outputs(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id() {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let Some((TernaryOperation::ReturnVoid { .. }, instructions)) =
+        function.operations.split_last()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let Some((TernaryOperation::MaterializeU8 { result, scalar, .. }, writes)) =
+        instructions.split_first()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if scalar.bits() != 0 || writes.is_empty() {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let mut operations = Vec::with_capacity(writes.len().saturating_add(1));
+    for write in writes {
+        let TernaryOperation::ByteOutput { value, .. } = write else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        };
+        if value != result {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+        operations.push(LinearOpcode::OutputByte);
+    }
+    operations.push(LinearOpcode::Halt);
+    encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
+}

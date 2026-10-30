@@ -25,6 +25,32 @@ Both APIs revalidate the whole canonical ternary program, match the selected
 profile, and delegate source encoding/admission to `malbolge-layout`. They
 emit the actual source code; no host callback performs guest byte I/O.
 
+### Verified initial-zero guest output
+
+An independent, explicitly selected library entrypoint,
+`encode_initial_zero_outputs`, admits exactly one canonical MCTR void
+function whose first effect is `MaterializeU8(0)` with one fresh SSA ID,
+followed by **one or more** `ByteOutput` uses of that *same* value and a final
+`ReturnVoid`. The generated source has no input: the normative VM's initial
+accumulator is exactly zero, so the declarative zero scalar needs no guest
+mutation instruction. Each effect is an actual guest output instruction,
+followed by a real halt. No host printing or fabricated byte register is
+used. Original source/SSA/span provenance remains in the admitted MCTR.
+
+`tests/zero_output_bridge.rs` independently lowers and re-decodes canonical
+MCTR, checks exact guest output of 1, 2, 7 and 64 zeros with **zero** input
+consumption, executes the 4096-cell maximum (4095 output bytes plus halt),
+and rejects the next cell, nonzero constants, absent outputs, extra valid
+constant materialization, undefined SSA, and profile drift. Existing
+adjacent-echo and latest-read APIs remain closed to this shape. MCTR-v1 is
+pinned to the current `malbolge-2026` target; the library API does not
+extend historical/versioned typed source admission.
+
+This is **library-level** executable target lowering only. The typed MCTI
+adapter and `malbolge_layout` CLI have not enabled this new entrypoint;
+there is no general integer materializer, arbitrary nonzero byte output,
+heap, guest libc linkage or EOF semantics.
+
 ## Limits
 
 The trace is equivalent **only on successful byte I/O**: every input must

@@ -674,6 +674,18 @@ instruction.
   4096-cell boundary. Exact previous echo source/semantics remain unchanged;
   invalid source state, stale SSA, scalar work and profile drift reject.
   No guest byte storage, EOF, failed I/O or general target lowering is implied.
+- An independent **opt-in** `encode_initial_zero_outputs` bridge now
+  admits canonical MCTR with exactly one `MaterializeU8(0)` source SSA,
+  one or more `ByteOutput` uses of that ID and final void return. It
+  uses the verified initial A=0 of the current normative VM and executes
+  actual guest outputs and halt, with zero input consumption. Independent
+  canonical MCTR roundtrip and real VM tests verify 1/2/7/64 zeros and the
+  full 4096-cell boundary (4095 emitted bytes), rejecting 4097 cells,
+  nonzero scalars, extra materialization, stale SSA and profile drift.
+  Existing strict echo and latest-read APIs still reject this shape.
+  It is a library-only target witness; the canonical typed adapter and
+  file publisher are not wired to it, and nonzero scalar realization,
+  guest C ABI, heap and EOF remain unimplemented.
 - A separate `typed-echo-adapter` now accepts independently admitted
   canonical typed-IR module **bytes** rather than a caller-fabricated
   projection. It converts a complete zero-argument void successful-byte echo
