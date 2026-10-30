@@ -44,6 +44,7 @@ use bridge::{
     encode_successful_latest_byte_trace,
 };
 use malbolge::{ProfileMachine, RunOutcome, current_profile, historical_profile};
+use std::collections::BTreeMap;
 
 // Every successful short phase, including later duplicate-byte prefixes.
 const SHORT_TRIPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
@@ -370,6 +371,47 @@ fn witnessed_four_output_literals_reuse_guest_rotation() -> Result<(), String> {
         {
             return Err(format!("unproved four-output seed {byte} x{outputs}"));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn four_output_seed_table_admits_exactly_the_witnessed_byte_domain() -> Result<(), String> {
+    let mut expected = BTreeMap::new();
+    for (byte, padding) in SHORT_QUADRUPLE_ROTATION_WITNESSES {
+        _ = expected.entry(*byte).or_insert(*padding);
+    }
+    let mut witnessed = BTreeMap::new();
+    for byte in u8::MIN..=u8::MAX {
+        let admitted = source(byte, 4)?;
+        match encode_rotated_byte_literal(&admitted, current_profile()) {
+            Ok(layout) => {
+                let Some(padding) = expected.get(&byte) else {
+                    return Err(format!("unwitnessed four-output byte {byte} admitted"));
+                };
+                if layout.source().len() != padding + 7
+                    || layout.executed_code_positions().len() != padding + 7
+                    || layout
+                        .data_write_positions()
+                        .iter()
+                        .filter(|position| position.is_some())
+                        .count()
+                        != 1
+                {
+                    return Err(format!("four-output {byte} seed geometry drift"));
+                }
+                _ = witnessed.insert(byte, layout.source().len() - 7);
+            }
+            Err(ByteEchoBridgeError::UnsupportedEffectTrace) => {
+                if expected.contains_key(&byte) {
+                    return Err(format!("four-output witnessed byte {byte} rejected"));
+                }
+            }
+            Err(error) => return Err(format!("unexpected four-output error {byte}: {error:?}")),
+        }
+    }
+    if witnessed != expected {
+        return Err(format!("four-output byte-domain mismatch: {witnessed:?}"));
     }
     Ok(())
 }

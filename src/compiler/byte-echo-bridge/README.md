@@ -145,8 +145,10 @@ cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_four_output_rotation_witnesses -- --ignored
 ```
 
-The default regressions replay representative phases and refuse unproved
-shapes; the typed adapter and CLI publisher verify actual guest effects.
+The default regressions also enumerate all 256 possible input literals
+with exactly four same-SSA outputs, checking that every one of the 24 seed
+values is admitted at its shortest verified prefix and all 232 other bytes
+reject. The typed adapter and CLI publisher verify actual guest effects.
 
 ## Limits
 
