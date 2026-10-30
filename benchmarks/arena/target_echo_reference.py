@@ -280,7 +280,7 @@ def _verified_steps(
     try:
         return outcome, _parse_step_receipt(execution.stderr)
     except TargetEchoStudyError:
-        return analyze.VERIFIER_REJECTED, None
+        return "tool_failed", None
 
 
 def _classify_attempt(

@@ -68,6 +68,7 @@ OUTPUT_ARGUMENT = "--output"
 TOOL_FAILED = "tool_failed"
 FORGED_COUNT = 999
 EXPECTED_STEP_RECEIPT = 3
+RUNTIME_STEPS = "runtime_steps"
 PATTERNED_LEVEL_COUNT = 4
 PATTERNED_MAX_PAIR_COUNT = 64
 PATTERNED_DIRECT_BYTES = 131
@@ -274,6 +275,52 @@ def test_producer_rejects_forged_graphical_source_and_vm_agreement(
     finally:
         for directory in directories:
             shutil.rmtree(directory)
+
+
+@pytest.mark.skipif(
+    not target_echo_reference.DEFAULT_EMITTER.is_file(),
+    reason="built Malbolge layout emitter missing",
+)
+def test_missing_counter_with_correct_vm_output_is_instrumentation_failure(
+    tmp_path: Path,
+) -> None:
+    """Failure to report VM steps is tool failure, not a guest rejection."""
+    runner = tmp_path / "no-counter-vm"
+    runner.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "sys.stdout.buffer.write(bytes([0,168]))\n"
+    )
+    runner.chmod(0o700)
+    with tempfile.TemporaryDirectory(
+        dir=target_echo_reference._TEMP, prefix="arena-steps-test-tools-"
+    ) as tool_directory:
+        emitter = Path(tool_directory) / "malbolge_layout"
+        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        directory, document = target_echo_reference.run_study(
+            target_echo_reference.StudyPlan(
+                (1,),
+                1,
+                target_echo_reference.PATTERNED_MODE,
+                measure_steps=True,
+            ),
+            emitter=emitter,
+            runner=runner,
+        )
+    try:
+        assert all(
+            row["outcome"] == TOOL_FAILED for row in document["observations"]
+        )
+        assert all(
+            RUNTIME_STEPS not in row["metrics"]
+            for row in document["observations"]
+        )
+        assert all(
+            ARTIFACT_BYTES not in row["metrics"]
+            for row in document["observations"]
+        )
+    finally:
+        shutil.rmtree(directory)
 
 
 @pytest.mark.skipif(

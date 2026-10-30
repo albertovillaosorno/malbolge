@@ -251,7 +251,8 @@ single canonical `malbolge-steps-v1:<decimal>` stderr line upon successful
 execution. The arena producer admits only exact ASCII decimal receipts with no
 prefix/suffix garbage, leading zeros or extra lines, and retains that measured
 integer as `runtime_steps` beside elapsed time and source byte count. A missing
-or malformed receipt cannot qualify as verified. Distinct version-two study
+or malformed receipt is a `tool_failed` instrumentation attempt, never
+credited as verified guest execution. Distinct version-two study
 identities (`classic-eof-echo-steps-v2` and
 `classic-patterned-byte-echo-steps-v2`) make this new three-objective protocol
 explicit. Legacy v1 producer calls and retained reports stay byte-compatible.
