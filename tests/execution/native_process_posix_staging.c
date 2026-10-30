@@ -405,6 +405,8 @@ static int check_call_allocations(void)
         .id = 1U,
         .base = entry_bytes,
         .len = 64U,
+        // Direct-handler fixture supplies the native entry without a copy frame.
+        .copied_len = 64U,
         .reservation = NULL,
         .reservation_len = 0U,
         .permission = MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE,

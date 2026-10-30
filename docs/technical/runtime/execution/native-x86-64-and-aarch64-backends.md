@@ -1449,6 +1449,26 @@ releases the mapping, and proves the session can still allocate and release.
 The remaining host-real call fixtures now explicitly synchronize before native
 execution; both Windows worker targets continue to cross-compile warning-clean.
 
+Both workers now independently record the exact length of the most recent
+successfully reported code copy, not just the longer allocated mapping span.
+Native entry offsets must lie inside that copied interval as well as pass
+alignment, RX, and cache-synchronization admission. A later shorter or empty
+copy revokes any previously copied tail from raw-entry authority, and a failed
+copy-response allocation does not grant newly copied bytes executable entry.
+
+On real Linux x86-64, an RX+synced 64-byte allocation with just six copied
+bytes previously entered uncopied padding and killed the child. The new
+regression observes a non-mutating invalid-argument response at offsets six
+and 63, followed by a valid call at offset zero on the same healthy child.
+A second host-real test copies 64 bytes with an entry at offset eight, then
+replaces that image with six bytes and confirms the stale entry is rejected.
+
+An empty-copy host-real test also seals and synchronizes a mapping without
+any executable bytes; byte-zero native entry is denied without losing its
+session. The controlled Windows C host simulation independently checks
+zero copied bytes and aligned offsets beyond a shorter copied interval, with
+x86-64 and AArch64 callable-boundary compilation retained.
+
 An aligned variant repeats the stale release, protection, and execution-ID
 denials with two successive 64-KiB-aligned allocations. The current mapping
 retains copy, RX protection, and release authority despite prior reservation

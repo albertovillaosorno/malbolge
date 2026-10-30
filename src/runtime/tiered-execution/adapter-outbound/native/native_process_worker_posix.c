@@ -59,6 +59,7 @@ struct mb_worker_mapping {
     mb_u64 id;
     mb_u8 *base;
     size_t len;
+    size_t copied_len;
     mb_u8 *reservation;
     size_t reservation_len;
     enum mb_native_process_memory_permission permission;
@@ -306,6 +307,7 @@ static int mb_worker_handle_allocate(
         .id = id,
         .base = memory,
         .len = byte_len,
+        .copied_len = 0U,
         .reservation = reservation,
         .reservation_len = reservation_len,
         .permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE,
@@ -384,6 +386,8 @@ static int mb_worker_handle_copy(
             response,
             response_len);
     }
+    // A failed copy report cannot authorize stale or newly copied code.
+    mapping->copied_len = 0U;
     memcpy(mapping->base, &request[42], code_len);
     size_t encoded_len = 0U;
     if (!mb_worker_add_size(26U, code_len, &encoded_len)) {
@@ -402,6 +406,7 @@ static int mb_worker_handle_copy(
     memcpy(&bytes[26], mapping->base, code_len);
     *response = bytes;
     *response_len = encoded_len;
+    mapping->copied_len = code_len;
     return 1;
 }
 
@@ -779,7 +784,7 @@ static int mb_worker_handle_call(
     if (mapping != NULL
         && mapping->permission == MB_NATIVE_PROCESS_MEMORY_READ_EXECUTE
         && mapping->synchronized
-        && entry_offset < mapping->len
+        && entry_offset < mapping->copied_len
         && mb_native_entry_offset_aligned(entry_offset)
         && state.input_consumed <= state.input_len
         && state.output_len <= state.output_capacity

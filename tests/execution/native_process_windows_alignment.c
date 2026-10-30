@@ -1262,6 +1262,23 @@ static int check_native_call_guarding(struct mb_worker_state *worker)
         return 17;
     }
     worker->mappings[0].synchronized = 1;
+    // RX plus cache sync still cannot enter a mapping with no copied code.
+    if (check_native_call_shape(
+            worker, request, MB_NATIVE_INVALID_ARGUMENT, 0) != 0) {
+        return 18;
+    }
+    // The simulated direct handler supplies a reviewed host function pointer
+    // rather than using an actual MBNPM1 code-copy request.
+    worker->mappings[0].copied_len = 4U;
+    // A copied span shorter than the requested aligned entry must reject
+    // before casting into the mock host function pointer.
+    mb_native_process_write_u64(&request[16], 4U);
+    if (check_native_call_shape(
+            worker, request, MB_NATIVE_INVALID_ARGUMENT, 0) != 0) {
+        return 19;
+    }
+    mb_native_process_write_u64(&request[16], 0U);
+    worker->mappings[0].copied_len = 64U;
     const int call_result = check_native_call_shape(
         worker, request, MB_NATIVE_APPLIED, 1);
     if (call_result != 0 || memcmp(request, unchanged_request,
@@ -2309,6 +2326,8 @@ static int check_two_live_native_mappings(struct mb_worker_state *worker)
         mb_worker_copy_bytes(&native_address, &entries[index],
             sizeof(entries[index]));
         worker->mappings[index].base = native_address;
+        // Direct-handler simulation uses a host entry instead of copy frames.
+        worker->mappings[index].copied_len = 64U;
         mb_native_process_write_u64(&allocation[9], 64U);
         mb_native_process_write_u64(&allocation[17], 131072U);
         allocation[25] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;

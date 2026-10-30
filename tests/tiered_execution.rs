@@ -73267,9 +73267,152 @@ fn native_process_posix_worker_requires_instruction_sync_before_call()
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_denies_entry_into_uncopied_padding()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("uncopied_entry_padding")?;
+    let result = (|| -> Result<(), String> {
+        let worker = directory.join("native-process-worker-posix");
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("uncopied-entry spawn: {error:?}"))?;
+        // Only six bytes were copied into this 64-byte executable mapping.
+        let executable = posix_worker_install_status_entry(&mut session, 1)?;
+        for offset in [6u64, 63u64] {
+            assert_posix_worker_call_dispatch_at_offset(
+                &mut session,
+                executable,
+                offset,
+                2,
+            )?;
+        }
+        assert_posix_worker_call_dispatch_status(&mut session, executable, 1)?;
+        posix_worker_release(&mut session, executable)?;
+        assert_posix_worker_allocates_and_releases(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_latest_code_copy_owns_entry_extent()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("latest_code_copy_extent")?;
+    let result = (|| -> Result<(), String> {
+        let worker = directory.join("native-process-worker-posix");
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("latest-copy spawn: {error:?}"))?;
+        let writable = posix_worker_allocate(&mut session)?;
+        let mut original = vec![0x90u8; 64];
+        original
+            .get_mut(8..14)
+            .ok_or("original code stub outside allocation")?
+            .copy_from_slice(&[0xb8, 1, 0, 0, 0, 0xc3]);
+        let replacement = vec![0xb8, 0, 0, 0, 0, 0xc3];
+        for code in [original, replacement] {
+            let copy = NativeProcessMemoryRequest::Copy {
+                code: code.clone().into_boxed_slice(),
+                mapping: writable,
+            };
+            let NativeProcessMemoryResponse::Copy(report) =
+                posix_worker_memory_exchange(&mut session, &copy)?
+            else {
+                return Err(String::from("latest native code copy failed"));
+            };
+            if report.copied_code() != code {
+                return Err(String::from("latest native code copy drifted"));
+            }
+        }
+        let NativeProcessMemoryResponse::Protect(executable) =
+            posix_worker_memory_exchange(
+                &mut session,
+                &NativeProcessMemoryRequest::Protect(writable),
+            )?
+        else {
+            return Err(String::from("latest native code seal failed"));
+        };
+        posix_worker_sync_executable(&mut session, executable)?;
+        // The first image's still-mapped instruction at byte eight must not
+        // remain an admissible entry after the six-byte replacement copy.
+        assert_posix_worker_call_dispatch_at_offset(
+            &mut session,
+            executable,
+            8,
+            2,
+        )?;
+        assert_posix_worker_call_dispatch_status(&mut session, executable, 0)?;
+        posix_worker_release(&mut session, executable)?;
+        assert_posix_worker_allocates_and_releases(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn native_process_posix_worker_zero_length_code_never_grants_entry()
+-> Result<(), String> {
+    let (directory, host) =
+        native_process_posix_worker_fixture("zero_code_entry")?;
+    let result = (|| -> Result<(), String> {
+        let worker = directory.join("native-process-worker-posix");
+        let mut session = NativeProcessSessionConfig::new(worker)
+            .spawn()
+            .map_err(|error| format!("zero-code spawn: {error:?}"))?;
+        let writable = posix_worker_allocate(&mut session)?;
+        let copy = NativeProcessMemoryRequest::Copy {
+            code: Vec::new().into_boxed_slice(),
+            mapping: writable,
+        };
+        let NativeProcessMemoryResponse::Copy(report) =
+            posix_worker_memory_exchange(&mut session, &copy)?
+        else {
+            return Err(String::from("empty code copy was rejected"));
+        };
+        if !report.copied_code().is_empty() {
+            return Err(String::from("empty code copy reported bytes"));
+        }
+        let NativeProcessMemoryResponse::Protect(executable) =
+            posix_worker_memory_exchange(
+                &mut session,
+                &NativeProcessMemoryRequest::Protect(writable),
+            )?
+        else {
+            return Err(String::from("empty code seal failed"));
+        };
+        posix_worker_sync_executable(&mut session, executable)?;
+        assert_posix_worker_call_dispatch_status(&mut session, executable, 2)?;
+        posix_worker_release(&mut session, executable)?;
+        assert_posix_worker_allocates_and_releases(&mut session)
+    })();
+    drop(host);
+    let cleanup = remove_file_blob_store_fixture(&directory);
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn assert_posix_worker_call_dispatch_status(
     session: &mut NativeProcessSession,
     mapping: NativeExecutableMappingReport,
+    raw_status: i32,
+) -> Result<(), String> {
+    assert_posix_worker_call_dispatch_at_offset(session, mapping, 0, raw_status)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn assert_posix_worker_call_dispatch_at_offset(
+    session: &mut NativeProcessSession,
+    mapping: NativeExecutableMappingReport,
+    entry_offset: u64,
     raw_status: i32,
 ) -> Result<(), String> {
     let (request, _expected) = native_process_call_wire_fixture()?;
@@ -73279,6 +73422,10 @@ fn assert_posix_worker_call_dispatch_status(
         .get_mut(8..16)
         .ok_or("dispatch mapping ID missing")?
         .copy_from_slice(&mapping.mapping_id().get().to_le_bytes());
+    encoded
+        .get_mut(16..24)
+        .ok_or("native entry offset field missing")?
+        .copy_from_slice(&entry_offset.to_le_bytes());
     let limit = native_process_call_response_byte_limit(&request)
         .map_err(|error| error.to_string())?;
     let framed = session

@@ -953,6 +953,18 @@ A distinct single-resident lease cache
   fixtures now request synchronization explicitly; Windows COFF compilation
   continues to admit both x86-64 and AArch64 targets.
 
+  Both process workers also bind native entry offsets to the latest reported
+  code-copy byte length rather than the allocation size. A failed or empty
+  copy never grants entry, and a shorter replacement cannot reuse the prior
+  copied tail. Host-real POSIX tests reject uncopied padding (previously a
+  child fault), stale code after a shorter replacement, and empty code, while
+  preserving a healthy session and valid entry at byte zero.
+
+  The simulated Windows call handler rejects absent copied code and an aligned
+  entry outside the copied extent before invoking the native function. Strict
+  C23 x86-64/AArch64 cross-compilation and host sanitizer fixtures continue to
+  cover the same executable-memory implementation boundaries.
+
   Nine forged Windows RX synchronization requests now reject stale IDs,
   off-by-one start addresses, invalid ranges, and truncated/extended frames.
   None calls the cache API; a valid full-range retry and release remain healthy.
