@@ -6058,6 +6058,48 @@ def test_immutable_postpublication_inode_swap_is_committed_failure(
     assert destination.read_bytes() == payload
 
 
+@pytest.mark.parametrize("collision", [False, True])
+def test_immutable_rejects_same_byte_swap_immediately_after_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    collision: bool,
+) -> None:
+    """The published inode must be the one admitted before the final stat."""
+    destination = tmp_path / "checkpoint"
+    replacement = tmp_path / "replacement"
+    payload = b"durable-checkpoint"
+    if collision:
+        _ = destination.write_bytes(payload)
+    original_inode = destination.stat().st_ino if collision else None
+    _ = replacement.write_bytes(payload)
+    replacement_inode = replacement.stat().st_ino
+    publisher = cast(
+        "Callable[..., tuple[int, int] | None]",
+        vars(progress)["_publish_immutable_payload"],
+    )
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+
+    def publish_then_swap(
+        temporary: Path, target: Path, contents: bytes, *, platform: str
+    ) -> tuple[int, int] | None:
+        admitted = publisher(temporary, target, contents, platform=platform)
+        _ = replacement.replace(target)
+        return admitted
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_publish_immutable_payload", publish_then_swap)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="committed but published inode",
+        ) as captured:
+            _ = writer(destination, payload, platform=os.name)
+    assert captured.value.published_path == destination
+    assert destination.read_bytes() == payload
+    assert destination.stat().st_ino == replacement_inode
+    assert original_inode is None or original_inode != replacement_inode
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
 def test_immutable_postpublication_same_inode_content_mutation_is_committed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

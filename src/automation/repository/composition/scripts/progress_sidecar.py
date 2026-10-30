@@ -2605,7 +2605,9 @@ def _repair_retained_immutable_stage(destination: Path, payload: bytes) -> None:
     alias.unlink()
 
 
-def _admit_existing_immutable(destination: Path, payload: bytes) -> None:
+def _admit_existing_immutable(
+    destination: Path, payload: bytes
+) -> tuple[int, int]:
     try:
         _repair_retained_immutable_stage(destination, payload)
         initial = _admit_collided_immutable_inode(destination)
@@ -2621,6 +2623,7 @@ def _admit_existing_immutable(destination: Path, payload: bytes) -> None:
         _fail("immutable progress payload collision inode changed")
     if existing != payload:
         _fail(f"immutable progress payload already differs: {destination}")
+    return final.st_dev, final.st_ino
 
 
 def _publish_immutable_payload(
@@ -2629,13 +2632,15 @@ def _publish_immutable_payload(
     payload: bytes,
     *,
     platform: str,
-) -> None:
+) -> tuple[int, int] | None:
+    """Return an admitted collision inode, or None for a new publication."""
     try:
         _publish_no_replace(temporary, destination, platform=platform)
     except FileExistsError:
-        _admit_existing_immutable(destination, payload)
+        return _admit_existing_immutable(destination, payload)
     except OSError as error:
         _fail(f"immutable progress payload publication failed: {error}")
+    return None
 
 
 def _cleanup_immutable_temporary(
@@ -2706,21 +2711,26 @@ def _write_immutable(
         _write_payload_descriptor(descriptor, payload)
         _reject_path_redirect(destination, "immutable progress payload")
         _verify_written_temporary(temporary, temporary_identity, payload)
-        _publish_immutable_payload(
+        collision_identity = _publish_immutable_payload(
             temporary,
             destination,
             payload,
             platform=platform,
         )
+        # The first post-link stat cannot establish which inode was actually
+        # admitted. Bind it to either the fsynced staging inode or the
+        # byte-checked collision inode, before permitting durability success.
+        expected_identity = collision_identity or temporary_identity
         try:
             published = destination.stat(follow_symlinks=False)
+            if (published.st_dev, published.st_ino) != expected_identity:
+                _fail("immutable progress payload published inode changed")
         except _OUTPUT_STREAM_ERRORS as error:
             message = (
                 "immutable progress payload committed but published inode "
                 f"cannot be identified: {error}"
             )
             raise ProgressSidecarCommittedError(message, destination) from error
-        expected_identity = (published.st_dev, published.st_ino)
         _confirm_publication_durability(
             destination,
             context="immutable progress payload",

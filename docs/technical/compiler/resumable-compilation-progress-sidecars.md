@@ -857,6 +857,13 @@ these selectors once a product C-to-Malbolge pipeline exists.
   inode before and after this read, with stable device/inode identity. This
   rejects pre-existing or newly linked foreign aliases even when bytes match,
   so byte-identical collision reuse cannot certify externally mutable state.
+  The immutable publisher also retains the exact fsynced staging inode on a
+  new no-replace publication, or the admitted collision inode on reuse. Its
+  first post-publication pathname stat must still identify that inode; an
+  intervening byte-identical pathname replacement cannot silently become the
+  durability or final-verification baseline. An observed swap fails with
+  committed-path evidence and cannot publish a new progress pointer. This
+  check does not promise an atomic snapshot against adversarial later writes.
   One narrow recovery case preserves post-commit cleanup failure semantics: if
   the collision has exactly two links, and the extra link is the sole
   same-inode sibling matching the writer's temporary naming convention, the
