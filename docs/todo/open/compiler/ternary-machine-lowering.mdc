@@ -698,6 +698,15 @@ instruction.
   checks provenance, executed VM output and rejection by the strict default.
   It remains conditional on successful I/O with no EOF, guest storage, full
   C operation lowering or guest runtime ABI.
+- The typed byte-I/O adapter's canonical MCTI wire now also has a direct
+  process-level entry to the existing `malbolge_layout` publisher via
+  `--typed-file` and explicit `--latest-byte-trace --typed-file`. No caller
+  needs to serialize and publish its intermediate MCTR merely to obtain a
+  source artifact. Independent MCTR decode and source re-encoding gate the
+  adapter's output before the same VM preflight and no-clobber raw/capsule
+  publication. Real external tests compare direct and old staged artifacts
+  byte-for-byte and reject forged/unsupported/oversized typed input. The
+  default strict echo subdomain and successful-I/O-only limitation remain.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

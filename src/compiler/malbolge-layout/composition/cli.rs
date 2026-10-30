@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Infer guest semantics from host arguments or publish unverified source.
 // - Allows:
-//   - Inputs: exact profile, canonical MCTR file or closed opcode tokens.
+//   - Inputs: exact profile, canonical MCTI/MCTR file or closed machine tokens.
 //   - Outputs: one complete raw graphical `.malbolge` file.
 //   - Side effects: same-directory staging and atomic no-clobber hard link.
 // - Split-When:
@@ -49,25 +49,27 @@ use crate::layout::{
     LinearOpcode, LinearProfileIdentity, PaddedForwardStep, admit_linear_layout,
     encode_auto_padded_forward_layout, encode_linear_layout,
 };
+use crate::typed_adapter::{
+    compile_canonical_typed_echo, compile_canonical_typed_latest_byte_trace,
+};
 
 const PROFILE_ARG: &str = "--profile";
 const OUTPUT_ARG: &str = "--output";
 const DELIMITER_ARG: &str = "--";
 const CAPSULE_ARG: &str = "--capsule";
 const MAX_OPERATIONS: usize = 4096;
-const MAX_TERNARY_WIRE_BYTES: u64 = 1_048_576;
+const MAX_CANONICAL_WIRE_BYTES: u64 = 1_048_576;
 const TERNARY_FILE_ARG: &str = "--ternary-file";
 const LATEST_BYTE_TRACE_ARG: &str = "--latest-byte-trace";
+const TYPED_FILE_ARG: &str = "--typed-file";
 const AUTO_LAYOUT_ARG: &str = "--auto-layout";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 
 #[derive(Debug)]
 enum SourceSpec {
     AutoLayout(Vec<PaddedForwardStep>),
-    CanonicalTernaryFile {
-        path: PathBuf,
-        mode: TernaryFileMode,
-    },
+    CanonicalTernaryFile { path: PathBuf, mode: ByteTraceMode },
+    CanonicalTypedFile { path: PathBuf, mode: ByteTraceMode },
     MachineOperations(Vec<LinearOpcode>),
 }
 
@@ -80,7 +82,7 @@ struct CommandSpec {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum TernaryFileMode {
+enum ByteTraceMode {
     AdjacentEcho,
     LatestRead,
 }
@@ -160,27 +162,39 @@ fn parse_auto_layout(arguments: &mut impl Iterator<Item = OsString>) -> Result<S
 fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<SourceSpec, String> {
     let first = arguments
         .next()
-        .ok_or("missing machine operations or ternary-file argument")?;
+        .ok_or("missing machine operations or canonical wire argument")?;
     let source = if first == OsStr::new(AUTO_LAYOUT_ARG) {
         return parse_auto_layout(arguments);
-    } else if first == OsStr::new(TERNARY_FILE_ARG) || first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
-        let mode = if first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
-            if arguments.next().as_deref() != Some(OsStr::new(TERNARY_FILE_ARG)) {
-                return Err(String::from(
-                    "--latest-byte-trace requires --ternary-file <path>",
-                ));
-            }
-            TernaryFileMode::LatestRead
+    } else if first == OsStr::new(TERNARY_FILE_ARG)
+        || first == OsStr::new(TYPED_FILE_ARG)
+        || first == OsStr::new(LATEST_BYTE_TRACE_ARG)
+    {
+        let (kind, mode) = if first == OsStr::new(LATEST_BYTE_TRACE_ARG) {
+            (
+                arguments
+                    .next()
+                    .ok_or("missing --ternary-file or --typed-file mode")?,
+                ByteTraceMode::LatestRead,
+            )
         } else {
-            TernaryFileMode::AdjacentEcho
+            (first, ByteTraceMode::AdjacentEcho)
         };
-        let path = PathBuf::from(arguments.next().ok_or("missing ternary wire path")?);
-        if arguments.next().is_some() {
+        if kind != OsStr::new(TERNARY_FILE_ARG) && kind != OsStr::new(TYPED_FILE_ARG) {
             return Err(String::from(
-                "ternary file mode accepts exactly one input path",
+                "--latest-byte-trace requires --ternary-file or --typed-file <path>",
             ));
         }
-        SourceSpec::CanonicalTernaryFile { path, mode }
+        let path = PathBuf::from(arguments.next().ok_or("missing canonical wire path")?);
+        if arguments.next().is_some() {
+            return Err(String::from(
+                "canonical wire mode accepts exactly one input path",
+            ));
+        }
+        if kind == OsStr::new(TERNARY_FILE_ARG) {
+            SourceSpec::CanonicalTernaryFile { path, mode }
+        } else {
+            SourceSpec::CanonicalTypedFile { path, mode }
+        }
     } else {
         let first_token = first
             .into_string()
@@ -262,25 +276,25 @@ fn publish_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
     outcome
 }
 
-fn read_ternary_program(path: &Path) -> Result<Vec<u8>, String> {
+fn read_canonical_wire(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
     let file = fs::File::open(path)
-        .map_err(|error| format!("cannot open canonical ternary wire: {error}"))?;
+        .map_err(|error| format!("cannot open canonical {kind} wire: {error}"))?;
     let metadata = file
         .metadata()
-        .map_err(|error| format!("cannot inspect canonical ternary wire: {error}"))?;
-    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_TERNARY_WIRE_BYTES {
+        .map_err(|error| format!("cannot inspect canonical {kind} wire: {error}"))?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_CANONICAL_WIRE_BYTES {
         return Err(String::from(
-            "ternary wire must be a nonempty bounded regular file",
+            "canonical wire must be a nonempty bounded regular file",
         ));
     }
     let mut bytes = Vec::new();
     let _bytes_read = file
-        .take(MAX_TERNARY_WIRE_BYTES.saturating_add(1))
+        .take(MAX_CANONICAL_WIRE_BYTES.saturating_add(1))
         .read_to_end(&mut bytes)
-        .map_err(|error| format!("cannot read canonical ternary wire: {error}"))?;
+        .map_err(|error| format!("cannot read canonical {kind} wire: {error}"))?;
     let length = u64::try_from(bytes.len())
         .map_err(|_error| String::from("ternary wire length overflow"))?;
-    if length > MAX_TERNARY_WIRE_BYTES || length != metadata.len() {
+    if length > MAX_CANONICAL_WIRE_BYTES || length != metadata.len() {
         return Err(String::from(
             "ternary wire read length disagrees with bounded file",
         ));
@@ -288,17 +302,16 @@ fn read_ternary_program(path: &Path) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn verified_ternary_source(
-    path: &Path,
-    mode: TernaryFileMode,
+fn verified_ternary_bytes(
+    bytes: &[u8],
+    mode: ByteTraceMode,
     profile: &'static malbolge::ProfileDescriptor,
 ) -> Result<VerifiedSource, String> {
-    let bytes = read_ternary_program(path)?;
-    let program = canonical_ternary_program(&bytes)
+    let program = canonical_ternary_program(bytes)
         .map_err(|error| format!("canonical ternary wire rejected: {error:?}"))?;
     let layout = match mode {
-        TernaryFileMode::AdjacentEcho => encode_successful_byte_echo(&program, profile),
-        TernaryFileMode::LatestRead => encode_successful_latest_byte_trace(&program, profile),
+        ByteTraceMode::AdjacentEcho => encode_successful_byte_echo(&program, profile),
+        ByteTraceMode::LatestRead => encode_successful_latest_byte_trace(&program, profile),
     }
     .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
     if layout.profile_id() != profile.id() || layout.profile_fingerprint() != profile.fingerprint()
@@ -332,6 +345,35 @@ fn verified_ternary_source(
         steps: layout.executed_code_positions().len(),
         successful_byte_effects: Some(effects),
     })
+}
+
+fn verified_typed_source(
+    path: &Path,
+    mode: ByteTraceMode,
+    profile: &'static malbolge::ProfileDescriptor,
+) -> Result<VerifiedSource, String> {
+    let typed_bytes = read_canonical_wire(path, "typed")?;
+    let compiled = match mode {
+        ByteTraceMode::AdjacentEcho => compile_canonical_typed_echo(&typed_bytes, profile),
+        ByteTraceMode::LatestRead => {
+            compile_canonical_typed_latest_byte_trace(&typed_bytes, profile)
+        }
+    }
+    .map_err(|error| format!("canonical typed byte bridge rejected: {error:?}"))?;
+    // The typed adapter proposes an MCTR wire and encoded layout. Re-decode
+    // its actual MCTR bytes and re-encode target code through the independent
+    // ternary bridge before any guest execution or file publication.
+    let admitted = verified_ternary_bytes(compiled.ternary_bytes(), mode, profile)?;
+    if admitted.source != compiled.layout().source()
+        || admitted.steps != compiled.layout().executed_code_positions().len()
+        || compiled.layout().profile_id() != profile.id()
+        || compiled.layout().profile_fingerprint() != profile.fingerprint()
+    {
+        return Err(String::from(
+            "independently admitted typed and ternary target source disagree",
+        ));
+    }
+    Ok(admitted)
 }
 
 fn verified_source(
@@ -378,7 +420,10 @@ fn verified_source(
             })
         }
         SourceSpec::CanonicalTernaryFile { path, mode } => {
-            verified_ternary_source(path, *mode, profile)
+            verified_ternary_bytes(&read_canonical_wire(path, "ternary")?, *mode, profile)
+        }
+        SourceSpec::CanonicalTypedFile { path, mode } => {
+            verified_typed_source(path, *mode, profile)
         }
     }
 }

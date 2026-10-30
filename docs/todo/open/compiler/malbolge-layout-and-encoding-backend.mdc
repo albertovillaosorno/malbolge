@@ -174,6 +174,19 @@ emission.
   values, and confirm stale SSA, bad arguments, profile drift and corrupt
   wire fail without a final file. No EOF/error semantics or general C
   runtime have been realized.
+- A separate direct canonical `--typed-file` MCTI input now admits the
+  narrow zero-argument void typed successful-byte SSA echo subset without a
+  caller-managed MCTR file. `--latest-byte-trace --typed-file` opts into
+  repeated latest-byte output and consumed-but-unused reads, with no older
+  SSA replay. The existing typed adapter revalidates canonical MCTI and
+  emits MCTR and layout; the file publisher *independently* re-decodes the
+  actual canonical MCTR bytes and re-encodes graphical source, comparing
+  exact profile identity, bytes and VM step witness before its original
+  two-pattern preflight and raw/capsule no-overwrite publish. Real process
+  tests compare direct vs MCTR-file artifact bytes in both modes, verify
+  guest output and consumption, and refuse wrong-profile/invalid/stale SSA,
+  oversized MCTI or occupied outputs. No generic C, EOF, ABI or heap work
+  is claimed.
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

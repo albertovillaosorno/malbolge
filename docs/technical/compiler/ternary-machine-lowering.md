@@ -1133,6 +1133,19 @@ checks its compiled MCTR and graphical layout, publishes an executable capsule,
 reopens the frame and checks exact profile, source bytes, VM output,
 consumption and halt step. The strict file mode rejects that same typed trace.
 
+The same artifact emitter now accepts canonical MCTI inputs directly with
+`--typed-file` (strict echo) or `--latest-byte-trace --typed-file` (latest
+successful read). Both forms reuse the typed adapter, then independently
+re-admit the adapter's emitted canonical MCTR bytes through the original
+ternary bridge, requiring byte-identical Malbolge source and selected profile.
+The already verified raw/capsule publisher remains the only output authority.
+External process regressions prove direct MCTI raw/capsule bytes equal the
+old explicit MCTR publication route, check normative VM output and input
+consumption, and fail closed for invalid wire, drifted profile, stale SSA,
+oversize and output collisions. The path accepts only the existing void,
+one-function successful-byte sublanguage; this is not general typed-C to
+Malbolge lowering and does not implement EOF or guest ABI returns.
+
 ### Authoritative Inputs
 
 The first implementation must consume existing identities without renaming or

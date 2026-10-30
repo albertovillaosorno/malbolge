@@ -45,7 +45,7 @@ use malbolge::{ProfileMachine, RunOutcome, current_profile, historical_profile};
 use std::fs;
 use std::iter::repeat_n;
 use std::path::{Path, PathBuf};
-use std::process::{Command, id};
+use std::process::{Command, Output, id};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static TEST_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -773,5 +773,277 @@ fn canonical_typed_latest_byte_trace_publishes_independent_capsule() -> Result<(
             "published typed latest-byte effect trace mismatch",
         ));
     }
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "independent publisher invocation preserves the mode matrix"
+)]
+fn publish_typed_wire(
+    profile: &str,
+    source: &Path,
+    target: &Path,
+    latest: bool,
+    capsule: bool,
+) -> Result<Output, String> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"));
+    let _profile_arguments = command
+        .arg("--profile")
+        .arg(profile)
+        .arg("--output")
+        .arg(target);
+    if capsule {
+        let _capsule = command.arg("--capsule");
+    }
+    let _delimiter = command.arg("--");
+    if latest {
+        let _latest = command.arg("--latest-byte-trace");
+    }
+    command
+        .arg("--typed-file")
+        .arg(source)
+        .output()
+        .map_err(|error| format!("typed CLI spawn: {error}"))
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "independent publisher invocation preserves the mode matrix"
+)]
+fn publish_ternary_wire(
+    profile: &str,
+    source: &Path,
+    target: &Path,
+    latest: bool,
+    capsule: bool,
+) -> Result<Output, String> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"));
+    let _profile_arguments = command
+        .arg("--profile")
+        .arg(profile)
+        .arg("--output")
+        .arg(target);
+    if capsule {
+        let _capsule = command.arg("--capsule");
+    }
+    let _delimiter = command.arg("--");
+    if latest {
+        let _latest = command.arg("--latest-byte-trace");
+    }
+    command
+        .arg("--ternary-file")
+        .arg(source)
+        .output()
+        .map_err(|error| format!("ternary CLI spawn: {error}"))
+}
+
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "two format variants and independent baseline are checked together"
+)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "external canonical typed producer is checked against the independent MCTR route"
+)]
+fn canonical_typed_file_publisher_matches_independent_ternary_file() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&fixture(3)?)?;
+    let compiled = compile_canonical_typed_echo(&canonical, current_profile())
+        .map_err(|error| format!("strict typed compiler: {error:?}"))?;
+    let typed = workspace.path("source.mcti");
+    let ternary = workspace.path("source.mctr");
+    fs::write(&typed, canonical).map_err(|error| error.to_string())?;
+    fs::write(&ternary, compiled.ternary_bytes()).map_err(|error| error.to_string())?;
+    for capsule in [false, true] {
+        let typed_output = workspace.path(if capsule {
+            "typed-cap.malbolge"
+        } else {
+            "typed-raw.malbolge"
+        });
+        let ternary_output = workspace.path(if capsule {
+            "ternary-cap.malbolge"
+        } else {
+            "ternary-raw.malbolge"
+        });
+        let produced = publish_typed_wire(
+            current_profile().id(),
+            &typed,
+            &typed_output,
+            false,
+            capsule,
+        )?;
+        let baseline = publish_ternary_wire(
+            current_profile().id(),
+            &ternary,
+            &ternary_output,
+            false,
+            capsule,
+        )?;
+        assert!(
+            produced.status.success(),
+            "{}",
+            String::from_utf8_lossy(&produced.stderr)
+        );
+        assert!(
+            baseline.status.success(),
+            "{}",
+            String::from_utf8_lossy(&baseline.stderr)
+        );
+        let actual = fs::read(&typed_output).map_err(|error| error.to_string())?;
+        assert_eq!(
+            actual,
+            fs::read(ternary_output).map_err(|error| error.to_string())?
+        );
+        if capsule {
+            let frame = malbolge::parse_capsule(&actual)
+                .map_err(|error| format!("typed capsule parse: {error}"))?
+                .ok_or("typed publisher capsule missing")?;
+            assert_eq!(frame.profile(), current_profile());
+            assert_eq!(frame.payload(), compiled.layout().source());
+        } else {
+            assert_eq!(actual, compiled.layout().source());
+        }
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "strict reject plus two file forms plus normative VM"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "full canonical MCTI to MCTR to real VM file verification"
+)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "latest typed output is checked against an independently decoded MCTR and real VM"
+)]
+fn canonical_typed_latest_file_publishes_exact_executable_capsule() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let steps = [
+        (true, 0),
+        (false, 0),
+        (false, 0),
+        (true, 1),
+        (true, 2),
+        (false, 2),
+        (false, 2),
+    ];
+    let typed_bytes = wire(&latest_typed_fixture(&steps)?)?;
+    let compiled =
+        adapter::compile_canonical_typed_latest_byte_trace(&typed_bytes, current_profile())
+            .map_err(|error| format!("latest typed compiler: {error:?}"))?;
+    let typed = workspace.path("latest.mcti");
+    let ternary = workspace.path("latest.mctr");
+    fs::write(&typed, typed_bytes).map_err(|error| error.to_string())?;
+    fs::write(&ternary, compiled.ternary_bytes()).map_err(|error| error.to_string())?;
+    let strict_target = workspace.path("strict-reject.malbolge");
+    let refused = publish_typed_wire(current_profile().id(), &typed, &strict_target, false, true)?;
+    assert!(!refused.status.success());
+    assert!(!strict_target.exists());
+    for capsule in [false, true] {
+        let target = workspace.path(if capsule {
+            "latest-cap.malbolge"
+        } else {
+            "latest-raw.malbolge"
+        });
+        let baseline_target = workspace.path(if capsule {
+            "latest-mctr-cap.malbolge"
+        } else {
+            "latest-mctr-raw.malbolge"
+        });
+        let typed_result =
+            publish_typed_wire(current_profile().id(), &typed, &target, true, capsule)?;
+        let ternary_result = publish_ternary_wire(
+            current_profile().id(),
+            &ternary,
+            &baseline_target,
+            true,
+            capsule,
+        )?;
+        assert!(
+            typed_result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&typed_result.stderr)
+        );
+        assert!(
+            ternary_result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ternary_result.stderr)
+        );
+        let output = fs::read(target).map_err(|error| error.to_string())?;
+        assert_eq!(
+            output,
+            fs::read(baseline_target).map_err(|error| error.to_string())?
+        );
+        let raw = if capsule {
+            let frame = malbolge::parse_capsule(&output)
+                .map_err(|error| format!("latest capsule parse: {error}"))?
+                .ok_or("missing latest typed capsule")?;
+            assert_eq!(frame.profile(), current_profile());
+            frame.payload().to_vec()
+        } else {
+            output
+        };
+        assert_eq!(raw, compiled.layout().source());
+        let mut vm = ProfileMachine::from_source(current_profile(), &raw, vec![0, 255, 128])
+            .map_err(|error| format!("published latest VM load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(8),
+            Ok(RunOutcome::Terminated { steps: 8, .. })
+        ));
+        assert_eq!(vm.input_consumed(), 3);
+        assert_eq!(vm.output(), &[0, 0, 128, 128]);
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "all malformed paths must avoid final output"
+)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "all typed file failures must retain original output and refuse unauthorized input"
+)]
+fn canonical_typed_file_cli_rejects_stale_ssa_corrupt_wire_profile_and_oversize()
+-> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let valid = wire(&fixture(1)?)?;
+    let typed = workspace.path("hostile.mcti");
+    let target = workspace.path("refused.malbolge");
+    fs::write(&typed, &valid).map_err(|error| error.to_string())?;
+    let wrong_profile =
+        publish_typed_wire(historical_profile().id(), &typed, &target, false, false)?;
+    assert!(!wrong_profile.status.success());
+    assert!(!target.exists());
+    fs::write(&typed, valid.get(..1).ok_or("missing malformed prefix")?)
+        .map_err(|error| error.to_string())?;
+    let malformed = publish_typed_wire(current_profile().id(), &typed, &target, false, false)?;
+    assert!(!malformed.status.success());
+    assert!(!target.exists());
+    let stale = wire(&latest_typed_fixture(&[(true, 0), (true, 1), (false, 0)])?)?;
+    fs::write(&typed, stale).map_err(|error| error.to_string())?;
+    let unsupported = publish_typed_wire(current_profile().id(), &typed, &target, true, false)?;
+    assert!(!unsupported.status.success());
+    assert!(!target.exists());
+    fs::write(&typed, vec![0x42; 1_048_577]).map_err(|error| error.to_string())?;
+    let oversized = publish_typed_wire(current_profile().id(), &typed, &target, false, true)?;
+    assert!(!oversized.status.success());
+    assert!(!target.exists());
+    fs::write(&typed, valid).map_err(|error| error.to_string())?;
+    let sentinel = b"existing raw output must not change";
+    fs::write(&target, sentinel).map_err(|error| error.to_string())?;
+    let collision = publish_typed_wire(current_profile().id(), &typed, &target, false, true)?;
+    assert!(!collision.status.success());
+    assert_eq!(
+        fs::read(target).map_err(|error| error.to_string())?,
+        sentinel
+    );
     Ok(())
 }

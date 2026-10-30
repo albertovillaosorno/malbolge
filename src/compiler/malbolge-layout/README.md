@@ -199,6 +199,40 @@ successful-byte condition excludes EOF and failed I/O; no guest byte storage
 or transformation is synthesized. Both modes produce identical bytes for
 admitted adjacent echo programs.
 
+### Direct canonical typed-IR file publication
+
+A third bounded input form skips the caller-managed MCTR file. It accepts a
+complete canonical `malbolge-typed-ir-v1` (`MCTI`) module and runs the existing
+`typed-echo-adapter` inside the **same** artifact publisher:
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 \
+  --output .temp/from-typed.malbolge --capsule -- \
+  --typed-file .temp/echo.mcti
+```
+
+The default `--typed-file` retains strict adjacent echo. The separately
+opt-in `--latest-byte-trace --typed-file .temp/latest.mcti` admits repeated
+output of the latest successful byte and ignored consumed reads under the
+same narrow semantic restrictions as the ternary-wire route. **This is not
+source-C compilation**: the input must already be an independently admitted,
+canonically serialized typed module with one void, zero-argument function,
+no globals or proof obligations, and only the supported successful `u8`
+byte operations. Source digest/ID and ABI identity remain copied provenance.
+
+A typed input is a regular, nonempty file of at most 1 MiB. The adapter
+independently revalidates the MCTI module, generates MCTR bytes, and admits
+the graphical source. The publisher then **separately restores those MCTR
+bytes and re-encodes the complete source** using its original independent
+ternary bridge, requiring byte-for-byte identical source, execution-step
+count and exact selected profile ID/fingerprint before the normative VM's
+empty-input and two successful-byte-pattern preflights. Raw and capsule
+artifacts use the existing atomic no-clobber publisher. Tests verify that
+direct MCTI output equals the previous MCTI-to-MCTR-to-file route for both
+modes, malformed/cross-profile/stale SSA/oversize inputs refuse publication,
+and existing output is never modified. No EOF/error/guest ABI is added.
+
 `--ternary-file` is mutually exclusive with individual decoded machine-op
 tokens. Its sole operand must be an existing, nonempty regular file with at
 most 1,048,576 bytes. The complete MCTR version-one stream is independently

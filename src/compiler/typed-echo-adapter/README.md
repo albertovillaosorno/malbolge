@@ -48,6 +48,25 @@ real `ProfileMachine` output across multiple trace sizes. It also covers
 the all-byte domain, exact 4096-cell upper bound, stale SSA rejection and
 byte-identical old/new output for ordinary echo traces.
 
+The `malbolge_layout` publisher now accepts canonical typed modules directly:
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 --output .temp/typed-echo.malbolge \
+  --capsule -- --typed-file .temp/typed-echo.mcti
+```
+
+`--typed-file` defaults to strict adjacent echo. For latest-read traces use
+`--latest-byte-trace --typed-file .temp/latest-read.mcti`. Both direct paths
+internally re-decode the adapter's canonical MCTR output and re-encode its
+position-sensitive Malbolge source with the *independent ternary bridge*,
+requiring byte-identical source, exact profile fingerprint and code witness
+length. The same normative VM successful-byte patterns and raw/capsule
+no-clobber publication are retained. The integration regressions compare
+both direct paths byte-for-byte against the older explicit MCTR workflow and
+reject malformed, wrong-profile, stale-SSA and oversized MCTI without
+creating a target.
+
 For the original strict echo subset, canonical `MCTR` bytes remain consumable
 by the default `malbolge_layout --ternary-file` CLI. Its separate opt-in
 `--latest-byte-trace --ternary-file` path now accepts the latest-successful-read

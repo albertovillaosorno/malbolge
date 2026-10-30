@@ -243,6 +243,31 @@ This is a **bounded, working ternary-stage-to-file path**, but it does not
 admit arbitrary ternary operations, source-C programs, guest heap, ABI return
 values, EOF, failed I/O, or unbounded control-flow/layout code-state revisits.
 
+### Direct canonical typed-IR publication
+
+The same `malbolge_layout` executable now exposes explicit `--typed-file`
+mode for canonical `MCTI` version-one typed modules. The original default
+continues accepting only one zero-argument void adjacent successful-byte
+echo function. An opt-in `--latest-byte-trace --typed-file` mode supports
+repeated output of the latest read and ignored intervening successful
+inputs. Valid SSA output from an older overwritten read still rejects.
+The file is checked as a regular nonempty bounded input at most 1 MiB,
+restored via canonical typed-IR admission, projected/lowered by the existing
+typed-echo adapter and independently encoded into canonical MCTR source.
+
+The publisher does **not** trust the adapter's Malbolge layout directly:
+it separately decodes the generated MCTR and uses the original ternary
+byte-trace bridge to re-derive code, requiring identical bytes, execution
+witness length and exact target-profile identity. It then applies its
+ordinary normative VM reachability and two successful-byte I/O traces,
+optional canonical capsule wrapping and atomic no-overwrite artifact
+publication. Process tests compare strict and latest-read direct MCTI
+output byte-for-byte against independent MCTR-file publication, reopen
+published raw/capsule payloads and verify real VM output/consumption, and
+reject malformed input, profile mismatch, stale-SSA use, oversize and
+occupied output paths. This closes one artifact-adapter integration gap,
+not arbitrary C lowering, guest-runtime ABI, EOF or I/O failure semantics.
+
 ### Remaining implementation
 
 Map admitted typed ternary operations and runtime/heap helpers onto real target

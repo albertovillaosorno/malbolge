@@ -13,7 +13,8 @@
 // - Must-Not:
 //   - Claim C lowering or infer a target profile from an output extension.
 // - Allows:
-//   - Inputs: exact profile, fresh output path and bounded decoded operations.
+//   - Inputs: exact profile, fresh output path, canonical typed/ternary wire or
+//     bounded decoded operations.
 //   - Outputs: new `.malbolge` source; no modification of existing targets.
 //   - Side effects: bounded same-directory atomic artifact publication.
 // - Split-When:
@@ -21,7 +22,7 @@
 // - Merge-When:
 //   - A verified final source publisher subsumes this isolated frontend.
 // - Summary:
-//   - Wires bounded ternary echo and graphical artifact publication.
+//   - Wires bounded typed/ternary byte traces and graphical publication.
 // - Description:
 //   - Standalone source artifact validation and no-overwrite publication.
 // - Usage:
@@ -42,6 +43,12 @@ pub mod bridge;
 pub mod cli;
 #[path = "lib.rs"]
 pub mod layout;
+#[expect(
+    clippy::duplicate_mod,
+    reason = "typed adapter and standalone ternary checker independently reuse proven layout"
+)]
+#[path = "../../typed-echo-adapter/composition/lib.rs"]
+pub mod typed_adapter;
 
 use std::process::ExitCode;
 
