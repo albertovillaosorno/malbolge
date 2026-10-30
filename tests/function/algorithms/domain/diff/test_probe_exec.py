@@ -369,6 +369,36 @@ def test_unexpected_exit_code_fails_closed(tmp_path: Path) -> None:
         _ = run_probe_program(program, _context(source, tmp_path))
 
 
+def test_failed_probe_still_checks_original_source_mutation(
+    tmp_path: Path,
+) -> None:
+    """Failed child cannot suppress original-source immutability diagnostics."""
+    source = tmp_path / "source"
+    source.mkdir()
+    target = source / "input.txt"
+    _ = target.write_text(_ORIGINAL_TEXT, encoding="utf-8")
+    code = (
+        "import pathlib,sys;"
+        "pathlib.Path(sys.argv[1]).write_text('after');"
+        "raise SystemExit(7)"
+    )
+    program = ProbeProgram(
+        "failed-original-mutator",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=("-c", code, str(target)),
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match="modified candidate source"):
+        _ = run_probe_program(program, _context(source, tmp_path))
+    _expect(
+        target.read_text(encoding="utf-8") != _ORIGINAL_TEXT,
+        "the injected unstructured-argv source write did not execute",
+    )
+
+
 def test_timeout_fails_closed(tmp_path: Path) -> None:
     """Bound probe execution time rather than permitting a hung transform."""
     source = tmp_path / "source"

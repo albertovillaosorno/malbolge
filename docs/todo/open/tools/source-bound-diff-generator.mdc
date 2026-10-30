@@ -68,6 +68,10 @@ format.
 - A conjunctive gate proves behavior-only clones cannot replace structural
   lineage
   and source lineage cannot replace failed compatibility behavior.
+- Failed probe commands now still trigger the optional original-source
+  immutability comparison, including when the process exits unexpectedly;
+  unchanged inputs preserve the original execution error, observed mutation
+  fails closed with a source-drift diagnosis. It cannot undo raw-argv writes.
 - Portable structured repository-rooted argv and executable records now
   reject paths resolving inside the original candidate source, including
   symlink aliases, before process launch. This closes the typed-path source

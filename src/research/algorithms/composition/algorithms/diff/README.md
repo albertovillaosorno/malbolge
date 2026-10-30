@@ -165,8 +165,10 @@ symlinks, and the copy must match the admitted byte-tree snapshot before any
 probe runs; mismatches or invalid trees fail in the probe execution boundary.
 Programs run against an isolated source mirror; changing the mirror invalidates
 the probe. The optional original-source immutability check separately verifies
-user input after execution. The pre-copy and mirror snapshots do not guarantee
-atomicity against concurrent external filesystem writers.
+user input after success **or failure**, so a failed child cannot suppress
+source-mutation diagnostics. It reports but cannot undo writes from arbitrary
+trusted raw argv; execution is not a sandbox. Pre-copy and mirror snapshots do
+not guarantee atomicity against concurrent external filesystem writers.
 
 `behavior_programs.py` authors identity baselines from the original source and
 bug

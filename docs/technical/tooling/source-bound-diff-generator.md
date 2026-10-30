@@ -270,7 +270,10 @@ boundary before commands execute. This is a consistency check, not an atomic
 filesystem snapshot; caller coordination is required against concurrent writers.
 Programs receive the mirror path rather than the user input path. Any
 program that changes the mirror is rejected. When enabled, a separate post-run
-source comparison also verifies the original tree is unchanged. Compile-then-run
+source comparison verifies the original tree after normal completion **and**
+when probe execution raises, preserving the original failure if source bytes are
+unchanged and reporting source drift otherwise. This detects but cannot restore
+writes made through trusted raw argv. Compile-then-run
 programs are possible because one command may create
 a
 scratch executable consumed by a later command.

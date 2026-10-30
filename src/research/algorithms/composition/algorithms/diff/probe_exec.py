@@ -936,6 +936,23 @@ def _run_isolated_batch(
         return tuple(transcripts)
 
 
+def _require_original_source_unchanged(
+    context: ProbeRunContext, baseline: TreeSnapshot | None
+) -> None:
+    """Verify original source after success and after child execution failure.
+
+    Raises:
+        ProbeExecutionError: The original source has changed or is unreadable.
+
+    """
+    if (
+        baseline is not None
+        and _snapshot_probe_tree(context.source_root, "source") != baseline
+    ):
+        message = "behavior probe modified candidate source tree"
+        raise ProbeExecutionError(message)
+
+
 def run_probe_programs(
     programs: tuple[ProbeProgram, ...],
     context: ProbeRunContext,
@@ -945,9 +962,6 @@ def run_probe_programs(
     Returns:
         Transcripts in probe-id order.
 
-    Raises:
-        ProbeExecutionError: Execution mutates the source tree.
-
     """
     admitted = _validate_probe_batch(programs, context)
     _require_repository_paths_disjoint(admitted, context)
@@ -956,13 +970,10 @@ def run_probe_programs(
         if context.enforce_source_immutable
         else None
     )
-    transcripts = _run_isolated_batch(admitted, context)
-    if (
-        before is not None
-        and _snapshot_probe_tree(context.source_root, "source") != before
-    ):
-        message = "behavior probe modified the candidate source tree"
-        raise ProbeExecutionError(message)
+    try:
+        transcripts = _run_isolated_batch(admitted, context)
+    finally:
+        _require_original_source_unchanged(context, before)
     return transcripts
 
 
