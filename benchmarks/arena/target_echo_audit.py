@@ -90,11 +90,14 @@ FORWARD_REPLAY_COST_STUDY = "classic-patterned-forward-skip-replay-cost-v3"
 FORWARD_LIMITED_REPLAY_STUDY = (
     "classic-patterned-forward-skip-limited-replay-v4"
 )
+FORWARD_RSS_STUDY = "classic-patterned-forward-skip-limited-rss-v5"
 VERIFIER_NS = "verifier_ns"
 FORWARD_FAMILY = "bounded-classic-patterned-forward-skip-echo"
 FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
 FORWARD_REPLAY_VERIFIER = "classic-forward-jump-patterned-second-vm-v1"
 FORWARD_LIMITED_REPLAY_VERIFIER = "classic-forward-jump-limited-second-vm-v1"
+FORWARD_RSS_VERIFIER = "classic-forward-jump-limited-rss-second-vm-v1"
+PEAK_RSS = "peak_rss_bytes"
 WALK = "walk-padding-echo"
 SKIP = "jump-skip-padding-echo"
 FORWARD_ALGORITHMS = (WALK, SKIP)
@@ -178,6 +181,7 @@ def _mode(document: dict[str, Any]) -> str:
         FORWARD_VERIFIER_COST_STUDY,
         FORWARD_REPLAY_COST_STUDY,
         FORWARD_LIMITED_REPLAY_STUDY,
+        FORWARD_RSS_STUDY,
     }:
         return producer.PATTERNED_MODE
     if study_id in {EOF_STUDY, EOF_STEPS_STUDY}:
@@ -193,6 +197,7 @@ def _has_steps(document: dict[str, Any]) -> bool:
         FORWARD_VERIFIER_COST_STUDY,
         FORWARD_REPLAY_COST_STUDY,
         FORWARD_LIMITED_REPLAY_STUDY,
+        FORWARD_RSS_STUDY,
     }
 
 
@@ -202,6 +207,7 @@ def _forward(document: dict[str, Any]) -> bool:
         FORWARD_VERIFIER_COST_STUDY,
         FORWARD_REPLAY_COST_STUDY,
         FORWARD_LIMITED_REPLAY_STUDY,
+        FORWARD_RSS_STUDY,
     }
 
 
@@ -210,6 +216,7 @@ def _has_verifier_cost(document: dict[str, Any]) -> bool:
         FORWARD_VERIFIER_COST_STUDY,
         FORWARD_REPLAY_COST_STUDY,
         FORWARD_LIMITED_REPLAY_STUDY,
+        FORWARD_RSS_STUDY,
     }
 
 
@@ -235,7 +242,9 @@ def _producer_study(document: dict[str, Any]) -> None:
     )
     if forward:
         study_id = (
-            FORWARD_LIMITED_REPLAY_STUDY
+            FORWARD_RSS_STUDY
+            if study["id"] == FORWARD_RSS_STUDY
+            else FORWARD_LIMITED_REPLAY_STUDY
             if study["id"] == FORWARD_LIMITED_REPLAY_STUDY
             else FORWARD_REPLAY_COST_STUDY
             if study["id"] == FORWARD_REPLAY_COST_STUDY
@@ -273,7 +282,15 @@ def _producer_study(document: dict[str, Any]) -> None:
             "memory_bytes": producer.BUDGET_MIB * 1_048_576,
         },
         "objectives": (
-            ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS, VERIFIER_NS]
+            [
+                "elapsed_ns",
+                "artifact_bytes",
+                RUNTIME_STEPS,
+                VERIFIER_NS,
+                PEAK_RSS,
+            ]
+            if study["id"] == FORWARD_RSS_STUDY
+            else ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS, VERIFIER_NS]
             if _has_verifier_cost(document)
             else ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS]
             if steps
@@ -359,9 +376,9 @@ def _check_row(
     prefix: str,
     mode: str,
     *,
-    protocol: tuple[bool, bool, bool],
+    protocol: tuple[bool, bool, bool, bool],
 ) -> str:
-    forward, replay_cost, limited = protocol
+    forward, replay_cost, limited, rss = protocol
     case = row["case"]
     algorithm = row["algorithm"]
     if algorithm not in (
@@ -371,7 +388,9 @@ def _check_row(
     if case != _expected_case(case["difficulty"], mode, forward=forward):
         _fail("target audit trial differs from the fixed echo case")
     expected_verifier = (
-        FORWARD_LIMITED_REPLAY_VERIFIER
+        FORWARD_RSS_VERIFIER
+        if rss
+        else FORWARD_LIMITED_REPLAY_VERIFIER
         if limited
         else FORWARD_REPLAY_VERIFIER
         if replay_cost
@@ -452,6 +471,21 @@ def _check_verifier_cost_claims(document: dict[str, Any]) -> None:
             _fail("untimed or unverified target trial claims verifier cost")
 
 
+def _check_peak_rss_claims(document: dict[str, Any]) -> None:
+    measured = document["study"]["id"] == FORWARD_RSS_STUDY
+    for row in document["observations"]:
+        peak = row["metrics"].get(PEAK_RSS)
+        if measured and row["outcome"] == analyze.VERIFIED:
+            if (
+                type(peak) is not int
+                or not 0 < peak <= producer.BUDGET_MIB * 1024 * 1024
+                or peak % target_process.KIB_BYTES != 0
+            ):
+                _fail("target peak RSS observation is missing or invalid")
+        elif peak is not None:
+            _fail("unmeasured or unsuccessful target claims peak RSS")
+
+
 def _check_runtime_step_claims(document: dict[str, Any]) -> None:
     measured = _has_steps(document)
     mode = _mode(document)
@@ -462,21 +496,31 @@ def _check_runtime_step_claims(document: dict[str, Any]) -> None:
         )
 
 
+def _protocol(document: dict[str, Any]) -> tuple[bool, bool, bool, bool]:
+    study_id = document["study"]["id"]
+    return (
+        _forward(document),
+        study_id
+        in {
+            FORWARD_REPLAY_COST_STUDY,
+            FORWARD_LIMITED_REPLAY_STUDY,
+            FORWARD_RSS_STUDY,
+        },
+        study_id in {FORWARD_LIMITED_REPLAY_STUDY, FORWARD_RSS_STUDY},
+        study_id == FORWARD_RSS_STUDY,
+    )
+
+
 def _producer_rows(document: dict[str, Any], prefix: str) -> set[str]:
     rows = document["observations"]
     algorithms = _algorithms(document)
     levels, trials = _check_plan(rows, algorithm_count=len(algorithms))
     _check_runtime_step_claims(document)
     _check_verifier_cost_claims(document)
+    _check_peak_rss_claims(document)
     mode = _mode(document)
-    forward = _forward(document)
-    limited = document["study"]["id"] == FORWARD_LIMITED_REPLAY_STUDY
-    replay_cost = document["study"]["id"] in {
-        FORWARD_REPLAY_COST_STUDY,
-        FORWARD_LIMITED_REPLAY_STUDY,
-    }
     names = {
-        _check_row(row, prefix, mode, protocol=(forward, replay_cost, limited))
+        _check_row(row, prefix, mode, protocol=_protocol(document))
         for row in rows
     }
     expected = {
@@ -754,22 +798,68 @@ def _check_forward_replay_result(
         _fail("target replay VM output differs from independent byte oracle")
 
 
+def _run_forward_guest(
+    command: list[str], payload: bytes, *, mode: tuple[bool, bool]
+) -> tuple[sp.CompletedProcess[bytes], int | None]:
+    limited, measured = mode
+    if measured:
+        return target_process.invoke_with_input_limited_measured(
+            command, payload, timeout_seconds=producer.TIMEOUT_SECONDS
+        )
+    method = (
+        target_process.invoke_with_input_limited
+        if limited
+        else target_process.invoke_with_input
+    )
+    result = method(command, payload, timeout_seconds=producer.TIMEOUT_SECONDS)
+    return result, None
+
+
+def _replay_forward_result(
+    paths: tuple[Path, Path],
+    payload: bytes,
+    *,
+    steps: int,
+    options: tuple[bool, bool],
+) -> int | None:
+    runner, source = paths
+    result, peak = _run_forward_guest(
+        [str(runner), str(source), "--input-stdin", "--report-steps"],
+        payload,
+        mode=options,
+    )
+    _check_forward_replay_result(result, payload, steps)
+    return peak
+
+
+def _assert_forward_source_stable(source: Path, original: bytes) -> None:
+    relative = source.relative_to(_ROOT).as_posix()
+    after = evidence.read_bounded_regular(
+        _ROOT, relative, limit=producer.MAX_TARGET_BYTES
+    )
+    if after != original:
+        _fail("target replay changed candidate source after admission")
+
+
 def check_forward_vm_replay(
     source: Path,
     runner: Path,
     *,
     case: tuple[int, str],
-    replay_options: tuple[int | None, bool],
-) -> None:
+    replay_options: tuple[int | None, bool, bool],
+) -> int | None:
     """Read/check the fixed source, then replay exact guest bytes and steps.
 
     The second VM uses the same normative executable, not another engine.
     Invalid output or source bytes reject the candidate; invalid tool status
     or step receipts reject the measurement as an instrumentation failure.
 
+    Returns:
+        Observed verifier VM RSS bytes only when explicitly measured.
+
     """
     pairs, algorithm = case
-    steps, limit_child_resources = replay_options
+    steps, limit_child_resources, measure_rss = replay_options
     relative = source.relative_to(_ROOT).as_posix()
     original = evidence.read_bounded_regular(
         _ROOT, relative, limit=producer.MAX_TARGET_BYTES
@@ -779,21 +869,14 @@ def check_forward_vm_replay(
     if type(steps) is not int or steps != expected_steps:
         _fail("target replay requested inconsistent guest instruction count")
     payload = _pattern_bytes(pairs)
-    result = (
-        target_process.invoke_with_input_limited
-        if limit_child_resources
-        else target_process.invoke_with_input
-    )(
-        [str(runner), str(source), "--input-stdin", "--report-steps"],
+    peak = _replay_forward_result(
+        (runner, source),
         payload,
-        timeout_seconds=producer.TIMEOUT_SECONDS,
+        steps=steps,
+        options=(limit_child_resources, measure_rss),
     )
-    _check_forward_replay_result(result, payload, steps)
-    after = evidence.read_bounded_regular(
-        _ROOT, relative, limit=producer.MAX_TARGET_BYTES
-    )
-    if after != original:
-        _fail("target replay changed candidate source after admission")
+    _assert_forward_source_stable(source, original)
+    return peak
 
 
 def _replay_one(
@@ -852,7 +935,11 @@ def _replay(
             digest,
             replay_tool=(
                 runner,
-                document["study"]["id"] == FORWARD_LIMITED_REPLAY_STUDY,
+                document["study"]["id"]
+                in {
+                    FORWARD_LIMITED_REPLAY_STUDY,
+                    FORWARD_RSS_STUDY,
+                },
             ),
         )
     if _tool_identity(emitter, runner) != claimed:

@@ -105,6 +105,7 @@ FORWARD_REPLAY_COST_STUDY = "classic-patterned-forward-skip-replay-cost-v3"
 FORWARD_LIMITED_REPLAY_STUDY = (
     "classic-patterned-forward-skip-limited-replay-v4"
 )
+FORWARD_RSS_STUDY = "classic-patterned-forward-skip-limited-rss-v5"
 SOURCE_VERIFIER_MODE = "source"
 REPLAY_VERIFIER_MODE = "replay"
 VERIFIER_MODES = (SOURCE_VERIFIER_MODE, REPLAY_VERIFIER_MODE)
@@ -113,6 +114,9 @@ FORWARD_FAMILY = "bounded-classic-patterned-forward-skip-echo"
 FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
 FORWARD_REPLAY_VERIFIER = "classic-forward-jump-patterned-second-vm-v1"
 FORWARD_LIMITED_REPLAY_VERIFIER = "classic-forward-jump-limited-second-vm-v1"
+FORWARD_RSS_VERIFIER = "classic-forward-jump-limited-rss-second-vm-v1"
+PEAK_RSS = "peak_rss_bytes"
+RSS_MEASURED_STAGES = 3
 JUMP_OPERATION = "jump"
 SKIPPED_NOOPS = 98
 WALKED_NOOPS = SKIPPED_NOOPS + 1
@@ -134,6 +138,7 @@ class StudyPlan:
     measure_verifier: bool = False
     verifier_mode: str = SOURCE_VERIFIER_MODE
     limit_child_resources: bool = False
+    measure_child_rss: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +157,8 @@ class _Context:
     measure_verifier: bool = False
     verifier_mode: str = SOURCE_VERIFIER_MODE
     limit_child_resources: bool = False
+    measure_child_rss: bool = False
+    rss_stages: list[int] | None = None
 
 
 def _fail(message: str) -> Never:
@@ -314,6 +321,21 @@ def _case(
     }
 
 
+def _measure_guest_rss(
+    context: _Context, command: list[str], pairs: int
+) -> sp.CompletedProcess[bytes]:
+    stages = context.rss_stages
+    if stages is None:
+        _fail("target echo RSS measurement missing per-trial stage witness")
+    result, peak = target_process.invoke_with_input_limited_measured(
+        command,
+        _input_bytes(pairs, context.input_mode),
+        timeout_seconds=TIMEOUT_SECONDS,
+    )
+    stages.append(peak)
+    return result
+
+
 def _run_guest(
     context: _Context, path: Path, pairs: int
 ) -> sp.CompletedProcess[bytes]:
@@ -322,6 +344,8 @@ def _run_guest(
         command.append("--input-stdin")
     if context.measure_steps:
         command.append("--report-steps")
+    if context.measure_child_rss:
+        return _measure_guest_rss(context, command, pairs)
     if context.input_mode == EOF_MODE:
         return (
             target_process.invoke_limited(
@@ -355,6 +379,25 @@ def _verified_steps(
         return "tool_failed", None
 
 
+def _emit_attempt(
+    context: _Context, command: list[str]
+) -> sp.CompletedProcess[bytes]:
+    if context.measure_child_rss:
+        stages = context.rss_stages
+        if stages is None:
+            _fail("target echo RSS measurement missing per-trial stage witness")
+        result, peak = target_process.invoke_limited_measured(
+            command, timeout_seconds=TIMEOUT_SECONDS
+        )
+        stages.append(peak)
+        return result
+    return (
+        target_process.invoke_limited(command, timeout_seconds=TIMEOUT_SECONDS)
+        if context.limit_child_resources
+        else _invoke(command)
+    )
+
+
 def _classify_attempt(
     path: Path,
     context: _Context,
@@ -375,13 +418,7 @@ def _classify_attempt(
         and operations[0] == JUMP_OPERATION
     ):
         command.append("--auto-layout")
-    emitted = (
-        target_process.invoke_limited(
-            [*command, *operations], timeout_seconds=TIMEOUT_SECONDS
-        )
-        if context.limit_child_resources
-        else _invoke([*command, *operations])
-    )
+    emitted = _emit_attempt(context, [*command, *operations])
     if emitted.returncode != 0 or emitted.stdout or not path.is_file():
         return "tool_failed", None, None
     source = evidence.read_bounded_regular(
@@ -450,16 +487,28 @@ def _timed_replay_verifier(
     Returns:
         Wall nanoseconds of the entire verifier pass, including VM startup.
 
+    Raises:
+        TargetProcessError: The measured verifier child omitted an RSS sample.
+
     """
     from benchmarks.arena import target_echo_audit  # ruff: ignore[import-outside-top-level]
 
     started = perf_counter_ns()
-    target_echo_audit.check_forward_vm_replay(
+    peak = target_echo_audit.check_forward_vm_replay(
         path,
         context.runner,
         case=case,
-        replay_options=(steps, context.limit_child_resources),
+        replay_options=(
+            steps,
+            context.limit_child_resources,
+            context.measure_child_rss,
+        ),
     )
+    if context.measure_child_rss:
+        if peak is None or context.rss_stages is None:
+            message = "target echo RSS verifier is missing per-trial witness"
+            raise target_process.TargetProcessError(message)
+        context.rss_stages.append(peak)
     return perf_counter_ns() - started
 
 
@@ -515,14 +564,53 @@ def _measure(
     (outcome, size, steps), verification_ns = _optional_verifier_cost(
         path, context, (outcome, size, steps), case=(pairs, algorithm)
     )
-    metrics = {"elapsed_ns": perf_counter_ns() - started}
+    return _finalize_attempt_metrics(
+        context,
+        (outcome, size, steps, verification_ns),
+        elapsed_ns=perf_counter_ns() - started,
+    )
+
+
+def _finalize_attempt_metrics(
+    context: _Context,
+    attempt: tuple[str, int | None, int | None, int | None],
+    *,
+    elapsed_ns: int,
+) -> tuple[str, dict[str, int]]:
+    outcome, size, steps, verification_ns = attempt
+    metrics = {"elapsed_ns": elapsed_ns}
     if size is not None:
         metrics["artifact_bytes"] = size
     if steps is not None:
         metrics[RUNTIME_STEPS] = steps
     if verification_ns is not None and outcome == analyze.VERIFIED:
         metrics[VERIFIER_NS] = verification_ns
-    return outcome, metrics
+    return _admit_peak_rss(context, outcome, metrics), metrics
+
+
+def _admit_peak_rss(
+    context: _Context, outcome: str, metrics: dict[str, int]
+) -> str:
+    if not context.measure_child_rss or outcome != analyze.VERIFIED:
+        return outcome
+    stages = context.rss_stages
+    if (
+        stages is None
+        or len(stages) != RSS_MEASURED_STAGES
+        or any(
+            type(value) is not int
+            or value <= 0
+            or value > target_process.CHILD_VIRTUAL_MEMORY_BYTES
+            or value % target_process.KIB_BYTES != 0
+            for value in stages
+        )
+    ):
+        elapsed_ns = metrics["elapsed_ns"]
+        metrics.clear()
+        metrics["elapsed_ns"] = elapsed_ns
+        return "tool_failed"
+    metrics[PEAK_RSS] = max(stages)
+    return outcome
 
 
 def _raw_csv(row: dict[str, Any]) -> bytes:
@@ -632,7 +720,14 @@ def _write_attempt(
 ) -> dict[str, Any]:
     stem = f"{algorithm}-pairs-{pairs}-trial-{trial}"
     artifact = context.directory / "candidates" / f"{stem}.malbolge"
-    outcome, metrics = _measure(artifact, context, pairs, algorithm=algorithm)
+    observed_context = (
+        replace(context, rss_stages=[])
+        if context.measure_child_rss
+        else context
+    )
+    outcome, metrics = _measure(
+        artifact, observed_context, pairs, algorithm=algorithm
+    )
     verdict = {
         analyze.VERIFIED: analyze.ACCEPTED,
         analyze.VERIFIER_REJECTED: analyze.REJECTED,
@@ -643,7 +738,9 @@ def _write_attempt(
         "trial": trial,
         "outcome": outcome,
         "verifier": (
-            FORWARD_LIMITED_REPLAY_VERIFIER
+            FORWARD_RSS_VERIFIER
+            if context.measure_child_rss
+            else FORWARD_LIMITED_REPLAY_VERIFIER
             if context.limit_child_resources
             else FORWARD_REPLAY_VERIFIER
             if context.measure_verifier
@@ -675,7 +772,9 @@ def _make_document(
 ) -> dict[str, Any]:
     patterned = context.input_mode == PATTERNED_MODE
     study_id = (
-        FORWARD_LIMITED_REPLAY_STUDY
+        FORWARD_RSS_STUDY
+        if context.measure_child_rss
+        else FORWARD_LIMITED_REPLAY_STUDY
         if context.limit_child_resources
         else FORWARD_REPLAY_COST_STUDY
         if context.measure_verifier
@@ -730,7 +829,20 @@ def _make_document(
                 "memory_bytes": BUDGET_MIB * 1_048_576,
             },
             "objectives": (
-                ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS, VERIFIER_NS]
+                [
+                    "elapsed_ns",
+                    "artifact_bytes",
+                    RUNTIME_STEPS,
+                    VERIFIER_NS,
+                    PEAK_RSS,
+                ]
+                if context.measure_child_rss
+                else [
+                    "elapsed_ns",
+                    "artifact_bytes",
+                    RUNTIME_STEPS,
+                    VERIFIER_NS,
+                ]
                 if context.measure_verifier
                 else ["elapsed_ns", "artifact_bytes", RUNTIME_STEPS]
                 if context.measure_steps
@@ -787,6 +899,13 @@ def _validate_child_resource_selection(plan: StudyPlan) -> None:
         _fail("target echo child limits require measured verifier replay")
 
 
+def _validate_rss_selection(plan: StudyPlan) -> None:
+    if type(plan.measure_child_rss) is not bool:
+        _fail("target echo requires boolean peak RSS measurement selection")
+    if plan.measure_child_rss and not plan.limit_child_resources:
+        _fail("target echo peak RSS requires resource-limited replay")
+
+
 def _validate_study_options(plan: StudyPlan) -> None:
     _validate_input_mode(plan.input_mode)
     if type(plan.measure_steps) is not bool:
@@ -801,6 +920,7 @@ def _validate_study_options(plan: StudyPlan) -> None:
     ):
         _fail("target echo forward-skip requires pattern and measured steps")
     _validate_verifier_measurement(plan)
+    _validate_rss_selection(plan)
 
 
 def run_study(
@@ -817,7 +937,9 @@ def run_study(
     """
     _validate_plan(plan)
     _validate_study_options(plan)
-    if plan.limit_child_resources:
+    if plan.measure_child_rss:
+        target_process.require_child_rss_measurement()
+    elif plan.limit_child_resources:
         target_process.require_child_resource_controls()
     context = replace(
         _prepare_context(emitter, runner),
@@ -827,6 +949,7 @@ def run_study(
         measure_verifier=plan.measure_verifier,
         verifier_mode=plan.verifier_mode,
         limit_child_resources=plan.limit_child_resources,
+        measure_child_rss=plan.measure_child_rss,
     )
     observations = [
         _write_attempt(context, pairs, trial, algorithm=algorithm)
@@ -867,6 +990,7 @@ def main() -> int:
         "--verifier-mode", choices=VERIFIER_MODES, default=SOURCE_VERIFIER_MODE
     )
     parser.add_argument("--limit-child-resources", action="store_true")
+    parser.add_argument("--measure-child-rss", action="store_true")
     args = parser.parse_args()
     try:
         directory, document = run_study(
@@ -879,6 +1003,7 @@ def main() -> int:
                 args.measure_verifier,
                 args.verifier_mode,
                 args.limit_child_resources,
+                args.measure_child_rss,
             )
         )
         report_output.publish(

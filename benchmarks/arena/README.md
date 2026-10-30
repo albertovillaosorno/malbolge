@@ -425,6 +425,54 @@ v3 replay and v2 source-only costs, but operator-controlled study records can
 still be forged. The other study modes and their original raw CSV shapes
 remain unchanged.
 
+### Opt-in measured per-child peak RSS (version five)
+
+Add one explicit flag to the bounded v4 study to measure **actual Linux
+per-child peak resident-set size**, rather than only declare its budget:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_reference \
+  --pairs 1 4 16 64 --trials 3 --input-mode patterned \
+  --measure-steps --layout-mode forward-skip \
+  --measure-verifier --verifier-mode replay \
+  --limit-child-resources --measure-child-rss
+```
+
+This is the separately named
+`classic-patterned-forward-skip-limited-rss-v5` study, verified by the
+`classic-forward-jump-limited-rss-second-vm-v1` oracle. It adds
+`peak_rss_bytes` as a fifth cost next to elapsed time, generated graphical
+source bytes, normative guest steps and measured verifier wall time. The
+older v1–v4 studies keep their original metrics, identities and raw files.
+
+Linux `prlimit` and **GNU time** must both exist before allocating output.
+For each successful trial the producer runs the real emitter, primary VM and
+fresh verifier VM as three distinct Linux resource-limited child processes,
+with GNU time recording each stage's `ru_maxrss` in KiB. The new cost is the
+**maximum of those three independently observed per-child peaks**, converted
+to bytes.
+
+Each measurement file is short-lived and is deleted; it is not a
+retained or independently authenticated original measurement receipt. Exact
+one-line positive RSS observations are required; zero, malformed, missing,
+failed process, unbounded tool, or missing third-stage receipts cannot earn a
+verified fifth cost. Complete `arena-raw-v1` CSV, trial TOML and JSON costs
+are cross-checked by the independent target auditor, which rejects RSS in
+older or failed studies and refuses impossible values above the 1 GiB budget.
+
+An optional offline VM replay remains subject to the v4 Linux child limits
+but does **not** authenticate the reported historical peak or remeasure the
+original experiment. GNU time reports the kernel maximum for a child
+invocation; it is not the **sum** or concurrent total of the emitter and VM,
+not whole-study/process-tree maximum RSS, not a VRAM or energy meter, and not
+independent proof of process isolation.
+
+The measurement executable is
+selected from the local host and its original identity is not attested;
+binaries and reported cost remain untrusted research evidence. Side channels,
+concurrent host load, repeated samples and independent trusted resource
+monitoring remain necessary before a physical speed/memory conclusion.
+
 This is a real bounded demonstration of **forward control-flow work avoided**,
 not a loop, arbitrary branching, native CPU-instruction savings, statistically
 significant wall-time speedup, or optimization of compiled C. Measured host

@@ -417,3 +417,97 @@ def test_limited_child_virtual_address_space_cannot_exceed_kernel_ceiling() -> (
     )
     assert result.returncode == 0
     assert result.stdout == ADDRESS_LIMIT_OUTPUT
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM or not PRLIMIT_AVAILABLE,
+    reason="requires Linux with util-linux prlimit",
+)
+def test_measured_limited_child_reports_actual_peak_rss_bytes() -> None:
+    """GNU time reports positive max-RSS bytes while preserving guest output."""
+    data = bytes(range(target_process.MAX_STDIN_BYTES))
+    result, peak = target_process.invoke_with_input_limited_measured(
+        _child("import sys;sys.stdout.buffer.write(sys.stdin.buffer.read())"),
+        data,
+        timeout_seconds=LARGE_TIMEOUT_SECONDS,
+    )
+    assert result.returncode == 0
+    assert result.stdout == data
+    assert result.stderr == NO_STDOUT
+    assert 1 <= peak <= target_process.CHILD_VIRTUAL_MEMORY_BYTES
+    assert peak % target_process.KIB_BYTES == 0
+
+
+@pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="uses Linux tools")
+def test_measured_limited_child_refuses_missing_gnu_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No measurement instrument means no successful measured experiment."""
+    original = target_process.shutil.which
+
+    def no_time(name: str) -> str | None:
+        return None if name == target_process.RSS_TOOL else original(name)
+
+    monkeypatch.setattr(target_process.shutil, "which", no_time)
+    with pytest.raises(target_process.TargetProcessError, match="GNU time"):
+        target_process.require_child_rss_measurement()
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM or not PRLIMIT_AVAILABLE,
+    reason="requires Linux with util-linux prlimit",
+)
+def test_measured_limited_child_rejects_nonzero_exit_without_rss_credit() -> (
+    None
+):
+    """A valid usage stamp cannot turn failed child execution into success."""
+    with pytest.raises(target_process.TargetProcessError, match="successful"):
+        target_process.invoke_limited_measured(
+            _child("import sys;sys.exit(7)"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM or not PRLIMIT_AVAILABLE,
+    reason="requires Linux with util-linux prlimit",
+)
+def test_successful_fake_meter_without_rss_receipt_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A zero-exit fake recorder cannot certify a missing resource sample."""
+    fake = tmp_path / "time"
+    fake.write_text("#!/bin/sh\nexit 0\n", encoding="ascii")
+    fake.chmod(0o700)
+    original = target_process.shutil.which
+
+    def redirected(name: str) -> str | None:
+        return str(fake) if name == target_process.RSS_TOOL else original(name)
+
+    monkeypatch.setattr(target_process.shutil, "which", redirected)
+    with pytest.raises(target_process.TargetProcessError, match="RSS"):
+        target_process.invoke_limited_measured(
+            _child("print('never')"), timeout_seconds=LARGE_TIMEOUT_SECONDS
+        )
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM
+    or not PRLIMIT_AVAILABLE
+    or shutil.which(target_process.RSS_TOOL) is None,
+    reason="requires Linux prlimit and GNU time",
+)
+def test_measured_child_rss_increases_with_real_touched_private_pages() -> None:
+    """GNU time captures physical demand pages, not a fixed fabricated cost."""
+    _, baseline = target_process.invoke_limited_measured(
+        _child("pass"), timeout_seconds=LARGE_TIMEOUT_SECONDS
+    )
+    touch = (
+        "pages=bytearray(32*1024*1024); "
+        "[(pages.__setitem__(n,1)) for n in range(0,len(pages),4096)]"
+    )
+    _, observed = target_process.invoke_limited_measured(
+        _child(touch), timeout_seconds=LARGE_TIMEOUT_SECONDS
+    )
+    assert observed > baseline + 16 * 1024 * 1024

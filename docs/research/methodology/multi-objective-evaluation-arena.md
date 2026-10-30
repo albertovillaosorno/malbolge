@@ -352,6 +352,34 @@ study-wide CPU/RAM caps, or prove that any historical producer actually ran
 under the claimed policy. This remains a bounded classic echo study, not
 general C compilation, full guest-program proof or performance attestation.
 
+A distinct v5 target protocol now adds an actual *measured* fifth
+Pareto cost. Only the versioned `--measure-child-rss` opt-in, combined with
+all physically limited v4 replay flags, creates the
+`classic-patterned-forward-skip-limited-rss-v5` study and its separate
+`classic-forward-jump-limited-rss-second-vm-v1` oracle. Linux `prlimit` and
+GNU time are mandatory before any study output is allocated. Each emitted
+candidate is measured during the source-emitter process, primary normative
+VM run and measured second verifier VM run; GNU time reports Linux kernel
+`ru_maxrss` in KiB, with explicit exact conversion to `peak_rss_bytes`.
+
+The observed cost is the maximum of those **three per-child** peaks, not
+the aggregate resident memory of a compiler session or the sum across
+concurrent processes. Every accepted candidate must have three complete,
+positive, bounded measurements; failed stages or missing/malformed reports
+are tool failures with no successful fifth cost.
+
+The independent post-run
+source auditor checks v5 study/oracle identity, exact five-objective
+policy and the report's 1 GiB ceiling/KiB granularity. Existing arena
+raw CSV, run TOML and JSON matching checks bind the claimed metric, while
+optional future VM replay retains the v4 per-child physical caps.
+
+No
+historic GNU time receipt is retained or cryptographically authenticated;
+read-only audit **cannot** reconstruct or trust the original measured RSS.
+No resident-memory cgroup total, process-tree aggregate, system energy,
+VRAM, deterministic host timing or general C lowering is established.
+
 The earlier linear study remains a falsifiable source-size hypothesis (the
 nop-padded source should use one extra graphical code byte per pair), not a
 general compiler-size or performance result. Host wall times include compiler

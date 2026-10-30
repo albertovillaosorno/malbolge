@@ -208,6 +208,25 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   a process-tree/cgroup aggregate quota, past-execution attestation or a
   solution for arbitrary C translation; CPU/RAM resource metrics are still
   pending. The four original Pareto dimensions remain honest measurements.
+- An explicitly opt-in v5 peak-RSS measured classic target study now
+  requires Linux `prlimit` and GNU time before creating any output, then
+  observes actual kernel `ru_maxrss` for the bounded real emitter, first
+  normative guest VM and independently checked second VM, separately.
+  The maximum of the three positive per-child observations is recorded
+  in bytes as a fifth Pareto cost `peak_rss_bytes` beside actual
+  elapsed/source-size/guest-step/verifier costs. Missing or malformed
+  receipts and failed processes do not earn a verified resource cost.
+  A separate `classic-patterned-forward-skip-limited-rss-v5` study ID
+  and `classic-forward-jump-limited-rss-second-vm-v1` verifier bind the
+  fixed protocol; v1-v4 retain their unchanged objective lists.
+  Independent post-run source and linked raw/run auditors reject absent
+  or foreign RSS metrics, fractional KiB, impossible budget overshoots,
+  and relabeled v4 outcomes. The optional later replay still runs under
+  per-child Linux limits. These are actual per-child resident-set
+  observations, **not** a whole-study or process-tree RSS peak, an
+  authenticated historic measurement, a system energy/VRAM sample, or
+  an implementation of general Malbolge compilation. Aggregate memory
+  containment and independently attested sampling remain outstanding.
 - A separate read-only classic target audit now reopens local pilot
 - A separate read-only classic target audit now reopens local pilot
   studies, binds fixed producer research/manifest/case claims, complete

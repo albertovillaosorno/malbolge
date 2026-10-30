@@ -43,6 +43,7 @@ import selectors
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+import tempfile
 from time import monotonic
 from typing import Never
 
@@ -59,6 +60,9 @@ LIMITER_NAME = "prlimit"
 CHILD_VIRTUAL_MEMORY_BYTES = 1024 * 1024 * 1024
 CHILD_CPU_SECONDS = 8
 CHILD_OUTPUT_FILE_BYTES = 8 * 1024 * 1024
+RSS_TOOL = "time"
+RSS_REPORT_LIMIT = 32
+KIB_BYTES = 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,4 +327,108 @@ def invoke_with_input_limited(
             enforce_child_limits=True,
         ),
         input_bytes=input_bytes,
+    )
+
+
+def require_child_rss_measurement() -> None:
+    """Require Linux prlimit and GNU time before measured study creation."""
+    require_child_resource_controls()
+    path = shutil.which(RSS_TOOL)
+    if path is None:
+        _fail("bounded target peak RSS requires GNU time")
+
+
+def _rss_report(path: Path) -> int:
+    from benchmarks.arena import evidence  # ruff: ignore[import-outside-top-level]
+
+    try:
+        raw = evidence.read_bounded_regular(
+            path.parent, path.name, limit=RSS_REPORT_LIMIT
+        )
+    except (OSError, evidence.EvidenceError) as error:
+        message = "bounded target GNU time RSS report missing or unsafe"
+        raise TargetProcessError(message) from error
+    if (
+        not 1 <= len(raw) <= RSS_REPORT_LIMIT
+        or not raw.endswith(b"\n")
+        or not raw[:-1].isdigit()
+    ):
+        _fail("bounded target GNU time RSS report missing or malformed")
+    kib = int(raw[:-1])
+    if kib <= 0 or kib > CHILD_VIRTUAL_MEMORY_BYTES // KIB_BYTES:
+        _fail("bounded target GNU time RSS observation outside child limits")
+    return kib * KIB_BYTES
+
+
+def _measured_limited(
+    command: list[str],
+    *,
+    input_bytes: bytes | None,
+    timeout_seconds: float,
+) -> tuple[sp.CompletedProcess[bytes], int]:
+    require_child_rss_measurement()
+    time_executable = shutil.which(RSS_TOOL)
+    if time_executable is None:
+        _fail("bounded target peak RSS requires GNU time")
+    with tempfile.TemporaryDirectory(
+        dir=_ROOT / ".temp", prefix="arena-child-rss-"
+    ) as folder:
+        report = Path(folder) / "rss.txt"
+        result = _run(
+            [
+                time_executable,
+                "--format=%M",
+                "--output",
+                str(report),
+                "--",
+                *_limited_command(command, enforce=True),
+            ],
+            limits=_ProcessLimits(
+                timeout_seconds,
+                DEFAULT_STDOUT_LIMIT,
+                DEFAULT_STDERR_LIMIT,
+            ),
+            input_bytes=input_bytes,
+        )
+        if result.returncode != 0:
+            _fail("bounded target GNU time requires successful child exit")
+        return result, _rss_report(report)
+
+
+def invoke_limited_measured(
+    command: list[str],
+    *,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+) -> tuple[sp.CompletedProcess[bytes], int]:
+    """Run a physically limited child and report its GNU-time peak RSS.
+
+    Returns:
+        Exact guest streams/status and observed per-child peak RSS bytes.
+
+    """
+    return _measured_limited(
+        command,
+        input_bytes=None,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def invoke_with_input_limited_measured(
+    command: list[str],
+    input_bytes: bytes,
+    *,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+) -> tuple[sp.CompletedProcess[bytes], int]:
+    """Run one limited binary-input child and obtain its peak RSS bytes.
+
+    Returns:
+        Exact guest streams/status and observed per-child peak RSS bytes.
+
+    """
+    if type(input_bytes) is not bytes or len(input_bytes) > MAX_STDIN_BYTES:
+        _fail("bounded target input requires up to 256 exact bytes")
+    return _measured_limited(
+        command,
+        input_bytes=input_bytes,
+        timeout_seconds=timeout_seconds,
     )
