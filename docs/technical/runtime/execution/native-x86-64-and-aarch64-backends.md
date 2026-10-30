@@ -1451,6 +1451,14 @@ report from `VirtualProtect`, although the OS-level transition succeeded.
 POSIX and simulated Windows fault-injection harnesses exercise these negative
 boundaries while leaving already reported RX-to-sync transitions unchanged.
 
+An allocation remains cleanup-owned but not caller-authorized until its own
+success report has been constructed. Neither a forged raw code-copy request
+nor an RX-protection request can promote a mapping after an unreported
+allocation, even with the exact mapping ID, address, and length. Raw release
+or terminal worker teardown can still reclaim the retained reservation.
+Both POSIX and simulated Windows injection tests cover this boundary with
+reported-versus-physical allocation state kept distinct.
+
 The host-real POSIX regression first dispatches one valid RX machine-code stub
 before synchronization and observes that rejection with an unpoisoned child.
 It then synchronizes the same mapping, invokes that same stub successfully,

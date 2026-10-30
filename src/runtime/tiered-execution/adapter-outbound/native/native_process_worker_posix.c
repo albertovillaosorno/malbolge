@@ -64,6 +64,7 @@ struct mb_worker_mapping {
     mb_u8 *reservation;
     size_t reservation_len;
     enum mb_native_process_memory_permission permission;
+    int allocated_reported;
     int protected_reported;
     int synchronized;
 };
@@ -314,6 +315,7 @@ static int mb_worker_handle_allocate(
         .reservation = reservation,
         .reservation_len = reservation_len,
         .permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE,
+        .allocated_reported = 0,
         .protected_reported = 0,
         .synchronized = 0,
     };
@@ -331,6 +333,8 @@ static int mb_worker_handle_allocate(
     bytes[34] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
     *response = bytes;
     *response_len = MB_NATIVE_PROCESS_MEMORY_MAPPING_RESPONSE_BYTES;
+    // A live reservation is not trusted until its allocation is reported.
+    worker->mappings[worker->count - 1U].allocated_reported = 1;
     return 1;
 }
 
@@ -373,6 +377,7 @@ static int mb_worker_handle_copy(
     size_t code_len = 0U;
     size_t expected_len = 0U;
     if (!mb_worker_request_mapping(worker, request, &mapping)
+        || !mapping->allocated_reported
         || mapping->permission != MB_NATIVE_PROCESS_MEMORY_READ_WRITE
         || request[33] != MB_NATIVE_PROCESS_MEMORY_READ_WRITE
         || !mb_worker_size_from_u64(
@@ -433,6 +438,7 @@ static int mb_worker_handle_protect(
     struct mb_worker_mapping *mapping = NULL;
     if (request_len != MB_NATIVE_PROCESS_MEMORY_PROTECT_REQUEST_BYTES
         || !mb_worker_request_mapping(worker, request, &mapping)
+        || !mapping->allocated_reported
         || mapping->permission != MB_NATIVE_PROCESS_MEMORY_READ_WRITE
         || request[33] != MB_NATIVE_PROCESS_MEMORY_READ_WRITE) {
         return mb_worker_memory_failure(

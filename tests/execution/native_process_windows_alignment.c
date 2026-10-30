@@ -1764,6 +1764,41 @@ static int check_unreportable_mapping_cleanup(
             != MB_NATIVE_PROCESS_MEMORY_READ_WRITE) {
         return 1;
     }
+    // The unreported reservation is still owned but does not confer raw
+    // copy or protection authority to a caller guessing its ID and base.
+    mb_u8 forged[42] = {0};
+    memcpy(forged, MB_NATIVE_PROCESS_MEMORY_MAGIC, 8U);
+    forged[8] = MB_NATIVE_PROCESS_MEMORY_COPY;
+    mb_native_process_write_u64(&forged[9], worker->mappings[0].id);
+    mb_native_process_write_u64(
+        &forged[17], (mb_u64)(mb_uintptr)worker->mappings[0].base);
+    mb_native_process_write_u64(&forged[25], 64U);
+    forged[33] = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
+    if (!mb_worker_handle_copy(worker, forged, 42U,
+            &response, &len)
+        || response == NULL
+        || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE) {
+        mb_worker_free(response);
+        mb_worker_release_all(worker);
+        return 7;
+    }
+    mb_worker_free(response);
+    response = NULL;
+    len = 0U;
+    forged[8] = MB_NATIVE_PROCESS_MEMORY_PROTECT;
+    if (!mb_worker_handle_protect(worker, forged, 34U,
+            &response, &len)
+        || response == NULL
+        || len != MB_NATIVE_PROCESS_MEMORY_FAILURE_RESPONSE_BYTES
+        || response[9] != MB_NATIVE_PROCESS_MEMORY_FAILURE
+        || worker->mappings[0].permission
+            != MB_NATIVE_PROCESS_MEMORY_READ_WRITE) {
+        mb_worker_free(response);
+        mb_worker_release_all(worker);
+        return 8;
+    }
+    mb_worker_free(response);
     mb_worker_release_all(worker);
     if (release_count != releases_before + 1U
         || worker->count != 0U) {

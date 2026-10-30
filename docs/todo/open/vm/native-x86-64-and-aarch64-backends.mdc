@@ -960,6 +960,13 @@ A distinct single-resident lease cache
   allocation failures and Windows contradictory old-protection reports prove
   no cache operation or synchronization grant occurs on that path.
 
+  Allocation reports are now a separate admission boundary in both workers:
+  an allocated but unreported mapping remains tracked for cleanup but cannot
+  be copied or transitioned RX with a guessed raw mapping ID and base. The
+  POSIX exhausted-ID and simulated Win32 unreportable-allocation fixtures
+  both reject forged zero-length copy and protection commands, then release
+  the retained reservation without changing normal reported behavior.
+
   Both process workers also bind native entry offsets to the latest reported
   code-copy byte length rather than the allocation size. A failed or empty
   copy never grants entry, and a shorter replacement cannot reuse the prior
