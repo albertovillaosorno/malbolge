@@ -2478,14 +2478,80 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
                 raise
 
 
+def _admit_collided_immutable_inode(destination: Path) -> os.stat_result:
+    """Reject a pre-existing generation with an externally writable alias.
+
+    Returns:
+        Stat metadata for the single-link regular collision inode.
+
+    """
+    _reject_path_redirect(destination, "immutable progress payload")
+    observed = destination.stat(follow_symlinks=False)
+    if not stat.S_ISREG(observed.st_mode):
+        _fail("immutable progress payload must be a regular file")
+    if observed.st_nlink != 1:
+        _fail("immutable progress payload has an external hard link")
+    return observed
+
+
+_RETAINED_STAGING_LINK_COUNT = 2
+
+
+def _find_retained_immutable_stage(
+    destination: Path, identity: tuple[int, int]
+) -> Path | None:
+    """Find a sole matching same-inode staging-pattern alias.
+
+    Returns:
+        The only matching same-inode staging entry, when it exists.
+
+    """
+    matches: list[Path] = []
+    for candidate in destination.parent.glob(f".{destination.name}.*.tmp"):
+        try:
+            observed = candidate.stat(follow_symlinks=False)
+        except OSError, ValueError, RuntimeError:
+            observed = None
+        if (
+            observed is not None
+            and stat.S_ISREG(observed.st_mode)
+            and (observed.st_dev, observed.st_ino) == identity
+        ):
+            matches.append(candidate)
+    return matches[0] if len(matches) == 1 else None
+
+
+def _repair_retained_immutable_stage(destination: Path) -> None:
+    """Remove a single staging-pattern alias before collision admission."""
+    observed = destination.stat(follow_symlinks=False)
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or observed.st_nlink != _RETAINED_STAGING_LINK_COUNT
+    ):
+        return
+    alias = _find_retained_immutable_stage(
+        destination, (observed.st_dev, observed.st_ino)
+    )
+    if alias is None:
+        return
+    _reject_path_redirect(alias, "immutable progress temporary")
+    alias.unlink()
+
+
 def _admit_existing_immutable(destination: Path, payload: bytes) -> None:
     try:
+        _repair_retained_immutable_stage(destination)
+        initial = _admit_collided_immutable_inode(destination)
         existing = _read_regular_bytes(
-            destination, "immutable progress payload",
+            destination,
+            "immutable progress payload",
             max_bytes=len(payload),
         )
+        final = _admit_collided_immutable_inode(destination)
     except OSError as error:
         _fail(f"immutable progress payload publication failed: {error}")
+    if (initial.st_dev, initial.st_ino) != (final.st_dev, final.st_ino):
+        _fail("immutable progress payload collision inode changed")
     if existing != payload:
         _fail(f"immutable progress payload already differs: {destination}")
 

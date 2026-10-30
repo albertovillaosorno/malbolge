@@ -142,7 +142,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   foreign hard-link aliases of the staging inode before and after hashing and
   again after reader closure, with POSIX fail-before-publication tests covering
   alias injection after fsync, during content read, and after verification
-  reader closure on both pointer and checkpoint paths,
+  reader closure on both pointer and checkpoint paths; byte-identical
+  immutable generation collisions now also require single-link regular-file
+  identity before and after the bounded collision read, rejecting pre-existing
+  and newly inserted hard-link aliases and same-byte inode swaps without
+  pointer publication; a sole same-inode, staging-pattern alias left by failed
+  post-commit cleanup is unlinked and re-admitted before durable generation
+  reuse so retry after cleanup failure remains recoverable,
   stable read with read-before-close
   failure precedence plus writer-lock lifecycle,
   pre-publication filesystem failures, exact committed-path evidence for

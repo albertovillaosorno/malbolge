@@ -813,9 +813,20 @@ these selectors once a product C-to-Malbolge pipeline exists.
   publication before the canonical sidecar pointer is replaced. Windows uses a
   same-directory no-replace rename instead of requiring hard-link support;
   POSIX uses a same-filesystem hard link. A collided destination is re-read to
-  prove byte identity; if that destination disappears or becomes unreadable
-  during the collision check, publication fails with the stable sidecar error
-  rather than leaking a raw filesystem exception. Canonical sidecar,
+  prove byte identity; collision admission also requires a regular single-link
+  inode before and after this read, with stable device/inode identity. This
+  rejects pre-existing or newly linked foreign aliases even when bytes match,
+  so byte-identical collision reuse cannot certify externally mutable state.
+  One narrow recovery case preserves post-commit cleanup failure semantics: if
+  the collision has exactly two links, and the extra link is the sole
+  same-inode sibling matching the writer's temporary naming convention, the
+  retry unlinks that leftover temporary entry, then rechecks single-link
+  identity before reusing the byte-identical durable checkpoint. A foreign
+  alias without that safe cleanup path remains rejected.
+  If the destination disappears or becomes unreadable during the collision
+  check, publication fails with the stable sidecar error rather than leaking
+  a raw filesystem exception. These checks remain subject to post-admission
+  filesystem races. Canonical sidecar,
   writer-lock, checkpoint, and partial-generation paths reject symlink or
   junction components
   from the leaf through the ancestor chain; a byte-identical redirected target

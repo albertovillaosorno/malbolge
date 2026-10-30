@@ -5400,6 +5400,7 @@ def test_checkpoint_generation_reports_committed_temp_cleanup_failure(
     assert (
         progress.write_checkpoint_generation(sidecar, checkpoint) == destination
     )
+    assert not tuple(tmp_path.glob(f".{checkpoint_path.name}.*.tmp"))
 
 
 def test_write_atomic_skips_cleanup_after_replace(
@@ -5530,6 +5531,98 @@ def test_immutable_collision_bounds_read_to_proposed_payload(
         _ = progress.write_checkpoint_generation(sidecar, checkpoint)
     assert collision.stat().st_size == 8 * 1024 * 1024
     assert not Path(sidecar.progress_path).exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link collision requires POSIX filesystem semantics",
+)
+def test_immutable_collision_rejects_foreign_hardlink_alias(
+    tmp_path: Path,
+) -> None:
+    """An aliased immutable destination is unsafe even with matching bytes."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    assert sidecar.checkpoint_path is not None
+    destination = Path(sidecar.checkpoint_path)
+    alias = tmp_path / "foreign-existing-generation"
+    _ = destination.write_bytes(checkpoint)
+    os.link(destination, alias)
+    assert destination.stat().st_nlink > 1
+
+    with pytest.raises(ERROR, match=r"immutable.*hard link"):
+        _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert destination.read_bytes() == checkpoint
+    assert alias.read_bytes() == checkpoint
+    assert not Path(sidecar.progress_path).exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link collision requires POSIX filesystem semantics",
+)
+def test_immutable_collision_rejects_new_alias_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Adding a hard link during collision comparison fails final admission."""
+    destination = tmp_path / "existing-immutable-generation"
+    alias = tmp_path / "foreign-alias-during-collision"
+    payload = b"published-generation"
+    _ = destination.write_bytes(payload)
+    original_reader = cast(
+        "Callable[..., bytes]", vars(progress)["_read_regular_bytes"]
+    )
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+
+    def alias_after_read(
+        path: Path, context: str, *, max_bytes: int | None = None
+    ) -> bytes:
+        result = original_reader(path, context, max_bytes=max_bytes)
+        os.link(path, alias)
+        return result
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_read_regular_bytes", alias_after_read)
+        with pytest.raises(ERROR, match=r"immutable.*hard link"):
+            _ = writer(destination, payload, platform=os.name)
+    assert alias.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_immutable_collision_rejects_same_bytes_inode_swap_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A swapped collision inode cannot pass merely by matching its bytes."""
+    destination = tmp_path / "existing-immutable-generation"
+    replacement = tmp_path / "replacement-immutable-generation"
+    payload = b"published-generation"
+    _ = destination.write_bytes(payload)
+    _ = replacement.write_bytes(payload)
+    original_inode = destination.stat().st_ino
+    original_reader = cast(
+        "Callable[..., bytes]", vars(progress)["_read_regular_bytes"]
+    )
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+
+    def swap_after_read(
+        path: Path, context: str, *, max_bytes: int | None = None
+    ) -> bytes:
+        result = original_reader(path, context, max_bytes=max_bytes)
+        _ = replacement.replace(destination)
+        return result
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_read_regular_bytes", swap_after_read)
+        with pytest.raises(ERROR, match="collision inode changed"):
+            _ = writer(destination, payload, platform=os.name)
+    assert destination.read_bytes() == payload
+    assert destination.stat().st_ino != original_inode
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
 
 
 def test_immutable_collision_rejects_fifo_swapped_during_open(
