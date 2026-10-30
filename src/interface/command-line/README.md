@@ -43,3 +43,20 @@ printf '\000A' | malbolge program.malbolge --input-stdin
 The CLI does not authenticate the origin of supplied bytes or enforce a whole
 process resource budget. It does not change interpreter semantics, restore
 program state between runs, or claim that an arbitrary program reads stdin.
+
+## Opt-in guest instruction count
+
+`malbolge program.malbolge --report-steps` writes one machine-readable
+`malbolge-steps-v1:<decimal>` line to **stderr** after successful VM
+termination. The count is the sum of the normative VM `RunOutcome` committed
+instruction counts, including the terminating instruction and all completed
+execution chunks; it is not inferred from source length. It works with classic
+raw programs and selected-profile capsules (including the profile batch
+backend). `--input-stdin` and `--report-steps` can appear in either order and
+at most once each; no option silently enables the other. Without the report
+flag, stderr remains unchanged. Guest stdout remains exactly the guest bytes.
+
+This count is observable execution evidence on the selected local VM, not a
+proof of timing precision, host CPU instructions, physical power or a memory
+budget. For long-running or externally interrupted programs, no successful
+terminal count is issued. A failing stderr write reports a nonzero exit.

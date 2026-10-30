@@ -73,6 +73,8 @@ const C_RUN_PREFIX: &str = "malbolge-c-run";
 const LLVM_VERSION: &str = "22.1.8";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 const INPUT_STDIN_ARGUMENT: &str = "--input-stdin";
+const REPORT_STEPS_ARGUMENT: &str = "--report-steps";
+const STEPS_REPORT_PREFIX: &str = "malbolge-steps-v1:";
 const MAX_GUEST_STDIN_BYTES: u64 = 256;
 const PROFILE_ADAPTIVE_WIDTH_ENV: &str = "MALBOLGE_PROFILE_ADAPTIVE_WIDTH";
 const PROFILE_WORKER_ARG_COUNT_ENV: &str =
@@ -87,6 +89,12 @@ const ZIG_VERSION: &str = "0.16.0";
 enum CDriver {
     Cc(OsString),
     Zig(OsString),
+}
+
+#[derive(Clone, Copy, Default)]
+struct GuestOptions {
+    input_stdin: bool,
+    report_steps: bool,
 }
 
 type ConfiguredProfileBackend =
@@ -361,14 +369,14 @@ fn dispatch(path: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
         })?;
     match extension.as_str() {
         C_EXTENSION => run_c(path, arguments),
-        MALBOLGE_EXTENSION => match arguments {
-            [] => run_malbolge(path, Vec::new()),
-            [single] if single == OsStr::new(INPUT_STDIN_ARGUMENT) => {
-                run_malbolge(path, read_guest_stdin()?)
-            },
-            _ => Err(String::from(
-                "a .malbolge path accepts only the optional --input-stdin flag",
-            )),
+        MALBOLGE_EXTENSION => {
+            let options = guest_options(arguments)?;
+            let input = if options.input_stdin {
+                read_guest_stdin()?
+            } else {
+                Vec::new()
+            };
+            run_malbolge(path, input, options.report_steps)
         },
         _ => Err(format!(
             concat!(
@@ -673,6 +681,45 @@ fn run_c(source: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
     Ok(exit_code(status))
 }
 
+fn guest_options(arguments: &[OsString]) -> Result<GuestOptions, String> {
+    let mut options = GuestOptions::default();
+    for argument in arguments {
+        if argument == OsStr::new(INPUT_STDIN_ARGUMENT) && !options.input_stdin
+        {
+            options.input_stdin = true;
+        } else if argument == OsStr::new(REPORT_STEPS_ARGUMENT)
+            && !options.report_steps
+        {
+            options.report_steps = true;
+        } else {
+            return Err(String::from(concat!(
+                "a .malbolge path accepts --input-stdin and --report-steps ",
+                "at most once each",
+            )));
+        }
+    }
+    Ok(options)
+}
+
+fn add_guest_steps(total: &mut u64, outcome: RunOutcome) -> Result<(), String> {
+    let steps = match outcome {
+        RunOutcome::BudgetExhausted { steps }
+        | RunOutcome::Terminated { steps, .. } => steps,
+    };
+    let value = u64::try_from(steps).map_err(|error| {
+        format!("guest step count cannot fit in u64: {error}")
+    })?;
+    *total = total
+        .checked_add(value)
+        .ok_or("guest step count exceeded u64 capacity")?;
+    Ok(())
+}
+
+fn write_guest_steps(steps: u64) -> Result<(), String> {
+    writeln!(io::stderr().lock(), "{STEPS_REPORT_PREFIX}{steps}")
+        .map_err(|error| format!("failed to report guest steps: {error}"))
+}
+
 fn read_guest_stdin() -> Result<Vec<u8>, String> {
     // The explicit byte-input mode is bounded before VM loading. This does not
     // reinterpret input as UTF-8, skip NUL, or make EOF indistinguishable from
@@ -691,7 +738,7 @@ fn read_guest_stdin() -> Result<Vec<u8>, String> {
     Ok(input)
 }
 
-fn run_classic(source: &[u8], input: Vec<u8>) -> Result<(), String> {
+fn run_classic(source: &[u8], input: Vec<u8>) -> Result<u64, String> {
     let mut machine = ExecutionMachine::from_source(
         source,
         input,
@@ -702,29 +749,36 @@ fn run_classic(source: &[u8], input: Vec<u8>) -> Result<(), String> {
     let mut outcome = machine.run(RUN_CHUNK_STEPS).map_err(|error| {
         format!("classic Malbolge execution failed: {error}")
     })?;
+    let mut steps = 0;
+    add_guest_steps(&mut steps, outcome)?;
     flush_new_output(machine.output(), &mut emitted)?;
     while matches!(outcome, RunOutcome::BudgetExhausted { .. }) {
         outcome = machine.run(RUN_CHUNK_STEPS).map_err(|error| {
             format!("classic Malbolge execution failed: {error}")
         })?;
+        add_guest_steps(&mut steps, outcome)?;
         flush_new_output(machine.output(), &mut emitted)?;
     }
-    Ok(())
+    Ok(steps)
 }
 
 fn run_malbolge(
     source_path: &Path,
     input: Vec<u8>,
+    report_steps: bool,
 ) -> Result<ExitCode, String> {
     let source = fs::read(source_path)
         .map_err(|error| format!("failed to read Malbolge source: {error}"))?;
-    match parse_capsule(&source)
+    let steps = match parse_capsule(&source)
         .map_err(|error| format!("Malbolge capsule parsing failed: {error}"))?
     {
         Some(capsule) => {
             run_profile(capsule.profile(), capsule.payload(), input)?
         },
         None => run_classic(&source, input)?,
+    };
+    if report_steps {
+        write_guest_steps(steps)?;
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -804,7 +858,7 @@ fn run_profile(
     profile: &'static malbolge::ProfileDescriptor,
     source: &[u8],
     input: Vec<u8>,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let adaptive_width = configured_adaptive_profile_width(profile)?;
     let machine = if adaptive_width {
         ProfileMachine::from_adaptive_source(profile, source, input)
@@ -819,26 +873,30 @@ fn run_profile(
     }
 }
 
-fn run_profile_direct(mut machine: ProfileMachine) -> Result<(), String> {
+fn run_profile_direct(mut machine: ProfileMachine) -> Result<u64, String> {
     let mut emitted = 0usize;
     let mut outcome = machine.run(RUN_CHUNK_STEPS).map_err(|error| {
         format!("profile Malbolge execution failed: {error}")
     })?;
+    let mut steps = 0;
+    add_guest_steps(&mut steps, outcome)?;
     flush_new_output(machine.output(), &mut emitted)?;
     while matches!(outcome, RunOutcome::BudgetExhausted { .. }) {
         outcome = machine.run(RUN_CHUNK_STEPS).map_err(|error| {
             format!("profile Malbolge execution failed: {error}")
         })?;
+        add_guest_steps(&mut steps, outcome)?;
         flush_new_output(machine.output(), &mut emitted)?;
     }
-    Ok(())
+    Ok(steps)
 }
 
 fn run_profile_with_backend(
     mut machine: ProfileMachine,
     backend: &mut dyn malbolge::ProfileBatchExecutionBackend,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let mut emitted = 0usize;
+    let mut steps = 0;
     loop {
         let request =
             ProfileBatchRequest::from_machine(machine, RUN_CHUNK_STEPS);
@@ -856,9 +914,10 @@ fn run_profile_with_backend(
         machine = result.into_machine().map_err(|error| {
             format!("profile Malbolge execution failed: {error}")
         })?;
+        add_guest_steps(&mut steps, outcome)?;
         flush_new_output(machine.output(), &mut emitted)?;
         if !matches!(outcome, RunOutcome::BudgetExhausted { .. }) {
-            return Ok(());
+            return Ok(steps);
         }
     }
 }
@@ -874,7 +933,8 @@ fn write_diagnostic(message: &str) {
 
 fn write_usage() -> Result<(), String> {
     let usage = concat!(
-        "Usage: malbolge <program.malbolge> [--input-stdin]\n",
+        "Usage: malbolge <program.malbolge> ",
+        "[--input-stdin] [--report-steps]\n",
         "       malbolge <program.c> [program args...]\n",
         "       malbolge --checkpoint-info ",
         "<program.malbolge.progress.json>\n",
@@ -886,6 +946,8 @@ fn write_usage() -> Result<(), String> {
         "  .malbolge  Execute the Malbolge program in the normative VM.\n",
         "  --input-stdin  Read at most 256 guest input bytes from stdin ",
         "until EOF (default: empty).\n",
+        "  --report-steps  Emit completed guest instruction count ",
+        "to stderr (opt-in).\n",
         "  .c         Debug-run C directly on the host via a ",
         "temporary binary.\n",
         "  --checkpoint-info  Validate and inspect durable checkpoint ",

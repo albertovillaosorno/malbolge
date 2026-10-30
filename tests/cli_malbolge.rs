@@ -45,6 +45,8 @@ const EXPECTED_EOF_OUTPUT: &[u8] = &[0xa8];
 const MAX_STDIN_BYTES: usize = 256;
 const OVERSIZED_STDIN_BYTES: usize = MAX_STDIN_BYTES + 1;
 const ARBITRARY_INPUT_BYTE: &[u8] = &[0xff];
+const EOF_BYTE: u8 = 0xa8;
+const FOUR: usize = 4;
 
 struct TemporarySource {
     path: PathBuf,
@@ -139,6 +141,58 @@ fn explicit_empty_stdin_retains_historical_eof() -> Result<(), String> {
 }
 
 #[test]
+fn opt_in_guest_step_receipt_counts_classic_executed_instructions()
+-> Result<(), String> {
+    let source = TemporarySource::echo_pairs(4)?;
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&source.path)
+        .arg("--report-steps")
+        .output()
+        .map_err(|error| format!("execute classic step receipt: {error}"))?;
+    if !output.status.success()
+        || output.stdout != vec![EOF_BYTE; FOUR]
+        || output.stderr != b"malbolge-steps-v1:9\n"
+    {
+        return Err(format!("classic run step receipt mismatch: {output:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn binary_guest_steps_include_final_eof_and_are_order_independent()
+-> Result<(), String> {
+    let source = TemporarySource::echo_pairs(3)?;
+    for flags in [["--input-stdin", "--report-steps"], [
+        "--report-steps",
+        "--input-stdin",
+    ]] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(&source.path)
+            .args(flags)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("launch binary step receipt: {error}"))?;
+        let mut stdin = child.stdin.take().ok_or("missing CLI stdin pipe")?;
+        stdin
+            .write_all(&[0x00, 0xff])
+            .map_err(|error| format!("send guest binary bytes: {error}"))?;
+        drop(stdin);
+        let output = child.wait_with_output().map_err(|error| {
+            format!("read binary guest step receipt: {error}")
+        })?;
+        if !output.status.success()
+            || output.stdout != [0x00, 0xff, EOF_BYTE]
+            || output.stderr != b"malbolge-steps-v1:7\n"
+        {
+            return Err(format!("binary step receipt mismatch: {output:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn oversized_guest_stdin_fails_without_guest_execution() -> Result<(), String> {
     let oversized = vec![b'Z'; OVERSIZED_STDIN_BYTES];
     let output = run_with_stdin(&roundtrip_fixture(), &oversized)?;
@@ -188,7 +242,7 @@ fn ambiguous_guest_input_flags_fail_before_vm_execution() -> Result<(), String>
     if output.status.success()
         || !output.stdout.is_empty()
         || !String::from_utf8_lossy(&output.stderr)
-            .contains("only the optional --input-stdin flag")
+            .contains("accepts --input-stdin and --report-steps")
     {
         return Err(format!("duplicate stdin flag admitted: {output:?}"));
     }

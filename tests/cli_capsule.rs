@@ -344,6 +344,34 @@ fn current_capsule_consumes_explicit_binary_input_before_eof()
 }
 
 #[test]
+fn profiled_capsule_opt_in_reports_actual_guest_step_count()
+-> Result<(), String> {
+    let source = source_backed_jump_code_io_chain()?;
+    let encoded = build_capsule(current_profile(), &source)
+        .map_err(|error| format!("build measured capsule: {error}"))?;
+    let capsule = TemporaryCapsule::from_bytes("current-steps", &encoded)?;
+    let output = clean_cli_command()
+        .arg(&capsule.path)
+        .arg("--report-steps")
+        .output()
+        .map_err(|error| format!("run measured capsule: {error}"))?;
+    let report = String::from_utf8(output.stderr.clone())
+        .map_err(|error| format!("non-UTF-8 steps report: {error}"))?;
+    let steps = report
+        .strip_prefix("malbolge-steps-v1:")
+        .and_then(|text| text.trim_end_matches('\n').parse::<u64>().ok())
+        .ok_or("missing current-profile instruction receipt")?;
+    if !output.status.success()
+        || output.stdout != [EXPECTED_EOF_OUTPUT, EXPECTED_EOF_OUTPUT].concat()
+        || steps == 0
+        || !report.ends_with('\n')
+    {
+        return Err(format!("profiled step count mismatch: {output:?}"));
+    }
+    Ok(())
+}
+
+#[test]
 fn historical_capsule_consumes_exact_high_bit_byte() -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let source = read(root.join(
