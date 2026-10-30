@@ -614,6 +614,80 @@ def test_bounded_reader_returns_original_bytes_for_ordinary_file(
     )
 
 
+@pytest.mark.parametrize(
+    "fault",
+    [OSError, ValueError, RuntimeError, TypeError, AttributeError],
+)
+def test_evidence_stream_constructor_failure_closes_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Failed ownership transfer leaves no raw descriptor or untyped error."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    opened: list[int] = []
+    actual_open = evidence.os.open
+
+    def capture_open(target: Path, flags: int) -> int:
+        descriptor = actual_open(target, flags)
+        opened.append(descriptor)
+        return descriptor
+
+    def reject_stream(*args: object, **kwargs: object) -> IO[bytes]:
+        del args, kwargs
+        raise fault("injected evidence stream constructor failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(evidence.os, "open", capture_open)
+        context.setattr(evidence.os, "fdopen", reject_stream)
+        with pytest.raises(
+            evidence.EvidenceError, match="stream could not open"
+        ) as failure:
+            evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = evidence.os.fstat(opened[0])
+    assert type(failure.value.__cause__) is fault
+
+
+def test_evidence_stream_constructor_cleanup_cannot_mask_primary_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even an erroneous close records the primary constructor failure."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    actual_close = evidence.os.close
+    closed: list[int] = []
+
+    def reject_stream(*args: object, **kwargs: object) -> IO[bytes]:
+        del args, kwargs
+        raise RuntimeError("primary evidence fdopen failure")
+
+    def fail_after_closing(descriptor: int) -> None:
+        actual_close(descriptor)
+        closed.append(descriptor)
+        raise ValueError("secondary evidence close failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(evidence.os, "fdopen", reject_stream)
+        context.setattr(evidence.os, "close", fail_after_closing)
+        with pytest.raises(
+            evidence.EvidenceError, match="stream could not open"
+        ) as failure:
+            evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+    assert len(closed) == 1
+    with pytest.raises(OSError):
+        _ = evidence.os.fstat(closed[0])
+    primary = failure.value.__cause__
+    assert isinstance(primary, RuntimeError)
+    assert str(primary) == "primary evidence fdopen failure"
+    assert primary.__notes__ == [
+        "evidence descriptor cleanup also failed: secondary evidence close failure"
+    ]
+
+
 class _ShortEvidenceReader:
     def __init__(self, stream: IO[bytes], *, premature_eof: bool) -> None:
         self.stream = stream

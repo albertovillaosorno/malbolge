@@ -145,8 +145,19 @@ def _open_evidence(path: Path) -> IO[bytes]:
         raise EvidenceError(message) from error
     try:
         return os.fdopen(descriptor, "rb")
-    except (OSError, ValueError) as error:
-        os.close(descriptor)
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        # Stream construction failed before it acquired descriptor ownership.
+        # An unsuccessful close must not erase the original admission failure.
+        try:
+            os.close(descriptor)
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            TypeError,
+            AttributeError,
+        ) as close_error:
+            error.add_note(f"evidence descriptor cleanup also failed: {close_error}")
         message = f"evidence stream could not open: {path}"
         raise EvidenceError(message) from error
 

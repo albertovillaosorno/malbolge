@@ -837,6 +837,11 @@ The original study records remain the result authority.
   fail-closed CLI paths. File-stream constructor faults retain a typed rejection
   and original cause, close the untransferred descriptor, and preserve a failed
   cleanup only as secondary evidence; neither CLI emits a report on failure.
+- The retained evidence file reader applies the same descriptor ownership rule:
+  injected stream-constructor exceptions have a typed evidence rejection,
+  release the raw descriptor, and preserve any cleanup error as secondary
+  diagnostics without replacing the original failure. Evidence admission still
+  checks observable file identity only, not an atomic filesystem snapshot.
 - `benchmarks/arena/multiplicity.py` optionally applies exact study-wide
   Holm-Bonferroni multiplicity correction, preserving every raw probability
   and excluding null hypotheses from the family count. Synthetic reference,
