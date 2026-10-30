@@ -558,6 +558,53 @@ Exact design, source regions and the independently executable test suite
 are recorded in the v8 `conditional_dispatch.md` experiment note beside
 its source code.
 
+## Results: Three-Way Shared Native Guest Dispatch v9 (2026-10-29)
+
+Version nine tests whether **three** distinct canonical source-bound
+one/two/three echo programs can execute through byte-identical native
+Malbolge handler code, using *two successive data-selected branches*.
+It retains `j@0`, eighty reached no-ops and `i@81` reading `M[121]=90`
+for the first `/@91`, `<@92` pair. The reached `i@93` reads `M[124]`:
+87 transfers to `v@88` (one echo), and 104 transfers to `/@105`,
+`<@106`, `i@107`. In that continuation case, the third reached `i`
+reads `M[127]`: 101 transfers to `v@102` (two echoes), or 84 transfers
+to `/@85`, `<@86`, `v@87` (three echoes). For the one-pair source, the
+unreached third operand is canonically graphical 101. **All other code
+cells are byte-identical** across all three original programs.
+
+These are legitimate loader-addressed graphical source words, not host
+injections into VM registers. All reached XLAT2 writes affect unprotected
+code locations (90, 87/104, 101/84), while **all 102 CEB2 glyphs**
+remain physically intact at addresses 128–229. The independent verifier
+reads the *supplied* source, reconstructs all 102 CEB2 ordinal ranks,
+re-admits the original canonical source/profile SHA-256 binding, and
+checks that both selected graphical operands match original count 1/2/3.
+All seven other loader-valid glyphs at either operand, wrong counts,
+changed native code, changed CEB2 data, foreign source IDs, and truncated
+or overlong source images reject before guest execution.
+
+The normative profile VM confirms two or three real indirect reads,
+three native I/O source paths, exact after-state C and D, consumed input,
+stdout parity against separately compiled direct sources, precise
+**86/89/91 guest steps**, and all source-bound data cells unchanged.
+External canonical `.malbolge` guest/direct capsules run through the
+*general Malbolge CLI* and independently report matching stdout and
+86/89/91 versus 3/5/7 step receipts, on input `[0,128,255]`. A
+loader-valid one-byte change of only third word `M[127]` from 101 to
+84 causes a genuine two-pair source to echo a third byte, while the
+independent host verifier rejects the source/count mismatch. Thus the
+third instruction is selected by actual *guest memory*, not a mock.
+
+For the three small comparable programs, fixed 230-cell code/data guest
+sources cost 86, 89, 91 steps respectively, versus direct sources of
+3, 5, 7 cells and steps. This establishes no space, runtime, compile,
+resident-memory or verifier-complexity advantage. A third fixed decision
+does not mean the guest decodes the packed CEB2 count, computes bytecode
+ordinals, maintains a reusable instruction pointer, loops, executes all
+possible echo counts, authenticates SHA-256 or implements a general VM.
+The P2 acceptance remains unmet and the cost hypothesis unresolved for
+large/general applications.
+
 ## Threats to Validity
 
 The pilot has no **reusable** guest interpreter or complete bytecode

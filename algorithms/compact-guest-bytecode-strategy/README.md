@@ -412,6 +412,42 @@ all twelve cases match direct stdout and input consumption while leaving
 pilot, not a loop, arbitrary decoder, in-guest digest check, or general C
 compiler.
 
+## One shared code island selects one, two or three echoes v9 (2026-10-29)
+
+The `triple_dispatch.rs` and `pilot-v9.toml` research checkpoint extends
+v8's fixed two-way choice to **three original source-bound programs**
+using one identical native Malbolge code layout. Source cells 0–127 are
+byte-identical apart from two *data* operands at addresses 124 and 127.
+The first `i@81` always reads `M[121]=90` to run `/@91`, `<@92`,
+`i@93`. The second indirect instruction reads `M[124]=87` to HALT at
+`v@88` (one pair), or `M[124]=104` to execute `/@105`, `<@106`,
+`i@107` (two/three pairs). The third reached indirect instruction then
+reads `M[127]=101` to HALT at `v@102` after two pairs, or `M[127]=84`
+to execute `/@85`, `<@86`, `v@87` for the third pair.
+
+Every code glyph, including all three native handlers, is identical
+between the three sources. The second/third graphical operand words are
+selected by the *host* from independently verified original 1/2/3-pair
+CEB2 descriptors; independent admission reconstructs all 102 graphical
+3-bit descriptor glyphs at positions 128–229 and checks their original
+SHA-256 source/profile binding. Both operand words must match the
+reconstructed canonical count. All jumps' mandatory XLAT2 target code
+addresses 90, 87/104 and 101/84—never either operand or the protected
+CEB2 data region. The normative VM traces prove actual reached indirect
+reads, register transitions, output/consumption parity and exact
+**86/89/91 guest steps** for counts 1/2/3. The general Malbolge CLI
+executes distinct canonical guest/direct capsules and matches stdout
+and exact step receipts on the same successful three-byte input stream.
+
+Compared with independent direct source, the 230-cell guest costs
+**230/86 versus 3/3**, **230/89 versus 5/5**, and **230/91 versus 7/7**
+(source cells / native VM steps). These are negative small-program
+results, not code-size compression or increased runtime throughput.
+The three possible programs are **unrolled**, not a generic VM: the guest
+neither reads the packed CEB2 count nor decodes ordinal instructions,
+maintains a bytecode PC, loops, authenticates its own digest or supports
+arbitrary source operations. All other counts reject on the host.
+
 ## Status
 
 No **reusable** VM-resident bytecode interpreter has been implemented.

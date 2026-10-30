@@ -203,6 +203,24 @@ code-size explosion or compilation cost.
   including consumed bytes and every intact CEB2 graphical data word.
   The compiler P2 task is still open pending a reusable generic interpreter.
 
+- Pilot v9 extends shared-code guest execution to **three distinct
+  source-bound one/two/three-pair programs**: physical `i@81` always
+  selects first echo, reached `i@93` chooses HALT or continuation from
+  M[124]=87/104, and reached `i@107` chooses HALT or third echo from
+  M[127]=101/84. The only varying source code-area cells are those two
+  graphical data operands; all native code and handler glyphs are exactly
+  identical. Independently SHA-bound 102-cell CEB2 data lives at 128–229,
+  outside all actual XLAT2 writes. Exact native VM and real general CLI
+  prove direct echo parity for all 1/2/3 counts and steps 86/89/91 versus
+  direct 3/5/7; all alternate operand glyphs, wrong counts, descriptor
+  forgery and foreign canonical source IDs reject at host admission.
+  One mutated loader-valid third operand changes *actual guest output*
+  while the source-bound verifier rejects. This advances data-directed
+  shared code but is still an **unrolled three-way choice**, not a
+  reusable decoder, iteration loop or in-guest source authentication.
+  Physical 230-cell sources and slower small-case execution reject a
+  size/speed win here; larger code economics remain unmeasured.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

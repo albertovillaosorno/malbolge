@@ -41,6 +41,8 @@ pub mod guest_probe;
 pub mod isolated;
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_macro.rs"]
 pub mod strategy;
+#[path = "../algorithms/compact-guest-bytecode-strategy/triple_dispatch.rs"]
+pub mod triple;
 
 use std::fs;
 use std::io::Write as _;
@@ -60,16 +62,19 @@ use strategy::bridge::ternary::{
 };
 
 const CONFIG: &str = include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v8.toml");
+const CONFIG_V9: &str = include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v9.toml");
+
+type CanonicalGuestImage = (TernaryProgram, Vec<u8>);
 
 struct CapsuleFixture {
     root: PathBuf,
 }
 
 impl CapsuleFixture {
-    fn new() -> Result<Self, String> {
+    fn new(case: &str) -> Result<Self, String> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join(".temp")
-            .join(format!("compact-conditional-{}", id()));
+            .join(format!("compact-conditional-{}-{case}", id()));
         #[expect(clippy::create_dir, reason = "unique owned test path")]
         fs::create_dir(&root).map_err(|error| format!("owned capsule fixture: {error}"))?;
         Ok(Self { root })
@@ -412,7 +417,7 @@ fn flipping_only_second_opcode_changes_guest_behavior_but_invalidates_binding() 
     reason = "external direct/guest capsule byte and step receipts"
 )]
 fn conditional_guest_and_direct_capsules_match_in_general_malbolge_cli() -> Result<(), String> {
-    let fixture = CapsuleFixture::new()?;
+    let fixture = CapsuleFixture::new("v8")?;
     for pairs in [1usize, 2] {
         let program =
             canonical_echo_program(u32::try_from(pairs).map_err(|error| error.to_string())?)?;
@@ -694,6 +699,453 @@ fn same_native_guest_code_matches_direct_for_eof_short_and_trailing_input() -> R
                     "both opcode branches must preserve all CEB2 physical words"
                 );
             }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn three_way_shared_guest_code_contract_is_versioned_and_bounded() {
+    for line in [
+        "schema = \"compact-guest-bytecode-pilot-v9\"",
+        "accepted_original_echo_pairs = [1, 2, 3]",
+        "native_handler_code_identical_across_pair_counts = true",
+        "source_cells = 230",
+        "second_operand_address = 124",
+        "second_operand_halt_graphical_word = 87",
+        "second_operand_continue_graphical_word = 104",
+        "third_operand_address = 127",
+        "third_operand_halt_graphical_word = 101",
+        "third_operand_continue_graphical_word = 84",
+        "one_pair_guest_steps = 86",
+        "two_pair_guest_steps = 89",
+        "three_pair_guest_steps = 91",
+        "protected_ce_b2_start = 128",
+        "protected_ce_b2_glyphs = 102",
+        "operand_reads_inside_guest = true",
+        "sha256_checked_inside_guest = false",
+        "count_driven_loop_inside_guest = false",
+        "general_bytecode_decoder_inside_guest = false",
+    ] {
+        assert!(
+            CONFIG_V9.lines().any(|actual| actual == line),
+            "versioned 3-way experiment must pin {line}"
+        );
+    }
+}
+
+fn canonical_three_way_source(pairs: u32) -> Result<CanonicalGuestImage, String> {
+    let program = canonical_echo_program(pairs)?;
+    let envelope = binding::encode_bound_echo_macro(&program, current_profile())
+        .map_err(|error| format!("source-bound CEB2 n={pairs}: {error:?}"))?;
+    let source = triple::embed_triple_echo_dispatch(&program, current_profile(), &envelope)
+        .map_err(|error| format!("n={pairs} three-way emitter: {error:?}"))?;
+    if triple::admit_triple_echo_dispatch(&program, current_profile(), &source) != Ok(envelope) {
+        return Err(format!(
+            "independent three-way host admission failed n={pairs}"
+        ));
+    }
+    Ok((program, source))
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded genuine native guest I/O parity"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "all three native branches, target writes and CEB2"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "three-way conditional VM and direct oracle"
+)]
+#[expect(
+    clippy::excessive_nesting,
+    reason = "guest trace inside three source and input cases"
+)]
+fn one_shared_code_image_selects_three_different_echo_lengths_from_guest_data() -> Result<(), String>
+{
+    let images = [
+        canonical_three_way_source(1)?,
+        canonical_three_way_source(2)?,
+        canonical_three_way_source(3)?,
+    ];
+    let count_specific = [(87u32, 101u32), (104, 101), (104, 84)];
+    let code = images.first().ok_or("source variant 1")?.1.as_slice();
+    assert_eq!(triple::SOURCE_CELLS, 230);
+    assert_eq!(triple::CEB2_START, 128);
+    for (index, (program, source)) in images.iter().enumerate() {
+        let pairs = index.saturating_add(1);
+        assert_eq!(source.len(), triple::SOURCE_CELLS);
+        assert_eq!(source.get(triple::FIRST_WORD_ADDRESS), Some(&90u8));
+        let (second, third) = count_specific.get(index).ok_or("bytecode operands")?;
+        assert_eq!(
+            source.get(triple::SECOND_WORD_ADDRESS),
+            Some(&u8::try_from(*second).map_err(|error| error.to_string())?)
+        );
+        assert_eq!(
+            source.get(triple::THIRD_WORD_ADDRESS),
+            Some(&u8::try_from(*third).map_err(|error| error.to_string())?)
+        );
+        for position in 0..triple::CEB2_START {
+            if ![triple::SECOND_WORD_ADDRESS, triple::THIRD_WORD_ADDRESS].contains(&position) {
+                assert_eq!(
+                    source.get(position),
+                    code.get(position),
+                    "all code cells, including all handlers, must be byte-identical"
+                );
+            }
+        }
+        for (position, &glyph) in source.iter().enumerate() {
+            assert!(
+                matches!(
+                    decode_profile_instruction(
+                        u32::from(glyph),
+                        u32::try_from(position).map_err(|error| error.to_string())?
+                    ),
+                    Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                ),
+                "every code and bound CEB2 glyph is loader-admissible {position}"
+            );
+        }
+        let direct = strategy::bridge::encode_successful_byte_echo(program, current_profile())
+            .map_err(|error| format!("direct n={pairs} baseline: {error:?}"))?;
+        assert_eq!(
+            direct.source().len(),
+            2usize.saturating_mul(pairs).saturating_add(1)
+        );
+        for input in [vec![0u8, 128, 255], vec![255, 1, 2]] {
+            let mut guest = ProfileMachine::from_source(current_profile(), source, input.clone())
+                .map_err(|error| format!("n={pairs} guest source loader: {error:?}"))?;
+            let steps = *triple::GUEST_STEPS.get(index).ok_or("guest step budget")?;
+            let mut indirect = Vec::new();
+            let outcome = guest
+                .run_traced(steps, &mut |event| {
+                    if [81u32, 93, 107].contains(&event.before.registers.code_pointer) {
+                        indirect.push(*event);
+                    }
+                })
+                .map_err(|error| format!("native guest n={pairs}: {error:?}"))?;
+            assert!(
+                matches!(outcome, RunOutcome::Terminated {
+                steps: committed, ..
+            } if committed == steps),
+                "guest must halt after exact native instructions"
+            );
+            let expected_reads = if pairs == 1 { 2 } else { 3 };
+            assert_eq!(
+                indirect.len(),
+                expected_reads,
+                "native runtime must fetch all actually reached operands"
+            );
+            let mut reached = vec![(81u32, 121u32, 90u32), (93, 124, *second)];
+            if pairs > 1 {
+                reached.push((107, 127, *third));
+            }
+            for (jump_index, (code_position, data_address, operand)) in
+                reached.into_iter().enumerate()
+            {
+                let event = indirect
+                    .get(jump_index)
+                    .ok_or("reached indirect instruction")?;
+                assert_eq!(event.decoded, Some(b'i'));
+                assert_eq!(event.before.registers.code_pointer, code_position);
+                assert_eq!(event.before.registers.data_pointer, data_address);
+                assert_eq!(
+                    event
+                        .memory_reads
+                        .data
+                        .map(|read| (read.address, read.value)),
+                    Some((data_address, operand)),
+                    "the VM must read actual graphical opcode from guest memory"
+                );
+                assert_eq!(
+                    event.memory_delta.encryption.map(|write| write.address),
+                    Some(operand),
+                    "XLAT2 must mutate only unprotected code"
+                );
+                assert_eq!(
+                    event.after.registers.code_pointer,
+                    operand.saturating_add(1),
+                    "guest control flow is source-data-selected"
+                );
+            }
+            let mut baseline =
+                ProfileMachine::from_source(current_profile(), direct.source(), input.clone())
+                    .map_err(|error| format!("independent baseline n={pairs}: {error:?}"))?;
+            let expected_direct_steps = pairs.saturating_mul(2).saturating_add(1);
+            assert!(matches!(baseline.run(expected_direct_steps),
+                Ok(RunOutcome::Terminated { steps: committed, .. })
+                if committed == expected_direct_steps));
+            assert_eq!(
+                guest.output(),
+                baseline.output(),
+                "guest and independently compiled direct output must agree"
+            );
+            assert_eq!(guest.input_consumed(), baseline.input_consumed());
+            assert_eq!(guest.output().len(), pairs);
+            for position in triple::CEB2_START..triple::SOURCE_CELLS {
+                let address = u32::try_from(position).map_err(|error| error.to_string())?;
+                assert_eq!(
+                    guest
+                        .memory_word(address)
+                        .map_err(|error| format!("CEB2 after guest execution: {error:?}"))?,
+                    u32::from(*source.get(position).ok_or("bound data glyph")?),
+                    "all SHA-256-bound graphical data positions must survive guest XLAT2"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "two-operand source forgery matrix"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "tampered phase-valid source and canonical boundaries"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "three original sources and attack variants"
+)]
+fn three_way_host_admission_rejects_unsupported_counts_and_operand_forgery() -> Result<(), String> {
+    for unsupported in [4u32, 7, 10, 64] {
+        let original = canonical_echo_program(unsupported)?;
+        let bound = binding::encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("unsupported count CEB2: {error:?}"))?;
+        assert_eq!(
+            triple::embed_triple_echo_dispatch(&original, current_profile(), &bound),
+            Err(triple::TripleDispatchError::UnsupportedEchoCount)
+        );
+    }
+    for pairs in [1u32, 2, 3] {
+        let (original, source) = canonical_three_way_source(pairs)?;
+        let bound = binding::encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("source-bound envelope: {error:?}"))?;
+        for position in [triple::SECOND_WORD_ADDRESS, triple::THIRD_WORD_ADDRESS] {
+            let original_glyph = *source.get(position).ok_or("original operand")?;
+            let mut options = 0usize;
+            for glyph in (33u8..=126).filter(|&glyph| {
+                glyph != original_glyph
+                    && matches!(
+                        decode_profile_instruction(
+                            u32::from(glyph),
+                            u32::try_from(position).unwrap_or(u32::MAX)
+                        ),
+                        Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                    )
+            }) {
+                let mut changed = source.clone();
+                *changed.get_mut(position).ok_or("altered guest operand")? = glyph;
+                assert!(
+                    triple::admit_triple_echo_dispatch(&original, current_profile(), &changed)
+                        .is_err(),
+                    "all loader-valid opcode substitutions must reject"
+                );
+                options = options.saturating_add(1);
+            }
+            assert_eq!(options, 7, "complete alternative graphical alphabet");
+        }
+        for position in [0usize, 81, 85, 87, 88, 91, 93, 102, 105, 107, 121] {
+            let mut changed = source.clone();
+            *changed.get_mut(position).ok_or("changed code")? = b'!';
+            assert_eq!(
+                triple::admit_triple_echo_dispatch(&original, current_profile(), &changed),
+                Err(triple::TripleDispatchError::InvalidSource)
+            );
+        }
+        for position in [
+            triple::CEB2_START,
+            triple::CEB2_START + 1,
+            triple::SOURCE_CELLS - 1,
+        ] {
+            let mut changed = source.clone();
+            let old = *source.get(position).ok_or("original descriptor glyph")?;
+            let alternative = (33u8..=126)
+                .find(|&glyph| {
+                    glyph != old
+                        && matches!(
+                            decode_profile_instruction(
+                                u32::from(glyph),
+                                u32::try_from(position).unwrap_or(u32::MAX)
+                            ),
+                            Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                        )
+                })
+                .ok_or("loader-valid different glyph")?;
+            *changed.get_mut(position).ok_or("mutate CEB2 data")? = alternative;
+            assert!(
+                triple::admit_triple_echo_dispatch(&original, current_profile(), &changed).is_err(),
+                "independent digest/padding admission must reject data change"
+            );
+        }
+        for cut in [0usize, 1, 93, 124, 127, triple::SOURCE_CELLS - 1] {
+            assert_eq!(
+                triple::admit_triple_echo_dispatch(
+                    &original,
+                    current_profile(),
+                    source.get(..cut).ok_or("truncated source")?
+                ),
+                Err(triple::TripleDispatchError::InvalidSource)
+            );
+        }
+        let mut oversized = source.clone();
+        oversized.push(b'!');
+        assert_eq!(
+            triple::admit_triple_echo_dispatch(&original, current_profile(), &oversized),
+            Err(triple::TripleDispatchError::InvalidSource)
+        );
+        let mut foreign = original;
+        foreign.source_id = format!("research/other-equal-count-{pairs}.c");
+        assert!(triple::admit_triple_echo_dispatch(&foreign, current_profile(), &source).is_err());
+        assert_eq!(
+            triple::admit_triple_echo_dispatch(
+                &canonical_echo_program(pairs)?,
+                current_profile(),
+                &source
+            ),
+            Ok(bound)
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real external three-way guest code execution"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "three canonical guest and direct capsule variants"
+)]
+fn three_way_guest_capsules_match_direct_one_two_three_echo_cli() -> Result<(), String> {
+    let fixture = CapsuleFixture::new("v9")?;
+    for pairs in [1u32, 2, 3] {
+        let (program, guest) = canonical_three_way_source(pairs)?;
+        let direct = strategy::bridge::encode_successful_byte_echo(&program, current_profile())
+            .map_err(|error| format!("independent direct code: {error:?}"))?;
+        for (kind, source) in [("direct", direct.source()), ("guest", guest.as_slice())] {
+            let capsule = malbolge::build_capsule(current_profile(), source)
+                .map_err(|error| format!("build original profile capsule: {error:?}"))?;
+            fs::write(
+                fixture.root.join(format!("v9-{kind}-{pairs}.malbolge")),
+                capsule,
+            )
+            .map_err(|error| format!("publish v9 {kind} source: {error}"))?;
+        }
+        let index = usize::try_from(pairs.saturating_sub(1)).map_err(|error| error.to_string())?;
+        let guest_steps = *triple::GUEST_STEPS
+            .get(index)
+            .ok_or("v9 guest step budget")?;
+        for (kind, steps) in [
+            (
+                "direct",
+                usize::try_from(pairs.saturating_mul(2).saturating_add(1))
+                    .map_err(|error| error.to_string())?,
+            ),
+            ("guest", guest_steps),
+        ] {
+            let path = fixture.root.join(format!("v9-{kind}-{pairs}.malbolge"));
+            let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+                .arg(path)
+                .arg("--input-stdin")
+                .arg("--report-steps")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|error| format!("spawn real Malbolge CLI: {error}"))?;
+            let mut stdin = child.stdin.take().ok_or("v9 child stdin missing")?;
+            stdin
+                .write_all(&[0u8, 128, 255])
+                .map_err(|error| format!("write v9 input: {error}"))?;
+            drop(stdin);
+            let output = child
+                .wait_with_output()
+                .map_err(|error| format!("wait v9 {kind} child: {error}"))?;
+            assert!(
+                output.status.success(),
+                "real profile guest source or direct source rejected: {output:?}"
+            );
+            assert_eq!(
+                output.stdout,
+                [0u8, 128, 255]
+                    .get(..usize::try_from(pairs).map_err(|error| error.to_string())?)
+                    .ok_or("three input prefix")?,
+                "actual CLI stdout for three-way native guest vs direct"
+            );
+            assert_eq!(
+                output.stderr,
+                format!("malbolge-steps-v1:{steps}\n").as_bytes(),
+                "actual general CLI provides exact committed steps"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "third loaded graphical instruction mutation"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "native altered third-bytecode source oracle"
+)]
+fn changing_only_third_operand_changes_real_guest_output_but_fails_source_binding()
+-> Result<(), String> {
+    let (program, source) = canonical_three_way_source(2)?;
+    let original = binding::encode_bound_echo_macro(&program, current_profile())
+        .map_err(|error| format!("original two-pair CEB2: {error:?}"))?;
+    assert_eq!(
+        triple::admit_triple_echo_dispatch(&program, current_profile(), &source),
+        Ok(original)
+    );
+    let mut altered = source.clone();
+    assert_eq!(source.get(triple::THIRD_WORD_ADDRESS), Some(&101u8));
+    *altered
+        .get_mut(triple::THIRD_WORD_ADDRESS)
+        .ok_or("source operand 3")? = 84;
+    assert_eq!(
+        decode_profile_instruction(84, 127),
+        Some(b'/'),
+        "forged third word remains loader-admissible graphical code"
+    );
+    assert_eq!(
+        triple::admit_triple_echo_dispatch(&program, current_profile(), &altered),
+        Err(triple::TripleDispatchError::InvalidSource),
+        "host must cross-check source-bound two-pair count and data opcode"
+    );
+    for (image, expected_output, steps) in [
+        (&source, vec![0u8, 128], triple::GUEST_STEPS[1]),
+        (&altered, vec![0u8, 128, 255], triple::GUEST_STEPS[2]),
+    ] {
+        let mut guest = ProfileMachine::from_source(current_profile(), image, vec![0u8, 128, 255])
+            .map_err(|error| format!("guest loads changed third operand: {error:?}"))?;
+        assert!(
+            matches!(guest.run(steps), Ok(RunOutcome::Terminated {
+            steps: committed, ..
+        }) if committed == steps),
+            "guest must execute third native handler only when operand requests it"
+        );
+        assert_eq!(guest.output(), expected_output);
+        assert_eq!(guest.input_consumed(), expected_output.len());
+        for address in triple::CEB2_START..triple::SOURCE_CELLS {
+            assert_eq!(
+                guest
+                    .memory_word(u32::try_from(address).map_err(|error| error.to_string())?)
+                    .map_err(|error| format!("bound descriptor memory: {error:?}"))?,
+                u32::from(*image.get(address).ok_or("source CEB2 glyph")?),
+                "altered VM still must never encrypt protected data"
+            );
         }
     }
     Ok(())
