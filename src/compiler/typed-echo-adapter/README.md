@@ -12,7 +12,7 @@ the existing independently verified Malbolge byte-echo layout backend.
 
 ## Supported domain
 
-All three modes accept exactly one no-argument, non-variadic, void-return
+All four modes accept exactly one no-argument, non-variadic, void-return
 function;
 one entry block without phi nodes; and no globals or proof obligations.
 `compile_canonical_typed_echo` preserves the original strict contract: one
@@ -44,9 +44,25 @@ outputs fits the 4096-cell code bound. Nonzero or additional constants,
 other instructions, stale SSA, profile drift, and empty output traces reject.
 Neither the original adjacent-echo API nor latest-read API is broadened.
 
+A fourth opt-in `compile_canonical_typed_zero_prefixed_latest_byte_trace`
+composes **initial zero outputs followed by the latest successful input**
+without any host guest-byte emulation. It accepts exactly one canonical
+`u8 ConstantInteger(0)` SSA definition, one or more outputs of that exact
+zero SSA before the first `ByteInput`, one or more successful byte inputs,
+and at least one output of the most recent input's SSA. Later reads
+replace the accumulator; no zero SSA or older input SSA can be replayed
+then. It admits exactly one void, no-argument function and one block,
+retaining every instruction/source span and source/ABI/target identity
+through independent canonical MCTR re-decoding and target layout.
+All I/O operations run inside the selected normative VM; successful I/O
+and unobserved return/ABI remain the declared limits. Maximum source is
+4096 code cells, excluding the zero materialization already proven by
+initial A=0. Nonzero/extra scalar definitions and unsupported operations
+fail closed; all earlier adapter modes retain their original domains.
+
 For input-based modes the equivalence claim requires successful byte
 reads and writes with an ignored void ABI. Initial-zero output consumes no
-input, but its guest writes must still succeed. None of the three modes
+input, but its guest writes must still succeed. None of the four modes
 implements EOF, failed I/O, arithmetic, control flow or C source parsing.
 The typed source digest remains copied provenance, not authentication of
 external files.
@@ -98,6 +114,20 @@ test verifies neither MCTI nor MCTR zero-output stdin may publish before
 EOF, even after receiving the complete canonical byte sequence. Canonical
 source files and pipes are compiler inputs, not guest stdin. This still
 does not implement C input, nonzero output or a callable C guest ABI.
+
+For mixed initial-zero/latest-byte traces, use the independent opt-in
+`--zero-prefixed-byte-trace --typed-file PATH` or
+`--zero-prefixed-byte-trace --ternary-file PATH` CLI input. Their
+`--typed-stdin` and `--ternary-stdin` analogues accept bounded canonical
+wire streams; both
+rejoin the independently admitted MCTR and normative VM preflight.
+The publisher checks two fixed full-byte input patterns and expects leading
+literal zero outputs, then outputs of only the latest successful read,
+matching output and consumed-input count exactly. A source that reuses the
+initial constant after a read cannot publish. Raw/capsule framing and atomic
+no-clobber semantics are shared; the flag cannot mix with other modes.
+A real split-wire regression checks that neither MCTI nor MCTR can publish
+before EOF, even after its producer has sent the complete canonical bytes.
 
 Canonical MCTI wire version one is intentionally pinned to `malbolge-2026`
 and `malbolge-c32-v1`: unlike the lower-level VM and standalone layout

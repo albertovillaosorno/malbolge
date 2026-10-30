@@ -43,6 +43,7 @@ use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_
 
 use crate::bridge::{
     encode_initial_zero_outputs, encode_successful_byte_echo, encode_successful_latest_byte_trace,
+    encode_zero_prefixed_latest_byte_trace,
     ternary::{TernaryOperation, canonical_ternary_program},
 };
 use crate::layout::{
@@ -52,6 +53,7 @@ use crate::layout::{
 use crate::typed_adapter::{
     compile_canonical_typed_echo, compile_canonical_typed_initial_zero_outputs,
     compile_canonical_typed_latest_byte_trace,
+    compile_canonical_typed_zero_prefixed_latest_byte_trace,
 };
 
 const PROFILE_ARG: &str = "--profile";
@@ -63,6 +65,7 @@ const MAX_CANONICAL_WIRE_BYTES: u64 = 1_048_576;
 const TERNARY_FILE_ARG: &str = "--ternary-file";
 const LATEST_BYTE_TRACE_ARG: &str = "--latest-byte-trace";
 const INITIAL_ZERO_OUTPUT_ARG: &str = "--initial-zero-output";
+const ZERO_PREFIXED_BYTE_TRACE_ARG: &str = "--zero-prefixed-byte-trace";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
 const TERNARY_STDIN_ARG: &str = "--ternary-stdin";
@@ -92,12 +95,14 @@ enum ByteTraceMode {
     AdjacentEcho,
     InitialZero,
     LatestRead,
+    ZeroPrefixedLatest,
 }
 
 #[derive(Clone, Copy, Debug)]
 enum SuccessfulByteEffect {
     Input,
     Output,
+    ZeroOutput,
 }
 
 enum SourceEffectWitness {
@@ -177,9 +182,12 @@ fn parse_canonical_source(
 ) -> Result<SourceSpec, String> {
     let (kind, mode) = if first == OsStr::new(LATEST_BYTE_TRACE_ARG)
         || first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG)
+        || first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG)
     {
         let mode = if first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG) {
             ByteTraceMode::InitialZero
+        } else if first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG) {
+            ByteTraceMode::ZeroPrefixedLatest
         } else {
             ByteTraceMode::LatestRead
         };
@@ -236,6 +244,7 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
         || first == OsStr::new(TYPED_STDIN_ARG)
         || first == OsStr::new(LATEST_BYTE_TRACE_ARG)
         || first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG)
+        || first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG)
     {
         return parse_canonical_source(first, arguments);
     } else {
@@ -413,6 +422,9 @@ fn verified_ternary_bytes(
         ByteTraceMode::AdjacentEcho => encode_successful_byte_echo(&program, profile),
         ByteTraceMode::InitialZero => encode_initial_zero_outputs(&program, profile),
         ByteTraceMode::LatestRead => encode_successful_latest_byte_trace(&program, profile),
+        ByteTraceMode::ZeroPrefixedLatest => {
+            encode_zero_prefixed_latest_byte_trace(&program, profile)
+        }
     }
     .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
     if layout.profile_id() != profile.id() || layout.profile_fingerprint() != profile.fingerprint()
@@ -442,11 +454,14 @@ fn verified_ternary_bytes(
                     TernaryOperation::ByteInput { .. } | TernaryOperation::ByteOutput { .. }
                 )
             })
-            .map(|operation| {
+            .scan(false, |seen_input, operation| {
                 if matches!(operation, TernaryOperation::ByteInput { .. }) {
-                    SuccessfulByteEffect::Input
+                    *seen_input = true;
+                    Some(SuccessfulByteEffect::Input)
+                } else if matches!(mode, ByteTraceMode::ZeroPrefixedLatest) && !*seen_input {
+                    Some(SuccessfulByteEffect::ZeroOutput)
                 } else {
-                    SuccessfulByteEffect::Output
+                    Some(SuccessfulByteEffect::Output)
                 }
             })
             .collect();
@@ -471,6 +486,9 @@ fn verified_typed_bytes(
         }
         ByteTraceMode::LatestRead => {
             compile_canonical_typed_latest_byte_trace(typed_bytes, profile)
+        }
+        ByteTraceMode::ZeroPrefixedLatest => {
+            compile_canonical_typed_zero_prefixed_latest_byte_trace(typed_bytes, profile)
         }
     }
     .map_err(|error| format!("canonical typed byte bridge rejected: {error:?}"))?;
@@ -579,6 +597,12 @@ fn verify_successful_byte_trace(
                 }
                 SuccessfulByteEffect::Output => {
                     expected_output.push(latest.ok_or("output before successful input")?);
+                }
+                SuccessfulByteEffect::ZeroOutput if latest.is_none() => {
+                    expected_output.push(0);
+                }
+                SuccessfulByteEffect::ZeroOutput => {
+                    return Err(String::from("zero output after accumulator overwrite"));
                 }
             }
         }

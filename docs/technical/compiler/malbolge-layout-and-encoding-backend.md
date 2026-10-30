@@ -267,6 +267,31 @@ publisher authenticate that an input retained the same pathname throughout
 validation. Independent canonical-byte checks and atomic no-clobber final
 publication remain distinct guarantees.
 
+### Zero-prefixed successful-byte artifact publication
+
+The distinct `--zero-prefixed-byte-trace` mode accepts canonical MCTI or
+MCTR file/stdin only when it contains an independently validated zero
+constant SSA, one or more leading same-SSA byte outputs, followed by real
+byte inputs and outputs of only the most recent input SSA. The initial
+zero comes from the real VM accumulator, not host evaluation. The target
+contains actual Malbolge output/input/halt cells, with the same 4096-cell
+maximum. A post-read output of the original zero SSA is explicitly
+rejected as unsound without guest memory. The canonical typed adapter
+reconstructs exact MCTR provenance; the separate publisher re-decodes and
+re-encodes the ternary target before any artifact write. Two distinct
+successful-byte VM patterns confirm literal zero prefix, latest-read
+output order, exact input consumption and termination. The existing
+atomic no-clobber raw/capsule publisher is unchanged. The opt-in prefix
+cannot mix with any other canonical mode or machine-op tokens.
+
+Real MCTI/MCTR split-wire tests require the target path to remain absent
+while a producer holds the stream open, both with partial and complete
+canonical bytes. Publication occurs only after actual EOF and complete
+independent admission.
+
+This is not arbitrary constant lowering, I/O EOF handling, callable guest
+ABI, or general dataflow/control-flow code generation.
+
 ### Initial-zero typed and ternary source publication
 
 An explicit `--initial-zero-output` prefix for `--typed-file`,

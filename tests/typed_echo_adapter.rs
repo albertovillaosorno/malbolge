@@ -53,6 +53,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 static TEST_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
+#[derive(Clone, Copy)]
+enum ZeroPrefixedEffect {
+    Input(u32),
+    Output(u32),
+    Scalar(u32),
+}
+
 struct OwnedFixture {
     root: PathBuf,
 }
@@ -165,6 +172,59 @@ fn fixture(pairs: usize) -> Result<Module, String> {
 fn wire(module: &Module) -> Result<Vec<u8>, String> {
     validate_module(module).map_err(|error| format!("typed IR admission: {error:?}"))?;
     canonical_bytes(module).map_err(|error| format!("typed IR encode: {error:?}"))
+}
+
+fn zero_prefixed_typed_fixture(
+    initial: u8,
+    effects: &[ZeroPrefixedEffect],
+) -> Result<Module, String> {
+    let mut instructions = Vec::with_capacity(effects.len().saturating_add(1));
+    instructions.push(LocatedInstruction::new(
+        Instruction::ConstantInteger {
+            constant: adapter::typed::IntegerConstant::new(8, vec![initial]),
+            result: ValueId::new(0),
+            type_id: TypeId::new(0),
+        },
+        span(0, 1),
+    ));
+    for (index, effect) in effects.iter().enumerate() {
+        let start = u32::try_from(index.saturating_add(1))
+            .map_err(|error| format!("mixed canonical typed span: {error}"))?;
+        let instruction = match effect {
+            ZeroPrefixedEffect::Input(result) => Instruction::ByteInput {
+                result: ValueId::new(*result),
+                type_id: TypeId::new(0),
+            },
+            ZeroPrefixedEffect::Output(value) => Instruction::ByteOutput {
+                value: ValueId::new(*value),
+            },
+            ZeroPrefixedEffect::Scalar(result) => Instruction::ConstantInteger {
+                constant: adapter::typed::IntegerConstant::new(8, vec![0]),
+                result: ValueId::new(*result),
+                type_id: TypeId::new(0),
+            },
+        };
+        instructions.push(LocatedInstruction::new(
+            instruction,
+            span(start, start.saturating_add(1)),
+        ));
+    }
+    fixture_with_instructions(instructions, "fixtures/typed-zero-prefixed.c")
+}
+
+fn admitted_zero_prefix_fixture() -> Result<Module, String> {
+    zero_prefixed_typed_fixture(
+        0,
+        &[
+            ZeroPrefixedEffect::Output(0),
+            ZeroPrefixedEffect::Output(0),
+            ZeroPrefixedEffect::Input(1),
+            ZeroPrefixedEffect::Output(1),
+            ZeroPrefixedEffect::Output(1),
+            ZeroPrefixedEffect::Input(2),
+            ZeroPrefixedEffect::Output(2),
+        ],
+    )
 }
 
 #[test]
@@ -2549,6 +2609,512 @@ fn canonical_initial_zero_stream_waits_for_eof_before_publication() -> Result<()
         }
         if fs::read(&target).map_err(|error| error.to_string())? != compiled.layout().source() {
             return Err(String::from("fragmented zero wire changed target bytes"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_zero_prefixed_latest_trace_matches_independent_mctr_and_real_vm() -> Result<(), String>
+{
+    let typed_module = admitted_zero_prefix_fixture()?;
+    let encoded = wire(&typed_module)?;
+    if canonical_module(&encoded)
+        .map_err(|error| format!("zero prefix canonical admission: {error:?}"))?
+        != typed_module
+    {
+        return Err(String::from("canonical typed zero prefix changed source"));
+    }
+    let compiled = adapter::compile_canonical_typed_zero_prefixed_latest_byte_trace(
+        &encoded,
+        current_profile(),
+    )
+    .map_err(|error| format!("zero prefix typed compilation: {error:?}"))?;
+    let ternary = canonical_ternary_program(compiled.ternary_bytes())
+        .map_err(|error| format!("zero prefix independent MCTR: {error:?}"))?;
+    if ternary.source_id != typed_module.source_id()
+        || ternary.source_sha256 != *typed_module.source_sha256()
+        || ternary.target_profile != current_profile().id()
+    {
+        return Err(String::from("zero prefix source identity drift"));
+    }
+    let independent =
+        adapter::bridge::encode_zero_prefixed_latest_byte_trace(&ternary, current_profile())
+            .map_err(|error| format!("independent ternary-to-layout admission: {error:?}"))?;
+    if independent != *compiled.layout() || compiled.layout().source().len() != 8 {
+        return Err(String::from("MCTI and independent MCTR target code differ"));
+    }
+    for (first, second) in [(0, 255), (255, 0), (128, 13), (42, 65)] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            compiled.layout().source(),
+            vec![first, second, 170],
+        )
+        .map_err(|error| format!("typed mixed guest VM: {error:?}"))?;
+        if !matches!(vm.run(8), Ok(RunOutcome::Terminated { steps: 8, .. }))
+            || vm.input_consumed() != 2
+            || vm.output() != [0, 0, first, first, second]
+        {
+            return Err(String::from("zero prefix typed guest effects drift"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "source-validated matrix of supported and forbidden mixed SSA flows"
+)]
+fn canonical_zero_prefixed_trace_rejects_valid_unsupported_typed_effects() -> Result<(), String> {
+    let admitted = wire(&admitted_zero_prefix_fixture()?)?;
+    for old in [
+        compile_canonical_typed_echo(&admitted, current_profile()),
+        adapter::compile_canonical_typed_latest_byte_trace(&admitted, current_profile()),
+        adapter::compile_canonical_typed_initial_zero_outputs(&admitted, current_profile()),
+    ] {
+        if old != Err(TypedEchoAdapterError::UnsupportedTypedIr) {
+            return Err(String::from("old canonical typed API silently broadened"));
+        }
+    }
+    if adapter::compile_canonical_typed_zero_prefixed_latest_byte_trace(
+        &admitted,
+        historical_profile(),
+    ) != Err(TypedEchoAdapterError::Layout(
+        adapter::bridge::ByteEchoBridgeError::ProfileMismatch,
+    )) {
+        return Err(String::from("zero prefix accepted wrong profile"));
+    }
+    for (zero, effects) in [
+        (
+            1,
+            vec![
+                ZeroPrefixedEffect::Output(0),
+                ZeroPrefixedEffect::Input(1),
+                ZeroPrefixedEffect::Output(1),
+            ],
+        ),
+        (
+            0,
+            vec![ZeroPrefixedEffect::Input(1), ZeroPrefixedEffect::Output(1)],
+        ),
+        (
+            0,
+            vec![ZeroPrefixedEffect::Output(0), ZeroPrefixedEffect::Input(1)],
+        ),
+        (
+            0,
+            vec![
+                ZeroPrefixedEffect::Output(0),
+                ZeroPrefixedEffect::Input(1),
+                ZeroPrefixedEffect::Output(0),
+            ],
+        ),
+        (
+            0,
+            vec![
+                ZeroPrefixedEffect::Output(0),
+                ZeroPrefixedEffect::Input(1),
+                ZeroPrefixedEffect::Input(2),
+                ZeroPrefixedEffect::Output(1),
+            ],
+        ),
+        (
+            0,
+            vec![
+                ZeroPrefixedEffect::Output(0),
+                ZeroPrefixedEffect::Scalar(1),
+                ZeroPrefixedEffect::Input(2),
+                ZeroPrefixedEffect::Output(2),
+            ],
+        ),
+    ] {
+        let canonical = wire(&zero_prefixed_typed_fixture(zero, &effects)?)?;
+        if adapter::compile_canonical_typed_zero_prefixed_latest_byte_trace(
+            &canonical,
+            current_profile(),
+        ) != Err(TypedEchoAdapterError::UnsupportedTypedIr)
+        {
+            return Err(String::from("valid but unsupported typed effects admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_zero_prefixed_trace_4096_code_cell_limit_is_exact() -> Result<(), String> {
+    let mut effects = vec![ZeroPrefixedEffect::Output(0), ZeroPrefixedEffect::Input(1)];
+    effects.extend(repeat_n(ZeroPrefixedEffect::Output(1), 4093));
+    let canonical = wire(&zero_prefixed_typed_fixture(0, &effects)?)?;
+    let compiled = adapter::compile_canonical_typed_zero_prefixed_latest_byte_trace(
+        &canonical,
+        current_profile(),
+    )
+    .map_err(|error| format!("maximum typed mixed layout: {error:?}"))?;
+    if compiled.layout().source().len() != 4096 {
+        return Err(String::from("typed mixed maximum is not 4096 cells"));
+    }
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), compiled.layout().source(), vec![255])
+            .map_err(|error| format!("maximum typed mixed VM load: {error:?}"))?;
+    if !matches!(vm.run(4096), Ok(RunOutcome::Terminated { steps: 4096, .. }))
+        || vm.input_consumed() != 1
+        || vm.output().len() != 4094
+        || vm.output().first() != Some(&0)
+        || vm
+            .output()
+            .get(1..)
+            .is_none_or(|bytes| bytes.iter().any(|byte| *byte != 255))
+    {
+        return Err(String::from("maximum mixed typed VM effects disagree"));
+    }
+    effects.push(ZeroPrefixedEffect::Output(1));
+    let excessive = wire(&zero_prefixed_typed_fixture(0, &effects)?)?;
+    if adapter::compile_canonical_typed_zero_prefixed_latest_byte_trace(
+        &excessive,
+        current_profile(),
+    ) != Err(TypedEchoAdapterError::UnsupportedTypedIr)
+    {
+        return Err(String::from("typed zero prefix accepted 4097 code cells"));
+    }
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "external publisher needs wire kind, input medium and capsule format"
+)]
+fn publish_zero_prefixed_wire(
+    profile: &str,
+    wire_bytes: &[u8],
+    target: &Path,
+    typed: bool,
+    from_stdin: bool,
+    capsule: bool,
+) -> Result<Output, String> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"));
+    let _profile = command
+        .arg("--profile")
+        .arg(profile)
+        .arg("--output")
+        .arg(target);
+    if capsule {
+        let _capsule = command.arg("--capsule");
+    }
+    let _source = command.arg("--").arg("--zero-prefixed-byte-trace");
+    if from_stdin {
+        let _stdin = command.arg(if typed {
+            "--typed-stdin"
+        } else {
+            "--ternary-stdin"
+        });
+    } else {
+        let wire_path = target.with_extension(if typed { "mcti" } else { "mctr" });
+        fs::write(&wire_path, wire_bytes)
+            .map_err(|error| format!("zero-prefixed canonical fixture: {error}"))?;
+        let _file = command
+            .arg(if typed {
+                "--typed-file"
+            } else {
+                "--ternary-file"
+            })
+            .arg(wire_path);
+    }
+    let mut child = command
+        .stdin(if from_stdin {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("mixed canonical CLI spawn: {error}"))?;
+    if from_stdin {
+        child
+            .stdin
+            .take()
+            .ok_or("mixed canonical stdin pipe absent")?
+            .write_all(wire_bytes)
+            .map_err(|error| format!("feed mixed canonical wire: {error}"))?;
+    }
+    child
+        .wait_with_output()
+        .map_err(|error| format!("mixed canonical CLI status: {error}"))
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "real process input mode, wire kind and output framing"
+)]
+fn require_zero_prefixed_publication(
+    profile: &str,
+    wire_bytes: &[u8],
+    target: &Path,
+    typed: bool,
+    from_stdin: bool,
+    capsule: bool,
+) -> Result<(), String> {
+    let outcome =
+        publish_zero_prefixed_wire(profile, wire_bytes, target, typed, from_stdin, capsule)?;
+    if !outcome.status.success() {
+        return Err(format!(
+            "zero-prefixed mixed publisher refused: {}",
+            String::from_utf8_lossy(&outcome.stderr)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_zero_prefixed_mcti_mctr_cli_file_stdin_raw_capsule_parity() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let typed_wire = wire(&admitted_zero_prefix_fixture()?)?;
+    let compiled = adapter::compile_canonical_typed_zero_prefixed_latest_byte_trace(
+        &typed_wire,
+        current_profile(),
+    )
+    .map_err(|error| format!("publisher zero-prefixed compiler: {error:?}"))?;
+    for (typed, wire_bytes) in [
+        (true, typed_wire.as_slice()),
+        (false, compiled.ternary_bytes()),
+    ] {
+        for capsule in [false, true] {
+            let kind = if typed { "typed" } else { "ternary" };
+            let framing = if capsule { "capsule" } else { "raw" };
+            let file = workspace.path(&format!("file-{kind}-{framing}.malbolge"));
+            let stdin = workspace.path(&format!("stdin-{kind}-{framing}.malbolge"));
+            for (pipe, target) in [(false, &file), (true, &stdin)] {
+                require_zero_prefixed_publication(
+                    current_profile().id(),
+                    wire_bytes,
+                    target,
+                    typed,
+                    pipe,
+                    capsule,
+                )?;
+            }
+            let file_bytes = fs::read(file).map_err(|error| error.to_string())?;
+            let stdin_bytes = fs::read(stdin).map_err(|error| error.to_string())?;
+            if file_bytes != stdin_bytes {
+                return Err(String::from("mixed stdin/file source bytes differ"));
+            }
+            let source = restored_canonical_stdin_source(file_bytes, capsule)?;
+            if source != compiled.layout().source() {
+                return Err(String::from("mixed MCTI/MCTR target source changed"));
+            }
+            let mut vm = ProfileMachine::from_source(current_profile(), &source, vec![0, 255, 128])
+                .map_err(|error| format!("published mixed VM load: {error:?}"))?;
+            if !matches!(vm.run(8), Ok(RunOutcome::Terminated { steps: 8, .. }))
+                || vm.output() != [0, 0, 0, 0, 255]
+                || vm.input_consumed() != 2
+            {
+                return Err(String::from("published zero prefix guest effects drift"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_zero_prefixed_capsule_executes_in_actual_general_cli() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&admitted_zero_prefix_fixture()?)?;
+    let target = workspace.path("zero-prefix-general.malbolge");
+    let published = publish_zero_prefixed_wire(
+        current_profile().id(),
+        &canonical,
+        &target,
+        true,
+        true,
+        true,
+    )?;
+    if !published.status.success() {
+        return Err(format!("mixed capsule publish refused: {published:?}"));
+    }
+    let parsed = fs::read(&target).map_err(|error| error.to_string())?;
+    let capsule = malbolge::parse_capsule(&parsed)
+        .map_err(|error| format!("mixed profile capsule parser: {error}"))?
+        .ok_or("mixed capsule marker absent")?;
+    if capsule.profile() != current_profile() || capsule.payload().len() != 8 {
+        return Err(String::from("mixed capsule source or profile drift"));
+    }
+    let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&target)
+        .arg("--input-stdin")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("zero-prefix real runner spawn: {error}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or("zero-prefixed guest input pipe absent")?
+        .write_all(&[0, 255, 128])
+        .map_err(|error| format!("zero-prefixed guest input bytes: {error}"))?;
+    let result = child
+        .wait_with_output()
+        .map_err(|error| format!("zero-prefixed real runner status: {error}"))?;
+    if !result.status.success() || result.stdout != [0, 0, 0, 0, 255] || !result.stderr.is_empty() {
+        return Err(format!(
+            "general guest runner mixed trace mismatch: {result:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "real publisher rejects multiple independently invalid wire modes"
+)]
+fn canonical_zero_prefixed_cli_refuses_invalid_modes_profile_and_existing_target()
+-> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&admitted_zero_prefix_fixture()?)?;
+    let compiled = adapter::compile_canonical_typed_zero_prefixed_latest_byte_trace(
+        &canonical,
+        current_profile(),
+    )
+    .map_err(|error| format!("mixed invalid publisher fixture: {error:?}"))?;
+    for (index, (typed, data, profile)) in [
+        (true, canonical.as_slice(), historical_profile().id()),
+        (false, compiled.ternary_bytes(), historical_profile().id()),
+        (true, b"not-an-MCTI".as_slice(), current_profile().id()),
+        (false, b"not-an-MCTR".as_slice(), current_profile().id()),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let target = workspace.path(&format!("refused-{index}.malbolge"));
+        let result = publish_zero_prefixed_wire(profile, data, &target, typed, true, false)?;
+        if result.status.success() || target.exists() {
+            return Err(String::from("invalid mixed canonical wire published"));
+        }
+    }
+    let occupied = workspace.path("existing.malbolge");
+    let sentinel = b"original target contents stay intact";
+    fs::write(&occupied, sentinel).map_err(|error| error.to_string())?;
+    let refused = publish_zero_prefixed_wire(
+        current_profile().id(),
+        &canonical,
+        &occupied,
+        true,
+        false,
+        true,
+    )?;
+    if refused.status.success()
+        || fs::read(occupied).map_err(|error| error.to_string())? != sentinel
+    {
+        return Err(String::from("mixed publisher clobbered existing target"));
+    }
+    for args in [
+        vec!["--zero-prefixed-byte-trace"],
+        vec![
+            "--zero-prefixed-byte-trace",
+            "--latest-byte-trace",
+            "--typed-stdin",
+        ],
+        vec![
+            "--latest-byte-trace",
+            "--zero-prefixed-byte-trace",
+            "--typed-stdin",
+        ],
+        vec!["--zero-prefixed-byte-trace", "--typed-stdin", "surplus"],
+    ] {
+        let target = workspace.path("bad-mixed-option.malbolge");
+        let outcome = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+            .arg("--profile")
+            .arg(current_profile().id())
+            .arg("--output")
+            .arg(&target)
+            .arg("--")
+            .args(args)
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|error| format!("bad mixed mode process: {error}"))?;
+        if outcome.status.success() || target.exists() {
+            return Err(String::from("mixed option syntax unexpectedly published"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "real subprocess proves MCTI/MCTR partial and full wire EOF boundaries"
+)]
+fn canonical_zero_prefixed_mixed_stream_never_publishes_before_eof() -> Result<(), String> {
+    use std::thread;
+    use std::time::Duration;
+
+    let workspace = OwnedFixture::new()?;
+    let typed_wire = wire(&admitted_zero_prefix_fixture()?)?;
+    let compiled = adapter::compile_canonical_typed_zero_prefixed_latest_byte_trace(
+        &typed_wire,
+        current_profile(),
+    )
+    .map_err(|error| format!("fragmented mixed typed compiler: {error:?}"))?;
+    for (typed, wire_bytes) in [
+        (true, typed_wire.as_slice()),
+        (false, compiled.ternary_bytes()),
+    ] {
+        let name = if typed { "typed" } else { "ternary" };
+        let target = workspace.path(&format!("partial-{name}.malbolge"));
+        let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+            .arg("--profile")
+            .arg(current_profile().id())
+            .arg("--output")
+            .arg(&target)
+            .arg("--")
+            .arg("--zero-prefixed-byte-trace")
+            .arg(if typed {
+                "--typed-stdin"
+            } else {
+                "--ternary-stdin"
+            })
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("fragmented mixed source spawn: {error}"))?;
+        let mut writer = child.stdin.take().ok_or("mixed wire writer unavailable")?;
+        let prefix = wire_bytes
+            .get(..16)
+            .ok_or("canonical wire has no 16-byte prefix")?;
+        let suffix = wire_bytes
+            .get(16..)
+            .ok_or("canonical wire suffix unavailable")?;
+        for segment in [prefix, suffix] {
+            writer
+                .write_all(segment)
+                .map_err(|error| format!("fragmented mixed source feed: {error}"))?;
+            thread::sleep(Duration::from_millis(75));
+            if target.exists()
+                || child
+                    .try_wait()
+                    .map_err(|error| format!("poll mixed canonical publisher: {error}"))?
+                    .is_some()
+            {
+                drop(child.kill());
+                drop(child.wait());
+                return Err(String::from("mixed source published or exited before EOF"));
+            }
+        }
+        drop(writer);
+        let outcome = child
+            .wait_with_output()
+            .map_err(|error| format!("complete mixed wire process: {error}"))?;
+        if !outcome.status.success() {
+            return Err(format!(
+                "mixed complete wire rejected: {}",
+                String::from_utf8_lossy(&outcome.stderr)
+            ));
+        }
+        if fs::read(&target).map_err(|error| error.to_string())? != compiled.layout().source() {
+            return Err(String::from("mixed canonical wire changed emitted source"));
         }
     }
     Ok(())

@@ -21,8 +21,9 @@ or not at all. The normative VM accumulator preserves its value across
 outputs and is overwritten by each new input. Reading a new byte therefore
 invalidates replay of an older SSA input; the new API rejects that case.
 
-Both APIs revalidate the whole canonical ternary program, match the selected
-profile, and delegate source encoding/admission to `malbolge-layout`. They
+All separately selected APIs revalidate the complete canonical ternary
+program, match the profile, and delegate source encoding/admission to
+`malbolge-layout`. They
 emit the actual source code; no host callback performs guest byte I/O.
 
 ### Verified initial-zero guest output
@@ -46,10 +47,34 @@ adjacent-echo and latest-read APIs remain closed to this shape. MCTR-v1 is
 pinned to the current `malbolge-2026` target; the library API does not
 extend historical/versioned typed source admission.
 
-This is **library-level** executable target lowering only. The typed MCTI
-adapter and `malbolge_layout` CLI have not enabled this new entrypoint;
-there is no general integer materializer, arbitrary nonzero byte output,
-heap, guest libc linkage or EOF semantics.
+The initial-zero-only library entrypoint also has a separate, opt-in
+canonical MCTI adapter and `malbolge_layout` CLI publisher. Neither it nor
+the mixed zero-prefixed latest-byte mode realizes arbitrary nonzero byte
+constants, heap, guest libc linkage or EOF semantics.
+
+### Verified zero-prefixed latest-successful-byte trace
+
+A fourth, independently selected bridge,
+`encode_zero_prefixed_latest_byte_trace`, composes **two** already proven
+accumulator phases in one genuine guest program. One canonical `u8`
+`MaterializeU8(0)` SSA is followed by at least one output of that same zero
+value, then at least one successful byte input and at least one output of
+the most recent input SSA. Any subsequent input overwrites A again and
+only outputs of its exact SSA result are permitted. There is no memory
+copy, host printing or synthetic accumulator reset: after the first input,
+the initial zero SSA cannot be output again. Its source is `OutputByte`,
+`InputWord`, `OutputByte`, and final `Halt`, with no instruction for the
+proved initial-zero materialization. Full canonical MCTR, function/SSA,
+profile and address-sensitive layout admission precedes source emission.
+
+The new `tests/zero_prefix_trace_bridge.rs` validates independent canonical
+wire re-admission, genuine VM output with bytes `0x00`, `0xff`, and `0x80`,
+real input consumption, and exactly 4096 source cells. It refuses missing
+zero prefix/read/latest-read output, nonzero or extra valid constants,
+post-read zero SSA replay, prior-read SSA replay, profile drift and one
+cell over the target bound. The original strict echo, latest-read and
+initial-zero-only APIs are unchanged. The new mixed trace is deliberately
+not a general byte SSA register file, arithmetic lowering, heap or EOF.
 
 ## Limits
 

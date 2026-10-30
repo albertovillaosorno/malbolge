@@ -206,6 +206,13 @@ emission.
   or publish invalid wires. Other OSes keep the pre-open path check plus
   independent descriptor admission and retain a pathname race limitation;
   the stress fixture is not exhaustive proof of every scheduling interleave.
+- The separately selected `--zero-prefixed-byte-trace` canonical
+  file/stdin publisher now combines real VM initial-zero output and latest
+  successful read output in one positional source. It independently decodes
+  MCTR and validates guest output order under two byte patterns and zero
+  prefix, before atomic raw/capsule no-clobber publication. It rejects
+  old zero SSA after the first input and other guest semantics without
+  target memory; previous modes and max 4096 cells remain unchanged.
 - An explicitly selected `--initial-zero-output` publisher now admits
   complete canonical typed or ternary source with one proven `u8` zero SSA,
   repeated same-SSA byte outputs and final void return. Both file and stdin

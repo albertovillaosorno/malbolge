@@ -299,6 +299,39 @@ EOF; only closing the pipe permits final atomic publication.
 This subset supplies no nonzero constant realization, guest EOF/status,
 libc calls, heap operations, or complete C compilation.
 
+### Zero-prefixed successful-byte traces
+
+The opt-in `--zero-prefixed-byte-trace` mode accepts one canonical MCTI or
+MCTR function with `u8` zero SSA output **before** successful byte reads,
+then only latest-read SSA outputs. Unlike zero-only and latest-read modes
+in isolation, this emits the leading guest zeros and subsequent input bytes
+in **one** real Malbolge execution. No guest byte is evaluated or emitted
+by the publisher host; the normative VM starts with A=0, then real input
+instructions overwrite the accumulator. The first phase requires at least
+one zero output, the second at least one successful input and corresponding
+output; a later output of the old zero SSA is refused.
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 --output .temp/mixed.malbolge \
+  --capsule -- --zero-prefixed-byte-trace --typed-file .temp/mixed.mcti
+cat .temp/mixed.mctr | cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 --output .temp/mixed-pipe.malbolge \
+  -- --zero-prefixed-byte-trace --ternary-stdin
+```
+
+`--typed-file`, `--ternary-file`, `--typed-stdin` and `--ternary-stdin` each
+admit bounded canonical wire, re-decode complete MCTR, recheck the exact
+position-sensitive source and profile, then execute the normative VM on
+two successful-byte patterns. The preflight checks zero prefix, output
+ordering, and exact read count before publishing a raw source or capsule
+atomically without clobbering an existing target. The option is mutually
+exclusive with strict echo, `--latest-byte-trace`, and
+`--initial-zero-output`; no nonzero scalar, guest EOF, heap or C ABI is
+represented. A real split-wire regression confirms MCTI and MCTR mixed
+source remains unpublished both after partial data and after complete bytes
+until the input pipe closes with EOF. Only then may the exact target appear.
+
 ### Bounded canonical wire streaming on standard input
 
 Canonical MCTI and MCTR can also be supplied directly from a producer process

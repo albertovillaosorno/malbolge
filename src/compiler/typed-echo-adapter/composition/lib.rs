@@ -95,6 +95,7 @@ enum ByteTraceMode {
     AdjacentEcho,
     InitialZero,
     LatestRead,
+    ZeroPrefixedLatest,
 }
 
 const fn project_position(position: SourcePosition) -> InputSourcePosition {
@@ -236,6 +237,84 @@ fn project_initial_zero_effects(
     Ok(instructions)
 }
 
+// A source zero SSA can be emitted until the first input overwrites VM A.
+// Thereafter only outputs naming the latest successful input are executable.
+#[expect(
+    clippy::too_many_lines,
+    reason = "complete source-bound mixed constant and byte-input SSA admission"
+)]
+fn project_zero_prefixed_effects(
+    module: &Module,
+    original: &[typed::LocatedInstruction],
+) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
+    let Some((first, effects)) = original.split_first() else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    let Instruction::ConstantInteger {
+        constant,
+        result: zero,
+        type_id,
+    } = first.instruction()
+    else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    if !is_byte_type(module, *type_id)
+        || constant.bit_width() != 8
+        || constant.little_endian() != [0]
+        || effects.len() >= 4096
+    {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    let mut instructions = Vec::with_capacity(original.len());
+    instructions.push(InputInstruction::ConstantInteger {
+        bit_width: constant.bit_width(),
+        little_endian: constant.little_endian().to_vec(),
+        result: zero.value(),
+        span: project_span(first.span()),
+        type_kind: InputScalarType::U8,
+    });
+    let mut latest = None;
+    let mut initial_outputs = false;
+    let mut subsequent_outputs = false;
+    for located in effects {
+        if let Instruction::ByteInput {
+            result,
+            type_id: input_type,
+        } = located.instruction()
+        {
+            if !is_byte_type(module, *input_type) {
+                return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+            }
+            latest = Some(*result);
+            instructions.push(InputInstruction::ByteInput {
+                result: result.value(),
+                span: project_span(located.span()),
+                type_kind: InputScalarType::U8,
+            });
+        } else if let Instruction::ByteOutput { value } = located.instruction() {
+            let valid = latest.map_or(value == zero, |last| *value == last);
+            if !valid {
+                return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+            }
+            if latest.is_some() {
+                subsequent_outputs = true;
+            } else {
+                initial_outputs = true;
+            }
+            instructions.push(InputInstruction::ByteOutput {
+                span: project_span(located.span()),
+                value: value.value(),
+            });
+        } else {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        }
+    }
+    if !initial_outputs || latest.is_none() || !subsequent_outputs {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    Ok(instructions)
+}
+
 fn project_byte_trace(
     module: &Module,
     mode: ByteTraceMode,
@@ -266,6 +345,9 @@ fn project_byte_trace(
         ByteTraceMode::AdjacentEcho => project_effects(module, block.instructions())?,
         ByteTraceMode::InitialZero => project_initial_zero_effects(module, block.instructions())?,
         ByteTraceMode::LatestRead => project_latest_effects(module, block.instructions())?,
+        ByteTraceMode::ZeroPrefixedLatest => {
+            project_zero_prefixed_effects(module, block.instructions())?
+        }
     };
     Ok(TypedIrInput {
         abi_id: module.abi_id().to_owned(),
@@ -330,6 +412,9 @@ fn compile_byte_trace(
         ByteTraceMode::LatestRead => {
             bridge::encode_successful_latest_byte_trace(&independently_admitted, profile)
         }
+        ByteTraceMode::ZeroPrefixedLatest => {
+            bridge::encode_zero_prefixed_latest_byte_trace(&independently_admitted, profile)
+        }
     }
     .map_err(TypedEchoAdapterError::Layout)?;
     Ok(CompiledTypedEcho {
@@ -392,4 +477,23 @@ pub fn compile_canonical_typed_initial_zero_outputs(
     profile: &'static ProfileDescriptor,
 ) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
     compile_byte_trace(canonical, profile, ByteTraceMode::InitialZero)
+}
+
+/// Lowers canonical typed zero-output prefix followed by successful-byte I/O.
+///
+/// One `u8 ConstantInteger(0)` SSA definition must be followed by at least
+/// one output of that SSA byte, then at least one successful input and one
+/// output of the latest input. Reads overwrite the VM accumulator, so any
+/// later zero-SSA replay and stale input SSA replay fail closed. Actual
+/// guest instructions perform every I/O effect; return/ABI and EOF are absent.
+///
+/// # Errors
+///
+/// Rejects malformed or unsupported typed semantics, mismatched profile,
+/// canonical MCTR drift or unadmitted/oversized address-sensitive layout.
+pub fn compile_canonical_typed_zero_prefixed_latest_byte_trace(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(canonical, profile, ByteTraceMode::ZeroPrefixedLatest)
 }

@@ -1119,6 +1119,32 @@ and latest-read domain guarantees are unchanged. This narrow bridge is
 publisher. It supplies no general nonzero constant, arbitrary guest
 computation, heap, C ABI or guest libc/EOF realization.
 
+### Canonical Zero-Prefixed Successful-Byte Trace
+
+A separate verified `encode_zero_prefixed_latest_byte_trace` sublanguage
+combines the normative VM's initial A=0 with real subsequent `InputWord`
+accumulator overwrites. One canonical MCTR `MaterializeU8(0)` supplies a
+zero SSA for at least one leading output, followed by at least one byte
+input and one output of the most recently read SSA. Every output after any
+read must use only the *latest* input SSA; old zero and prior input SSA
+values still exist in typed IR but cannot be replayed without guest
+storage. No guest instruction realizes the already-zero initial constant;
+all reads, outputs and the halt are genuine address-verified target code.
+
+`compile_canonical_typed_zero_prefixed_latest_byte_trace` projects this
+exact closed sequence from an independently validated complete canonical
+MCTI module: one void no-argument function, no globals/proofs, one block,
+exact typed `u8` zero and successful I/O SSA flow. Full source spans,
+ABI, digest, module and profile identities survive deterministic MCTR
+re-encoding and independent re-admission, followed by separate target
+bridge and layout verification. The CLI opts in via
+`--zero-prefixed-byte-trace` on typed or ternary canonical file/stdin.
+The real VM preflight checks two non-EOF input patterns, literal leading
+zero outputs, latest-input outputs and exact read count; 4096 code cells
+is the maximum. Older strict echo, initial-zero-only and latest-read APIs
+are not widened. Nothing implements arbitrary constants, guest memory,
+control flow, general C expressions, EOF or failed I/O.
+
 ### Canonical Typed Initial-Zero Source Projection
 
 The new `compile_canonical_typed_initial_zero_outputs` is an opt-in,

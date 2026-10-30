@@ -686,6 +686,15 @@ instruction.
   It is a library-only target witness; the canonical typed adapter and
   file publisher are not wired to it, and nonzero scalar realization,
   guest C ABI, heap and EOF remain unimplemented.
+- A new independent zero-prefixed latest-byte trace closes the mixed
+  constant-output to byte-input boundary: the VM emits initial-A zero to
+  guest output before reads and thereafter emits only the most recently
+  read SSA byte. It rechecks canonical MCTR and address-sensitive source.
+  Canonical MCTI projection preserves exact typed source/span/SSA/profile
+  identity and the opt-in `--zero-prefixed-byte-trace` publishes through
+  MCTI/MCTR file or bounded stdin with real VM input/output preflight.
+  Nonzero constants, post-read zero SSA, stale input SSA, extra operations,
+  heap, EOF and ABI still fail closed; strict/latest/zero-only modes unchanged.
 - Canonical `compile_canonical_typed_initial_zero_outputs` now projects
   one actual `u8 ConstantInteger(0)` typed SSA definition and one or more
   outputs of that same ID from complete independently admitted MCTI modules.

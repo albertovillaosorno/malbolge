@@ -229,3 +229,72 @@ pub fn encode_initial_zero_outputs(
     operations.push(LinearOpcode::Halt);
     encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
 }
+
+/// Emits verified guest code for zero outputs followed by latest-byte I/O.
+///
+/// The sole source function must begin with one `MaterializeU8(0)` and at
+/// least one output of that SSA byte before the first successful input.
+/// Once any input executes, the accumulator changes and every subsequent
+/// output must name exactly the *latest* input SSA result. At least one input
+/// and an output of an input are required; the last operation is `ReturnVoid`.
+/// The zero materialization is proven by initial A=0, not host computation;
+/// each output and input is a real guest instruction. EOF, failures, memory,
+/// arithmetic, and guest ABI state remain outside this bounded contract.
+///
+/// # Errors
+///
+/// Rejects malformed source, wrong profile, stale SSA, unsupported effects,
+/// and unsafe or excessively long address-sensitive source.
+pub fn encode_zero_prefixed_latest_byte_trace(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id() {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let Some((TernaryOperation::ReturnVoid { .. }, instructions)) =
+        function.operations.split_last()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let Some((TernaryOperation::MaterializeU8 { result, scalar, .. }, effects)) =
+        instructions.split_first()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if scalar.bits() != 0 {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let mut last_input = None;
+    let mut initial_outputs = false;
+    let mut subsequent_outputs = false;
+    let mut operations = Vec::with_capacity(effects.len().saturating_add(1));
+    for effect in effects {
+        if let TernaryOperation::ByteInput { result: latest, .. } = effect {
+            last_input = Some(*latest);
+            operations.push(LinearOpcode::InputWord);
+        } else if let TernaryOperation::ByteOutput { value, .. } = effect {
+            let valid = last_input.map_or(value == result, |latest| *value == latest);
+            if !valid {
+                return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+            }
+            if last_input.is_some() {
+                subsequent_outputs = true;
+            } else {
+                initial_outputs = true;
+            }
+            operations.push(LinearOpcode::OutputByte);
+        } else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    if !initial_outputs || last_input.is_none() || !subsequent_outputs {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    operations.push(LinearOpcode::Halt);
+    encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
+}
