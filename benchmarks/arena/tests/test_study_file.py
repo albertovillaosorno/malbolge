@@ -36,16 +36,14 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import json
 import sys
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import pytest
 
-from benchmarks.arena import analyze
-from benchmarks.arena import evidence
-from benchmarks.arena import study_file
+from benchmarks.arena import analyze, evidence, study_file
 from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
@@ -169,9 +167,7 @@ def test_study_stream_read_fault_preserves_typed_failure_and_cause(
             yield _FaultyStudyStream(stream, error=fault, invalid=None)
 
     monkeypatch.setattr(study_file, "_open_study", faulty_open)
-    with pytest.raises(
-        analyze.ArenaError, match="stream read failed"
-    ) as result:
+    with pytest.raises(analyze.ArenaError, match="stream read failed") as result:
         analyze.read_input(path)
     assert isinstance(result.value.__cause__, study_file.StudyFileError)
     assert isinstance(result.value.__cause__.__cause__, fault)
@@ -220,8 +216,7 @@ def test_file_replaced_between_lstat_and_descriptor_open_fails_closed(
 
 
 @pytest.mark.skipif(
-    not hasattr(study_file.os, "mkfifo")
-    or not getattr(study_file.os, "O_NONBLOCK", 0),
+    not hasattr(study_file.os, "mkfifo") or not getattr(study_file.os, "O_NONBLOCK", 0),
     reason="FIFO injection needs POSIX nonblocking file opens",
 )
 def test_raced_fifo_never_blocks_study_reader(
@@ -345,3 +340,106 @@ def test_standalone_and_evidence_cli_reject_raced_file_without_stdout(
         output = capsys.readouterr()
         assert not output.out
         assert CHANGED_OPEN in output.err
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_study_stream_construction_failure_closes_raw_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """An untrusted fdopen failure must be typed and release its raw fd."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    opened: list[int] = []
+    actual_open = study_file.os.open
+
+    def capture_open(target: Path, flags: int) -> int:
+        fd = actual_open(target, flags)
+        opened.append(fd)
+        return fd
+
+    def reject_stream(*args: object, **kwargs: object) -> BinaryIO:
+        del args, kwargs
+        raise fault("injected stream constructor fault")
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file.os, "open", capture_open)
+        context.setattr(study_file.os, "fdopen", reject_stream)
+        with pytest.raises(
+            analyze.ArenaError, match="arena input stream construction failed"
+        ) as captured:
+            _ = analyze.read_input(path)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = study_file.os.fstat(opened[0])
+    assert isinstance(captured.value.__cause__, study_file.StudyFileError)
+    assert type(captured.value.__cause__.__cause__) is fault
+
+
+def test_study_stream_construction_preserves_primary_when_close_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed raw-fd close adds evidence without masking a failed open."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    actual_close = study_file.os.close
+    closed: list[int] = []
+
+    def reject_stream(*args: object, **kwargs: object) -> BinaryIO:
+        del args, kwargs
+        raise RuntimeError("primary fdopen error")
+
+    def fail_after_closing(descriptor: int) -> None:
+        actual_close(descriptor)
+        closed.append(descriptor)
+        raise ValueError("secondary descriptor close error")
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file.os, "fdopen", reject_stream)
+        context.setattr(study_file.os, "close", fail_after_closing)
+        with pytest.raises(
+            analyze.ArenaError, match="arena input stream construction failed"
+        ) as captured:
+            _ = analyze.read_input(path)
+    assert len(closed) == 1
+    with pytest.raises(OSError):
+        _ = study_file.os.fstat(closed[0])
+    admitted_error = captured.value.__cause__
+    assert isinstance(admitted_error, study_file.StudyFileError)
+    primary = admitted_error.__cause__
+    assert isinstance(primary, RuntimeError)
+    assert str(primary) == "primary fdopen error"
+    assert primary.__notes__ == [
+        "arena input descriptor cleanup also failed: secondary descriptor close error"
+    ]
+
+
+def test_study_stream_constructor_failure_rejects_both_cli_routes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Neither operator may publish a report after stream setup fails."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+
+    def reject_stream(*args: object, **kwargs: object) -> BinaryIO:
+        del args, kwargs
+        raise RuntimeError("injected stream constructor fault")
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file.os, "fdopen", reject_stream)
+        for arguments, entry in (
+            (["arena", str(path)], analyze.main),
+            (["arena-evidence", str(path), "--root", str(tmp_path)], evidence.main),
+        ):
+            context.setattr(sys, "argv", arguments)
+            with pytest.raises(SystemExit, match="2"):
+                entry()
+            output = capsys.readouterr()
+            assert not output.out
+            assert "arena input stream construction failed" in output.err

@@ -36,8 +36,7 @@ from __future__ import annotations
 
 import os
 import stat
-from typing import Never
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Never
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -81,9 +80,20 @@ def _open_study(path: Path) -> BinaryIO:
     descriptor = os.open(path, flags)
     try:
         return os.fdopen(descriptor, "rb")
-    except OSError, ValueError:
-        os.close(descriptor)
-        raise
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        # fdopen has not taken ownership when stream construction fails.
+        # Cleanup cannot replace the original reason for rejecting this file.
+        try:
+            os.close(descriptor)
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            TypeError,
+            AttributeError,
+        ) as close_error:
+            error.add_note(f"arena input descriptor cleanup also failed: {close_error}")
+        raise StudyFileError("arena input stream construction failed") from error
 
 
 def _read_complete(stream: BinaryIO, *, size: int) -> bytes:
@@ -126,9 +136,7 @@ def _read_descriptor(
 ) -> tuple[bytes, os.stat_result]:
     with _open_study(path) as stream:
         opened = os.fstat(stream.fileno())
-        if not stat.S_ISREG(opened.st_mode) or _identity(opened) != _identity(
-            before
-        ):
+        if not stat.S_ISREG(opened.st_mode) or _identity(opened) != _identity(before):
             _fail("arena input changed between path and open")
         if opened.st_size > limit:
             _fail("arena input exceeds 16 MiB limit")
