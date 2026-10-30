@@ -261,6 +261,8 @@ mark explicit clean completion; unexpected worker exits lacking that marker
 cannot be confused with successful pipe capture. A concurrent
 stdin writer preserves full-duplex behavior; the wall deadline starts before
 process launch and covers reader/writer setup, child and pipe completion.
+Unrepresentably large timeout integers reject through the probe execution
+boundary before spawning, rather than leaking host float-conversion overflow.
 A child that already exited by the time delayed pipe setup finishes still fails
 if the elapsed wall budget has expired. On POSIX, completed and failed commands
 terminate residual

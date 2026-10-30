@@ -162,8 +162,10 @@ workers now explicitly acknowledge successful termination; an unexpected worker
 exit without that acknowledgment also rejects its transcript. The wall deadline
 is
 established before launching the
-process and includes pipe setup, child completion, and stream draining. On
-POSIX, every completed, failed, or timed-out probe terminates its dedicated
+process and includes pipe setup, child completion, and stream draining.
+Unrepresentably large timeout integers fail with a typed probe error before
+spawning any process. On POSIX, every completed, failed, or timed-out probe
+terminates its dedicated
 child session's remaining process-group members, including ordinary spawned
 helpers that closed stdio. Windows currently stops only the direct child on
 failure; POSIX descendants starting detached sessions remain outside

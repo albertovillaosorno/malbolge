@@ -790,6 +790,23 @@ def _start_capture_checked(
         raise ProbeExecutionError(message) from error
 
 
+def _probe_wall_deadline(timeout_ms: int) -> float:
+    """Compute a bounded deadline without leaking integer conversion errors.
+
+    Returns:
+        The monotonic wall deadline for process execution and pipe draining.
+
+    Raises:
+        ProbeExecutionError: Timeout cannot be represented in host time units.
+
+    """
+    try:
+        return time.monotonic() + timeout_ms / 1000
+    except OverflowError as error:
+        message = "probe command has an unrepresentable timeout"
+        raise ProbeExecutionError(message) from error
+
+
 def _launch_command(
     argv: list[str], command: ProbeCommand, scratch_root: Path
 ) -> subprocess.CompletedProcess[bytes]:
@@ -799,7 +816,7 @@ def _launch_command(
         Completed process with quota-admitted captured observations.
 
     """
-    deadline = time.monotonic() + command.timeout_ms / 1000
+    deadline = _probe_wall_deadline(command.timeout_ms)
     process = _spawn_probe(argv, scratch_root)
     try:
         running = _start_capture_checked(process, command)

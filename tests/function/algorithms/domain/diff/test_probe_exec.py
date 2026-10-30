@@ -400,6 +400,24 @@ def test_failed_probe_still_checks_original_source_mutation(
     )
 
 
+def test_unrepresentable_timeout_is_probe_execution_error(
+    tmp_path: Path,
+) -> None:
+    """Extreme positive timeout values must not leak arithmetic errors."""
+    source = tmp_path / "source"
+    source.mkdir()
+    command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "pass"),
+        timeout_ms=10**1000,
+    )
+    with pytest.raises(ProbeExecutionError, match="unrepresentable timeout"):
+        _ = run_probe_program(
+            ProbeProgram("unrepresentable-timeout", (command,)),
+            _context(source, tmp_path),
+        )
+
+
 def test_timeout_fails_closed(tmp_path: Path) -> None:
     """Bound probe execution time rather than permitting a hung transform."""
     source = tmp_path / "source"

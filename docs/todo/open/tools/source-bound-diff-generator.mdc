@@ -68,6 +68,9 @@ format.
 - A conjunctive gate proves behavior-only clones cannot replace structural
   lineage
   and source lineage cannot replace failed compatibility behavior.
+- Positive timeout integers too large for a host monotonic deadline now
+  reject with a typed probe error before process spawn, rather than leaking
+  an integer-to-float overflow outside the execution boundary.
 - Reader and stdin-writer startup failures now normalize to probe execution
   errors, while the child is killed and reaped. Both worker types have injected
   failed-before-green thread-start regressions.
