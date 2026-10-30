@@ -60,6 +60,7 @@ struct mb_worker_mapping {
     mb_u8 *base;
     size_t len;
     size_t copied_len;
+    size_t initialized_len;
     mb_u8 *reservation;
     size_t reservation_len;
     enum mb_native_process_memory_permission permission;
@@ -308,6 +309,7 @@ static int mb_worker_handle_allocate(
         .base = memory,
         .len = byte_len,
         .copied_len = 0U,
+        .initialized_len = 0U,
         .reservation = reservation,
         .reservation_len = reservation_len,
         .permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE,
@@ -388,7 +390,16 @@ static int mb_worker_handle_copy(
     }
     // A failed copy report cannot authorize stale or newly copied code.
     mapping->copied_len = 0U;
+    // Shorter replacements must not leave prior native instructions in the
+    // still-executable allocation, even after an unreported earlier copy.
+    if (code_len < mapping->initialized_len) {
+        memset(
+            &mapping->base[code_len],
+            0,
+            mapping->initialized_len - code_len);
+    }
     memcpy(mapping->base, &request[42], code_len);
+    mapping->initialized_len = code_len;
     size_t encoded_len = 0U;
     if (!mb_worker_add_size(26U, code_len, &encoded_len)) {
         return 0;

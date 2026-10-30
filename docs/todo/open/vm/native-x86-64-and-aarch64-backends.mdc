@@ -967,6 +967,14 @@ A distinct single-resident lease cache
   C23 x86-64/AArch64 cross-compilation and host sanitizer fixtures continue to
   cover the same executable-memory implementation boundaries.
 
+  Both worker implementations now independently zero residual native bytes
+  when a subsequent copy is shorter than the previously written prefix, even
+  when the earlier copy's response allocation failed after actually writing.
+  Failure-injected six-to-two-byte, successful long-to-empty, and subsequent
+  short-copy retries are checked in the POSIX and simulated Windows harnesses.
+  Clearing is bounded by the old prefix rather than the entire allocation;
+  it does not prove arbitrary native branches safe outside reviewed entries.
+
   Nine forged Windows RX synchronization requests now reject stale IDs,
   off-by-one start addresses, invalid ranges, and truncated/extended frames.
   None calls the cache API; a valid full-range retry and release remain healthy.

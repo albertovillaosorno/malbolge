@@ -799,6 +799,62 @@ static int check_lifecycle_response_failures(void)
         mb_worker_release_all(&worker);
         return 7;
     }
+    // An unreported six-byte copy must not survive a shorter reviewed copy.
+    mb_native_process_write_u64(&copy[34], 2U);
+    memcpy(&copy[42], "XY", 2U);
+    if (!mb_worker_handle_copy(&worker, copy, 44U,
+            &response, &response_len)
+        || response_len != 28U
+        || worker.mappings[0].copied_len != 2U
+        || memcmp(worker.mappings[0].base, "XY\0\0\0\0", 6U) != 0) {
+        mb_test_free(response);
+        mb_worker_release_all(&worker);
+        return 8;
+    }
+    mb_test_free(response);
+    response = NULL;
+    response_len = 0U;
+    // An admitted longer copy followed by an empty copy must zero all its
+    // previous instructions; the next short replacement must remain usable.
+    mb_native_process_write_u64(&copy[34], 6U);
+    memcpy(&copy[42], "GHIJKL", 6U);
+    if (!mb_worker_handle_copy(&worker, copy, 48U,
+            &response, &response_len)
+        || response_len != 32U
+        || worker.mappings[0].copied_len != 6U
+        || memcmp(worker.mappings[0].base, "GHIJKL", 6U) != 0) {
+            mb_test_free(response);
+            mb_worker_release_all(&worker);
+            return 9;
+    }
+    mb_test_free(response);
+    response = NULL;
+    response_len = 0U;
+    mb_native_process_write_u64(&copy[34], 0U);
+    if (!mb_worker_handle_copy(&worker, copy, 42U,
+            &response, &response_len)
+        || response_len != 26U
+        || worker.mappings[0].copied_len != 0U
+        || memcmp(worker.mappings[0].base, "\0\0\0\0\0\0", 6U) != 0) {
+            mb_test_free(response);
+            mb_worker_release_all(&worker);
+            return 9;
+    }
+    mb_test_free(response);
+    response = NULL;
+    response_len = 0U;
+    mb_native_process_write_u64(&copy[34], 2U);
+    memcpy(&copy[42], "XY", 2U);
+    if (!mb_worker_handle_copy(&worker, copy, 44U,
+            &response, &response_len)
+        || response_len != 28U
+        || worker.mappings[0].copied_len != 2U
+        || memcmp(worker.mappings[0].base, "XY\0\0\0\0", 6U) != 0) {
+            mb_test_free(response);
+            mb_worker_release_all(&worker);
+            return 9;
+    }
+    mb_test_free(response);
     fail_next_lifecycle_response = 35U;
     response = NULL;
     response_len = 0U;

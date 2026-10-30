@@ -173,6 +173,7 @@ struct mb_worker_mapping {
     mb_u8 *base;
     size_t len;
     size_t copied_len;
+    size_t initialized_len;
     mb_u8 *reservation;
     enum mb_native_process_memory_permission permission;
     int synchronized;
@@ -423,6 +424,7 @@ static int mb_worker_handle_allocate(
     mapping->base = memory;
     mapping->len = byte_len;
     mapping->copied_len = 0U;
+    mapping->initialized_len = 0U;
     mapping->reservation = reservation;
     mapping->permission = MB_NATIVE_PROCESS_MEMORY_READ_WRITE;
     mapping->synchronized = 0;
@@ -501,7 +503,14 @@ static int mb_worker_handle_copy(
     }
     // A failed copy report cannot authorize stale or newly copied code.
     mapping->copied_len = 0U;
+    // Erase obsolete instructions without touching untouched allocation tail.
+    // This also covers bytes written by an unreportable previous copy.
+    for (size_t index = code_len;
+         index < mapping->initialized_len; ++index) {
+        mapping->base[index] = 0U;
+    }
     mb_worker_copy_bytes(mapping->base, &request[42], code_len);
+    mapping->initialized_len = code_len;
     size_t encoded_len = 0U;
     if (!mb_worker_add_size(26U, code_len, &encoded_len)) {
         return 0;

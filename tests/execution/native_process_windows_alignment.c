@@ -1816,6 +1816,61 @@ static int check_unreportable_copy_sync_release(
         mb_worker_free(response);
         return 2;
     }
+    // A failed six-byte report left physically written bytes despite having
+    // no callable authority. A shorter accepted copy must erase that tail.
+    mb_native_process_write_u64(&request[34], 2U);
+    memcpy(&request[42], "XY", 2U);
+    if (!mb_worker_handle_copy(worker, request, 44U,
+            &response, &response_len)
+        || response_len != 28U
+        || worker->mappings[0].copied_len != 2U
+        || memcmp(worker->mappings[0].base, "XY\0\0\0\0", 6U) != 0) {
+        mb_worker_free(response);
+        return 24;
+    }
+    mb_worker_free(response);
+    response = NULL;
+    response_len = 0U;
+    // An admitted longer copy followed by an empty copy must zero all its
+    // previous instructions; the next short replacement must remain usable.
+    mb_native_process_write_u64(&request[34], 6U);
+    memcpy(&request[42], "GHIJKL", 6U);
+    if (!mb_worker_handle_copy(worker, request, 48U,
+            &response, &response_len)
+        || response_len != 32U
+        || worker->mappings[0].copied_len != 6U
+        || memcmp(worker->mappings[0].base, "GHIJKL", 6U) != 0) {
+            mb_worker_free(response);
+            return 25;
+    }
+    mb_worker_free(response);
+    response = NULL;
+    response_len = 0U;
+    mb_native_process_write_u64(&request[34], 0U);
+    if (!mb_worker_handle_copy(worker, request, 42U,
+            &response, &response_len)
+        || response_len != 26U
+        || worker->mappings[0].copied_len != 0U
+        || memcmp(worker->mappings[0].base, "\0\0\0\0\0\0", 6U) != 0) {
+            mb_worker_free(response);
+            return 25;
+    }
+    mb_worker_free(response);
+    response = NULL;
+    response_len = 0U;
+    mb_native_process_write_u64(&request[34], 2U);
+    memcpy(&request[42], "XY", 2U);
+    if (!mb_worker_handle_copy(worker, request, 44U,
+            &response, &response_len)
+        || response_len != 28U
+        || worker->mappings[0].copied_len != 2U
+        || memcmp(worker->mappings[0].base, "XY\0\0\0\0", 6U) != 0) {
+            mb_worker_free(response);
+            return 25;
+    }
+    mb_worker_free(response);
+    response = NULL;
+    response_len = 0U;
     const int protected = mb_worker_handle_protect(
         worker, request, 34U, &response, &response_len);
     if (!protected) {
@@ -1846,7 +1901,7 @@ static int check_unreportable_copy_sync_release(
             &response, &response_len)
         || response_len != MB_NATIVE_PROCESS_MEMORY_SYNC_RESPONSE_BYTES
         || sync_count != before_sync + 2U
-        || worker->mappings[0].copied_len != 0U) {
+        || worker->mappings[0].copied_len != 2U) {
         mb_worker_free(response);
         return 5;
     }

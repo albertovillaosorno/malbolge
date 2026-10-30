@@ -1458,6 +1458,21 @@ copy-response allocation does not grant newly copied bytes executable entry.
 POSIX and simulated Win32 failure-injection fixtures independently confirm
 that an unreported copy can change bytes without granting callable authority.
 
+Both workers also track the writable allocation's potentially nonzero copied
+prefix independently of the last *reported* length. A new copy replaces that
+prefix and explicitly zeros only its obsolete tail before changing permissions.
+The tracked prefix includes bytes actually written during a failed response:
+a successful shorter retry, a full-to-short copy, and an empty copy cannot
+retain machine-code bytes from an older image beyond the current copied span.
+Both independent C host harnesses exercise those cases, including under
+ASan/UBSan and simulated x86-64/AArch64 entry alignment.
+
+Only bytes written by the worker are included in this physical cleanup;
+it does not claim arbitrary intra-region native branches are safe, nor
+prevent raw untrusted machine code from faulting outside the admitted entry.
+The zeroing work is bounded by the previous written prefix, not the whole
+potentially large executable allocation.
+
 On real Linux x86-64, an RX+synced 64-byte allocation with just six copied
 bytes previously entered uncopied padding and killed the child. The new
 regression observes a non-mutating invalid-argument response at offsets six
