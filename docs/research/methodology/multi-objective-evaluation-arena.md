@@ -845,8 +845,11 @@ The original study records remain the result authority.
 - The retained evidence file reader applies the same descriptor ownership rule:
   injected stream-constructor exceptions have a typed evidence rejection,
   release the raw descriptor, and preserve any cleanup error as secondary
-  diagnostics without replacing the original failure. Evidence admission still
-  checks observable file identity only, not an atomic filesystem snapshot.
+  diagnostics without replacing the original failure. Reader-close failures
+  likewise become typed rejections; when a read already failed, its original
+  cause is retained and the close error is only a secondary diagnostic.
+  Evidence admission still checks observable file identity only, not an
+  atomic filesystem snapshot.
 - `benchmarks/arena/multiplicity.py` optionally applies exact study-wide
   Holm-Bonferroni multiplicity correction, preserving every raw probability
   and excluding null hypotheses from the family count. Synthetic reference,

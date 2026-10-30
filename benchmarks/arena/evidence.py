@@ -203,18 +203,34 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     """
     path = regular_path(root, relative, limit=limit)
     original = path.lstat()
-    with _open_evidence(path) as stream:
-        opened = os.fstat(stream.fileno())
-        if not stat.S_ISREG(opened.st_mode) or (
-            _file_identity(original) != _file_identity(opened)
-        ):
-            _fail(
-                f"evidence opened file changed after path admission: {relative}"
-            )
-        data = _read_complete(stream, size=opened.st_size, relative=relative)
-        completed = os.fstat(stream.fileno())
-        if _file_identity(completed) != _file_identity(opened):
-            _fail(f"evidence file changed during read: {relative}")
+    primary: Exception | None = None
+    try:
+        with _open_evidence(path) as stream:
+            try:
+                opened = os.fstat(stream.fileno())
+                if not stat.S_ISREG(opened.st_mode) or (
+                    _file_identity(original) != _file_identity(opened)
+                ):
+                    _fail(
+                        f"evidence opened file changed after path admission: {relative}"
+                    )
+                data = _read_complete(stream, size=opened.st_size, relative=relative)
+                completed = os.fstat(stream.fileno())
+                if _file_identity(completed) != _file_identity(opened):
+                    _fail(f"evidence file changed during read: {relative}")
+            except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+                primary = error
+                raise
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        if primary is not None and error is not primary:
+            # The stream's close error must not replace a rejected read.
+            primary.add_note(f"evidence stream cleanup also failed: {error}")
+            error = primary
+        if isinstance(error, EvidenceError):
+            # It may be the earlier body exception, not the active close error.
+            raise error  # ruff: ignore[TRY201]
+        message = f"evidence stream access failed: {relative}"
+        raise EvidenceError(message) from error
     final_path = regular_path(root, relative, limit=limit)
     if _file_identity(final_path.lstat()) != _file_identity(opened):
         _fail(f"evidence path changed during read: {relative}")

@@ -98,7 +98,9 @@ def test_measured_rss_reader_close_fault_is_typed(
     monkeypatch.setattr(evidence, "_open_evidence", fail_after_close)
     with pytest.raises(target_process.TargetProcessError, match="RSS report") as error:
         target_process._rss_report_bytes(report)
-    assert type(error.value.__cause__) is fault
+    evidence_failure = error.value.__cause__
+    assert isinstance(evidence_failure, evidence.EvidenceError)
+    assert type(evidence_failure.__cause__) is fault
 
 
 def test_exact_bounded_output_and_stderr_roundtrip() -> None:

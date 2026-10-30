@@ -781,6 +781,57 @@ NONBINARY_READ_KIND = "text"
 NONBINARY_READ_KIND = "text"
 
 
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_evidence_stream_close_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Close-only defects must be rejected through evidence admission."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    original_open = evidence._open_evidence
+
+    @contextmanager
+    def fail_close(path: Path) -> Iterator[IO[bytes]]:
+        with original_open(path) as stream:
+            yield stream
+        raise fault("injected evidence close failure")
+
+    monkeypatch.setattr(evidence, "_open_evidence", fail_close)
+    with pytest.raises(evidence.EvidenceError, match="stream access failed") as error:
+        evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+    assert type(error.value.__cause__) is fault
+
+
+def test_evidence_stream_close_error_cannot_hide_primary_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Read rejection remains the primary cause when cleanup also fails."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    original_open = evidence._open_evidence
+
+    @contextmanager
+    def fail_both(path: Path) -> Iterator[_FaultEvidenceReader]:
+        try:
+            with original_open(path) as stream:
+                yield _FaultEvidenceReader(stream, RuntimeError)
+        finally:
+            raise ValueError("secondary evidence stream close failure")
+
+    monkeypatch.setattr(evidence, "_open_evidence", fail_both)
+    with pytest.raises(evidence.EvidenceError, match="read failed") as error:
+        evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+    assert isinstance(error.value.__cause__, RuntimeError)
+    assert error.value.__notes__ == [
+        "evidence stream cleanup also failed: secondary evidence stream close failure"
+    ]
+
+
 class _InvalidChunkEvidenceReader:
     def __init__(self, stream: IO[bytes], kind: str) -> None:
         self.stream = stream
