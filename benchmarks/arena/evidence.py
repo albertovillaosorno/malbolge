@@ -255,6 +255,7 @@ def _manifest(
     data = read_bounded_regular(root, relative, limit=MAX_MANIFEST_BYTES)
     text = data.decode("utf-8")
     return _ManifestLink(
+        source_sha256=sha256(data).hexdigest(),
         manifest=experiment_manifest.parse_manifest(text),
         trial=(trial_runs.parse_trial_run(text) if require_trial else None),
         budgets=(
@@ -312,6 +313,7 @@ def _compare_run(
 
 @dataclass(frozen=True, slots=True)
 class _ManifestLink:
+    source_sha256: str
     manifest: experiment_manifest.ExperimentManifest
     trial: trial_runs.TrialRun | None
     budgets: budget_links.RunBudgets | None
@@ -431,6 +433,33 @@ def _checked_contents(
     if context.policy.require_trial_run_identity:
         _trial_digests(context, contents, document)
     return contents
+
+
+def _recheck_retained_links(
+    context: _EvidenceContext,
+    contents: dict[str, str] | None,
+) -> None:
+    # The parsed run manifest remains authoritative only while its retained
+    # bytes agree with admission, including after optional host-C execution.
+    for relative, link in sorted(context.manifests.items()):
+        now = read_bounded_regular(context.root, relative, limit=MAX_MANIFEST_BYTES)
+        if sha256(now).hexdigest() != link.source_sha256:
+            _fail(f"run manifest changed after admission: {relative}")
+
+    if contents is None:
+        # Default mode claims presence, not raw content, so preserve that
+        # weaker contract while rejecting late disappearance or symlinks.
+        for relative in sorted(context.samples):
+            _ = regular_path(context.root, relative)
+        return
+
+    # Strict mode reports and optionally links these exact source-byte hashes.
+    for relative, expected in sorted(contents.items()):
+        now = read_bounded_regular(
+            context.root, relative, limit=raw_samples.MAX_RAW_BYTES
+        )
+        if sha256(now).hexdigest() != expected:
+            _fail(f"raw CSV changed after row admission: {relative}")
 
 
 def _bundle_source(
@@ -693,6 +722,7 @@ def validate_links(
         )
         if bundle_inspection is not None:
             _recheck_bundle_files(root, bundle_inspection)
+        _recheck_retained_links(context, contents)
     except (
         OSError,
         UnicodeError,

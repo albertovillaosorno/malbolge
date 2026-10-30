@@ -143,6 +143,70 @@ def test_exact_raw_matches_with_durable_content_digests(tmp_path: Path) -> None:
     assert NO_AUTHENTICATION in preflight["scope"]
 
 
+def test_strict_raw_sample_rechecked_after_report_assembly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A returned raw-byte digest must still describe the retained CSV."""
+    doc = _setup(tmp_path)
+    admitted = analyze.parse_document(json.dumps(doc))
+    original_report = evidence._report_links
+
+    def rewrite_after_report(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_report(*args, **kwargs)
+        target = tmp_path / ROOT_LABEL
+        source = target.read_bytes()
+        assert b",20,10," in source
+        _ = target.write_bytes(source.replace(b",20,10,", b",21,10,", 1))
+        return report
+
+    monkeypatch.setattr(evidence, "_report_links", rewrite_after_report)
+    with pytest.raises(evidence.EvidenceError, match="raw CSV changed"):
+        evidence.validate_links(
+            admitted,
+            tmp_path,
+            policy=evidence.EvidencePolicy(require_raw_rows=True),
+        )
+
+
+def test_strict_raw_cli_rejects_late_byte_drift_without_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """No digest-backed capacity report escapes after a raw CSV rewrite."""
+    doc = _setup(tmp_path)
+    source = tmp_path / "study.json"
+    _ = source.write_text(json.dumps(doc), encoding="utf-8")
+    original_report = evidence._report_links
+
+    def corrupt_after_report(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_report(*args, **kwargs)
+        target = tmp_path / ROOT_LABEL
+        contents = target.read_bytes()
+        assert b",20,10," in contents
+        _ = target.write_bytes(contents.replace(b",20,10,", b",21,10,", 1))
+        return report
+
+    monkeypatch.setattr(evidence, "_report_links", corrupt_after_report)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arena-evidence",
+            str(source),
+            "--root",
+            str(tmp_path),
+            "--require-raw-rows",
+        ],
+    )
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    failure = capsys.readouterr()
+    assert not failure.out
+    assert "raw CSV changed" in failure.err
+
+
 def test_old_identity_only_mode_remains_backward_compatible(
     tmp_path: Path,
 ) -> None:

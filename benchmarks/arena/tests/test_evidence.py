@@ -169,6 +169,94 @@ def test_links_are_checked_without_certification(tmp_path: Path) -> None:
     assert DIGEST_SCOPE in result["scope"]
 
 
+@pytest.mark.parametrize("tamper", ["rewrite", "missing", "symlink"])
+def test_run_manifest_rechecked_after_late_report_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    """A reported run identity may not disappear or change after admission."""
+    doc = sample_study(tmp_path)
+    admitted = analyze.parse_document(json.dumps(doc))
+    original_report = evidence._report_links
+
+    def modify_after_report(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_report(*args, **kwargs)
+        path = tmp_path / doc["observations"][0]["experiment_manifest"]
+        if tamper == "rewrite":
+            source = path.read_text(encoding="utf-8")
+            assert 'id = "baseline"' in source
+            _ = path.write_text(
+                source.replace('id = "baseline"', 'id = "caseline"', 1),
+                encoding="utf-8",
+            )
+        else:
+            path.unlink()
+            if tamper == "symlink":
+                path.symlink_to(tmp_path / doc["observations"][1]["experiment_manifest"])
+        return report
+
+    monkeypatch.setattr(evidence, "_report_links", modify_after_report)
+    with pytest.raises(evidence.EvidenceError, match=r"manifest|evidence|symlink"):
+        evidence.validate_links(admitted, tmp_path)
+
+
+def test_evidence_cli_rejects_late_manifest_drift_without_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """No partial capacity report is published after a late manifest rewrite."""
+    doc = sample_study(tmp_path)
+    source = tmp_path / "study.json"
+    _ = source.write_text(json.dumps(doc), encoding="utf-8")
+    original_report = evidence._report_links
+
+    def corrupt_after_report(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_report(*args, **kwargs)
+        path = tmp_path / doc["observations"][0]["experiment_manifest"]
+        contents = path.read_text(encoding="utf-8")
+        _ = path.write_text(
+            contents.replace('id = "baseline"', 'id = "caseline"', 1),
+            encoding="utf-8",
+        )
+        return report
+
+    monkeypatch.setattr(evidence, "_report_links", corrupt_after_report)
+    monkeypatch.setattr(
+        sys, "argv", ["arena-evidence", str(source), "--root", str(tmp_path)]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    failure = capsys.readouterr()
+    assert not failure.out
+    assert "run manifest changed" in failure.err
+
+
+@pytest.mark.parametrize("tamper", ["missing", "symlink"])
+def test_default_raw_presence_rechecked_after_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    """Default evidence still requires retained raw paths at report return."""
+    doc = sample_study(tmp_path)
+    admitted = analyze.parse_document(json.dumps(doc))
+    original_report = evidence._report_links
+
+    def remove_after_report(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        report = original_report(*args, **kwargs)
+        path = tmp_path / doc["observations"][0]["raw_sample"]
+        path.unlink()
+        if tamper == "symlink":
+            path.symlink_to(tmp_path / doc["observations"][1]["raw_sample"])
+        return report
+
+    monkeypatch.setattr(evidence, "_report_links", remove_after_report)
+    with pytest.raises(evidence.EvidenceError, match=r"evidence|symlink"):
+        evidence.validate_links(admitted, tmp_path)
+
+
 @pytest.mark.parametrize(
     ("previous", "replacement", "diagnostic"),
     [

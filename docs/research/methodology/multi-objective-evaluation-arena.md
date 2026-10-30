@@ -681,6 +681,15 @@ Premature EOF, nonbyte or overlong chunks, and five injected read-stream
 exception classes reject through a typed arena error, with the original stream
 failure preserved as its cause. Both arena CLI routes share this reader.
 
+Evidence preflight now also retains the exact SHA-256 of each bounded run
+manifest and reopens every manifest after report assembly. In strict raw-row
+mode it similarly checks that the returned raw CSV digest still matches the
+retained source bytes; default identity-only mode rechecks raw-path presence
+without claiming raw-byte authenticity. Late in-place rewrites, deleted paths
+and symlink substitutions reject before the evidence preflight returns. As
+with other bounded rechecks, simultaneous writers can still race between
+separate reads; these checks do not authenticate measurements or file origin.
+
 The shared evidence-file reader now checks the admitted regular file against
 its opened descriptor and verifies device/inode identity, byte length and
 nanosecond modification/change timestamps through read completion. It also
