@@ -289,6 +289,11 @@ MCTI/MCTR strict and latest-read examples; error cases do not create or
 overwrite the final file. A writer must eventually close its pipe: an
 unclosed stdin stream can legitimately wait for its upstream producer, unlike
 the forbidden implicit opening of FIFO paths in the regular-file modes.
+A separate process regression writes the first 16 MCTI bytes, checks that
+no target exists while the producer keeps stdin open, then streams the
+remaining bytes individually and closes the pipe. Only after EOF may the
+publisher emit the exact target source; the source is independently
+compared with canonical typed compilation.
 
 `--ternary-file` is mutually exclusive with individual decoded machine-op
 tokens. Its sole operand must be an existing, nonempty regular file with at

@@ -277,6 +277,12 @@ and reject empty, oversized, malformed, wrong-kind and trailing-option
 inputs without final artifacts or overwrites. This is a bounded producer
 interface, not a generic guest runtime, C compiler or unbounded stream
 transformer; it does not implement EOF I/O semantics inside the guest.
+An additional fragmented-input process fixture feeds a partial canonical
+MCTI header, verifies no output path exists while the producer keeps the
+pipe open, supplies the rest in single-byte writes, then closes the pipe.
+Only after EOF does the publisher create target bytes independently equal
+to typed-module lowering. This demonstrates complete-source publication,
+not partial stream execution.
 
 ### Direct canonical typed-IR publication
 

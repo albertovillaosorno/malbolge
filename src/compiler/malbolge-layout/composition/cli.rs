@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Infer guest semantics from host arguments or publish unverified source.
 // - Allows:
-//   - Inputs: exact profile, canonical MCTI/MCTR file or closed machine tokens.
+//   - Inputs: exact profile, bounded MCTI/MCTR file or stdin, or machine tokens.
 //   - Outputs: one complete raw graphical `.malbolge` file.
 //   - Side effects: same-directory staging and atomic no-clobber hard link.
 // - Split-When:

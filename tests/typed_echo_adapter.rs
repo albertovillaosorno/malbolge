@@ -1791,3 +1791,65 @@ fn canonical_typed_stdin_capsule_executes_in_real_general_runner() -> Result<(),
     }
     Ok(())
 }
+
+#[test]
+fn canonical_typed_stdin_keeps_target_absent_until_valid_eof() -> Result<(), String> {
+    use std::thread;
+    use std::time::Duration;
+
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&fixture(1)?)?;
+    let target = workspace.path("complete-stream.malbolge");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+        .arg("--profile")
+        .arg(current_profile().id())
+        .arg("--output")
+        .arg(&target)
+        .arg("--")
+        .arg("--typed-stdin")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("split MCTI child launch: {error}"))?;
+    let mut input = child.stdin.take().ok_or("missing MCTI stdin writer")?;
+    let prefix = canonical.get(..16).ok_or("canonical MCTI prefix missing")?;
+    let suffix = canonical.get(16..).ok_or("canonical MCTI suffix missing")?;
+    input
+        .write_all(prefix)
+        .map_err(|error| format!("write partial MCTI prefix: {error}"))?;
+    thread::sleep(Duration::from_millis(75));
+    if target.exists()
+        || child
+            .try_wait()
+            .map_err(|error| format!("check incomplete publication: {error}"))?
+            .is_some()
+    {
+        drop(child.kill());
+        drop(child.wait());
+        return Err(String::from(
+            "publisher completed before canonical input EOF",
+        ));
+    }
+    for byte in suffix {
+        input
+            .write_all(&[*byte])
+            .map_err(|error| format!("write fragmented MCTI: {error}"))?;
+    }
+    drop(input);
+    let result = child
+        .wait_with_output()
+        .map_err(|error| format!("complete fragmented MCTI: {error}"))?;
+    if !result.status.success() {
+        return Err(format!(
+            "complete split MCTI rejected: {}",
+            String::from_utf8_lossy(&result.stderr)
+        ));
+    }
+    let compiled = compile_canonical_typed_echo(&canonical, current_profile())
+        .map_err(|error| format!("MCTI semantic baseline: {error:?}"))?;
+    if fs::read(&target).map_err(|error| error.to_string())? != compiled.layout().source() {
+        return Err(String::from("fragmented stdin changed encoded guest bytes"));
+    }
+    Ok(())
+}
