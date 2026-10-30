@@ -1,0 +1,17 @@
+schema = "compact-guest-bytecode-pilot-v2"
+target_profile = "malbolge-2026"
+source_codec = "position-sensitive-graphical-loader-alphabet-v1"
+bound_candidate_codec = "CEB2-u16le-sha256"
+bound_candidate_bytes = 38
+allowed_decoded_instructions = "j i * p < / v o"
+loader_legal_glyphs_per_cell = 8
+bits_per_cell = 3
+payload_cells = 102
+canonical_pad_bits = 2
+halt_prefix_cells = 3
+source_cells = 105
+execution_mode = "direct-single-echo-then-halt-with-unread-resident-data"
+verification_mode = "independent-host-reconstruction-and-normative-profile-vm"
+interpretation_status = "no-guest-payload-decoder-or-dispatch"
+comparison_type = "necessary-size-budget-not-measured-speedup"
+experiment_seed = "none-deterministic"

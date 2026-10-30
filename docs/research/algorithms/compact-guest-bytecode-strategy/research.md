@@ -188,6 +188,49 @@ Across four bounded sizes, the actual external `malbolge_layout` publisher
 also emits the same direct source as both candidate expanders. The comparison
 is byte-for-byte but still offers **no** resident guest-bytecode execution.
 
+## Results: Actual Graphical Loader Residency v2 (2026-10-29)
+
+Version-two research now tests the missing Malbolge memory-cell packing
+assumption, separately from any interpreter claim. A real position-sensitive
+loader admits exactly eight graphical glyph choices per loaded position (the
+eight canonical opcode letters). The research image encodes the existing
+38-byte CEB2 descriptor in groups of three bits by choosing one of those
+eight characters at each address.
+
+That requires `ceil(304/3) = 102` source
+cells with two canonical zero pad bits. The fixed three-cell direct byte-echo
+prefix halts before the tail, producing a 105-cell loadable source image.
+This is a literal graphical source packing observation, not a general
+compression lower bound for structured CEB2 data or the complete word memory.
+
+The normative current-profile VM loads the image, executes only the direct
+single-byte echo and leaves all proposed payload cells unchanged. Host-side
+independent reconstruction checks exact glyph position and CEB2 digest;
+loader-admissible candidate-byte mutations and malformed/extra source fail
+closed. The guest does **not** use the payload: even the 7-pair case runs only
+one byte before halting, and no claim of equivalent n-pair execution follows.
+
+| Echo pairs | Direct cells | Literal CEB2 cells | Max hypothetical R |
+| ---: | ---: | ---: | ---: |
+| 1 | 3 | 102 | None |
+| 2 | 5 | 102 | None |
+| 3 | 7 | 102 | None |
+| 7 | 15 | 102 | None |
+| 20 | 41 | 102 | None |
+| 64 | 129 | 102 | 26 |
+| 256 | 513 | 102 | 410 |
+| 2047 | 4095 | 102 | 3992 |
+
+For this literal encoding only, strict size advantage now *necessarily*
+requires `R + 102 < 2n + 1`, with `R` covering all runtime code, decoder,
+loader/dispatch linkage, provenance verification and additional data. The
+three-cell demonstration prefix is included in `R`, but is not a runtime
+that interprets the resident bytes. Actual total footprint, throughput and
+semantic equivalence of a VM-resident decoder remain unknown. The v0/v1
+38-byte hypothetical one-to-one packing understates this concrete test's
+source-cell cost by 64 cells; other bit encodings and data initialization
+techniques have not been excluded.
+
 ## Threats to Validity
 
 The pilot has no guest interpreter, no real bytecode loader, no linked data

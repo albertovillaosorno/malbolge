@@ -33,10 +33,14 @@
 
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_binding.rs"]
 pub mod binding;
+#[path = "../algorithms/compact-guest-bytecode-strategy/graphical_residency.rs"]
+pub mod residency;
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_macro.rs"]
 pub mod strategy;
 
-use malbolge::{ProfileMachine, RunOutcome, current_profile, historical_profile};
+use malbolge::{
+    ProfileMachine, RunOutcome, current_profile, decode_profile_instruction, historical_profile,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, id};
@@ -56,8 +60,16 @@ use binding::{
     maximum_bound_runtime_cells,
 };
 
+use residency::{
+    GRAPHICAL_PAYLOAD_CELLS, GRAPHICAL_TOTAL_CELLS, GraphicalResidencyError,
+    admit_bound_resident_source, embed_bound_resident_source, maximum_packed_runtime_cells,
+};
+
 const BOUND_PILOT_CONFIG: &str =
     include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v1.toml");
+
+const RESIDENT_PILOT_CONFIG: &str =
+    include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v2.toml");
 
 const PILOT_CASES: [usize; 8] = [1, 2, 3, 7, 20, 64, 256, 2047];
 const PILOT_CONFIG: &str =
@@ -673,6 +685,295 @@ fn bound_envelope_digest_matches_independent_canonical_wire_golden() -> Result<(
             text
         }),
         "5b65a62d87e7a3a3e9c938065ff4f258e4b12be3ff2932891e93523a5f1e7ebc",
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded literal residency experiment"
+)]
+fn bound_descriptor_physically_resides_in_loader_admissible_source() -> Result<(), String> {
+    assert_eq!(GRAPHICAL_PAYLOAD_CELLS, 102);
+    assert_eq!(
+        GRAPHICAL_PAYLOAD_CELLS,
+        BOUND_ECHO_MACRO_BYTES.saturating_mul(8).div_ceil(3),
+    );
+    assert_eq!(GRAPHICAL_TOTAL_CELLS, 105);
+    for pairs in PILOT_CASES {
+        let original = program(pairs)?;
+        let bound = encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("bound {pairs}: {error:?}"))?;
+        let resident = embed_bound_resident_source(&original, current_profile(), &bound)
+            .map_err(|error| format!("residency {pairs}: {error:?}"))?;
+        assert_eq!(resident.len(), GRAPHICAL_TOTAL_CELLS);
+        assert!(resident.iter().all(|byte| (33..=126).contains(byte)));
+        assert!(
+            resident
+                .iter()
+                .copied()
+                .enumerate()
+                .all(|(position, glyph)| {
+                    matches!(
+                        decode_profile_instruction(
+                            u32::from(glyph),
+                            u32::try_from(position).unwrap_or(u32::MAX)
+                        ),
+                        Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                    )
+                })
+        );
+        let recovered = admit_bound_resident_source(&original, current_profile(), &resident)
+            .map_err(|error| format!("read {pairs}: {error:?}"))?;
+        assert_eq!(recovered, bound);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real VM loader and guest evidence"
+)]
+fn loaded_ce_b2_data_is_preserved_but_never_interpreted_by_guest() -> Result<(), String> {
+    let original = program(7)?;
+    let bound = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound: {error:?}"))?;
+    let resident = embed_bound_resident_source(&original, current_profile(), &bound)
+        .map_err(|error| format!("source: {error:?}"))?;
+    for input in [0u8, 255, 128] {
+        let mut vm = ProfileMachine::from_source(current_profile(), &resident, vec![input])
+            .map_err(|error| format!("real profile loader: {error:?}"))?;
+        for (position, glyph) in resident.iter().copied().enumerate().skip(3) {
+            let address = u32::try_from(position).map_err(|error| error.to_string())?;
+            assert_eq!(
+                vm.memory_word(address)
+                    .map_err(|error| format!("initial memory: {error:?}"))?,
+                u32::from(glyph)
+            );
+        }
+        assert!(matches!(
+            vm.run(3),
+            Ok(RunOutcome::Terminated { steps: 3, .. })
+        ));
+        assert_eq!(vm.output(), [input]);
+        assert_eq!(vm.input_consumed(), 1);
+        // Exact memory words remain untouched: the VM did NOT decode the CEB2
+        // guest proposal or execute the extra source positions.
+        for (position, glyph) in resident.iter().copied().enumerate().skip(3) {
+            let address = u32::try_from(position).map_err(|error| error.to_string())?;
+            assert_eq!(
+                vm.memory_word(address)
+                    .map_err(|error| format!("post-run memory: {error:?}"))?,
+                u32::from(glyph)
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "negative literal residency matrix"
+)]
+fn graphical_source_corruption_and_noncanonical_padding_are_rejected() -> Result<(), String> {
+    let original = program(7)?;
+    let bound = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound: {error:?}"))?;
+    let resident = embed_bound_resident_source(&original, current_profile(), &bound)
+        .map_err(|error| format!("resident: {error:?}"))?;
+    for size in 0..GRAPHICAL_TOTAL_CELLS {
+        assert_eq!(
+            admit_bound_resident_source(
+                &original,
+                current_profile(),
+                resident.get(..size).ok_or("prefix")?
+            ),
+            Err(GraphicalResidencyError::LengthMismatch),
+        );
+    }
+    let mut extended = resident.clone();
+    extended.push(b'o');
+    assert_eq!(
+        admit_bound_resident_source(&original, current_profile(), &extended),
+        Err(GraphicalResidencyError::LengthMismatch),
+    );
+    let mut bad_prefix = resident.clone();
+    *bad_prefix.get_mut(0).ok_or("prefix byte")? = b'!';
+    assert_eq!(
+        admit_bound_resident_source(&original, current_profile(), &bad_prefix),
+        Err(GraphicalResidencyError::PrefixMismatch),
+    );
+    let mut bad_glyph = resident;
+    *bad_glyph.get_mut(3).ok_or("tail byte")? = b' ';
+    assert_eq!(
+        admit_bound_resident_source(&original, current_profile(), &bad_glyph),
+        Err(GraphicalResidencyError::InvalidPayloadCell { position: 3 }),
+    );
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independently reject forged glyphs"
+)]
+fn loader_valid_graphical_payload_mutations_fail_host_reconstruction() -> Result<(), String> {
+    let original = program(7)?;
+    let bound = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound: {error:?}"))?;
+    let resident = embed_bound_resident_source(&original, current_profile(), &bound)
+        .map_err(|error| format!("resident: {error:?}"))?;
+    // Every alternative *loader-admissible* glyph at each payload position
+    // changes at least one descriptor bit, hence the source-bound digest or
+    // canonical bit padding must reject it. This tests valid-looking forgeries.
+    for position in 3..GRAPHICAL_TOTAL_CELLS {
+        for glyph in 33u8..=126u8 {
+            if resident.get(position) == Some(&glyph) {
+                continue;
+            }
+            let decoded = decode_profile_instruction(
+                u32::from(glyph),
+                u32::try_from(position).map_err(|error| error.to_string())?,
+            );
+            if !matches!(
+                decoded,
+                Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+            ) {
+                continue;
+            }
+            let mut forged = resident.clone();
+            *forged.get_mut(position).ok_or("forge slot")? = glyph;
+            assert!(
+                admit_bound_resident_source(&original, current_profile(), &forged).is_err(),
+                "loader-valid forged glyph at {position} must reject"
+            );
+        }
+    }
+    let mut another_source = original;
+    another_source.source_id = String::from("research/another-equal-trace.c");
+    assert!(matches!(
+        admit_bound_resident_source(&another_source, current_profile(), &resident),
+        Err(GraphicalResidencyError::Binding(
+            BoundEchoError::SourceMismatch
+        ))
+    ));
+    assert!(embed_bound_resident_source(&another_source, current_profile(), &bound).is_err());
+    Ok(())
+}
+
+#[test]
+fn eight_loader_admissible_cells_per_position_and_real_budget() {
+    for position in 0..94u32 {
+        assert_eq!(
+            (33u8..=126u8)
+                .filter(|glyph| matches!(
+                    decode_profile_instruction(u32::from(*glyph), position),
+                    Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                ))
+                .count(),
+            8,
+            "loader alphabet at phase {position}"
+        );
+    }
+    for (direct, allowance) in [
+        (3usize, None),
+        (41, None),
+        (103, Some(0)),
+        (129, Some(26)),
+        (513, Some(410)),
+        (4095, Some(3992)),
+    ] {
+        assert_eq!(maximum_packed_runtime_cells(direct), allowance);
+    }
+    for line in [
+        "schema = \"compact-guest-bytecode-pilot-v2\"",
+        "bound_candidate_bytes = 38",
+        "loader_legal_glyphs_per_cell = 8",
+        "bits_per_cell = 3",
+        "payload_cells = 102",
+        "canonical_pad_bits = 2",
+        "halt_prefix_cells = 3",
+        "source_cells = 105",
+        "interpretation_status = \"no-guest-payload-decoder-or-dispatch\"",
+    ] {
+        assert!(RESIDENT_PILOT_CONFIG.lines().any(|entry| entry == line));
+    }
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent source-bit projection"
+)]
+#[expect(clippy::integer_division, reason = "exact octet bit positions")]
+#[expect(clippy::integer_division_remainder_used, reason = "exact bit indices")]
+fn graphical_glyph_ordinal_matches_independent_ce_b2_bit_reference() -> Result<(), String> {
+    let original = program(7)?;
+    let descriptor = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound: {error:?}"))?;
+    let source = embed_bound_resident_source(&original, current_profile(), &descriptor)
+        .map_err(|error| format!("resident: {error:?}"))?;
+    // Independent bit projection: do not reuse the model's alphabet() or
+    // source decoder. Count loader-valid glyphs smaller than each source byte.
+    for (offset, glyph) in source.iter().copied().enumerate().skip(3) {
+        let position = u32::try_from(offset).map_err(|error| error.to_string())?;
+        let rank = (33u8..glyph)
+            .filter(|byte| {
+                matches!(
+                    decode_profile_instruction(u32::from(*byte), position),
+                    Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                )
+            })
+            .count();
+        assert!(rank < 8, "loader glyph must have one three-bit ordinal");
+        for digit_bit in 0..3usize {
+            let bit_index = offset
+                .saturating_sub(3)
+                .saturating_mul(3)
+                .saturating_add(digit_bit);
+            let expected = descriptor.get(bit_index / 8).map_or(0usize, |byte| {
+                usize::from((byte >> (7 - bit_index % 8)) & 1)
+            });
+            let actual = (rank >> (2 - digit_bit)) & 1;
+            assert_eq!(actual, expected, "descriptor bit {bit_index}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "canonical padding rejection")]
+fn last_graphical_cell_rejects_nonzero_two_bit_padding() -> Result<(), String> {
+    let original = program(7)?;
+    let descriptor = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound: {error:?}"))?;
+    let mut source = embed_bound_resident_source(&original, current_profile(), &descriptor)
+        .map_err(|error| format!("resident: {error:?}"))?;
+    let position = u32::try_from(GRAPHICAL_TOTAL_CELLS.saturating_sub(1))
+        .map_err(|error| error.to_string())?;
+    let valid = (33u8..=126u8)
+        .filter(|glyph| {
+            matches!(
+                decode_profile_instruction(u32::from(*glyph), position),
+                Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+            )
+        })
+        .collect::<Vec<_>>();
+    let final_glyph = *source.last().ok_or("no last glyph")?;
+    let ordinal = valid
+        .iter()
+        .position(|glyph| *glyph == final_glyph)
+        .ok_or("last glyph absent from loader alphabet")?;
+    assert!(matches!(ordinal, 0 | 4));
+    *source.last_mut().ok_or("last cell")? = *valid
+        .get(ordinal.saturating_add(1))
+        .ok_or("missing noncanonical glyph")?;
+    assert_eq!(
+        admit_bound_resident_source(&original, current_profile(), &source),
+        Err(GraphicalResidencyError::NoncanonicalPadding),
     );
     Ok(())
 }

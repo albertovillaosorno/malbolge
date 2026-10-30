@@ -98,6 +98,40 @@ profile identity, preventing Rust encoder/checker co-drift. For 1, 7, 64 and
 also yields bytes identical to *both* CEB1 and CEB2 host expansions. This
 still publishes only direct programs, not resident guest bytecode.
 
+## Literal graphical residency v2 (2026-10-29)
+
+`pilot-v2.toml` and `graphical_residency.rs` now encode the **actual** 38-byte
+CEB2 descriptor into Malbolge graphical source bytes. The normative loader
+admits only eight decoded instructions (`j i * p < / v o`) at each of its
+94 position phases. The pilot sorts the eight admissible graphical characters
+at each position, packs three descriptor bits per source cell, and checks the
+last two zero pad bits.
+
+A 38-byte CEB2 candidate consequently occupies
+**102 graphical cells**, not the previously idealized 38. The fixed
+three-cell direct `input/output/halt` witness brings the emitted image to
+105 cells, and an independent host reader reconstructs and re-admits the exact
+bound candidate. This is an explicit literal packing strategy, **not** a
+universal bound on all compressed guest representations.
+
+The resident image is a valid position-sensitive `.malbolge` source: the
+profiled VM loads every graphical tail cell, executes one successful byte
+input/output, halts, and leaves the 102 tail cells untouched. The guest never
+reads or decodes the proposal. The one-byte prefix does **not** reproduce a
+7-, 256-, or 2047-pair CEB2 workload. Valid-looking alternative glyphs,
+noncanonical pad bits, altered source identity, truncated source, and extra
+cells reject under independent host admission. No new code is published
+through the product source emitter; this remains a research-only image.
+
+For an eventual *complete and semantically equivalent* n-pair guest runtime,
+this particular literal placement requires the stricter necessary inequality
+`R + 102 < 2n + 1`, where `R` includes all guest runtime code, dispatch,
+source/profile authentication, and other placement costs. The best-case
+allowance for missing runtime cells is now `None` at 20 echo pairs, **26** at
+64, **410** at 256, and **3992** at 2047. Those are *not* observed interpreter
+sizes, proven semantic equivalents, or speedups. A real guest interpreter may
+require significantly more cells and independent verification.
+
 ## Status
 
 No VM-resident bytecode runtime has been implemented. No guest-interpreted

@@ -84,6 +84,17 @@ code-size explosion or compilation cost.
   the actual external source publisher matches both CEB1 and CEB2 host
   expansion for 1, 7, 64, and 256 pairs, without guest bytecode execution.
 
+- The version-two literal graphical-residency pilot now maps 38 bound CEB2
+  bytes into 102 exact-position loader-admissible source cells (eight opcode
+  glyph choices per address, three bits each). A 105-cell source image with a
+  separate three-cell direct echo prefix loads under the normative profile VM,
+  executes one successful byte and leaves the resident payload untouched.
+  Independent host reconstruction rejects malformed glyphs, changed source
+  and noncanonical padding. This revises the necessary idealized size budget
+  to `R + 102 < 2n + 1` for this packing, reducing the unimplemented-runtime
+  allowance to 26 cells at 64 echo pairs and 410 at 256; the guest does not
+  interpret the resident bytes or execute a complete n-pair CEB2 program.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.
