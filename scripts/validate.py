@@ -108,19 +108,34 @@ def main() -> int:
 
     """
     cargo = tool(".dependencies/rust/1.98.1/bin/cargo", "cargo")
+    fmt = tool(
+        ".dependencies/rust/nightly-2026-07-14/bin/cargo-fmt.bin", "cargo-fmt"
+    )
+    clippy = tool(
+        ".dependencies/rust/nightly-2026-07-14/bin/cargo-clippy.bin",
+        "cargo-clippy",
+    )
     ruff = tool(".dependencies/python/3.14.7/bin/ruff", "ruff")
     pyright = tool(
         ".dependencies/python/3.14.7/bin/basedpyright", "basedpyright"
     )
     pytest = tool(".dependencies/python/3.14.7/bin/pytest", "pytest")
     commands = [
-        [cargo, "fmt", "--all", "--", "--check"],
         [
-            cargo,
-            "clippy",
+            fmt,
+            "--all",
+            "--",
+            "--check",
+            "--config-path",
+            ".jig/lang/rust/.rustfmt.toml",
+        ],
+        [
+            clippy,
+            "--no-deps",
             "--locked",
             "--workspace",
             "--all-targets",
+            "--all-features",
             "--",
             "-D",
             "warnings",

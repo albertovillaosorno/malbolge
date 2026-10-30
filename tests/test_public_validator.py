@@ -100,13 +100,21 @@ def test_cargo_checks_cannot_rewrite_lockfile() -> None:
         patch.object(validator, "tool", side_effect=_tool),
     ):
         assert validator.main() == 0
-    assert commands[0] == ["cargo", "fmt", "--all", "--", "--check"]
+    assert commands[0] == [
+        "cargo-fmt",
+        "--all",
+        "--",
+        "--check",
+        "--config-path",
+        ".jig/lang/rust/.rustfmt.toml",
+    ]
     assert commands[1] == [
-        "cargo",
-        "clippy",
+        "cargo-clippy",
+        "--no-deps",
         "--locked",
         "--workspace",
         "--all-targets",
+        "--all-features",
         "--",
         "-D",
         "warnings",
