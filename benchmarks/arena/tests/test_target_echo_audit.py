@@ -63,9 +63,16 @@ ROWS = 8
 REPLAYED = 8
 MAX_PHASE_TRIALS = 2
 FRONTIERS = 2
+FRONTIER_LEVELS_FORWARD = 4
 INVALID_SOURCE = 33
 SECOND_INVALID_SOURCE = 34
 JUMP_CORRUPTION = "jump"
+SKIPPED_CORRUPTION = "skipped-padding"
+REACHABLE_CORRUPTION = "reachable-input"
+RUNTIME_STEPS = "runtime_steps"
+EXPECTED_GUEST_SAVINGS = 98
+ALL_BYTE_VALUES = 256
+INPUT_WINDOW_BYTES = 64
 DIFFICULTY = 1
 FORGED_TRIAL = 999
 ELAPSED = "elapsed_ns"
@@ -316,7 +323,67 @@ def test_forward_jump_and_walk_have_equal_code_size_but_distinct_work(
     assert replay["source_commit_object_verified"] is True
 
 
-@pytest.mark.parametrize("corruption", ["jump", "skipped-padding"])
+@pytest.mark.skipif(
+    os.name != POSIX_PLATFORM,
+    reason="bounded guest-input runner requires POSIX",
+)
+def test_forward_jump_and_walk_accept_every_possible_input_byte(
+    forward_skip: tuple[Path, dict[str, Any], str],
+) -> None:
+    """Four independent 64-byte windows cover all 256 actual input values."""
+    directory, document, _ = forward_skip
+    for algorithm in (producer.WALK, producer.SKIP):
+        row = next(
+            row
+            for row in document["observations"]
+            if row["algorithm"] == algorithm
+            and row["case"]["difficulty"] == INPUT_WINDOW_BYTES
+        )
+        source = _first_source(directory, {"observations": [row]})
+        expected_stderr = (
+            b"malbolge-steps-v1:"
+            + str(row["metrics"][RUNTIME_STEPS]).encode("ascii")
+            + b"\n"
+        )
+        for start in range(0, ALL_BYTE_VALUES, INPUT_WINDOW_BYTES):
+            payload = bytes(range(start, start + INPUT_WINDOW_BYTES))
+            result = target_process.invoke_with_input(
+                [
+                    str(producer.DEFAULT_RUNNER),
+                    str(source),
+                    "--input-stdin",
+                    "--report-steps",
+                ],
+                payload,
+                timeout_seconds=producer.TIMEOUT_SECONDS,
+            )
+            assert result.returncode == 0
+            assert result.stdout == payload + bytes([producer.CLASSIC_EOF_BYTE])
+            assert result.stderr == expected_stderr
+
+
+def test_forward_jump_paired_costs_retain_runtime_work_advantage(
+    forward_skip: tuple[Path, dict[str, Any], str],
+) -> None:
+    """Matched cost curves preserve code size but exact VM work savings."""
+    _, document, _ = forward_skip
+    paired = analyze.analyze(document)["paired_baseline_comparisons"]
+    assert len(paired) == FRONTIER_LEVELS_FORWARD
+    for comparison in paired:
+        assert comparison["baseline"] == producer.WALK
+        assert comparison["algorithm"] == producer.SKIP
+        assert comparison["outcomes"]["both_verified"] == 1
+        assert comparison["cost_differences"][ARTIFACT_BYTES][
+            "median_candidate_minus_baseline"
+        ] == [0, 1]
+        assert comparison["cost_differences"][RUNTIME_STEPS][
+            "median_candidate_minus_baseline"
+        ] == [-EXPECTED_GUEST_SAVINGS, 1]
+
+
+@pytest.mark.parametrize(
+    "corruption", [JUMP_CORRUPTION, SKIPPED_CORRUPTION, REACHABLE_CORRUPTION]
+)
 def test_forward_skipped_source_tampering_fails_after_valid_raw_links(
     forward_skip: tuple[Path, dict[str, Any], str],
     corruption: str,
@@ -333,7 +400,11 @@ def test_forward_skipped_source_tampering_fails_after_valid_raw_links(
     if corruption == JUMP_CORRUPTION:
         forged[0] += 1
     else:
-        index = producer.SKIPPED_NOOPS // 2
+        index = (
+            producer.SKIPPED_NOOPS // 2
+            if corruption == SKIPPED_CORRUPTION
+            else producer.SKIPPED_NOOPS + 1
+        )
         forged[index] = (
             INVALID_SOURCE
             if forged[index] != INVALID_SOURCE
