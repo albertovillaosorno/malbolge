@@ -380,6 +380,34 @@ read-only audit **cannot** reconstruct or trust the original measured RSS.
 No resident-memory cgroup total, process-tree aggregate, system energy,
 VRAM, deterministic host timing or general C lowering is established.
 
+A separate v6 resource-evidence protocol makes the previous v5
+maximum RSS claim **inspectably decomposable**. Only the additional
+`--retain-rss-stages` opt-in creates
+`classic-patterned-forward-skip-rss-receipts-v6` with oracle
+`classic-forward-jump-rss-receipts-second-vm-v1`. The five Pareto metrics,
+child limits, verified classic workload and v1-v5 protocols remain unchanged.
+
+For each successful run, deterministic `rss/<stem>.json` stores separate
+source-reported emitter, primary VM and measured verifier VM peak resident
+bytes. Each receipt also binds the declared algorithm, difficulty, trial
+number and workload SHA-256, rejecting accidental cross-cohort swaps. A
+version-one `[arena_rss]` run-manifest extension records SHA-256
+of the exact receipt bytes. The independent audit requires complete
+canonical stage names, precise positive KiB granularity, unchanged 1 GiB
+limit, the reported maximum, and an exact per-trial receipt inventory.
+
+Auditor input snapshots include the stage receipts alongside the study,
+trial TOMLs and raw CSVs; they are rechecked before any report is returned,
+including after an optional independent normative VM replay. Missing,
+malformed, extra, symlinked, differently hashed or internally inconsistent
+stage receipts fail rather than granting an unmeasured Pareto objective.
+
+Receipts **do not authenticate historical measurements**: the original GNU
+time capture files are deleted after child exit, and matching report bytes
+can still be forged by a producer controlling all study inputs. This is
+not per-study peak resident usage, process-tree aggregate containment,
+attested kernel metering, or validation of general target compilation.
+
 The earlier linear study remains a falsifiable source-size hypothesis (the
 nop-padded source should use one extra graphical code byte per pair), not a
 general compiler-size or performance result. Host wall times include compiler

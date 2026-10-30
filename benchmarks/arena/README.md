@@ -473,6 +473,51 @@ binaries and reported cost remain untrusted research evidence. Side channels,
 concurrent host load, repeated samples and independent trusted resource
 monitoring remain necessary before a physical speed/memory conclusion.
 
+### Opt-in retained per-stage RSS receipts (version six)
+
+The v5 pilot reports the maximum observed child RSS but discards the three
+component readings. To retain those source-reported readings with each
+successful trial, add `--retain-rss-stages` to all v5 flags:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_reference \
+  --pairs 1 4 16 64 --trials 3 --input-mode patterned \
+  --measure-steps --layout-mode forward-skip \
+  --measure-verifier --verifier-mode replay \
+  --limit-child-resources --measure-child-rss --retain-rss-stages
+```
+
+Only this extra opt-in selects study ID
+`classic-patterned-forward-skip-rss-receipts-v6` and verifier identity
+`classic-forward-jump-rss-receipts-second-vm-v1`. Version six retains
+exactly the five version-five Pareto costs, original run/raw observation
+fields, resource limits and independent VM replay policy. Earlier study
+identities and emitted file bytes remain unchanged when the flag is absent.
+
+Each successful trial gains one small canonical JSON file at
+`rss/<algorithm>-pairs-<pairs>-trial-<trial>.json`. It records the positive
+KiB-granular `emitter`, `primary_vm`, and `verifier_vm` peak resident bytes,
+with `schema_version: 1` and no extra fields. Each receipt also includes the
+exact algorithm, difficulty, trial index and case workload SHA-256, so swapping
+receipts between cohorts cannot silently preserve a matching peak. The
+per-trial TOML adds
+`[arena_rss]` with schema version and SHA-256 of the **exact JSON bytes**;
+failed trials carry neither a successful RSS cost nor an RSS receipt link.
+
+The read-only target auditor admits the exact expected receipt filenames,
+checks their digests and canonical JSON bytes, and recomputes the reported
+`peak_rss_bytes` as the **maximum** of the three positive per-child values.
+Unexpected, linked, missing, oversized, malformed, and swapped receipts
+reject before publishing an audit. The auditor also rechecks the complete
+linked byte snapshot and receipt inventory after any requested VM replay.
+
+These are **retained producer-reported samples**, not preserved GNU time raw
+output, a signed witness or historical kernel attestations. A malicious
+producer could rewrite a receipt, its digest, the claimed peak, raw CSV and
+trial manifest together; the auditor only proves their current consistency.
+There is still no process-tree aggregate RSS, cgroup budget, energy/VRAM
+measurement or general C compiler proof.
+
 This is a real bounded demonstration of **forward control-flow work avoided**,
 not a loop, arbitrary branching, native CPU-instruction savings, statistically
 significant wall-time speedup, or optimization of compiled C. Measured host

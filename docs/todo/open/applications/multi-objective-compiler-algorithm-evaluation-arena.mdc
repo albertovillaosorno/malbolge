@@ -227,6 +227,24 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   authenticated historic measurement, a system energy/VRAM sample, or
   an implementation of general Malbolge compilation. Aggregate memory
   containment and independently attested sampling remain outstanding.
+- A distinct opt-in v6 resource-receipt classic target mode adds
+  `--retain-rss-stages` only to the already limited and measured v5
+  experiment. The original five Pareto costs remain, but each verified
+  trial also preserves a canonical version-one JSON record with the
+  individual emitter, primary VM and second verifier VM peak resident
+  byte counts and exact algorithm/case/trial/workload identity;
+  a `[arena_rss]` TOML table pins their exact SHA-256.
+  The independent auditor requires one unique, bounded ordinary receipt
+  per successful trial, validates exact schema, stage set, positive KiB
+  granularity and max equality with `peak_rss_bytes`, then rechecks the
+  linked byte snapshot and complete inventory after optional VM replay.
+  The distinct `classic-patterned-forward-skip-rss-receipts-v6` study
+  and `classic-forward-jump-rss-receipts-second-vm-v1` verifier IDs
+  preserve v1-v5 file layouts and oracle identity without this opt-in.
+  This improves inspectability, **not historical RSS authenticity**:
+  all original stage observations and self-reported digests remain
+  forgeable together. Process-tree aggregate CPU/RAM quotas, hardware
+  energy sampling and arbitrary guest C compilation remain open.
 - A separate read-only classic target audit now reopens local pilot
 - A separate read-only classic target audit now reopens local pilot
   studies, binds fixed producer research/manifest/case claims, complete

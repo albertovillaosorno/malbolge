@@ -106,6 +106,7 @@ FORWARD_LIMITED_REPLAY_STUDY = (
     "classic-patterned-forward-skip-limited-replay-v4"
 )
 FORWARD_RSS_STUDY = "classic-patterned-forward-skip-limited-rss-v5"
+FORWARD_RSS_RECEIPTS_STUDY = "classic-patterned-forward-skip-rss-receipts-v6"
 SOURCE_VERIFIER_MODE = "source"
 REPLAY_VERIFIER_MODE = "replay"
 VERIFIER_MODES = (SOURCE_VERIFIER_MODE, REPLAY_VERIFIER_MODE)
@@ -115,6 +116,7 @@ FORWARD_VERIFIER = "classic-forward-jump-patterned-byte-and-steps-v1"
 FORWARD_REPLAY_VERIFIER = "classic-forward-jump-patterned-second-vm-v1"
 FORWARD_LIMITED_REPLAY_VERIFIER = "classic-forward-jump-limited-second-vm-v1"
 FORWARD_RSS_VERIFIER = "classic-forward-jump-limited-rss-second-vm-v1"
+FORWARD_RSS_RECEIPTS_VERIFIER = "classic-forward-jump-rss-receipts-second-vm-v1"
 PEAK_RSS = "peak_rss_bytes"
 RSS_MEASURED_STAGES = 3
 JUMP_OPERATION = "jump"
@@ -139,6 +141,7 @@ class StudyPlan:
     verifier_mode: str = SOURCE_VERIFIER_MODE
     limit_child_resources: bool = False
     measure_child_rss: bool = False
+    retain_rss_stages: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +161,7 @@ class _Context:
     verifier_mode: str = SOURCE_VERIFIER_MODE
     limit_child_resources: bool = False
     measure_child_rss: bool = False
+    retain_rss_stages: bool = False
     rss_stages: list[int] | None = None
 
 
@@ -640,6 +644,8 @@ def _manifest(
     row: dict[str, Any],
     context: _Context,
     raw_hash: str,
+    *,
+    rss_hash: str | None = None,
 ) -> str:
     case = row["case"]
     quote = json.dumps
@@ -686,6 +692,15 @@ def _manifest(
         f"raw_sha256 = {quote(raw_hash)}",
         "",
     ]
+    if context.retain_rss_stages and row["outcome"] == analyze.VERIFIED:
+        if rss_hash is None:
+            _fail("retained RSS stage receipt digest is required")
+        lines.extend([
+            "[arena_rss]",
+            "schema_version = 1",
+            f"sha256 = {quote(rss_hash)}",
+            "",
+        ])
     text = "\n".join(lines)
     experiment_manifest.parse_manifest(text)
     return text
@@ -709,6 +724,40 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
         emitter=emitter,
         runner=runner,
     )
+
+
+def _write_rss_stages(
+    context: _Context,
+    row: dict[str, Any],
+    *,
+    values: list[int] | None,
+) -> str | None:
+    if not context.retain_rss_stages or row["outcome"] != analyze.VERIFIED:
+        return None
+    if values is None or len(values) != RSS_MEASURED_STAGES:
+        _fail("retained RSS stage receipt requires all three samples")
+    stages = dict(
+        zip(("emitter", "primary_vm", "verifier_vm"), values, strict=True)
+    )
+    case = row["case"]
+    identity = {
+        "algorithm": row["algorithm"],
+        "pairs": case["difficulty"],
+        "trial": row["trial"],
+        "workload_sha256": case["workload_sha256"],
+    }
+    content = (
+        json.dumps(
+            {"schema_version": 1, "identity": identity, "stages": stages},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    stem = f"{row["algorithm"]}-pairs-{case["difficulty"]}-trial-{row["trial"]}"
+    path = context.directory / "rss" / f"{stem}.json"
+    path.write_bytes(content)
+    return sha256(content).hexdigest()
 
 
 def _write_attempt(
@@ -738,7 +787,9 @@ def _write_attempt(
         "trial": trial,
         "outcome": outcome,
         "verifier": (
-            FORWARD_RSS_VERIFIER
+            FORWARD_RSS_RECEIPTS_VERIFIER
+            if context.retain_rss_stages
+            else FORWARD_RSS_VERIFIER
             if context.measure_child_rss
             else FORWARD_LIMITED_REPLAY_VERIFIER
             if context.limit_child_resources
@@ -758,7 +809,14 @@ def _write_attempt(
     }
     raw = _raw_csv(row)
     (context.directory / "raw" / f"{stem}.csv").write_bytes(raw)
-    receipt = _manifest(row, context, sha256(raw).hexdigest())
+    receipt_hash = _write_rss_stages(
+        context,
+        row,
+        values=observed_context.rss_stages,
+    )
+    receipt = _manifest(
+        row, context, sha256(raw).hexdigest(), rss_hash=receipt_hash
+    )
     (context.directory / "runs" / f"{stem}.toml").write_text(
         receipt,
         encoding="utf-8",
@@ -772,7 +830,9 @@ def _make_document(
 ) -> dict[str, Any]:
     patterned = context.input_mode == PATTERNED_MODE
     study_id = (
-        FORWARD_RSS_STUDY
+        FORWARD_RSS_RECEIPTS_STUDY
+        if context.retain_rss_stages
+        else FORWARD_RSS_STUDY
         if context.measure_child_rss
         else FORWARD_LIMITED_REPLAY_STUDY
         if context.limit_child_resources
@@ -904,6 +964,10 @@ def _validate_rss_selection(plan: StudyPlan) -> None:
         _fail("target echo requires boolean peak RSS measurement selection")
     if plan.measure_child_rss and not plan.limit_child_resources:
         _fail("target echo peak RSS requires resource-limited replay")
+    if type(plan.retain_rss_stages) is not bool:
+        _fail("target echo RSS receipts require boolean retention selection")
+    if plan.retain_rss_stages and not plan.measure_child_rss:
+        _fail("target echo RSS receipts require measured child RSS")
 
 
 def _validate_study_options(plan: StudyPlan) -> None:
@@ -950,7 +1014,10 @@ def run_study(
         verifier_mode=plan.verifier_mode,
         limit_child_resources=plan.limit_child_resources,
         measure_child_rss=plan.measure_child_rss,
+        retain_rss_stages=plan.retain_rss_stages,
     )
+    if context.retain_rss_stages:
+        (context.directory / "rss").mkdir()
     observations = [
         _write_attempt(context, pairs, trial, algorithm=algorithm)
         for pairs in plan.pairs
@@ -991,6 +1058,7 @@ def main() -> int:
     )
     parser.add_argument("--limit-child-resources", action="store_true")
     parser.add_argument("--measure-child-rss", action="store_true")
+    parser.add_argument("--retain-rss-stages", action="store_true")
     args = parser.parse_args()
     try:
         directory, document = run_study(
@@ -1004,6 +1072,7 @@ def main() -> int:
                 args.verifier_mode,
                 args.limit_child_resources,
                 args.measure_child_rss,
+                args.retain_rss_stages,
             )
         )
         report_output.publish(
