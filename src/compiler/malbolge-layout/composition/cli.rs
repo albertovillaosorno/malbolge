@@ -75,6 +75,7 @@ const TYPED_STDIN_ARG: &str = "--typed-stdin";
 const TERNARY_STDIN_ARG: &str = "--ternary-stdin";
 const AUTO_LAYOUT_ARG: &str = "--auto-layout";
 const MALBOLGE_EXTENSION: &str = "malbolge";
+const MAX_STAGE_NAME_ATTEMPTS: usize = 32;
 
 #[derive(Debug)]
 enum SourceSpec {
@@ -116,6 +117,8 @@ enum SourceEffectWitness {
     RotatedLiteral { byte: u8, outputs: usize },
     SuccessfulByteTrace(Vec<SuccessfulByteEffect>),
 }
+
+type StageFile = (PathBuf, fs::File);
 
 struct VerifiedSource {
     effect_witness: Option<SourceEffectWitness>,
@@ -312,6 +315,29 @@ fn parse_arguments(mut arguments: impl Iterator<Item = OsString>) -> Result<Comm
     })
 }
 
+fn open_fresh_stage(path: &Path, name: &str) -> Result<StageFile, String> {
+    let basename = format!(".{name}.stage-{}", id());
+    for attempt in 0..MAX_STAGE_NAME_ATTEMPTS {
+        let staged = if attempt == 0 {
+            path.with_file_name(&basename)
+        } else {
+            path.with_file_name(format!("{basename}-{attempt}"))
+        };
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged)
+        {
+            Ok(file) => return Ok((staged, file)),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(format!("cannot open fresh stage: {error}")),
+        }
+    }
+    Err(String::from(
+        "cannot open fresh stage: all staging names occupied",
+    ))
+}
+
 fn publish_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
     if path.extension() != Some(OsStr::new(MALBOLGE_EXTENSION)) {
         return Err(String::from("output must have a .malbolge extension"));
@@ -320,12 +346,9 @@ fn publish_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .file_name()
         .and_then(OsStr::to_str)
         .ok_or("output needs a UTF-8 filename")?;
-    let staged = path.with_file_name(format!(".{name}.stage-{}", id()));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&staged)
-        .map_err(|error| format!("cannot open fresh stage: {error}"))?;
+    // A crashed publisher may leave its stage behind, and PIDs get recycled.
+    // Create only a fresh path; never remove or reuse any collided stage.
+    let (staged, mut file) = open_fresh_stage(path, name)?;
     let outcome = (|| {
         file.write_all(bytes)
             .map_err(|error| format!("stage write failed: {error}"))?;
@@ -839,3 +862,7 @@ pub fn run() -> ExitCode {
 #[cfg(test)]
 #[path = "../../../../tests/compiler/layout/canonical_wire_read.rs"]
 mod canonical_wire_read_tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/compiler/layout/staging_retry.rs"]
+mod staging_retry_tests;

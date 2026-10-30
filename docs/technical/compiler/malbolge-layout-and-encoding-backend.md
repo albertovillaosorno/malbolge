@@ -130,7 +130,11 @@ exercise concurrent writers to one target. A separate three-jump external
 process fixture publishes both raw and capsule sources under both profiles,
 reopens and executes the exact outputs, and rejects a forged later destination
 without creating a final file. On abrupt interruption a hidden
-staging file may remain; it cannot expose a partial final target.
+staging file may remain; it cannot expose a partial final target. A later
+producer preserves any occupied `.stage-<pid>` staging pathname and retries
+fresh sequence-suffixed names via exclusive creation, with 32 total attempts.
+Only its own newly created stage is removed; exhausted collisions reject
+before touching the verified source or an existing target.
 
 An optional `--capsule` mode now wraps verified raw source using the
 existing version-one historical-fallback capsule builder. The producer
