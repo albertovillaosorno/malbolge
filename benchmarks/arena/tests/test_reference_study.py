@@ -36,20 +36,21 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import shutil
 import sys
-from typing import Any
-from typing import TYPE_CHECKING
+from hashlib import sha256
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from benchmarks.arena import analyze
-from benchmarks.arena import evidence
-from benchmarks.arena import host_c_oracle
-from benchmarks.arena import reference_study
-from benchmarks.arena import report_output
+from benchmarks.arena import (
+    analyze,
+    evidence,
+    host_c_oracle,
+    reference_study,
+    report_output,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -315,7 +316,9 @@ def test_reference_study_refuses_missing_kernel_limit_launcher(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No purportedly protected host study can start without prlimit."""
-    monkeypatch.setattr(host_c_oracle.shutil, "which", lambda _: None)
+    monkeypatch.setattr(
+        host_c_oracle.shutil, "which", lambda *_args, **_kwargs: None
+    )
     with pytest.raises(
         reference_study.ReferenceStudyError, match="child limits"
     ):

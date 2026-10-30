@@ -526,10 +526,14 @@ children inspect actual inherited kernel rlimits, exhaust the CPU/file-size
 limits, and verify normal descendant shutdown in both success/timeout paths.
 Each new host-C study writes a version-two `resource-controls.json` with
 per-child limit policy and the GNU `time` measurement identity. It refuses
-to begin if either `prlimit` or GNU `time` is absent. Child stage usage is
-reported through Linux `ru_maxrss` in KiB; the maximum of successful compile,
-link and execution stages is converted to exact `peak_rss_bytes` and retained
-in raw CSV and analysis as a third cost objective. This is a measured direct
+to begin if either `prlimit` or GNU `time` is absent. Both host-C stage
+wrappers now resolve from the OS-default `/bin:/usr/bin` search path rather
+than user-controlled `PATH`, so caller-supplied fake limiter/meter executables
+cannot impersonate the configured kernel enforcement or reported RSS. The
+system binaries remain trusted dependencies, not independently attested.
+Child stage usage is reported through Linux `ru_maxrss` in KiB; the maximum
+of successful compile, link and execution stages is converted to exact
+`peak_rss_bytes` and retained in raw CSV and analysis as a third cost objective. This is a measured direct
 process-stage maximum, not a combined process-tree RSS or proof of full study
 memory use. Legacy version-one receipts and two-cost studies remain admitted;
 a three-cost RSS study requires the version-two measurement receipt.

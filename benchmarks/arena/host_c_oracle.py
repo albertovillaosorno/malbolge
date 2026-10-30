@@ -34,18 +34,17 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import dataclass
-from hashlib import sha256
 import os
-from pathlib import Path
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
 import time
-from typing import Any
-from typing import Never
+from contextlib import suppress
+from dataclasses import dataclass
+from hashlib import sha256
+from pathlib import Path
+from typing import Any, Never
 
 from benchmarks.challenges import generate
 
@@ -62,6 +61,7 @@ LINUX_PLATFORM = "linux"
 RESOURCE_LIMIT_TOOL = "prlimit"
 RSS_MEASUREMENT_TOOL = "time"
 RSS_REPORT_MAX_BYTES = 32
+SYSTEM_TOOL_SEARCH_PATH = os.defpath
 KIB_BYTES = 1024
 OPTIMIZATION_MODES = ("-O0", "-O2")
 _ROOT = Path(__file__).resolve().parents[2]
@@ -120,10 +120,15 @@ def resource_controls_record() -> dict[str, str | int]:
     }
 
 
+def _system_tool(name: str) -> str | None:
+    """Resolve OS-provided child tools without a caller-controlled PATH."""
+    return shutil.which(name, path=SYSTEM_TOOL_SEARCH_PATH)
+
+
 def _limited_command(command: list[str]) -> list[str]:
     if sys.platform != LINUX_PLATFORM:
         _fail("host-C child resource controls require Linux")
-    utility = shutil.which(RESOURCE_LIMIT_TOOL)
+    utility = _system_tool(RESOURCE_LIMIT_TOOL)
     if utility is None:
         _fail("host-C child resource controls require util-linux prlimit")
     memory = CHILD_VIRTUAL_MEMORY_MIB * MIB_BYTES
@@ -140,7 +145,7 @@ def _limited_command(command: list[str]) -> list[str]:
 def require_child_resource_controls() -> None:
     """Refuse new studies unless the limiter and RSS measurer are present."""
     _ = _limited_command([])
-    if shutil.which(RSS_MEASUREMENT_TOOL) is None:
+    if _system_tool(RSS_MEASUREMENT_TOOL) is None:
         _fail("host-C child RSS measurement requires GNU time")
 
 
@@ -183,7 +188,7 @@ def _wait_child(child: sp.Popen[bytes], label: str) -> None:
 
 def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
     limited = _limited_command(command)
-    time_tool = shutil.which(RSS_MEASUREMENT_TOOL)
+    time_tool = _system_tool(RSS_MEASUREMENT_TOOL)
     if time_tool is None:
         _fail("host-C child RSS measurement requires GNU time")
     fd, output_path = tempfile.mkstemp(

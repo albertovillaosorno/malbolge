@@ -36,24 +36,24 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import os
-from pathlib import Path
 import sys
 import time
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from benchmarks.arena import analyze
-from benchmarks.arena import evidence
-from benchmarks.arena import host_c_oracle
-from benchmarks.arena.tests.test_challenge_bundles import BUNDLE_ROOT
-from benchmarks.arena.tests.test_challenge_bundles import NODES
-from benchmarks.arena.tests.test_challenge_bundles import PREFIX
-from benchmarks.arena.tests.test_challenge_bundles import PROFILE
-from benchmarks.arena.tests.test_challenge_bundles import _study
+from benchmarks.arena import analyze, evidence, host_c_oracle
+from benchmarks.arena.tests.test_challenge_bundles import (
+    BUNDLE_ROOT,
+    NODES,
+    PREFIX,
+    PROFILE,
+    _study,
+)
 from benchmarks.challenges import generate
 
 MISSING_ROOT_DIAGNOSTIC = "requires --challenge-root"
@@ -200,7 +200,9 @@ def test_host_child_missing_limit_tool_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unbounded native execution cannot silently replace guarded mode."""
-    monkeypatch.setattr(host_c_oracle.shutil, "which", lambda _: None)
+    monkeypatch.setattr(
+        host_c_oracle.shutil, "which", lambda *_args, **_kwargs: None
+    )
     with pytest.raises(host_c_oracle.HostOracleError, match="prlimit"):
         host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "limits")
 
@@ -580,13 +582,52 @@ def test_host_c_rss_measurement_tool_missing_fails_closed(
     """Reference verification never substitutes an absent RSS measurement."""
     original = host_c_oracle.shutil.which
 
-    def without_time(name: str) -> str | None:
+    def without_time(name: str, *, path: str | None = None) -> str | None:
         return (
             None
             if name == host_c_oracle.RSS_MEASUREMENT_TOOL
-            else original(name)
+            else original(name, path=path)
         )
 
     monkeypatch.setattr(host_c_oracle.shutil, "which", without_time)
     with pytest.raises(host_c_oracle.HostOracleError, match="GNU time"):
         host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "RSS")
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM
+    or host_c_oracle.shutil.which("prlimit", path=os.defpath) is None
+    or host_c_oracle.shutil.which("time", path=os.defpath) is None,
+    reason="requires system Linux prlimit and GNU time",
+)
+def test_hostile_path_cannot_impostor_kernel_limiter_or_rss_meter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fake PATH wrappers cannot impersonate real rlimits or metering."""
+    for name in (
+        host_c_oracle.RESOURCE_LIMIT_TOOL,
+        host_c_oracle.RSS_MEASUREMENT_TOOL,
+    ):
+        fake = tmp_path / name
+        fake.write_text("#!/bin/sh\nexit 0\n", encoding="ascii")
+        fake.chmod(0o700)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    child = tmp_path / "real-child-executed"
+    assert host_c_oracle._limited_command([sys.executable])[0] != str(
+        tmp_path / host_c_oracle.RESOURCE_LIMIT_TOOL
+    )
+    script = (
+        "import pathlib,resource,sys; "
+        "keys=(resource.RLIMIT_AS,resource.RLIMIT_CPU,resource.RLIMIT_FSIZE); "
+        "expected=(1073741824,16,8388608); "
+        "sys.exit(7) if tuple(resource.getrlimit(k)[0] for k in keys) "
+        "!= expected else pathlib.Path(sys.argv[1]).write_text('real')"
+    )
+    peak = host_c_oracle._run(
+        [sys.executable, "-c", script, str(child)],
+        tmp_path,
+        "hostile PATH",
+    )
+    assert child.read_text(encoding="ascii") == "real"
+    assert 0 < peak <= host_c_oracle.CHILD_VIRTUAL_MEMORY_MIB * 1024 * 1024
