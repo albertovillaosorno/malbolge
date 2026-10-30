@@ -73,16 +73,20 @@ def latex_checks() -> None:
     check([
         chktex,
         "-q",
-        "-g0",
         "-v0",
+        "-g0",
         "-l",
         ".jig/lang/latex/chktexrc",
         *(str(source.relative_to(ROOT)) for source in sources),
     ])
-    output = ROOT / ".validate" / "latex"
-    output.mkdir(parents=True, exist_ok=True)
     for source in sources:
         if DOCUMENT_CLASS in source.read_text(encoding="utf-8"):
+            # Preserve source-relative directories: two report.tex documents
+            # must not share LaTeXmk cache files or overwrite each other.
+            output = (
+                ROOT / ".validate" / "latex" / source.parent.relative_to(ROOT)
+            )
+            output.mkdir(parents=True, exist_ok=True)
             check([
                 latexmk,
                 "-pdf",
@@ -112,13 +116,14 @@ def main() -> int:
         [
             cargo,
             "clippy",
+            "--locked",
             "--workspace",
             "--all-targets",
             "--",
             "-D",
             "warnings",
         ],
-        [cargo, "test", "--workspace"],
+        [cargo, "test", "--locked", "--workspace"],
         [ruff, "check", "--config", PYTHON_CONFIG, "."],
         [ruff, "format", "--check", "--config", PYTHON_CONFIG, "."],
         [pyright, "--project", ".jig/lang/python/pyrightconfig.json"],
