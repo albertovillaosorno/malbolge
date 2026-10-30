@@ -6058,6 +6058,78 @@ def test_immutable_postpublication_inode_swap_is_committed_failure(
     assert destination.read_bytes() == payload
 
 
+def test_immutable_postpublication_same_inode_content_mutation_is_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-inode, same-length checkpoint rewrite cannot report success."""
+    destination = tmp_path / "checkpoint"
+    payload = b"durable-checkpoint"
+    altered = b"X" + payload[1:]
+    assert len(altered) == len(payload)
+    original_sync = cast(
+        "Callable[..., None]", vars(progress)["_confirm_publication_durability"]
+    )
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+
+    def sync_then_mutate(
+        path: Path, *, context: str, platform: str = os.name
+    ) -> None:
+        original_sync(path, context=context, platform=platform)
+        _ = path.write_bytes(altered)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_confirm_publication_durability", sync_then_mutate
+        )
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=r"committed durably.*content does not match staged bytes",
+        ) as captured:
+            _ = writer(destination, payload, platform=os.name)
+    assert captured.value.published_path == destination
+    assert destination.read_bytes() == altered
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_corrupt_durable_checkpoint_cannot_publish_pointer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A damaged immutable member is committed evidence but no pointer."""
+    checkpoint = b"checkpoint-state-v1"
+    corrupted = b"X" + checkpoint[1:]
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    destination = Path(sidecar.checkpoint_path or "")
+    original_sync = cast(
+        "Callable[..., None]", vars(progress)["_confirm_publication_durability"]
+    )
+
+    def checkpoint_sync_then_mutate(
+        path: Path, *, context: str, platform: str = os.name
+    ) -> None:
+        original_sync(path, context=context, platform=platform)
+        if path == destination:
+            _ = path.write_bytes(corrupted)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress,
+            "_confirm_publication_durability",
+            checkpoint_sync_then_mutate,
+        )
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match=r"committed durably.*content does not match staged bytes",
+        ) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert captured.value.published_path == destination
+    assert destination.read_bytes() == corrupted
+    assert not Path(sidecar.progress_path).exists()
+
+
 def test_immutable_collision_rejects_named_pipe(tmp_path: Path) -> None:
     """Collided generation FIFOs fail closed without pointer publication."""
     checkpoint = b"checkpoint-state-v1"

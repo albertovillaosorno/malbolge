@@ -209,14 +209,17 @@ after these staging checks and is cleaned up when staging completes. After
 successfully confirming directory durability and removing the temporary entry,
 the immutable writer now re-admits the published path as a regular single-link
 inode and compares its device/inode with the one recorded directly after the
-no-replace publication or collision reuse. A foreign alias added after the
-initial staging check, or a byte-identical inode replacement during durability
-confirmation, no longer yields success. Because this check happens after the
-committed generation, any rejection reports `ProgressSidecarCommittedError`
-with the exact published member path rather than pretending the filesystem
-change was rolled back. Generation publication stops before the mutable pointer
-in these failure cases. This is still a bounded observation: an adversary may
-modify the inode after the final check or via another open descriptor.
+no-replace publication or collision reuse. It additionally repeats the staged
+content SHA-256 comparison using the existing 64 KiB raw-read chunk budget,
+without a second checkpoint-sized allocation. A foreign alias, byte-identical
+inode replacement, or same-inode/same-length *content* rewrite after staging
+now fails before a successful return. Because this occurs after the committed
+generation, any rejection reports `ProgressSidecarCommittedError` with its exact
+published member path, never claiming that a filesystem change was undone.
+Generation publication stops before the mutable pointer on that failure.
+The additional verification costs another complete opaque checkpoint read;
+this is still a bounded observation, not protection against writes after the
+final check or via another open descriptor.
 
 If descriptor identity admission fails before ownership transfer, the raw
 descriptor is closed with cleanup exceptions kept secondary to the primary

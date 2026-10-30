@@ -2664,9 +2664,9 @@ def _cleanup_immutable_temporary(
 
 
 def _confirm_immutable_postcleanup_identity(
-    destination: Path, expected_identity: tuple[int, int]
+    destination: Path, expected_identity: tuple[int, int], payload: bytes
 ) -> None:
-    """Reject a changed committed inode or an external hard-link alias.
+    """Reject changed committed inode, links, or payload bytes.
 
     Raises:
         ProgressSidecarCommittedError: If the committed inode is no longer
@@ -2677,6 +2677,7 @@ def _confirm_immutable_postcleanup_identity(
         observed = _admit_collided_immutable_inode(destination)
         if (observed.st_dev, observed.st_ino) != expected_identity:
             _fail("immutable progress payload inode changed after publication")
+        _verify_written_temporary(destination, expected_identity, payload)
     except _OUTPUT_STREAM_ERRORS as error:
         message = (
             "immutable progress payload committed durably but final "
@@ -2733,7 +2734,9 @@ def _write_immutable(
             destination,
             durable=durable,
         )
-    _confirm_immutable_postcleanup_identity(destination, expected_identity)
+    _confirm_immutable_postcleanup_identity(
+        destination, expected_identity, payload
+    )
     return destination
 
 

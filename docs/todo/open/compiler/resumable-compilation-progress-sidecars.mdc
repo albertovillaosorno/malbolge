@@ -167,10 +167,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   aliases attached initially or after content collection and same-byte inode
   swaps after raw reading while leaving mutable pointer link policy unchanged;
   after immutable publication durability and staging cleanup, the exact
-  committed destination is also checked against its originally selected inode
-  and a single link, with committed-path classification for late hard-link
-  injection and same-byte inode replacement; checkpoint-generation pointers
-  remain unpublished on that committed-member failure,
+  committed destination is checked against its originally selected inode,
+  single link, and exact content SHA-256 using bounded 64 KiB raw reads without
+  extra checkpoint-sized buffering; late hard-link injection, same-byte inode
+  replacement, and same-inode/same-size byte rewrites carry exact committed
+  member evidence and prevent checkpoint-generation pointer publication,
   stable read with read-before-close
   failure precedence plus writer-lock lifecycle,
   pre-publication filesystem failures, exact committed-path evidence for
