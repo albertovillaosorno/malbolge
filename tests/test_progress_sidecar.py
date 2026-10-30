@@ -1930,6 +1930,10 @@ def test_checkpoint_read_recovers_many_one_byte_raw_chunks(
         _ = os.fstat(opened[0])
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="large Windows truncation may allocate real disk blocks",
+)
 def test_sparse_checkpoint_never_requests_unbounded_read_allocation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
