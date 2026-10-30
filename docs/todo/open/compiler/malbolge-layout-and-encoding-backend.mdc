@@ -213,7 +213,9 @@ emission.
   zero-byte output with zero consumed input, optional profile capsule and
   atomic no-clobber publication. Its prefix is mutually exclusive with
   `--latest-byte-trace` and does not broaden strict echo by default.
-  This is guest initial-A zero output only, not arbitrary constant codegen.
+  Real fragmented MCTI/MCTR producer regressions keep final targets absent
+  even after all canonical bytes are written, then check exact source after
+  EOF. This is guest initial-A zero output, not arbitrary constant codegen.
 - The verified artifact emitter now also takes bounded canonical MCTI or
   MCTR bytes through explicit `--typed-stdin` / `--ternary-stdin` modes,
   including opt-in `--latest-byte-trace`. Zero path operands and EOF are

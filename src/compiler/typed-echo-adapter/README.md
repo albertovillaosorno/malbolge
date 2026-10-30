@@ -44,9 +44,10 @@ outputs fits the 4096-cell code bound. Nonzero or additional constants,
 other instructions, stale SSA, profile drift, and empty output traces reject.
 Neither the original adjacent-echo API nor latest-read API is broadened.
 
-The resulting native Malbolge program is semantically equivalent only on
-successful byte reads/writes with ignored void guest ABI. It does not handle
-EOF, failed I/O, arbitrary arithmetic, control flow or C source parsing.
+For input-based modes the equivalence claim requires successful byte
+reads and writes with an ignored void ABI. Initial-zero output consumes no
+input, but its guest writes must still succeed. None of the three modes
+implements EOF, failed I/O, arithmetic, control flow or C source parsing.
 The typed source digest remains copied provenance, not authentication of
 external files.
 
@@ -92,9 +93,11 @@ producer. Each source enters the existing independently re-decoded MCTR,
 position-sensitive target verification, exact no-input/extra-input normative
 VM output-and-consumption preflight and no-overwrite raw/capsule publisher.
 The explicit mode is incompatible with `--latest-byte-trace`; the default
-commands remain strict adjacent byte echo. Canonical source files and pipes
-are compiler inputs, not guest stdin. This still does not implement C input,
-nonzero constant output or a callable C guest ABI.
+commands remain strict adjacent byte echo. A real-process fragmented-wire
+test verifies neither MCTI nor MCTR zero-output stdin may publish before
+EOF, even after receiving the complete canonical byte sequence. Canonical
+source files and pipes are compiler inputs, not guest stdin. This still
+does not implement C input, nonzero output or a callable C guest ABI.
 
 Canonical MCTI wire version one is intentionally pinned to `malbolge-2026`
 and `malbolge-c32-v1`: unlike the lower-level VM and standalone layout

@@ -2475,3 +2475,81 @@ fn canonical_initial_zero_cli_rejects_nonzero_mctr_and_unselected_modes() -> Res
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one real subprocess test checks two wire kinds and both EOF boundaries"
+)]
+fn canonical_initial_zero_stream_waits_for_eof_before_publication() -> Result<(), String> {
+    use std::thread;
+    use std::time::Duration;
+
+    let workspace = OwnedFixture::new()?;
+    let canonical = wire(&initial_zero_typed_fixture(0, 2)?)?;
+    let compiled =
+        adapter::compile_canonical_typed_initial_zero_outputs(&canonical, current_profile())
+            .map_err(|error| format!("fragmented zero MCTI baseline: {error:?}"))?;
+    for (typed, source) in [
+        (true, canonical.as_slice()),
+        (false, compiled.ternary_bytes()),
+    ] {
+        let kind = if typed { "typed" } else { "ternary" };
+        let target = workspace.path(&format!("fragmented-zero-{kind}.malbolge"));
+        let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+            .arg("--profile")
+            .arg(current_profile().id())
+            .arg("--output")
+            .arg(&target)
+            .arg("--")
+            .arg("--initial-zero-output")
+            .arg(if typed {
+                "--typed-stdin"
+            } else {
+                "--ternary-stdin"
+            })
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("fragmented zero CLI spawn: {error}"))?;
+        let mut writer = child
+            .stdin
+            .take()
+            .ok_or("zero canonical stdin pipe missing")?;
+        let prefix = source
+            .get(..16)
+            .ok_or("zero canonical wire shorter than 16 bytes")?;
+        let suffix = source.get(16..).ok_or("zero canonical suffix missing")?;
+        for fragment in [prefix, suffix] {
+            writer
+                .write_all(fragment)
+                .map_err(|error| format!("fragmented zero wire feed: {error}"))?;
+            thread::sleep(Duration::from_millis(75));
+            if target.exists()
+                || child
+                    .try_wait()
+                    .map_err(|error| format!("zero-before-EOF child poll: {error}"))?
+                    .is_some()
+            {
+                drop(child.kill());
+                drop(child.wait());
+                return Err(String::from("zero artifact published or exited before EOF"));
+            }
+        }
+        drop(writer);
+        let result = child
+            .wait_with_output()
+            .map_err(|error| format!("fragmented zero publisher exit: {error}"))?;
+        if !result.status.success() {
+            return Err(format!(
+                "complete zero wire rejected: {}",
+                String::from_utf8_lossy(&result.stderr)
+            ));
+        }
+        if fs::read(&target).map_err(|error| error.to_string())? != compiled.layout().source() {
+            return Err(String::from("fragmented zero wire changed target bytes"));
+        }
+    }
+    Ok(())
+}

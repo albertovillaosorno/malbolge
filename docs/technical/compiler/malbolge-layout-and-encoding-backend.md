@@ -282,7 +282,10 @@ termination and exact guest-output oracle, and the existing atomic raw or
 capsule no-overwrite publisher. This differs deliberately from successful
 byte-input preflight: zero output consumes no input and rejects any extra
 source effects. The CLI grammar makes this flag mutually exclusive with
-`--latest-byte-trace`, leaving default strict echo unchanged.
+`--latest-byte-trace`, leaving default strict echo unchanged. An external
+MCTI/MCTR zero-output stream test checks that partial and completely written
+canonical wires remain unpublished until their producer supplies EOF; after
+closing the pipe the exact independently verified source is published.
 
 Only a bounded initial-zero constant is implemented: no general nonzero
 constant materialization, guest C ABI, libc, dataflow, EOF or C compilation.

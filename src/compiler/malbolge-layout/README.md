@@ -293,6 +293,9 @@ then separately executes the normative VM with empty and nonempty guest
 inputs and requires exact zero output and zero input consumption before
 atomic raw/capsule publication. The strict default, latest-read flow,
 bounded wire sizes, and refusal to overwrite an existing output remain.
+Real MCTI and MCTR stream tests keep their output paths absent both while
+the canonical prefix is incomplete and after all bytes arrive but before
+EOF; only closing the pipe permits final atomic publication.
 This subset supplies no nonzero constant realization, guest EOF/status,
 libc calls, heap operations, or complete C compilation.
 
