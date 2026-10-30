@@ -237,8 +237,11 @@ Executables are logical tool references or rooted artifacts; argv paths are
 structured beneath authorized source, repository, or scratch roots. Before
 mirroring, the executor rejects structured repository-relative arguments and
 executables that resolve within the original source tree, including symlink
-aliases. This prevents an accidental repository-rooted bypass of the source
-mirror. It is not an OS sandbox: arbitrary raw string argv and consumer-selected
+aliases, as well as existing regular-file hardlinks sharing source device/inode
+identity. Unrelated hardlinks remain admitted. This prevents a repository-rooted
+path from bypassing the source mirror, including when post-run source checks are
+disabled. It is not an OS sandbox: arbitrary raw string argv and
+consumer-selected
 executable behavior still require external trust and isolation policy. Commands
 carry
 explicit timeouts, expected exit status, bounded stdout/stderr capture, optional

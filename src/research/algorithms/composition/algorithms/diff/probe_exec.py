@@ -75,6 +75,7 @@ _NUL = "\x00"
 _READ_CHUNK_BYTES = 16_384
 _POLL_SECONDS = 0.005
 _POSIX_OS_NAME = "posix"
+_MIN_HARDLINK_COUNT = 2
 
 
 class _HashUpdater(Protocol):
@@ -920,6 +921,64 @@ def _snapshot_probe_tree(root: Path, context: str) -> TreeSnapshot:
         raise ProbeExecutionError(message) from error
 
 
+def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
+    """Read the stat identities of admitted regular source files.
+
+    Returns:
+        The filesystem device/inode pairs of admitted files.
+
+    Raises:
+        ProbeExecutionError: Source identity changed during preflight.
+
+    """
+    files = _snapshot_probe_tree(source, "source").files
+    try:
+        return frozenset(
+            (status.st_dev, status.st_ino)
+            for record in files
+            for status in ((source / record.path).stat(),)
+        )
+    except OSError as error:
+        message = f"probe source inode status failed: {error}"
+        raise ProbeExecutionError(message) from error
+
+
+def _repository_inode_status(path: Path) -> os.stat_result | None:
+    """Inspect an existing repository file without requiring its existence.
+
+    Returns:
+        The status of an existing path, or None when missing.
+
+    Raises:
+        ProbeExecutionError: Repository inode status is unavailable.
+
+    """
+    try:
+        return path.stat()
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        message = f"probe repository path status failed: {error}"
+        raise ProbeExecutionError(message) from error
+
+
+def _require_disjoint_source_inode(source: Path, path: Path) -> None:
+    """Reject a repository hardlink to an admitted source file inode.
+
+    Raises:
+        ProbeExecutionError: A repository alias shares source file identity.
+
+    """
+    status = _repository_inode_status(path)
+    if status is None or not S_ISREG(status.st_mode):
+        return
+    if status.st_nlink < _MIN_HARDLINK_COUNT:
+        return
+    if (status.st_dev, status.st_ino) in _source_file_inode_keys(source):
+        message = "probe repository path aliases original source inode"
+        raise ProbeExecutionError(message)
+
+
 def _require_repository_argument_disjoint(
     argument: ProbeExecutable | ProbeArgument,
     context: ProbeRunContext,
@@ -944,6 +1003,7 @@ def _require_repository_argument_disjoint(
     if resolved.is_relative_to(original_source):
         message = "probe repository path overlaps original source tree"
         raise ProbeExecutionError(message)
+    _require_disjoint_source_inode(original_source, resolved)
 
 
 def _require_repository_paths_disjoint(

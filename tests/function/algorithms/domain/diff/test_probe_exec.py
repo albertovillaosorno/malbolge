@@ -821,6 +821,79 @@ def test_repository_rooted_argument_cannot_modify_original_source(
     )
 
 
+@pytest.mark.parametrize("as_executable", [False, True])
+def test_repository_hardlink_to_original_source_is_rejected(
+    tmp_path: Path, *, as_executable: bool
+) -> None:
+    """Distinct canonical paths can still refer to one writable source inode."""
+    source = tmp_path / "source"
+    source.mkdir()
+    target = source / "input.txt"
+    _ = target.write_text(_ORIGINAL_TEXT, encoding="utf-8")
+    hardlink = tmp_path / "external-alias.txt"
+    try:
+        os.link(target, hardlink)
+    except OSError, NotImplementedError:
+        pytest.skip("hard links are unavailable")
+    context = replace(
+        _context(source, tmp_path), enforce_source_immutable=False
+    )
+    command = (
+        ProbeCommand(
+            executable=RootedExecutable(ProbeRoot.REPOSITORY, hardlink.name),
+        )
+        if as_executable
+        else ProbeCommand(
+            executable=ToolExecutable(_PYTHON_TOOL),
+            arguments=(
+                "-c",
+                _MUTATE_CODE,
+                PathArgument(ProbeRoot.REPOSITORY, hardlink.name),
+            ),
+        )
+    )
+    program = ProbeProgram("hardlink-to-original-source", (command,))
+    with pytest.raises(ProbeExecutionError, match="source inode"):
+        _ = run_probe_program(program, context)
+    _expect(
+        target.read_text(encoding="utf-8") == _ORIGINAL_TEXT,
+        "external hardlink modified the original protected source",
+    )
+
+
+def test_repository_hardlink_unrelated_to_source_is_allowed(
+    tmp_path: Path,
+) -> None:
+    """Unrelated hardlinks remain valid repository inputs."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _ = (source / "input.txt").write_text(_ORIGINAL_TEXT, encoding="utf-8")
+    content = tmp_path / "external-data.txt"
+    _ = content.write_bytes(_EXTERNAL_DATA)
+    hardlink = tmp_path / "external-alias.txt"
+    try:
+        os.link(content, hardlink)
+    except OSError, NotImplementedError:
+        pytest.skip("hard links are unavailable")
+    program = ProbeProgram(
+        "unrelated-repository-hardlink",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    _READ_BYTES_CODE,
+                    PathArgument(ProbeRoot.REPOSITORY, hardlink.name),
+                ),
+                digest_stdout=True,
+            ),
+        ),
+    )
+    transcript = run_probe_program(program, _context(source, tmp_path))
+    _expect(transcript.digested_commands == 1, "hardlink output was not read")
+    _expect(hardlink.read_bytes() == _EXTERNAL_DATA, "hardlink content changed")
+
+
 def test_repository_rooted_executable_cannot_alias_original_source(
     tmp_path: Path,
 ) -> None:
