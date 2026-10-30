@@ -120,8 +120,17 @@ The total validated opaque state is still returned in RAM; this is a per-read
 allocation bound, not a total-memory cap or streaming checkpoint codec.
 
 These are bounded admission checks, not a promise of immunity to subsequent
-filesystem mutation after the stream closes. Descriptor read errors remain
-primary if stream close also fails; close-only failures reject the read.
+filesystem mutation after the stream closes. The immutable checkpoint and
+partial-generation readers additionally require a regular single-hard-link
+inode at the canonical generation pathname before and after the bounded raw
+read, with the same device/inode identity. Foreign aliases present at entry or
+introduced after byte collection reject even when the SHA-256 would match;
+replacing the generation inode with a byte-identical file after the raw read
+also rejects. The mutable progress-pointer reader is not subject to this
+immutable-generation link-count policy. These checks cannot prevent writes
+through an already-open descriptor or filesystem changes after final admission.
+Descriptor read errors remain primary if stream close also fails; close-only
+failures reject the read.
 
 Read-stream cleanup likewise preserves an earlier read error when `close()`
 raises a non-`OSError` exception. The cleanup failure is attached as a
@@ -825,7 +834,11 @@ these selectors once a product C-to-Malbolge pipeline exists.
   link count, timestamps, and alias identity before unlinking that staging
   entry and rechecking single-link identity. A mismatched, oversized, or
   concurrently rewritten collision leaves the suspected alias untouched; a
-  foreign alias without that narrow recovery path remains rejected.
+  foreign alias without that narrow recovery path remains rejected. Recovery
+  scans escape the destination's literal filename before applying the suffix
+  wildcard: `?`, `*`, and `[` in a valid POSIX filename cannot match unrelated
+  siblings and cause their hard links to be removed. Legitimate retained
+  aliases for these literal filenames remain recoverable.
   If the destination disappears or becomes unreadable during the collision
   check, publication fails with the stable sidecar error rather than leaking
   a raw filesystem exception. These checks remain subject to post-admission

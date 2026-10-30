@@ -5642,6 +5642,62 @@ def test_retained_alias_change_after_content_check_preserved(
 
 @pytest.mark.skipif(
     os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX literal wildcard filenames are required",
+)
+@pytest.mark.parametrize(
+    ("basename", "other_name"),
+    [
+        ("literal?.chk", ".literalX.chk.foreign.tmp"),
+        ("literal*.chk", ".literalX.chk.foreign.tmp"),
+        ("literal[ab].chk", ".literala.chk.foreign.tmp"),
+    ],
+)
+def test_collision_alias_discovery_uses_literal_filename(
+    tmp_path: Path,
+    basename: str,
+    other_name: str,
+) -> None:
+    """Glob syntax in destination names must not discover unrelated aliases."""
+    destination = tmp_path / basename
+    alias = tmp_path / other_name
+    payload = b"same-durable-checkpoint"
+    _ = destination.write_bytes(payload)
+    os.link(destination, alias)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    with pytest.raises(ERROR, match="external hard link"):
+        _ = writer(destination, payload, platform=os.name)
+    assert destination.read_bytes() == payload
+    assert alias.read_bytes() == payload
+    assert alias.stat().st_ino == destination.stat().st_ino
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX literal wildcard filenames are required",
+)
+@pytest.mark.parametrize(
+    "basename",
+    ["literal?.chk", "literal*.chk", "literal[ab].chk", "literal[.chk"],
+)
+def test_retained_alias_recovery_matches_literal_destination(
+    tmp_path: Path,
+    basename: str,
+) -> None:
+    """A real staging alias survives glob escaping and can be recovered."""
+    destination = tmp_path / basename
+    alias = tmp_path / f".{destination.name}.1234abcd.tmp"
+    payload = b"durable-checkpoint"
+    _ = destination.write_bytes(payload)
+    os.link(destination, alias)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    assert writer(destination, payload, platform=os.name) == destination
+    assert destination.read_bytes() == payload
+    assert destination.stat().st_nlink == 1
+    assert not alias.exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
     reason="Hard-link collision requires POSIX filesystem semantics",
 )
 def test_immutable_collision_rejects_new_alias_during_read(
@@ -5747,6 +5803,102 @@ def test_immutable_collision_rejects_named_pipe(tmp_path: Path) -> None:
     ):
         _ = progress.write_checkpoint_generation(sidecar, checkpoint)
     assert not Path(sidecar.progress_path).exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link generation readers require POSIX filesystem semantics",
+)
+@pytest.mark.parametrize("member", ["checkpoint", "partial"])
+def test_checkpoint_reader_rejects_hardlinked_generation_member(
+    tmp_path: Path,
+    member: str,
+) -> None:
+    """An immutable member with another writable pathname is not admitted."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"partial-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=partial
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint, partial)
+    selected = {
+        "checkpoint": sidecar.checkpoint_path,
+        "partial": sidecar.partial_path,
+    }[member]
+    assert selected is not None
+    destination = Path(selected)
+    alias = tmp_path / f"foreign-{member}-generation-link"
+    os.link(destination, alias)
+
+    with pytest.raises(ERROR, match=f"{member} payload.*hard link"):
+        _ = progress.read_checkpoint_generation(sidecar)
+    assert destination.read_bytes() == alias.read_bytes()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Hard-link generation readers require POSIX filesystem semantics",
+)
+def test_checkpoint_reader_rejects_alias_added_after_bytes_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late hard link cannot pass the post-read immutable admission."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    alias = tmp_path / "foreign-late-link"
+    original_reader = cast(
+        "Callable[..., bytes]", vars(progress)["_read_regular_bytes"]
+    )
+
+    def link_after_read(
+        path: Path, context: str, *, max_bytes: int | None = None
+    ) -> bytes:
+        result = original_reader(path, context, max_bytes=max_bytes)
+        os.link(path, alias)
+        return result
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_read_regular_bytes", link_after_read)
+        with pytest.raises(ERROR, match=r"checkpoint payload.*hard link"):
+            _ = progress.read_checkpoint_generation(sidecar)
+    assert alias.read_bytes() == checkpoint
+
+
+def test_checkpoint_reader_rejects_inode_swap_after_bytes_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An identical-byte inode swap is rejected after reading a generation."""
+    checkpoint = b"checkpoint-state-v1"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    destination = Path(sidecar.checkpoint_path or "")
+    replacement = tmp_path / "new-generation-inode"
+    _ = replacement.write_bytes(checkpoint)
+    original_inode = destination.stat().st_ino
+    original_reader = cast(
+        "Callable[..., bytes]", vars(progress)["_read_regular_bytes"]
+    )
+
+    def swap_after_read(
+        path: Path, context: str, *, max_bytes: int | None = None
+    ) -> bytes:
+        result = original_reader(path, context, max_bytes=max_bytes)
+        _ = replacement.replace(path)
+        return result
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_read_regular_bytes", swap_after_read)
+        with pytest.raises(ERROR, match="checkpoint payload inode changed"):
+            _ = progress.read_checkpoint_generation(sidecar)
+    assert destination.read_bytes() == checkpoint
+    assert destination.stat().st_ino != original_inode
 
 
 def test_checkpoint_read_rejects_fifo_swapped_during_open(

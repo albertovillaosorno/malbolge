@@ -47,6 +47,7 @@ from dataclasses import fields
 from datetime import UTC
 from datetime import datetime
 from enum import Enum
+from glob import escape as escape_glob
 from hashlib import sha256
 from importlib import import_module
 from io import FileIO
@@ -2507,7 +2508,8 @@ def _find_retained_immutable_stage(
 
     """
     matches: list[Path] = []
-    for candidate in destination.parent.glob(f".{destination.name}.*.tmp"):
+    literal_prefix = escape_glob(f".{destination.name}.")
+    for candidate in destination.parent.glob(f"{literal_prefix}*.tmp"):
         try:
             observed = candidate.stat(follow_symlinks=False)
         except OSError, ValueError, RuntimeError:
@@ -2709,17 +2711,38 @@ def _validate_payload(
     return payload
 
 
+def _admit_immutable_payload_path(path: Path, context: str) -> tuple[int, int]:
+    """Require a singly linked regular generation inode at the given path.
+
+    Returns:
+        Device and inode identity for a safely named immutable member.
+
+    """
+    _reject_path_redirect(path, f"{context} payload")
+    observed = path.stat(follow_symlinks=False)
+    if not stat.S_ISREG(observed.st_mode):
+        _fail(f"{context} payload must be a regular file")
+    if observed.st_nlink != 1:
+        _fail(f"{context} payload has an external hard link")
+    return observed.st_dev, observed.st_ino
+
+
 def _read_payload(
     path: Path, context: str, *, max_bytes: int | None = None
 ) -> bytes:
     try:
-        return _read_regular_bytes(
+        before = _admit_immutable_payload_path(path, context)
+        payload = _read_regular_bytes(
             path, f"{context} payload", max_bytes=max_bytes
         )
+        after = _admit_immutable_payload_path(path, context)
+        if after != before:
+            _fail(f"{context} payload inode changed during file read")
     except ProgressSidecarError:
         raise
     except _READ_STREAM_ERRORS as error:
         _fail_with_source(f"{context} payload is unavailable: {error}", error)
+    return payload
 
 
 def _validate_referenced_generation(sidecar: ProgressSidecar) -> None:

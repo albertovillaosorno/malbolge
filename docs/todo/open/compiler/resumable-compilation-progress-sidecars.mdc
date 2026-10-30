@@ -150,7 +150,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   post-commit cleanup is unlinked only after bounded byte equality and stable
   inode/link/timestamp/alias re-admission, preserving an unmatched, oversized,
   or concurrently rewritten alias without publication, then re-admitted before
-  durable generation reuse so retry after cleanup failure remains recoverable,
+  durable generation reuse so retry after cleanup failure remains recoverable;
+  staging-alias scans escape glob metacharacters in literal output names,
+  with POSIX rejection and positive recovery tests for `?`, `*`, and `[` names;
+  immutable checkpoint/partial readers now also require single-link regular
+  pathname identity before and after the bounded read, rejecting foreign
+  aliases attached initially or after content collection and same-byte inode
+  swaps after raw reading while leaving mutable pointer link policy unchanged,
   stable read with read-before-close
   failure precedence plus writer-lock lifecycle,
   pre-publication filesystem failures, exact committed-path evidence for
