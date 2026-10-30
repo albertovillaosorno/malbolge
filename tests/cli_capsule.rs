@@ -439,6 +439,41 @@ fn default_current_capsule_ignores_ambient_stdin() -> Result<(), String> {
 }
 
 #[test]
+fn resident_backend_fallback_reports_exact_same_guest_steps()
+-> Result<(), String> {
+    let source = source_backed_jump_code_io_chain()?;
+    let encoded = build_capsule(current_profile(), &source)
+        .map_err(|error| format!("build resident-count capsule: {error}"))?;
+    let capsule = TemporaryCapsule::from_bytes("resident-steps", &encoded)?;
+    let baseline = clean_cli_command()
+        .arg(&capsule.path)
+        .arg("--report-steps")
+        .output()
+        .map_err(|error| format!("run direct counted VM: {error}"))?;
+    let marker = TemporaryMarker::new("resident-steps");
+    let configured = configured_worker_command(&marker.path)
+        .arg(&capsule.path)
+        .arg("--report-steps")
+        .output()
+        .map_err(|error| format!("run counted resident backend: {error}"))?;
+    if !baseline.status.success()
+        || configured.status != baseline.status
+        || configured.stdout != baseline.stdout
+        || configured.stderr != baseline.stderr
+        || !marker.path.exists()
+    {
+        return Err(format!(
+            concat!(
+                "resident step receipt differs: direct={:?} ",
+                "resident={:?}"
+            ),
+            baseline, configured
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn configured_worker_is_not_used_for_historical_profile() -> Result<(), String>
 {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
