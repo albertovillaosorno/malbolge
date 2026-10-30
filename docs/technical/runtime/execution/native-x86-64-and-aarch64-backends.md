@@ -129,6 +129,15 @@ and diagnostic without any retry. Repeating the default-threaded
 60 times (35 tests per run) passed without failures after isolating both
 writers; three of 32 runs had failed before fixing the busy-test writer.
 
+On Linux a successful compiler may close all its pipes yet leave an ordinary
+forked descendant running with redirected stdio. Both successful and failed
+compiler completion now terminate the dedicated group after retaining the
+direct child's status and all bounded stdout/stderr. A Linux delayed-marker
+fixture proves the already-completed successful compiler cannot leave that
+background writer alive; the exact untrusted object bytes remain unchanged.
+This does not claim containment of deliberately detached process sessions or
+non-Linux process trees, and it does not add semantic authority to Clang.
+
 On Linux each compiler starts in its own process group. The deadline covers
 both direct-child execution and completion of source submission, stdout and
 stderr; observing the direct child's exit alone no longer releases the

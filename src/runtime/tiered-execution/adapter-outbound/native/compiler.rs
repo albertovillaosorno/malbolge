@@ -246,14 +246,17 @@ fn wait_for_bounded_child(
             }
         }
         if exit_status.is_some_and(|status| !status.success()) {
-            if !pipes.all_finished() {
-                // Failed compiler output cannot become a native artifact.
-                // Release inherited pipe holders without losing its exit code.
-                terminate_bootstrap_group(child);
-            }
+            // Even a failed compiler whose pipes have closed can retain
+            // descendants with redirected stdio. A completed direct child
+            // does not prove the owned process group has exited.
+            terminate_bootstrap_group(child);
             return Ok(exit_status);
         }
         if exit_status.is_some() && pipes.all_finished() {
+            // A successful compiler may have forked a background child with
+            // all pipe handles redirected. Reject that lingering authority
+            // after collecting complete output; preserve the exit status.
+            terminate_bootstrap_group(child);
             return Ok(exit_status);
         }
         thread::sleep(Duration::from_millis(5));

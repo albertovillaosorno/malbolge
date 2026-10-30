@@ -139,6 +139,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A delayed-marker fixture proves that ordinary descendants cannot write
   filesystem data after early rejection of a failing compiler.
 
+  Even if a successful or failed direct compiler closes every pipe, an ordinary
+  background child with redirected stdio is still in its owned Linux process
+  group. Completion now signals that group without discarding the captured exit
+  code or untrusted object bytes. A real successful fake-Clang fixture proved
+  the old behavior let its delayed detached-stdio marker escape, then proved
+  the corrected completion stops the marker; deliberately new sessions and
+  non-Linux descendant containment remain outside this test's authority.
+
   Termination uses the absolute `/usr/bin/kill` host utility; deliberately
   detached child sessions and non-Linux process-tree containment remain
   outside this bounded claim. Early nonzero Clang exits preserve exact stderr

@@ -47031,6 +47031,108 @@ fn bootstrap_compiler_deadline_covers_inherited_pipe_holders()
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
+fn bootstrap_compiler_success_cannot_leave_detached_stdio_descendant()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-success-descendant")
+        .join(process_id().to_string());
+    fs::create_dir_all(&directory).map_err(|error| {
+        format!("prepare successful compiler fixture: {error}")
+    })?;
+    let launched = directory.join("child-started");
+    let marker = directory.join("escaped-marker");
+    // The background child deliberately closes every compiler pipe; output
+    // completion alone cannot prove the owned process group is empty.
+    let script = format!(
+        "(printf 'started' > '{}'; sleep 1; printf 'escaped' > '{}') \
+         </dev/null >/dev/null 2>&1 & \
+         while [ ! -f '{}' ]; do sleep 0.01; done; \
+         cat >/dev/null; printf 'OPAQUE_NATIVE_OBJECT'",
+        launched.display(),
+        marker.display(),
+        launched.display(),
+    );
+    let result = (|| {
+        let compiler = create_fake_bootstrap_clang(
+            &directory,
+            "successful-with-detached-child",
+            &script,
+        )?;
+        let object = compile_preflighted_clang_c23(
+            &compiler,
+            &native_program(),
+            safe_rust_profiled_capability(),
+            native_target(HostIsa::X86_64),
+        )
+        .map_err(|error| format!("successful compiler result: {error}"))?;
+        if object.object() != b"OPAQUE_NATIVE_OBJECT" || !launched.is_file() {
+            return Err(String::from(
+                "compiler output or child launch drifted",
+            ));
+        }
+        thread::sleep(Duration::from_millis(1200));
+        if marker.exists() {
+            return Err(String::from(
+                "successful compiler left a detached-stdio descendant",
+            ));
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&directory).map_err(|error| {
+        format!("remove successful compiler fixture: {error}")
+    });
+    result?;
+    cleanup
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn bootstrap_compiler_failure_cannot_leave_detached_stdio_descendant()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-failure-detached-stdio")
+        .join(process_id().to_string());
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("prepare failed compiler fixture: {error}"))?;
+    let launched = directory.join("child-started");
+    let marker = directory.join("escaped-marker");
+    let script = format!(
+        "(printf 'started' > '{}'; sleep 1; printf 'escaped' > '{}') \
+         </dev/null >/dev/null 2>&1 & \
+         while [ ! -f '{}' ]; do sleep 0.01; done; \
+         cat >/dev/null; printf 'FAILED_COMPLETE\n' >&2; exit 37",
+        launched.display(),
+        marker.display(),
+        launched.display(),
+    );
+    let observed = check_fake_clang_stream_case(
+        &directory,
+        "failed-with-detached-child",
+        &script,
+        &BootstrapCompilerError::CompilerFailure {
+            code: Some(37i32),
+            stderr: b"FAILED_COMPLETE\n".to_vec().into_boxed_slice(),
+        },
+    );
+    thread::sleep(Duration::from_millis(1200));
+    let escaped = marker.exists();
+    let started = launched.is_file();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove failed compiler fixture: {error}"));
+    observed?;
+    cleanup?;
+    if !started || escaped {
+        return Err(format!(
+            "compiler orphan: started={started}, escaped={escaped}"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
 fn bootstrap_compiler_rejects_failed_child_without_inherited_pipe_wait()
 -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
