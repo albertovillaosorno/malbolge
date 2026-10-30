@@ -111,6 +111,10 @@ format.
   the same mirror, preventing live flip-and-restore source changes from yielding
   mixed evidence. Original source and mirror are rechecked after every group;
   concurrent source writers racing non-atomic snapshots still need coordination.
+- Source/oracle behavior authoring now admits the required trees before any
+  execution, rechecks both after the source batch and after oracle probes even
+  when execution fails, and rejects persistent cross-stage mutation before
+  returning stale evidence. Identity-only programs require no oracle tree.
 - Behavior authoring derives identity transcripts from source and distinct bug
   `present`/`fixed` transcripts from source versus corrected oracle; a third
   candidate transcript becomes `unknown` and fails closed.

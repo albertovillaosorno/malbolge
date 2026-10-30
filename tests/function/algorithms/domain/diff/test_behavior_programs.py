@@ -58,6 +58,7 @@ from algorithms.diff.probe_exec import ProbeRoot
 from algorithms.diff.probe_exec import ProbeRunContext
 from algorithms.diff.probe_exec import ToolExecutable
 from algorithms.diff.probe_exec import run_probe_program
+from algorithms.diff.probe_exec import run_probe_programs
 import pytest
 
 if TYPE_CHECKING:
@@ -385,6 +386,82 @@ def test_behavior_program_apis_reject_foreign_records_before_execution(
             authored,
             cast("ProbeRunContext", object()),
         )
+
+
+@pytest.mark.parametrize("mutate_after_source", [False, True])
+@pytest.mark.parametrize("mutate_source", [False, True])
+def test_authoring_rejects_cross_tree_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    mutate_after_source: bool,
+    mutate_source: bool,
+) -> None:
+    """Neither source nor oracle can drift between authoring probe batches."""
+    source, oracle = _trees(tmp_path)
+    changed = source if mutate_source else oracle
+    phase_root = source if mutate_after_source else oracle
+
+    def modifying_batch(
+        programs: tuple[ProbeProgram, ...], context: ProbeRunContext
+    ) -> tuple[ProbeTranscript, ...]:
+        transcripts = run_probe_programs(programs, context)
+        if context.source_root == phase_root:
+            _write(changed, "identity.txt", b"changed after probe")
+        return transcripts
+
+    monkeypatch.setattr(
+        "algorithms.diff.behavior_programs.run_probe_programs", modifying_batch
+    )
+    with pytest.raises(ProbeExecutionError, match="changed during authoring"):
+        _ = author_behavior_programs(
+            _programs(),
+            _context(source, tmp_path),
+            _context(oracle, tmp_path),
+        )
+
+
+def test_failed_oracle_authoring_still_detects_source_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed oracle probe cannot suppress source-drift diagnostics."""
+    source, oracle = _trees(tmp_path)
+
+    def failing_oracle(
+        programs: tuple[ProbeProgram, ...], context: ProbeRunContext
+    ) -> tuple[ProbeTranscript, ...]:
+        if context.source_root == oracle:
+            _write(source, "identity.txt", b"changed before failed oracle")
+            message = "synthetic oracle execution error"
+            raise ProbeExecutionError(message)
+        return run_probe_programs(programs, context)
+
+    monkeypatch.setattr(
+        "algorithms.diff.behavior_programs.run_probe_programs", failing_oracle
+    )
+    with pytest.raises(ProbeExecutionError, match="changed during authoring"):
+        _ = author_behavior_programs(
+            _programs(), _context(source, tmp_path), _context(oracle, tmp_path)
+        )
+
+
+def test_identity_only_authoring_does_not_require_oracle_tree(
+    tmp_path: Path,
+) -> None:
+    """Without a bug baseline, oracle files are not required."""
+    source, _ = _trees(tmp_path)
+    missing_oracle = tmp_path / "missing-oracle"
+    identity = _read_program("identity-stable", "identity.txt")
+    programs = BehaviorPrograms(identity=(identity,), compatibility=(), bugs=())
+    authored = author_behavior_programs(
+        programs,
+        _context(source, tmp_path),
+        _context(missing_oracle, tmp_path),
+    )
+    _expect(
+        authored.profile.identity[0].probe_id == identity.probe_id, "ID drift"
+    )
+    _expect(not authored.bugs, "identity-only authoring gained a bug baseline")
 
 
 def test_authoring_derives_identity_and_distinct_bug_baselines(

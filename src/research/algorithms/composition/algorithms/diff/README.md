@@ -181,7 +181,12 @@ not guarantee atomicity against concurrent external filesystem writers.
 
 `behavior_programs.py` authors identity baselines from the original source and
 bug
-baselines from both original source and corrected oracle. A bug program must
+baselines from both original source and corrected oracle. Source and oracle
+byte trees are admitted before authoring and checked after each probe stage,
+including failed probes; cross-tree mutation cannot yield stale baselines. An
+oracle tree is not required when the authored set contains no bug programs.
+External filesystem writers still need coordination because these scans are
+not atomic. A bug program must
 produce
 distinct selected-stdout transcript digests for `present` and `fixed`; candidate
 output matching neither becomes `unknown`. Identity and bug program

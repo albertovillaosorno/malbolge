@@ -410,6 +410,57 @@ def _author_bug_programs(
     return tuple(authored)
 
 
+def _require_authoring_trees_unchanged(
+    admitted: tuple[tuple[Path, TreeSnapshot], ...],
+) -> None:
+    """Verify cross-stage source and oracle byte trees stay admitted.
+
+    Raises:
+        ProbeExecutionError: An authored input tree was changed or invalidated.
+
+    """
+    for root, expected in admitted:
+        try:
+            current = _snapshot_observed_source(root)
+        except ProbeExecutionError as error:
+            message = f"behavior tree changed during authoring: {error}"
+            raise ProbeExecutionError(message) from error
+        if current != expected:
+            message = "behavior source/oracle tree changed during authoring"
+            raise ProbeExecutionError(message)
+
+
+def _run_authored_baselines(
+    programs: BehaviorPrograms,
+    source_context: ProbeRunContext,
+    oracle_context: ProbeRunContext,
+) -> tuple[dict[str, ProbeTranscript], dict[str, ProbeTranscript]]:
+    """Run source/oracle probes while preserving their admitted input trees.
+
+    Returns:
+        Source and oracle transcript maps by probe identifier.
+
+    """
+    roots = (source_context.source_root,)
+    if programs.bugs:
+        roots = (*roots, oracle_context.source_root)
+    admitted = tuple((root, _snapshot_observed_source(root)) for root in roots)
+    try:
+        source_transcripts = _transcript_map(
+            run_probe_programs(_all_programs(programs), source_context)
+        )
+        _require_authoring_trees_unchanged(admitted)
+        bug_programs = tuple(item.program for item in programs.bugs)
+        oracle_transcripts = _transcript_map(
+            run_probe_programs(bug_programs, oracle_context)
+            if bug_programs
+            else ()
+        )
+    finally:
+        _require_authoring_trees_unchanged(admitted)
+    return source_transcripts, oracle_transcripts
+
+
 def author_behavior_programs(
     programs: BehaviorPrograms,
     source_context: ProbeRunContext,
@@ -439,12 +490,8 @@ def author_behavior_programs(
         oracle_context, "oracle behavior context"
     )
     _require_matching_contexts(source_context, oracle_context)
-    source_transcripts = _transcript_map(
-        run_probe_programs(_all_programs(programs), source_context)
-    )
-    bug_programs = tuple(item.program for item in programs.bugs)
-    oracle_transcripts = _transcript_map(
-        run_probe_programs(bug_programs, oracle_context) if bug_programs else ()
+    source_transcripts, oracle_transcripts = _run_authored_baselines(
+        programs, source_context, oracle_context
     )
     identity = tuple(
         IdentityProbe(

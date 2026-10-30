@@ -298,6 +298,13 @@ stdout or exit-code transcript selector when constructing their typed records,
 before any source or oracle processes execute. Direct authored records enforce
 the same condition to prevent empty-transcript digests from masquerading as
 identity or bug evidence. Compatibility success-only probes need no selector.
+Behavior authoring snapshots its original source and (when bug probes exist)
+corrected oracle before executing any source or oracle probe batch. Both byte
+trees are checked after source probes and again after oracle probes, including
+exceptional exits. This prevents an oracle-stage side effect or concurrent
+persistent source edit from making the authored baseline stale. When no bug
+program is present, no oracle source tree is needed. This is not an atomic
+snapshot against external writers.
 Behavior authoring runs identity programs on the original source. Bug programs
 run
 on both original source and the local corrected oracle; their selected-stdout
