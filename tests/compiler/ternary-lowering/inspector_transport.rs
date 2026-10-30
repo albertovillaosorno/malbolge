@@ -64,7 +64,7 @@ fn fixture_namespace() -> String {
     clippy::panic_in_result_fn,
     reason = "different test threads must use different fixture names"
 )]
-fn test_fixture_namespaces_distinguish_parallel_threads() -> Result<(), String> {
+fn fixture_namespaces_distinguish_parallel_threads() -> Result<(), String> {
     let first = thread::spawn(fixture_namespace)
         .join()
         .map_err(|_error| String::from("first test thread panicked"))?;
