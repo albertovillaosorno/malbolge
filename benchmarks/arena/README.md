@@ -552,6 +552,26 @@ converts KiB to bytes and compares each reported stage and the final
 `peak_rss_bytes`. Trial identity, raw CSV, inventory and post-replay byte
 snapshots remain mandatory.
 
+The read-only audit CLI also has a separate `--stage-rss-breakdown`
+option for v6/v7 studies:
+
+```sh
+python3.14 -B -m benchmarks.arena.target_echo_audit \
+  .temp/arena-target-echo-EXAMPLE/study.json --stage-rss-breakdown
+```
+
+It admits all ordinary run/raw/source/receipt evidence first, then adds
+`stage_rss_breakdown` only when explicitly requested. Its per-algorithm,
+per-difficulty records retain attempts, successful-trial counts, failed-trial
+counts, and the exact median and observed range for each of emitter, primary
+VM and second VM peak RSS. Paired comparisons report the median of
+**candidate minus baseline** on the same trial indices only when *both*
+were verified, not the difference of two separately measured medians. With
+no verified trials there is no invented median or paired cost. The report
+remains supplemental to the canonical five-objective Pareto analysis;
+its three child peaks are not independent study-wide resource budgets or
+an attestation of source-reported measurement history.
+
 The original short-lived GNU time files are still deleted after reading; the
 **bytes they contained** are now retained in the per-trial JSON as source-
 reported data. This enables independent parsing and conversion checks; it

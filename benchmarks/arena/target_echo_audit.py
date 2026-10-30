@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import sha256
 import json
@@ -42,6 +43,7 @@ import os
 from pathlib import Path
 import shutil
 import stat
+from statistics import median
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tomllib
@@ -142,6 +144,7 @@ class AuditOptions:
     require_source_commit_object: bool = False
     emitter: Path | None = None
     runner: Path | None = None
+    stage_rss_breakdown: bool = False
 
 
 DEFAULT_AUDIT_OPTIONS = AuditOptions()
@@ -1340,6 +1343,122 @@ def _recheck_inventory(document: dict[str, Any], relative_study: str) -> None:
     _candidate_files(prefix, names)
 
 
+def _stage_rss_values(
+    row: dict[str, Any],
+    prefix: str,
+    *,
+    raw: bool,
+) -> dict[str, int]:
+    path = f"{prefix}/{RSS_RECEIPT_DIR}/{_row_stem(row)}.json"
+    data = evidence.read_bounded_regular(_ROOT, path, limit=RSS_REPORT_LIMIT)
+    _validate_rss_stage_bytes(data, row, raw=raw)
+    record = _rss_record(data, raw=raw)
+    return {key: record["stages"][key] for key in RSS_STAGE_NAMES}
+
+
+def _stage_rss_group(
+    observations: list[dict[str, Any]],
+    *,
+    difficulty: int,
+    algorithm: str,
+) -> dict[str, Any]:
+    results: dict[str, Any] = {
+        "difficulty": difficulty,
+        "algorithm": algorithm,
+        "attempts": len(observations),
+        "verified": sum(entry["stages"] is not None for entry in observations),
+        "not_verified": sum(entry["stages"] is None for entry in observations),
+    }
+    for stage in RSS_STAGE_NAMES:
+        samples = [
+            entry["stages"][stage]
+            for entry in observations
+            if entry["stages"] is not None
+        ]
+        if samples:
+            results[stage] = {
+                "median_bytes": int(median(samples)),
+                "range_bytes": [min(samples), max(samples)],
+            }
+    return results
+
+
+def _stage_rss_pairs(
+    rows: dict[tuple[int, str], list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    report = []
+    for difficulty in sorted({key[0] for key in rows}):
+        walk = {x["trial"]: x["stages"] for x in rows[difficulty, WALK]}
+        skip = {x["trial"]: x["stages"] for x in rows[difficulty, SKIP]}
+        both = [
+            (walk[trial], skip[trial])
+            for trial in sorted(set(walk) & set(skip))
+            if walk[trial] is not None and skip[trial] is not None
+        ]
+        deltas = (
+            {
+                name: int(
+                    median([
+                        candidate[name] - baseline[name]
+                        for baseline, candidate in both
+                    ])
+                )
+                for name in RSS_STAGE_NAMES
+            }
+            if both
+            else {}
+        )
+        report.append({
+            "difficulty": difficulty,
+            "both_verified": len(both),
+            "median_skip_minus_walk_bytes": deltas,
+        })
+    return report
+
+
+def _stage_rss_breakdown(
+    document: dict[str, Any],
+    prefix: str,
+) -> dict[str, Any]:
+    if not _retained_rss_document(document):
+        _fail("stage RSS breakdown requires version-six or seven receipts")
+    rows: dict[tuple[int, str], list[dict[str, Any]]] = defaultdict(list)
+    raw = document["study"]["id"] == FORWARD_RAW_RSS_STUDY
+    for row in document["observations"]:
+        stages = (
+            _stage_rss_values(row, prefix, raw=raw)
+            if row["outcome"] == analyze.VERIFIED
+            else None
+        )
+        key = (row["case"]["difficulty"], row["algorithm"])
+        rows[key].append({"trial": row["trial"], "stages": stages})
+    return {
+        "scope": (
+            "Conditional on verified trials; independently checked source-"
+            "reported child peak RSS, not whole-study memory or attestation."
+        ),
+        "groups": [
+            _stage_rss_group(samples, difficulty=level, algorithm=name)
+            for (level, name), samples in sorted(rows.items())
+        ],
+        "paired": _stage_rss_pairs(rows),
+    }
+
+
+def _checked_report(
+    document: dict[str, Any],
+    relative: str,
+    options: AuditOptions,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    report = analyze.analyze(document)
+    breakdown = (
+        _stage_rss_breakdown(document, _prefix(relative))
+        if options.stage_rss_breakdown
+        else None
+    )
+    return report, breakdown
+
+
 def audit(
     relative_study: str,
     *,
@@ -1358,7 +1477,7 @@ def audit(
         (document, checked, source_hashes, snapshots, commit, replayed) = (
             _admit_study(relative_study, options=options)
         )
-        report = analyze.analyze(document)
+        report, stage_rss = _checked_report(document, relative_study, options)
         _recheck_sources(source_hashes)
         _recheck_linked_inputs(snapshots)
         _recheck_inventory(document, relative_study)
@@ -1373,7 +1492,7 @@ def audit(
     ) as error:
         message = f"target echo retained study audit failed: {error}"
         raise TargetEchoAuditError(message) from error
-    return {
+    answer = {
         "schema_version": 1,
         "study": relative_study,
         "source_commit_reported": commit,
@@ -1393,6 +1512,9 @@ def audit(
             "VM replay checks only recorded successful fixed byte echoes."
         ),
     }
+    if stage_rss is not None:
+        answer["stage_rss_breakdown"] = stage_rss
+    return answer
 
 
 def main() -> int:
@@ -1406,6 +1528,7 @@ def main() -> int:
     parser.add_argument("study", help=".temp/arena-target-echo-*/study.json")
     parser.add_argument("--replay-candidates", action="store_true")
     parser.add_argument("--require-source-commit-object", action="store_true")
+    parser.add_argument("--stage-rss-breakdown", action="store_true")
     args = parser.parse_args()
     try:
         result = audit(
@@ -1413,6 +1536,7 @@ def main() -> int:
             options=AuditOptions(
                 replay_candidates=args.replay_candidates,
                 require_source_commit_object=args.require_source_commit_object,
+                stage_rss_breakdown=args.stage_rss_breakdown,
             ),
         )
         report_output.publish(result, sys.stdout)

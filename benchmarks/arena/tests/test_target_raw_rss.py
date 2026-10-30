@@ -61,10 +61,12 @@ if TYPE_CHECKING:
 LINUX = "linux"
 RAW_TABLE = "arena_rss"
 RAW_KIB = "raw_kib"
+BREAKDOWN = "stage_rss_breakdown"
 STAGES = ("emitter", "primary_vm", "verifier_vm")
 SOURCE_NAMES = (producer.WALK, producer.SKIP)
 CORRECT_VERSION = 2
 GIB = target_process.CHILD_VIRTUAL_MEMORY_BYTES
+ONE_PAIR_ARMS = 2
 TOOL_FAILED = "tool_failed"
 EMPTY_STDERR = b""
 
@@ -570,5 +572,112 @@ def test_unreported_raw_third_vm_line_is_a_failed_trial_not_study_crash(
         assert audit.audit(relative)[
             "reported_failed_trials_not_replayed"
         ] == len(study["observations"])
+    finally:
+        shutil.rmtree(folder)
+
+
+def test_opt_in_stage_breakdown_reports_verified_stage_costs_and_pairs(
+    pinned_tools: tuple[Path, Path],
+) -> None:
+    """Audited separate emitter and two VM peaks retain paired comparison."""
+    folder, study, relative = _study(pinned_tools)
+    try:
+        assert BREAKDOWN not in audit.audit(relative)
+        checked = audit.audit(
+            relative, options=audit.AuditOptions(stage_rss_breakdown=True)
+        )
+        report = checked["stage_rss_breakdown"]
+        assert len(report["groups"]) == len(SOURCE_NAMES)
+        assert len(report["paired"]) == 1
+        assert report["paired"][0]["both_verified"] == 1
+        assert set(report["paired"][0]["median_skip_minus_walk_bytes"]) == set(
+            STAGES
+        )
+        for group in report["groups"]:
+            assert group["attempts"] == group["verified"] == 1
+            assert group["not_verified"] == 0
+            row = next(
+                row
+                for row in study["observations"]
+                if row["algorithm"] == group["algorithm"]
+            )
+            for name in STAGES:
+                assert group[name]["median_bytes"] > 0
+                assert (
+                    group[name]["range_bytes"]
+                    == [group[name]["median_bytes"]] * 2
+                )
+            assert (
+                max(group[name]["median_bytes"] for name in STAGES)
+                == row["metrics"]["peak_rss_bytes"]
+            )
+    finally:
+        shutil.rmtree(folder)
+
+
+def test_stage_breakdown_works_for_v6_without_original_tool_text(
+    pinned_tools: tuple[Path, Path],
+) -> None:
+    """A v6 receipt can expose its reported stage data without v7 strings."""
+    folder, _, relative = _study(pinned_tools, raw=False)
+    try:
+        checked = audit.audit(
+            relative, options=audit.AuditOptions(stage_rss_breakdown=True)
+        )
+        assert len(checked[BREAKDOWN]["groups"]) == ONE_PAIR_ARMS
+        assert checked["stage_rss_breakdown"]["paired"][0]["both_verified"] == 1
+    finally:
+        shutil.rmtree(folder)
+
+
+def test_stage_breakdown_rejects_old_unmeasured_studies(
+    pinned_tools: tuple[Path, Path],
+) -> None:
+    """An old echo study cannot fabricate an unreported stage RSS breakdown."""
+    folder, _ = producer.run_study(
+        producer.StudyPlan((1,), 1),
+        emitter=pinned_tools[0],
+        runner=pinned_tools[1],
+    )
+    try:
+        relative = (
+            (folder / "study.json").relative_to(producer._ROOT).as_posix()
+        )
+        with pytest.raises(audit.TargetEchoAuditError, match=r"stage RSS"):
+            audit.audit(
+                relative, options=audit.AuditOptions(stage_rss_breakdown=True)
+            )
+    finally:
+        shutil.rmtree(folder)
+
+
+def test_stage_breakdown_counts_failed_trials_without_fabricated_memory_cost(
+    pinned_tools: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only verified outcomes enter median and paired memory summaries."""
+
+    def no_verifier(
+        path: Path,
+        context: producer._Context,
+        case: tuple[int, str],
+        *,
+        steps: int | None,
+    ) -> int:
+        _ = (path, context, case, steps)
+        return 1
+
+    monkeypatch.setattr(producer, "_timed_replay_verifier", no_verifier)
+    folder, _, relative = _study(pinned_tools)
+    try:
+        report = audit.audit(
+            relative, options=audit.AuditOptions(stage_rss_breakdown=True)
+        )["stage_rss_breakdown"]
+        for group in report["groups"]:
+            assert group["verified"] == 0
+            assert group["not_verified"] == group["attempts"] == 1
+            assert not set(group).intersection(STAGES)
+        assert report["paired"][0]["both_verified"] == 0
+        assert report["paired"][0]["median_skip_minus_walk_bytes"] == {}
     finally:
         shutil.rmtree(folder)

@@ -426,6 +426,16 @@ and optionally verifies target VM output. Wrong historical raw conversion,
 missing third-stage evidence, forged inconsistent tool text, non-ASCII and
 extra lines fail closed even if the attacker refreshes the manifest digest.
 
+A separate opt-in, read-only audit `--stage-rss-breakdown` computes
+per-stage medians and ranges for each accepted algorithm/difficulty cohort,
+with explicit trial totals, failed-trial counts and only matched-both-verified
+per-trial median candidate-minus-baseline differences. It is derived from
+the same source-admitted, hash-linked v6/v7 receipt bytes and undergoes the
+same post-analysis recheck against linked input drift and inventory changes.
+This provides a means to test whether emitter peak memory hides real VM
+changes without expanding the published study's five Pareto cost metrics.
+A missing matched-success cohort is reported with no invented numeric costs.
+
 The raw tool bytes are retained **by the producer**, not cryptographically
 signed by an independent kernel or a trusted resource agent. A producer
 controlling all study inputs can fabricate consistent observations. No
