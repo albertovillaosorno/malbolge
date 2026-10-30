@@ -91,6 +91,8 @@ def latex_checks() -> None:
                 latexmk,
                 "-pdf",
                 "-cd",
+                "-r",
+                str(ROOT / ".jig/lang/latex/latexmkrc"),
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 f"-outdir={output}",

@@ -156,6 +156,11 @@ def test_same_named_latex_documents_have_separate_build_outputs() -> None:
             next(arg for arg in command if arg.startswith("-outdir="))
             for command in commands[1:]
         ]
+        for command in commands[1:]:
+            option = command.index("-r")
+            assert command[option + 1] == str(
+                root / ".jig/lang/latex/latexmkrc"
+            )
         assert outputs == [
             f"-outdir={root / ".validate/latex/src/one"}",
             f"-outdir={root / ".validate/latex/src/two"}",
