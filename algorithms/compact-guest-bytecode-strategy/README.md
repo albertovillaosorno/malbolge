@@ -360,6 +360,15 @@ versus direct **5 cells**: +222 source cells and +83 executed steps for
 an equivalent successful two-byte workload. This is another **negative
 small-program cost result**, not a demonstrated compression speedup.
 
+Additional full-state replay cases use six input streams: empty, one byte
+(0 or 255), exactly two bytes, and three or four supplied bytes. Each
+comparison starts from a fresh validated source-memory checkpoint rather
+than from self-encrypted guest state. Normative VM output and consumed
+input counts agree for EOF, short input and trailing bytes; neither guest
+consumes more than two bytes. The tests also sample protected CEB2 memory
+after each execution. This confirms a wider bounded I/O contract without
+claiming an exhaustive input-stream or general-C semantics proof.
+
 Importantly, the two literal graphical opcode encodings are hand placed
 at different phases; this is an **unrolled two-operation guest program**.
 It has no count-driven repeat loop, generic opcode decoder, on-guest

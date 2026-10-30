@@ -3009,3 +3009,108 @@ fn two_sequential_guest_opcodes_match_direct_in_general_malbolge_cli() -> Result
     }
     Ok(())
 }
+
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "empty/excess input guest parity")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "bounded multi-stream full-state VM comparisons"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "two independent profile VM semantics"
+)]
+fn two_guest_opcodes_match_direct_on_eof_short_and_trailing_input() -> Result<(), String> {
+    let original = program(2)?;
+    let candidate = encode_bound_echo_macro(&original, current_profile())
+        .map_err(|error| format!("bound two-pair IR: {error:?}"))?;
+    let source = embed_two_echo_opcodes(&original, current_profile(), &candidate)
+        .map_err(|error| format!("two-op guest emitter: {error:?}"))?;
+    assert_eq!(
+        admit_two_echo_opcodes(&original, current_profile(), &source),
+        Ok(candidate),
+        "source must be bound before VM replay"
+    );
+    let direct = strategy::bridge::encode_successful_byte_echo(&original, current_profile())
+        .map_err(|error| format!("direct two-byte publisher: {error:?}"))?;
+    // Copy validated full-width initial state for each different input stream
+    // rather than mistakenly executing already self-encrypted guest code.
+    let guest_initial = ProfileMachine::from_source(current_profile(), &source, Vec::new())
+        .map_err(|error| format!("original guest loader: {error:?}"))?
+        .snapshot_state();
+    let direct_initial =
+        ProfileMachine::from_source(current_profile(), direct.source(), Vec::new())
+            .map_err(|error| format!("original direct loader: {error:?}"))?
+            .snapshot_state();
+    for input in [
+        vec![],
+        vec![0u8],
+        vec![255],
+        vec![0, 255],
+        vec![7, 129, 255],
+        vec![0, 1, 2, 3],
+    ] {
+        let mut guest = ProfileMachine::from_state(
+            current_profile(),
+            guest_initial.memory().to_vec(),
+            input.clone(),
+            malbolge::ProfileRegisters::default(),
+        )
+        .map_err(|error| format!("guest validated checkpoint: {error:?}"))?;
+        let mut direct_vm = ProfileMachine::from_state(
+            current_profile(),
+            direct_initial.memory().to_vec(),
+            input.clone(),
+            malbolge::ProfileRegisters::default(),
+        )
+        .map_err(|error| format!("direct validated checkpoint: {error:?}"))?;
+        assert!(
+            matches!(
+                guest.run(TWO_GUEST_STEPS),
+                Ok(RunOutcome::Terminated { steps: 88, .. })
+            ),
+            "guest two-opcode dispatch must halt even on EOF or extra input"
+        );
+        assert!(
+            matches!(
+                direct_vm.run(5),
+                Ok(RunOutcome::Terminated { steps: 5, .. })
+            ),
+            "direct two-pair guest must halt even on EOF or extra input"
+        );
+        assert_eq!(
+            guest.output(),
+            direct_vm.output(),
+            "guest vs direct stdout must match under EOF and excess input"
+        );
+        assert_eq!(
+            guest.output().len(),
+            2,
+            "each of two output operations writes a byte"
+        );
+        assert_eq!(
+            guest.input_consumed(),
+            direct_vm.input_consumed(),
+            "guest vs direct must consume identical available input bytes"
+        );
+        assert_eq!(
+            guest.input_consumed(),
+            input.len().min(2),
+            "each program only consumes up to two provided input bytes"
+        );
+        for address in [125u32, 126, 155, 190, 226] {
+            assert_eq!(
+                guest
+                    .memory_word(address)
+                    .map_err(|error| format!("guest payload address {address}: {error:?}"))?,
+                u32::from(
+                    *source
+                        .get(usize::try_from(address).map_err(|error| error.to_string())?)
+                        .ok_or("source glyph")?
+                ),
+                "source-bound CEB2 tail must remain unchanged after all I/O modes"
+            );
+        }
+    }
+    Ok(())
+}

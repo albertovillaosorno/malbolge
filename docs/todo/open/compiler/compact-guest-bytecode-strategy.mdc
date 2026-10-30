@@ -176,6 +176,9 @@ code-size explosion or compilation cost.
   either loader-valid opcode substitution. The two graphical opcode
   values and native handlers are **hand-placed**; no reusable interpreter,
   generic opcode decoding, repeat-count loop or on-guest SHA-256 exists.
+  Extra independent full-state VM replays compare empty, one-byte, exact
+  two-byte and trailing input with direct code, confirming output and
+  consumption parity plus intact protected data across six input streams.
 
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,

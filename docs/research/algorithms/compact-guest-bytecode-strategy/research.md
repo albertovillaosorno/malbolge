@@ -480,6 +480,14 @@ source's stdout and input consumption. Canonical `.malbolge` capsules
 run through the real general Malbolge CLI match for `[0,255]` and
 `[255,0]` with exact byte output and step receipts.
 
+A post-checkpoint regression initializes guest and direct machines from
+validated complete 15-trit memory states and independently replays empty,
+one-byte, exactly two-byte and surplus-input streams. Six cases agree on
+stdout, exactly two committed output operations, byte consumption bounded
+by `min(input_length, 2)`, successful halt and 88-vs-5 instruction counts.
+Sampled CEB2 physical words are unchanged even on EOF/trailing input.
+This is additional bounded evidence, not a proof over all input streams.
+
 The semantically equivalent successful two-pair sample costs
 **227 vs 5 source cells** and **88 vs 5 guest steps** for guest opcode
 execution versus direct code: +222 cells and +83 steps. This does not
