@@ -45,6 +45,9 @@ doom.c
 doom.malbolge
 examples/self_host/**/*.malbolge
 
+# Local output of the public contributor validator.
+/.validate/
+
 # LaTeX build artifacts
 *.aux
 *.log

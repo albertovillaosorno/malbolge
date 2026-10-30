@@ -200,6 +200,24 @@ completed records remain under `docs/todo/completed/`.
 
 ## Contributing and validation
 
+Pull requests are welcome. Before opening a PR, run the small public validator
+locally from the repository root (after installing the development tools):
+
+```sh
+python3.14 -B scripts/validate.py
+```
+
+This checks Rust formatting, Clippy, Cargo tests, Ruff lint/format,
+basedpyright, Python tests, ChkTeX, and LaTeXmk. It uses ordinary tool
+commands, **not** Jig. LaTeX output stays in ignored `/.validate/`.
+All checks should pass before submitting a PR. The maintainer then reviews
+the code and may request revisions; passing the script does not automatically
+approve a contribution or replace deeper project verification.
+
+This lightweight contributor workflow was inspired by
+[DannyBaanks](https://github.com/DannyBaanks). The validator is original
+Apache-2.0 repository code, not copied from another project.
+
 Read [AGENTS.md](AGENTS.md) before making repository changes. It is a compact
 handoff; owning TODOs, specifications, contracts, and ADRs remain authoritative
 when they are more specific.
