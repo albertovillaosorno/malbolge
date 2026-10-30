@@ -76,6 +76,8 @@ enum IdentityEffect {
     Zero(u32),
 }
 
+type SeededPublisherCase = (u8, usize, bool, bool, bool);
+
 struct OwnedFixture {
     root: PathBuf,
 }
@@ -3596,17 +3598,20 @@ fn canonical_identity_byte_trace_exact_4096_cell_boundary() -> Result<(), String
     Ok(())
 }
 
+fn typed_rotated_literal_module_with_outputs(byte: u8, outputs: usize) -> Result<Module, String> {
+    let mut effects = vec![IdentityEffect::Literal { result: 0, byte }];
+    effects.extend(repeat_n(IdentityEffect::Output(0), outputs));
+    typed_identity_effects(&effects)
+}
+
 fn typed_rotated_literal_module(byte: u8) -> Result<Module, String> {
-    typed_identity_effects(&[
-        IdentityEffect::Literal { result: 0, byte },
-        IdentityEffect::Output(0),
-    ])
+    typed_rotated_literal_module_with_outputs(byte, 1)
 }
 
 #[test]
 fn canonical_typed_rotated_nonzero_literals_execute_guest_data_rotation() -> Result<(), String> {
-    for byte in [23, 253] {
-        let typed = typed_rotated_literal_module(byte)?;
+    for (byte, outputs) in [(23, 1), (253, 1), (183, 2), (64, 2)] {
+        let typed = typed_rotated_literal_module_with_outputs(byte, outputs)?;
         let canonical = wire(&typed)?;
         if canonical_module(&canonical).map_err(|error| format!("seeded MCTI decode: {error:?}"))?
             != typed
@@ -3635,7 +3640,7 @@ fn canonical_typed_rotated_nonzero_literals_execute_guest_data_rotation() -> Res
         if !matches!(vm.run(admitted.executed_code_positions().len()),
             Ok(RunOutcome::Terminated { steps, .. })
                 if steps == admitted.executed_code_positions().len())
-            || vm.output() != [byte]
+            || vm.output() != vec![byte; outputs]
             || vm.input_consumed() != 0
         {
             return Err(format!("seeded typed real guest did not print {byte}"));
@@ -3660,6 +3665,25 @@ fn canonical_typed_rotated_literal_rejects_unproved_constants() -> Result<(), St
             ))
         {
             return Err(format!("typed nonwitness literal {byte} admitted"));
+        }
+    }
+    for (byte, outputs, expected) in [
+        (
+            23,
+            2,
+            TypedEchoAdapterError::Layout(
+                adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
+            ),
+        ),
+        (183, 3, TypedEchoAdapterError::UnsupportedTypedIr),
+    ] {
+        let canonical = wire(&typed_rotated_literal_module_with_outputs(byte, outputs)?)?;
+        if adapter::compile_canonical_typed_rotated_byte_literal(&canonical, current_profile())
+            != Err(expected)
+        {
+            return Err(format!(
+                "typed unproved seeded shape {byte} x{outputs} admitted"
+            ));
         }
     }
     let canonical = wire(&typed_rotated_literal_module(23)?)?;
@@ -3734,88 +3758,104 @@ fn publish_seeded_byte_literal(
         .map_err(|error| format!("seeded literal publisher status: {error}"))
 }
 
-#[test]
 #[expect(
     clippy::too_many_lines,
-    reason = "raw-source and versioned capsule profile boundary"
+    reason = "canonical wire and real runner assertions require both process stages"
 )]
+fn verify_seeded_publisher_case(
+    workspace: &OwnedFixture,
+    case: SeededPublisherCase,
+) -> Result<(), String> {
+    let (literal, outputs, typed, stdin, capsule) = case;
+    let canonical = wire(&typed_rotated_literal_module_with_outputs(
+        literal, outputs,
+    )?)?;
+    let compiled =
+        adapter::compile_canonical_typed_rotated_byte_literal(&canonical, current_profile())
+            .map_err(|error| format!("publisher seeded source: {error:?}"))?;
+    let bytes = if typed {
+        canonical.as_slice()
+    } else {
+        compiled.ternary_bytes()
+    };
+    let file = workspace.path(&format!(
+        "seeded-{literal}-x{outputs}-capsule-{capsule}.malbolge"
+    ));
+    let outcome =
+        publish_seeded_byte_literal(current_profile().id(), bytes, &file, typed, stdin, capsule)?;
+    if !outcome.status.success() {
+        return Err(format!(
+            "seeded literal process rejected: {}",
+            String::from_utf8_lossy(&outcome.stderr)
+        ));
+    }
+    let source = restored_canonical_stdin_source(
+        fs::read(&file).map_err(|error| error.to_string())?,
+        capsule,
+    )?;
+    if source != compiled.layout().source() {
+        return Err(String::from(
+            "typed and MCTR seeded graphical source diverged",
+        ));
+    }
+    // Raw graphical source has no profile metadata. Verify it with the
+    // selected normative current VM; only capsules can select a modern
+    // profile in the general runner without an explicit profile option.
+    let mut vm = ProfileMachine::from_source(current_profile(), &source, vec![255, 0, 128])
+        .map_err(|error| format!("seeded raw guest load: {error:?}"))?;
+    if !matches!(vm.run(compiled.layout().executed_code_positions().len()),
+        Ok(RunOutcome::Terminated { steps, .. })
+            if steps == compiled.layout().executed_code_positions().len())
+        || vm.output() != vec![literal; outputs]
+        || vm.input_consumed() != 0
+    {
+        return Err(String::from("seeded current-profile VM mismatch"));
+    }
+    if capsule {
+        let mut runner = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(&file)
+            .arg("--input-stdin")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("seeded guest runner spawn: {error}"))?;
+        runner
+            .stdin
+            .take()
+            .ok_or("seeded runner stdin pipe missing")?
+            .write_all(&[255, 0, 128])
+            .map_err(|error| format!("seeded guest stdin: {error}"))?;
+        let run = runner
+            .wait_with_output()
+            .map_err(|error| format!("seeded runner exit: {error}"))?;
+        if !run.status.success() || run.stdout != vec![literal; outputs] || !run.stderr.is_empty() {
+            return Err(format!(
+                "guest runner did not compute literal {literal}: {run:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn seeded_byte_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
     let workspace = OwnedFixture::new()?;
-    for (literal, typed, stdin, capsule) in [
-        (23, true, false, true),
-        (253, false, true, false),
-        (253, false, true, true),
+    for case in [
+        (23, 1, true, false, true),
+        (253, 1, false, true, false),
+        (253, 1, false, true, true),
     ] {
-        let canonical = wire(&typed_rotated_literal_module(literal)?)?;
-        let compiled =
-            adapter::compile_canonical_typed_rotated_byte_literal(&canonical, current_profile())
-                .map_err(|error| format!("publisher seeded source: {error:?}"))?;
-        let bytes = if typed {
-            canonical.as_slice()
-        } else {
-            compiled.ternary_bytes()
-        };
-        let file = workspace.path(&format!("seeded-{literal}-capsule-{capsule}.malbolge"));
-        let outcome = publish_seeded_byte_literal(
-            current_profile().id(),
-            bytes,
-            &file,
-            typed,
-            stdin,
-            capsule,
-        )?;
-        if !outcome.status.success() {
-            return Err(format!(
-                "seeded literal process rejected: {}",
-                String::from_utf8_lossy(&outcome.stderr)
-            ));
-        }
-        let source = restored_canonical_stdin_source(
-            fs::read(&file).map_err(|error| error.to_string())?,
-            capsule,
-        )?;
-        if source != compiled.layout().source() {
-            return Err(String::from(
-                "typed and MCTR seeded graphical source diverged",
-            ));
-        }
-        // Raw graphical source has no profile metadata. Verify it with the
-        // selected normative current VM; only capsules can select a modern
-        // profile in the general runner without an explicit profile option.
-        let mut vm = ProfileMachine::from_source(current_profile(), &source, vec![255, 0, 128])
-            .map_err(|error| format!("seeded raw guest load: {error:?}"))?;
-        if !matches!(vm.run(compiled.layout().executed_code_positions().len()),
-            Ok(RunOutcome::Terminated { steps, .. })
-                if steps == compiled.layout().executed_code_positions().len())
-            || vm.output() != [literal]
-            || vm.input_consumed() != 0
-        {
-            return Err(String::from("seeded current-profile VM mismatch"));
-        }
-        if capsule {
-            let mut runner = Command::new(env!("CARGO_BIN_EXE_malbolge"))
-                .arg(&file)
-                .arg("--input-stdin")
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|error| format!("seeded guest runner spawn: {error}"))?;
-            runner
-                .stdin
-                .take()
-                .ok_or("seeded runner stdin pipe missing")?
-                .write_all(&[255, 0, 128])
-                .map_err(|error| format!("seeded guest stdin: {error}"))?;
-            let run = runner
-                .wait_with_output()
-                .map_err(|error| format!("seeded runner exit: {error}"))?;
-            if !run.status.success() || run.stdout != [literal] || !run.stderr.is_empty() {
-                return Err(format!(
-                    "guest runner did not compute literal {literal}: {run:?}"
-                ));
-            }
-        }
+        verify_seeded_publisher_case(&workspace, case)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_double_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for case in [(183, 2, true, false, true), (64, 2, false, true, true)] {
+        verify_seeded_publisher_case(&workspace, case)?;
     }
     Ok(())
 }

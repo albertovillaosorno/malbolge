@@ -211,6 +211,13 @@ emission.
   14 independently verified nonzero guest rotation seeds. Real `j`, `*`,
   byte output and halt steps, exact source/data separation and observed
   output bytes are VM-checked before atomic raw/capsule publication.
+- The same explicit publisher now admits ten distinct two-output `u8`
+  literal witnesses, each using one real data relocation/rotation and
+  two output instructions. New seed-specific source positions and
+  loader-expanded memory are checked before any raw/capsule file is
+  published, including MCTI/MCTR canonical re-admission and the complete
+  normative two-byte oracle. Three outputs, unknown seeds and foreign
+  profiles still reject; this is not a general constant or C backend.
   Unsupported values/profile drift and multiple outputs still reject;
   old zero/latest/identity modes remain strict.
 - The explicit `--identity-byte-trace` MCTI/MCTR file/stdin publisher

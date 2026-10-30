@@ -240,12 +240,13 @@ fn project_initial_zero_effects(
     Ok(instructions)
 }
 
-// The guest must compute one exact nonzero u8 with j then * before output.
+// The guest computes one exact nonzero u8 with j then *, and can repeatedly
+// emit the unchanged accumulator while the proven code/data layout is safe.
 fn project_rotated_literal_effects(
     module: &Module,
     original: &[typed::LocatedInstruction],
 ) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
-    let [source, output] = original else {
+    let Some((source, outputs)) = original.split_first() else {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     };
     let Instruction::ConstantInteger {
@@ -256,29 +257,35 @@ fn project_rotated_literal_effects(
     else {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     };
-    let Instruction::ByteOutput { value } = output.instruction() else {
-        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-    };
-    if result != value
+    if outputs.is_empty()
+        || outputs.len() > 2
         || !is_byte_type(module, *type_id)
         || constant.bit_width() != 8
         || constant.little_endian().len() != 1
     {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     }
-    Ok(vec![
-        InputInstruction::ConstantInteger {
-            bit_width: constant.bit_width(),
-            little_endian: constant.little_endian().to_vec(),
-            result: result.value(),
-            span: project_span(source.span()),
-            type_kind: InputScalarType::U8,
-        },
-        InputInstruction::ByteOutput {
+    let mut instructions = Vec::with_capacity(original.len());
+    instructions.push(InputInstruction::ConstantInteger {
+        bit_width: constant.bit_width(),
+        little_endian: constant.little_endian().to_vec(),
+        result: result.value(),
+        span: project_span(source.span()),
+        type_kind: InputScalarType::U8,
+    });
+    for output in outputs {
+        let Instruction::ByteOutput { value } = output.instruction() else {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        };
+        if value != result {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        }
+        instructions.push(InputInstruction::ByteOutput {
             span: project_span(output.span()),
             value: value.value(),
-        },
-    ])
+        });
+    }
+    Ok(instructions)
 }
 
 // A source zero SSA can be emitted until the first input overwrites VM A.
@@ -658,12 +665,12 @@ pub fn compile_canonical_typed_identity_byte_trace(
     compile_byte_trace(canonical, profile, ByteTraceMode::IdentityByteBitcast)
 }
 
-/// Compile one current-profile `u8` constant and output via guest rotation.
+/// Compile one current-profile `u8` constant and repeated outputs via rotation.
 ///
 /// Unlike initial-zero, only a finite verified set of nonzero values has
 /// safe `j`, `*`, `<`, `v` source layouts. The independent bridge executes
 /// the produced source in the normative VM and checks exact output bits.
-/// No EOF, general arithmetic, multiple effects or guest ABI is claimed.
+/// No EOF, guest arithmetic, additional source effects or ABI is claimed.
 ///
 /// # Errors
 ///

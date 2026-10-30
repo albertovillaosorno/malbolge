@@ -60,27 +60,24 @@ const fn span(begin: u32, end: u32) -> InputSourceSpan {
     }
 }
 
-fn source(value: u8, duplicate_output: bool) -> Result<TernaryProgram, String> {
-    let mut instructions = vec![
-        InputInstruction::ConstantInteger {
-            bit_width: 8,
-            little_endian: vec![value],
-            result: 0,
-            span: span(0, 1),
-            type_kind: InputScalarType::U8,
-        },
-        InputInstruction::ByteOutput {
-            span: span(1, 2),
-            value: 0,
-        },
-    ];
-    if duplicate_output {
+fn source(value: u8, outputs: usize) -> Result<TernaryProgram, String> {
+    let mut instructions = vec![InputInstruction::ConstantInteger {
+        bit_width: 8,
+        little_endian: vec![value],
+        result: 0,
+        span: span(0, 1),
+        type_kind: InputScalarType::U8,
+    }];
+    for index in 0..outputs {
+        let start = u32::try_from(index.saturating_add(1))
+            .map_err(|error| format!("literal output span: {error}"))?;
         instructions.push(InputInstruction::ByteOutput {
-            span: span(2, 3),
+            span: span(start, start.saturating_add(1)),
             value: 0,
         });
     }
-    let end: u32 = if duplicate_output { 4 } else { 3 };
+    let end = u32::try_from(outputs.saturating_add(2))
+        .map_err(|error| format!("literal return span: {error}"))?;
     let typed = TypedIrInput {
         abi_id: String::from("malbolge-c32-v1"),
         functions: vec![InputFunction {
@@ -139,7 +136,7 @@ fn all_seeded_nonzero_literals_execute_real_guest_rotate_output() -> Result<(), 
         (251, 22),
         (253, 19),
     ] {
-        let program = source(byte, false)?;
+        let program = source(byte, 1)?;
         let layout = encode_rotated_byte_literal(&program, current_profile())
             .map_err(|error| format!("seeded {byte} target rejected: {error:?}"))?;
         if layout.source().len() != noops + 4
@@ -177,28 +174,65 @@ fn all_seeded_nonzero_literals_execute_real_guest_rotate_output() -> Result<(), 
 }
 
 #[test]
-fn seeded_literals_refuse_unsupported_values_and_extra_effects() -> Result<(), String> {
+fn seeded_literals_refuse_unsupported_values_and_profiles() -> Result<(), String> {
     const WITNESSED: &[u8] = &[4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253];
     for byte in u8::MIN..=u8::MAX {
         if WITNESSED.contains(&byte) {
             continue;
         }
-        let program = source(byte, false)?;
+        let program = source(byte, 1)?;
         if encode_rotated_byte_literal(&program, current_profile())
             != Err(ByteEchoBridgeError::UnsupportedEffectTrace)
         {
             return Err(format!("unverified u8 literal {byte} admitted"));
         }
     }
-    let valid = source(23, false)?;
+    let valid = source(23, 1)?;
     if encode_rotated_byte_literal(&valid, historical_profile())
         != Err(ByteEchoBridgeError::ProfileMismatch)
-        || encode_rotated_byte_literal(&source(23, true)?, current_profile())
-            != Err(ByteEchoBridgeError::UnsupportedEffectTrace)
     {
-        return Err(String::from(
-            "profile drift or extra literal output admitted",
-        ));
+        return Err(String::from("foreign profile admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_literals_repeat_guest_output_without_new_rotation() -> Result<(), String> {
+    for (byte, padding) in [(64, 19), (183, 0), (200, 21)] {
+        let program = source(byte, 2)?;
+        let layout = encode_rotated_byte_literal(&program, current_profile())
+            .map_err(|error| format!("repeat {byte} x2: {error:?}"))?;
+        if layout.source().len() != padding + 5
+            || layout
+                .data_write_positions()
+                .iter()
+                .filter(|x| x.is_some())
+                .count()
+                != 1
+        {
+            return Err(format!("repeat {byte} geometry changed"));
+        }
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), layout.source(), vec![255, 0, 128])
+                .map_err(|error| format!("repeat {byte} guest load: {error:?}"))?;
+        if !matches!(vm.run(layout.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { steps, .. })
+                if steps == layout.executed_code_positions().len())
+            || vm.input_consumed() != 0
+            || vm.output() != [byte, byte]
+        {
+            return Err(format!("repeat {byte} guest VM mismatch"));
+        }
+        if encode_rotated_byte_literal(&source(byte, 1)?, current_profile()).is_ok() {
+            return Err(format!("repeated {byte} leaked into single-output seeds"));
+        }
+    }
+    for (byte, outputs) in [(23, 0), (23, 2), (183, 3), (183, 100)] {
+        if encode_rotated_byte_literal(&source(byte, outputs)?, current_profile())
+            != Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+        {
+            return Err(format!("unproved seeded shape {byte} x{outputs} admitted"));
+        }
     }
     Ok(())
 }

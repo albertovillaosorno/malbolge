@@ -45,6 +45,7 @@ pub mod ternary;
 
 use malbolge::{ProfileDescriptor, ProfileMachine, RunOutcome, current_profile};
 use std::collections::BTreeSet;
+use std::iter::repeat_n;
 
 use layout::{LinearLayout, LinearLayoutError, LinearOpcode, encode_linear_layout};
 use ternary::{
@@ -68,6 +69,22 @@ const ROTATED_BYTE_SEEDS: &[(u8, usize)] = &[
     (23, 0),
     (251, 22),
     (253, 19),
+];
+
+/// Exact two-output witnesses differ because the additional `<` changes
+/// both positional encoding and loader-expanded memory. These are not valid
+/// single-output seeds, nor a proof for three or more outputs.
+const ROTATED_DOUBLE_BYTE_SEEDS: &[(u8, usize)] = &[
+    (55, 20),
+    (64, 19),
+    (65, 22),
+    (66, 16),
+    (163, 7),
+    (164, 1),
+    (165, 4),
+    (182, 3),
+    (183, 0),
+    (200, 21),
 ];
 
 /// A failed pre-layout admission, semantic bridge, or final target admission.
@@ -388,9 +405,9 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
     Some((*result, *value))
 }
 
-/// Emits one nonzero `u8` from actual guest relocated data rotation.
+/// Emits a nonzero `u8` once or twice using guest data rotation.
 ///
-/// Accepts exactly one `MaterializeU8` with one same-SSA `ByteOutput` and
+/// Accepts one `MaterializeU8` with one or two same-SSA `ByteOutput`s and
 /// `ReturnVoid` for the current profile. A bounded source-address-specific
 /// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
 /// memory word; the guest `*` changes its own accumulator, not the host.
@@ -415,18 +432,28 @@ pub fn encode_rotated_byte_literal(
     let [function] = program.functions.as_slice() else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    let [
-        TernaryOperation::MaterializeU8 { result, scalar, .. },
-        TernaryOperation::ByteOutput { value, .. },
-        TernaryOperation::ReturnVoid { .. },
-    ] = function.operations.as_slice()
+    let Some((TernaryOperation::ReturnVoid { .. }, effects)) = function.operations.split_last()
     else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    if result != value {
+    let Some((TernaryOperation::MaterializeU8 { result, scalar, .. }, outputs)) =
+        effects.split_first()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if outputs.is_empty()
+        || outputs.iter().any(|effect| {
+            !matches!(effect, TernaryOperation::ByteOutput { value, .. } if value == result)
+        })
+    {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
-    let Some((byte, padding)) = ROTATED_BYTE_SEEDS
+    let seeds = match outputs.len() {
+        1 => ROTATED_BYTE_SEEDS,
+        2 => ROTATED_DOUBLE_BYTE_SEEDS,
+        _ => return Err(ByteEchoBridgeError::UnsupportedEffectTrace),
+    };
+    let Some((byte, padding)) = seeds
         .iter()
         .copied()
         .find(|(byte, _)| *byte == scalar.bits())
@@ -434,19 +461,17 @@ pub fn encode_rotated_byte_literal(
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
     let mut operations = vec![LinearOpcode::NoOperation; padding];
-    operations.extend([
-        LinearOpcode::RelocateDataPointer,
-        LinearOpcode::RotateData,
-        LinearOpcode::OutputByte,
-        LinearOpcode::Halt,
-    ]);
+    operations.extend([LinearOpcode::RelocateDataPointer, LinearOpcode::RotateData]);
+    operations.extend(repeat_n(LinearOpcode::OutputByte, outputs.len()));
+    operations.push(LinearOpcode::Halt);
     let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
     let mut vm = ProfileMachine::from_source(profile, layout.source(), Vec::new())
         .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
     if !matches!(vm.run(operations.len()),
         Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
         || vm.input_consumed() != 0
-        || vm.output() != [byte]
+        || vm.output().len() != outputs.len()
+        || vm.output().iter().any(|actual| *actual != byte)
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }

@@ -98,20 +98,23 @@ is implied.
 
 ### Verified nonzero byte literal rotation
 
-The separate opt-in `encode_rotated_byte_literal` accepts exactly one
-`MaterializeU8(value)`, `ByteOutput` of that SSA identity, and `ReturnVoid`.
-It admits only these nonzero byte values for `malbolge-2026`:
-`4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253`.
+The separate opt-in `encode_rotated_byte_literal` admits exactly one
+`MaterializeU8(value)`, one or two `ByteOutput`s of that SSA identity,
+and `ReturnVoid`. For one output, it admits only these current-profile
+nonzero bytes: `4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253`.
+For exactly two identical outputs, a **different** table admits
+`55, 64, 65, 66, 163, 164, 165, 182, 183, 200`.
 
-A profile-specific *proposed* no-op prefix precedes `j`, `*`, `<`, `v`.
-The canonical loader expands the graphical source into guest memory;
-`j` relocates D beyond all source positions; the **guest** `*` rotates
-that real data word into A, which the guest `<` emits. This is not a
-host print of the requested literal or a mock guest register. The exact
-code/data placement and the observed output byte are independently
-rechecked in a fresh normative VM before source is returned. Inputs are
-not consumed. Unsupported literals, extra outputs and mismatched profiles
-reject; repeated output or general constants do not follow from this pilot.
+A profile-specific *proposed* no-op prefix precedes `j`, `*`, the actual
+`<` outputs, and `v`. The canonical loader expands the complete graphical
+source into guest memory. Adding a second output changes the positional
+encoding and the loader-expanded data; therefore single-output seed values
+cannot be reused. The guest `*` rotates its real data word into A, and the
+guest outputs emit the unchanged accumulator. The independent layout checker
+proves source/data separation and a fresh normative VM checks every emitted
+byte, exact halt, and zero input consumption before accepting a source.
+Other literals, zero/three outputs, extra effects and foreign profiles reject.
+This does not implement arbitrary constants or an SSA byte register.
 
 ## Limits
 

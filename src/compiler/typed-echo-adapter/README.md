@@ -88,19 +88,21 @@ bitcast back; old zero-only, adjacent-echo and latest-read modes do not
 admit casts. No host callback, EOF, arithmetic, byte register file,
 branching or guest return ABI is implemented by this slice.
 
-### Canonical single nonzero literal output
+### Canonical one- or two-output nonzero literal
 
 The separate `compile_canonical_typed_rotated_byte_literal` accepts a
-canonical MCTI `u8 ConstantInteger`, its one matching `ByteOutput` and
-`ReturnVoid` in a single no-argument void function. It preserves source,
-SSA, ABI, profile and span identity through canonical MCTR and a verified
-position-sensitive graphical source. Unlike initial zero, the `u8` value
-is produced by real guest `j` data relocation and `*` rotation, rather
-than initial A or a host callback. Exactly 14 current-profile nonzero
-values have independently re-executed seed witnesses; other values
-reject. The opt-in CLI `--seeded-byte-literal` supports MCTI/MCTR file
-or bounded stdin and raw/capsule no-clobber publication. No new EOF,
-computed integer expression, multiple byte outputs or guest ABI exists.
+canonical MCTI `u8 ConstantInteger`, one or two same-SSA `ByteOutput`s,
+and `ReturnVoid` in a single no-argument void function. It preserves
+source, SSA, ABI, profile and span identity through canonical MCTR and a
+verified position-sensitive graphical source. The guest computes its `u8`
+through genuine `j` data relocation and `*` rotation, not a host callback.
+Fourteen current-profile nonzero values have one-output witnesses; ten
+*different* values have exact two-output witnesses. The second `<` changes
+the full loader-expanded memory, so old seeds cannot be reused. Each candidate
+is re-executed before admission. Other values and output counts reject.
+The opt-in CLI `--seeded-byte-literal` supports MCTI/MCTR file or bounded
+stdin with raw/capsule no-clobber publication. EOF, general arithmetic,
+arbitrary output sequences and guest ABI remain unimplemented.
 
 ## Validation
 

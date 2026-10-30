@@ -694,6 +694,13 @@ instruction.
   `--seeded-byte-literal` publishes MCTI/MCTR file/stdin raw/capsules only
   after exact output/no-input VM preflight. This is not general arithmetic,
   arbitrary constant materialization, repeated output or guest ABI.
+- A distinct 10-value two-output seed table now verifies exact repeated
+  same-SSA guest bytes `55, 64, 65, 66, 163, 164, 165, 182, 183, 200`.
+  Single-output source seeds cannot be reused because adding `<` changes
+  loader-expanded data; two-output layouts are independently re-admitted
+  and executed in the normative VM. Typed MCTI/MCTR and raw/capsule
+  publication reject unseeded values and three-output shapes. This is
+  not arbitrary literal materialization or guest byte storage.
 - A fifth opt-in canonical typed/MCTR identity-byte bridge admits only
   eight-bit signed/unsigned `IntegerBitcast` SSA aliases of the latest
   successful guest input. Casts preserve all eight accumulator bits and

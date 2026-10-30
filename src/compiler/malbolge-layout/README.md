@@ -359,9 +359,12 @@ failed I/O, memory, arbitrary C, or guest ABI is realized.
 ### Guest-computed finite nonzero byte literals
 
 An explicit `--seeded-byte-literal` canonical MCTI or MCTR file/stdin mode
-admits one source `u8` constant followed by one same-SSA output. This
-is the first bounded nonzero constant realization: only 14 independently
-proven `malbolge-2026` values have a safe no-op/`j`/`*`/`<`/`v` layout.
+admits one source `u8` constant followed by one or two same-SSA outputs.
+Fourteen independently proven current-profile values have a single-output
+seed, and ten different values have a separate two-output seed. The extra
+`<` changes both source positions and loader-expanded data; a single-output
+seed cannot be reused for two outputs. The accepted `j`/`*`/`<`/`v` layout
+still uses real guest data rotation rather than a host byte value.
 Each candidate source is re-admitted, then the *real normative VM* verifies
 exact termination, a single output byte and zero input consumption before
 the existing atomic no-overwrite raw/capsule publication. A current-
@@ -376,7 +379,7 @@ cargo run --bin malbolge_layout -- \
 ```
 
 This mode is separate from strict echo, identity-bitcast, latest-read,
-initial-zero and zero-prefixed traces. Other constants, multiple writes,
+initial-zero and zero-prefixed traces. Other constants, three or more writes,
 input consumption, guest heap, EOF and general C arithmetic still reject.
 
 ### Bounded canonical wire streaming on standard input

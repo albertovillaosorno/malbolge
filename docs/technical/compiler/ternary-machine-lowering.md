@@ -1121,10 +1121,11 @@ computation, heap, C ABI or guest libc/EOF realization.
 
 ### First Verified Nonzero Guest U8 Literal
 
-An opt-in `encode_rotated_byte_literal` bridge now admits one exact
-`MaterializeU8` with same-SSA `ByteOutput`, then `ReturnVoid`. Only
-14 current-profile nonzero bytes are realized: `4, 5, 6, 9, 10, 11,
-18, 19, 20, 21, 22, 23, 251, 253`. A bounded graphical no-op prefix,
+An opt-in `encode_rotated_byte_literal` bridge admits one exact
+`MaterializeU8` with one or two same-SSA `ByteOutput`s, then `ReturnVoid`.
+For one output, 14 current-profile nonzero bytes are realized:
+`4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253`. A bounded
+graphical no-op prefix,
 `j` relocation, `*` rotate, output and halt execute in the actual guest
 VM. Source-dependent loader-expanded data is rotated into accumulator
 A; the byte does **not** originate in host output logic. The existing
@@ -1133,15 +1134,22 @@ separation and post-step code encryption. A fresh normative VM then
 checks the proposed nonzero output, halt step and zero input consumption.
 No unsupported value may become an invented immediate instruction.
 
+For exactly two outputs, a separate seed table realizes ten different
+values: `55, 64, 65, 66, 163, 164, 165, 182, 183, 200`. The second
+positional `<` changes loader expansion, so a one-output seed cannot be
+reused. The independent layout check and real VM compare both output bytes.
+Three outputs, unseeded values and mixed SSA effects still reject.
+
 `compile_canonical_typed_rotated_byte_literal` projects complete
-canonical MCTI with one `u8 ConstantInteger`, one matching `ByteOutput`
-and final void return; canonical MCTR re-admission and source comparison
+canonical MCTI with one `u8 ConstantInteger`, one or two matching
+`ByteOutput`s and final void return. Canonical MCTR re-admission and source
+comparison
 retain source/SSA/ABI/target provenance. The standalone CLI adds explicit
 `--seeded-byte-literal` for canonical MCTI/MCTR file or stdin, with an
 independent publisher-level two-pattern VM check before raw/capsule
 no-clobber publication. Legacy zero, latest read and identity-cast
-modes are unchanged. This is only a finite current-profile one-byte
-literal witness, not guest arithmetic, storage, arbitrary constant
+modes are unchanged. This is only a finite current-profile literal
+witness, not guest arithmetic, storage, arbitrary constant
 materialization, EOF, repeated byte output or general C lowering.
 
 ### Canonical Eight-Bit SSA Identity-Bitcast Trace

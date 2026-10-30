@@ -113,7 +113,7 @@ enum SuccessfulByteEffect {
 
 enum SourceEffectWitness {
     InitialZero { outputs: usize },
-    RotatedLiteral { byte: u8 },
+    RotatedLiteral { byte: u8, outputs: usize },
     SuccessfulByteTrace(Vec<SuccessfulByteEffect>),
 }
 
@@ -465,6 +465,10 @@ fn verified_ternary_bytes(
         };
         Some(SourceEffectWitness::RotatedLiteral {
             byte: scalar.bits(),
+            outputs: operations
+                .iter()
+                .filter(|operation| matches!(operation, TernaryOperation::ByteOutput { .. }))
+                .count(),
         })
     } else if matches!(mode, ByteTraceMode::InitialZero) {
         Some(SourceEffectWitness::InitialZero {
@@ -684,14 +688,21 @@ fn verify_rotated_literal(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
     byte: u8,
+    outputs: usize,
 ) -> Result<(), String> {
+    if outputs == 0 || artifact.steps < outputs.saturating_add(3) {
+        return Err(String::from(
+            "seeded literal guest output geometry disagrees",
+        ));
+    }
     for input in [Vec::new(), vec![255, 0, 128]] {
         let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
             .map_err(|error| format!("seeded literal guest load: {error:?}"))?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
-            || vm.output() != [byte]
+            || vm.output().len() != outputs
+            || vm.output().iter().any(|actual| *actual != byte)
         {
             return Err(String::from("rotated literal guest output disagrees"));
         }
@@ -717,8 +728,8 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
         Some(SourceEffectWitness::InitialZero { outputs }) => {
             verify_initial_zero_outputs(profile, &artifact, *outputs)?;
         }
-        Some(SourceEffectWitness::RotatedLiteral { byte }) => {
-            verify_rotated_literal(profile, &artifact, *byte)?;
+        Some(SourceEffectWitness::RotatedLiteral { byte, outputs }) => {
+            verify_rotated_literal(profile, &artifact, *byte, *outputs)?;
         }
         None => {}
     }
