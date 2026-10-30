@@ -37,25 +37,23 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import replace
 import json
-from pathlib import Path
 import shutil
 import sys
 import tempfile
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import replace
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from benchmarks.arena import analyze
+from benchmarks.arena import analyze, target_process
 from benchmarks.arena import target_echo_audit as audit
 from benchmarks.arena import target_echo_reference as producer
-from benchmarks.arena import target_process
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     import subprocess as sp
+    from collections.abc import Iterator
     from typing import Any
 
 LINUX_PLATFORM = "linux"
@@ -280,8 +278,8 @@ def test_missing_rss_tool_refuses_before_study_is_created(
     """The user may not claim an observed RSS cost without GNU time."""
     original = target_process.shutil.which
 
-    def missing(name: str) -> str | None:
-        return None if name == target_process.RSS_TOOL else original(name)
+    def missing(name: str, *, path: str | None = None) -> str | None:
+        return None if name == target_process.RSS_TOOL else original(name, path=path)
 
     def forbidden(*args: object, **kwargs: object) -> None:
         _ = (args, kwargs)

@@ -34,16 +34,16 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import dataclass
 import math
 import os
-from pathlib import Path
 import selectors
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
+from contextlib import suppress
+from dataclasses import dataclass
+from pathlib import Path
 from time import monotonic
 from typing import Never
 
@@ -63,6 +63,7 @@ CHILD_OUTPUT_FILE_BYTES = 8 * 1024 * 1024
 RSS_TOOL = "time"
 RSS_REPORT_LIMIT = 32
 KIB_BYTES = 1024
+SYSTEM_TOOL_SEARCH_PATH = os.defpath
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +99,11 @@ def _admit_limits(
         _fail("bounded target process requires nonnegative stderr limit")
 
 
+def _system_tool(name: str) -> str | None:
+    """Resolve OS-owned resource tools without trusting a caller's PATH."""
+    return shutil.which(name, path=SYSTEM_TOOL_SEARCH_PATH)
+
+
 def _limited_command(command: list[str], *, enforce: bool) -> list[str]:
     if type(enforce) is not bool:
         _fail("bounded child limits require a boolean selection")
@@ -105,7 +111,7 @@ def _limited_command(command: list[str], *, enforce: bool) -> list[str]:
         return command
     if sys.platform != LINUX_PLATFORM:
         _fail("bounded target child resource controls require Linux")
-    utility = shutil.which(LIMITER_NAME)
+    utility = _system_tool(LIMITER_NAME)
     if utility is None:
         _fail("bounded target child resource controls require prlimit")
     return [
@@ -333,7 +339,7 @@ def invoke_with_input_limited(
 def require_child_rss_measurement() -> None:
     """Require Linux prlimit and GNU time before measured study creation."""
     require_child_resource_controls()
-    path = shutil.which(RSS_TOOL)
+    path = _system_tool(RSS_TOOL)
     if path is None:
         _fail("bounded target peak RSS requires GNU time")
 
@@ -375,7 +381,7 @@ def _measured_limited(
     timeout_seconds: float,
 ) -> tuple[sp.CompletedProcess[bytes], int, bytes]:
     require_child_rss_measurement()
-    time_executable = shutil.which(RSS_TOOL)
+    time_executable = _system_tool(RSS_TOOL)
     if time_executable is None:
         _fail("bounded target peak RSS requires GNU time")
     with tempfile.TemporaryDirectory(

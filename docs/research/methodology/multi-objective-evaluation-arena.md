@@ -357,9 +357,13 @@ Pareto cost. Only the versioned `--measure-child-rss` opt-in, combined with
 all physically limited v4 replay flags, creates the
 `classic-patterned-forward-skip-limited-rss-v5` study and its separate
 `classic-forward-jump-limited-rss-second-vm-v1` oracle. Linux `prlimit` and
-GNU time are mandatory before any study output is allocated. Each emitted
-candidate is measured during the source-emitter process, primary normative
-VM run and measured second verifier VM run; GNU time reports Linux kernel
+GNU time are mandatory before any study output is allocated. The two
+mandatory executables are found only under the OS-default `/bin:/usr/bin`
+search path, not through caller-controlled `PATH`. Synthetic fake limiter and
+meter binaries cannot shadow them; the OS-provided tools are still trusted,
+not independently attested. Each emitted candidate is measured during the
+source-emitter process, primary normative VM run and measured second verifier
+VM run; GNU time reports Linux kernel
 `ru_maxrss` in KiB, with explicit exact conversion to `peak_rss_bytes`.
 
 The observed cost is the maximum of those **three per-child** peaks, not

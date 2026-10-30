@@ -40,10 +40,8 @@ import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from time import monotonic
-from time import sleep
-from typing import TYPE_CHECKING
-from typing import cast
+from time import monotonic, sleep
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -339,8 +337,8 @@ def test_missing_limiter_cannot_launch_limited_target(
 ) -> None:
     """A missing mandatory Linux limiter is failure, not an unbounded run."""
 
-    def unavailable(name: str) -> None:
-        _ = name
+    def unavailable(name: str, *, path: str | None = None) -> None:
+        _ = name, path
 
     monkeypatch.setattr(target_process.shutil, "which", unavailable)
     with pytest.raises(target_process.TargetProcessError, match="prlimit"):
@@ -369,7 +367,7 @@ def test_missing_limiter_cannot_launch_binary_input_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No silent fallback to an unbounded runner when prlimit is absent."""
-    monkeypatch.setattr(target_process.shutil, "which", lambda *_: None)
+    monkeypatch.setattr(target_process.shutil, "which", lambda *_args, **_kwargs: None)
     with pytest.raises(target_process.TargetProcessError, match="prlimit"):
         target_process.invoke_with_input_limited(_child("print('never')"), b"x")
 
@@ -387,7 +385,7 @@ def test_missing_limiter_is_admitted_before_target_process_creation(
         launched = True
 
     monkeypatch.setattr(target_process.sp, "Popen", forbidden)
-    monkeypatch.setattr(target_process.shutil, "which", lambda *_: None)
+    monkeypatch.setattr(target_process.shutil, "which", lambda *_args, **_kwargs: None)
     with pytest.raises(target_process.TargetProcessError, match="prlimit"):
         target_process.invoke_limited(_child("print('never')"))
     assert not launched
@@ -445,8 +443,8 @@ def test_measured_limited_child_refuses_missing_gnu_time(
     """No measurement instrument means no successful measured experiment."""
     original = target_process.shutil.which
 
-    def no_time(name: str) -> str | None:
-        return None if name == target_process.RSS_TOOL else original(name)
+    def no_time(name: str, *, path: str | None = None) -> str | None:
+        return None if name == target_process.RSS_TOOL else original(name, path=path)
 
     monkeypatch.setattr(target_process.shutil, "which", no_time)
     with pytest.raises(target_process.TargetProcessError, match="GNU time"):
@@ -482,8 +480,8 @@ def test_successful_fake_meter_without_rss_receipt_fails_closed(
     fake.chmod(0o700)
     original = target_process.shutil.which
 
-    def redirected(name: str) -> str | None:
-        return str(fake) if name == target_process.RSS_TOOL else original(name)
+    def redirected(name: str, *, path: str | None = None) -> str | None:
+        return str(fake) if name == target_process.RSS_TOOL else original(name, path=path)
 
     monkeypatch.setattr(target_process.shutil, "which", redirected)
     with pytest.raises(target_process.TargetProcessError, match="RSS"):
@@ -511,3 +509,38 @@ def test_measured_child_rss_increases_with_real_touched_private_pages() -> None:
         _child(touch), timeout_seconds=LARGE_TIMEOUT_SECONDS
     )
     assert observed > baseline + 16 * 1024 * 1024
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM
+    or shutil.which("prlimit", path=os.defpath) is None
+    or shutil.which("time", path=os.defpath) is None,
+    reason="requires system Linux prlimit and GNU time",
+)
+def test_hostile_path_cannot_replace_limiter_or_peak_rss_meter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Untrusted PATH executables cannot impersonate resource enforcement."""
+    for name in (target_process.LIMITER_NAME, target_process.RSS_TOOL):
+        fake = tmp_path / name
+        fake.write_text("#!/bin/sh\nprintf 'FORGED\n'\nexit 0\n", encoding="ascii")
+        fake.chmod(0o700)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    expected = b"genuine child\n"
+    child = _child("print('genuine child')")
+    resolved = target_process._limited_command(  # ruff: ignore[private-member-access]
+        child, enforce=True
+    )
+    assert resolved[0] != str(tmp_path / target_process.LIMITER_NAME)
+    assert resolved[0].startswith(("/usr/bin/", "/bin/"))
+    limited = target_process.invoke_limited(
+        child, timeout_seconds=LARGE_TIMEOUT_SECONDS
+    )
+    assert limited.returncode == 0
+    assert limited.stdout == expected
+    measured, peak = target_process.invoke_limited_measured(
+        child, timeout_seconds=LARGE_TIMEOUT_SECONDS
+    )
+    assert measured.returncode == 0
+    assert measured.stdout == expected
+    assert 0 < peak <= target_process.CHILD_VIRTUAL_MEMORY_BYTES

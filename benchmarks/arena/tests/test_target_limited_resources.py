@@ -36,25 +36,24 @@
 
 from __future__ import annotations
 
-from collections import Counter
 import copy
 import json
-from pathlib import Path
 import shutil
 import sys
 import tempfile
+from collections import Counter
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
-from benchmarks.arena import analyze
+from benchmarks.arena import analyze, target_process
 from benchmarks.arena import target_echo_audit as audit
 from benchmarks.arena import target_echo_reference as producer
-from benchmarks.arena import target_process
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     import subprocess as sp
+    from collections.abc import Iterator
     from typing import Any
 
 LINUX_PLATFORM = "linux"
@@ -260,8 +259,8 @@ def test_missing_limiter_prevents_preparation_or_candidate_emission(
 ) -> None:
     """Preflight rejects before allocating local evidence study folders."""
 
-    def unavailable(name: str) -> None:
-        _ = name
+    def unavailable(name: str, *, path: str | None = None) -> None:
+        _ = name, path
 
     def forbidden(*args: object, **kwargs: object) -> None:
         _ = (args, kwargs)
@@ -288,8 +287,8 @@ def test_limited_audit_static_history_allowed_but_replay_needs_limiter(
             == EXPECTED_ARMS
         )
 
-        def unavailable(name: str) -> None:
-            _ = name
+        def unavailable(name: str, *, path: str | None = None) -> None:
+            _ = name, path
 
         monkeypatch.setattr(target_process.shutil, "which", unavailable)
         with pytest.raises(audit.TargetEchoAuditError, match="prlimit"):
