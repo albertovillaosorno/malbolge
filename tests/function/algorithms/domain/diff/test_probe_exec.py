@@ -1270,6 +1270,17 @@ def test_probe_rejects_nul_command_and_rooted_path_arguments() -> None:
         )
 
 
+@pytest.mark.parametrize("unsafe", ["C:/outside", "C:relative"])
+def test_rooted_probe_arguments_reject_windows_drive_paths(
+    unsafe: str,
+) -> None:
+    """Windows drive paths cannot escape authorized rooted probe trees."""
+    with pytest.raises(ProbeProgramError, match="unsafe probe relative path"):
+        _ = PathArgument(ProbeRoot.SOURCE, unsafe)
+    with pytest.raises(ProbeProgramError, match="unsafe probe relative path"):
+        _ = RootedExecutable(ProbeRoot.REPOSITORY, unsafe)
+
+
 def test_probe_paths_reject_host_unencodable_metadata() -> None:
     """Process and filesystem paths must fail typed before any launch."""
     malformed = "unencodable" + chr(0xD800)
