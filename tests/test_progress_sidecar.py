@@ -11865,3 +11865,80 @@ def test_writer_lock_rejects_noncanonical_release_receipt_after_commit(
             _ = progress.write_atomic(candidate)
     assert caught.value.published_path == destination
     assert progress.read(destination) == candidate
+
+
+@pytest.mark.parametrize("member", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("receipt", [False, True, 0], ids=["false", "true", "zero"])
+def test_noncanonical_payload_sync_receipt_rejects_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+    receipt: object,
+) -> None:
+    """A forged regular-file fsync completion cannot publish payload bytes."""
+    candidate = _sidecar(tmp_path)
+    checkpoint = b"durable-checkpoint"
+    destination = Path(candidate.progress_path)
+    original_fsync = os.fsync
+
+    def forge_regular_sync(descriptor: int) -> object:
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return receipt
+        return original_fsync(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", forge_regular_sync)
+        with pytest.raises(ERROR, match="file sync.*completion receipt"):
+            if member == "pointer":
+                _ = progress.write_atomic(candidate)
+            else:
+                checkpointed = _checkpointed(
+                    candidate, checkpoint=checkpoint, partial=None
+                )
+                _ = progress.write_checkpoint_generation(checkpointed, checkpoint)
+
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob("*.checkpoint.*"))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="directory fsync is POSIX-only")
+@pytest.mark.parametrize("member", ["pointer", "checkpoint"])
+def test_noncanonical_directory_sync_receipt_preserves_committed_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+) -> None:
+    """An unproven directory fsync is not a successful durable publication."""
+    candidate = _sidecar(tmp_path)
+    checkpoint = b"durable-checkpoint"
+    destination = Path(candidate.progress_path)
+    original_fsync = os.fsync
+
+    def forge_directory_sync(descriptor: int) -> object:
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            return False
+        return original_fsync(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", forge_directory_sync)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="durability confirmation failed",
+        ) as caught:
+            if member == "pointer":
+                _ = progress.write_atomic(candidate)
+            else:
+                checkpointed = _checkpointed(
+                    candidate, checkpoint=checkpoint, partial=None
+                )
+                _ = progress.write_checkpoint_generation(checkpointed, checkpoint)
+
+    if member == "pointer":
+        assert caught.value.published_path == destination
+        assert progress.read(destination) == candidate
+    else:
+        assert caught.value.published_path == progress.checkpoint_path(
+            candidate.output_path, 1
+        )
+        assert caught.value.published_path.read_bytes() == checkpoint
+        assert not destination.exists()

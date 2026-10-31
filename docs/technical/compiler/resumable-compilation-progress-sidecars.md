@@ -52,6 +52,13 @@ Both immutable payload and
 mutable pointer writes require an exact integer byte count before sync or
 publication. Boolean reports, including `True` for a single byte and `False`
 for an empty checkpoint, cannot be mistaken for completed payload writes.
+
+Regular-file and POSIX parent-directory `fsync` calls likewise require the
+native `None` success receipt. Foreign boolean or integer responses cannot
+certify durable synchronization: a payload-file response rejects before
+publication, while an invalid post-publication directory response reports
+uncertain durability and preserves the exact committed path. As with OS lock
+receipts, this check does not authenticate a deliberately forged `None`.
 Malformed non-integer write results are rejected before diagnostic formatting,
 so an unexpected result object cannot invoke foreign string methods or mask the
 typed prepublication failure. Mutable pointer updates are serialized across

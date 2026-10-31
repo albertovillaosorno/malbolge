@@ -2024,6 +2024,12 @@ def _verify_durability_directory(path: Path, descriptor: int) -> None:
     _reject_path_redirect(path, "progress durability directory")
 
 
+def _require_native_sync_receipt(receipt: object, context: str) -> None:
+    """Only a native ``None`` fsync return establishes completion."""
+    if receipt is not None:
+        _fail(f"{context} sync returned noncanonical completion receipt")
+
+
 def _flush_parent(path: Path, *, platform: str = os.name) -> None:
     if platform == WINDOWS_PLATFORM:
         return
@@ -2032,7 +2038,7 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
     try:
         try:
             _verify_durability_directory(path, descriptor)
-            os.fsync(descriptor)
+            _require_native_sync_receipt(os.fsync(descriptor), "progress directory")
             _verify_durability_directory(path, descriptor)
         except (OSError, ValueError, RuntimeError) as error:
             sync_error = error
@@ -2643,7 +2649,7 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
         written = stream.write(payload)
         _require_complete_payload_write(written, len(payload))
         stream.flush()
-        os.fsync(stream.fileno())
+        _require_native_sync_receipt(os.fsync(stream.fileno()), "progress file")
     finally:
         primary_error = sys.exception()
         try:

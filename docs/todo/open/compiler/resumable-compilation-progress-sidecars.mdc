@@ -610,6 +610,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   committed-path evidence. Positive native flock locking remains covered by
   the existing cross-process contention and process-death tests.
 
+  Regular payload-file and POSIX parent-directory synchronization now also
+  requires the native `None` `fsync` completion receipt. Eight red-first cases
+  reject forged boolean/integer file sync results before pointer or checkpoint
+  publication, while directory-sync rejection preserves the exact committed
+  pointer or checkpoint path as uncertain durability evidence. Existing real
+  crash and process-restart fixtures continue to cover native sync behavior.
+
   Immutable checkpoint collision and initial post-link publication checks
   now validate native stat metadata before reading inode, type or link count.
   Five red-first regressions cover new committed inode uncertainty and
