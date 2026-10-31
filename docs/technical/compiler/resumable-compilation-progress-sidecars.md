@@ -112,6 +112,14 @@ preserving the primary error and avoiding publication. This covers both raw
 OS errors and false-success close receipts; twelve red-first tests exercise
 boolean, integer, and text receipts at all four cleanup entrypoints.
 
+Unexpected native `TypeError` and `AttributeError` failures at the writer-lock
+open boundary now become typed prepublication failures with their original
+causes. POSIX directory-open, sync, and close failures of those types also
+retain committed-path evidence. Sync failure remains primary if directory
+close then fails; once sync completed, a late close failure instead reports
+confirmed committed durability. Twelve adversarial cases verify those
+boundaries without altering a published generation.
+
 Process-shared progress writer locks now reject nonnative stat metadata on
 pre-existing lock pathname preflight, the opened lock descriptor, and both
 pathname/descriptor identity checks after lock acquisition. A foreign receipt

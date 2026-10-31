@@ -2075,14 +2075,14 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
             _verify_durability_directory(path, descriptor)
             _require_native_sync_receipt(os.fsync(descriptor), "progress directory")
             _verify_durability_directory(path, descriptor)
-        except (OSError, ValueError, RuntimeError) as error:
+        except _OUTPUT_STREAM_ERRORS as error:
             sync_error = error
             raise
     finally:
         try:
             if os.close(descriptor) is not None:
                 _fail("progress directory close receipt must be None")
-        except (OSError, ValueError, RuntimeError) as error:
+        except _OUTPUT_STREAM_ERRORS as error:
             if sync_error is not None:
                 BaseException.add_note(
                     sync_error,
@@ -2107,7 +2107,7 @@ def _confirm_publication_durability(
             f"{_host_error_detail(error)}"
         )
         raise ProgressSidecarCommittedError(message, published_path) from error
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         message = (
             f"{context} committed but durability confirmation failed: "
             f"{_host_error_detail(error)}"
@@ -2219,7 +2219,7 @@ def _open_writer_lock_stream(lock_path: Path) -> _LockStream:
         return _open_regular_writer_lock(lock_path)
     except ProgressSidecarError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         _fail_with_source(
             f"progress writer lock cannot be opened: {_host_error_detail(error)}", error
         )

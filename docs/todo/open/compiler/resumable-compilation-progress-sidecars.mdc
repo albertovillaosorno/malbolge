@@ -631,6 +631,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   close completion. Twelve red-first forged-receipt tests confirm the
   original admission fault remains primary while a false close success is
   recorded as a secondary note, without permitting publication.
+  Writer-lock opening now wraps unexpected native `TypeError`/`AttributeError`
+  as typed prepublication errors. POSIX directory open, sync and close handle
+  those types after generation publication: uncertain sync retains the
+  committed path and precedence over close cleanup; post-sync close failures
+  retain confirmed committed evidence. Twelve red-first cases cover these
+  failures for mutable pointers and immutable checkpoint generations.
   Process-shared writer locks now require native stat results across the
   existing path preflight, opened descriptor and acquired inode identity.
   Exclusive single-link lock ownership is now required both after lock

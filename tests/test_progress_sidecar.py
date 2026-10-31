@@ -2270,6 +2270,152 @@ def test_raw_descriptor_cleanup_requires_native_close_receipt(
     ]
 
 
+@pytest.mark.parametrize("failure_type", [TypeError, AttributeError])
+def test_writer_lock_open_unexpected_type_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Unexpected OS open errors must not escape the lock admission boundary."""
+    sidecar = _sidecar(tmp_path)
+    expected_lock = Path(f"{sidecar.progress_path}.lock")
+    failure = failure_type("injected writer lock open failure")
+
+    def fail_lock_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        del flags, mode
+        assert Path(path) == expected_lock
+        raise failure
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", fail_lock_open)
+        with pytest.raises(ERROR, match="writer lock cannot be opened") as captured:
+            _ = progress.write_atomic(sidecar)
+    assert captured.value.__cause__ is failure
+    assert not Path(sidecar.progress_path).exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX directory durability requires a separately opened fd",
+)
+@pytest.mark.parametrize("publication", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("failure_type", [TypeError, AttributeError])
+def test_durability_directory_open_unexpected_type_fault_keeps_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+    publication: str,
+) -> None:
+    """A late directory-open failure retains the exact published path."""
+    sidecar = _sidecar(tmp_path)
+    checkpoint = b"checkpoint-state"
+    candidate = _checkpointed(sidecar, checkpoint=checkpoint, partial=None)
+    failure = failure_type("injected durability directory open failure")
+    original_open = os.open
+    directory_flag = cast("int", getattr(os, "O_DIRECTORY", 0))
+
+    def fail_directory_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        if Path(path) == tmp_path and flags & directory_flag:
+            raise failure
+        return original_open(path, flags, mode)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", fail_directory_open)
+        with pytest.raises(progress.ProgressSidecarDurabilityError) as captured:
+            if publication == "pointer":
+                _ = progress.write_atomic(sidecar)
+            else:
+                _ = progress.write_checkpoint_generation(candidate, checkpoint)
+    committed = (
+        Path(sidecar.progress_path)
+        if publication == "pointer"
+        else Path(candidate.checkpoint_path or "")
+    )
+    assert captured.value.published_path == committed
+    assert captured.value.__cause__ is failure
+    assert committed.is_file()
+    if publication == "checkpoint":
+        assert not Path(sidecar.progress_path).exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX directory sync requires a separately opened fd",
+)
+@pytest.mark.parametrize("failure_type", [TypeError, AttributeError])
+@pytest.mark.parametrize("close_type", [ValueError, RuntimeError])
+def test_durability_unexpected_sync_failure_precedes_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+    close_type: type[Exception],
+) -> None:
+    """An atypical sync error stays primary over descriptor cleanup failure."""
+    published = tmp_path / PROGRESS_NAME
+    _ = published.write_bytes(b"committed state")
+    primary = failure_type("injected directory sync failure")
+    secondary = close_type("injected directory close failure")
+    original_close = os.close
+    closed: list[int] = []
+
+    def fail_sync(descriptor: int) -> None:
+        assert stat.S_ISDIR(os.fstat(descriptor).st_mode)
+        raise primary
+
+    def fail_close(descriptor: int) -> None:
+        assert stat.S_ISDIR(os.fstat(descriptor).st_mode)
+        closed.append(descriptor)
+        _ = original_close(descriptor)
+        raise secondary
+
+    confirm = cast("Callable[..., None]", vars(progress)["_confirm_publication_durability"])
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", fail_sync)
+        context.setattr(os, "close", fail_close)
+        with pytest.raises(progress.ProgressSidecarDurabilityError) as captured:
+            confirm(published, context="progress sidecar")
+    assert len(closed) == 1
+    assert captured.value.published_path == published
+    assert captured.value.__cause__ is primary
+    assert getattr(primary, "__notes__", None) == [
+        "directory descriptor close also failed: injected directory close failure"
+    ]
+    assert published.is_file()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX directory sync requires a separately opened fd",
+)
+@pytest.mark.parametrize("failure_type", [TypeError, AttributeError])
+def test_durability_unexpected_close_failure_preserves_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A completed sync plus atypical close exception remains committed."""
+    published = tmp_path / PROGRESS_NAME
+    _ = published.write_bytes(b"committed state")
+    close_failure = failure_type("injected directory close failure")
+    original_close = os.close
+
+    def fail_close(descriptor: int) -> None:
+        assert stat.S_ISDIR(os.fstat(descriptor).st_mode)
+        _ = original_close(descriptor)
+        raise close_failure
+
+    confirm = cast("Callable[..., None]", vars(progress)["_confirm_publication_durability"])
+    with monkeypatch.context() as context:
+        context.setattr(os, "close", fail_close)
+        with pytest.raises(progress.ProgressSidecarCommittedError) as captured:
+            confirm(published, context="progress sidecar")
+    assert not isinstance(captured.value, progress.ProgressSidecarDurabilityError)
+    assert captured.value.published_path == published
+    assert isinstance(captured.value.__cause__, OSError)
+    assert captured.value.__cause__.__cause__ is close_failure
+    assert published.is_file()
+
+
 class ForeignOpenedDescriptor:
     """Foreign descriptor whose coercion must never reach OS operations."""
 
