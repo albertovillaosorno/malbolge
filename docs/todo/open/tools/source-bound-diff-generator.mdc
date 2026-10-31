@@ -38,8 +38,9 @@ format.
   destinations resolving inside the source or oracle tree, including linked
   aliases, or to the imported domain module. Passthrough roots must be
   canonical UTF-8 relative paths, unique, sorted, and disjoint before domain
-  callbacks. External writer coordination remains necessary for full input
-  immutability.
+  callbacks. The emitted Rust runtime also rejects output roots inside its
+  candidate source (including linked ancestors) before staging. External
+  writer coordination remains necessary for full input immutability.
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode
