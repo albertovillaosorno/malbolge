@@ -55,6 +55,8 @@ from algorithms.diff.compatible import CompatiblePlanError
 from algorithms.diff.compatible import bind_compatible_corrections
 from algorithms.diff.compatible import build_compatible_plan
 from algorithms.diff.compatible import materialize_compatible_plan
+from algorithms.diff.exact import build_exact_plan
+from algorithms.diff.exact import snapshot_tree
 from algorithms.diff.mapped import MappedUnit
 from algorithms.diff.mapped import MappedView
 from algorithms.diff.model import ExactInstruction
@@ -66,6 +68,8 @@ if TYPE_CHECKING:
     from algorithms.diff.compatible import CompatibleAuthoringPlan
     from algorithms.diff.compatible import Mapper
     from algorithms.diff.compatible import Postcondition
+    from algorithms.diff.model import ExactAuthoringPlan
+    from algorithms.diff.model import TreeSnapshot
 
 _TOKEN = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\s]")
 _SOURCE_CODE = b"alpha = old ; omega"
@@ -185,6 +189,46 @@ def _plan_with_code(
     )
 
 
+def test_compatible_authoring_rejects_linked_source_after_exact_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A post-plan in-tree source link cannot bypass compatible admission."""
+    source, oracle = _roots(tmp_path)
+    original_build = build_exact_plan
+    changed = False
+
+    def replace_source_after_plan(
+        source_root: Path,
+        oracle_root: Path,
+    ) -> ExactAuthoringPlan:
+        nonlocal changed
+        plan = original_build(source_root, oracle_root)
+        code = source_root / "code.src"
+        shadow = source_root / "shadow.src"
+        _ = shadow.write_bytes(code.read_bytes())
+        code.unlink()
+        try:
+            code.symlink_to(shadow)
+        except OSError:
+            pytest.skip("filesystem symlinks unavailable")
+        changed = True
+        return plan
+
+    monkeypatch.setattr(
+        compatible_module, "build_exact_plan", replace_source_after_plan
+    )
+    request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    with pytest.raises(CompatiblePlanError, match="tree file read failed"):
+        _ = build_compatible_plan(request)
+    _expect(changed, "post-plan link injection did not execute")
+
+
 def _candidate(tmp_path: Path) -> Path:
     candidate = tmp_path / "candidate"
     _write(candidate, "code.src", _CANDIDATE_CODE)
@@ -210,6 +254,39 @@ def _request(
         mapper=_mapper,
         output_root=output,
     )
+
+
+def test_compatible_materialization_rejects_post_snapshot_linked_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Candidate-only links must be rejected before staging their bytes."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    request = _request(candidate, plan, tmp_path / "out")
+    swapped = False
+
+    def swap_after_snapshot(root: Path) -> TreeSnapshot:
+        nonlocal swapped
+        result = snapshot_tree(root)
+        if root == candidate and not swapped:
+            leaf = candidate / "upstream.cfg"
+            shadow = candidate / "shadow.cfg"
+            _ = shadow.write_bytes(leaf.read_bytes())
+            leaf.unlink()
+            try:
+                leaf.symlink_to(shadow)
+            except OSError:
+                pytest.skip("filesystem symlinks unavailable")
+            swapped = True
+        return result
+
+    monkeypatch.setattr(compatible_module, "snapshot_tree", swap_after_snapshot)
+    with pytest.raises(
+        CompatiblePlanError, match="candidate-only source read failed"
+    ):
+        _ = materialize_compatible_plan(request)
+    _expect(swapped, "candidate substitution did not execute")
+    _expect(not request.output_root.exists(), "linked candidate was published")
 
 
 def test_compatible_instruction_rejects_foreign_metadata() -> None:
