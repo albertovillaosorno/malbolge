@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import replace
 import hashlib
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -51,8 +52,6 @@ from algorithms.diff.generate import write_algorithm
 import pytest
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from algorithms.diff.model import ExactAuthoringPlan
 
 _BLOCKS = 48
@@ -237,6 +236,51 @@ def test_generator_rejects_nonportable_profile_before_work(
         not recipe.output_algorithm.exists(),
         "invalid profile wrote output",
     )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (name, failure_type)
+        for name in (
+            "output_algorithm",
+            "source_root",
+            "oracle_root",
+            "domain_module",
+        )
+        for failure_type in (PermissionError, ValueError, RuntimeError)
+    ],
+)
+def test_generator_recipe_resolution_failures_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, type[Exception]],
+) -> None:
+    """Filesystem resolution cannot escape recipe validation as a host error."""
+    name, failure_type = case
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    module = _domain_module(tmp_path)
+    recipe = replace(recipe, domain_module=module)
+    target = {
+        "output_algorithm": recipe.output_algorithm,
+        "source_root": recipe.source_root,
+        "oracle_root": recipe.oracle_root,
+        "domain_module": module,
+    }[name]
+    original_resolve = Path.resolve
+
+    def blocked_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == target:
+            message = "blocked recipe resolution"
+            raise failure_type(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", blocked_resolve)
+    with pytest.raises(
+        ValueError, match=f"{name} could not be resolved safely"
+    ):
+        write_algorithm(recipe)
+    _expect(not recipe.output_algorithm.exists(), "blocked recipe wrote output")
 
 
 @pytest.mark.parametrize("input_name", ["source_root", "oracle_root"])

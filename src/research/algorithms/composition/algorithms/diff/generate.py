@@ -170,7 +170,7 @@ def _validate_path(value: object, name: str) -> None:
 def _resolve_recipe_path(path: Path, name: str) -> Path:
     try:
         return path.resolve()
-    except (OSError, RuntimeError) as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"{name} could not be resolved safely"
         raise ValueError(message) from error
 
