@@ -3149,3 +3149,99 @@ def test_evidence_consumers_read_only_exact_bounded_native_byte_receipts(
         else:
             assert snapshot is not None
             evidence.recheck_evidence_snapshot(snapshot)
+
+
+class _ForgedReplayDigest(str):
+    """A foreign hash can impersonate equality unless type admission runs first."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign replay digest comparison executed")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    ["f" * 64, "a" * 63, b"a" * 64, True, None, 7, _ForgedReplayDigest("a" * 64)],
+    ids=["different", "short", "bytes", "boolean", "missing", "integer", "subclass"],
+)
+@pytest.mark.parametrize("phase", ["generator", "host-c"])
+def test_replay_receipts_must_match_admitted_native_source_hash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+    phase: str,
+) -> None:
+    """A forged replay return cannot certify a different or nonnative source."""
+    source_hash = "a" * 64
+    case = {
+        "family": "arithmetic-dag",
+        "version": 1,
+        "seed": 7,
+        "difficulty": 4,
+        "workload_sha256": source_hash,
+    }
+    document = {
+        "observations": [{"case": case}],
+        "study": {"target_profile": "malbolge-2026.3"},
+    }
+    directory = evidence._bundle_directory(case, "bundles")
+    if phase == "generator":
+        monkeypatch.setattr(
+            evidence, "_bundle_source", lambda *_args, **_kwargs: b"source"
+        )
+        monkeypatch.setattr(
+            evidence.challenge_bundles,
+            "verify_bundle",
+            lambda *_args: cast("str", receipt),
+        )
+        with pytest.raises(evidence.EvidenceError, match="source hash receipt"):
+            evidence._bundle_inspection(document, tmp_path, "bundles")
+    else:
+        monkeypatch.setattr(
+            evidence.host_c_oracle, "replay_one", lambda *_args: cast("str", receipt)
+        )
+        with pytest.raises(evidence.EvidenceError, match="source hash receipt"):
+            evidence._replay_host_c_challenges(
+                document, {directory: source_hash}, "bundles"
+            )
+
+
+@pytest.mark.parametrize("phase", ["generator", "host-c"])
+def test_replay_receipts_admit_exact_previously_verified_source_hash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """The positive boundary retains the canonical workload fingerprint."""
+    source_hash = "a" * 64
+    case = {
+        "family": "arithmetic-dag",
+        "version": 1,
+        "seed": 7,
+        "difficulty": 4,
+        "workload_sha256": source_hash,
+    }
+    document = {
+        "observations": [{"case": case}],
+        "study": {"target_profile": "malbolge-2026.3"},
+    }
+    directory = evidence._bundle_directory(case, "bundles")
+    if phase == "generator":
+        monkeypatch.setattr(
+            evidence, "_bundle_source", lambda *_args, **_kwargs: b"source"
+        )
+        monkeypatch.setattr(
+            evidence.challenge_bundles, "verify_bundle", lambda *_args: source_hash
+        )
+        assert evidence._bundle_inspection(document, tmp_path, "bundles").sources == {
+            directory: source_hash
+        }
+    else:
+        monkeypatch.setattr(
+            evidence.host_c_oracle, "replay_one", lambda *_args: source_hash
+        )
+        assert evidence._replay_host_c_challenges(
+            document, {directory: source_hash}, "bundles"
+        ) == {directory: source_hash}

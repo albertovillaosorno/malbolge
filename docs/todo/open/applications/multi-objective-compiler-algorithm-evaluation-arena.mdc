@@ -462,6 +462,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   identities and rejects mixed cohorts where a controlled same-device
   comparison is required; device declarations remain source-reported, not
   hardware attestation or utilization measurement.
+- Generator bundle and optional host-C source replay now require native SHA-256
+  return receipts equal to the previously admitted workload hash before
+  reporting success. Fourteen red-first negative cases reject altered, missing,
+  numeric, byte, and equality-spoofing subclass receipts; two positive cases
+  retain the legitimate matching-hash path. This checks dependency receipts,
+  not host-C attestation.
 - A synthetic all-checks integration fixture combines generated challenge
   provenance with versioned energy CSV, raw hashes, individual trial runs,
   exact budget agreement and matched accelerator labels. It proves admission

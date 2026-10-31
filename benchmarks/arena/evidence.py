@@ -693,11 +693,16 @@ def _bundle_inspection(
             )
             for name in challenge_bundles.BUNDLE_FILES
         }
-        results[directory] = challenge_bundles.verify_bundle(
+        regenerated = challenge_bundles.verify_bundle(
             case,
             document["study"]["target_profile"],
             files,
         )
+        # A replay dependency is not allowed to substitute a different source
+        # digest or invoke a foreign string subclass's equality hooks.
+        if type(regenerated) is not str or regenerated != case["workload_sha256"]:
+            _fail("challenge replay source hash receipt differs from admitted workload")
+        results[directory] = regenerated
         for name, contents in files.items():
             retained_sha256[f"{directory}/{name}"] = sha256(contents).hexdigest()
     return _BundleInspection(results, retained_sha256)
@@ -730,14 +735,20 @@ def _replay_host_c_challenges(
         for case in cases.values()
     ):
         _fail("host-C challenge replay exceeds 512 nodes")
-    return {
-        key: host_c_oracle.replay_one(
+    checked: dict[str, str] = {}
+    for key, case in sorted(cases.items()):
+        source_hash = bundle_hashes[key]
+        replayed = host_c_oracle.replay_one(
             case,
             document["study"]["target_profile"],
-            bundle_hashes[key],
+            source_hash,
         )
-        for key, case in sorted(cases.items())
-    }
+        # Only the same native source identity admitted by deterministic
+        # bundle replay may be reported as independently run through host C.
+        if type(replayed) is not str or replayed != source_hash:
+            _fail("host-C replay source hash receipt differs from admitted bundle")
+        checked[key] = replayed
+    return checked
 
 
 def _matched_accelerators(

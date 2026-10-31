@@ -1051,7 +1051,13 @@ The original study records remain the result authority.
   identities, unsafe paths, repeated-trial digest drift and fail-closed CLI.
   The arena now retains the original SHA-256 of all three bounded source,
   oracle and manifest files per distinct challenge and reopens every retained
-  path after optional host-C replay and report assembly. In-place same-length
+  path after optional host-C replay and report assembly. The evidence caller
+  additionally requires both the deterministic generator replay and optional
+  host-C replay to return exact native source-hash text equal to the already
+  admitted workload identity. Fourteen red-first negative receipts reject
+  mismatched, malformed, and foreign equality-spoofing returns; two positive
+  controls preserve matching digests. Dependency receipt checks do not attest
+  the executed compiler, measurement, or underlying host. In-place same-length
   mutations during either stage reject before returning a preflight report;
   these two bounded reads do not establish an atomic snapshot against ongoing
   writers or promise post-return filesystem immutability.
