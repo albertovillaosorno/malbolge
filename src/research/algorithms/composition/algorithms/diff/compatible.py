@@ -504,6 +504,11 @@ def _validate_exact_plan_binding(
     ):
         message = "compatible exact gate does not match plan target evidence"
         raise CompatiblePlanError(message)
+    if exact.source_path is not None and (
+        exact.source_path != instruction.source_path
+    ):
+        message = "compatible exact gate source path differs from plan source"
+        raise CompatiblePlanError(message)
 
 
 def _validate_plan_instruction_binding(

@@ -740,6 +740,34 @@ def test_compatible_plan_rejects_forged_topology_and_bindings(
         _ = replace(plan, instructions=tuple(forged_instructions))
 
 
+def test_compatible_exact_gate_rejects_inconsistent_source_path(
+    tmp_path: Path,
+) -> None:
+    """Inner exact source lineage must match the outer compatible source."""
+    plan = _plan(tmp_path)
+    exact_index = next(
+        index
+        for index, item in enumerate(plan.instructions)
+        if item.kind is CompatibleFileKind.EXACT_GATED
+        and item.exact is not None
+        and item.exact.source_path is not None
+    )
+    original = plan.instructions[exact_index]
+    if original.exact is None:
+        pytest.fail("expected a source-backed exact gate")
+    forged_source = "identity.txt"
+    forged_exact = replace(original.exact, source_path=forged_source)
+    _expect(
+        original.source_path != forged_source,
+        "forged path must differ from outer source",
+    )
+    instructions = list(plan.instructions)
+    instructions[exact_index] = replace(original, exact=forged_exact)
+
+    with pytest.raises(CompatiblePlanError, match="exact gate source path"):
+        _ = replace(plan, instructions=tuple(instructions))
+
+
 def test_compatible_exact_gate_verifies_output_bytes(
     tmp_path: Path,
 ) -> None:
