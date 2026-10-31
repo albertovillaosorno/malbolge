@@ -213,8 +213,10 @@ def live_echo() -> Iterator[tuple[Path, dict]]:
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
         runner = Path(tool_directory) / "malbolge"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
-        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        # Private inodes avoid shared tool ctime churn as other tests create
+        # and remove hardlinks, without relaxing production identity checks.
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
+        shutil.copy2(target_echo_reference.DEFAULT_RUNNER, runner)
         directory, document = target_echo_reference.run_study(
             target_echo_reference.StudyPlan((1, 4), 2),
             emitter=emitter,
@@ -386,7 +388,7 @@ def test_missing_counter_with_correct_vm_output_is_instrumentation_failure(
         dir=target_echo_reference._TEMP, prefix="arena-steps-test-tools-"
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
         directory, document = target_echo_reference.run_study(
             target_echo_reference.StudyPlan(
                 (1,),
@@ -448,7 +450,7 @@ def test_wrong_external_vm_step_receipt_does_not_publish_success(
         prefix="arena-steps-test-tools-",
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
         try:
             with pytest.raises(
                 target_echo_reference.TargetEchoStudyError,
@@ -495,7 +497,7 @@ def test_flooding_vm_is_recorded_as_tool_failure_not_verified(
         prefix="arena-target-test-tools-",
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
         directory, document = target_echo_reference.run_study(
             target_echo_reference.StudyPlan((1,), 1),
             emitter=emitter,
@@ -529,8 +531,8 @@ def test_patterned_mode_records_true_non_eof_input_and_final_eof() -> None:
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
         runner = Path(tool_directory) / "malbolge"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
-        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
+        shutil.copy2(target_echo_reference.DEFAULT_RUNNER, runner)
         directory, document = target_echo_reference.run_study(
             target_echo_reference.StudyPlan(
                 (1, 4, 16, 64), 1, target_echo_reference.PATTERNED_MODE
@@ -580,7 +582,7 @@ def test_patterned_vm_that_ignores_input_retains_verifier_rejection(
         prefix="arena-patterned-test-tools-",
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
         directory, document = target_echo_reference.run_study(
             target_echo_reference.StudyPlan(
                 (1,), 1, target_echo_reference.PATTERNED_MODE
@@ -638,8 +640,8 @@ def test_changed_producer_pattern_fails_independent_oracle_even_if_linked(
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
         runner = Path(tool_directory) / "malbolge"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
-        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
+        shutil.copy2(target_echo_reference.DEFAULT_RUNNER, runner)
         try:
             with pytest.raises(
                 target_echo_reference.TargetEchoStudyError,
@@ -700,8 +702,8 @@ def test_timed_independent_verifier_failure_cannot_record_verified_cost(
     ) as tools:
         emitter = Path(tools) / "malbolge_layout"
         runner = Path(tools) / "malbolge"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
-        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
+        shutil.copy2(target_echo_reference.DEFAULT_RUNNER, runner)
         directory, document = target_echo_reference.run_study(
             target_echo_reference.StudyPlan(
                 (1,),
@@ -774,8 +776,8 @@ def test_real_postexecution_source_mutation_is_independently_rejected(
     ) as tools:
         emitter = Path(tools) / "malbolge_layout"
         runner = Path(tools) / "malbolge"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
-        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
+        shutil.copy2(target_echo_reference.DEFAULT_RUNNER, runner)
         directory, document = target_echo_reference.run_study(
             target_echo_reference.StudyPlan(
                 (1,),
@@ -832,8 +834,8 @@ def test_cli_opt_in_verifier_cost_publishes_four_objective_study(
     ) as tools:
         emitter = Path(tools) / "malbolge_layout"
         runner = Path(tools) / "malbolge"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
-        runner.hardlink_to(target_echo_reference.DEFAULT_RUNNER)
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
+        shutil.copy2(target_echo_reference.DEFAULT_RUNNER, runner)
 
         def route(
             plan: target_echo_reference.StudyPlan,
@@ -1045,7 +1047,7 @@ def test_wrong_external_vm_output_retains_failed_trial_not_success(
         prefix="arena-target-test-tools-",
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
-        emitter.hardlink_to(target_echo_reference.DEFAULT_EMITTER)
+        shutil.copy2(target_echo_reference.DEFAULT_EMITTER, emitter)
         directory, document = target_echo_reference.run_study(
             target_echo_reference.StudyPlan((1,), 1),
             emitter=emitter,
