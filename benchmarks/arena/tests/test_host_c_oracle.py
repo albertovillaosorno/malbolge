@@ -438,6 +438,45 @@ def test_host_oracle_host_preflight_faults_are_typed(
 
 
 @pytest.mark.parametrize("operation", ["replay", "rebuild", "measure"])
+@pytest.mark.parametrize("filename", ["program.c", "oracle-harness.c"])
+@pytest.mark.parametrize("invalid_count", [None, True, False, -1, 0, "extra"])
+def test_host_oracle_never_executes_after_nonexact_source_write(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    filename: str,
+    invalid_count: object,
+) -> None:
+    """A short or fabricated write count cannot certify canonical C bytes."""
+    original_write = Path.write_bytes
+    native_calls: list[str] = []
+
+    def report_incomplete(path: Path, payload: bytes) -> int:
+        written = original_write(path, payload)
+        if path.name == filename:
+            return cast("int", len(payload) + 1 if invalid_count == "extra" else invalid_count)
+        return written
+
+    def pretend_native(_directory: Path, mode: str) -> int:
+        native_calls.append(mode)
+        return 1024
+
+    monkeypatch.setattr(Path, "write_bytes", report_incomplete)
+    monkeypatch.setattr(host_c_oracle, "_replay_mode", pretend_native)
+    monkeypatch.setattr(
+        host_c_oracle, "_read_reference_executable", lambda _dir: b"synthetic-artifact"
+    )
+    identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    with pytest.raises(host_c_oracle.HostOracleError, match="source write"):
+        if operation == "replay":
+            _ = host_c_oracle.replay_one(_case(), PROFILE, _digest())
+        elif operation == "rebuild":
+            _ = host_c_oracle.rebuild_reference(identity, "-O0")
+        else:
+            _ = host_c_oracle.measure_reference(identity, "-O0")
+    assert not native_calls
+
+
+@pytest.mark.parametrize("operation", ["replay", "rebuild", "measure"])
 @pytest.mark.parametrize("fault", ["setup", "source-write"])
 def test_direct_host_oracle_workspace_faults_are_typed(
     monkeypatch: pytest.MonkeyPatch,

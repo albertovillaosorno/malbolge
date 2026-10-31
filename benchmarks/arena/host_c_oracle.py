@@ -428,10 +428,7 @@ def replay_one(
             dir=_TEMP,
         ) as temporary:
             directory = Path(temporary)
-            _ = (directory / "program.c").write_bytes(generated.source)
-            _ = (directory / "oracle-harness.c").write_bytes(
-                _harness(generated.oracle)
-            )
+            _write_canonical_source(directory, generated)
             for mode in OPTIMIZATION_MODES:
                 _replay_mode(directory, mode)
     except OSError as error:
@@ -468,8 +465,14 @@ def _write_canonical_source(
     directory: Path,
     generated: generate.GeneratedChallenge,
 ) -> None:
-    _ = (directory / "program.c").write_bytes(generated.source)
-    _ = (directory / "oracle-harness.c").write_bytes(_harness(generated.oracle))
+    """Require acknowledged complete source and oracle-harness byte writes."""
+    for name, payload in (
+        ("program.c", generated.source),
+        ("oracle-harness.c", _harness(generated.oracle)),
+    ):
+        written = (directory / name).write_bytes(payload)
+        if type(written) is not int or written != len(payload):
+            _fail("host-C canonical source write did not accept exact byte count")
 
 
 def _read_reference_executable(directory: Path) -> bytes:
