@@ -3850,11 +3850,11 @@ fn canonical_typed_rotated_literal_enforces_sixteen_output_domain() -> Result<()
             "typed sixteen-output admitted unwitnessed byte",
         ));
     }
-    let beyond = wire(&typed_rotated_literal_module_with_outputs(41, 21)?)?;
+    let beyond = wire(&typed_rotated_literal_module_with_outputs(41, 22)?)?;
     if adapter::compile_canonical_typed_rotated_byte_literal(&beyond, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed twenty-one-output shape admitted"));
+        return Err(String::from("typed twenty-two-output shape admitted"));
     }
     Ok(())
 }
@@ -3892,11 +3892,11 @@ fn canonical_typed_rotated_literal_enforces_seventeen_output_domain() -> Result<
     {
         return Err(String::from("typed unwitnessed seventeen-output admitted"));
     }
-    let beyond = wire(&typed_rotated_literal_module_with_outputs(6, 21)?)?;
+    let beyond = wire(&typed_rotated_literal_module_with_outputs(6, 22)?)?;
     if adapter::compile_canonical_typed_rotated_byte_literal(&beyond, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed twenty-one-output trace admitted"));
+        return Err(String::from("typed twenty-two-output trace admitted"));
     }
     Ok(())
 }
@@ -3934,11 +3934,11 @@ fn canonical_typed_rotated_literal_enforces_eighteen_output_domain() -> Result<(
     {
         return Err(String::from("typed unwitnessed eighteen-output admitted"));
     }
-    let beyond = wire(&typed_rotated_literal_module_with_outputs(66, 21)?)?;
+    let beyond = wire(&typed_rotated_literal_module_with_outputs(66, 22)?)?;
     if adapter::compile_canonical_typed_rotated_byte_literal(&beyond, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed twenty-one-output trace admitted"));
+        return Err(String::from("typed twenty-two-output trace admitted"));
     }
     Ok(())
 }
@@ -3976,11 +3976,11 @@ fn canonical_typed_rotated_literal_enforces_nineteen_output_domain() -> Result<(
     {
         return Err(String::from("typed unwitnessed nineteen-output admitted"));
     }
-    let beyond = wire(&typed_rotated_literal_module_with_outputs(20, 21)?)?;
+    let beyond = wire(&typed_rotated_literal_module_with_outputs(20, 22)?)?;
     if adapter::compile_canonical_typed_rotated_byte_literal(&beyond, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed twenty-one-output trace admitted"));
+        return Err(String::from("typed twenty-two-output trace admitted"));
     }
     Ok(())
 }
@@ -4016,11 +4016,53 @@ fn canonical_typed_rotated_literal_enforces_twenty_output_domain() -> Result<(),
     {
         return Err(String::from("typed unwitnessed twenty-output admitted"));
     }
-    let beyond = wire(&typed_rotated_literal_module_with_outputs(192, 21)?)?;
+    let beyond = wire(&typed_rotated_literal_module_with_outputs(192, 22)?)?;
     if adapter::compile_canonical_typed_rotated_byte_literal(&beyond, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed twenty-one-output trace admitted"));
+        return Err(String::from("typed twenty-two-output trace admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_rotated_literal_enforces_twenty_one_output_domain() -> Result<(), String> {
+    for (byte, length) in [(140, 24), (22, 34), (252, 48)] {
+        let permitted = wire(&typed_rotated_literal_module_with_outputs(byte, 21)?)?;
+        let compiled =
+            adapter::compile_canonical_typed_rotated_byte_literal(&permitted, current_profile())
+                .map_err(|error| format!("witnessed typed 21-output {byte}: {error:?}"))?;
+        if compiled.layout().executed_code_positions().len() != length {
+            return Err(format!("twenty-one-output typed length drift for {byte}"));
+        }
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            compiled.layout().source(),
+            vec![0, 255],
+        )
+        .map_err(|error| format!("typed 21-output real VM load: {error:?}"))?;
+        if !matches!(vm.run(length), Ok(RunOutcome::Terminated { steps, .. }) if steps == length)
+            || vm.output() != vec![byte; 21]
+            || vm.input_consumed() != 0
+        {
+            return Err(format!(
+                "typed twenty-one-output guest output drift for {byte}"
+            ));
+        }
+    }
+    let foreign = wire(&typed_rotated_literal_module_with_outputs(66, 21)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&foreign, current_profile())
+        != Err(TypedEchoAdapterError::Layout(
+            adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
+        ))
+    {
+        return Err(String::from("typed unwitnessed twenty-one-output admitted"));
+    }
+    let beyond = wire(&typed_rotated_literal_module_with_outputs(140, 22)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&beyond, current_profile())
+        != Err(TypedEchoAdapterError::UnsupportedTypedIr)
+    {
+        return Err(String::from("typed twenty-two-output trace admitted"));
     }
     Ok(())
 }
@@ -4339,6 +4381,15 @@ fn seeded_nineteen_output_literal_canonical_publisher_and_real_runner() -> Resul
 fn seeded_twenty_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
     let workspace = OwnedFixture::new()?;
     for case in [(192, 20, true, false, true), (48, 20, false, true, true)] {
+        verify_seeded_publisher_case(&workspace, case)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_twenty_one_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for case in [(140, 21, true, false, true), (252, 21, false, true, true)] {
         verify_seeded_publisher_case(&workspace, case)?;
     }
     Ok(())
