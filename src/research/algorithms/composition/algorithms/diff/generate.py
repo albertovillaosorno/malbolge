@@ -179,6 +179,11 @@ def _validate_output_location(recipe: DiffRecipe) -> None:
         if output.is_relative_to(_resolve_recipe_path(root, name)):
             message = f"output_algorithm must be outside {name}"
             raise ValueError(message)
+    if recipe.domain_module is not None and output == _resolve_recipe_path(
+        recipe.domain_module, "domain_module"
+    ):
+        message = "output_algorithm must not overwrite domain_module"
+        raise ValueError(message)
 
 
 def _validate_recipe_paths(recipe: DiffRecipe) -> None:

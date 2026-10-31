@@ -285,6 +285,20 @@ def test_generator_rejects_linked_output_alias_into_source(
     )
 
 
+def test_exact_generator_does_not_overwrite_domain_policy(
+    tmp_path: Path,
+) -> None:
+    """The preflight module is a read-only input, not a valid Rust output."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    module = _domain_module(tmp_path)
+    original = module.read_bytes()
+    with pytest.raises(ValueError, match=r"output_algorithm.*domain_module"):
+        write_algorithm(
+            replace(recipe, domain_module=module, output_algorithm=module)
+        )
+    _expect(module.read_bytes() == original, "domain policy was overwritten")
+
+
 def test_compatible_mode_runs_domain_preflight_then_fails_emission(
     tmp_path: Path,
 ) -> None:
