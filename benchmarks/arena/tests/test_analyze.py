@@ -1080,6 +1080,58 @@ def test_empty_paired_family_emits_zero_adjusted_tests() -> None:
 
 
 @pytest.mark.parametrize(
+    ("violation", "message"),
+    [
+        ("duplicate", "duplicate algorithm/case/trial"),
+        ("schema", "unsupported arena schema version"),
+        ("verdict", "inconsistent independent verifier evidence"),
+        ("budget", "verified elapsed time exceeds study budget"),
+        ("extra", "root: expected fields"),
+    ],
+)
+def test_direct_analyzer_rejects_unadmitted_records_before_ranking(
+    violation: str,
+    message: str,
+) -> None:
+    """In-memory calls cannot inflate capacity by skipping wire admission."""
+    document = _document()
+    first = document["observations"][0]
+    if violation == "duplicate":
+        document["observations"].extend(
+            [first.copy(), document["observations"][2].copy()]
+        )
+    elif violation == "schema":
+        document["schema_version"] = 2
+    elif violation == "verdict":
+        first["verifier_verdict"] = analyze.NOT_RUN
+    elif violation == "budget":
+        first["metrics"]["elapsed_ns"] = (
+            document["study"]["budget"]["time_ns"] + 1
+        )
+    elif violation == "extra":
+        document["unreviewed_metadata"] = "not an admitted schema field"
+    with pytest.raises(analyze.ArenaError, match=message):
+        _ = analyze.analyze(document)
+
+
+@pytest.mark.parametrize("foreign", [None, [], "report", 1])
+def test_direct_analyzer_rejects_foreign_document_before_grouping(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+) -> None:
+    """Malformed in-memory documents fail as typed errors, not key errors."""
+
+    def forbidden_key(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        message = "foreign document entered cohort analysis"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(analyze, "_case_key", forbidden_key)
+    with pytest.raises(analyze.ArenaError, match="root: expected fields"):
+        _ = analyze.analyze(cast("dict[str, Any]", foreign))
+
+
+@pytest.mark.parametrize(
     ("field", "invalid"),
     [
         ("median_intervals_95", "false"),

@@ -303,10 +303,10 @@ def _admit_json_text(text: str) -> None:
         _fail("arena JSON exceeds 16 MiB limit")
 
 
-def _decode_document(text: str) -> dict[str, Any]:
+def _decode_document(text: str) -> object:
     _admit_json_text(text)
     try:
-        document = json.loads(
+        return json.loads(
             text,
             object_pairs_hook=_pairs,
             parse_constant=_reject_constant,
@@ -314,6 +314,10 @@ def _decode_document(text: str) -> dict[str, Any]:
     except (ValueError, TypeError, RecursionError) as error:
         message = f"invalid arena JSON: {error}"
         raise ArenaError(message) from error
+
+
+def _admit_document(document: object) -> dict[str, Any]:
+    """Apply identical schema and trial admission to wire and in-memory APIs."""
     root = _mapping(
         document,
         {"schema_version", "study", "observations"},
@@ -322,17 +326,6 @@ def _decode_document(text: str) -> dict[str, Any]:
     version = root["schema_version"]
     if type(version) is not int or version != SCHEMA_VERSION:
         _fail("unsupported arena schema version")
-    return root
-
-
-def parse_document(text: str) -> dict[str, Any]:
-    """Admit exact version-one input and all reported outcomes.
-
-    Returns:
-        A structurally admitted study; references are not authenticated.
-
-    """
-    root = _decode_document(text)
     study = _study(root["study"])
     observations = root["observations"]
     if not isinstance(observations, list) or not observations:
@@ -350,6 +343,16 @@ def parse_document(text: str) -> dict[str, Any]:
             _fail(f"observations[{index}]: duplicate algorithm/case/trial")
         seen.add(key)
     return root
+
+
+def parse_document(text: str) -> dict[str, Any]:
+    """Admit exact version-one input and all reported outcomes.
+
+    Returns:
+        A structurally admitted study; references are not authenticated.
+
+    """
+    return _admit_document(_decode_document(text))
 
 
 def _case_key(row: dict[str, Any]) -> tuple[Any, ...]:
@@ -747,6 +750,7 @@ def analyze(
         )
     ):
         _fail("arena inference options require exact booleans")
+    _ = _admit_document(document)
     study = document["study"]
     objectives: list[str] = study["objectives"]
     policy = _AnalysisPolicy(
