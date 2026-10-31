@@ -294,7 +294,7 @@ def _finish_child(child: sp.Popen[bytes]) -> int:
     if failures:
         message = "host-C challenge oracle child cleanup failed"
         failure = HostOracleError(message)
-        for error in failures[1:]:
+        for _ in failures[1:]:
             failure.add_note("additional host-C child cleanup failure")
         raise failure from failures[0]
     if (
