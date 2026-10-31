@@ -195,7 +195,7 @@ def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> JsonObject:
 
 
 def _mapping(value: object, context: str) -> JsonObject:
-    if not isinstance(value, dict):
+    if type(value) is not dict:
         _fail(f"{context} must be an object")
     raw = cast("dict[object, object]", value)
     result: JsonObject = {}

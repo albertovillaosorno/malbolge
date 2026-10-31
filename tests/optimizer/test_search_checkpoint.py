@@ -36,7 +36,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+from typing import Never
 from typing import cast
+from typing import override
 
 from accelerator import search_checkpoint as checkpoint_module
 from accelerator.search_checkpoint import SEARCH_CHECKPOINT_CODEC_ID
@@ -471,3 +473,36 @@ def test_search_checkpoint_rejects_corrupt_and_noncanonical_json() -> None:
             request,
             batch,
         )
+
+
+class _ForeignCheckpointMapping(dict[str, object]):  # ruff: ignore[subclass-builtin]
+    """An injected JSON parser must not run foreign mapping hooks."""
+
+    @override
+    def items(self) -> Never:
+        raise AssertionError
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_search_checkpoint_rejects_foreign_parsed_mapping_before_traversal(
+    monkeypatch: pytest.MonkeyPatch, *, nested: bool
+) -> None:
+    """Native top-level and evidence maps never dispatch foreign methods."""
+    request = _request()
+    batch = _batch()
+    encoded = encode_search_checkpoint(request, batch, _evidence())
+    parsed = cast("dict[str, object]", json.loads(encoded))
+    foreign = _ForeignCheckpointMapping()
+    parsed_result: object = foreign
+    if nested:
+        rows = cast("list[object]", parsed["completed_evidence"])
+        rows[0] = foreign
+        parsed_result = parsed
+
+    def injected_parser(_text: str, *, object_pairs_hook: object) -> object:
+        del _text, object_pairs_hook
+        return parsed_result
+
+    monkeypatch.setattr(json, "loads", injected_parser)
+    with pytest.raises(SearchCheckpointError, match="must be an object"):
+        _ = decode_search_checkpoint(encoded, request, batch)
