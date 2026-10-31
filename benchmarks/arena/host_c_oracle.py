@@ -293,19 +293,13 @@ def _finish_child(child: sp.Popen[bytes]) -> int:
     reaped: object = None
     try:
         _kill_child_group(child)
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         failures.append(error)
         # A group-signal failure must not skip the direct-child fallback.
         try:
             if child.poll() is None:
                 child.kill()
-        except (
-            OSError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            AttributeError,
-        ) as direct_error:
+        except Exception as direct_error:
             failures.append(direct_error)
     try:
         reaped = child.wait(timeout=1)
@@ -315,23 +309,9 @@ def _finish_child(child: sp.Popen[bytes]) -> int:
         try:
             child.kill()
             reaped = child.wait(timeout=1)
-        except (
-            OSError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            AttributeError,
-            sp.SubprocessError,
-        ) as error:
+        except Exception as error:
             failures.append(error)
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-        sp.SubprocessError,
-    ) as error:
+    except Exception as error:
         failures.append(error)
     if failures:
         message = "host-C challenge oracle child cleanup failed"
@@ -358,14 +338,7 @@ def _wait_child(child: sp.Popen[bytes], label: str) -> None:
         except sp.TimeoutExpired as error:
             message = f"host-C challenge oracle {label} timed out"
             raise HostOracleError(message) from error
-        except (
-            OSError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            AttributeError,
-            sp.SubprocessError,
-        ) as error:
+        except Exception as error:
             message = f"host-C challenge oracle {label} transport failed"
             raise HostOracleError(message) from error
     finally:
@@ -397,13 +370,13 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
             prefix="host-c-stage-rss-",
             suffix=".txt",
         )
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         message = "host-C challenge oracle RSS temporary receipt unavailable"
         raise HostOracleError(message) from error
     try:
         try:
             os.close(fd)
-        except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        except Exception as error:
             message = "host-C challenge oracle RSS descriptor close failed"
             raise HostOracleError(message) from error
         try:
@@ -423,7 +396,7 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
                 stderr=sp.DEVNULL,
                 start_new_session=True,
             )
-        except (OSError, sp.SubprocessError) as error:
+        except Exception as error:
             message = f"host-C challenge oracle {label} could not start"
             raise HostOracleError(message) from error
         _wait_child(child, label)
@@ -432,7 +405,7 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
         primary = sys.exception()
         try:
             Path(output_path).unlink(missing_ok=True)
-        except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        except Exception as error:
             if primary is not None:
                 # Cleanup cannot dispatch a foreign primary note method.
                 BaseException.add_note(

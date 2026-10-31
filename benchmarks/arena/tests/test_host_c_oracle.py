@@ -1915,3 +1915,138 @@ def test_host_c_workspace_cleanup_cannot_mask_primary_rejection(
             host_c_oracle.measure_reference(identity, "-O0")
     assert caught.value is primary
     assert any("ForeignCleanupFault" in note for note in primary.__notes__)
+
+
+class _ForeignHostTransportFault(LookupError):
+    def __str__(self) -> str:
+        raise AssertionError("foreign child transport fault formatter executed")
+
+
+@pytest.mark.parametrize("source", ["receipt-creation", "child-start"])
+def test_host_c_child_setup_rejects_unexpected_dependency_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+) -> None:
+    """Unknown ordinary host setup failures cannot leak outside the replay API."""
+    fault = _ForeignHostTransportFault("untrusted host details")
+    monkeypatch.setattr(host_c_oracle, "_limited_command", lambda command: command)
+    monkeypatch.setattr(host_c_oracle, "_system_tool", lambda _name: "/usr/bin/time")
+
+    def fail_start(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    if source == "receipt-creation":
+        monkeypatch.setattr(host_c_oracle.tempfile, "mkstemp", fail_start)
+    else:
+        monkeypatch.setattr(host_c_oracle.sp, "Popen", fail_start)
+    with pytest.raises(
+        host_c_oracle.HostOracleError, match="temporary|could not start"
+    ) as caught:
+        host_c_oracle._bounded_child(["fake"], tmp_path, "compile")
+    assert caught.value.__cause__ is fault
+    assert not list(tmp_path.glob("host-c-stage-rss-*"))
+
+
+def test_host_c_child_communication_fault_still_reaps_direct_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unknown communicate failure remains typed after child cleanup."""
+    fault = _ForeignHostTransportFault("untrusted child transport details")
+    events: list[str] = []
+
+    class ChildProbe:
+        returncode = 0
+
+        def communicate(self, *, timeout: int) -> None:
+            del timeout
+            events.append("communicate")
+            raise fault
+
+    def reap(_child: object) -> int:
+        events.append("reap")
+        return 0
+
+    monkeypatch.setattr(host_c_oracle, "_finish_child", reap)
+    with pytest.raises(
+        host_c_oracle.HostOracleError, match="transport failed"
+    ) as caught:
+        host_c_oracle._wait_child(cast("Any", ChildProbe()), "compile")
+    assert caught.value.__cause__ is fault
+    assert events == ["communicate", "reap"]
+
+
+def test_host_c_unexpected_group_fault_still_kills_and_reaps_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unknown group signal exception cannot skip direct-child fallback."""
+    fault = _ForeignHostTransportFault("untrusted group signal details")
+    events: list[str] = []
+
+    class ChildProbe:
+        returncode = 0
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            events.append("wait")
+            return 0
+
+    def fail_group(_child: object) -> None:
+        events.append("group")
+        raise fault
+
+    monkeypatch.setattr(host_c_oracle, "_kill_child_group", fail_group)
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as caught:
+        host_c_oracle._finish_child(cast("Any", ChildProbe()))
+    assert caught.value.__cause__ is fault
+    assert events == ["group", "poll", "kill", "wait"]
+
+
+@pytest.mark.parametrize("primary_failure", [False, True])
+def test_host_c_unexpected_rss_unlink_fault_retains_primary_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    primary_failure: bool,
+) -> None:
+    """Foreign receipt cleanup faults are typed without erasing child errors."""
+    fault = _ForeignHostTransportFault("untrusted RSS receipt cleanup")
+    primary = host_c_oracle.HostOracleError("original child transport rejection")
+    original_unlink = Path.unlink
+
+    def fail_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        if path.name.startswith("host-c-stage-rss-"):
+            raise fault
+        original_unlink(path, missing_ok=missing_ok)
+
+    def finish(_child: object, _label: str) -> None:
+        if primary_failure:
+            raise primary
+
+    monkeypatch.setattr(host_c_oracle, "_limited_command", lambda command: command)
+    monkeypatch.setattr(host_c_oracle, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(host_c_oracle.sp, "Popen", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(host_c_oracle, "_wait_child", finish)
+    monkeypatch.setattr(host_c_oracle, "_read_stage_rss", lambda _path: 1024)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+    try:
+        with pytest.raises(host_c_oracle.HostOracleError) as caught:
+            host_c_oracle._bounded_child(["fake"], tmp_path, "compile")
+        if primary_failure:
+            assert caught.value is primary
+            assert any(
+                "_ForeignHostTransportFault" in note for note in primary.__notes__
+            )
+        else:
+            assert "receipt cleanup failed" in str(caught.value)
+            assert caught.value.__cause__ is fault
+    finally:
+        monkeypatch.setattr(Path, "unlink", original_unlink)
+        for report in tmp_path.glob("host-c-stage-rss-*"):
+            report.unlink()
