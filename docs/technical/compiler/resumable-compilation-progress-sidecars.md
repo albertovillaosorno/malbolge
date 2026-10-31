@@ -85,6 +85,19 @@ may authorize an immutable-generation no-replace collision and its subsequent
 byte-verified reuse. Foreign subclasses of either exception fail closed, even
 when a matching generation inode already exists.
 
+Raw OS descriptor-open receipts are admitted before use for pointer and
+checkpoint reads, staged content verification, writer-lock opens, and parent-
+directory durability. A created staging descriptor is likewise checked before
+its inode is inspected or transferred to a payload stream. Admission requires
+an exact native nonnegative integer within the host C `int` range; boolean,
+negative, overflowing, integer-subclass, and foreign receipts cannot reach
+`fstat`, a file stream, or descriptor cleanup. Admitted native integers are
+still bound to path/inode identity by the existing checks; an integer receipt
+alone is not proof of that identity. Publication regressions additionally
+retain committed-path evidence if a nonnative directory descriptor prevents
+durability confirmation, and reject staged-reader substitutions before any
+pointer or immutable generation is published.
+
 Process-shared progress writer locks now reject nonnative stat metadata on
 pre-existing lock pathname preflight, the opened lock descriptor, and both
 pathname/descriptor identity checks after lock acquisition. A foreign receipt

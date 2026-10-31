@@ -613,6 +613,15 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   receipts with typed uncertain-durability errors and exact committed paths;
   unrelated checkpoint metadata and final artifacts remain unchanged.
 
+  Raw file opens for pointer/checkpoint reads, writer locks, staged
+  verification and directory durability now require exact native nonnegative
+  C-`int`-bounded descriptor receipts before OS descriptor operations; staging
+  ownership from `mkstemp` is admitted the same way. Forty-two red-first
+  adversarial cases exercise boolean, negative, overflow, foreign-object and
+  integer-subclass receipts, absence of foreign descriptor cleanup, rejection
+  before pointer/immutable publication, and exact committed-path evidence for
+  failed parent-directory descriptor admission; ordinary valid file opens
+  retain their existing tests.
   Process-shared writer locks now require native stat results across the
   existing path preflight, opened descriptor and acquired inode identity.
   Exclusive single-link lock ownership is now required both after lock

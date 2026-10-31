@@ -2193,6 +2193,208 @@ def test_read_rejects_foreign_path_type() -> None:
         _ = progress.read(cast("Path", cast("object", "not-a-path-object")))
 
 
+class ForeignOpenedDescriptor:
+    """Foreign descriptor whose coercion must never reach OS operations."""
+
+    def __index__(self) -> int:
+        raise AssertionError("foreign descriptor coerced")
+
+
+class ForeignIntegerDescriptor(int):
+    """Foreign integer subclass is not an admitted native descriptor."""
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        False,
+        True,
+        -1,
+        1 << 63,
+        ForeignOpenedDescriptor(),
+        ForeignIntegerDescriptor(1),
+    ],
+    ids=["false", "true", "negative", "overflow", "foreign", "int-subclass"],
+)
+@pytest.mark.parametrize("source", ["pointer", "checkpoint"])
+def test_progress_read_rejects_non_native_open_descriptors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+    source: str,
+) -> None:
+    """Unadmitted open receipts must not reach stat, stream, or close."""
+    checkpoint = b"opaque-checkpoint-state"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    destination = progress.write_checkpoint_generation(sidecar, checkpoint)
+    requested = (
+        destination if source == "pointer" else Path(sidecar.checkpoint_path or "")
+    )
+    calls = 0
+
+    def forged_open(path: Path, flags: int) -> int:
+        del flags
+        nonlocal calls
+        assert Path(path) == requested
+        calls += 1
+        return cast("int", receipt)
+
+    def forbidden_descriptor_use(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("unadmitted descriptor reached an OS primitive")
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", forged_open)
+        context.setattr(os, "fstat", forbidden_descriptor_use)
+        context.setattr(os, "close", forbidden_descriptor_use)
+        with pytest.raises(ERROR, match="native bounded integer"):
+            if source == "pointer":
+                _ = progress.read(destination)
+            else:
+                _ = progress.read_checkpoint_generation(sidecar)
+    assert calls == 1
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        False,
+        True,
+        -1,
+        1 << 63,
+        ForeignOpenedDescriptor(),
+        ForeignIntegerDescriptor(1),
+    ],
+    ids=["false", "true", "negative", "overflow", "foreign", "int-subclass"],
+)
+@pytest.mark.parametrize(
+    "entrypoint", ["writer-lock", "stage-reader", "directory", "staged-owner"]
+)
+def test_progress_open_paths_reject_non_native_descriptors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+    entrypoint: str,
+) -> None:
+    """Raw OS descriptor boundaries require native C-int receipts first."""
+    target = tmp_path / "owned-stage.tmp"
+    if entrypoint == "stage-reader":
+        _ = target.write_bytes(b"owned stage")
+    calls = 0
+
+    def forged_open(*args: object, **kwargs: object) -> int:
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        return cast("int", receipt)
+
+    def forbidden_descriptor_use(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("unadmitted descriptor reached an OS primitive")
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", forged_open)
+        context.setattr(os, "fstat", forbidden_descriptor_use)
+        context.setattr(os, "close", forbidden_descriptor_use)
+        with pytest.raises(ERROR, match="native bounded integer"):
+            methods = {
+                "writer-lock": "_open_regular_writer_lock",
+                "stage-reader": "_open_staged_reader",
+                "directory": "_open_durability_directory",
+                "staged-owner": "_temporary_descriptor_identity",
+            }
+            call = cast(
+                "Callable[[object], object]", getattr(progress, methods[entrypoint])
+            )
+            argument: object = (
+                receipt if entrypoint == "staged-owner"
+                else tmp_path if entrypoint == "directory"
+                else target
+            )
+            _ = call(argument)
+    assert calls == (0 if entrypoint == "staged-owner" else 1)
+
+
+@pytest.mark.parametrize("publisher", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("receipt", [False, 1 << 63], ids=["boolean", "overflow"])
+def test_publisher_rejects_non_native_staged_reader_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+    publisher: str,
+) -> None:
+    """A forged verification reader cannot authorize staged publication."""
+    sidecar = _sidecar(tmp_path)
+    checkpoint = b"opaque state"
+    original_open = os.open
+    substituted = 0
+
+    def forged_stage_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        nonlocal substituted
+        if Path(path).name.endswith(".tmp"):
+            substituted += 1
+            return cast("int", receipt)
+        return original_open(path, flags, mode)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", forged_stage_open)
+        with pytest.raises(ERROR, match="native bounded integer"):
+            if publisher == "pointer":
+                _ = progress.write_atomic(sidecar)
+            else:
+                checkpointed = _checkpointed(
+                    sidecar, checkpoint=checkpoint, partial=None
+                )
+                _ = progress.write_checkpoint_generation(checkpointed, checkpoint)
+    assert substituted == 1
+    assert not Path(sidecar.progress_path).exists()
+    assert not list(tmp_path.glob("*.checkpoint.*"))
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX parent-directory durability is not performed on Windows",
+)
+@pytest.mark.parametrize("publisher", ["pointer", "checkpoint"])
+def test_publication_retains_committed_path_on_non_native_directory_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publisher: str,
+) -> None:
+    """A forged directory-open receipt cannot certify committed durability."""
+    sidecar = _sidecar(tmp_path)
+    checkpoint = b"opaque state"
+    original_open = os.open
+    substituted = 0
+
+    def forged_directory_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        nonlocal substituted
+        directory_flag = cast("int", getattr(os, "O_DIRECTORY", 0))
+        if Path(path) == tmp_path and flags & directory_flag:
+            substituted += 1
+            return False
+        return original_open(path, flags, mode)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", forged_directory_open)
+        with pytest.raises(progress.ProgressSidecarDurabilityError) as error:
+            if publisher == "pointer":
+                _ = progress.write_atomic(sidecar)
+            else:
+                checkpointed = _checkpointed(
+                    sidecar, checkpoint=checkpoint, partial=None
+                )
+                _ = progress.write_checkpoint_generation(checkpointed, checkpoint)
+    assert substituted == 1
+    committed = (
+        Path(sidecar.progress_path)
+        if publisher == "pointer"
+        else Path(progress.checkpoint_path(sidecar.output_path, 1))
+    )
+    assert error.value.published_path == committed
+    assert committed.exists()
+
+
 @pytest.mark.parametrize("source", ["pointer", "checkpoint"])
 @pytest.mark.parametrize("receipt_number", [1, 2, 3, 4])
 def test_progress_read_rejects_foreign_descriptor_stat_receipts(

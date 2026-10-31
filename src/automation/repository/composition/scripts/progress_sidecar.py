@@ -1819,6 +1819,17 @@ def _admit_native_stat(receipt: object, context: str) -> os.stat_result:
     return receipt
 
 
+def _admit_native_descriptor(receipt: object, context: str) -> int:
+    """Require a native nonnegative C-int descriptor before using OS APIs."""
+    if (
+        type(receipt) is not int
+        or receipt < 0
+        or receipt > _MAX_NATIVE_FILE_DESCRIPTOR
+    ):
+        _fail(f"{context} descriptor must be a native bounded integer")
+    return receipt
+
+
 def _verify_opened_read_identity(
     path: Path,
     descriptor: int,
@@ -1878,7 +1889,7 @@ def _read_regular_bytes(
     flags |= cast("int", getattr(os, "O_NONBLOCK", 0))
     flags |= cast("int", getattr(os, "O_NOFOLLOW", 0))
     flags |= cast("int", getattr(os, "O_BINARY", 0))
-    descriptor = os.open(path, flags)
+    descriptor = _admit_native_descriptor(os.open(path, flags), context)
     try:
         _verify_opened_read_identity(path, descriptor, context)
         initial = _admit_native_stat(os.fstat(descriptor), context)
@@ -2018,7 +2029,9 @@ def _open_durability_directory(path: Path) -> int:
     flags = os.O_RDONLY
     flags |= cast("int", getattr(os, "O_DIRECTORY", 0))
     flags |= cast("int", getattr(os, "O_NOFOLLOW", 0))
-    return os.open(path, flags)
+    return _admit_native_descriptor(
+        os.open(path, flags), "progress durability directory"
+    )
 
 
 def _verify_durability_directory(path: Path, descriptor: int) -> None:
@@ -2121,14 +2134,8 @@ def _require_zero_lock_seek_receipt(receipt: object) -> None:
 
 
 def _native_writer_lock_descriptor(receipt: object) -> int:
-    """Reject nonnative, boolean, or negative lock descriptor receipts."""
-    if (
-        type(receipt) is not int
-        or receipt < 0
-        or receipt > _MAX_NATIVE_FILE_DESCRIPTOR
-    ):
-        _fail("progress writer lock descriptor must be a native bounded integer")
-    return receipt
+    """Reject nonnative, boolean, or out-of-range lock descriptor receipts."""
+    return _admit_native_descriptor(receipt, "progress writer lock")
 
 
 def _acquire_writer_lock(stream: _LockStream) -> Callable[[], None]:
@@ -2180,7 +2187,9 @@ def _open_regular_writer_lock(lock_path: Path) -> _LockStream:
     flags |= cast("int", getattr(os, "O_NOFOLLOW", 0))
     flags |= cast("int", getattr(os, "O_BINARY", 0))
     # Persistent coordination files must not request broad access or execute.
-    descriptor = os.open(lock_path, flags, 0o600)
+    descriptor = _admit_native_descriptor(
+        os.open(lock_path, flags, 0o600), context
+    )
     try:
         if not stat.S_ISREG(_admit_native_stat(os.fstat(descriptor), context).st_mode):
             _fail(f"{context} must be a regular file")
@@ -2396,6 +2405,7 @@ def _temporary_descriptor_identity(descriptor: int) -> tuple[int, int]:
         Device and inode numbers for the unique staging descriptor.
 
     """
+    _ = _admit_native_descriptor(descriptor, "progress temporary")
     try:
         opened = _admit_native_stat(os.fstat(descriptor), "progress temporary")
     except (OSError, ValueError, RuntimeError) as error:
@@ -2519,7 +2529,11 @@ def _open_staged_reader(temporary: Path) -> int:
     flags |= cast("int", getattr(os, "O_NOFOLLOW", 0))
     flags |= cast("int", getattr(os, "O_BINARY", 0))
     try:
-        return os.open(temporary, flags)
+        return _admit_native_descriptor(
+            os.open(temporary, flags), "progress temporary"
+        )
+    except ProgressSidecarError:
+        raise
     except (OSError, ValueError, RuntimeError) as error:
         _fail_with_source(
             f"progress temporary cannot be verified: {_host_error_detail(error)}", error
