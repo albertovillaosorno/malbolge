@@ -52,6 +52,13 @@ use super::{
 
 static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 
+// This test file is included by several compiler roots. Their independent
+// counters can collide inside one process, so also bind the test thread.
+#[cfg(target_os = "linux")]
+fn fixture_namespace() -> String {
+    format!("{}-{:?}", id(), thread::current().id())
+}
+
 fn repository_python() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     if cfg!(windows) {
@@ -549,11 +556,12 @@ fn escaped_inspector_descendant_keeps_slot_until_pipe_close()
 -> Result<(), String> {
     static ACTIVE: AtomicUsize = AtomicUsize::new(0);
     let nonce = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
-    let script = temp_dir()
-        .join(format!("malbolge-typed-escaped-slot-{}-{nonce}.py", id()));
+    let namespace = fixture_namespace();
+    let script = temp_dir().join(format!(
+        "malbolge-typed-escaped-slot-{namespace}-{nonce}.py"
+    ));
     let marker = temp_dir().join(format!(
-        "malbolge-typed-escaped-slot-{}-{nonce}.ready",
-        id()
+        "malbolge-typed-escaped-slot-{namespace}-{nonce}.ready"
     ));
     let source = format!(
         concat!(

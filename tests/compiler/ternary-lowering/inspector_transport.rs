@@ -659,11 +659,12 @@ fn ternary_drain_lease_outlives_caller_until_pipe_eof() -> Result<(), String> {
 fn escaped_ternary_child_keeps_slot_until_eof() -> Result<(), String> {
     static ACTIVE: AtomicUsize = AtomicUsize::new(0);
     let nonce = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-    let script = temp_dir()
-        .join(format!("malbolge-ternary-escaped-slot-{}-{nonce}.py", id()));
+    let namespace = fixture_namespace();
+    let script = temp_dir().join(format!(
+        "malbolge-ternary-escaped-slot-{namespace}-{nonce}.py"
+    ));
     let marker = temp_dir().join(format!(
-        "malbolge-ternary-escaped-slot-{}-{nonce}.ready",
-        id()
+        "malbolge-ternary-escaped-slot-{namespace}-{nonce}.ready"
     ));
     let source = format!(
         concat!(
