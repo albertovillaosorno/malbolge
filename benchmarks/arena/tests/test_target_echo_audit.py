@@ -281,8 +281,10 @@ def retained(
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
         runner = Path(tool_directory) / "malbolge"
-        emitter.hardlink_to(producer.DEFAULT_EMITTER)
-        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        # Private fixture copies cannot change the shared build inode ctime
+        # when another test creates or removes its executable hardlinks.
+        shutil.copy2(producer.DEFAULT_EMITTER, emitter)
+        shutil.copy2(producer.DEFAULT_RUNNER, runner)
         monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
         monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
         directory, document = producer.run_study(
@@ -318,8 +320,8 @@ def patterned(
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
         runner = Path(tool_directory) / "malbolge"
-        emitter.hardlink_to(producer.DEFAULT_EMITTER)
-        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        shutil.copy2(producer.DEFAULT_EMITTER, emitter)
+        shutil.copy2(producer.DEFAULT_RUNNER, runner)
         monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
         monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
         directory, document = producer.run_study(
@@ -356,8 +358,8 @@ def counted_study(
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
         runner = Path(tool_directory) / "malbolge"
-        emitter.hardlink_to(producer.DEFAULT_EMITTER)
-        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        shutil.copy2(producer.DEFAULT_EMITTER, emitter)
+        shutil.copy2(producer.DEFAULT_RUNNER, runner)
         monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
         monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
         directory, document = producer.run_study(
@@ -392,8 +394,8 @@ def forward_skip(
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
         runner = Path(tool_directory) / "malbolge"
-        emitter.hardlink_to(producer.DEFAULT_EMITTER)
-        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        shutil.copy2(producer.DEFAULT_EMITTER, emitter)
+        shutil.copy2(producer.DEFAULT_RUNNER, runner)
         monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
         monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
         directory, document = producer.run_study(
@@ -434,8 +436,8 @@ def timed_forward(
     ) as tool_directory:
         emitter = Path(tool_directory) / "malbolge_layout"
         runner = Path(tool_directory) / "malbolge"
-        emitter.hardlink_to(producer.DEFAULT_EMITTER)
-        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        shutil.copy2(producer.DEFAULT_EMITTER, emitter)
+        shutil.copy2(producer.DEFAULT_RUNNER, runner)
         monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
         monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
         directory, document = producer.run_study(
@@ -477,8 +479,8 @@ def replay_forward(
     ) as tools:
         emitter = Path(tools) / "malbolge_layout"
         runner = Path(tools) / "malbolge"
-        emitter.hardlink_to(producer.DEFAULT_EMITTER)
-        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        shutil.copy2(producer.DEFAULT_EMITTER, emitter)
+        shutil.copy2(producer.DEFAULT_RUNNER, runner)
         monkeypatch.setattr(producer, "DEFAULT_EMITTER", emitter)
         monkeypatch.setattr(producer, "DEFAULT_RUNNER", runner)
         directory, document = producer.run_study(
@@ -991,8 +993,8 @@ def test_real_64_pair_echo_crosses_two_classic_decode_phases() -> None:
     ) as tools:
         emitter = Path(tools) / "malbolge_layout"
         runner = Path(tools) / "malbolge"
-        emitter.hardlink_to(producer.DEFAULT_EMITTER)
-        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        shutil.copy2(producer.DEFAULT_EMITTER, emitter)
+        shutil.copy2(producer.DEFAULT_RUNNER, runner)
         directory, document = producer.run_study(
             producer.StudyPlan((producer.MAX_PAIRS,), 1),
             emitter=emitter,
