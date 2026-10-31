@@ -173,7 +173,10 @@ def _read_ready(
     slot: int = key.data
     limit = limits.stdout_limit if slot == 0 else limits.stderr_limit
     admitted = limit - len(buffers[slot])
-    chunk = os.read(key.fd, min(READ_CHUNK_BYTES, admitted + 1))
+    requested = min(READ_CHUNK_BYTES, admitted + 1)
+    chunk = os.read(key.fd, requested)
+    if type(chunk) is not bytes or len(chunk) > requested:
+        _fail("bounded target output read returned invalid bytes")
     if not chunk:
         watched.unregister(key.fileobj)
         return

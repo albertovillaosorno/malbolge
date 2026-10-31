@@ -385,6 +385,72 @@ def test_binary_input_close_fault_preserves_delivery_evidence(
         assert type(error.value.__cause__) is RuntimeError
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [None, False, 0, b"bad".decode(), bytearray(b"bad"), memoryview(b"bad"), [98, 97, 100]],
+    ids=["none", "false", "zero", "text", "bytearray", "memoryview", "list"],
+)
+def test_invalid_output_read_value_cannot_fake_eof_or_exact_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """A malformed read return cannot become EOF or fabricated host bytes."""
+    unregistered: list[object] = []
+
+    class SelectorProbe:
+        def unregister(self, fileobj: object) -> None:
+            unregistered.append(fileobj)
+
+    key = target_process.selectors.SelectorKey(
+        fileobj=12345,
+        fd=12345,
+        events=target_process.selectors.EVENT_READ,
+        data=0,
+    )
+    buffers = [bytearray(), bytearray()]
+
+    def read_invalid(descriptor: int, requested: int) -> object:
+        assert descriptor == key.fd
+        assert 0 < requested <= target_process.READ_CHUNK_BYTES
+        return invalid
+
+    monkeypatch.setattr(target_process.os, "read", read_invalid)
+    with pytest.raises(target_process.TargetProcessError, match="output read"):
+        target_process._read_ready(  # ruff: ignore[private-member-access]
+            key,
+            cast("target_process.selectors.BaseSelector", SelectorProbe()),
+            buffers=buffers,
+            limits=target_process._ProcessLimits(  # ruff: ignore[private-member-access]
+                timeout_seconds=LARGE_TIMEOUT_SECONDS,
+                stdout_limit=STDOUT_LIMIT,
+                stderr_limit=STDERR_LIMIT,
+            ),
+        )
+    assert buffers == [bytearray(), bytearray()]
+    assert unregistered == []
+
+
+@pytest.mark.parametrize("invalid", [None, memoryview(b"fabricated")])
+def test_bounded_target_never_reports_success_from_invalid_output_reader(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """A broken stream cannot be recorded as a valid child observation."""
+    original_popen = target_process.sp.Popen
+
+    def launch(*args: Any, **kwargs: Any) -> sp.Popen[bytes]:
+        child = cast("sp.Popen[bytes]", original_popen(*args, **kwargs))
+        monkeypatch.setattr(target_process.os, "read", lambda _fd, _count: invalid)
+        return child
+
+    monkeypatch.setattr(target_process.sp, "Popen", launch)
+    with pytest.raises(target_process.TargetProcessError, match="output read"):
+        _ = target_process.invoke(
+            _child("import os; os.write(1, b'output')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+
+
 def test_exact_bounded_output_and_stderr_roundtrip() -> None:
     """Both separately bounded streams retain complete exact bytes."""
     result = target_process.invoke(

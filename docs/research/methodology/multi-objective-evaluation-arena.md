@@ -217,6 +217,9 @@ subprocess boundary and makes no Windows process-supervision claim.
 
 Pipe-reader, selector, and binary-stdin delivery faults now reject through
 one typed target-process boundary, preserving the originating I/O exception.
+A pipe read must return exact `bytes` within the requested count before it can
+be treated as data or EOF: null, false, or other nonbyte results cannot
+silently substitute output bytes or prematurely close the measured stream.
 Injected stream-close errors remain secondary to a prior delivery failure;
 close-only faults also refuse a successful run. Binary writes must report an
 exact integer byte count, never a boolean or partial count. These checks
