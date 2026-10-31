@@ -31,3 +31,9 @@
 #
 
 """Benchmark tooling and retained measurement entry points."""
+
+# The repository-level benchmarks/arena is a namespace portion alongside this
+# regular benchmarking package. Include it without hiding accelerator modules.
+from pkgutil import extend_path
+
+__path__ = extend_path(__path__, __name__)
