@@ -29,7 +29,9 @@ conclusion. The executable side owns implementations, experiment configuration,
 tests, verifier integration, and Git-ignored local `out/` artifacts.
 
 `src/automation/repository/composition/scripts/validate/research_mirror.py`
-enforces the repository shape. Every direct
+enforces the repository shape. The shared research layout discovery also
+rejects linked algorithm directories and redirected in-root directory
+ancestors before admitting an `experiment.toml` identity. Every direct
 research ID under either mirror root must exist on both sides. The documentation
 half requires `README.md` and `research.md`; the executable half requires
 `README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via

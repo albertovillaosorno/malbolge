@@ -329,11 +329,11 @@ def test_lifecycle_rejects_oversized_manifest(
         _ = validator.validate_repository_lifecycle(manifest)
 
 
-def test_lifecycle_parent_link_is_rejected_by_evidence_admission(
+def test_lifecycle_parent_link_is_rejected_during_discovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A linked algorithm directory cannot supply checked-in evidence."""
+    """A linked algorithm directory cannot supply a lifecycle identity."""
     manifest = _fixture_repository(
         tmp_path, monkeypatch, _base(validator.EXPERIMENTAL)
     )
@@ -341,5 +341,5 @@ def test_lifecycle_parent_link_is_rejected_by_evidence_admission(
     outside = tmp_path / "outside-algorithm"
     _ = original.rename(outside)
     original.symlink_to(outside, target_is_directory=True)
-    with pytest.raises(validator.AlgorithmLifecycleError, match="evidence"):
+    with pytest.raises(OSError, match="research directory must not redirect"):
         _ = validator.validate_repository_lifecycle(manifest)

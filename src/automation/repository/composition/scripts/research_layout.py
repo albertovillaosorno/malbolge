@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from stat import S_ISDIR
 from stat import S_ISLNK
 from stat import S_ISREG
 from typing import TYPE_CHECKING
@@ -44,7 +45,34 @@ if TYPE_CHECKING:
 STATE_GRAPH_ID = "self-modification-state-graph-optimizer"
 
 
-def _manifest_is_file(path: Path) -> bool:
+def _unlinked_directory(root: Path, directory: Path) -> bool:
+    """Check each in-root directory component without following an alias.
+
+    Returns:
+        Whether the full directory exists as physical directory entries.
+
+    Raises:
+        OSError: The tree has a linked or junction directory component.
+
+    """
+    current = root
+    for part in directory.relative_to(root).parts:
+        current /= part
+        try:
+            status = current.lstat()
+        except FileNotFoundError:
+            return False
+        if S_ISLNK(status.st_mode) or current.is_junction():
+            message = f"research directory must not redirect: {current}"
+            raise OSError(message)
+        if not S_ISDIR(status.st_mode):
+            return False
+    return True
+
+
+def _manifest_is_file(path: Path, root: Path) -> bool:
+    if not _unlinked_directory(root, path.parent):
+        return False
     try:
         status = path.lstat()
     except FileNotFoundError:
@@ -61,15 +89,23 @@ def research_algorithm_directories(root: Path) -> tuple[tuple[str, Path], ...]:
     Returns:
         Sorted `(research_id, directory)` pairs for every research experiment.
 
+    Raises:
+        OSError: The research root is missing or redirects through a link.
+
     """
     domain_root = root / "src/research/algorithms/domain/algorithms"
+    if not _unlinked_directory(root, domain_root):
+        message = (
+            f"research domain directory missing or not regular: {domain_root}"
+        )
+        raise OSError(message)
     entries = {
         directory.name: directory
         for directory in domain_root.iterdir()
-        if _manifest_is_file(directory / "experiment.toml")
+        if _manifest_is_file(directory / "experiment.toml", root)
     }
     state_graph = root / "src/research/algorithms/composition/state-graph"
-    if _manifest_is_file(state_graph / "experiment.toml"):
+    if _manifest_is_file(state_graph / "experiment.toml", root):
         entries[STATE_GRAPH_ID] = state_graph
     return tuple(sorted(entries.items()))
 

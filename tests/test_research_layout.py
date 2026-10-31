@@ -35,6 +35,7 @@
 from pathlib import Path
 
 import pytest
+
 from scripts import research_layout
 
 
@@ -91,4 +92,42 @@ def test_redirected_manifest_fails_closed(
 
     monkeypatch.setattr(Path, "is_junction", report_junction)
     with pytest.raises(OSError, match="must not redirect"):
+        _ = research_layout.research_algorithm_directories(tmp_path)
+
+
+def test_linked_algorithm_directory_is_not_discovered(tmp_path: Path) -> None:
+    """An external experiment cannot enter discovery through an ID link."""
+    domain = _domain_root(tmp_path)
+    domain.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "experiment.toml").write_text("schema_version = 1\n")
+    (domain / "candidate").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(OSError, match="redirect"):
+        _ = research_layout.research_algorithm_directories(tmp_path)
+
+
+def test_linked_ancestor_directory_is_not_discovered(tmp_path: Path) -> None:
+    """A link above the algorithm ID cannot import external experiments."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    candidate = outside / "research/algorithms/domain/algorithms/candidate"
+    candidate.mkdir(parents=True)
+    _ = (candidate / "experiment.toml").write_text("schema_version = 1\n")
+    (root / "src").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(OSError, match="redirect"):
+        _ = research_layout.research_algorithm_directories(root)
+
+
+def test_linked_state_graph_directory_is_not_discovered(tmp_path: Path) -> None:
+    """The composition research projection cannot follow an alias either."""
+    _domain_root(tmp_path).mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "experiment.toml").write_text("schema_version = 1\n")
+    state_graph = tmp_path / "src/research/algorithms/composition/state-graph"
+    state_graph.parent.mkdir(parents=True)
+    state_graph.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(OSError, match="redirect"):
         _ = research_layout.research_algorithm_directories(tmp_path)
