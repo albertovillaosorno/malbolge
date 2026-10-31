@@ -47,6 +47,7 @@ from algorithms.diff.source_binding import bind_secret
 from algorithms.diff.source_binding import hkdf_expand_sha256
 from algorithms.diff.source_binding import hkdf_extract_sha256
 from algorithms.diff.source_binding import recover_secret
+from algorithms.diff.source_binding import validate_threshold_binding
 import pytest
 
 if TYPE_CHECKING:
@@ -405,6 +406,8 @@ def test_recovery_rejects_malformed_share_metadata() -> None:
     second = binding.shares[1]
     malformed_shares = (
         replace(first, source_path="../escape.c"),
+        replace(first, source_path="src/bad\x00name.c"),
+        replace(first, source_path="src/bad\ud800name.c"),
         replace(first, anchor_digest=b"short"),
         replace(first, x=True),
         replace(first, x=0),
@@ -413,6 +416,8 @@ def test_recovery_rejects_malformed_share_metadata() -> None:
     )
     for share in malformed_shares:
         malformed = replace(binding, shares=(share, *binding.shares[1:]))
+        with pytest.raises(SourceBindingError, match="source"):
+            _ = validate_threshold_binding(malformed)
         with pytest.raises(SourceBindingError, match="source"):
             _ = recover_secret(malformed, reference)
 

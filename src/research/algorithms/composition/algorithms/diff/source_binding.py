@@ -71,6 +71,7 @@ _ZERO = 0
 _BACKSLASH = "\\"
 _DOT = "."
 _PARENT = ".."
+_NUL = "\x00"
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
     selection_modulus=64,
@@ -596,6 +597,14 @@ def _validate_share_path(value: object) -> None:
     if type(value) is not str or not value:
         message = "source-binding share path must be a non-empty string"
         raise SourceBindingError(message)
+    if _NUL in value:
+        message = "source-binding share path cannot contain NUL"
+        raise SourceBindingError(message)
+    try:
+        _ = value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        message = "source-binding share path must be UTF-8 encodable"
+        raise SourceBindingError(message) from error
     path = PurePosixPath(value)
     unsafe = _BACKSLASH in value or value == _DOT or path.is_absolute()
     noncanonical = _PARENT in path.parts or path.as_posix() != value
