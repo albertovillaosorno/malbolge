@@ -3819,11 +3819,42 @@ fn canonical_typed_rotated_literal_enforces_fifteen_output_witness_domain() -> R
             "typed fifteenth output admitted unwitnessed byte",
         ));
     }
-    let sixteenth = wire(&typed_rotated_literal_module_with_outputs(142, 16)?)?;
-    if adapter::compile_canonical_typed_rotated_byte_literal(&sixteenth, current_profile())
+    let unwitnessed_sixteenth = wire(&typed_rotated_literal_module_with_outputs(142, 16)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(
+        &unwitnessed_sixteenth,
+        current_profile(),
+    ) != Err(TypedEchoAdapterError::Layout(
+        adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
+    )) {
+        return Err(String::from("typed unwitnessed sixteenth output admitted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_rotated_literal_enforces_sixteen_output_domain() -> Result<(), String> {
+    let permitted = wire(&typed_rotated_literal_module_with_outputs(41, 16)?)?;
+    let accepted =
+        adapter::compile_canonical_typed_rotated_byte_literal(&permitted, current_profile())
+            .map_err(|error| format!("witnessed typed sixteen-output rejected: {error:?}"))?;
+    if accepted.layout().executed_code_positions().len() != 19 {
+        return Err(String::from("sixteen-output typed layout length drift"));
+    }
+    let foreign = wire(&typed_rotated_literal_module_with_outputs(142, 16)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&foreign, current_profile())
+        != Err(TypedEchoAdapterError::Layout(
+            adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
+        ))
+    {
+        return Err(String::from(
+            "typed sixteen-output admitted unwitnessed byte",
+        ));
+    }
+    let beyond = wire(&typed_rotated_literal_module_with_outputs(41, 17)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&beyond, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed sixteenth output admitted"));
+        return Err(String::from("typed seventeen-output shape admitted"));
     }
     Ok(())
 }
@@ -4097,6 +4128,15 @@ fn seeded_fourteen_output_literal_canonical_publisher_and_real_runner() -> Resul
 fn seeded_fifteen_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
     let workspace = OwnedFixture::new()?;
     for case in [(142, 15, true, false, true), (255, 15, false, true, true)] {
+        verify_seeded_publisher_case(&workspace, case)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_sixteen_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for case in [(41, 16, true, false, true), (194, 16, false, true, true)] {
         verify_seeded_publisher_case(&workspace, case)?;
     }
     Ok(())
