@@ -164,6 +164,162 @@ def _modify_manifest(
     )
 
 
+class _HostileSnapshotSink(list[evidence.EvidenceSnapshot]):
+    """Foreign list append must not become a late evidence-approval hook."""
+
+    def append(self, item: evidence.EvidenceSnapshot) -> None:
+        del item
+        message = "foreign snapshot append executed after admission"
+        raise AssertionError(message)
+
+
+class _HostileEvidenceSnapshot:
+    """Snapshot attribute lookup must not execute a caller-owned property."""
+
+    @property
+    def bundle(self) -> object:
+        message = "foreign snapshot property executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("invalid", [{}, (), object(), _HostileSnapshotSink()])
+def test_snapshot_sink_requires_exact_native_list_before_work(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    invalid: object,
+) -> None:
+    """Malformed direct snapshot output must fail before any evidence reads."""
+
+    def forbidden_root(root: Path) -> None:
+        del root
+        message = "invalid snapshot output reached file admission"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(evidence, "_admit_root", forbidden_root)
+    with pytest.raises(evidence.EvidenceError, match="snapshot"):
+        evidence.validate_links(
+            {}, tmp_path, _snapshot_out=cast("list[evidence.EvidenceSnapshot]", invalid)
+        )
+
+
+@pytest.mark.parametrize("invalid", [None, object(), _HostileEvidenceSnapshot()])
+def test_snapshot_recheck_rejects_foreign_container_before_hooks(
+    invalid: object,
+) -> None:
+    """A foreign recheck object cannot expose properties to the auditor."""
+    with pytest.raises(evidence.EvidenceError, match="snapshot"):
+        evidence.recheck_evidence_snapshot(cast("evidence.EvidenceSnapshot", invalid))
+
+
+@pytest.mark.parametrize("field", ["context", "contents", "bundle"])
+def test_snapshot_recheck_rejects_foreign_fields_before_file_work(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, field: str
+) -> None:
+    """A native wrapper alone cannot conceal unsupported nested containers."""
+    context = evidence._EvidenceContext(
+        tmp_path, {}, {}, set(), set(), evidence.EvidencePolicy()
+    )
+    snapshot = evidence.EvidenceSnapshot(context, None, None)
+    object.__setattr__(snapshot, field, object())
+
+    def forbidden_recheck(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        message = "invalid snapshot reached retained evidence recheck"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(evidence, "_recheck_retained_links", forbidden_recheck)
+    monkeypatch.setattr(evidence, "_recheck_bundle_files", forbidden_recheck)
+    with pytest.raises(evidence.EvidenceError, match="snapshot"):
+        evidence.recheck_evidence_snapshot(snapshot)
+
+
+@pytest.mark.parametrize(
+    "invalid_field",
+    [
+        "manifests-map",
+        "manifests-entry",
+        "manifest-key",
+        "sample-map",
+        "sample-key",
+        "raw-map",
+        "raw-key",
+        "bundle-sources",
+        "bundle-retained",
+        "bundle-foreign-leaf",
+        "policy",
+    ],
+)
+def test_snapshot_recheck_preflights_nested_native_records(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    invalid_field: str,
+) -> None:
+    """Forged native wrappers fail before their nested maps are traversed."""
+    context = evidence._EvidenceContext(
+        tmp_path, {}, {}, set(), set(), evidence.EvidencePolicy()
+    )
+    snapshot = evidence.EvidenceSnapshot(context, None, None)
+    if invalid_field == "manifests-map":
+        context.manifests = cast("dict[str, evidence._ManifestLink]", object())
+    elif invalid_field == "manifests-entry":
+        context.manifests["forged.toml"] = cast("evidence._ManifestLink", object())
+    elif invalid_field == "manifest-key":
+        context.manifests[cast("str", 1)] = cast("evidence._ManifestLink", object())
+    elif invalid_field == "sample-map":
+        context.samples = cast("set[str]", object())
+    elif invalid_field == "sample-key":
+        context.samples.add(cast("str", 42))
+    elif invalid_field == "raw-map":
+        object.__setattr__(snapshot, "contents", object())
+    elif invalid_field == "raw-key":
+        object.__setattr__(snapshot, "contents", {1: "abcd"})
+    elif invalid_field == "bundle-sources":
+        object.__setattr__(
+            snapshot,
+            "bundle",
+            evidence._BundleInspection(cast("dict[str, str]", object()), {}),
+        )
+    elif invalid_field == "bundle-retained":
+        object.__setattr__(
+            snapshot,
+            "bundle",
+            evidence._BundleInspection({}, cast("dict[str, str]", object())),
+        )
+    elif invalid_field == "bundle-foreign-leaf":
+        object.__setattr__(
+            snapshot, "bundle", evidence._BundleInspection({}, {"forged.bin": "abcd"})
+        )
+    else:
+        context.policy = cast("evidence.EvidencePolicy", object())
+
+    def forbidden_recheck(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        message = "invalid nested snapshot reached retained filesystem"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(evidence, "_recheck_retained_links", forbidden_recheck)
+    monkeypatch.setattr(evidence, "_recheck_bundle_files", forbidden_recheck)
+    with pytest.raises(evidence.EvidenceError, match="snapshot"):
+        evidence.recheck_evidence_snapshot(snapshot)
+
+
+def test_native_snapshot_sink_retains_recheckable_evidence(tmp_path: Path) -> None:
+    """The native list outparam returns a snapshot of real fixture links."""
+    document = sample_study(tmp_path)
+    snapshots: list[evidence.EvidenceSnapshot] = []
+    _ = evidence.validate_links(document, tmp_path, _snapshot_out=snapshots)
+    assert len(snapshots) == 1
+    evidence.recheck_evidence_snapshot(snapshots[0])
+
+
+def test_empty_native_evidence_snapshot_recheck_succeeds(tmp_path: Path) -> None:
+    """A correctly shaped no-link snapshot remains a valid empty recheck."""
+    context = evidence._EvidenceContext(
+        tmp_path, {}, {}, set(), set(), evidence.EvidencePolicy()
+    )
+    evidence.recheck_evidence_snapshot(evidence.EvidenceSnapshot(context, None, None))
+
+
 def test_links_are_checked_without_certification(tmp_path: Path) -> None:
     """Existing manifest parser cross-checks exactly two distinct run links."""
     document = sample_study(tmp_path)

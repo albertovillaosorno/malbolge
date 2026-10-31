@@ -726,8 +726,62 @@ class EvidenceSnapshot:
     bundle: _BundleInspection | None
 
 
+def _admit_snapshot(snapshot: EvidenceSnapshot) -> None:
+    """Refuse foreign record hooks before any retained-evidence recheck."""
+    if type(snapshot) is not EvidenceSnapshot:
+        _fail("evidence snapshot requires an exact native record")
+    context = snapshot.context
+    if (
+        type(context) is not _EvidenceContext
+        or type(context.root) is not type(Path())
+        or type(context.manifests) is not dict
+        or type(context.samples) is not set
+        or type(context.claimed_trial_manifests) is not set
+        or type(context.study) is not dict
+        or type(context.policy) is not EvidencePolicy
+    ):
+        _fail("evidence snapshot requires a native evidence context")
+    if any(
+        type(name) is not str
+        or type(link) is not _ManifestLink
+        or type(link.source_sha256) is not str
+        for name, link in context.manifests.items()
+    ) or any(
+        type(name) is not str
+        for names in (context.samples, context.claimed_trial_manifests)
+        for name in names
+    ):
+        _fail("evidence snapshot requires native retained link identities")
+    contents = snapshot.contents
+    if contents is not None and (
+        type(contents) is not dict
+        or any(
+            type(name) is not str or type(digest) is not str
+            for name, digest in contents.items()
+        )
+    ):
+        _fail("evidence snapshot requires native raw-content fingerprints")
+    bundle = snapshot.bundle
+    if bundle is not None and (
+        type(bundle) is not _BundleInspection
+        or type(bundle.sources) is not dict
+        or type(bundle.retained_sha256) is not dict
+        or any(
+            type(name) is not str or type(digest) is not str
+            for records in (bundle.sources, bundle.retained_sha256)
+            for name, digest in records.items()
+        )
+        or any(
+            name.rsplit("/", 1)[-1] not in BUNDLE_FILE_LIMITS
+            for name in bundle.retained_sha256
+        )
+    ):
+        _fail("evidence snapshot requires native bundle fingerprints")
+
+
 def recheck_evidence_snapshot(snapshot: EvidenceSnapshot) -> None:
-    """Reject observed retained-input drift without rerunning native tools."""
+    """Reject observed retained-input drift without foreign record hooks."""
+    _admit_snapshot(snapshot)
     if snapshot.bundle is not None:
         _recheck_bundle_files(snapshot.context.root, snapshot.bundle)
     _recheck_retained_links(snapshot.context, snapshot.contents)
@@ -749,6 +803,8 @@ def validate_links(
         EvidenceError: A linked identity or retained file is inadmissible.
 
     """
+    if _snapshot_out is not None and type(_snapshot_out) is not list:
+        _fail("evidence snapshot output requires an exact native list")
     _admit_root(root)
     _admit_policy(policy)
     if policy.require_host_c_challenge_oracle and policy.challenge_root is None:
