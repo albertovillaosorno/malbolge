@@ -273,7 +273,12 @@ def _collect(
                     raise sp.TimeoutExpired(child.args, limits.timeout_seconds)
                 for key, _ in watched.select(remaining):
                     _read_ready(key, watched, buffers=buffers, limits=limits)
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except (TargetProcessError, sp.TimeoutExpired):
+        # Preserve exact quota and deadline failures from our own transport.
+        raise
+    except Exception as error:
+        # Selector and stream dependencies may raise any ordinary exception.
+        # Never format foreign hooks or publish a partially captured stream.
         message = "bounded target output capture failed"
         raise TargetProcessError(message) from error
     return bytes(buffers[0]), bytes(buffers[1])

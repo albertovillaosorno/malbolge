@@ -430,6 +430,49 @@ def test_output_selector_failure_is_typed_and_retains_cause(
     assert type(error.value.__cause__) is fault
 
 
+class _HostileSelectorFault(Exception):
+    """A failed selector may originate in a foreign dependency wrapper."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign target selector formatter executed")
+
+
+@pytest.mark.parametrize("stage", ["construct", "select"])
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, OverflowError, _HostileSelectorFault]
+)
+def test_unexpected_selector_fault_is_typed_without_foreign_formatters(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected ordinary selector failures cannot escape the output boundary."""
+    original_selector = target_process.selectors.DefaultSelector
+    fault = fault_class("untrusted selector failure")
+
+    def broken_selector() -> target_process.selectors.BaseSelector:
+        if stage == "construct":
+            raise fault
+        selector = original_selector()
+
+        def broken_select(timeout: float | None = None) -> None:
+            del timeout
+            raise fault
+
+        monkeypatch.setattr(selector, "select", broken_select)
+        return selector
+
+    monkeypatch.setattr(target_process.selectors, "DefaultSelector", broken_selector)
+    with pytest.raises(
+        target_process.TargetProcessError, match="output capture"
+    ) as caught:
+        target_process.invoke(
+            _child("import os; os.write(1, b'output')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    assert caught.value.__cause__ is fault
+
+
 @pytest.mark.parametrize(
     "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
 )
