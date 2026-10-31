@@ -830,6 +830,11 @@ The original study records remain the result authority.
   Synthetic regressions reject forged profile, challenge, oracle, algorithm,
   workload, host, outcome, and raw path identities; unsafe/missing file links
   and malformed/oversized manifests fail closed.
+- The standalone deterministic challenge-bundle replay also checks the
+  exact case shape and byte payload types and sizes before regeneration.
+  Direct malformed case/payload calls reject through `ChallengeBundleError`
+  rather than leaking host indexing or type errors; these are admission
+  checks, not independent compiler or candidate-verification evidence.
 - `benchmarks/arena/raw_samples.py` optionally matches retained CSV content
   exactly against the reported trial set. Synthetic regressions cover missing,
   extra, duplicate and mismatched rows, plus malformed CSV inputs. The
