@@ -537,6 +537,38 @@ def test_preflight_rejects_foreign_runtime_type() -> None:
         )
 
 
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("entrypoint", ["preflight", "direct_error"])
+def test_canonical_authority_host_loader_faults_are_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    entrypoint: str,
+) -> None:
+    """Canonical profile host failures cannot escape requirement preflight."""
+    requirement = _requirement(required_memory_words=1)
+    runtime = requirements.safe_rust_classic_capability()
+    fault = fault_type("injected canonical profile loader failure")
+
+    def fail_load(_path: Path) -> target_profile.JsonObject:
+        raise fault
+
+    monkeypatch.setattr(target_profile, "load_document", fail_load)
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="canonical profile authority is unavailable or invalid",
+    ) as caught:
+        if entrypoint == "preflight":
+            requirements.preflight_profile_requirement(requirement, runtime)
+        else:
+            _ = requirements.ProfileRequirementError(
+                requirements.ProfileRequirementErrorKind.RUNTIME_CAPABILITY_MISSING,
+                requirement,
+                runtime,
+                missing_dimensions=("word-trits", "memory-words"),
+            )
+    assert caught.value.__cause__ is fault
+
+
 def test_preflight_contains_unavailable_canonical_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

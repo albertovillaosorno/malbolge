@@ -405,8 +405,14 @@ def _canonical_profile_requirement(
             profile_id,
             required_memory_words=required_memory_words,
         )
-    except (OSError, target_profile.ProfileValidationError):
-        _raise_validation("canonical profile authority is unavailable or invalid")
+    except ProfileRequirementValidationError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        message = (
+            "target profile requirement canonical profile authority "
+            "is unavailable or invalid"
+        )
+        raise ProfileRequirementValidationError(message) from error
 
 
 def _validated_runtime(value: RuntimeCapability) -> RuntimeCapability:
