@@ -456,10 +456,14 @@ def _commit() -> str:
         or output.stderr != ""
     ):
         _fail("target echo reference has invalid Git revision receipt")
-    commit = output.stdout.strip()
-    if len(commit) != COMMIT_HEX_WIDTH or not set(commit) <= analyze.SHA256_ALPHABET:
+    stdout = output.stdout
+    if (
+        len(stdout) != COMMIT_HEX_WIDTH + 1
+        or not stdout.endswith("\n")
+        or not set(stdout[:-1]) <= analyze.SHA256_ALPHABET
+    ):
         _fail("target echo reference has invalid Git revision")
-    return commit
+    return stdout[:-1]
 
 
 def _input_bytes(pairs: int, mode: str) -> bytes:

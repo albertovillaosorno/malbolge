@@ -516,6 +516,36 @@ def test_target_echo_commit_rejects_noncanonical_git_receipts(
         target_echo_reference._commit()
 
 
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        "a" * 40,
+        " a" + "a" * 39 + "\n",
+        "a" * 40 + "\n\n",
+        "a" * 40 + " \n",
+        "a" * 40 + "\r\n",
+    ],
+    ids=[
+        "missing-newline",
+        "leading-space",
+        "extra-newline",
+        "trailing-space",
+        "windows-newline",
+    ],
+)
+def test_target_echo_commit_rejects_noncanonical_revision_line(
+    monkeypatch: pytest.MonkeyPatch, stdout: str
+) -> None:
+    """Whitespace-normalized lookalikes cannot identify a real Git HEAD receipt."""
+
+    def forged(command: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(command, 0, stdout, "")
+
+    monkeypatch.setattr(target_echo_reference.sp, "run", forged)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="Git revision"):
+        target_echo_reference._commit()
+
+
 class _HostileGitReceipt(str):
     """Foreign Git text must not gain authorization via a string hook."""
 
