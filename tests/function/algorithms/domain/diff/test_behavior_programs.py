@@ -255,6 +255,16 @@ def test_behavior_program_records_reject_foreign_mutable_inputs() -> None:
         )
 
 
+@pytest.mark.parametrize("invalid", ["fix\x00bug", "fix" + chr(0xD800)])
+def test_correction_identifiers_must_be_portable_utf8(invalid: str) -> None:
+    """Bug correction labels must remain portable before authoring."""
+    program = _read_program("historical-bug", "bug-state.txt")
+    with pytest.raises(BehaviorProgramError, match="correction identifier"):
+        _ = BugProgram(program, invalid)
+    with pytest.raises(BehaviorProgramError, match="correction identifier"):
+        _ = AuthoredBugProgram(program, invalid, b"present", b"fixed")
+
+
 def test_authored_behavior_records_reject_foreign_incoherent_inputs(
     tmp_path: Path,
 ) -> None:

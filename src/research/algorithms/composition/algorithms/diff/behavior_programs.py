@@ -68,6 +68,9 @@ if TYPE_CHECKING:
     from algorithms.diff.probe_exec import ProbeTranscript
 
 
+_NUL = "\x00"
+
+
 class BehaviorProgramError(ValueError):
     """Raised when behavior programs cannot form an unambiguous profile."""
 
@@ -105,9 +108,9 @@ class BugProgram:
             message = "bug behavior program requires an exact ProbeProgram"
             raise BehaviorProgramError(message)
         _require_selected_program(self.program, "bug")
-        if type(self.correction_id) is not str or not self.correction_id:
-            message = "bug behavior program requires a correction identifier"
-            raise BehaviorProgramError(message)
+        _ = _require_correction_identifier(
+            self.correction_id, "bug behavior program"
+        )
 
 
 def _require_program_tuple(value: object, context: str) -> None:
@@ -191,6 +194,14 @@ def _require_correction_identifier(value: object, context: str) -> str:
     if type(value) is not str or not value:
         message = f"{context} requires a correction identifier"
         raise BehaviorProgramError(message)
+    if _NUL in value:
+        message = f"{context} correction identifier must not contain NUL"
+        raise BehaviorProgramError(message)
+    try:
+        _ = value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        message = f"{context} correction identifier must use UTF-8 text"
+        raise BehaviorProgramError(message) from error
     return value
 
 
