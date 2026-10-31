@@ -718,11 +718,30 @@ def test_host_reference_workspace_failures_are_typed_and_cleanup_own_output(
     assert not directory.exists()
 
 
-@pytest.mark.parametrize("cleanup_type", [ValueError, RuntimeError])
+class _UnsafeWorkspaceCleanupError(ValueError):
+    def __str__(self) -> str:
+        raise AssertionError("workspace cleanup exception must not be formatted")
+
+
+class _UnsafeWorkspaceCleanupArgument:
+    def __str__(self) -> str:
+        raise AssertionError("workspace cleanup argument must not be formatted")
+
+
+@pytest.mark.parametrize(
+    "cleanup_error",
+    [
+        ValueError("injected cleanup error"),
+        RuntimeError("injected cleanup error"),
+        _UnsafeWorkspaceCleanupError("foreign cleanup"),
+        ValueError(_UnsafeWorkspaceCleanupArgument()),
+    ],
+    ids=["native-value", "native-runtime", "foreign-subclass", "foreign-argument"],
+)
 def test_host_reference_setup_cleanup_failure_preserves_original_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    cleanup_type: type[Exception],
+    cleanup_error: ValueError | RuntimeError,
 ) -> None:
     """Unexpected cleanup faults cannot hide the failed workspace setup."""
     directory = tmp_path / "allocated"
@@ -739,8 +758,7 @@ def test_host_reference_setup_cleanup_failure_preserves_original_error(
 
     def broken_cleanup(path: Path) -> None:
         _ = path
-        message = "injected cleanup error"
-        raise cleanup_type(message)
+        raise cleanup_error
 
     monkeypatch.setattr(reference_study, "_validate_plan", lambda _: None)
     monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
@@ -756,8 +774,79 @@ def test_host_reference_setup_cleanup_failure_preserves_original_error(
         )
     original = error.value.__cause__
     assert isinstance(original, OSError)
-    cleanup_note = "cleanup also failed"
-    assert any(cleanup_note in note for note in original.__notes__)
+    note = "host-C workspace cleanup also failed"
+    if type(cleanup_error) in (ValueError, RuntimeError) and (
+        type(cleanup_error.args[0]) is str
+    ):
+        note += ": injected cleanup error"
+    assert original.__notes__ == [note]
+
+
+class _UnsafeHostOracleError(host_c_oracle.HostOracleError):
+    def __str__(self) -> str:
+        raise AssertionError("foreign host-C error must not be formatted")
+
+
+@pytest.mark.parametrize(
+    "oracle_failure",
+    [
+        _UnsafeHostOracleError("foreign host-C failure"),
+        host_c_oracle.HostOracleError(_UnsafeWorkspaceCleanupArgument()),
+    ],
+    ids=["foreign-host-error", "host-error-with-foreign-argument"],
+)
+def test_host_reference_failed_arm_keeps_tool_failure_on_hostile_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    oracle_failure: host_c_oracle.HostOracleError,
+) -> None:
+    """Unsafe host error formatting cannot hide a failed compiler stage."""
+
+    def reject_measurement(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise oracle_failure
+
+    monkeypatch.setattr(reference_study, "_successful", reject_measurement)
+    case = {"family": FAMILY, "version": 1, "seed": 7, "difficulty": 4}
+    row, artifact, diagnostic = reference_study._measure(
+        reference_study._ROOT / ".temp" / "host-C-failure-probe",
+        case,
+        trial=0,
+        arm=(reference_study.CANDIDATE, OPTIMIZED_MODE),
+    )
+    assert row["outcome"] == FAILED
+    assert row["verifier_verdict"] == analyze.NOT_RUN
+    assert ARTIFACT_METRIC not in row["metrics"]
+    assert artifact == {}
+    assert diagnostic == "host-C reference failed without diagnostic"
+
+
+@pytest.mark.parametrize(
+    "oracle_failure",
+    [
+        _UnsafeHostOracleError("foreign host-C failure"),
+        host_c_oracle.HostOracleError(_UnsafeWorkspaceCleanupArgument()),
+    ],
+    ids=["foreign-host-error", "host-error-with-foreign-argument"],
+)
+def test_host_reference_resource_preflight_types_hostile_oracle_error(
+    monkeypatch: pytest.MonkeyPatch,
+    oracle_failure: host_c_oracle.HostOracleError,
+) -> None:
+    """Preflight rejection preserves the cause without unsafe conversion."""
+
+    def reject_resources() -> None:
+        raise oracle_failure
+
+    monkeypatch.setattr(
+        host_c_oracle, "require_child_resource_controls", reject_resources
+    )
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="child limits"
+    ) as error:
+        reference_study._validate_plan(
+            reference_study.StudyPlan(FAMILY, (4,), 7, 1)
+        )
+    assert error.value.__cause__ is oracle_failure
 
 
 @pytest.mark.skipif(

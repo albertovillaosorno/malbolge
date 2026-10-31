@@ -336,7 +336,13 @@ def _successful(
 
 
 def _failure_diagnostic(error: host_c_oracle.HostOracleError) -> str:
-    raw = str(error)
+    # Even an exact native exception may wrap a hostile argument, while a
+    # subclass can override __str__ and hide a failed trial entirely.
+    raw = ""
+    if type(error) is host_c_oracle.HostOracleError:
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            raw = arguments[0]
     ascii_message = "".join(
         character if ASCII_LOW <= character <= ASCII_HIGH else "?"
         for character in raw
@@ -743,7 +749,10 @@ def _validate_plan(plan: StudyPlan) -> None:
     try:
         host_c_oracle.require_child_resource_controls()
     except host_c_oracle.HostOracleError as error:
-        message = f"host-C reference requires enforced child limits: {error}"
+        message = (
+            "host-C reference requires enforced child limits: "
+            f"{_failure_diagnostic(error)}"
+        )
         raise ReferenceStudyError(message) from error
 
 
@@ -785,7 +794,12 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
         try:
             shutil.rmtree(directory)
         except (OSError, ValueError, RuntimeError) as cleanup_error:
-            error.add_note(f"host-C workspace cleanup also failed: {cleanup_error}")
+            note = "host-C workspace cleanup also failed"
+            if type(cleanup_error) in (OSError, ValueError, RuntimeError):
+                arguments = cleanup_error.args
+                if len(arguments) == 1 and type(arguments[0]) is str:
+                    note += f": {arguments[0]}"
+            error.add_note(note)
         message = "host-C reference workspace setup failed"
         raise ReferenceStudyError(message) from error
     return directory, _run_study(directory, plan, commit=commit)
