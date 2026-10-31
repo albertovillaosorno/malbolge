@@ -74,6 +74,88 @@ class _UnexpectedHostFault(IndexError):
         raise AssertionError("foreign dependency exception was formatted")
 
 
+class _HostilePlatformName(str):
+    def __format__(self, format_spec: str) -> str:
+        del format_spec
+        raise AssertionError("foreign host identity formatter executed")
+
+
+@pytest.mark.parametrize("field", ["system", "machine", "node"])
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        None,
+        0,
+        b"bad",
+        "",
+        " ",
+        "host\nspoof",
+        "a" * 257,
+        _HostilePlatformName("bad"),
+    ],
+)
+def test_reference_host_identity_rejects_invalid_platform_receipt_before_measurement(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    field: str,
+    invalid: object,
+) -> None:
+    """Untrusted machine identity cannot enter a retained study record."""
+    root = tmp_path / "study"
+    root.mkdir()
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("invalid platform identity reached host-C measurement")
+
+    monkeypatch.setattr(reference_study, "_ROOT", tmp_path)
+    monkeypatch.setattr(reference_study, "_write_case", forbidden)
+    monkeypatch.setattr(reference_study.platform, field, lambda: invalid)
+    with pytest.raises(reference_study.ReferenceStudyError, match="host identity"):
+        reference_study._run_study(  # ruff: ignore[private-member-access]
+            root, reference_study.StudyPlan(FAMILY, (4,), 7, 1), commit="a" * 40
+        )
+
+
+def test_reference_host_identity_preserves_valid_native_components(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ordinary platform identity retains all three host provenance fields."""
+    monkeypatch.setattr(reference_study.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(reference_study.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(reference_study.platform, "node", lambda: "build-host")
+    observed = reference_study._host_identity()  # ruff: ignore[private-member-access]
+    assert observed == "Linux-x86_64-build-host"
+
+
+@pytest.mark.parametrize("field", ["system", "machine", "node"])
+def test_reference_host_identity_types_unexpected_platform_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    field: str,
+) -> None:
+    """Foreign host probes remain typed without invoking their formatter."""
+    fault = _UnexpectedHostFault("foreign platform failure")
+    root = tmp_path / "study"
+    root.mkdir()
+
+    def fail_probe() -> None:
+        raise fault
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("failed platform probe reached measurement")
+
+    monkeypatch.setattr(reference_study, "_ROOT", tmp_path)
+    monkeypatch.setattr(reference_study, "_write_case", forbidden)
+    monkeypatch.setattr(reference_study.platform, field, fail_probe)
+    with pytest.raises(reference_study.ReferenceStudyError, match="host identity") as caught:
+        reference_study._run_study(  # ruff: ignore[private-member-access]
+            root, reference_study.StudyPlan(FAMILY, (4,), 7, 1), commit="a" * 40
+        )
+    assert caught.value.__cause__ is fault
+
+
 def _pilot() -> tuple[Path, dict[str, Any]]:
     path, document = reference_study.run_study(
         reference_study.StudyPlan(FAMILY, (4, 8), 7, REPETITIONS),

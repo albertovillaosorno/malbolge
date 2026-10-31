@@ -707,12 +707,33 @@ def _write_retained_text(path: Path, content: str) -> None:
         _fail(f"host-C retained {path.name} has invalid write count")
 
 
+MAX_HOST_COMPONENT_LENGTH = 256
+
+
+def _host_identity() -> str:
+    """Admit bounded native host labels before recording study provenance."""
+    try:
+        components = (platform.system(), platform.machine(), platform.node())
+    except Exception as error:
+        message = "host-C reference host identity lookup failed"
+        raise ReferenceStudyError(message) from error
+    if any(
+        type(component) is not str
+        or not 1 <= len(component) <= MAX_HOST_COMPONENT_LENGTH
+        or component.strip() != component
+        or any(not ASCII_LOW <= char <= ASCII_HIGH for char in component)
+        for component in components
+    ):
+        _fail("host-C reference host identity requires bounded printable components")
+    return "-".join(components)
+
+
 def _run_study(root: Path, plan: StudyPlan, *, commit: str) -> dict[str, Any]:
     environment = _Env(
         root=root,
         plan=plan,
         commit=commit,
-        host=f"{platform.system()}-{platform.machine()}-{platform.node()}",
+        host=_host_identity(),
         toolchain="repo-pinned-clang-22.1.8",
         prefix=root.relative_to(_ROOT).as_posix(),
     )
