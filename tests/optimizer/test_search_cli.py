@@ -1398,3 +1398,46 @@ def test_search_cli_rejects_foreign_process_argv_before_argparse(
     assert status == CONFIGURATION_ERROR
     assert not output.getvalue()
     assert "arguments" in diagnostic.getvalue()
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+@pytest.mark.parametrize("phase", ["stat", "open"])
+def test_cli_wraps_hostile_binary_source_os_errors_without_string_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+    phase: str,
+) -> None:
+    """Untrusted OSError __str__ cannot escape as an untyped CLI traceback."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    real_stat = Path.stat
+    real_open = os.open
+    raised = False
+
+    class HostileOsError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign OSError __str__ called")
+
+    def failing_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        nonlocal raised
+        if path == selected and phase == "stat":
+            raised = True
+            raise HostileOsError("synthetic hostile binary source")
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    def failing_open(path: Path, flags: int) -> int:
+        nonlocal raised
+        if path == selected and phase == "open":
+            raised = True
+            raise HostileOsError("synthetic hostile binary source")
+        return real_open(path, flags)
+
+    monkeypatch.setattr(Path, "stat", failing_stat)
+    monkeypatch.setattr(os, "open", failing_open)
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert raised
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert "HostileOsError" in error

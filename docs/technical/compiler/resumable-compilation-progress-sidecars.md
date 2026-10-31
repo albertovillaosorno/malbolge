@@ -893,6 +893,12 @@ checkpoint state, and records checkpoint SHA-256 plus
 `evaluated-search-prefix-resume-v1` in resumed JSON output. Fresh-search JSON is
 unchanged.
 
+Both configuration and binary file ingress wrap foreign `OSError` subclasses
+without executing their overridable string hooks: exact built-in native OS
+errors retain their details, while foreign exceptions contribute only their
+class name to the typed configuration diagnostic. This applies at pathname
+metadata probes and file open, keeping the original exception as cause.
+
 The optimizer search CLI additionally admits only native `list[str]` or
 `tuple[str, ...]` direct argument vectors (and a native process `sys.argv`)
 before invoking `argparse`. Non-string elements, hostile collection/string

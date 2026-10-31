@@ -616,3 +616,43 @@ def test_search_configuration_load_preserves_surrogateescape_byte_path(
     parsed = load_search_configuration(path)
     assert parsed.source == path.as_posix()
     assert parsed.selection.backend_id == BACKEND
+
+
+@pytest.mark.parametrize("phase", ["stat", "open"])
+def test_search_config_wraps_hostile_os_errors_without_string_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """Foreign OSError subclasses cannot escape through diagnostic formatting."""
+    source = tmp_path / SEARCH_CONFIG_SOURCE
+    _ = source.write_text(_config(), encoding="utf-8")
+    real_stat = Path.stat
+    real_open = os.open
+    raised = False
+
+    class HostileOsError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign OSError __str__ called")
+
+    def failing_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        nonlocal raised
+        if path == source and phase == "stat":
+            raised = True
+            raise HostileOsError("synthetic hostile source")
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    def failing_open(path: Path, flags: int) -> int:
+        nonlocal raised
+        if path == source and phase == "open":
+            raised = True
+            raise HostileOsError("synthetic hostile source")
+        return real_open(path, flags)
+
+    monkeypatch.setattr(Path, "stat", failing_stat)
+    monkeypatch.setattr(os, "open", failing_open)
+    with pytest.raises(SearchConfigurationError, match="HostileOsError") as caught:
+        _ = load_search_configuration(source)
+    assert raised
+    assert type(caught.value.__cause__) is HostileOsError

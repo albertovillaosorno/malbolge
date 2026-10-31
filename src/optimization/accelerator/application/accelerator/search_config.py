@@ -225,6 +225,17 @@ def _read_config_file(path: Path) -> bytes:
     return _read_config_descriptor(path, descriptor, expected)
 
 
+def _safe_os_error_detail(error: OSError) -> str:
+    """Format native OS errors without invoking foreign exception hooks."""
+    if type(error) in {
+        OSError, FileNotFoundError, PermissionError, IsADirectoryError,
+        NotADirectoryError, FileExistsError, BlockingIOError, TimeoutError,
+        InterruptedError,
+    } and all(type(arg) in {str, int, bytes, type(None)} for arg in error.args):
+        return str(error)
+    return type(error).__name__
+
+
 def _read_config_bytes(path: Path) -> bytes:
     """Admit one bounded user-selected TOML file, including explicit aliases.
 
@@ -238,7 +249,7 @@ def _read_config_bytes(path: Path) -> bytes:
     try:
         return _read_config_file(path)
     except OSError as error:
-        message = f"cannot read search configuration: {error}"
+        message = f"cannot read search configuration: {_safe_os_error_detail(error)}"
         raise SearchConfigurationError(message) from error
 
 

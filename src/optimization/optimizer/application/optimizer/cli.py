@@ -619,6 +619,17 @@ def _read_cli_file(path: Path, label: str) -> bytes:
     )
 
 
+def _safe_os_error_detail(error: OSError) -> str:
+    """Format native OS errors without invoking foreign exception hooks."""
+    if type(error) in {
+        OSError, FileNotFoundError, PermissionError, IsADirectoryError,
+        NotADirectoryError, FileExistsError, BlockingIOError, TimeoutError,
+        InterruptedError,
+    } and all(type(arg) in {str, int, bytes, type(None)} for arg in error.args):
+        return str(error)
+    return type(error).__name__
+
+
 def _read_cli_source(path: Path, label: str) -> bytes:
     """Admit one caller-selected problem/checkpoint file without blocking.
 
@@ -632,7 +643,7 @@ def _read_cli_source(path: Path, label: str) -> bytes:
     try:
         return _read_cli_file(path, label)
     except OSError as error:
-        message = f"cannot read {label}: {error}"
+        message = f"cannot read {label}: {_safe_os_error_detail(error)}"
         raise SearchCliError(message) from error
 
 
