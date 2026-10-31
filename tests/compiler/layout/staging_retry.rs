@@ -256,6 +256,62 @@ fn substituted_stage_symlink_is_rejected_and_preserved() -> Result<(), String> {
 
 #[cfg(unix)]
 #[test]
+#[expect(clippy::panic_in_result_fn, reason = "reject foreign stage aliases")]
+fn linked_stage_is_rejected_before_publication() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let alias = fixture.0.join("foreign-stage-link");
+    let result = publish_new_with_stage_hook(&output, b"ctO", |staged| {
+        fs::hard_link(staged, &alias).map_err(|error| error.to_string())
+    });
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("external hard link")),
+        "linked staging inode reached publication: {result:?}"
+    );
+    assert!(!output.exists());
+    assert_eq!(
+        fs::read(&alias).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "reject late foreign aliases")]
+fn linked_published_stage_cannot_report_success() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let alias = fixture.0.join("foreign-published-link");
+    let result = publish_new_with_hooks(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |path| fs::hard_link(path, &alias).map_err(|error| error.to_string()),
+    );
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("external hard link")),
+        "aliased published inode falsely succeeded: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert_eq!(
+        fs::read(&alias).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 #[expect(clippy::panic_in_result_fn, reason = "assert bounded stage reread")]
 fn grown_stage_rejects_before_an_unbounded_reread() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;

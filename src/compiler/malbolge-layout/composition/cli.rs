@@ -339,18 +339,50 @@ fn open_fresh_stage(path: &Path, name: &str) -> Result<StageFile, String> {
     ))
 }
 
+// The staging inode starts with one link and has exactly two links after
+// atomic publication (staging + final). An extra link gives a foreign writer
+// another pathname to mutate an otherwise verified executable artifact.
+#[cfg(unix)]
+fn has_exact_link_count(metadata: &fs::Metadata, expected: u64) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    metadata.nlink() == expected
+}
+
+#[cfg(windows)]
+fn has_exact_link_count(metadata: &fs::Metadata, expected: u64) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+
+    u32::try_from(expected)
+        .ok()
+        .is_some_and(|count| metadata.number_of_links() == Some(count))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn has_exact_link_count(_metadata: &fs::Metadata, _expected: u64) -> bool {
+    true
+}
+
 fn verify_fsynced_stage(
     staged: &Path,
     file: &mut fs::File,
-    initial: &fs::Metadata,
     expected: &[u8],
+    admission: (&fs::Metadata, u64),
 ) -> Result<(), String> {
+    // Pin the expected link count independently of metadata observed after
+    // user-controlled publication hooks; later aliases must not reset it.
+    let (initial, expected_links) = admission;
     let check_identity = |opened: &fs::File| {
         let descriptor = opened
             .metadata()
             .map_err(|error| format!("cannot inspect staged descriptor: {error}"))?;
         let named = fs::symlink_metadata(staged)
             .map_err(|error| format!("cannot inspect staged pathname: {error}"))?;
+        if !has_exact_link_count(&descriptor, expected_links)
+            || !has_exact_link_count(&named, expected_links)
+        {
+            return Err(String::from("staged output has an external hard link"));
+        }
         if !canonical_wire_metadata_matches(initial, &descriptor)
             || !canonical_wire_metadata_matches(initial, &named)
         {
@@ -420,7 +452,7 @@ fn publish_new_with_hooks(
             .metadata()
             .map_err(|error| format!("cannot inspect synced stage: {error}"))?;
         after_sync(&staged)?;
-        verify_fsynced_stage(&staged, &mut file, &initial, bytes)?;
+        verify_fsynced_stage(&staged, &mut file, bytes, (&initial, 1))?;
         fs::hard_link(&staged, path)
             .map_err(|error| format!("cannot publish new target: {error}"))?;
         after_link(path)?;
@@ -437,7 +469,7 @@ fn publish_new_with_hooks(
         // The hard link exposes a writable inode. Recheck the final path and
         // exact bytes before claiming success; late mutation leaves an already
         // published target but cannot be falsely called a verified artifact.
-        verify_fsynced_stage(path, &mut file, &opened, bytes)?;
+        verify_fsynced_stage(path, &mut file, bytes, (&opened, 2))?;
         Ok(())
     })();
     // Retire only our own original staging inode. A stage pathname swapped

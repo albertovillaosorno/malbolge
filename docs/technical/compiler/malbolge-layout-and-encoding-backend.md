@@ -133,8 +133,16 @@ against the nonfollowing staging pathname both before and after the bounded
 reread; the published hard link must still name the original staged inode.
 A pathname replaced with an equal-byte file or symlink cannot be certified,
 and cleanup only removes a still-matching original stage, preserving foreign
-substitutions. The final inode check detects observed link-stage substitutions
-but does not establish an atomic filesystem snapshot against ongoing writers.
+substitutions. The publisher also requires exactly one hard link to the opened
+staging inode before publication and exactly two (staging and final target)
+while verifying the newly published target. An extra hard link before the first
+link blocks target creation; an extra alias observed after publication rejects
+success while retaining the already-visible target. On Unix the link count is
+read from inode metadata; on Windows it uses the native optional link count and
+fails closed if that evidence is unavailable. Independent injected-alias tests
+cover both stages and retain any unrelated hard-link pathname. The final inode
+check detects observed link-stage substitutions but does not establish an atomic
+filesystem snapshot against ongoing writers.
 The no-overwrite hard link atomically reveals the final `.malbolge` only after
 staged content admission. Existing targets and
 symlinks are never replaced; invalid profiles, operands, paths or layout
