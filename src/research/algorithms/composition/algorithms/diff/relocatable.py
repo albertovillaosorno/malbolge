@@ -602,7 +602,7 @@ def _raise_relocatable_cleanup_failure(
 def _publish_relocatable_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"relocatable output publication failed: {error}"
         raise RelocationError(message) from error
 

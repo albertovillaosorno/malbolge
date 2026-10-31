@@ -1287,7 +1287,7 @@ def _raise_compatible_cleanup_failure(
 def _publish_compatible_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"compatible output publication failed: {error}"
         raise CompatiblePlanError(message) from error
 

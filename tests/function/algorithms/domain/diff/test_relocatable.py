@@ -287,8 +287,13 @@ def test_relocatable_materialization_normalizes_resolution_failures(
     )
 
 
+@pytest.mark.parametrize(
+    "failure_type", [FileExistsError, ValueError, RuntimeError]
+)
 def test_relocatable_publication_collision_preserves_foreign_output(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """A late destination race cannot be replaced by relocatable output."""
     source, oracle, base = _fixture(tmp_path)
@@ -302,7 +307,7 @@ def test_relocatable_publication_collision_preserves_foreign_output(
         _ = staging
         destination.mkdir()
         _ = (destination / "foreign.txt").write_bytes(_FOREIGN_OUTPUT)
-        raise FileExistsError(destination)
+        raise failure_type(destination)
 
     monkeypatch.setattr(
         relocatable_module, "publish_directory_no_replace", collide

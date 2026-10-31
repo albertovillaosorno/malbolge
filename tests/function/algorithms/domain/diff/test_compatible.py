@@ -1371,8 +1371,13 @@ def test_existing_compatible_staging_is_preserved(tmp_path: Path) -> None:
     _expect(not output.exists(), "staging conflict published output")
 
 
+@pytest.mark.parametrize(
+    "failure_type", [FileExistsError, ValueError, RuntimeError]
+)
 def test_compatible_publication_collision_preserves_foreign_output(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """A late destination race cannot be replaced by compatible output."""
     plan = _plan(tmp_path)
@@ -1383,7 +1388,7 @@ def test_compatible_publication_collision_preserves_foreign_output(
         _ = staging
         destination.mkdir()
         _ = (destination / "foreign.txt").write_bytes(_FOREIGN_OUTPUT)
-        raise FileExistsError(destination)
+        raise failure_type(destination)
 
     monkeypatch.setattr(
         compatible_module, "publish_directory_no_replace", collide
