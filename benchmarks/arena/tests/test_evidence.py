@@ -2200,6 +2200,81 @@ def test_evidence_cli_success_intervals_remain_downstream_of_source_links(
     ]
 
 
+@pytest.mark.parametrize("reader", ["regular", "bounded"])
+@pytest.mark.parametrize("relative", ["", "../escape.csv", "/outside.csv", b"raw.csv"])
+def test_invalid_evidence_relative_rejected_without_root_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reader: str,
+    relative: object,
+) -> None:
+    """Malformed relative names cannot dispatch host filesystem operations."""
+
+    def forbidden_resolve(*args: object, **kwargs: object) -> Path:
+        del args, kwargs
+        raise AssertionError("invalid evidence path reached host resolution")
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "resolve", forbidden_resolve)
+        with pytest.raises(evidence.EvidenceError, match="canonical relative"):
+            if reader == "regular":
+                evidence.regular_path(tmp_path, cast("str", relative))
+            else:
+                evidence.read_bounded_regular(
+                    tmp_path, cast("str", relative), limit=1024
+                )
+
+
+@pytest.mark.parametrize("reader", ["regular", "bounded"])
+@pytest.mark.parametrize("stage", ["root-resolve", "leaf-lstat"])
+def test_foreign_missing_path_faults_are_typed_without_laundered_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reader: str,
+    stage: str,
+) -> None:
+    """Only native missing files retain the deliberate missing-path signal."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"raw evidence")
+    class ForeignMissingPath(FileNotFoundError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign missing-path formatter executed")
+
+    foreign = ForeignMissingPath("foreign missing evidence")
+    original_resolve = Path.resolve
+    original_lstat = Path.lstat
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == tmp_path:
+            raise foreign
+        return original_resolve(path, strict=strict)
+
+    def fail_lstat(path: Path, *args: object, **kwargs: object) -> object:
+        if path == tmp_path / "raw.csv":
+            raise foreign
+        return original_lstat(path, *args, **kwargs)
+
+    with monkeypatch.context() as context:
+        if stage == "root-resolve":
+            context.setattr(Path, "resolve", fail_resolve)
+        else:
+            context.setattr(Path, "lstat", fail_lstat)
+        with pytest.raises(evidence.EvidenceError, match="path inspection") as caught:
+            if reader == "regular":
+                evidence.regular_path(tmp_path, "raw.csv")
+            else:
+                evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+    assert caught.value.__cause__ is foreign
+
+
+def test_native_missing_evidence_path_keeps_missing_file_contract(
+    tmp_path: Path,
+) -> None:
+    """Native missing paths remain distinguishable for historical importers."""
+    with pytest.raises(FileNotFoundError) as missing:
+        evidence.regular_path(tmp_path, "absent.csv")
+    assert type(missing.value) is FileNotFoundError
+
+
 @pytest.mark.parametrize(
     "fault",
     [

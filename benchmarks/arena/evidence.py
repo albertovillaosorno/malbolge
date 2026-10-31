@@ -131,9 +131,13 @@ def _path_lstat(path: Path, relative: str) -> os.stat_result:
     """Return a physical path receipt through the evidence error boundary."""
     try:
         return path.lstat()
-    except FileNotFoundError:
-        # Preserve the missing-source contract for historical import callers.
-        raise
+    except FileNotFoundError as error:
+        # Historical importers rely on the native missing-file signal, not
+        # subclasses from an untrusted host dependency.
+        if type(error) is FileNotFoundError:
+            raise
+        message = f"evidence path inspection failed: {relative}"
+        raise EvidenceError(message) from error
     except Exception as error:
         message = f"evidence path inspection failed: {relative}"
         raise EvidenceError(message) from error
@@ -154,14 +158,19 @@ def regular_path(
     if limit is not None:
         _admit_byte_limit(limit)
     _admit_root(root)
+    # Reject foreign or escaping path text before consulting the filesystem.
+    segments = _segments(relative)
     try:
         current = root.resolve(strict=True)
-    except FileNotFoundError:
-        raise
+    except FileNotFoundError as error:
+        if type(error) is FileNotFoundError:
+            raise
+        message = f"evidence path inspection failed: {relative}"
+        raise EvidenceError(message) from error
     except Exception as error:
         message = f"evidence path inspection failed: {relative}"
         raise EvidenceError(message) from error
-    for segment in _segments(relative):
+    for segment in segments:
         current /= segment
         mode = _path_lstat(current, relative).st_mode
         if stat.S_ISLNK(mode):
