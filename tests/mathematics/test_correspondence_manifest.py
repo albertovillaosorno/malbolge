@@ -549,3 +549,182 @@ def test_correspondence_source_rejects_nonregular_read_input(
     mkfifo(source)
     with pytest.raises(validator.CorrespondenceError, match="physical regular"):
         _ = validator._read_source_text(source, "witness")
+
+
+CORRESPONDENCE_SAMPLE = """schema_version = 1
+[[correspondence]]
+id = "fixture"
+domain = "all"
+label = "eq:fixture"
+mechanism = "test"
+tex = "math/fixture.tex"
+evidence = ["tests/fixture.py::test_fixture"]
+"""
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [validator.tomllib.TOMLDecodeError, ValueError, TypeError, RuntimeError],
+)
+def test_correspondence_parser_never_formats_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch, fault_type: type[Exception]
+) -> None:
+    """Host TOML faults become typed without invoking custom formatters."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign mathematics parser formatter executed")
+
+    foreign = type("ForeignMathTOMLFault", (fault_type,), {"__str__": unsafe_str})
+    fault = (
+        foreign("parser fault", "[invalid", 1)
+        if fault_type is validator.tomllib.TOMLDecodeError
+        else foreign("parser fault")
+    )
+
+    def fail_parser(_text: str) -> None:
+        raise fault
+
+    monkeypatch.setattr(validator.tomllib, "loads", fail_parser)
+    with pytest.raises(validator.CorrespondenceError, match="invalid TOML") as caught:
+        validator._parse(CORRESPONDENCE_SAMPLE)
+    assert caught.value.__cause__ is fault
+
+
+def test_correspondence_native_toml_error_retains_position_and_cause() -> None:
+    """Plain invalid TOML retains native parser position for diagnosis."""
+    with pytest.raises(validator.CorrespondenceError, match="invalid TOML") as caught:
+        validator._parse("[broken\n")
+    assert type(caught.value.__cause__) is validator.tomllib.TOMLDecodeError
+    assert "line" in str(caught.value)
+
+
+@pytest.mark.parametrize("position", ["root", "table", "key", "array"])
+def test_correspondence_parser_rejects_foreign_mapping_and_arrays(
+    monkeypatch: pytest.MonkeyPatch, position: str
+) -> None:
+    """Non-native parser containers never reach iteration or key hooks."""
+
+    class ForeignMap(dict[str, object]):
+        def items(self):  # type: ignore[override]
+            raise AssertionError("foreign correspondence mapping hook executed")
+
+    class ForeignArray(list[object]):
+        def __iter__(self):  # type: ignore[override]
+            raise AssertionError("foreign correspondence list hook executed")
+
+    class ForeignKey(str):
+        __hash__ = str.__hash__
+
+        def __str__(self) -> str:
+            raise AssertionError("foreign correspondence key hook executed")
+
+    native = validator.tomllib.loads(CORRESPONDENCE_SAMPLE)
+    if position == "root":
+        forged: object = ForeignMap(native)
+    elif position == "table":
+        forged = {**native, "correspondence": [ForeignMap(native["correspondence"][0])]}
+    elif position == "key":
+        forged = {**native, ForeignKey("extra"): "value"}
+    else:
+        forged = {**native, "correspondence": ForeignArray(native["correspondence"])}
+    monkeypatch.setattr(validator.tomllib, "loads", lambda _text: forged)
+    expected = (
+        "non-native string key" if position == "key" else "manifest|correspondence"
+    )
+    with pytest.raises(validator.CorrespondenceError, match=expected):
+        validator._parse(CORRESPONDENCE_SAMPLE)
+
+
+@pytest.mark.parametrize("boundary", ["status", "read", "walk"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_correspondence_host_errors_never_format_foreign_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    boundary: str,
+    fault_type: type[Exception],
+) -> None:
+    """Path and scanning host faults fail closed without exception hooks."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign correspondence host formatter executed")
+
+    foreign = type("ForeignMathHostFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe host detail")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    if boundary == "walk":
+        math_root = tmp_path / "math"
+        math_root.mkdir()
+        monkeypatch.setattr(validator, "MATH_ROOT", math_root)
+
+        def fail_walk(
+            path: Path, *, on_error: Callable[[OSError], object] | None = None
+        ) -> object:
+            del path, on_error
+            raise fault
+
+        monkeypatch.setattr(Path, "walk", fail_walk)
+        with pytest.raises(
+            validator.CorrespondenceError, match="scan failed"
+        ) as caught:
+            validator._tex_sources()
+    else:
+        source = tmp_path / "witness.rs"
+        _ = source.write_text("fn fixture() {}", encoding="utf-8")
+        if boundary == "status":
+            original_lstat = Path.lstat
+
+            def fail_lstat(path: Path) -> os.stat_result:
+                if path == source:
+                    raise fault
+                return original_lstat(path)
+
+            monkeypatch.setattr(Path, "lstat", fail_lstat)
+            with pytest.raises(
+                validator.CorrespondenceError, match="status failed"
+            ) as caught:
+                validator._read_source_text(source, "witness")
+        else:
+            original_open = os.open
+
+            def fail_open(path: Path, flags: int) -> int:
+                if path == source:
+                    raise fault
+                return original_open(path, flags)
+
+            monkeypatch.setattr(os, "open", fail_open)
+            with pytest.raises(
+                validator.CorrespondenceError, match="cannot read witness"
+            ) as caught:
+                validator._read_source_text(source, "witness")
+    assert caught.value.__cause__ is fault
+
+
+def test_correspondence_walk_callback_rejects_foreign_error_formatter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Path.walk on_error callback must not format custom OSError subclasses."""
+
+    class ForeignWalkError(OSError):
+        def __str__(self) -> str:
+            raise AssertionError("mathematics walker callback formatter executed")
+
+    fault = ForeignWalkError("untrusted walk error")
+    math_root = tmp_path / "math"
+    math_root.mkdir()
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "MATH_ROOT", math_root)
+
+    def fail_walk(
+        path: Path, *, on_error: Callable[[OSError], object] | None = None
+    ) -> object:
+        del path
+        assert on_error is not None
+        on_error(fault)
+        return iter(())
+
+    monkeypatch.setattr(Path, "walk", fail_walk)
+    with pytest.raises(validator.CorrespondenceError, match="scan failed") as caught:
+        validator._tex_sources()
+    assert caught.value.__cause__ is fault

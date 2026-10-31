@@ -100,21 +100,33 @@ def _fail(message: str) -> Never:
     raise CorrespondenceError(message)
 
 
+def _host_error_detail(error: Exception) -> str:
+    """Return safe native host diagnostics without foreign formatter hooks.
+
+    Returns:
+        Exact built-in text or the foreign exception type name.
+
+    """
+    if type(error) in (OSError, ValueError, TypeError, RuntimeError):
+        return str(error)
+    return type(error).__name__
+
+
 def _mapping(value: object, context: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        _fail(f"{context} must be a table")
+    if type(value) is not dict:
+        _fail(f"{context} must be a table (exact native dict required)")
     raw = cast("dict[object, object]", value)
     result: dict[str, object] = {}
     for key, item in raw.items():
-        if not isinstance(key, str):
-            _fail(f"{context} contains a non-string key")
+        if type(key) is not str:
+            _fail(f"{context} contains a non-native string key")
         result[key] = item
     return result
 
 
 def _array(value: object, context: str) -> list[object]:
-    if not isinstance(value, list):
-        _fail(f"{context} must be an array")
+    if type(value) is not list:
+        _fail(f"{context} must be an array (exact native list required)")
     return cast("list[object]", value)
 
 
@@ -160,12 +172,16 @@ def _require_physical_member(
         status = path.lstat()
     except FileNotFoundError:
         _fail(f"{context} does not exist: {relative.as_posix()}")
-    except (OSError, ValueError, RuntimeError) as error:
-        _fail(f"{context} status failed: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        raise CorrespondenceError(f"{context} status failed: {detail}") from error
     try:
         is_junction = path.is_junction()
-    except (OSError, ValueError, RuntimeError) as error:
-        _fail(f"{context} redirect status failed: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        raise CorrespondenceError(
+            f"{context} redirect status failed: {detail}"
+        ) from error
     if S_ISLNK(status.st_mode) or is_junction:
         _fail(f"{context} must not redirect: {relative.as_posix()}")
     admitted = S_ISDIR(status.st_mode) if directory else S_ISREG(status.st_mode)
@@ -277,8 +293,9 @@ def _read_source_bytes(path: Path, context: str) -> bytes:
         return _read_source_descriptor(path, context, descriptor, expected=expected)
     except CorrespondenceError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
-        raise CorrespondenceError(f"cannot read {context}: {error}") from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        raise CorrespondenceError(f"cannot read {context}: {detail}") from error
 
 
 def _read_source_text(path: Path, context: str) -> str:
@@ -288,7 +305,8 @@ def _read_source_text(path: Path, context: str) -> str:
     except UnicodeDecodeError as error:
         _fail(f"invalid {context} UTF-8: {error}")
     except OSError as error:
-        _fail(f"cannot read {context}: {error}")
+        detail = _host_error_detail(error)
+        raise CorrespondenceError(f"cannot read {context}: {detail}") from error
 
 
 def _admit_tex_candidate(parent: Path, name: str) -> Path | None:
@@ -324,7 +342,10 @@ def _tex_sources() -> tuple[Path, ...]:
     sources: list[Path] = []
 
     def fail_walk(error: OSError) -> None:
-        _fail(f"mathematics evidence scan failed: {error}")
+        detail = _host_error_detail(error)
+        raise CorrespondenceError(
+            f"mathematics evidence scan failed: {detail}"
+        ) from error
 
     try:
         for parent, directories, filenames in MATH_ROOT.walk(on_error=fail_walk):
@@ -336,9 +357,10 @@ def _tex_sources() -> tuple[Path, ...]:
             _append_tex_candidates(parent, filenames, sources)
     except CorrespondenceError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
         raise CorrespondenceError(
-            f"mathematics evidence scan failed: {error}"
+            f"mathematics evidence scan failed: {detail}"
         ) from error
     return tuple(sorted(sources))
 
@@ -434,9 +456,18 @@ def _parse(text: str) -> tuple[Correspondence, ...]:
     try:
         parsed = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:
-        _fail(f"invalid TOML: {error}")
-    except (ValueError, RecursionError):
-        _fail("invalid TOML exceeds host parser capacity")
+        detail = (
+            str(error)
+            if type(error) is tomllib.TOMLDecodeError
+            else type(error).__name__
+        )
+        raise CorrespondenceError(f"invalid TOML: {detail}") from error
+    except (ValueError, RecursionError) as error:
+        message = "invalid TOML exceeds host parser capacity"
+        raise CorrespondenceError(message) from error
+    except (TypeError, RuntimeError) as error:
+        message = "invalid TOML host parser failure"
+        raise CorrespondenceError(message) from error
     document = _mapping(parsed, "manifest")
     _exact_keys(document, TOP_LEVEL_KEYS, "manifest")
     version = _integer(document["schema_version"], "manifest.schema_version")
