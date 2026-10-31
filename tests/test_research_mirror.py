@@ -34,7 +34,9 @@
 
 from __future__ import annotations
 
+import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import] - Git-only fixture.
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -164,6 +166,130 @@ def test_mirror_rejects_directory_id_symlink(
     (documents / "alias").symlink_to(outside, target_is_directory=True)
     with pytest.raises(validator.ResearchMirrorError, match="redirect"):
         _ = validator._directory_ids(documents)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation", ("leaf_lstat", "leaf_junction", "parent_lstat", "parent_junction")
+)
+def test_mirror_physical_path_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """Malformed path-inspection errors cannot escape the physical contract."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    directory = tmp_path / "documents"
+    directory.mkdir()
+    evidence = directory / "research.md"
+    _ = evidence.write_text("fixture", encoding="utf-8")
+    target = directory if operation.startswith("parent_") else evidence
+    if operation.endswith("lstat"):
+        real_lstat = Path.lstat
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            if path == target:
+                raise fault_type("injected mirror lstat fault")
+            return real_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    else:
+        real_junction = Path.is_junction
+
+        def fail_junction(path: Path) -> bool:
+            if path == target:
+                raise fault_type("injected mirror junction fault")
+            return real_junction(path)
+
+        monkeypatch.setattr(Path, "is_junction", fail_junction)
+    with pytest.raises(validator.ResearchMirrorError, match="status failed"):
+        _ = validator._physical_status(  # pyright: ignore[reportPrivateUsage]
+            evidence, "research evidence"
+        )
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("operation", ("id_lstat", "id_junction", "iterdir"))
+def test_mirror_directory_discovery_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """A failed ID scan cannot pretend to enumerate the research mirror."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    child = documents / "fixture"
+    child.mkdir()
+    if operation == "id_lstat":
+        real_lstat = Path.lstat
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            if path == child:
+                raise fault_type("injected mirror ID status fault")
+            return real_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    elif operation == "id_junction":
+        real_junction = Path.is_junction
+
+        def fail_junction(path: Path) -> bool:
+            if path == child:
+                raise fault_type("injected mirror ID junction fault")
+            return real_junction(path)
+
+        monkeypatch.setattr(Path, "is_junction", fail_junction)
+    else:
+        real_iterdir = Path.iterdir
+
+        def fail_iterdir(path: Path) -> Iterator[Path]:
+            if path == documents:
+                raise fault_type("injected mirror directory scan fault")
+            return real_iterdir(path)
+
+        monkeypatch.setattr(Path, "iterdir", fail_iterdir)
+    expected = "scan failed" if operation == "iterdir" else "ID status failed"
+    with pytest.raises(validator.ResearchMirrorError, match=expected):
+        _ = validator._directory_ids(documents)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_mirror_shared_layout_failure_is_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Shared layout enumeration errors stay within the mirror error model."""
+
+    def fail_layout(_root: Path) -> tuple[tuple[str, Path], ...]:
+        raise fault_type("injected shared layout failure")
+
+    monkeypatch.setattr(validator, "research_algorithm_directories", fail_layout)
+    with pytest.raises(validator.ResearchMirrorError, match="discovery failed"):
+        _ = validator.validate_repository(_always_ignored)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_mirror_git_output_probe_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A failed Git ignore probe is a typed research policy rejection."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    entry = validator.MirrorEntry(
+        document=tmp_path / "docs" / "fixture",
+        executable=tmp_path / "algorithms" / "fixture",
+        research_id="fixture",
+    )
+
+    def fail_git(*_args: object, **_kwargs: object) -> sp.CompletedProcess[str]:
+        raise fault_type("injected Git ignore failure")
+
+    monkeypatch.setattr(sp, "run", fail_git)
+    with pytest.raises(validator.ResearchMirrorError, match="Git ignore probe failed"):
+        _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_output_policy_checks_directory_not_just_one_marker(

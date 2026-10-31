@@ -90,9 +90,10 @@ def _physical_status(path: Path, context: str) -> os.stat_result:
         current = current / component
         try:
             status = current.lstat()
-        except OSError as error:
-            _fail(f"{context} status failed: {error}")
-        if S_ISLNK(status.st_mode) or current.is_junction():
+            redirected = S_ISLNK(status.st_mode) or current.is_junction()
+        except (OSError, ValueError, RuntimeError) as error:
+            raise ResearchMirrorError(f"{context} status failed: {error}") from error
+        if redirected:
             _fail(f"{context} must not redirect: {relative.as_posix()}")
         if index != len(relative.parts) - 1 and not S_ISDIR(status.st_mode):
             _fail(f"{context} ancestor must be a directory: {relative.as_posix()}")
@@ -104,14 +105,21 @@ def _physical_status(path: Path, context: str) -> os.stat_result:
 def _directory_ids(root: Path) -> frozenset[str]:
     _require_directory(root, "research mirror root")
     identifiers: set[str] = set()
-    for path in root.iterdir():
+    try:
+        children = tuple(root.iterdir())
+    except (OSError, ValueError, RuntimeError) as error:
+        raise ResearchMirrorError(f"research mirror scan failed: {error}") from error
+    for path in children:
         if path.name.startswith("."):
             continue
         try:
             status = path.lstat()
-        except OSError as error:
-            _fail(f"research mirror ID status failed: {error}")
-        if S_ISLNK(status.st_mode) or path.is_junction():
+            redirected = S_ISLNK(status.st_mode) or path.is_junction()
+        except (OSError, ValueError, RuntimeError) as error:
+            raise ResearchMirrorError(
+                f"research mirror ID status failed: {error}"
+            ) from error
+        if redirected:
             _fail(f"research mirror ID must not redirect: {path.name}")
         if S_ISDIR(status.st_mode):
             identifiers.add(path.name)
@@ -152,7 +160,14 @@ def executable_research_ids(executable_ids: frozenset[str]) -> frozenset[str]:
 
 
 def _entries() -> tuple[MirrorEntry, ...]:
-    executable_by_id = dict(research_algorithm_directories(ROOT))
+    try:
+        executable_by_id = dict(research_algorithm_directories(ROOT))
+    except ResearchMirrorError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise ResearchMirrorError(
+            f"research mirror discovery failed: {error}"
+        ) from error
     research_ids = validate_id_sets(
         _directory_ids(DOCUMENT_ROOT),
         executable_research_ids(frozenset(executable_by_id)),
@@ -186,12 +201,15 @@ def _out_directory(entry: MirrorEntry) -> str:
 
 def _out_is_ignored(entry: MirrorEntry) -> bool:
     # jig-ignore-next-line: indivisible reviewed identifier
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Git argv, no shell.
-        [GIT, "check-ignore", "--quiet", "--no-index", "--", _out_directory(entry)],
-        cwd=ROOT,
-        check=False,
-        shell=False,
-    )
+    try:
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Git argv, no shell.
+            [GIT, "check-ignore", "--quiet", "--no-index", "--", _out_directory(entry)],
+            cwd=ROOT,
+            check=False,
+            shell=False,
+        )
+    except (OSError, ValueError, RuntimeError) as error:
+        raise ResearchMirrorError(f"Git ignore probe failed: {error}") from error
     if completed.returncode not in {0, 1}:
         message = (
             "git check-ignore failed for research output probe: "
