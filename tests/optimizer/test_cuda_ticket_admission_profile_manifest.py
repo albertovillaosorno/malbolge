@@ -39,6 +39,7 @@ from copy import deepcopy
 import json
 import os
 from pathlib import Path
+import shutil
 from typing import cast
 
 from accelerator.cuda import CudaHostRuntimeIdentity
@@ -55,6 +56,10 @@ from benchmarks.accelerator.ticket_admission_profile_manifest import (
 )
 import pytest
 
+from benchmarks.accelerator import (
+    ticket_admission_profile_manifest as generator,
+)
+
 MANIFEST = (
     "src/optimization/accelerator/adapter-outbound/accelerator/cuda/"
     "ticket_admission_profiles.json"
@@ -68,6 +73,7 @@ RAW_SHA256 = "329716e4f429b7ab65096a61266af732b6630faf2bba2f66a643ea1b41d3214f"
 ROUTE_COUNT = 7
 FILE_REDIRECT = "file"
 SOURCE_RECHECK = 2
+TOOLCHAIN_JSON_NAME = "toolchain.json"
 PROFILE_VARIANT_COUNT = 2
 DISPLAY_DRIVER_VERSION = "610.88"
 DRIVER_API_VERSION = 13_030
@@ -452,4 +458,226 @@ def test_profile_loader_rejects_in_place_edit_after_read(
     monkeypatch.setattr(Path, "lstat", mutate_at_recheck)
     with pytest.raises(TicketAdmissionError, match="changed during read"):
         _ = load_cuda_ticket_admission_profiles(source)
+    assert observed == SOURCE_RECHECK
+
+
+def _retained_fixture(root: Path) -> Path:
+    """Copy each tracked source of one exact CUDA retained evidence bundle.
+
+    Returns:
+        Independent complete repository-root fixture without source aliases.
+
+    """
+    tracked = (
+        generator.EVIDENCE_RELATIVE / "experiment.toml",
+        generator.EVIDENCE_RELATIVE / "raw.csv",
+        generator.EVIDENCE_RELATIVE / "source-commit.txt",
+        generator.EVIDENCE_RELATIVE / "throughput.json",
+        generator.TOOLCHAIN_RELATIVE,
+    )
+    for relative in tracked:
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _ = shutil.copyfile(generator.ROOT / relative, target)
+    return root
+
+
+def test_retained_generator_rejects_forged_parse_with_authentic_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Route payload and claimed SHA cannot come from distinct file reads."""
+    root = _retained_fixture(tmp_path)
+    throughput = root / generator.EVIDENCE_RELATIVE / "throughput.json"
+    forged = cast(
+        "dict[str, object]",
+        json.loads(throughput.read_text(encoding="utf-8")),
+    )
+    routes = cast("dict[str, object]", forged["routes"])
+    baseline = cast("dict[str, object]", routes["synchronous-sequential-1"])
+    median = baseline["median_ns"]
+    assert type(median) is int
+    baseline["median_ns"] = median + 1
+    untrusted = json.dumps(forged)
+    real_read_text = Path.read_text
+
+    def substitute_parse_source(
+        path: Path,
+        *,
+        encoding: str | None = None,
+    ) -> str:
+        if path == throughput:
+            return untrusted
+        return real_read_text(path, encoding=encoding)
+
+    monkeypatch.setattr(Path, "read_text", substitute_parse_source)
+    assert profile_manifest_text(root) == profile_manifest_text(generator.ROOT)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "throughput.json",
+        "experiment.toml",
+        "raw.csv",
+        "source-commit.txt",
+        "toolchain.json",
+    ],
+)
+def test_retained_generator_rejects_linked_source(
+    tmp_path: Path,
+    source: str,
+) -> None:
+    """Matching evidence bytes do not grant authority to a linked source."""
+    root = _retained_fixture(tmp_path)
+    relative = (
+        generator.TOOLCHAIN_RELATIVE
+        if source == TOOLCHAIN_JSON_NAME
+        else generator.EVIDENCE_RELATIVE / source
+    )
+    path = root / relative
+    actual = path.with_name("physical-source")
+    _ = actual.write_bytes(path.read_bytes())
+    path.unlink()
+    try:
+        _ = path.symlink_to(actual)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(
+        generator.ProfileManifestError, match=r"regular|redirect"
+    ):
+        _ = profile_manifest(root)
+
+
+def test_retained_generator_rejects_redirected_evidence_directory(
+    tmp_path: Path,
+) -> None:
+    """No retained evidence may be read through a linked parent folder."""
+    real_root = _retained_fixture(tmp_path / "real")
+    alias = tmp_path / "alias"
+    try:
+        _ = alias.symlink_to(real_root, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(generator.ProfileManifestError, match="redirect"):
+        _ = profile_manifest(alias)
+
+
+def test_retained_generator_rejects_oversized_raw_csv(tmp_path: Path) -> None:
+    """Pinned raw sample input must be bounded before hashing."""
+    root = _retained_fixture(tmp_path)
+    raw = root / generator.EVIDENCE_RELATIVE / "raw.csv"
+    with raw.open("wb") as stream:
+        _ = stream.truncate(1024 * 1024 + 1)
+    with pytest.raises(generator.ProfileManifestError, match="byte limit"):
+        _ = profile_manifest(root)
+
+
+def test_retained_generator_invalid_utf8_is_typed_error(tmp_path: Path) -> None:
+    """Invalid source encoding uses the declared provenance error boundary."""
+    root = _retained_fixture(tmp_path)
+    evidence = root / generator.EVIDENCE_RELATIVE / "experiment.toml"
+    _ = evidence.write_bytes(b"\xff")
+    with pytest.raises(generator.ProfileManifestError, match="cannot read"):
+        _ = profile_manifest(root)
+
+
+def test_retained_generator_rejects_special_source_files(
+    tmp_path: Path,
+) -> None:
+    """Retained evidence cannot be sourced from a directory or FIFO."""
+    root = _retained_fixture(tmp_path)
+    source = root / generator.EVIDENCE_RELATIVE / "experiment.toml"
+    source.unlink()
+    source.mkdir()
+    with pytest.raises(generator.ProfileManifestError, match="regular"):
+        _ = profile_manifest(root)
+    source.rmdir()
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFO creation unavailable")
+    mkfifo(source)
+    with pytest.raises(generator.ProfileManifestError, match="regular"):
+        _ = profile_manifest(root)
+
+
+def test_retained_generator_rejects_source_inode_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-byte inode swaps cannot alter the admitted source descriptor."""
+    root = _retained_fixture(tmp_path)
+    throughput = root / generator.EVIDENCE_RELATIVE / "throughput.json"
+    replacement = throughput.with_name("replacement.json")
+    _ = replacement.write_bytes(throughput.read_bytes())
+    real_open = os.open
+    swapped = False
+
+    def swap_on_open(path: Path, flags: int) -> int:
+        nonlocal swapped
+        if path == throughput:
+            _ = replacement.replace(throughput)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_on_open)
+    with pytest.raises(
+        generator.ProfileManifestError, match="changed before read"
+    ):
+        _ = profile_manifest(root)
+    assert swapped
+
+
+def test_retained_generator_rejects_source_inode_swap_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The named source must still match its descriptor after reading."""
+    root = _retained_fixture(tmp_path)
+    throughput = root / generator.EVIDENCE_RELATIVE / "throughput.json"
+    replacement = throughput.with_name("replacement.json")
+    _ = replacement.write_bytes(throughput.read_bytes())
+    real_lstat = Path.lstat
+    observed = 0
+
+    def swap_at_recheck(path: Path) -> os.stat_result:
+        nonlocal observed
+        if path == throughput:
+            observed += 1
+            if observed == SOURCE_RECHECK:
+                _ = replacement.replace(throughput)
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", swap_at_recheck)
+    with pytest.raises(
+        generator.ProfileManifestError, match="changed during read"
+    ):
+        _ = profile_manifest(root)
+    assert observed == SOURCE_RECHECK
+
+
+def test_retained_generator_rejects_in_place_source_edit_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even same-size, same-inode mutation invalidates retained evidence."""
+    root = _retained_fixture(tmp_path)
+    throughput = root / generator.EVIDENCE_RELATIVE / "throughput.json"
+    real_lstat = Path.lstat
+    observed = 0
+
+    def edit_at_recheck(path: Path) -> os.stat_result:
+        nonlocal observed
+        if path == throughput:
+            observed += 1
+            if observed == SOURCE_RECHECK:
+                with throughput.open("r+b") as stream:
+                    _ = stream.write(b"x")
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", edit_at_recheck)
+    with pytest.raises(
+        generator.ProfileManifestError, match="changed during read"
+    ):
+        _ = profile_manifest(root)
     assert observed == SOURCE_RECHECK

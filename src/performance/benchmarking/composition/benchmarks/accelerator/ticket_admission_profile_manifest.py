@@ -39,7 +39,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
+from stat import S_ISREG
 import sys
 import tomllib
 from typing import cast
@@ -63,6 +65,7 @@ WORKLOAD_ID = "classic-crazy-full-domain-ticket-transfer-v1"
 WORKLOAD_KIND = "crazy"
 WORKLOAD_COUNT = 59_049
 SCHEMA_VERSION = 4
+MAX_RETAINED_SOURCE_BYTES = 1024 * 1024
 EXPECTED_SAMPLE_COUNT = 15
 RUNTIME_IDENTITY_ID = "cuda-runtime-toolchain-identity-v1"
 MINIMUM_DRIVER_API_VERSION = 13_030
@@ -159,15 +162,18 @@ def profile_manifest(root: Path = ROOT) -> dict[str, object]:
     evidence = root / EVIDENCE_RELATIVE
     throughput_path = evidence / "throughput.json"
     raw_path = evidence / "raw.csv"
+    toolchain_path = root / TOOLCHAIN_RELATIVE
+    throughput_bytes = _read_retained_source(throughput_path)
+    toolchain_bytes = _read_retained_source(toolchain_path)
     bundle = _EvidenceBundle(
         evidence_path=(EVIDENCE_RELATIVE.as_posix() + "/"),
         experiment=_toml_object(evidence / "experiment.toml"),
         raw_sha256=_sha256(raw_path),
         source_commit=_read_text(evidence / "source-commit.txt").strip(),
-        throughput=_json_object(throughput_path),
-        throughput_sha256=_sha256(throughput_path),
-        toolchain=_json_object(root / TOOLCHAIN_RELATIVE),
-        toolchain_sha256=_sha256(root / TOOLCHAIN_RELATIVE),
+        throughput=_json_object(throughput_path, throughput_bytes),
+        throughput_sha256=sha256(throughput_bytes).hexdigest(),
+        toolchain=_json_object(toolchain_path, toolchain_bytes),
+        toolchain_sha256=sha256(toolchain_bytes).hexdigest(),
     )
     _validate_evidence(bundle)
     return {
@@ -508,16 +514,133 @@ def _comparison_int(
     )
 
 
-def _json_object(path: Path) -> dict[str, object]:
+def _retained_identity(status: os.stat_result, path: Path) -> tuple[int, ...]:
+    """Admit a regular source file and record its physical identity.
+
+    Returns:
+        Device, inode, size, and mutation-sensitive timestamps.
+
+    Raises:
+        ProfileManifestError: File is not a physical regular source.
+
+    """
+    if not S_ISREG(status.st_mode):
+        message = f"retained evidence must be a regular file: {path}"
+        raise ProfileManifestError(message)
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _check_retained_parents(path: Path) -> None:
+    """Reject linked directories in one exact source authority path.
+
+    Raises:
+        ProfileManifestError: A parent path redirects through a link.
+
+    """
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            message = f"retained evidence path must not redirect: {path}"
+            raise ProfileManifestError(message)
+
+
+def _read_retained_descriptor(
+    path: Path,
+    descriptor: int,
+    *,
+    size: int,
+    expected: tuple[int, ...],
+) -> bytes:
+    """Verify one opened descriptor and named file around bounded reading.
+
+    Returns:
+        Exact unchanged source bytes read from the opened descriptor.
+
+    Raises:
+        ProfileManifestError: Source changes or exceeds byte limit.
+
+    """
+    with os.fdopen(descriptor, "rb") as stream:
+        if _retained_identity(os.fstat(stream.fileno()), path) != expected:
+            message = f"retained evidence changed before read: {path}"
+            raise ProfileManifestError(message)
+        payload = stream.read(MAX_RETAINED_SOURCE_BYTES + 1)
+        if len(payload) != size:
+            message = (
+                f"retained evidence changed during read or exceeds "
+                f"byte limit: {path}"
+            )
+            raise ProfileManifestError(message)
+        if (
+            _retained_identity(os.fstat(stream.fileno()), path) != expected
+            or _retained_identity(path.lstat(), path) != expected
+        ):
+            message = f"retained evidence changed during read: {path}"
+            raise ProfileManifestError(message)
+        _check_retained_parents(path)
+        return payload
+
+
+def _read_retained_file(path: Path) -> bytes:
+    """Open one bounded unredirected regular source descriptor.
+
+    Returns:
+        Bytes from a stable named physical source file.
+
+    Raises:
+        ProfileManifestError: Invalid, oversized, or changing input.
+
+    """
+    _check_retained_parents(path)
+    admitted = path.lstat()
+    expected = _retained_identity(admitted, path)
+    if admitted.st_size > MAX_RETAINED_SOURCE_BYTES:
+        message = f"retained evidence exceeds byte limit: {path}"
+        raise ProfileManifestError(message)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    return _read_retained_descriptor(
+        path, descriptor, size=admitted.st_size, expected=expected
+    )
+
+
+def _read_retained_source(path: Path) -> bytes:
+    """Admit one retained evidence document from stable source bytes.
+
+    Returns:
+        Exactly the bytes subsequently interpreted or hashed.
+
+    Raises:
+        ProfileManifestError: Evidence source fails physical admission.
+
+    """
+    try:
+        return _read_retained_file(path)
+    except OSError as error:
+        message = f"cannot read retained evidence {path}: {error}"
+        raise ProfileManifestError(message) from error
+
+
+def _json_object(path: Path, payload: bytes) -> dict[str, object]:
     try:
         parsed = cast(
             "object",
             json.loads(
-                path.read_text(encoding="utf-8"),
+                payload.decode("utf-8"),
                 object_pairs_hook=_reject_duplicate_pairs,
             ),
         )
-    except (json.JSONDecodeError, OSError) as error:
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
         message = f"cannot read retained JSON evidence {path}: {error}"
         raise ProfileManifestError(message) from error
     return _object(parsed, str(path))
@@ -539,9 +662,9 @@ def _toml_object(path: Path) -> dict[str, object]:
     try:
         parsed = cast(
             "object",
-            tomllib.loads(path.read_text(encoding="utf-8")),
+            tomllib.loads(_read_retained_source(path).decode("utf-8")),
         )
-    except (OSError, tomllib.TOMLDecodeError) as error:
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
         message = f"cannot read retained TOML evidence {path}: {error}"
         raise ProfileManifestError(message) from error
     return _object(parsed, str(path))
@@ -549,19 +672,14 @@ def _toml_object(path: Path) -> dict[str, object]:
 
 def _read_text(path: Path) -> str:
     try:
-        return path.read_text(encoding="utf-8")
-    except OSError as error:
+        return _read_retained_source(path).decode("utf-8")
+    except UnicodeDecodeError as error:
         message = f"cannot read retained evidence {path}: {error}"
         raise ProfileManifestError(message) from error
 
 
 def _sha256(path: Path) -> str:
-    try:
-        payload = path.read_bytes()
-    except OSError as error:
-        message = f"cannot hash retained evidence {path}: {error}"
-        raise ProfileManifestError(message) from error
-    return sha256(payload).hexdigest()
+    return sha256(_read_retained_source(path)).hexdigest()
 
 
 def _object(value: object, context: str) -> dict[str, object]:

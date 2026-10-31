@@ -1323,10 +1323,11 @@ not Python source.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/performance/benchmarking/composition/benchmarks/accelerator/ticket_admission_profile_manifest.py`
 reconstructs those
-canonical bytes from retained JSON/TOML, source commit, exact
-raw/structured-output
-hashes, the tracked CUDA toolchain manifest, retained driver build, and retained
-host/Python context. Twelve manifest tests require byte equality and reject
+canonical bytes from bounded, nonredirected stable regular JSON/TOML and raw
+sources. A throughput/toolchain JSON document is interpreted and hashed from
+one shared byte snapshot rather than rereading a changing pathname. The
+source commit, exact raw/structured-output hashes, tracked CUDA toolchain,
+retained driver build, and host/Python context remain mandatory. Twelve manifest tests require byte equality and reject
 duplicate or unknown keys, unsupported schema, duplicate routes, malformed
 display
 versions, invalid host fields, exact runtime-context duplicates, and direct
