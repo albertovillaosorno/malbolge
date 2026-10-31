@@ -491,6 +491,40 @@ def test_invalid_child_command_rejects_before_launch(
     assert not launched
 
 
+@pytest.mark.parametrize("executable", ["python3", "./compiler", "../compiler"])
+def test_relative_child_executable_refused_before_launch(
+    executable: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Process capture may not resolve relative executables through host PATH."""
+    launched = False
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        nonlocal launched
+        del args, kwargs
+        launched = True
+        message = "relative child was launched"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(target_process.sp, "Popen", forbidden)
+    with pytest.raises(target_process.TargetProcessError, match="absolute"):
+        target_process.invoke([executable], timeout_seconds=LARGE_TIMEOUT_SECONDS)
+    assert not launched
+
+
+def test_poisoned_path_executable_cannot_impersonate_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A matching basename in untrusted PATH cannot become a guest runner."""
+    injected = tmp_path / "target-compiler"
+    injected.write_text("#!/bin/sh\nprintf 'INJECTED'\n", encoding="ascii")
+    injected.chmod(0o700)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(target_process.TargetProcessError, match="absolute"):
+        target_process.invoke(["target-compiler"], timeout_seconds=LARGE_TIMEOUT_SECONDS)
+
+
 @pytest.mark.parametrize(
     ("launcher", "input_mode"),
     [

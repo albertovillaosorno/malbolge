@@ -108,6 +108,10 @@ def _admit_command(command: list[str]) -> None:
         _fail("bounded target command requires a nonempty argument list")
     if type(command[0]) is not str or not command[0]:
         _fail("bounded target command requires a nonempty executable string")
+    # Reject host PATH lookup and relative cwd resolution: the caller must
+    # select the exact binary path before the bounded process is launched.
+    if not Path(command[0]).is_absolute():
+        _fail("bounded target command requires an absolute executable path")
     for argument in command:
         if type(argument) is not str or NUL_CHARACTER in argument:
             _fail("bounded target command has nonstring or NUL arguments")
