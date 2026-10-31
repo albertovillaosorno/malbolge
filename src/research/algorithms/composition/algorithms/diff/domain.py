@@ -62,6 +62,9 @@ if TYPE_CHECKING:
     ]
 
 
+_NUL = "\x00"
+
+
 class DomainContractError(ValueError):
     """Invalid diff consumer-module contract."""
 
@@ -111,22 +114,29 @@ def _module_name(path: Path) -> str:
     return f"_malbolge_diff_domain_{digest}"
 
 
+def _require_module_path_without_nul(path: Path) -> None:
+    if _NUL in str(path):
+        message = "diff domain module path must not contain NUL"
+        raise DomainContractError(message)
+
+
 def _regular_module_path(path: Path) -> Path:
+    _require_module_path_without_nul(path)
     try:
         mode = path.lstat().st_mode
     except FileNotFoundError as error:
         message = f"diff domain module is not a regular file: {path}"
         raise DomainContractError(message) from error
-    except OSError as error:
-        message = f"diff domain module status failed: {path}: {error}"
+    except (OSError, ValueError) as error:
+        message = f"diff domain module status failed: {path!r}: {error!r}"
         raise DomainContractError(message) from error
     if S_ISLNK(mode) or path.is_junction() or not S_ISREG(mode):
         message = f"diff domain module is not a regular file: {path}"
         raise DomainContractError(message)
     try:
         return path.resolve(strict=True)
-    except OSError as error:
-        message = f"diff domain module resolution failed: {path}: {error}"
+    except (OSError, ValueError) as error:
+        message = f"diff domain module resolution failed: {path!r}: {error!r}"
         raise DomainContractError(message) from error
 
 

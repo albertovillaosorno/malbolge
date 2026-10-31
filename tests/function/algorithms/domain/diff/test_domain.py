@@ -92,6 +92,13 @@ def test_domain_loader_rejects_foreign_path_before_filesystem() -> None:
         _ = load_diff_domain(cast("Path", cast("object", "domain.py")))
 
 
+@pytest.mark.parametrize("name", ["domain\x00.py", "domain\ud800.py"])
+def test_domain_loader_rejects_unrepresentable_module_path(name: str) -> None:
+    """Malformed module names cannot leak host path/encoding exceptions."""
+    with pytest.raises(DomainContractError, match=r"module path|status failed"):
+        _ = load_diff_domain(Path(name))
+
+
 def test_domain_module_execution_failure_uses_contract_error(
     tmp_path: Path,
 ) -> None:
