@@ -2899,6 +2899,19 @@ lock domain without changing publication or read semantics.
 Two host-real cases cover shared-guard identity and unchanged blob/pair round
 trips under one explicit coordinator.
 
+The persistent lock coordinator now admits only regular lock-file nodes, never a
+leaf symlink, FIFO, directory or device. Linux/Android use nonfollowing,
+nonblocking opens; the opened descriptor and nonfollowing pathname must name
+the same regular inode both before and after shared/exclusive lock acquisition.
+Prelocked guard matching repeats that identity check, rejecting a guard whose
+configured filename has been replaced even though the guard still locks its
+original inode. Linux additionally binds the opened `/proc/self/fd` dentry to
+the currently resolved configured path, rejecting a renamed-and-relinked
+hard-link alias of the same inode. Stable symlink *parent* directories remain
+usable. Nine isolated host-real cases cover both guard types, fresh creation,
+foreign nodes and changed lock-file names. These are observed identity checks,
+not a transaction-wide guarantee against uncooperative namespace mutation.
+
 The guarded prelocked seam is now implemented as well. Crate-internal bounded
 blob load/CAS and pair-generation reclamation require one matching exclusive
 guard and reject foreign guards before state access. One host-real case holds a
