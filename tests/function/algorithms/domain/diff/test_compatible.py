@@ -443,7 +443,12 @@ def test_compatible_materialization_rejects_linked_directory_ancestor(
 
 @pytest.mark.parametrize(
     "bad_path",
-    ["code\x00shadow.src", "code\ud800shadow.src"],
+    [
+        "code\x00shadow.src",
+        "code\ud800shadow.src",
+        "C:/target.src",
+        "D:rel.src",
+    ],
 )
 def test_compatible_metadata_rejects_nonportable_paths_before_placement(
     bad_path: str,

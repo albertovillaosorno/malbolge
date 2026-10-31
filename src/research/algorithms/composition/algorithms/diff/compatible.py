@@ -42,6 +42,7 @@ import hashlib
 import os
 from pathlib import Path
 from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 import shutil
 from typing import TYPE_CHECKING
 from typing import cast
@@ -645,6 +646,7 @@ def _validate_relative_path(relative_path: str) -> str:
         or _NUL in relative_path
         or relative_path == _DOT
         or candidate.is_absolute()
+        or bool(PureWindowsPath(relative_path).drive)
         or _PARENT in candidate.parts
         or candidate.as_posix() != relative_path
     )
