@@ -665,15 +665,42 @@ def _check_provenance(document: dict[str, Any], prefix: str) -> str:
 
 
 def _require_git_commit(commit: str) -> None:
-    """Check local commit-object type; never attest historical execution.
+    """Check a local Git commit through an admitted physical executable.
 
     Raises:
         TargetEchoAuditError: Git is missing or cannot admit a commit object.
 
     """
-    executable = shutil.which("git", path=os.defpath)
+    try:
+        executable = shutil.which("git", path=os.defpath)
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "target audit Git commit object resolver failed"
+        raise TargetEchoAuditError(message) from error
     if executable is None:
         _fail("target audit source commit admission requires local Git")
+    if (
+        type(executable) is not str
+        or not executable
+        or "\0" in executable
+        or not Path(executable).is_absolute()
+    ):
+        _fail("target audit Git commit object executable path invalid")
+    try:
+        _ = os.fsencode(executable)
+        mode = Path(executable).lstat().st_mode
+        allowed = os.access(executable, os.X_OK)
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        UnicodeError,
+    ) as error:
+        message = "target audit Git commit object executable unavailable"
+        raise TargetEchoAuditError(message) from error
+    if not stat.S_ISREG(mode) or not allowed:
+        _fail("target audit Git commit object requires physical executable")
     # Ambient Git object/database selectors cannot redirect local admission.
     clean_env = {
         name: value
@@ -690,10 +717,23 @@ def _require_git_commit(commit: str) -> None:
             timeout=GIT_TIMEOUT_SECONDS,
             env=clean_env,
         )
-    except (OSError, sp.SubprocessError) as error:
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        sp.SubprocessError,
+    ) as error:
         message = "target audit Git commit object lookup failed"
         raise TargetEchoAuditError(message) from error
-    if completed.returncode != 0 or completed.stdout.strip() != GIT_COMMIT_TYPE:
+    if (
+        type(completed) is not sp.CompletedProcess
+        or type(completed.returncode) is not int
+        or completed.returncode != 0
+        or type(completed.stdout) is not bytes
+        or completed.stdout.strip() != GIT_COMMIT_TYPE
+    ):
         _fail("target audit source revision is not a local Git commit object")
 
 

@@ -1487,6 +1487,109 @@ def test_real_study_profile_binary_digest_required_for_vm_replay(
         )
 
 
+@pytest.mark.parametrize(
+    "receipt", ["", "relative/git", "bad\0path", b"/usr/bin/git", False, 7],
+    ids=["empty", "relative", "nul", "bytes", "boolean", "integer"],
+)
+def test_target_audit_git_object_rejects_malformed_resolver_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """An invalid Git path never reaches source-object subprocess execution."""
+    monkeypatch.setattr(
+        audit.shutil, "which", lambda *_args, **_kwargs: cast("str", receipt)
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unadmitted audit Git path reached process execution")
+
+    monkeypatch.setattr(audit.sp, "run", forbidden)
+    with pytest.raises(audit.TargetEchoAuditError, match="Git"):
+        audit._require_git_commit("a" * 40)
+
+
+@pytest.mark.parametrize("kind", ["missing", "directory", "nonexecutable", "symlink"])
+def test_target_audit_git_object_requires_physical_executable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """The source-object resolver cannot return an unexecutable or linked file."""
+    git = tmp_path / "git"
+    if kind == "directory":
+        git.mkdir()
+    elif kind == "nonexecutable":
+        _ = git.write_bytes(b"not executable")
+        git.chmod(0o600)
+    elif kind == "symlink":
+        target = tmp_path / "real-git"
+        _ = target.write_bytes(b"#!/bin/sh\nexit 0\n")
+        target.chmod(0o700)
+        git.symlink_to(target)
+    monkeypatch.setattr(audit.shutil, "which", lambda *_args, **_kwargs: str(git))
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unsafe audit Git path reached process execution")
+
+    monkeypatch.setattr(audit.sp, "run", forbidden)
+    with pytest.raises(audit.TargetEchoAuditError, match="Git"):
+        audit._require_git_commit("a" * 40)
+
+
+@pytest.mark.parametrize(
+    "failure", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_target_audit_git_object_types_resolver_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[Exception],
+) -> None:
+    """Resolver faults are typed audit failures with the original cause."""
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise failure("host Git resolver unavailable")
+
+    monkeypatch.setattr(audit.shutil, "which", broken)
+    with pytest.raises(audit.TargetEchoAuditError, match="Git") as caught:
+        audit._require_git_commit("a" * 40)
+    assert isinstance(caught.value.__cause__, failure)
+
+
+@pytest.mark.parametrize("failure", [ValueError, RuntimeError, TypeError, AttributeError])
+def test_target_audit_git_object_types_transport_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[Exception],
+) -> None:
+    """Subprocess transport faults cannot leak native host exceptions."""
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise failure("Git execution unavailable")
+
+    monkeypatch.setattr(audit.sp, "run", broken)
+    with pytest.raises(audit.TargetEchoAuditError, match="Git") as caught:
+        audit._require_git_commit("a" * 40)
+    assert isinstance(caught.value.__cause__, failure)
+
+
+@pytest.mark.parametrize(
+    ("status", "stdout"),
+    [(0, None), (0, "commit"), (1, b"commit"), (True, b"commit"), (0, b"tree")],
+    ids=["missing", "text", "failed", "bool-status", "wrong-object"],
+)
+def test_target_audit_git_object_rejects_noncanonical_process_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    status: object,
+    stdout: object,
+) -> None:
+    """Only a successful binary commit-object response passes provenance."""
+    monkeypatch.setattr(
+        audit.sp,
+        "run",
+        lambda *_args, **_kwargs: sp.CompletedProcess(
+            ["git"], cast("int", status), cast("bytes", stdout), b""
+        ),
+    )
+    with pytest.raises(audit.TargetEchoAuditError, match="Git commit object"):
+        audit._require_git_commit("a" * 40)
+
+
 def test_opt_in_git_object_admission_confirms_real_source_revision(
     retained: tuple[Path, dict[str, Any], str],
 ) -> None:
