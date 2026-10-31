@@ -33,14 +33,44 @@
 //! Hard-link refusal for shared and exclusive filesystem coordination locks.
 
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{self, ErrorKind};
+use std::path::{Path, PathBuf};
+use std::process::id;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::{NativeContinuationFileCoordination, NativeContinuationFileCoordinationError};
-use crate::{file_blob_store_fixture, remove_file_blob_store_fixture};
+
+static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
+
+struct Fixture {
+    directory: PathBuf,
+}
+
+impl Fixture {
+    fn new(case: &str) -> io::Result<Self> {
+        let number = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(".temp")
+            .join(format!("coordination-links-{case}-{}-{number}", id()));
+        #[expect(clippy::create_dir, reason = "never reuse a fixture directory")]
+        fs::create_dir(&directory)?;
+        Ok(Self { directory })
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "the fixture owns only its isolated directory and needs normal Drop"
+)]
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        drop(fs::remove_dir_all(&self.directory));
+    }
+}
 
 #[test]
 fn linked_foreign_lock_inode_is_rejected_before_acquisition() -> Result<(), String> {
-    let fixture = file_blob_store_fixture("coordination-external-hard-link")?;
+    let fixture = Fixture::new("external-hard-link").map_err(|error| error.to_string())?;
     let foreign = fixture.directory.join("foreign.lock");
     let link = fixture.directory.join("coordination.lock");
     fs::write(&foreign, b"foreign lock")
@@ -57,7 +87,6 @@ fn linked_foreign_lock_inode_is_rejected_before_acquisition() -> Result<(), Stri
     let shared = coordination.acquire_shared();
     let accepted = exclusive_rejected && matches!(shared, Err(error) if error == expected);
     drop(shared);
-    remove_file_blob_store_fixture(&fixture.directory)?;
     if accepted {
         Ok(())
     } else {
@@ -67,7 +96,7 @@ fn linked_foreign_lock_inode_is_rejected_before_acquisition() -> Result<(), Stri
 
 #[test]
 fn live_guards_reject_late_hard_link_alias() -> Result<(), String> {
-    let fixture = file_blob_store_fixture("coordination-late-hard-link")?;
+    let fixture = Fixture::new("late-hard-link").map_err(|error| error.to_string())?;
     let link = fixture.directory.join("coordination.lock");
     let alias = fixture.directory.join("new-alias.lock");
     let coordination = NativeContinuationFileCoordination::new(link.clone());
@@ -86,7 +115,6 @@ fn live_guards_reject_late_hard_link_alias() -> Result<(), String> {
     fs::hard_link(&link, &alias).map_err(|error| format!("cannot link shared lock: {error}"))?;
     let rejected_shared = !coordination.matches_shared(&shared);
     drop(shared);
-    remove_file_blob_store_fixture(&fixture.directory)?;
     if initially_exclusive && initially_shared && rejected_exclusive && rejected_shared {
         Ok(())
     } else {

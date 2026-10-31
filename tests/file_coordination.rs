@@ -345,6 +345,11 @@ fn equal_inode_parent_symlink_replacement_invalidates_shared_guard() -> Result<(
     );
     fs::remove_file(&original).map_err(|error| error.to_string())?;
     fs::rename(&parked, &original).map_err(|error| error.to_string())?;
+    assert!(
+        !coordinator.matches_shared(&guard),
+        "the foreign hard link must still invalidate the restored guard"
+    );
+    fs::remove_file(foreign.join("coordinator.lock")).map_err(|error| error.to_string())?;
     assert!(coordinator.matches_shared(&guard));
     Ok(())
 }
