@@ -364,7 +364,7 @@ def _make_relocatable_directory(
 ) -> None:
     try:
         path.mkdir(parents=parents, exist_ok=exist_ok)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} creation failed: {path}: {error}"
         raise RelocationError(message) from error
 
@@ -587,7 +587,7 @@ def _cleanup_relocatable_staging(path: Path) -> str | None:
         shutil.rmtree(path)
     except FileNotFoundError:
         return None
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         return str(error)
     return None
 

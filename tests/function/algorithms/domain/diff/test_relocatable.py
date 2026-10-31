@@ -314,8 +314,13 @@ def test_relocatable_publication_collision_preserves_foreign_output(
     assert not (tmp_path / ".out.relocatable-staging").exists()
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_relocatable_cleanup_failure_preserves_primary_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Cleanup failure augments rather than replaces the staging write error."""
     source, oracle, base = _fixture(tmp_path)
@@ -336,7 +341,7 @@ def test_relocatable_cleanup_failure_preserves_primary_error(
     def fail_cleanup(path: Path) -> None:
         _ = path
         message = "blocked relocatable cleanup"
-        raise PermissionError(message)
+        raise failure_type(message)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
     monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
@@ -375,6 +380,43 @@ def test_relocatable_staging_status_error_fails_closed(
     with pytest.raises(RelocationError, match="staging root status failed"):
         materialize_relocatable_plan(candidate, plan, output)
     _expect(not output.exists(), "status failure published relocatable output")
+
+
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
+def test_relocatable_staging_creation_error_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Staging mkdir failures do not escape the relocation boundary."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    output = tmp_path / "out"
+    staging = tmp_path / ".out.relocatable-staging"
+    original_mkdir = Path.mkdir
+
+    def fail_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        if path == staging:
+            message = "blocked relocatable staging creation"
+            raise failure_type(message)
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    with pytest.raises(RelocationError, match="staging root creation failed"):
+        materialize_relocatable_plan(candidate, plan, output)
+    _expect(not output.exists(), "staging creation failure published output")
+    _expect(not staging.exists(), "staging creation failure left staging")
 
 
 @pytest.mark.parametrize(
