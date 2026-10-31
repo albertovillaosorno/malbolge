@@ -50,6 +50,8 @@ from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.canonicalize import normalize_line_endings
+from algorithms.diff.exact import ExactTreeError
+from algorithms.diff.exact import read_exact_regular_file
 from algorithms.diff.mapped import MappedUnit
 from algorithms.diff.mapped import MappedView
 from algorithms.diff.provenance import SourcePin
@@ -691,8 +693,10 @@ def _identity_source_files(code_root: Path) -> tuple[Path, ...]:
 
 def _read_identity_bytes(path: Path) -> bytes:
     try:
-        return path.read_bytes()
-    except OSError as error:
+        # Re-admit the regular descriptor: enumeration status is not authority
+        # for a later read after a pathname can be replaced.
+        return read_exact_regular_file(path, "DOOM identity entry")
+    except (OSError, ExactTreeError) as error:
         message = f"DOOM identity entry read failed: {path}: {error}"
         raise DoomIdentityError(message) from error
 

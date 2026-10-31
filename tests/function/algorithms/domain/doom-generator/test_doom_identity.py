@@ -37,6 +37,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from algorithms.diff.exact import read_exact_regular_file
 from algorithms.diff.provenance import SourcePinError
 from algorithms.diff.provenance import SourcePinEvidence
 from algorithms.doom.generator import doom as doom_module
@@ -173,15 +174,42 @@ def test_identity_entry_read_error_fails_closed(
     linux.mkdir()
     blocked = linux / "main.c"
     _ = blocked.write_bytes(b"int main(void){return 0;}" + bytes((10,)))
-    original_read = Path.read_bytes
+    original_read = read_exact_regular_file
 
-    def fail_read(path: Path) -> bytes:
+    def fail_read(path: Path, context: str) -> bytes:
         if path == blocked:
             message = "blocked DOOM identity read"
             raise PermissionError(message)
-        return original_read(path)
+        return original_read(path, context)
 
-    monkeypatch.setattr(Path, "read_bytes", fail_read)
+    monkeypatch.setattr(doom_module, "read_exact_regular_file", fail_read)
+    with pytest.raises(DoomIdentityError, match="entry read failed"):
+        _ = build_identity_tree(tmp_path)
+
+
+def test_identity_rejects_leaf_redirected_after_admission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A linked replacement after lstat must not supply DOOM identity bytes."""
+    linux = tmp_path / "linuxdoom-1.10"
+    linux.mkdir()
+    source = linux / "main.c"
+    original_bytes = b"int main(void){return 0;}\n"
+    _ = source.write_bytes(original_bytes)
+    foreign = tmp_path / "foreign.c"
+    _ = foreign.write_bytes(original_bytes)
+    original_is_junction = Path.is_junction
+    swapped = False
+
+    def redirect_after_lstat(path: Path) -> bool:
+        nonlocal swapped
+        if path == source and not swapped:
+            swapped = True
+            source.unlink()
+            source.symlink_to(foreign)
+        return original_is_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", redirect_after_lstat)
     with pytest.raises(DoomIdentityError, match="entry read failed"):
         _ = build_identity_tree(tmp_path)
 

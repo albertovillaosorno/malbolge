@@ -15,6 +15,10 @@ not need this transform to produce the final `doom.c`.
 identity,
 and emits a framed C preprocessing-token view that ignores comments and ordinary
 formatting without erasing token boundaries or preprocessor line termination.
+The C/H identity read re-admits each opened regular descriptor after path
+selection, rejecting a symlink or special-file replacement between traversal
+and byte acquisition. The domain preserves typed identity errors on failure.
+
 The C identity adapter now has a mapped form as well. `mapped_c_identity()`
 emits
 the same framed preprocessing-token identity as `canonicalize_c_identity()`
