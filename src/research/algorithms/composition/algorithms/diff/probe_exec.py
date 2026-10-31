@@ -479,7 +479,7 @@ def _require_executable(path: Path) -> None:
     except FileNotFoundError as error:
         message = "probe executable is unavailable"
         raise ProbeExecutionError(message) from error
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"probe executable status failed: {path}: {error}"
         raise ProbeExecutionError(message) from error
     if not S_ISREG(mode):
@@ -1120,7 +1120,7 @@ def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
             for record in files
             for status in ((source / record.path).stat(),)
         )
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"probe source inode status failed: {error}"
         raise ProbeExecutionError(message) from error
 
@@ -1139,7 +1139,7 @@ def _repository_inode_status(path: Path) -> os.stat_result | None:
         return path.stat()
     except FileNotFoundError:
         return None
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"probe repository path status failed: {error}"
         raise ProbeExecutionError(message) from error
 

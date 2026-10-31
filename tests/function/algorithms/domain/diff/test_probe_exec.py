@@ -355,8 +355,13 @@ def test_missing_tool_executable_fails_closed(tmp_path: Path) -> None:
         _ = run_probe_program(_program("missing-tool", "pass"), context)
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_tool_executable_status_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Preserve an inaccessible executable as a probe status failure."""
     source = tmp_path / "source"
@@ -370,7 +375,7 @@ def test_tool_executable_status_error_fails_closed(
     def fail_stat(path: Path, *args: object, **kwargs: object) -> object:
         if path == resolved_tool:
             message = "blocked tool executable"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_stat(path, *args, **kwargs)
 
     monkeypatch.setattr(Path, "stat", fail_stat)
@@ -1068,6 +1073,87 @@ def test_repository_hardlink_to_original_source_is_rejected(
         target.read_text(encoding="utf-8") == _ORIGINAL_TEXT,
         "external hardlink modified the original protected source",
     )
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_repository_path_status_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Reject a repository argument when its inode metadata is unavailable."""
+    source = tmp_path / "source"
+    source.mkdir()
+    candidate = tmp_path / "external-data.txt"
+    _ = candidate.write_bytes(_EXTERNAL_DATA)
+    original_stat = Path.stat
+
+    def fail_stat(path: Path, *args: object, **kwargs: object) -> object:
+        if path == candidate:
+            message = "repository inode inspection failed"
+            raise failure_type(message)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fail_stat)
+    program = ProbeProgram(
+        "repository-inode-failure",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    "pass",
+                    PathArgument(ProbeRoot.REPOSITORY, candidate.name),
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(
+        ProbeExecutionError, match="repository path status failed"
+    ):
+        _ = run_probe_program(program, _context(source, tmp_path))
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_source_inode_status_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Reject a linked repository file when source inode metadata fails."""
+    source = tmp_path / "source"
+    source.mkdir()
+    target = source / "input.txt"
+    _ = target.write_text(_ORIGINAL_TEXT, encoding="utf-8")
+    hardlink = tmp_path / "external-alias.txt"
+    try:
+        os.link(target, hardlink)
+    except OSError, NotImplementedError:
+        pytest.skip("hard links are unavailable")
+    original_stat = Path.stat
+
+    def fail_stat(path: Path, *args: object, **kwargs: object) -> object:
+        if path == target:
+            message = "source inode inspection failed"
+            raise failure_type(message)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fail_stat)
+    program = ProbeProgram(
+        "source-inode-failure",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    "pass",
+                    PathArgument(ProbeRoot.REPOSITORY, hardlink.name),
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match="source inode status failed"):
+        _ = run_probe_program(program, _context(source, tmp_path))
 
 
 def test_repository_hardlink_unrelated_to_source_is_allowed(
