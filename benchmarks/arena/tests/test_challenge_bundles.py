@@ -246,6 +246,19 @@ def test_direct_bundle_rejects_unhashable_identity_fields(
         challenge_bundles.verify_bundle(case, PROFILE, files)
 
 
+@pytest.mark.parametrize("sign", [1, -1], ids=["positive", "negative"])
+def test_direct_bundle_rejects_extreme_native_version_before_formatting(
+    sign: int,
+) -> None:
+    """Huge genuine ints must not escape as Python decimal-format faults."""
+    case, files = _direct_bundle()
+    case["version"] = sign * (1 << 50000)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="challenge"
+    ):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
 class _HostileVersion:
     """A non-JSON version can execute its formatting hook during rejection."""
 
