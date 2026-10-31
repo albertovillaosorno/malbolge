@@ -34,14 +34,18 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 import shutil
+from stat import S_ISDIR
+from stat import S_ISLNK
+from stat import S_ISREG
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed TeX argv, never a shell command.
 import sys
-from pathlib import Path
-from stat import S_ISDIR, S_ISLNK, S_ISREG
-from typing import TYPE_CHECKING, Never
+from typing import Never
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -57,6 +61,9 @@ MATH_ROOT = ROOT / "src/specification/formal-model/math"
 CACHE_ROOT = ROOT / ".cache" / "latex"
 NOTATION = MATH_ROOT / "malbolge-notation.tex"
 DOCUMENT_MARKER = r"\documentclass"
+MAX_TEX_BYTES = 1024 * 1024
+PARENT_SEGMENT = ".."
+TEX_SUFFIX = ".tex"
 NOTATION_INCLUDE = r"\input{../malbolge-notation.tex}"
 LATEX_COMPILER = "pdflatex"
 REQUIRED_MACROS = (
@@ -78,29 +85,56 @@ def _fail(message: str) -> Never:
     raise MathSpecificationError(message)
 
 
-def _physical_math_status(path: Path, *, directory: bool) -> None:
-    """Require physical in-root TeX artifacts, without filesystem redirects."""
+def _source_relative_path(path: Path) -> Path:
+    """Admit a lexical repository-relative source path.
+
+    Returns:
+        One path that cannot escape the repository by parent traversal.
+
+    """
     try:
         relative = path.relative_to(ROOT)
     except ValueError:
         _fail(f"mathematics source must stay inside repository root: {path}")
-    if ".." in relative.parts:
+    if PARENT_SEGMENT in relative.parts:
         _fail(f"mathematics source must not escape repository root: {path}")
+    return relative
+
+
+def _physical_math_status(path: Path, *, directory: bool) -> None:
+    """Require physical in-root TeX artifacts, without filesystem redirects."""
+    relative = _source_relative_path(path)
     current = ROOT
     for index, component in enumerate(relative.parts):
-        current = current / component
+        current /= component
         try:
             status = current.lstat()
         except OSError as error:
             _fail(f"mathematics source status failed: {error}")
         if S_ISLNK(status.st_mode) or current.is_junction():
-            _fail(f"mathematics source must not redirect: {relative.as_posix()}")
-        expect_directory = directory if index == len(relative.parts) - 1 else True
+            _fail(
+                f"mathematics source must not redirect: {relative.as_posix()}"
+            )
+        expect_directory = (
+            directory if index == len(relative.parts) - 1 else True
+        )
         is_expected = (
-            S_ISDIR(status.st_mode) if expect_directory else S_ISREG(status.st_mode)
+            S_ISDIR(status.st_mode)
+            if expect_directory
+            else S_ISREG(status.st_mode)
         )
         if not is_expected:
-            _fail(f"mathematics source must be a physical regular artifact: {path}")
+            reason = "mathematics source must be a physical regular artifact"
+            _fail(f"{reason}: {path}")
+
+
+def _admit_tex_candidate(candidate: Path, sources: list[Path]) -> None:
+    """Collect an admissible TeX source and reject redirected directories."""
+    if candidate.suffix == TEX_SUFFIX:
+        _physical_math_status(candidate, directory=False)
+        sources.append(candidate)
+    elif candidate.is_symlink() and candidate.is_dir():
+        _fail(f"mathematics source directory must not redirect: {candidate}")
 
 
 def _discovered_tex_paths() -> tuple[Path, ...]:
@@ -115,43 +149,138 @@ def _discovered_tex_paths() -> tuple[Path, ...]:
         for name in directories:
             _physical_math_status(parent / name, directory=True)
         for name in filenames:
-            candidate = parent / name
-            if candidate.suffix == ".tex":
-                _physical_math_status(candidate, directory=False)
-                sources.append(candidate)
-            elif candidate.is_symlink() and candidate.is_dir():
-                _fail(f"mathematics source directory must not redirect: {candidate}")
+            _admit_tex_candidate(parent / name, sources)
     return tuple(sorted(sources, key=lambda path: path.as_posix()))
 
 
+def _tex_source_identity(
+    status: os.stat_result,
+) -> tuple[int, int, int, int, int]:
+    """Admit a bounded regular file and capture its physical identity.
+
+    Returns:
+        Device, inode, size, mtime and ctime of the admitted source.
+
+    """
+    if not S_ISREG(status.st_mode):
+        _fail("mathematics source must be a physical regular artifact")
+    if status.st_size > MAX_TEX_BYTES:
+        _fail("mathematics source exceeds byte limit")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _read_open_tex_bytes(
+    path: Path,
+    admitted: tuple[int, int, int, int, int],
+) -> bytes:
+    """Read one bounded descriptor and verify its pre/post physical identity.
+
+    Returns:
+        Exact bytes of the open regular file.
+
+    """
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        if _tex_source_identity(os.fstat(stream.fileno())) != admitted:
+            _fail("mathematics source changed before read")
+        data = stream.read(MAX_TEX_BYTES + 1)
+        if (
+            len(data) != admitted[2]
+            or _tex_source_identity(os.fstat(stream.fileno())) != admitted
+        ):
+            _fail("mathematics source changed during read")
+    return data
+
+
+def _stable_tex_source_bytes(path: Path) -> bytes:
+    """Require a stable no-redirect path around one descriptor read.
+
+    Returns:
+        Exact physical bytes after a second pathname identity check.
+
+    """
+    _physical_math_status(path, directory=False)
+    admitted = _tex_source_identity(path.lstat())
+    data = _read_open_tex_bytes(path, admitted)
+    _physical_math_status(path, directory=False)
+    if _tex_source_identity(path.lstat()) != admitted:
+        _fail("mathematics source changed during read")
+    return data
+
+
 def _read_tex(path: Path) -> str:
+    """Read a stable, bounded, physically admitted TeX source snapshot.
+
+    Returns:
+        UTF-8 text only when the named source remains unchanged.
+
+    """
     try:
-        return path.read_text(encoding="utf-8")
+        return _stable_tex_source_bytes(path).decode("utf-8")
     except UnicodeDecodeError as error:
         _fail(f"invalid mathematics source UTF-8: {path}: {error}")
+    except OSError as error:
+        _fail(f"mathematics source read failed: {path}: {error}")
 
 
-def _reject_cache_redirects(output: Path) -> None:
-    """Reject an existing redirected cache ancestor before creating output."""
+def _cache_relative_path(output: Path) -> Path:
+    """Admit a lexical repository-relative cache path.
+
+    Returns:
+        One path that cannot escape the repository by parent traversal.
+
+    """
     try:
         relative = output.relative_to(ROOT)
     except ValueError:
         _fail(f"mathematics cache must stay inside repository root: {output}")
-    if ".." in relative.parts:
+    if PARENT_SEGMENT in relative.parts:
         _fail(f"mathematics cache must not escape repository root: {output}")
+    return relative
+
+
+def _cache_component_is_physical(path: Path, relative: Path) -> bool:
+    """Verify one existing cache ancestor, or report an absent component.
+
+    Returns:
+        True when the physical directory exists; false when still absent.
+
+    """
+    try:
+        status = path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as error:
+        _fail(f"mathematics cache status failed: {error}")
+    if S_ISLNK(status.st_mode) or path.is_junction():
+        _fail(
+            f"mathematics cache path must not redirect: {relative.as_posix()}"
+        )
+    if not S_ISDIR(status.st_mode):
+        _fail(f"mathematics cache path must be a directory: {path}")
+    return True
+
+
+def _reject_cache_redirects(output: Path) -> None:
+    """Reject an existing redirected cache ancestor before creating output."""
+    relative = _cache_relative_path(output)
     current = ROOT
     for component in relative.parts:
-        current = current / component
-        try:
-            status = current.lstat()
-        except FileNotFoundError:
+        current /= component
+        if not _cache_component_is_physical(current, relative):
             break
-        except OSError as error:
-            _fail(f"mathematics cache status failed: {error}")
-        if S_ISLNK(status.st_mode) or current.is_junction():
-            _fail(f"mathematics cache path must not redirect: {relative.as_posix()}")
-        if not S_ISDIR(status.st_mode):
-            _fail(f"mathematics cache path must be a directory: {current}")
 
 
 def document_sources() -> tuple[Path, ...]:
@@ -166,7 +295,9 @@ def document_sources() -> tuple[Path, ...]:
     except FileNotFoundError:
         _fail(f"mathematics root not found: {MATH_ROOT}")
     sources = tuple(
-        path for path in _discovered_tex_paths() if DOCUMENT_MARKER in _read_tex(path)
+        path
+        for path in _discovered_tex_paths()
+        if DOCUMENT_MARKER in _read_tex(path)
     )
     if not sources:
         _fail("no standalone mathematical documents found")
@@ -181,7 +312,9 @@ def _validate_notation() -> None:
     _physical_math_status(NOTATION, directory=False)
     notation_text = _read_tex(NOTATION)
     if DOCUMENT_MARKER in notation_text:
-        _fail("shared notation must remain an include, not a standalone document")
+        _fail(
+            "shared notation must remain an include, not a standalone document"
+        )
     for macro in REQUIRED_MACROS:
         if macro not in notation_text:
             _fail(f"shared notation is missing required macro: {macro}")
@@ -220,7 +353,7 @@ def output_directory(source: Path) -> Path:
         relative = source.relative_to(MATH_ROOT)
     except ValueError:
         _fail(f"mathematics source must stay inside math root: {source}")
-    if ".." in relative.parts or not relative.parts:
+    if PARENT_SEGMENT in relative.parts or not relative.parts:
         _fail(f"mathematics source must not escape math root: {source}")
     return CACHE_ROOT / relative.parent / relative.stem
 

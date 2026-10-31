@@ -50,9 +50,13 @@ Math source discovery and direct builds reject symlink/junction redirects to
 TeX files or ancestor directories and require physical regular inputs. Direct
 output-cache mapping also rejects parent-traversal source paths. Cache builds
 reject existing redirected output directories before creating anything, and
-TeX input decoding errors are surfaced as math validation errors. These are
-admission checks, not an atomic protection against filesystem races during a
-subsequent TeX compiler invocation.
+TeX validation reads no more than one MiB per physical regular source,
+rejects redirected parent/leaf paths, and requires the pre-read file identity
+(device, inode, size and modification/change times) to match the open descriptor
+and the post-read pathname. In-place edits and byte-identical file replacements
+invalidate the snapshot. TeX input decoding errors are surfaced as math
+validation errors. These are validation-input checks, not an atomic protection
+against filesystem races during a subsequent TeX compiler invocation.
 
 The current repository has nine standalone mathematical documents. All nine
 compile through the validator. `tests/mathematics/test_math_framework.py` locks
