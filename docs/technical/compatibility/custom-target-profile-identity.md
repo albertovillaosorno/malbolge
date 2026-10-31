@@ -127,7 +127,10 @@ Run:
   -m scripts.validate.profile_identity PROFILE.json
 ```
 
-to validate the external profile and print its canonical fingerprint.
+to validate the external profile and print its canonical fingerprint. The
+profile JSON must be a stable, bounded regular file and cannot be supplied via
+a redirected file or parent directory; the CLI preserves the input path through
+file admission instead of resolving away aliases.
 
 Run:
 

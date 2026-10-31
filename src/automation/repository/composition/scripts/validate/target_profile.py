@@ -37,7 +37,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
+from stat import S_ISREG
 import sys
 from typing import Never
 from typing import cast
@@ -67,6 +69,7 @@ HISTORICAL_PROFILE = "malbolge-1998"
 CURRENT_PROFILE_ID = "malbolge-2026"
 CURRENT_VERSION = "2026"
 SCHEMA_VERSION = 2
+MAX_DOCUMENT_BYTES = 1024 * 1024
 CURRENT_KIND = "current"
 HISTORICAL_KIND = "historical-conformance"
 VERSIONED_KIND = "versioned"
@@ -296,8 +299,68 @@ def _validated_profile_path(value: object) -> Path:
     return value
 
 
+def _profile_identity(status: os.stat_result) -> tuple[int, int, int, int, int]:
+    """Require regular input and retain mutation/replacement evidence.
+
+    Returns:
+        Device, inode, size, mtime, and ctime for one regular input.
+
+    """
+    if not S_ISREG(status.st_mode):
+        _fail("target-profile document must be a regular file")
+    if status.st_size > MAX_DOCUMENT_BYTES:
+        _fail("target-profile document exceeds byte limit")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _check_profile_parents(path: Path) -> None:
+    """Do not admit profile document paths through redirected directories."""
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            _fail("target-profile document path must not redirect")
+
+
+def _read_profile_bytes(path: Path) -> bytes:
+    """Read one bounded no-follow profile snapshot and recheck its identity.
+
+    Returns:
+        Exact stable regular-file bytes.
+
+    """
+    _check_profile_parents(path)
+    admitted = path.lstat()
+    expected = _profile_identity(admitted)
+    if path.is_symlink() or path.is_junction():
+        _fail("target-profile document path must not redirect")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        if _profile_identity(os.fstat(stream.fileno())) != expected:
+            _fail("target-profile document changed before read")
+        data = stream.read(MAX_DOCUMENT_BYTES + 1)
+        if (
+            len(data) != admitted.st_size
+            or _profile_identity(os.fstat(stream.fileno())) != expected
+            or _profile_identity(path.lstat()) != expected
+        ):
+            _fail("target-profile document changed during read")
+    _check_profile_parents(path)
+    return data
+
+
 def load_document(path: Path) -> JsonObject:
-    """Load one target-profile document from disk.
+    """Load one stable regular UTF-8 target-profile document from disk.
 
     Returns:
         The parsed top-level target-profile object.
@@ -305,9 +368,11 @@ def load_document(path: Path) -> JsonObject:
     """
     admitted_path = _validated_profile_path(path)
     try:
-        text = admitted_path.read_text(encoding="utf-8-sig")
+        text = _read_profile_bytes(admitted_path).decode("utf-8-sig")
     except UnicodeDecodeError as error:
         _fail(f"invalid target-profile UTF-8: {error}")
+    except OSError as error:
+        _fail(f"failed to read target-profile document {path}: {error}")
     return loads_document(text)
 
 
@@ -1247,7 +1312,7 @@ def main() -> int:
 
     """
     try:
-        profile = _profile_argument(sys.argv[1:]).resolve()
+        profile = _profile_argument(sys.argv[1:])
         validate_document(load_document(profile))
     except (OSError, ProfileValidationError) as error:
         _ = sys.stderr.write(f"error: {error}\n")

@@ -34,10 +34,16 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import sys
+from typing import TYPE_CHECKING
 from typing import cast
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from scripts.validate import target_profile as validator
 
@@ -220,6 +226,157 @@ def test_profile_file_rejects_invalid_utf8(tmp_path: Path) -> None:
         match="invalid target-profile UTF-8",
     ):
         _ = validator.load_document(path)
+
+
+def test_profile_file_rejects_linked_leaf_and_directory(tmp_path: Path) -> None:
+    """Profile authority cannot be supplied through path redirects."""
+    original = tmp_path / "profile.json"
+    _ = original.write_text(_canonical_text(), encoding="utf-8")
+    leaf = tmp_path / "linked-profile.json"
+    parent = tmp_path / "linked-directory"
+    try:
+        leaf.symlink_to(original)
+        parent.symlink_to(tmp_path, target_is_directory=True)
+    except (NotImplementedError, OSError) as error:
+        pytest.skip(f"symlinks unsupported on this platform: {error}")
+    for redirected in (leaf, parent / original.name):
+        with pytest.raises(
+            validator.ProfileValidationError, match=r"redirect|regular"
+        ):
+            _ = validator.load_document(redirected)
+
+
+def test_target_profile_cli_refuses_linked_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Canonical validator CLI must not resolve aliases before admission."""
+    source = tmp_path / "profile.json"
+    _ = source.write_text(_canonical_text(), encoding="utf-8")
+    linked = tmp_path / "profile-link.json"
+    try:
+        linked.symlink_to(source)
+    except (NotImplementedError, OSError) as error:
+        pytest.skip(f"symlinks unsupported on this platform: {error}")
+    monkeypatch.setattr(sys, "argv", ["target_profile", str(linked)])
+    assert validator.main() == 1
+    result = capsys.readouterr()
+    assert result.err.startswith(
+        "error: target-profile document must be a regular file"
+    )
+    assert not result.out
+
+
+def test_profile_file_rejects_nonregular_and_oversized_sources(
+    tmp_path: Path,
+) -> None:
+    """Untrusted profile documents have a finite regular-file boundary."""
+    with pytest.raises(validator.ProfileValidationError, match="regular"):
+        _ = validator.load_document(tmp_path)
+    large = tmp_path / "huge.json"
+    with large.open("wb") as stream:
+        _ = stream.truncate(validator.MAX_DOCUMENT_BYTES + 1)
+    with pytest.raises(validator.ProfileValidationError, match="byte limit"):
+        _ = validator.load_document(large)
+    missing = tmp_path / "missing.json"
+    with pytest.raises(
+        validator.ProfileValidationError, match="failed to read"
+    ):
+        _ = validator.load_document(missing)
+
+
+def test_profile_file_refuses_fifo_without_blocking(tmp_path: Path) -> None:
+    """A writerless FIFO cannot hang canonical profile validation."""
+    mkfifo = cast("Callable[[Path], None] | None", getattr(os, "mkfifo", None))
+    if mkfifo is None:
+        pytest.skip("FIFOs are unavailable on this host")
+    fifo = tmp_path / "source.fifo"
+    mkfifo(fifo)
+    with pytest.raises(validator.ProfileValidationError, match="regular"):
+        _ = validator.load_document(fifo)
+
+
+def test_profile_file_rejects_same_byte_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An inode replacement after lstat must not pass the snapshot check."""
+    source = tmp_path / "profile.json"
+    replacement = tmp_path / "replacement.json"
+    content = _canonical_text()
+    _ = source.write_text(content, encoding="utf-8")
+    _ = replacement.write_text(content, encoding="utf-8")
+    real_open = os.open
+
+    def swap_on_open(path: Path, flags: int) -> int:
+        _ = replacement.replace(source)
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_on_open)
+    with pytest.raises(
+        validator.ProfileValidationError, match="changed before read"
+    ):
+        _ = validator.load_document(source)
+
+
+def test_profile_file_rejects_same_byte_swap_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replacement after consuming source bytes also invalidates JSON."""
+    source = tmp_path / "profile.json"
+    replacement = tmp_path / "replacement.json"
+    content = _canonical_text()
+    _ = source.write_text(content, encoding="utf-8")
+    _ = replacement.write_text(content, encoding="utf-8")
+    real_lstat = Path.lstat
+    recheck_index = 2
+    checks = 0
+
+    def swap_at_recheck(path: Path) -> os.stat_result:
+        nonlocal checks
+        if path == source:
+            checks += 1
+            if checks == recheck_index:
+                _ = replacement.replace(source)
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", swap_at_recheck)
+    with pytest.raises(
+        validator.ProfileValidationError, match="changed during read"
+    ):
+        _ = validator.load_document(source)
+    assert checks == recheck_index
+
+
+def test_profile_file_rejects_in_place_update_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changes to bytes of the same inode cannot validate a stale snapshot."""
+    source = tmp_path / "profile.json"
+    content = _canonical_text().encode("utf-8")
+    _ = source.write_bytes(content)
+    real_lstat = Path.lstat
+    recheck_index = 2
+    checks = 0
+
+    def change_at_recheck(path: Path) -> os.stat_result:
+        nonlocal checks
+        if path == source:
+            checks += 1
+            if checks == recheck_index:
+                with source.open("r+b") as stream:
+                    _ = stream.write(b"x")
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", change_at_recheck)
+    with pytest.raises(
+        validator.ProfileValidationError, match="changed during read"
+    ):
+        _ = validator.load_document(source)
+    assert checks == recheck_index
 
 
 def test_inconsistent_giant_trit_count_rejects_before_power() -> None:

@@ -36,7 +36,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
+import pytest
+
+from scripts.validate import profile_identity
 from scripts.validate import target_profile as validator
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -199,3 +203,25 @@ def test_artifact_fingerprint_mismatch_has_stable_diagnostic() -> None:
         f"observed={EXAMPLE_FINGERPRINT}",
     ))
     assert _mismatch_message(_example()) == expected
+
+
+def test_profile_identity_cli_refuses_linked_external_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI must not erase a redirected pathname before loader admission."""
+    source = tmp_path / "profile.json"
+    _ = source.write_bytes(EXAMPLE_PATH.read_bytes())
+    linked = tmp_path / "profile-link.json"
+    try:
+        linked.symlink_to(source)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unsupported on this platform: {error}")
+    monkeypatch.setattr(sys, "argv", ["profile_identity", str(linked)])
+    assert profile_identity.main() == 1
+    result = capsys.readouterr()
+    assert result.err.startswith(
+        "error: target-profile document must be a regular file"
+    )
+    assert not result.out

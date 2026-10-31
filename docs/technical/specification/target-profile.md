@@ -55,7 +55,11 @@ I/O is source-compatible with the original interpreter.
 
 `src/automation/repository/composition/scripts/validate/target_profile.py`
 provides a dependency-free closed-schema
-validator using duplicate-key-rejecting JSON parsing. File loading rejects
+validator using duplicate-key-rejecting JSON parsing. Document loading
+requires a stable, non-redirected regular file, reads at most 1 MiB through a
+descriptor with no-follow and nonblocking opening where supported, and checks
+inode, extent, and write-time evidence before and after the read. Replacement
+or mutation fails closed. File loading rejects
 invalid UTF-8 as a typed profile-validation failure before JSON admission. It
 enforces exact schema keys, ternary word consistency, single-word memory
 consistency, EOF at the

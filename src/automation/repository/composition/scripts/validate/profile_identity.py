@@ -94,7 +94,7 @@ def main() -> int:
     """
     try:
         path, expected = _arguments(sys.argv[1:])
-        document = target_profile.load_document(path.resolve())
+        document = target_profile.load_document(path)
         profile_id, fingerprint = _fingerprint(document, expected)
     except (
         OSError,
