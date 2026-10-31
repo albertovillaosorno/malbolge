@@ -34,16 +34,15 @@
 
 from __future__ import annotations
 
+import os
 from os import stat_result
 from pathlib import Path
-from stat import S_IFDIR
-from stat import S_IFLNK
-from typing import TYPE_CHECKING
-from typing import cast
+from stat import S_IFDIR, S_IFLNK
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Never
+    from typing import BinaryIO, Never
 
 import pytest
 
@@ -124,12 +123,8 @@ def test_repository_bibliography_taxonomy_and_baseline_are_valid() -> None:
     report = validator.validate_repository()
     assert report.record_count == EXPECTED_RECORDS
     assert report.required_baseline_count == EXPECTED_BASELINE
-    assert (
-        report.required_validation_package_count == EXPECTED_VALIDATION_PACKAGES
-    )
-    assert (
-        report.covered_external_reference_count == EXPECTED_DURABLE_REFERENCES
-    )
+    assert report.required_validation_package_count == EXPECTED_VALIDATION_PACKAGES
+    assert report.covered_external_reference_count == EXPECTED_DURABLE_REFERENCES
     assert report.categories == validator.CATEGORIES
 
 
@@ -232,6 +227,114 @@ def test_filesystem_status_errors_fail_closed() -> None:
         _ = is_regular_file(denied)
 
 
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation", ("lstat", "junction", "resolve", "open", "fdopen", "fstat", "read")
+)
+def test_bibliography_evidence_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """Untrusted host file operations cannot escape bibliography admission."""
+    source = tmp_path / "evidence.md"
+    _ = source.write_text("bibliography evidence", encoding="utf-8")
+    if operation == "lstat":
+        original_lstat = Path.lstat
+
+        def fail_lstat(path: Path) -> stat_result:
+            if path == source:
+                raise fault_type("injected evidence lstat fault")
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    elif operation == "junction":
+        original_junction = Path.is_junction
+
+        def fail_junction(path: Path) -> bool:
+            if path == source:
+                raise fault_type("injected evidence junction fault")
+            return original_junction(path)
+
+        monkeypatch.setattr(Path, "is_junction", fail_junction)
+    elif operation == "resolve":
+        original_resolve = Path.resolve
+
+        def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+            if path == source:
+                raise fault_type("injected evidence resolution fault")
+            return original_resolve(path, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", fail_resolve)
+    elif operation == "open":
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == source:
+                raise fault_type("injected evidence open fault")
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    elif operation == "fdopen":
+
+        def fail_fdopen(_descriptor: int, _mode: str) -> object:
+            raise fault_type("injected evidence fdopen fault")
+
+        monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    elif operation == "fstat":
+
+        def fail_fstat(_descriptor: int) -> stat_result:
+            raise fault_type("injected evidence fstat fault")
+
+        monkeypatch.setattr(os, "fstat", fail_fstat)
+    else:
+
+        def fail_read(_stream: BinaryIO, _status: stat_result, _path: Path) -> bytes:
+            raise fault_type("injected evidence read fault")
+
+        monkeypatch.setattr(validator, "_read_open_evidence", fail_read)
+    expected = (
+        "filesystem traversal failed"
+        if operation in {"lstat", "junction"}
+        else "resolution failed"
+        if operation == "resolve"
+        else "read failed"
+    )
+    with pytest.raises(validator.BibliographyValidationError, match=expected):
+        _ = validator._read_regular_text(source)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+def test_bibliography_fdopen_failure_releases_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A failed evidence stream wrapper must close its opened descriptor."""
+    source = tmp_path / "evidence.md"
+    _ = source.write_text("bibliography evidence", encoding="utf-8")
+    original_open = os.open
+    opened: list[int] = []
+
+    def track_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        if path == source:
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(_descriptor: int, _mode: str) -> object:
+        raise fault_type("injected evidence fdopen fault")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    with pytest.raises(validator.BibliographyValidationError, match="read failed"):
+        _ = validator._read_regular_text(source)  # pyright: ignore[reportPrivateUsage]
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
 def test_filesystem_walk_errors_fail_closed() -> None:
     """Recursive scan failures cannot silently remove durable evidence."""
     handler = cast(
@@ -275,10 +378,12 @@ def test_duplicate_stable_source_identity_fails_closed() -> None:
         validator.BibliographyValidationError,
         match=DUPLICATE_IDENTITY_MESSAGE,
     ):
-        validator.validate_unique_stable_identifiers((
-            ("first", text),
-            ("second", text),
-        ))
+        validator.validate_unique_stable_identifiers(
+            (
+                ("first", text),
+                ("second", text),
+            )
+        )
 
 
 def test_source_record_rejects_link_after_discovery(
@@ -301,12 +406,8 @@ def test_source_record_rejects_link_after_discovery(
         source.symlink_to(outside)
         return (source,)
 
-    monkeypatch.setattr(
-        validator, "_source_record_paths", replaced_source_records
-    )
-    validate_records = cast(
-        "Callable[[], int]", vars(validator)["_validate_records"]
-    )
+    monkeypatch.setattr(validator, "_source_record_paths", replaced_source_records)
+    validate_records = cast("Callable[[], int]", vars(validator)["_validate_records"])
     with pytest.raises(
         validator.BibliographyValidationError,
         match=r"bibliography (paths must not redirect|evidence)",
@@ -356,12 +457,8 @@ def test_source_record_rejects_linked_parent_after_discovery(
         category.symlink_to(outside, target_is_directory=True)
         return (source,)
 
-    monkeypatch.setattr(
-        validator, "_source_record_paths", swapped_parent_records
-    )
-    validate_records = cast(
-        "Callable[[], int]", vars(validator)["_validate_records"]
-    )
+    monkeypatch.setattr(validator, "_source_record_paths", swapped_parent_records)
+    validate_records = cast("Callable[[], int]", vars(validator)["_validate_records"])
     with pytest.raises(
         validator.BibliographyValidationError,
         match=r"bibliography (paths must not redirect|evidence)",

@@ -34,18 +34,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
 import re
-from stat import S_ISDIR
-from stat import S_ISLNK
-from stat import S_ISREG
 import sys
-from typing import Never
-from typing import TYPE_CHECKING
-from urllib.parse import urlsplit
-from urllib.parse import urlunsplit
+from dataclasses import dataclass
+from pathlib import Path
+from stat import S_ISDIR, S_ISLNK, S_ISREG
+from typing import TYPE_CHECKING, Never
+from urllib.parse import urlsplit, urlunsplit
 
 if TYPE_CHECKING:
     from os import stat_result
@@ -59,9 +55,7 @@ VALIDATION_REQUIREMENTS_FILE = ROOT / (
     "src/automation/repository/composition/scripts/bootstrap/"
     "python-validation-requirements.txt"
 )
-CANONICAL_TEMPLATE = (
-    BIBLIOGRAPHY_ROOT / "provenance-and-methodology" / "template.md"
-)
+CANONICAL_TEMPLATE = BIBLIOGRAPHY_ROOT / "provenance-and-methodology" / "template.md"
 CATEGORIES = (
     "languages",
     "legal-and-regulatory",
@@ -144,31 +138,35 @@ VALIDATION_REQUIREMENT_RECORDS = (
     ("ruff==0.16.9", "tooling/ruff.md"),
 )
 URL_PATTERN = re.compile(r"https?://[^\s<>\"'`]+")
-DURABLE_REFERENCE_SUFFIXES = frozenset((
-    ".c",
-    ".cff",
-    ".cmd",
-    ".h",
-    ".json",
-    ".jsonc",
-    ".md",
-    ".mdc",
-    ".py",
-    ".rs",
-    ".sh",
-    ".toml",
-    ".yaml",
-    ".yml",
-))
-DURABLE_REFERENCE_EXCLUDED_PARTS = frozenset((
-    ".cache",
-    ".dependencies",
-    ".git",
-    ".pytest_cache",
-    ".logs",
-    ".temp",
-    "target",
-))
+DURABLE_REFERENCE_SUFFIXES = frozenset(
+    (
+        ".c",
+        ".cff",
+        ".cmd",
+        ".h",
+        ".json",
+        ".jsonc",
+        ".md",
+        ".mdc",
+        ".py",
+        ".rs",
+        ".sh",
+        ".toml",
+        ".yaml",
+        ".yml",
+    )
+)
+DURABLE_REFERENCE_EXCLUDED_PARTS = frozenset(
+    (
+        ".cache",
+        ".dependencies",
+        ".git",
+        ".pytest_cache",
+        ".logs",
+        ".temp",
+        "target",
+    )
+)
 DURABLE_REFERENCE_EXCLUDED_PREFIXES = (
     "docs/bibliography/",
     "docs/todo/open/",
@@ -221,9 +219,13 @@ def _path_status(path: Path) -> stat_result | None:
         status = path.lstat()
     except FileNotFoundError:
         return None
-    except OSError:
+    except (OSError, ValueError, RuntimeError):
         _fail("bibliography filesystem traversal failed")
-    if S_ISLNK(status.st_mode) or path.is_junction():
+    try:
+        redirected = S_ISLNK(status.st_mode) or path.is_junction()
+    except (OSError, ValueError, RuntimeError):
+        _fail("bibliography filesystem traversal failed")
+    if redirected:
         _fail("bibliography paths must not redirect")
     return status
 
@@ -298,8 +300,10 @@ def _require_unlinked_path(path: Path) -> None:
     """Reject evidence path components redirected through directory links."""
     try:
         physical = path.resolve(strict=True)
-    except (OSError, RuntimeError) as error:
-        _fail(f"bibliography evidence resolution failed: {path}: {error}")
+    except (OSError, ValueError, RuntimeError) as error:
+        raise BibliographyValidationError(
+            f"bibliography evidence resolution failed: {path}: {error}"
+        ) from error
     if physical != path:
         _fail(f"bibliography evidence path redirects: {path}")
 
@@ -315,17 +319,26 @@ def _read_regular_bytes(path: Path) -> bytes:
     admitted = _path_status(path)
     if admitted is None or not S_ISREG(admitted.st_mode):
         _fail(f"bibliography evidence must be regular: {path}")
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_NONBLOCK", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-    )
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
-        with os.fdopen(descriptor, "rb") as stream:
+        try:
+            stream = os.fdopen(descriptor, "rb")
+        except BaseException:
+            # The descriptor still belongs to us if stream wrapping fails.
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            raise
+        with stream:
             return _read_open_evidence(stream, admitted, path)
-    except OSError as error:
-        _fail(f"bibliography evidence read failed: {path}: {error}")
+    except BibliographyValidationError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise BibliographyValidationError(
+            f"bibliography evidence read failed: {path}: {error}"
+        ) from error
 
 
 def _read_regular_text(path: Path) -> str:
@@ -353,9 +366,7 @@ def _path_exists(path: Path) -> bool:
 
 def _walk_paths(root: Path) -> tuple[Path, ...]:
     paths: list[Path] = []
-    for directory, directories, filenames in root.walk(
-        on_error=_raise_walk_error
-    ):
+    for directory, directories, filenames in root.walk(on_error=_raise_walk_error):
         paths.extend(directory / name for name in directories)
         paths.extend(directory / name for name in filenames)
     return tuple(paths)
@@ -385,11 +396,7 @@ def _validate_first_level_taxonomy() -> None:
 def _validate_directory_catalogs() -> None:
     directories = (
         BIBLIOGRAPHY_ROOT,
-        *sorted(
-            path
-            for path in _walk_paths(BIBLIOGRAPHY_ROOT)
-            if _is_directory(path)
-        ),
+        *sorted(path for path in _walk_paths(BIBLIOGRAPHY_ROOT) if _is_directory(path)),
     )
     for directory in directories:
         if not _is_regular_file(directory / "README.md"):
@@ -436,10 +443,7 @@ def _section(text: str, heading: str) -> str:
 def _validate_placeholders(text: str, label: str) -> None:
     for placeholder in PLACEHOLDERS:
         if placeholder in text:
-            message = (
-                f"{label} retains unresolved template placeholder: "
-                f"{placeholder}"
-            )
+            message = f"{label} retains unresolved template placeholder: {placeholder}"
             _fail(message)
 
 
@@ -491,10 +495,12 @@ def validate_unique_stable_identifiers(
         previous = seen.get(identifier)
         if previous is not None:
             _fail(
-                "".join((
-                    f"duplicate stable identifier {identifier!r}: ",
-                    f"{previous} and {label}",
-                ))
+                "".join(
+                    (
+                        f"duplicate stable identifier {identifier!r}: ",
+                        f"{previous} and {label}",
+                    )
+                )
             )
         seen[identifier] = label
 
@@ -503,9 +509,7 @@ def _validate_records() -> int:
     paths = _source_record_paths()
     if not paths:
         _fail("bibliography contains no source records")
-    records = tuple(
-        (_relative(path), _read_regular_text(path)) for path in paths
-    )
+    records = tuple((_relative(path), _read_regular_text(path)) for path in paths)
     for label, text in records:
         validate_source_text(text, label)
     validate_unique_stable_identifiers(records)
@@ -535,13 +539,15 @@ def validate_validation_requirements_text(text: str) -> None:
     )
     if actual != expected:
         _fail(
-            "".join((
+            "".join(
                 (
-                    "Python validation requirements mismatch canonical "
-                    "bibliography coverage: "
-                ),
-                f"{actual}",
-            ))
+                    (
+                        "Python validation requirements mismatch canonical "
+                        "bibliography coverage: "
+                    ),
+                    f"{actual}",
+                )
+            )
         )
 
 
@@ -556,19 +562,23 @@ def _validate_validation_requirements() -> None:
         path = BIBLIOGRAPHY_ROOT / relative
         if not _is_regular_file(path):
             _fail(
-                "".join((
-                    "validation dependency lacks bibliography record: ",
-                    f"{requirement} -> {relative}",
-                ))
+                "".join(
+                    (
+                        "validation dependency lacks bibliography record: ",
+                        f"{requirement} -> {relative}",
+                    )
+                )
             )
         record = _read_regular_text(path)
         pin = _validation_requirement_pin(requirement)
         if f"`{pin}`" not in record:
             _fail(
-                "".join((
-                    "validation dependency record lacks exact pin: ",
-                    f"{requirement} -> {relative}",
-                ))
+                "".join(
+                    (
+                        "validation dependency record lacks exact pin: ",
+                        f"{requirement} -> {relative}",
+                    )
+                )
             )
 
 
@@ -576,13 +586,15 @@ def _normalized_url(value: str) -> str:
     cleaned = value.rstrip(".,;:)]}")
     parts = urlsplit(cleaned)
     path = parts.path.rstrip("/").removesuffix(".git")
-    return urlunsplit((
-        parts.scheme.lower(),
-        parts.netloc.lower(),
-        path,
-        parts.query,
-        "",
-    ))
+    return urlunsplit(
+        (
+            parts.scheme.lower(),
+            parts.netloc.lower(),
+            path,
+            parts.query,
+            "",
+        )
+    )
 
 
 def _urls_from_text(text: str) -> tuple[str, ...]:
@@ -609,10 +621,12 @@ def validate_external_reference_coverage(
     missing = tuple(sorted(normalized_references - normalized_sources))
     if missing:
         _fail(
-            "".join((
-                "durable external references lack bibliography coverage: ",
-                f"{missing}",
-            ))
+            "".join(
+                (
+                    "durable external references lack bibliography coverage: ",
+                    f"{missing}",
+                )
+            )
         )
     return len(normalized_references)
 
@@ -637,15 +651,11 @@ def _is_durable_reference_path(path: Path) -> bool:
 
 def _durable_reference_paths() -> tuple[Path, ...]:
     paths: list[Path] = []
-    for directory, directories, filenames in ROOT.walk(
-        on_error=_raise_walk_error
-    ):
+    for directory, directories, filenames in ROOT.walk(on_error=_raise_walk_error):
         directories[:] = [
             name
             for name in directories
-            if not _is_excluded_relative_path(
-                (directory / name).relative_to(ROOT)
-            )
+            if not _is_excluded_relative_path((directory / name).relative_to(ROOT))
         ]
         paths.extend(
             path
@@ -709,12 +719,14 @@ def main() -> int:
     except (BibliographyValidationError, OSError) as error:
         _ = sys.stderr.write(f"error: {error}\n")
         return 1
-    message = "".join((
-        f"bibliography valid: {report.record_count} records, ",
-        f"{report.required_baseline_count} baseline records, ",
-        f"{report.required_validation_package_count} validation packages, ",
-        f"{report.covered_external_reference_count} durable references\n",
-    ))
+    message = "".join(
+        (
+            f"bibliography valid: {report.record_count} records, ",
+            f"{report.required_baseline_count} baseline records, ",
+            f"{report.required_validation_package_count} validation packages, ",
+            f"{report.covered_external_reference_count} durable references\n",
+        )
+    )
     _ = sys.stdout.write(message)
     return 0
 
