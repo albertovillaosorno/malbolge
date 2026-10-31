@@ -286,6 +286,36 @@ const SHORT_DECUPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
     (193, 25),
 ];
 
+// All 26 eleven-output phases, including overlapping byte witnesses.
+const SHORT_UNDECUPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
+    (9, 0),
+    (8, 1),
+    (22, 2),
+    (7, 3),
+    (7, 4),
+    (21, 5),
+    (6, 6),
+    (6, 7),
+    (10, 8),
+    (6, 9),
+    (140, 10),
+    (10, 11),
+    (4, 12),
+    (139, 13),
+    (9, 14),
+    (12, 15),
+    (138, 16),
+    (25, 17),
+    (9, 18),
+    (137, 19),
+    (25, 20),
+    (7, 21),
+    (136, 22),
+    (24, 23),
+    (9, 24),
+    (135, 25),
+];
+
 const fn pos(byte: u32) -> InputSourcePosition {
     InputSourcePosition {
         byte,
@@ -788,18 +818,65 @@ fn ten_output_seed_table_admits_only_shortest_witnessed_bytes() -> Result<(), St
 }
 
 #[test]
+fn eleven_output_seed_table_admits_only_shortest_witnessed_bytes() -> Result<(), String> {
+    check_repeated_output_seed_domain(11, SHORT_UNDECUPLE_ROTATION_WITNESSES)
+}
+
+#[test]
+fn witnessed_eleven_output_literals_preserve_guest_computation() -> Result<(), String> {
+    for (byte, padding) in [(9, 0), (8, 1), (135, 25)] {
+        let layout = encode_rotated_byte_literal(&source(byte, 11)?, current_profile())
+            .map_err(|error| format!("seeded {byte} x11: {error:?}"))?;
+        if layout.source().len() != padding + 14
+            || layout
+                .data_write_positions()
+                .iter()
+                .filter(|slot| slot.is_some())
+                .count()
+                != 1
+        {
+            return Err(format!("eleven-output {byte} geometry drift"));
+        }
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), layout.source(), vec![0, 255, 128])
+                .map_err(|error| format!("guest {byte} x11: {error:?}"))?;
+        if !matches!(vm.run(layout.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { steps, .. })
+                if steps == layout.executed_code_positions().len())
+            || vm.input_consumed() != 0
+            || vm.output() != vec![byte; 11]
+        {
+            return Err(format!("eleven-output guest literal {byte} diverged"));
+        }
+    }
+    for (byte, outputs) in [(42, 11), (9, 10), (9, 12)] {
+        if encode_rotated_byte_literal(&source(byte, outputs)?, current_profile())
+            != Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+        {
+            return Err(format!("unwitnessed literal {byte} x{outputs} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn witnessed_ten_output_literals_preserve_guest_computation() -> Result<(), String> {
     for (byte, padding) in [(42, 0), (176, 1), (193, 25)] {
         let layout = encode_rotated_byte_literal(&source(byte, 10)?, current_profile())
             .map_err(|error| format!("seeded {byte} x10: {error:?}"))?;
         if layout.source().len() != padding + 13
-            || layout.data_write_positions().iter().filter(|slot| slot.is_some()).count() != 1
+            || layout
+                .data_write_positions()
+                .iter()
+                .filter(|slot| slot.is_some())
+                .count()
+                != 1
         {
             return Err(format!("ten-output {byte} geometry drift"));
         }
-        let mut vm = ProfileMachine::from_source(
-            current_profile(), layout.source(), vec![0, 255, 128],
-        ).map_err(|error| format!("guest {byte} x10: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), layout.source(), vec![0, 255, 128])
+                .map_err(|error| format!("guest {byte} x10: {error:?}"))?;
         if !matches!(vm.run(layout.executed_code_positions().len()),
             Ok(RunOutcome::Terminated { steps, .. })
                 if steps == layout.executed_code_positions().len())
@@ -1196,7 +1273,9 @@ fn independently_rederive_nine_output_rotation_witnesses() -> Result<(), String>
         }
     }
     if witnessed.as_slice() != SHORT_NONUPLE_ROTATION_WITNESSES {
-        return Err(format!("nine-output source/VM witness drift: {witnessed:?}"));
+        return Err(format!(
+            "nine-output source/VM witness drift: {witnessed:?}"
+        ));
     }
     Ok(())
 }
@@ -1236,6 +1315,47 @@ fn independently_rederive_ten_output_rotation_witnesses() -> Result<(), String> 
     }
     if witnessed.as_slice() != SHORT_DECUPLE_ROTATION_WITNESSES {
         return Err(format!("ten-output source/VM witness drift: {witnessed:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "bounded eleven-output rotation scan: run optimized with --ignored"]
+fn independently_rederive_eleven_output_rotation_witnesses() -> Result<(), String> {
+    use bridge::layout::{LinearOpcode, encode_linear_layout};
+    use std::iter::repeat_n;
+
+    let mut witnessed = Vec::new();
+    for padding in 0..26 {
+        let mut operations = vec![LinearOpcode::NoOperation; padding];
+        operations.extend([LinearOpcode::RelocateDataPointer, LinearOpcode::RotateData]);
+        operations.extend(repeat_n(LinearOpcode::OutputByte, 11));
+        operations.push(LinearOpcode::Halt);
+        let Ok(layout) = encode_linear_layout(current_profile(), &operations) else {
+            continue;
+        };
+        let Ok(mut vm) =
+            ProfileMachine::from_source(current_profile(), layout.source(), Vec::new())
+        else {
+            continue;
+        };
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+        {
+            continue;
+        }
+        let Some((&first, rest)) = vm.output().split_first() else {
+            continue;
+        };
+        if first != 0 && rest.len() == 10 && rest.iter().all(|byte| *byte == first) {
+            witnessed.push((first, padding));
+        }
+    }
+    if witnessed.as_slice() != SHORT_UNDECUPLE_ROTATION_WITNESSES {
+        return Err(format!(
+            "eleven-output source/VM witness drift: {witnessed:?}"
+        ));
     }
     Ok(())
 }
