@@ -2095,8 +2095,15 @@ def _require_zero_lock_seek_receipt(receipt: object) -> None:
         _fail("progress writer lock seek receipt must be exact integer zero")
 
 
+def _native_writer_lock_descriptor(receipt: object) -> int:
+    """Reject nonnative, boolean, or negative lock descriptor receipts."""
+    if type(receipt) is not int or receipt < 0:
+        _fail("progress writer lock descriptor must be a native nonnegative integer")
+    return receipt
+
+
 def _acquire_writer_lock(stream: _LockStream) -> Callable[[], None]:
-    file_descriptor = stream.fileno()
+    file_descriptor = _native_writer_lock_descriptor(stream.fileno())
     _require_zero_lock_seek_receipt(stream.seek(0))
     if os.name == WINDOWS_PLATFORM:
         module = cast(
@@ -2176,7 +2183,7 @@ def _open_writer_lock_stream(lock_path: Path) -> _LockStream:
 
 def _release_writer_lock(release: Callable[[], None]) -> None:
     try:
-        release()
+        _require_native_lock_receipt(release(), "release callback")
     except ProgressSidecarError:
         raise
     except (OSError, ValueError, RuntimeError) as error:
@@ -2224,10 +2231,13 @@ def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
     """Reject a linked or replaced lock after acquiring serialization."""
     _reject_path_redirect(lock_path, "progress writer lock")
     try:
-        opened = _admit_native_stat(os.fstat(stream.fileno()), "progress writer lock")
+        descriptor = _native_writer_lock_descriptor(stream.fileno())
+        opened = _admit_native_stat(os.fstat(descriptor), "progress writer lock")
         current = _admit_native_stat(
             lock_path.stat(follow_symlinks=False), "progress writer lock"
         )
+    except ProgressSidecarError:
+        raise
     except (OSError, ValueError, RuntimeError) as error:
         _fail(f"progress writer lock identity cannot be verified: {_host_error_detail(error)}")
     if (

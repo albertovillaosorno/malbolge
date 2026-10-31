@@ -12092,3 +12092,102 @@ def test_windows_writer_lock_rejects_noncanonical_lock_receipt(
             with pytest.raises(ERROR, match="writer lock release receipt"):
                 release()
             assert calls == [1, 2]
+
+
+@pytest.mark.parametrize(
+    "receipt", [False, True, -1, "0", object()],
+    ids=["false", "true", "negative", "string", "foreign"],
+)
+def test_writer_lock_rejects_foreign_descriptor_before_acquisition(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only a native nonnegative descriptor may reach an OS lock primitive."""
+    observed_seeks: list[int] = []
+
+    class ForgedLockStream:
+        @staticmethod
+        def fileno() -> object:
+            return receipt
+
+        @staticmethod
+        def seek(target: int, whence: int = 0) -> int:
+            del whence
+            observed_seeks.append(target)
+            return 0
+
+    def fail_import(module: str) -> None:
+        pytest.fail(f"foreign descriptor reached lock module {module}")
+
+    acquire = cast("Callable[[object], object]", vars(progress)["_acquire_writer_lock"])
+    with monkeypatch.context() as context:
+        context.setattr(progress, "import_module", fail_import)
+        with pytest.raises(ERROR, match="writer lock descriptor"):
+            _ = acquire(ForgedLockStream())
+    assert not observed_seeks
+
+
+@pytest.mark.parametrize(
+    "receipt", [False, True, -1, "0", object()],
+    ids=["false", "true", "negative", "string", "foreign"],
+)
+def test_writer_lock_rejects_foreign_descriptor_at_identity_recheck(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A fake post-lock descriptor cannot certify a native lock file."""
+    lock_path = tmp_path / "writer.progress.json.lock"
+    _ = lock_path.write_bytes(b"")
+    stat_calls: list[object] = []
+
+    class ForgedLockStream:
+        @staticmethod
+        def fileno() -> object:
+            return receipt
+
+    def forged_fstat(descriptor: object) -> os.stat_result:
+        stat_calls.append(descriptor)
+        return lock_path.stat(follow_symlinks=False)
+
+    verify = cast(
+        "Callable[[Path, object], None]",
+        vars(progress)["_verify_acquired_writer_lock"],
+    )
+    with monkeypatch.context() as context:
+        context.setattr(os, "fstat", forged_fstat)
+        with pytest.raises(ERROR, match="writer lock descriptor"):
+            verify(lock_path, ForgedLockStream())
+    assert stat_calls == []
+
+
+def test_writer_lock_rejects_forged_release_callback_completion_after_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A release callback returning a false success keeps committed evidence."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    actual_acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+
+    def acquire_false_release(stream: object) -> Callable[[], None]:
+        genuine_release = actual_acquire(stream)
+
+        def release() -> None:
+            genuine_release()
+            return cast("None", False)
+
+        return release
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_acquire_writer_lock", acquire_false_release)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="writer lock cleanup failed",
+        ) as caught:
+            _ = progress.write_atomic(candidate)
+    assert caught.value.published_path == destination
+    assert progress.read(destination) == candidate

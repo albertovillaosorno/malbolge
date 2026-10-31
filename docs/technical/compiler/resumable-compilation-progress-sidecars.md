@@ -91,7 +91,14 @@ receipt checks cannot prove a deliberately forged `None` is backed by an OS
 lock; they supplement the independent inode and path checks. In addition,
 lock-stream seeks must report the exact integer position zero, before the
 initial lock and before Windows byte-range release. Boolean or nonzero receipts
-cannot certify that the intended region is protected or unlocked.
+cannot certify that the intended region is protected or unlocked. Lock-stream
+file-descriptor receipts also require a nonnegative native integer at
+acquisition and post-acquisition identity admission; boolean or foreign
+descriptor objects
+must not reach an OS lock or stat primitive. A forged release callback return
+cannot certify successful teardown without the native `None` receipt, and a
+late failure retains committed-path evidence. These checks cannot prove that a
+forged valid integer describes the same file across separate observations.
 
 Progress writers also require native `os.stat_result` for the initially
 created staging descriptor and each staged pathname/descriptor size and inode
