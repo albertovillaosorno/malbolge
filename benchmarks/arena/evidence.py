@@ -60,6 +60,7 @@ from benchmarks.arena import trial_runs
 
 MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 MAX_EVIDENCE_BYTES = analyze.MAX_INPUT_BYTES
+MAX_NATIVE_DESCRIPTOR = 2**31 - 1
 BUNDLE_FILE_LIMITS = {
     "program.c": challenge_bundles.MAX_SOURCE_BYTES,
     "oracle.bin": challenge_bundles.ORACLE_BYTES,
@@ -116,6 +117,13 @@ def _segments(relative: str) -> list[str]:
     ):
         _fail("evidence requires a canonical relative path")
     return parts
+
+
+def _admit_descriptor(receipt: object, *, source: str) -> int:
+    """Refuse forged OS descriptor receipts before filesystem operations."""
+    if type(receipt) is not int or not 0 <= receipt <= MAX_NATIVE_DESCRIPTOR:
+        _fail(f"evidence {source} descriptor is not a native OS integer")
+    return receipt
 
 
 def _admit_byte_limit(limit: int) -> None:
@@ -245,10 +253,13 @@ def _open_evidence(path: Path) -> IO[bytes]:
         | getattr(os, "O_NOFOLLOW", 0)
     )
     try:
-        descriptor = os.open(path, flags)
+        receipt = os.open(path, flags)
     except Exception as error:
         message = f"evidence file could not open safely: {path}"
         raise EvidenceError(message) from error
+    # Invalid raw returns cannot enter procfs, fdopen or os.close (bools
+    # would otherwise target stdin/stdout descriptors on POSIX).
+    descriptor = _admit_descriptor(receipt, source="raw")
     try:
         # O_NOFOLLOW only protects the leaf. A parent directory may be
         # exchanged for a symlink after the component-by-component lstat,
@@ -319,7 +330,8 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     try:
         with _open_evidence(path) as stream:
             try:
-                opened = _native_stat(os.fstat(stream.fileno()))
+                opened_fd = _admit_descriptor(stream.fileno(), source="stream")
+                opened = _native_stat(os.fstat(opened_fd))
                 if not stat.S_ISREG(opened.st_mode) or (
                     _file_identity(original) != _file_identity(opened)
                 ):
@@ -327,7 +339,10 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
                         f"evidence opened file changed after path admission: {relative}"
                     )
                 data = _read_complete(stream, size=opened.st_size, relative=relative)
-                completed = _native_stat(os.fstat(stream.fileno()))
+                completed_fd = _admit_descriptor(stream.fileno(), source="stream")
+                if completed_fd != opened_fd:
+                    _fail(f"evidence stream descriptor changed during read: {relative}")
+                completed = _native_stat(os.fstat(completed_fd))
                 if _file_identity(completed) != _file_identity(opened):
                     _fail(f"evidence file changed during read: {relative}")
                 # The context manager catches close exceptions but does not

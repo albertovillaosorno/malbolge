@@ -504,6 +504,13 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   raw close; it pins the stream descriptor number across the bounded read.
   Dependency-forgery tests cover booleans, negatives, foreign types and large
   integers without acting on unrelated OS descriptors.
+  Retained arena evidence-file reads now enforce the same native signed
+  descriptor receipt boundary for raw `os.open` and stream `fileno` before
+  procfs, `fdopen`, `fstat`, or raw cleanup, and reject a switched descriptor
+  number after reading even for a duplicated same-inode handle. Synthetic
+  red-first tests cover 14 forged raw/stream receipts and one native-number
+  switch without invoking OS functions on rejected descriptors. This remains
+  local dependency admission, not an atomic filesystem snapshot.
   Linked evidence now also consumes the complete admitted inode size across
   bounded short chunks; truncated streams fail rather than authenticating a
   valid-looking CSV/manifest prefix under otherwise stable file metadata.

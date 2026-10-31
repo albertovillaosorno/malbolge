@@ -2556,6 +2556,112 @@ def test_direct_evidence_path_inspection_faults_remain_typed(
     assert type(failure.value.__cause__) is fault
 
 
+class _ForeignEvidenceDescriptor(int):
+    """A subclass of int must not be an OS descriptor authorization."""
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [True, False, -1, 2**31, "7", 7.0, _ForeignEvidenceDescriptor(7)],
+    ids=["true", "false", "negative", "overflow", "text", "float", "subclass"],
+)
+def test_evidence_raw_open_refuses_foreign_descriptor_before_os_use(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Forged raw open receipts cannot access procfs or close unrelated fds."""
+    touched: list[str] = []
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        touched.append("unexpected descriptor operation")
+        raise AssertionError("invalid descriptor reached an OS operation")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(evidence.os, "open", lambda *_args: cast("int", receipt))
+        patch.setattr(evidence.os, "readlink", forbidden)
+        patch.setattr(evidence.os, "fdopen", forbidden)
+        patch.setattr(evidence.os, "close", forbidden)
+        with pytest.raises(evidence.EvidenceError, match="descriptor"):
+            evidence._open_evidence(tmp_path / "raw.csv")
+    assert not touched
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [True, False, -1, 2**31, "9", 9.0, _ForeignEvidenceDescriptor(9)],
+    ids=["true", "false", "negative", "overflow", "text", "float", "subclass"],
+)
+def test_evidence_stream_refuses_foreign_descriptor_before_fstat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Opened stream fileno receipts cannot authorize metadata on foreign fds."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"retained evidence")
+    touched: list[str] = []
+
+    class ForgedStream:
+        def __enter__(self) -> ForgedStream:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def fileno(self) -> int:
+            return cast("int", receipt)
+
+    def forbidden_fstat(_descriptor: int) -> stat_result:
+        touched.append("fstat")
+        raise AssertionError("invalid stream descriptor reached fstat")
+
+    monkeypatch.setattr(evidence, "_open_evidence", lambda _path: ForgedStream())
+    monkeypatch.setattr(evidence.os, "fstat", forbidden_fstat)
+    with pytest.raises(evidence.EvidenceError, match="descriptor"):
+        evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+    assert not touched
+
+
+def test_evidence_stream_rejects_changed_fd_even_for_same_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A duplicated but switched descriptor is not the opened stream identity."""
+    payload = b"retained evidence"
+    _ = (tmp_path / "raw.csv").write_bytes(payload)
+    actual_open = evidence._open_evidence
+    switched = False
+
+    class SwitchedDescriptorStream:
+        def __init__(self, inner: IO[bytes], alternate: int) -> None:
+            self.inner = inner
+            self.alternate = alternate
+            self.calls = 0
+
+        def fileno(self) -> int:
+            self.calls += 1
+            return self.inner.fileno() if self.calls == 1 else self.alternate
+
+        def read(self, count: int) -> bytes:
+            return self.inner.read(count)
+
+        def close(self) -> None:
+            self.inner.close()
+
+    @contextmanager
+    def switched_open(path: Path) -> Iterator[SwitchedDescriptorStream]:
+        nonlocal switched
+        with actual_open(path) as stream:
+            alternate = evidence.os.dup(stream.fileno())
+            try:
+                assert alternate != stream.fileno()
+                switched = True
+                yield SwitchedDescriptorStream(stream, alternate)
+            finally:
+                evidence.os.close(alternate)
+
+    monkeypatch.setattr(evidence, "_open_evidence", switched_open)
+    with pytest.raises(evidence.EvidenceError, match="stream descriptor changed"):
+        evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+    assert switched
+
+
 @pytest.mark.parametrize(
     "fault",
     [

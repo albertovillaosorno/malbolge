@@ -835,6 +835,15 @@ procfs identity evidence fails closed; non-Linux systems retain only their
 existing descriptor/path checks. This is not an atomic snapshot guarantee
 against an adversarial filesystem scheduler.
 
+The retained evidence reader also requires both raw `os.open` and later
+stream `fileno()` receipts to be exact nonnegative signed C-int descriptors
+before procfs, stream creation, `fstat` or raw cleanup. It pins the opened
+stream descriptor number across the read, rejecting a replacement even when
+the second handle is a duplicate of the same inode. Red-first raw/stream
+receipt regressions cover booleans, foreign integer subclasses, negative and
+overflow values without touching unrelated OS descriptors. These checks do
+not make the filesystem snapshot atomic or attest operating-system honesty.
+
 A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.
 The test fixtures establish only evidence linkage, not performance results.
