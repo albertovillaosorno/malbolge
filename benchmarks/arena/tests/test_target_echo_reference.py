@@ -2862,3 +2862,54 @@ def test_target_producer_workspace_requires_native_directory_metadata(
     monkeypatch.setattr(Path, "lstat", forged_stat)
     with pytest.raises(target_echo_reference.TargetEchoStudyError, match=r"\.temp"):
         target_echo_reference._prepare_context(tmp_path / "emitter", tmp_path / "runner")
+
+
+@pytest.mark.parametrize(
+    "phase",
+    ["path-before", "path-after", "descriptor-open", "descriptor-close", "identity"],
+)
+def test_target_producer_tool_hash_rejects_foreign_stat_without_field_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Every executable inode receipt requires exact OS stat before SHA-256."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"tool emitter")
+    runner.write_bytes(b"tool runner")
+    foreign = cast("os.stat_result", cast("object", _ForeignEchoStat()))
+    if phase == "identity":
+        with pytest.raises(target_echo_reference.TargetEchoStudyError, match="identity"):
+            target_echo_reference._tool_file_identity(foreign)
+        return
+    original_lstat = Path.lstat
+    original_fstat = target_echo_reference.os.fstat
+    path_calls = 0
+    descriptor_calls = 0
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        nonlocal path_calls
+        if path == emitter:
+            path_calls += 1
+            if (phase == "path-before" and path_calls == 1) or (
+                phase == "path-after" and path_calls == 2
+            ):
+                return foreign
+        return original_lstat(path)
+
+    def forged_fstat(descriptor: int) -> os.stat_result:
+        nonlocal descriptor_calls
+        descriptor_calls += 1
+        if (phase == "descriptor-open" and descriptor_calls == 1) or (
+            phase == "descriptor-close" and descriptor_calls == 2
+        ):
+            return foreign
+        return original_fstat(descriptor)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(target_echo_reference.os, "fstat", forged_fstat)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="identity"):
+        target_echo_reference._tool_identity(emitter, runner)
+    if phase == "path-after":
+        assert path_calls == 2
+    if phase == "descriptor-close":
+        assert descriptor_calls == 2
