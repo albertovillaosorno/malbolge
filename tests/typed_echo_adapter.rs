@@ -3781,11 +3781,27 @@ fn canonical_typed_rotated_literal_rejects_unwitnessed_output_counts() -> Result
             "typed twelfth output admitted unwitnessed byte",
         ));
     }
-    let thirteenth = wire(&typed_rotated_literal_module_with_outputs(40, 13)?)?;
-    if adapter::compile_canonical_typed_rotated_byte_literal(&thirteenth, current_profile())
+    Ok(())
+}
+
+#[test]
+fn canonical_typed_rotated_literal_enforces_thirteen_output_witness_domain() -> Result<(), String> {
+    let unsupported_thirteenth = wire(&typed_rotated_literal_module_with_outputs(40, 13)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(
+        &unsupported_thirteenth,
+        current_profile(),
+    ) != Err(TypedEchoAdapterError::Layout(
+        adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
+    )) {
+        return Err(String::from(
+            "typed thirteenth output admitted unwitnessed byte",
+        ));
+    }
+    let fourteenth = wire(&typed_rotated_literal_module_with_outputs(22, 14)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&fourteenth, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed thirteenth output admitted"));
+        return Err(String::from("typed fourteenth output admitted"));
     }
     Ok(())
 }
@@ -4032,6 +4048,15 @@ fn seeded_eleven_output_literal_canonical_publisher_and_real_runner() -> Result<
 fn seeded_twelve_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
     let workspace = OwnedFixture::new()?;
     for case in [(40, 12, true, false, true), (60, 12, false, true, true)] {
+        verify_seeded_publisher_case(&workspace, case)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_thirteen_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for case in [(22, 13, true, false, true), (14, 13, false, true, true)] {
         verify_seeded_publisher_case(&workspace, case)?;
     }
     Ok(())

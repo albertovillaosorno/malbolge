@@ -339,6 +339,30 @@ const ROTATED_DODECUPLE_BYTE_SEEDS: &[(u8, usize)] = &[
     (200, 8),
 ];
 
+/// Thirteen outputs change the positional decode and loader-expanded data.
+/// Only first-phased witnesses re-executed by the normative VM are admitted.
+const ROTATED_TREDECUPLE_BYTE_SEEDS: &[(u8, usize)] = &[
+    (22, 0),
+    (7, 1),
+    (21, 3),
+    (6, 4),
+    (252, 5),
+    (20, 6),
+    (5, 7),
+    (19, 9),
+    (251, 10),
+    (4, 11),
+    (18, 12),
+    (9, 13),
+    (17, 15),
+    (12, 16),
+    (8, 17),
+    (16, 18),
+    (10, 19),
+    (15, 21),
+    (14, 24),
+];
+
 /// A failed pre-layout admission, semantic bridge, or final target admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ByteEchoBridgeError {
@@ -372,6 +396,7 @@ const fn rotated_byte_seeds(outputs: usize) -> Option<RotatedByteSeedTable> {
         10 => Some(ROTATED_DECUPLE_BYTE_SEEDS),
         11 => Some(ROTATED_UNDECUPLE_BYTE_SEEDS),
         12 => Some(ROTATED_DODECUPLE_BYTE_SEEDS),
+        13 => Some(ROTATED_TREDECUPLE_BYTE_SEEDS),
         _ => None,
     }
 }
