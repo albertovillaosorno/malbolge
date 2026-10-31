@@ -49,6 +49,7 @@ import pytest
 from benchmarks.arena import evidence, target_process
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Iterator
     from pathlib import Path
     from typing import IO
@@ -449,6 +450,65 @@ def test_bounded_target_never_reports_success_from_invalid_output_reader(
             _child("import os; os.write(1, b'output')"),
             timeout_seconds=LARGE_TIMEOUT_SECONDS,
         )
+
+
+@pytest.mark.parametrize(
+    "launcher", [target_process.invoke, target_process.invoke_limited]
+)
+@pytest.mark.parametrize(
+    "command",
+    [
+        [],
+        None,
+        "echo",
+        [""],
+        [sys.executable, None],
+        [sys.executable, b"bytes"],
+        [sys.executable, "NUL\x00arg"],
+    ],
+)
+def test_invalid_child_command_rejects_before_launch(
+    monkeypatch: pytest.MonkeyPatch,
+    launcher: Callable[..., sp.CompletedProcess[bytes]],
+    command: object,
+) -> None:
+    """Malformed executable/argument vectors do not reach host process APIs."""
+    launched = False
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        nonlocal launched
+        _ = (args, kwargs)
+        launched = True
+        message = "malformed child command launched"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(target_process.sp, "Popen", forbidden)
+    with pytest.raises(target_process.TargetProcessError, match="command"):
+        launcher(
+            cast("list[str]", command), timeout_seconds=LARGE_TIMEOUT_SECONDS
+        )
+    assert not launched
+
+
+def test_real_child_launch_errors_are_typed_and_preserve_cause(
+    tmp_path: Path,
+) -> None:
+    """Missing and non-executable files must not leak host launch errors."""
+    missing = tmp_path / "missing-executable"
+    denied = tmp_path / "not-executable"
+    denied.write_text("#!/bin/sh\nexit 0\n")
+    denied.chmod(0o600)
+    for executable, expected in (
+        (missing, FileNotFoundError),
+        (denied, PermissionError),
+    ):
+        with pytest.raises(
+            target_process.TargetProcessError, match="launch"
+        ) as error:
+            target_process.invoke(
+                [str(executable)], timeout_seconds=LARGE_TIMEOUT_SECONDS
+            )
+        assert isinstance(error.value.__cause__, expected)
 
 
 def test_exact_bounded_output_and_stderr_roundtrip() -> None:

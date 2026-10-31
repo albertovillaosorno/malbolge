@@ -205,6 +205,12 @@ Caller-supplied overrides may tighten but never extend these 15-second,
 4-KiB/16-KiB ceilings. Oversized or nonfinite numeric values fail before
 spawning, including integers too large for safe floating-point conversion;
 this preserves the fixed resource policy for both producer and replay.
+An empty or malformed command vector (nonstring arguments or embedded NUL)
+rejects before launch in both limited and ordinary modes. Missing or denied
+executables in ordinary mode, and other POSIX process-constructor faults,
+return the same typed target-process rejection with the original host
+exception chained, rather than leaking an unclassified failure to study
+producers.
 Any stream overrun or pipe-retaining ordinary descendant past the deadline is
 a typed failure with a direct-child reap and best-effort original process-group
 termination. Regressions inject oversized standard/error streams, deliberately

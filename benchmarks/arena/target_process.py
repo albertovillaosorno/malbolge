@@ -63,6 +63,7 @@ RSS_TOOL = "time"
 RSS_REPORT_LIMIT = 32
 KIB_BYTES = 1024
 SYSTEM_TOOL_SEARCH_PATH = os.defpath
+NUL_CHARACTER = "\0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +101,16 @@ def _admit_limits(
         0 <= stderr_limit <= DEFAULT_STDERR_LIMIT
     ):
         _fail("bounded target process requires stderr limit at most 16 KiB")
+
+
+def _admit_command(command: list[str]) -> None:
+    if type(command) is not list or not command:
+        _fail("bounded target command requires a nonempty argument list")
+    if type(command[0]) is not str or not command[0]:
+        _fail("bounded target command requires a nonempty executable string")
+    for argument in command:
+        if type(argument) is not str or NUL_CHARACTER in argument:
+            _fail("bounded target command has nonstring or NUL arguments")
 
 
 def _system_tool(name: str) -> str | None:
@@ -278,18 +289,30 @@ def _run(
         limits.stdout_limit,
         limits.stderr_limit,
     )
+    _admit_command(command)
     prepared = _limited_command(command, enforce=limits.enforce_child_limits)
     started = monotonic()
-    child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
-        prepared,
-        shell=False,
-        cwd=_ROOT,
-        stdin=sp.PIPE if input_bytes is not None else sp.DEVNULL,
-        stdout=sp.PIPE,
-        stderr=sp.PIPE,
-        start_new_session=True,
-        close_fds=True,
-    )
+    try:
+        child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
+            prepared,
+            shell=False,
+            cwd=_ROOT,
+            stdin=sp.PIPE if input_bytes is not None else sp.DEVNULL,
+            stdout=sp.PIPE,
+            stderr=sp.PIPE,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        AttributeError,
+        sp.SubprocessError,
+    ) as error:
+        message = "bounded target child launch failed"
+        raise TargetProcessError(message) from error
     try:
         deadline = started + limits.timeout_seconds
         if input_bytes is not None:
