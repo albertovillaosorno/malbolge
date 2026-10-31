@@ -567,6 +567,35 @@ def test_tool_fingerprint_rejects_fifo_substitution_without_blocking(
         target_echo_reference._tool_identity(emitter, runner)
 
 
+@pytest.mark.parametrize("operation", ["lstat", "is_file", "is_symlink"])
+@pytest.mark.parametrize("error_type", [ValueError, RuntimeError])
+def test_target_echo_executable_admission_types_host_inspection_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    operation: str,
+    error_type: type[Exception],
+) -> None:
+    """Unexpected native path-inspection failures cannot leak raw errors."""
+    executable = tmp_path / "target-emitter"
+    _ = executable.write_bytes(b"real-compiler")
+    original = getattr(Path, operation)
+
+    def faulty(path: Path) -> object:
+        if path == executable:
+            message = "injected executable path inspection failure"
+            raise error_type(message)
+        return original(path)
+
+    monkeypatch.setattr(target_echo_reference.Path, operation, faulty)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="executable is missing",
+    ) as failure:
+        _ = target_echo_reference._admit_executable(executable)
+    assert isinstance(failure.value.__cause__, error_type)
+
+
 @pytest.mark.parametrize("field", ["emitter", "runner"])
 @pytest.mark.parametrize(
     "invalid",

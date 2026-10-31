@@ -205,10 +205,12 @@ def _admit_executable(path: Path) -> Path:
         _fail("target echo executables must have explicit absolute paths")
     try:
         details = path.lstat()
-    except OSError as error:
+        regular = path.is_file()
+        redirected = path.is_symlink()
+    except (OSError, ValueError, RuntimeError) as error:
         message = "target echo executable is missing"
         raise TargetEchoStudyError(message) from error
-    if not path.is_file() or path.is_symlink() or details.st_size <= 0:
+    if not regular or redirected or details.st_size <= 0:
         _fail("target echo executables must be ordinary nonempty files")
     if details.st_size > MAX_TOOL_BYTES:
         _fail("target echo executable exceeds 128 MiB limit")
