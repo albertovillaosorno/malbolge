@@ -987,6 +987,47 @@ def test_absent_host_c_sidecar_probe_faults_remain_typed(
     assert caught.value.__cause__ is fault
 
 
+class _ForgedAbsentSidecar(FileNotFoundError):
+    """A foreign subclass must not certify that a sidecar was missing."""
+
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("foreign absence exception was formatted")
+
+
+def test_missing_sidecar_probe_does_not_trust_foreign_file_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged missing-file subclass cannot bypass a late sidecar recheck."""
+    fault = _ForgedAbsentSidecar("forged missing optional sidecar")
+
+    class FailingPath:
+        def lstat(self) -> None:
+            raise fault
+
+    class FailingRoot:
+        def __truediv__(self, relative: str) -> FailingPath:
+            del relative
+            return FailingPath()
+
+    monkeypatch.setattr(reference_audit, "_ROOT", FailingRoot())
+    admitted = b"previously admitted artifact index"
+    monkeypatch.setattr(
+        reference_audit, "_read_bounded_evidence", lambda *_args, **_kw: admitted
+    )
+    prefix = ".temp/arena-host-c-study-forged-absence"
+    fingerprints: dict[str, bytes | None] = {
+        f"{prefix}/{reference_audit.ARTIFACT_LEAF}": sha256(admitted).digest(),
+        f"{prefix}/{reference_audit.FAILURES_LEAF}": None,
+        f"{prefix}/{reference_audit.RESOURCE_CONTROLS_LEAF}": None,
+    }
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="sidecar changed during audit"
+    ) as caught:
+        reference_audit._require_unchanged_sidecars(prefix, fingerprints)
+    assert caught.value.__cause__ is fault
+
+
 @pytest.mark.parametrize(
     "source",
     ["raw", "program.c", "oracle.bin", "manifest.json"],

@@ -439,9 +439,11 @@ def _require_unchanged_sidecars(
         if original is None:
             try:
                 (_ROOT / relative).lstat()
-            except FileNotFoundError:
-                continue
             except Exception as error:
+                # Only an exact native absence proves an optional sidecar
+                # remained absent; foreign subclasses may forge missing files.
+                if type(error) is FileNotFoundError:
+                    continue
                 message = f"host-C retained sidecar changed during audit: {relative}"
                 raise ReferenceAuditError(message) from error
             _fail(f"host-C retained sidecar changed during audit: {relative}")

@@ -323,6 +323,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   mismatched/missing/oversized entries, and preserve older all-success
   studies. These are recorded failure explanations, not reproduced stage
   failures or independently verified resource exhaustion.
+- A late host-C sidecar recheck now distinguishes native file absence from
+  forged `FileNotFoundError` subclasses before treating an optional JSON
+  receipt as still missing; a red-first direct API regression preserves the
+  failure cause without formatting caller-owned exception hooks. This remains
+  a local evidence-consistency check, not historical execution attestation.
 - A separate read-only host-C post-run audit now independently reopens the
   producer's ignored study directory and rechecks its trial identities,
   exact host-only stage, canonical source bundles, source-reported budgets,

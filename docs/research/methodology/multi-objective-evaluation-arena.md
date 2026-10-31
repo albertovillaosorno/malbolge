@@ -924,7 +924,10 @@ The original study records remain the result authority.
   reject drift in raw CSVs, run manifests, challenge oracles, binary hashes,
   stage identities, and malformed artifact indices. Sidecar-drift regressions
   also reject post-admission changes to all three JSON receipts, including
-  newly created or removed optional failure records. Additional real-pilot
+  newly created or removed optional failure records. A separate red-first
+  recheck regression rejects a forged `FileNotFoundError` subclass as evidence
+  that an optional sidecar remained absent; only a native missing-file
+  exception can now authorize that absence. Additional real-pilot
   regressions rewrite each admitted raw CSV or challenge-bundle file during
   report assembly and require a typed late-drift rejection. Six real-pilot
   cases additionally introduce unregistered run, raw or candidate files both
