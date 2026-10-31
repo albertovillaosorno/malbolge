@@ -38,7 +38,7 @@
 //! manifest.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{ErrorKind, Read as _, Write as _};
+use std::io::{self, ErrorKind, Read as _, Write as _};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -59,87 +59,6 @@ use crate::file_coordination::{
     NativeContinuationFileCoordinationError,
     NativeContinuationFileExclusiveGuard, NativeContinuationFileSharedGuard,
 };
-
-// On Linux/Android, a pathname replaced with a writerless FIFO must not
-// turn an otherwise bounded manifest/member read into an unbounded wait.
-#[cfg(any(target_os = "linux", target_os = "android"))]
-fn open_pair_source(path: &Path) -> std::io::Result<File> {
-    use std::os::unix::fs::OpenOptionsExt as _;
-
-    const LINUX_O_NONBLOCK: i32 = 1 << 11;
-    OpenOptions::new()
-        .read(true)
-        .custom_flags(LINUX_O_NONBLOCK)
-        .open(path)
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
-fn open_pair_source(path: &Path) -> std::io::Result<File> {
-    File::open(path)
-}
-
-#[cfg(unix)]
-fn pair_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
-    use std::os::unix::fs::MetadataExt as _;
-
-    before.is_file()
-        && after.is_file()
-        && before.dev() == after.dev()
-        && before.ino() == after.ino()
-        && before.len() == after.len()
-        && before.mtime() == after.mtime()
-        && before.mtime_nsec() == after.mtime_nsec()
-        && before.ctime() == after.ctime()
-        && before.ctime_nsec() == after.ctime_nsec()
-}
-
-#[cfg(windows)]
-fn pair_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
-    use std::os::windows::fs::MetadataExt as _;
-
-    before.is_file()
-        && after.is_file()
-        && before.len() == after.len()
-        && before.volume_serial_number().is_some()
-        && before.volume_serial_number() == after.volume_serial_number()
-        && before.file_index().is_some()
-        && before.file_index() == after.file_index()
-        && before.last_write_time() == after.last_write_time()
-        && before.change_time() == after.change_time()
-}
-
-#[cfg(not(any(unix, windows)))]
-fn pair_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
-    before.is_file()
-        && after.is_file()
-        && before.len() == after.len()
-        && before.modified().ok().is_some()
-        && before.modified().ok() == after.modified().ok()
-}
-
-fn verify_pair_source(path: &Path, opened: &File, before: &fs::Metadata) -> std::io::Result<()> {
-    let descriptor = opened.metadata()?;
-    let pathname = fs::symlink_metadata(path)?;
-    if pair_metadata_matches(before, &descriptor)
-        && pair_metadata_matches(before, &pathname)
-    {
-        Ok(())
-    } else {
-        Err(std::io::Error::from(ErrorKind::InvalidData))
-    }
-}
-
-fn open_bounded_pair_source(path: &Path) -> std::io::Result<(File, fs::Metadata)> {
-    // Check the literal pathname, never a followed symlink. A post-open
-    // descriptor check protects Linux against a regular-to-FIFO open race.
-    let before = fs::symlink_metadata(path)?;
-    if !before.is_file() {
-        return Err(std::io::Error::from(ErrorKind::InvalidData));
-    }
-    let opened = open_pair_source(path)?;
-    verify_pair_source(path, &opened, &before)?;
-    Ok((opened, before))
-}
 
 const MANIFEST_BYTES: usize = 24;
 const MANIFEST_MAGIC: [u8; 8] = *b"MBPPAIR1";
@@ -1459,6 +1378,87 @@ const fn map_coordination_error(
             NativeContinuationFileBlobPairStoreError::LockOpen { kind }
         },
     }
+}
+
+// On Linux/Android, a pathname replaced with a writerless FIFO must not
+// turn an otherwise bounded manifest/member read into an unbounded wait.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn open_pair_source(path: &Path) -> io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    const LINUX_O_NONBLOCK: i32 = 1 << 11;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(LINUX_O_NONBLOCK)
+        .open(path)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn open_pair_source(path: &Path) -> io::Result<File> {
+    File::open(path)
+}
+
+#[cfg(unix)]
+fn pair_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.dev() == after.dev()
+        && before.ino() == after.ino()
+        && before.len() == after.len()
+        && before.mtime() == after.mtime()
+        && before.mtime_nsec() == after.mtime_nsec()
+        && before.ctime() == after.ctime()
+        && before.ctime_nsec() == after.ctime_nsec()
+}
+
+#[cfg(windows)]
+fn pair_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.volume_serial_number().is_some()
+        && before.volume_serial_number() == after.volume_serial_number()
+        && before.file_index().is_some()
+        && before.file_index() == after.file_index()
+        && before.last_write_time() == after.last_write_time()
+        && before.change_time() == after.change_time()
+}
+
+#[cfg(not(any(unix, windows)))]
+fn pair_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.modified().ok().is_some()
+        && before.modified().ok() == after.modified().ok()
+}
+
+fn verify_pair_source(path: &Path, opened: &File, before: &fs::Metadata) -> io::Result<()> {
+    let descriptor = opened.metadata()?;
+    let pathname = fs::symlink_metadata(path)?;
+    if pair_metadata_matches(before, &descriptor)
+        && pair_metadata_matches(before, &pathname)
+    {
+        Ok(())
+    } else {
+        Err(io::Error::from(ErrorKind::InvalidData))
+    }
+}
+
+fn open_bounded_pair_source(path: &Path) -> io::Result<(File, fs::Metadata)> {
+    // Check the literal pathname, never a followed symlink. A post-open
+    // descriptor check protects Linux against a regular-to-FIFO open race.
+    let before = fs::symlink_metadata(path)?;
+    if !before.is_file() {
+        return Err(io::Error::from(ErrorKind::InvalidData));
+    }
+    let opened = open_pair_source(path)?;
+    verify_pair_source(path, &opened, &before)?;
+    Ok((opened, before))
 }
 
 fn cleanup_staging(path: &Path) -> Option<ErrorKind> {

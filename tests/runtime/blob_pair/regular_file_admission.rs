@@ -32,6 +32,8 @@
 //! Filesystem pair-store regular-file admission regression fixtures.
 
 use super::*;
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
 use std::sync::atomic::AtomicUsize;
 
 static FIXTURE_NUMBER: AtomicUsize = AtomicUsize::new(0);
@@ -39,6 +41,10 @@ static FIXTURE_NUMBER: AtomicUsize = AtomicUsize::new(0);
 struct Fixture(PathBuf);
 
 impl Fixture {
+    fn manifest(&self) -> PathBuf {
+        self.0.join("state.manifest")
+    }
+
     fn new() -> Result<Self, String> {
         let number = FIXTURE_NUMBER.fetch_add(1, Ordering::Relaxed);
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -51,12 +57,9 @@ impl Fixture {
         fs::create_dir(&root).map_err(|error| error.to_string())?;
         Ok(Self(root))
     }
-
-    fn manifest(&self) -> PathBuf {
-        self.0.join("state.manifest")
-    }
 }
 
+#[expect(clippy::missing_trait_methods, reason = "Fixture owns cleanup")]
 impl Drop for Fixture {
     fn drop(&mut self) {
         drop(fs::remove_dir_all(&self.0));
@@ -78,7 +81,7 @@ fn manifest_symlink_is_rejected_before_read() -> Result<(), String> {
         }),
     )
     .map_err(|error| error.to_string())?;
-    std::os::unix::fs::symlink(&foreign, &manifest).map_err(|error| error.to_string())?;
+    symlink(&foreign, &manifest).map_err(|error| error.to_string())?;
     let store = NativeContinuationFileBlobPairStore::new(manifest);
     assert_eq!(
         store.read_manifest(),
@@ -95,7 +98,7 @@ fn manifest_symlink_is_rejected_before_read() -> Result<(), String> {
 fn manifest_directory_is_rejected_before_read() -> Result<(), String> {
     let fixture = Fixture::new()?;
     let manifest = fixture.manifest();
-    fs::create_dir(&manifest).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&manifest).map_err(|error| error.to_string())?;
     let store = NativeContinuationFileBlobPairStore::new(manifest);
     assert_eq!(
         store.read_manifest(),
@@ -122,7 +125,7 @@ fn member_symlink_is_rejected_before_read() -> Result<(), String> {
         .map_err(|error| format!("{error:?}"))?;
     let foreign = fixture.0.join("foreign-member");
     fs::write(&foreign, b"A").map_err(|error| error.to_string())?;
-    std::os::unix::fs::symlink(&foreign, &name).map_err(|error| error.to_string())?;
+    symlink(&foreign, &name).map_err(|error| error.to_string())?;
     assert_eq!(
         store.read_generation_member(revision, member, NonZeroUsize::MIN),
         Err(PairStoreError::GenerationOpen {
@@ -147,7 +150,7 @@ fn member_directory_is_rejected_before_read() -> Result<(), String> {
     let name = store
         .generation_path(revision, member)
         .map_err(|error| format!("{error:?}"))?;
-    fs::create_dir(&name).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&name).map_err(|error| error.to_string())?;
     assert_eq!(
         store.read_generation_member(revision, member, NonZeroUsize::MIN),
         Err(PairStoreError::GenerationOpen {
@@ -179,7 +182,7 @@ fn reclamation_validation_rejects_member_symlink() -> Result<(), String> {
     let second = store
         .generation_path(revision, NativeContinuationFileBlobPairMember::Second)
         .map_err(|error| format!("{error:?}"))?;
-    std::os::unix::fs::symlink(&foreign, &first).map_err(|error| error.to_string())?;
+    symlink(&foreign, &first).map_err(|error| error.to_string())?;
     fs::write(&second, b"B").map_err(|error| error.to_string())?;
     assert_eq!(
         store.validate_generation_members(revision),
