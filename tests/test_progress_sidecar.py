@@ -11942,3 +11942,153 @@ def test_noncanonical_directory_sync_receipt_preserves_committed_path(
         )
         assert caught.value.published_path.read_bytes() == checkpoint
         assert not destination.exists()
+
+
+@pytest.mark.parametrize("phase", ["acquire", "release"])
+@pytest.mark.parametrize("receipt", [False, True, 1], ids=["false", "true", "one"])
+def test_windows_writer_lock_rejects_noncanonical_seek_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    receipt: object,
+) -> None:
+    """Windows byte-range locks require proof the seek selected byte zero."""
+    lock_calls: list[tuple[int, int, int]] = []
+
+    class LockModule:
+        LK_LOCK = 1
+        LK_UNLCK = 2
+
+        @staticmethod
+        def locking(fd: int, mode: int, count: int) -> None:
+            lock_calls.append((fd, mode, count))
+
+    class SeekStream:
+        calls = 0
+
+        @staticmethod
+        def fileno() -> int:
+            return 42
+
+        def seek(self, target: int, whence: int = 0) -> object:
+            assert (target, whence) == (0, 0)
+            self.calls += 1
+            if (phase == "acquire") == (self.calls == 1):
+                return receipt
+            return 0
+
+    def fake_import(name: str) -> object:
+        assert name == "msvcrt"
+        return LockModule
+
+    acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "WINDOWS_PLATFORM", os.name)
+        context.setattr(progress, "import_module", fake_import)
+        if phase == "acquire":
+            with pytest.raises(ERROR, match="writer lock.*seek receipt"):
+                _ = acquire(SeekStream())
+            assert lock_calls == []
+        else:
+            release = acquire(SeekStream())
+            with pytest.raises(ERROR, match="writer lock.*seek receipt"):
+                release()
+            assert lock_calls == [(42, LockModule.LK_LOCK, 1)]
+
+
+def test_windows_writer_lock_admits_native_zero_seek_and_none_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native Windows zero-position and lock receipts allow paired calls."""
+    calls: list[tuple[int, int, int]] = []
+
+    class LockModule:
+        LK_LOCK = 1
+        LK_UNLCK = 2
+
+        @staticmethod
+        def locking(fd: int, mode: int, count: int) -> None:
+            calls.append((fd, mode, count))
+
+    class SeekStream:
+        @staticmethod
+        def fileno() -> int:
+            return 42
+
+        @staticmethod
+        def seek(target: int, whence: int = 0) -> int:
+            assert (target, whence) == (0, 0)
+            return 0
+
+    def fake_import(name: str) -> object:
+        assert name == "msvcrt"
+        return LockModule
+
+    acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "WINDOWS_PLATFORM", os.name)
+        context.setattr(progress, "import_module", fake_import)
+        release = acquire(SeekStream())
+        release()
+    assert calls == [(42, 1, 1), (42, 2, 1)]
+
+
+@pytest.mark.parametrize("phase", ["acquire", "release"])
+@pytest.mark.parametrize("receipt", [False, True, 0], ids=["false", "true", "zero"])
+def test_windows_writer_lock_rejects_noncanonical_lock_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    receipt: object,
+) -> None:
+    """Windows CRT byte-range locking must report native completion."""
+    calls: list[int] = []
+
+    class LockModule:
+        LK_LOCK = 1
+        LK_UNLCK = 2
+
+        @staticmethod
+        def locking(fd: int, mode: int, count: int) -> object:
+            assert (fd, count) == (42, 1)
+            calls.append(mode)
+            if (phase == "acquire" and mode == 1) or (
+                phase == "release" and mode == 2
+            ):
+                return receipt
+            return None
+
+    class SeekStream:
+        @staticmethod
+        def fileno() -> int:
+            return 42
+
+        @staticmethod
+        def seek(target: int, whence: int = 0) -> int:
+            assert (target, whence) == (0, 0)
+            return 0
+
+    def fake_import(name: str) -> object:
+        assert name == "msvcrt"
+        return LockModule
+
+    acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "WINDOWS_PLATFORM", os.name)
+        context.setattr(progress, "import_module", fake_import)
+        if phase == "acquire":
+            with pytest.raises(ERROR, match="writer lock acquisition receipt"):
+                _ = acquire(SeekStream())
+            assert calls == [1]
+        else:
+            release = acquire(SeekStream())
+            with pytest.raises(ERROR, match="writer lock release receipt"):
+                release()
+            assert calls == [1, 2]

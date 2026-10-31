@@ -88,7 +88,10 @@ certify that the writer lock was acquired: it rejects before the body and
 pointer publication. A foreign release response is a teardown error and retains
 exact committed-pointer evidence if publication already completed. These
 receipt checks cannot prove a deliberately forged `None` is backed by an OS
-lock; they supplement the independent inode and path checks.
+lock; they supplement the independent inode and path checks. In addition,
+lock-stream seeks must report the exact integer position zero, before the
+initial lock and before Windows byte-range release. Boolean or nonzero receipts
+cannot certify that the intended region is protected or unlocked.
 
 Progress writers also require native `os.stat_result` for the initially
 created staging descriptor and each staged pathname/descriptor size and inode

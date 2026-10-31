@@ -2089,9 +2089,15 @@ def _require_native_lock_receipt(receipt: object, action: str) -> None:
         _fail(f"progress writer lock {action} receipt must be None")
 
 
+def _require_zero_lock_seek_receipt(receipt: object) -> None:
+    """Reject any unproved lock-byte position, including boolean zero aliases."""
+    if type(receipt) is not int or receipt != 0:
+        _fail("progress writer lock seek receipt must be exact integer zero")
+
+
 def _acquire_writer_lock(stream: _LockStream) -> Callable[[], None]:
     file_descriptor = stream.fileno()
-    _ = stream.seek(0)
+    _require_zero_lock_seek_receipt(stream.seek(0))
     if os.name == WINDOWS_PLATFORM:
         module = cast(
             "_WindowsLockModule",
@@ -2102,7 +2108,7 @@ def _acquire_writer_lock(stream: _LockStream) -> Callable[[], None]:
         )
 
         def release() -> None:
-            _ = stream.seek(0)
+            _require_zero_lock_seek_receipt(stream.seek(0))
             _require_native_lock_receipt(
                 module.locking(file_descriptor, module.LK_UNLCK, 1), "release"
             )

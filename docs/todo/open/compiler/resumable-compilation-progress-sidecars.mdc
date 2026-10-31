@@ -607,8 +607,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   `None` acquisition and release receipt. Four red-first POSIX cases show a
   boolean or integer acquisition claim cannot bypass serialization; an invalid
   release claim preserves the durably committed pointer and raises exact
-  committed-path evidence. Positive native flock locking remains covered by
-  the existing cross-process contention and process-death tests.
+  committed-path evidence. A portable Windows branch harness additionally
+  rejects six forged CRT locking receipts and six falsified lock-stream seek
+  positions at acquisition or release; exact zero-position and native `None`
+  completion remain admissible. Positive native flock locking remains covered
+  by the existing cross-process contention and process-death tests.
 
   Regular payload-file and POSIX parent-directory synchronization now also
   requires the native `None` `fsync` completion receipt. Eight red-first cases
