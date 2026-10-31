@@ -2650,7 +2650,9 @@ def _admit_collided_immutable_inode(destination: Path) -> os.stat_result:
 
     """
     _reject_path_redirect(destination, "immutable progress payload")
-    observed = destination.stat(follow_symlinks=False)
+    observed = _admit_native_stat(
+        destination.stat(follow_symlinks=False), "immutable progress payload"
+    )
     if not stat.S_ISREG(observed.st_mode):
         _fail("immutable progress payload must be a regular file")
     if observed.st_nlink != 1:
@@ -2741,7 +2743,9 @@ def _verify_retained_immutable_alias(
 
 def _repair_retained_immutable_stage(destination: Path, payload: bytes) -> None:
     """Clean a matching staging alias only after its bytes are admitted."""
-    observed = destination.stat(follow_symlinks=False)
+    observed = _admit_native_stat(
+        destination.stat(follow_symlinks=False), "immutable progress payload"
+    )
     if (
         not stat.S_ISREG(observed.st_mode)
         or observed.st_nlink != _RETAINED_STAGING_LINK_COUNT
@@ -2888,7 +2892,9 @@ def _write_immutable(
         # byte-checked collision inode, before permitting durability success.
         expected_identity = collision_identity or temporary_identity
         try:
-            published = destination.stat(follow_symlinks=False)
+            published = _admit_native_stat(
+                destination.stat(follow_symlinks=False), "immutable progress payload"
+            )
             if (published.st_dev, published.st_ino) != expected_identity:
                 _fail("immutable progress payload published inode changed")
         except _OUTPUT_STREAM_ERRORS as error:

@@ -603,6 +603,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   its fields are accessed, without advancing publication or altering
   positive native locking behavior.
 
+  Immutable checkpoint collision and initial post-link publication checks
+  now validate native stat metadata before reading inode, type or link count.
+  Five red-first regressions cover new committed inode uncertainty and
+  collision preflight/reuse rejection while preserving existing bytes.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact

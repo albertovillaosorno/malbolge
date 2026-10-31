@@ -178,6 +178,14 @@ introduced after byte collection reject even when the SHA-256 would match;
 replacing the generation inode with a byte-identical file after the raw read
 also rejects.
 
+Immutable checkpoint publication now rejects nonnative stat receipts at
+initial collision admission, single-link collision rechecks, and the first
+post-link inode check before durability can be certified. A newly linked
+member with untrusted post-link evidence reports committed-path uncertainty;
+collisions cannot be reused on forged metadata even when their bytes match.
+Retained-alias cleanup still follows its own separately admitted identity and
+content checks.
+
 The mutable progress-pointer reader is not subject to this
 immutable-generation link-count policy. These checks cannot prevent writes
 through an already-open descriptor or filesystem changes after final admission.

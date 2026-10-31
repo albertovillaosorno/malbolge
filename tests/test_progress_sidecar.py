@@ -6263,6 +6263,78 @@ def test_partial_claim_larger_than_host_read_size_fails_closed(
         _ = progress.read_checkpoint_generation(inflated)
 
 
+def test_immutable_new_publication_rejects_foreign_postlink_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A linked generation cannot claim committed identity from foreign stat."""
+    destination = tmp_path / "new-checkpoint"
+    payload = b"verified-checkpoint-state"
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    original_stat = Path.stat
+    forged = False
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign postlink metadata accessed: {field}")
+
+    def foreign_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal forged
+        if path == destination and not follow_symlinks and not forged:
+            forged = True
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "stat", foreign_stat)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="native os.stat_result",
+        ) as captured:
+            _ = writer(destination, payload, platform=os.name)
+    assert forged
+    assert captured.value.published_path == destination
+    assert destination.read_bytes() == payload
+
+
+@pytest.mark.parametrize("receipt_number", [1, 2, 5, 6])
+def test_immutable_collision_rejects_foreign_path_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_number: int,
+) -> None:
+    """Collision checks must admit native stat evidence before inode reuse."""
+    destination = tmp_path / "reused-checkpoint"
+    payload = b"reusable-checkpoint-state"
+    _ = destination.write_bytes(payload)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    original_stat = Path.stat
+    receipts = 0
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign collision metadata accessed: {field}")
+
+    def foreign_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal receipts
+        if path == destination and not follow_symlinks:
+            receipts += 1
+            if receipts == receipt_number:
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "stat", foreign_stat)
+        with pytest.raises(ERROR, match="native os.stat_result"):
+            _ = writer(destination, payload, platform=os.name)
+    assert receipts == receipt_number
+    assert destination.read_bytes() == payload
+
+
 def test_immutable_collision_bounds_read_to_proposed_payload(
     tmp_path: Path,
 ) -> None:
