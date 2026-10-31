@@ -271,6 +271,56 @@ def test_target_retained_output_rejects_invalid_write_acknowledgements(
     assert faulty.faults == 1
 
 
+@pytest.mark.parametrize("site", [TARGET_RAW, TARGET_RUNS, TARGET_RSS, TARGET_STUDY])
+@pytest.mark.parametrize("kind", [OSError, IndexError, OverflowError])
+def test_target_retained_writer_host_faults_are_typed_without_formatting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    site: str,
+    kind: type[Exception],
+) -> None:
+    """All four retained writer sites keep foreign errors as typed causes."""
+    context = _synthetic_target_context(tmp_path, site=site)
+
+    class HostileWriterFault(kind):
+        def __str__(self) -> str:
+            raise AssertionError("foreign retained writer formatter executed")
+
+    fault = HostileWriterFault("untrusted host write error")
+    original_bytes = type(tmp_path).write_bytes
+    original_text = type(tmp_path).write_text
+    attempts = 0
+
+    def selected(path: Path) -> bool:
+        return path.parent.name == site or (
+            site == TARGET_STUDY and path.name == STUDY_LEAF
+        )
+
+    def injected_bytes(path: Path, data: bytes) -> int:
+        nonlocal attempts
+        if selected(path):
+            attempts += 1
+            raise fault
+        return original_bytes(path, data)
+
+    def injected_text(path: Path, data: str, encoding: str | None = None) -> int:
+        nonlocal attempts
+        if selected(path):
+            attempts += 1
+            raise fault
+        return original_text(path, data, encoding=encoding)
+
+    monkeypatch.setattr(type(tmp_path), "write_bytes", injected_bytes)
+    monkeypatch.setattr(type(tmp_path), "write_text", injected_text)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="write failed"
+    ) as caught:
+        _ = _invoke_target_retained_site(monkeypatch, context, site=site)
+    assert caught.value.__cause__ is fault
+    assert attempts == 1
+
+
 RAW_TAMPER = "raw"
 STUDY_LEAF = "study.json"
 ORIGINAL_TRIAL = "trial = 0"

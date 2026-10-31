@@ -955,14 +955,22 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
 
 def _write_retained_bytes(path: Path, content: bytes) -> None:
     """Require a complete host byte-write acknowledgement before publication."""
-    written = path.write_bytes(content)
+    try:
+        written = path.write_bytes(content)
+    except Exception as error:
+        message = f"target echo retained {path.name} write failed"
+        raise TargetEchoStudyError(message) from error
     if type(written) is not int or written != len(content):
         _fail(f"target echo retained {path.name} has invalid write count")
 
 
 def _write_retained_text(path: Path, content: str) -> None:
     """Require a complete host text-write acknowledgement before publication."""
-    written = path.write_text(content, encoding="utf-8")
+    try:
+        written = path.write_text(content, encoding="utf-8")
+    except Exception as error:
+        message = f"target echo retained {path.name} write failed"
+        raise TargetEchoStudyError(message) from error
     if type(written) is not int or written != len(content):
         _fail(f"target echo retained {path.name} has invalid write count")
 
