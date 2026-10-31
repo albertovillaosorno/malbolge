@@ -5681,6 +5681,87 @@ def test_directory_close_after_sync_reports_committed_path(
     assert calls == [("sync", descriptor), ("close", descriptor)]
 
 
+@pytest.mark.parametrize("receipt", [False, True, 0, "closed"])
+def test_directory_close_rejects_noncanonical_receipt_after_sync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A false directory close result cannot certify completed teardown."""
+    published_path = tmp_path / PROGRESS_NAME
+    descriptor = 89
+    calls: list[tuple[str, int]] = []
+    confirm = cast(
+        "Callable[..., None]",
+        vars(progress)["_confirm_publication_durability"],
+    )
+
+    def sync_directory(observed: int) -> None:
+        calls.append(("sync", observed))
+
+    def forged_close(observed: int) -> object:
+        calls.append(("close", observed))
+        return receipt
+
+    with monkeypatch.context() as context:
+        _mock_directory_descriptor(context, tmp_path, descriptor)
+        context.setattr(os, "fsync", sync_directory)
+        context.setattr(os, "close", forged_close)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="committed durably but directory close failed",
+        ) as caught:
+            confirm(published_path, context="progress sidecar")
+
+    assert caught.value.published_path == published_path
+    assert not isinstance(caught.value, progress.ProgressSidecarDurabilityError)
+    assert "directory close receipt" in str(caught.value)
+    assert calls == [("sync", descriptor), ("close", descriptor)]
+
+
+@pytest.mark.parametrize("receipt", [False, "closed"])
+def test_directory_forged_close_receipt_keeps_primary_sync_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A malformed close result stays secondary to a failed sync."""
+    published_path = tmp_path / PROGRESS_NAME
+    descriptor = 91
+    closed: list[int] = []
+    confirm = cast(
+        "Callable[..., None]",
+        vars(progress)["_confirm_publication_durability"],
+    )
+
+    def fail_sync(observed: int) -> None:
+        assert observed == descriptor
+        raise OSError("injected primary directory sync failure")
+
+    def forged_close(observed: int) -> object:
+        closed.append(observed)
+        return receipt
+
+    with monkeypatch.context() as context:
+        _mock_directory_descriptor(context, tmp_path, descriptor)
+        context.setattr(os, "fsync", fail_sync)
+        context.setattr(os, "close", forged_close)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="primary directory sync failure",
+        ) as caught:
+            confirm(published_path, context="progress sidecar")
+
+    assert caught.value.published_path == published_path
+    cause = caught.value.__cause__
+    assert type(cause) is OSError
+    close_message = "progress directory close receipt must be None"
+    assert getattr(cause, "__notes__", None) == [
+        f"directory descriptor close also failed: {close_message}"
+    ]
+    assert closed == [descriptor]
+
+
 @pytest.mark.parametrize("sync_type", [ValueError, RuntimeError])
 def test_directory_unexpected_sync_failure_stays_uncertain(
     tmp_path: Path,

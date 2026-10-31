@@ -2057,7 +2057,8 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
             raise
     finally:
         try:
-            os.close(descriptor)
+            if os.close(descriptor) is not None:
+                _fail("progress directory close receipt must be None")
         except (OSError, ValueError, RuntimeError) as error:
             if sync_error is not None:
                 BaseException.add_note(

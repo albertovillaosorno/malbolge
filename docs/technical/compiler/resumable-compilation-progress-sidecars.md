@@ -581,6 +581,13 @@ The same precedence applies when raw descriptor cleanup raises `ValueError` or
 Read stream setup failures retain their primary error even when raw descriptor
 cleanup fails; the cleanup exception is attached as secondary evidence.
 
+POSIX directory durability confirmation also admits only a native `None`
+`os.close` completion after the directory fsync. Four red-first forged-result
+cases keep the committed path with a typed close failure instead of silently
+claiming successful cleanup; two additional cases preserve the original fsync
+failure and attach a false close receipt as secondary evidence. The reported
+committed-versus-uncertain distinction is unchanged for native close errors.
+
 Both pointer and immutable checkpoint readers also require a native `None`
 stream-close receipt before they admit verified bytes. Eight red-first tests
 reject forged boolean, integer, or text completion reports without losing

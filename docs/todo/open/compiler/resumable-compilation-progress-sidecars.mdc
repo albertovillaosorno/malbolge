@@ -644,6 +644,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   with a forged opened-directory or opened-FIFO type cannot authorize lock
   admission.
 
+  Directory descriptor close after fsync now likewise requires native
+  `None`: four red-first committed-path cases reject forged close receipts,
+  while two preserve a prior sync failure with secondary close diagnostics.
   Regular payload-file and POSIX parent-directory synchronization now also
   requires the native `None` `fsync` completion receipt. Eight red-first cases
   reject forged boolean/integer file sync results before pointer or checkpoint
