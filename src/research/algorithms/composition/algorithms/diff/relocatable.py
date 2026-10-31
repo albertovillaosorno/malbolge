@@ -47,7 +47,10 @@ from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
 from typing import TYPE_CHECKING
+from typing import cast
 
+from algorithms.diff.exact import ExactTreeError
+from algorithms.diff.exact import read_exact_regular_file
 from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
@@ -306,10 +309,13 @@ def _path_present(path: Path, context: str) -> bool:
 
 def _read_relocatable_bytes(path: Path, context: str) -> bytes:
     try:
-        return path.read_bytes()
-    except OSError as error:
+        return read_exact_regular_file(path, context)
+    except ExactTreeError as error:
         message = f"{context} read failed: {path}: {error}"
-        raise RelocationError(message) from error
+        failure = RelocationError(message)
+        for note in cast("list[str]", getattr(error, "__notes__", [])):
+            failure.add_note(note)
+        raise failure from error
 
 
 def _write_relocatable_bytes(path: Path, data: bytes, context: str) -> None:

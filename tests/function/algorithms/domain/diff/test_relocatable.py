@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 import shutil
 from typing import TYPE_CHECKING
@@ -321,6 +322,49 @@ def test_ambiguous_boundary_fails_closed(tmp_path: Path) -> None:
     _expect(not output.exists(), "ambiguous relocatable output was published")
 
 
+def test_relocatable_authoring_rejects_linked_source_after_exact_plan(
+    tmp_path: Path,
+) -> None:
+    """An in-tree link cannot impersonate an admitted source span."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    code = source / "code.bin"
+    shadow = source / "shadow.bin"
+    _ = shadow.write_bytes(code.read_bytes())
+    code.unlink()
+    try:
+        code.symlink_to(shadow)
+    except OSError:
+        pytest.skip("filesystem symlinks unavailable")
+    with pytest.raises(RelocationError, match="relocatable source read failed"):
+        _ = build_relocatable_plan(source, exact)
+
+
+def test_relocatable_materialization_rejects_linked_candidate(
+    tmp_path: Path,
+) -> None:
+    """A linked in-tree candidate cannot impersonate its admitted span."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "shadow.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    try:
+        (candidate / "code.bin").symlink_to(candidate / "shadow.bin")
+    except OSError:
+        pytest.skip("filesystem symlinks unavailable")
+    output = tmp_path / "out"
+    with pytest.raises(
+        RelocationError, match="relocatable candidate read failed"
+    ):
+        materialize_relocatable_plan(candidate, plan, output)
+    _expect(not output.exists(), "linked candidate was published")
+    _expect(
+        not (tmp_path / ".out.relocatable-staging").exists(),
+        "linked candidate left owned staging",
+    )
+
+
 def test_relocatable_authoring_read_error_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -328,15 +372,21 @@ def test_relocatable_authoring_read_error_fails_closed(
     source, oracle, _ = _fixture(tmp_path)
     exact = build_exact_plan(source, oracle)
     blocked = source / "code.bin"
-    original_read = Path.read_bytes
+    original_open = os.open
 
-    def fail_read(path: Path) -> bytes:
-        if path == blocked:
+    def fail_open(
+        file: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if os.fspath(file) == os.fspath(blocked):
             message = "blocked relocatable authoring read"
             raise PermissionError(message)
-        return original_read(path)
+        return original_open(file, flags, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(Path, "read_bytes", fail_read)
+    monkeypatch.setattr(os, "open", fail_open)
     with pytest.raises(RelocationError, match="relocatable source read failed"):
         _ = build_relocatable_plan(source, exact)
 
