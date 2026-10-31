@@ -598,8 +598,8 @@ def _validate_plan_shape(plan: StudyPlan) -> None:
         _fail("host-C reference requires one to four difficulty levels")
     if len(set(plan.difficulties)) != len(plan.difficulties):
         _fail("host-C reference difficulty levels must be distinct")
-    if not 1 <= plan.trials <= MAX_TRIALS:
-        _fail("host-C reference trial count must be between 1 and 5")
+    if type(plan.trials) is not int or not 1 <= plan.trials <= MAX_TRIALS:
+        _fail("host-C reference trial count must be an integer between 1 and 5")
 
 
 def _validate_plan(plan: StudyPlan) -> None:

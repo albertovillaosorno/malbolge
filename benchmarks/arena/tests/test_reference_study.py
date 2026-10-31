@@ -40,7 +40,7 @@ import json
 import shutil
 import sys
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -138,6 +138,25 @@ def test_invalid_study_plan_fails_before_creating_output(
     """Rejected setup does not create an empty published study directory."""
     with pytest.raises((reference_study.ReferenceStudyError, ValueError)):
         reference_study.run_study(plan)
+
+
+@pytest.mark.parametrize("trial_count", [True, 1.5, "2", None])
+def test_noninteger_trial_count_rejects_before_native_or_output_setup(
+    trial_count: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign trial count must never probe resource tools or create a run."""
+
+    def forbid_resource_probe() -> None:
+        pytest.fail("malformed trial count reached native resource admission")
+
+    monkeypatch.setattr(
+        host_c_oracle, "require_child_resource_controls", forbid_resource_probe
+    )
+    with pytest.raises(reference_study.ReferenceStudyError, match="trial count"):
+        reference_study.run_study(
+            reference_study.StudyPlan(FAMILY, (4,), 7, cast("int", trial_count))
+        )
 
 
 @pytest.mark.skipif(
