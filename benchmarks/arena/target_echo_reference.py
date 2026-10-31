@@ -198,6 +198,8 @@ def _validate_input_mode(mode: str) -> None:
 
 
 def _admit_executable(path: Path) -> Path:
+    if type(path) is not type(Path()):
+        _fail("target echo executables require an exact native Path")
     if not path.is_absolute():
         _fail("target echo executables must have explicit absolute paths")
     try:

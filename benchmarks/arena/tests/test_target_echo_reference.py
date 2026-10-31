@@ -97,6 +97,66 @@ def test_tool_fingerprint_rejects_fifo_substitution_without_blocking(
         target_echo_reference._tool_identity(emitter, runner)
 
 
+@pytest.mark.parametrize("field", ["emitter", "runner"])
+@pytest.mark.parametrize(
+    "invalid",
+    [None, "/tmp/pretend-tool", 0, False, object()],
+)
+def test_producer_rejects_non_path_executables_before_file_access(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+) -> None:
+    """Foreign direct tool arguments do not escape the typed API boundary."""
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        message = "foreign tool path reached local study setup"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(target_echo_reference.tempfile, "mkdtemp", forbidden)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="exact native Path"
+    ):
+        if field == "emitter":
+            target_echo_reference.run_study(
+                target_echo_reference.StudyPlan((1,), 1),
+                emitter=cast("Path", invalid),
+            )
+        else:
+            target_echo_reference.run_study(
+                target_echo_reference.StudyPlan((1,), 1),
+                runner=cast("Path", invalid),
+            )
+
+
+def test_producer_rejects_path_subclass_before_tool_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An overridden path object cannot control which executable is hashed."""
+
+    class SpoofedPath(type(Path())):
+        """A caller-owned native path subclass, not a trusted Path."""
+
+    emitter = tmp_path / "real-emitter"
+    _ = emitter.write_bytes(b"nonempty-tool")
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        message = "foreign path subclass reached study setup"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(target_echo_reference.tempfile, "mkdtemp", forbidden)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="exact native Path"
+    ):
+        target_echo_reference.run_study(
+            target_echo_reference.StudyPlan((1,), 1),
+            emitter=SpoofedPath(emitter),
+        )
+
+
 def test_tool_fingerprint_preserves_stable_byte_identity(tmp_path: Path) -> None:
     """Descriptor hashing preserves existing size-prefixed toolchain digests."""
     emitter = tmp_path / "emitter"
