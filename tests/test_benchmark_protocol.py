@@ -607,3 +607,131 @@ def _expect_validation_failure(path: Path, message: str) -> None:
         return
     failure = "invalid linked benchmark record unexpectedly succeeded"
     raise AssertionError(failure)
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [validator.tomllib.TOMLDecodeError, ValueError, TypeError, RuntimeError],
+)
+def test_protocol_parser_never_formats_foreign_host_errors(
+    monkeypatch: pytest.MonkeyPatch, fault_type: type[Exception]
+) -> None:
+    """Host decoder faults retain typed rejection without custom __str__ calls."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign benchmark TOML error formatter invoked")
+
+    hostile = type(
+        "ForeignBenchmarkParserFault", (fault_type,), {"__str__": unsafe_str}
+    )
+    fault = (
+        hostile("parser fault", "[invalid", 1)
+        if fault_type is validator.tomllib.TOMLDecodeError
+        else hostile("parser fault")
+    )
+
+    def broken_loader(_text: str) -> None:
+        raise fault
+
+    monkeypatch.setattr(validator.tomllib, "loads", broken_loader)
+    with pytest.raises(
+        validator.BenchmarkProtocolError, match="invalid TOML"
+    ) as caught:
+        validator.parse_protocol(_text(DETERMINISTIC))
+    assert caught.value.__cause__ is fault
+
+
+def test_protocol_native_toml_error_keeps_original_diagnostic() -> None:
+    """Real malformed TOML remains distinguishable by source position."""
+    with pytest.raises(
+        validator.BenchmarkProtocolError, match="invalid TOML"
+    ) as caught:
+        validator.parse_protocol("[broken\n")
+    assert type(caught.value.__cause__) is validator.tomllib.TOMLDecodeError
+    assert "line" in str(caught.value)
+
+
+@pytest.mark.parametrize("nesting", ["root", "table", "key", "array"])
+def test_protocol_parser_rejects_foreign_containers_before_hooks(
+    monkeypatch: pytest.MonkeyPatch, nesting: str
+) -> None:
+    """Native TOML parser receipts cannot delegate iteration to subclasses."""
+
+    class ForeignMap(dict[str, object]):
+        def items(self):  # type: ignore[override]
+            raise AssertionError("foreign protocol map iteration invoked")
+
+    class ForeignKey(str):
+        __hash__ = str.__hash__
+
+        def __str__(self) -> str:
+            raise AssertionError("foreign protocol key formatting invoked")
+
+    class ForeignArray(list[object]):
+        def __iter__(self):  # type: ignore[override]
+            raise AssertionError("foreign protocol array iteration invoked")
+
+    native = validator.tomllib.loads(_text(DETERMINISTIC))
+    if nesting == "root":
+        forged: object = ForeignMap(native)
+    elif nesting == "table":
+        forged = {**native, "study": ForeignMap(native["study"])}
+    elif nesting == "key":
+        forged = {**native, ForeignKey("foreign"): "value"}
+    else:
+        forged = {
+            **native,
+            "objectives": {**native["objectives"], "metrics": ForeignArray(["cost"])},
+        }
+    monkeypatch.setattr(validator.tomllib, "loads", lambda _text: forged)
+    with pytest.raises(validator.BenchmarkProtocolError, match="benchmark"):
+        validator.parse_protocol(_text(DETERMINISTIC))
+
+
+@pytest.mark.parametrize("phase", ["parent", "status", "read"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_protocol_host_fault_never_formats_foreign_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    fault_type: type[Exception],
+) -> None:
+    """A malicious host error formatter cannot escape protocol admission."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign benchmark filesystem formatter invoked")
+
+    foreign = type("ForeignBenchmarkHostFault", (fault_type,), {"__str__": unsafe_str})
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    fault = foreign("untrusted host detail")
+    if phase in {"parent", "status"}:
+        target = protocol.parent if phase == "parent" else protocol
+        original_lstat = Path.lstat
+
+        def fail_status(path: Path) -> os.stat_result:
+            if path == target:
+                raise fault
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_status)
+    else:
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == protocol:
+                raise fault
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    expected = (
+        "parent status failed"
+        if phase == "parent"
+        else "status failed"
+        if phase == "status"
+        else "read failed"
+    )
+    with pytest.raises(validator.BenchmarkProtocolError, match=expected) as caught:
+        validator.validate_example(protocol)
+    assert caught.value.__cause__ is fault

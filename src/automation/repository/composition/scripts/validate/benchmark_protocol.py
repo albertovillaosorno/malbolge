@@ -144,14 +144,26 @@ def _fail(message: str) -> Never:
     raise BenchmarkProtocolError(message)
 
 
+def _host_error_detail(error: Exception) -> str:
+    """Describe native host errors without invoking foreign formatters.
+
+    Returns:
+        A trusted built-in diagnostic or the foreign exception type name.
+
+    """
+    if type(error) in (OSError, ValueError, TypeError, RuntimeError):
+        return str(error)
+    return type(error).__name__
+
+
 def _mapping(value: object, context: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        _fail(f"{context} must be a table")
+    if type(value) is not dict:
+        _fail(f"{context} must be an exact native table")
     raw = cast("dict[object, object]", value)
     result: dict[str, object] = {}
     for key, item in raw.items():
-        if not isinstance(key, str):
-            _fail(f"{context} contains a non-string key")
+        if type(key) is not str:
+            _fail(f"{context} contains a non-native string key")
         result[key] = item
     return result
 
@@ -185,8 +197,8 @@ def _boolean(table: dict[str, object], name: str, context: str) -> bool:
 
 def _array(table: dict[str, object], name: str, context: str) -> list[object]:
     value = table.get(name)
-    if not isinstance(value, list):
-        _fail(f"{context}.{name} must be an array")
+    if type(value) is not list:
+        _fail(f"{context}.{name} must be an exact native array")
     return cast("list[object]", value)
 
 
@@ -265,9 +277,18 @@ def _parse_document(text: str) -> dict[str, object]:
     try:
         parsed = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:
-        _fail(f"invalid TOML: {error}")
-    except (ValueError, RecursionError):
-        _fail("invalid TOML exceeds host parser capacity")
+        detail = (
+            str(error)
+            if type(error) is tomllib.TOMLDecodeError
+            else type(error).__name__
+        )
+        raise BenchmarkProtocolError(f"invalid TOML: {detail}") from error
+    except (ValueError, RecursionError) as error:
+        message = "invalid TOML exceeds host parser capacity"
+        raise BenchmarkProtocolError(message) from error
+    except (TypeError, RuntimeError) as error:
+        message = "invalid TOML host parser failure"
+        raise BenchmarkProtocolError(message) from error
     document = _mapping(parsed, "benchmark")
     version = document.get("schema_version")
     if type(version) is not int or version != SCHEMA_VERSION:
@@ -484,9 +505,10 @@ def _check_physical_parents(path: Path, context: str) -> None:
         try:
             status = parent.lstat()
             redirected = S_ISLNK(status.st_mode) or parent.is_junction()
-        except (OSError, ValueError, RuntimeError) as error:
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            detail = _host_error_detail(error)
             raise BenchmarkProtocolError(
-                f"{context} parent status failed: {error}"
+                f"{context} parent status failed: {detail}"
             ) from error
         if redirected:
             _fail(f"{context} parent must not redirect: {parent}")
@@ -561,8 +583,9 @@ def _read_utf8(path: Path, context: str, admitted: os.stat_result) -> str:
             )
     except BenchmarkProtocolError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
-        raise BenchmarkProtocolError(f"{context} read failed: {error}") from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        raise BenchmarkProtocolError(f"{context} read failed: {detail}") from error
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -575,12 +598,14 @@ def _regular_file_status(path: Path, context: str) -> os.stat_result | None:
         status = path.lstat()
     except FileNotFoundError:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
-        raise BenchmarkProtocolError(f"{context} status failed: {error}") from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        raise BenchmarkProtocolError(f"{context} status failed: {detail}") from error
     try:
         redirected = S_ISLNK(status.st_mode) or path.is_junction()
-    except (OSError, ValueError, RuntimeError) as error:
-        raise BenchmarkProtocolError(f"{context} status failed: {error}") from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        raise BenchmarkProtocolError(f"{context} status failed: {detail}") from error
     if redirected:
         _fail(f"{context} must not redirect")
     if not S_ISREG(status.st_mode):
