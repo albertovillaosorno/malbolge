@@ -110,6 +110,7 @@ class _AuditData:
     resource_record_version: int
     manifest_fingerprints: dict[str, bytes]
     sidecar_fingerprints: dict[str, bytes | None]
+    evidence_snapshot: evidence.EvidenceSnapshot
     study_fingerprint: bytes
 
 
@@ -490,6 +491,7 @@ def _admit_data(
         document,
         require_git_object=options.require_source_commit_object,
     )
+    snapshots: list[evidence.EvidenceSnapshot] = []
     checked = evidence.validate_links(
         document,
         _ROOT,
@@ -499,7 +501,10 @@ def _admit_data(
             challenge_root=f"{prefix}/bundles",
             require_host_c_challenge_oracle=options.replay_oracles,
         ),
+        _snapshot_out=snapshots,
     )
+    if len(snapshots) != 1:
+        _fail("host-C audit did not retain its linked evidence snapshot")
     sidecar_fingerprints: dict[str, bytes | None] = {}
     artifacts = _check_artifact_index(
         _read_json(
@@ -536,6 +541,7 @@ def _admit_data(
         resource_record,
         manifest_fingerprints,
         sidecar_fingerprints,
+        snapshots[0],
         study_fingerprint,
     )
 
@@ -603,6 +609,9 @@ def audit(
             else 0
         )
         report = analyze.analyze(data.document)
+        # Unlike a fresh preflight, this compares the originally admitted
+        # raw and bundle bytes without repeating optional native replay.
+        evidence.recheck_evidence_snapshot(data.evidence_snapshot)
         _require_unchanged_manifests(data.manifest_fingerprints)
         _require_unchanged_sidecars(prefix, data.sidecar_fingerprints)
         current = evidence.read_bounded_regular(

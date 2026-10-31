@@ -661,9 +661,15 @@ def test_host_c_audit_rejects_manifest_drift_between_checks(
         preflight = evidence.validate_links
 
         def mutate_after_preflight(
-            document: dict[str, Any], root: Path, *, policy: evidence.EvidencePolicy
+            document: dict[str, Any],
+            root: Path,
+            *,
+            policy: evidence.EvidencePolicy,
+            _snapshot_out: list[Any] | None = None,
         ) -> dict[str, Any]:
-            result = preflight(document, root, policy=policy)
+            result = preflight(
+                document, root, policy=policy, _snapshot_out=_snapshot_out
+            )
             replace_commits()
             return result
 
@@ -703,9 +709,15 @@ def test_host_c_audit_rejects_study_json_rewrite_during_audit(
         preflight = evidence.validate_links
 
         def mutate_after_preflight(
-            document: dict[str, Any], root: Path, *, policy: evidence.EvidencePolicy
+            document: dict[str, Any],
+            root: Path,
+            *,
+            policy: evidence.EvidencePolicy,
+            _snapshot_out: list[Any] | None = None,
         ) -> dict[str, Any]:
-            checked = preflight(document, root, policy=policy)
+            checked = preflight(
+                document, root, policy=policy, _snapshot_out=_snapshot_out
+            )
             rewrite_study()
             return checked
 
@@ -811,6 +823,38 @@ def test_host_c_audit_rejects_sidecar_drift_after_analysis(
     monkeypatch.setattr(analyze, "analyze", mutate_after_analysis)
     with pytest.raises(
         reference_audit.ReferenceAuditError, match="sidecar.*changed during audit"
+    ):
+        reference_audit.audit(relative)
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["raw", "program.c", "oracle.bin", "manifest.json"],
+)
+def test_host_c_audit_rejects_linked_source_drift_after_analysis(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+) -> None:
+    """A preflight-approved raw row or bundle cannot change before reporting."""
+    directory, relative = live_pilot
+    path = (
+        next((directory / "raw").glob("*.csv"))
+        if source == "raw"
+        else next((directory / "bundles").rglob(source))
+    )
+    original_analyze = analyze.analyze
+
+    def mutate_after_analysis(document: dict[str, Any]) -> dict[str, Any]:
+        report = original_analyze(document)
+        original = path.read_bytes()
+        _ = path.write_bytes(bytes([original[0] ^ 1]) + original[1:])
+        return report
+
+    monkeypatch.setattr(analyze, "analyze", mutate_after_analysis)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="raw CSV changed|challenge bundle changed",
     ):
         reference_audit.audit(relative)
 

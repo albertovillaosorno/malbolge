@@ -639,7 +639,11 @@ I/O but never executes a retained binary. The artifact-index, failure-detail,
 and resource-control JSON sidecars are likewise fingerprinted from the exact
 bytes parsed and rechecked after report assembly. Optional legacy sidecars
 admitted as absent must still be absent at the final check; insertion,
-removal or byte mutation fails closed.
+removal or byte mutation fails closed. The auditor also carries the original
+strict arena evidence snapshot past report analysis, then rechecks every
+original raw CSV and regenerated challenge-bundle input (source, oracle and
+manifest) without rerunning optional native oracle processes. A late rewrite
+of any of these bytes rejects even if the report was already computed.
 These repeated reads detect observed drift, not an atomic filesystem
 snapshot or authenticated historical authorship.
 It also requires the producer's fixed run method, implementation/configuration
@@ -884,7 +888,9 @@ The original study records remain the result authority.
   reject drift in raw CSVs, run manifests, challenge oracles, binary hashes,
   stage identities, and malformed artifact indices. Sidecar-drift regressions
   also reject post-admission changes to all three JSON receipts, including
-  newly created or removed optional failure records.
+  newly created or removed optional failure records. Additional real-pilot
+  regressions rewrite each admitted raw CSV or challenge-bundle file during
+  report assembly and require a typed late-drift rejection.
 - `benchmarks/arena/reference_study.py` records real pinned host-C reference
   time, native executable sizes, exact binary hashes and versioned trial files
   across multiple canonical difficulties and matched `-O0`/`-O2` arms.

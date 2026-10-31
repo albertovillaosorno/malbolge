@@ -680,13 +680,16 @@ def _report_links(
 
 
 @dataclass(frozen=True, slots=True)
-class _EvidenceSnapshot:
+class EvidenceSnapshot:
+    """Snapshot of exact linked input bytes for a final read-only recheck."""
+
     context: _EvidenceContext
     contents: dict[str, str] | None
     bundle: _BundleInspection | None
 
 
-def _recheck_evidence_snapshot(snapshot: _EvidenceSnapshot) -> None:
+def recheck_evidence_snapshot(snapshot: EvidenceSnapshot) -> None:
+    """Reject observed retained-input drift without rerunning native tools."""
     if snapshot.bundle is not None:
         _recheck_bundle_files(snapshot.context.root, snapshot.bundle)
     _recheck_retained_links(snapshot.context, snapshot.contents)
@@ -697,7 +700,7 @@ def validate_links(
     root: Path,
     *,
     policy: EvidencePolicy = DEFAULT_EVIDENCE_POLICY,
-    _snapshot_out: list[_EvidenceSnapshot] | None = None,
+    _snapshot_out: list[EvidenceSnapshot] | None = None,
 ) -> dict[str, Any]:
     """Cross-check reported trials with bounded canonical run files.
 
@@ -745,8 +748,8 @@ def validate_links(
             contents,
             bundle=_BundleReports(bundle_sources, host_c_sources),
         )
-        snapshot = _EvidenceSnapshot(context, contents, bundle_inspection)
-        _recheck_evidence_snapshot(snapshot)
+        snapshot = EvidenceSnapshot(context, contents, bundle_inspection)
+        recheck_evidence_snapshot(snapshot)
     except (
         OSError,
         UnicodeError,
@@ -801,7 +804,7 @@ def main() -> int:
     try:
         source = analyze.read_input(args.study)
         document = analyze.parse_document(source)
-        snapshots: list[_EvidenceSnapshot] = []
+        snapshots: list[EvidenceSnapshot] = []
         checked = validate_links(
             document,
             args.root,
@@ -828,7 +831,7 @@ def main() -> int:
         analyze.require_unchanged_study_input(args.study, source)
         if len(snapshots) != 1:
             _fail("evidence preflight did not retain an input snapshot")
-        _recheck_evidence_snapshot(snapshots[0])
+        recheck_evidence_snapshot(snapshots[0])
     except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:
         parser.exit(2, f"arena evidence: {error}\n")
     report["evidence_preflight"] = checked
