@@ -195,7 +195,19 @@ def _source_mode(path: Path, relative: str) -> int | None:
     return mode
 
 
+def _require_unlinked_parent_components(root: Path, relative: str) -> None:
+    current = root
+    for component in PurePosixPath(relative).parts[:-1]:
+        current /= component
+        label = current.relative_to(root).as_posix()
+        mode = _source_mode(current, label)
+        if mode is None or not S_ISDIR(mode):
+            message = f"pinned source parent must be a directory: {label}"
+            raise SourcePinError(message)
+
+
 def _selected_root(root: Path, relative_root: str) -> tuple[Path, int]:
+    _require_unlinked_parent_components(root, relative_root)
     selected = root.joinpath(*PurePosixPath(relative_root).parts)
     mode = _source_mode(selected, relative_root)
     if mode is None:

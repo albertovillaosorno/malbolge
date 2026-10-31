@@ -149,6 +149,33 @@ def test_pinned_source_rejects_linked_root_when_supported(
         _ = source_snapshot_evidence(linked, ("README", "src"))
 
 
+def test_pinned_source_accepts_regular_nested_root(tmp_path: Path) -> None:
+    """A valid multi-component source root remains eligible for hashing."""
+    _write(tmp_path, "src/nested/leaf.c", b"valid source")
+    evidence = source_snapshot_evidence(tmp_path, ("src/nested",))
+    _expect(evidence.file_count == 1, "nested pinned root lost its file")
+
+
+@pytest.mark.parametrize("outside", [False, True])
+def test_pinned_source_rejects_linked_intermediate_root_component(
+    tmp_path: Path,
+    *,
+    outside: bool,
+) -> None:
+    """Selected subpaths cannot traverse symlink ancestors."""
+    root = tmp_path / "source"
+    root.mkdir()
+    actual = tmp_path / "outside" if outside else root / "real"
+    _write(actual, "nested/leaf.c", b"secret source")
+    try:
+        (root / "link").symlink_to(actual, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable")
+
+    with pytest.raises(SourcePinError, match="symlink is not accepted"):
+        _ = source_snapshot_evidence(root, ("link/nested",))
+
+
 def test_pinned_snapshot_walk_errors_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
