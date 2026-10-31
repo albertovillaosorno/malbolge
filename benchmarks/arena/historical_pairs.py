@@ -618,7 +618,13 @@ def build_report(root: Path, relative: str) -> dict[str, Any]:
         _fail("historical paired source must be under research evidence")
     try:
         return _build_report(root, relative)
-    except (KeyError, TypeError, ValueError, csv.Error) as error:
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        RecursionError,
+        csv.Error,
+    ) as error:
         message = f"historical paired source inconsistent: {error}"
         raise HistoricalEvidenceError(message) from error
 

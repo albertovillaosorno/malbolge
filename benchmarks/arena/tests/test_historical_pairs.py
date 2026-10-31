@@ -65,6 +65,7 @@ REUSE_BASELINE = "per-request-independent-verification-v1"
 REUSE_CANDIDATE = "exact-candidate-verified-result-reuse-v1"
 NO_NEW_EXECUTION = "no new execution"
 SOURCE_REPORTED = "source-reported-not-reverified"
+HISTORICAL_SOURCE_INCONSISTENT = "historical paired source inconsistent"
 
 
 def _result(name: str) -> dict:
@@ -403,6 +404,55 @@ def test_historical_source_changes_during_report_are_rejected(
         historical_pairs.HistoricalEvidenceError, match="changed before report"
     ):
         historical_pairs.build_report(tmp_path, TEMP)
+
+
+@pytest.mark.parametrize("filename", ["experiment.toml", "benchmark.toml"])
+def test_nested_historical_toml_capacity_failure_is_typed(
+    tmp_path: Path,
+    filename: str,
+) -> None:
+    """A bounded source TOML cannot leak parser recursion into the operator."""
+    root = _copy_source(tmp_path, PREFIX)
+    source = root / filename
+    malformed = "\nrecursion_probe = " + "[" * 1000 + "1" + "]" * 1000
+    _ = source.write_text(
+        source.read_text(encoding="utf-8") + malformed,
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError,
+        match=HISTORICAL_SOURCE_INCONSISTENT,
+    ) as error:
+        historical_pairs.build_report(tmp_path, TEMP)
+    assert isinstance(error.value.__cause__, RecursionError)
+
+
+def test_historical_cli_rejects_deep_toml_without_partial_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Operator returns a typed failure rather than leaking parser recursion."""
+    root = _copy_source(tmp_path, REUSE)
+    source = root / "benchmark.toml"
+    _ = source.write_text(
+        source.read_text(encoding="utf-8")
+        + "\nrecursion_probe = "
+        + "[" * 1000
+        + "1"
+        + "]" * 1000,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["historical-pairs", TEMP, "--root", str(tmp_path)],
+    )
+    with pytest.raises(SystemExit, match="2"):
+        historical_pairs.main()
+    rejected = capsys.readouterr()
+    assert not rejected.out
+    assert HISTORICAL_SOURCE_INCONSISTENT in rejected.err
 
 
 def test_missing_and_linked_historical_source_rejected(tmp_path: Path) -> None:
