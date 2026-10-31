@@ -32,36 +32,24 @@
 
 //! Compiler worker-group quota and detached pipe reader regression tests.
 
-use std::process::{Command, Stdio};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread;
-use std::time::{Duration, Instant};
-
-use super::{
-    BootstrapCompilerError, CompilerWorkerPermit,
-    MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS, collect_compiler_output,
-};
-
 #[test]
-fn compiler_worker_permits_reject_over_capacity_and_release_once()
--> Result<(), String> {
+fn compiler_worker_permits_reject_over_capacity_and_release_once() -> Result<(), String> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::{
+        BootstrapCompilerError, CompilerWorkerPermit, MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS,
+    };
+
     let counter = AtomicUsize::new(0);
     let mut permits = Vec::new();
     for _ in 0..MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS {
         permits.push(
-            CompilerWorkerPermit::acquire(
-                &counter,
-                MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS,
-            )
-            .map_err(|error| error.to_string())?,
+            CompilerWorkerPermit::acquire(&counter, MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS)
+                .map_err(|error| error.to_string())?,
         );
     }
-    let exhausted = CompilerWorkerPermit::acquire(
-        &counter,
-        MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS,
-    )
-    .err();
+    let exhausted =
+        CompilerWorkerPermit::acquire(&counter, MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS).err();
     if exhausted
         != Some(BootstrapCompilerError::WorkerCapacityExceeded {
             maximum: MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS,
@@ -76,19 +64,20 @@ fn compiler_worker_permits_reject_over_capacity_and_release_once()
     if counter.load(Ordering::Acquire) != 0 {
         return Err(String::from("released workers retained capacity"));
     }
-    let _reused = CompilerWorkerPermit::acquire(&counter, 1)
-        .map_err(|error| error.to_string())?;
+    let _reused = CompilerWorkerPermit::acquire(&counter, 1).map_err(|error| error.to_string())?;
     Ok(())
 }
 
 #[test]
-fn compiler_worker_permit_remains_owned_by_last_detached_reader()
--> Result<(), String> {
+fn compiler_worker_permit_remains_owned_by_last_detached_reader() -> Result<(), String> {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::{BootstrapCompilerError, CompilerWorkerPermit};
+
     let counter = AtomicUsize::new(0);
-    let permit = Arc::new(
-        CompilerWorkerPermit::acquire(&counter, 1)
-            .map_err(|error| error.to_string())?,
-    );
+    let permit =
+        Arc::new(CompilerWorkerPermit::acquire(&counter, 1).map_err(|error| error.to_string())?);
     let input = Arc::clone(&permit);
     let output = Arc::clone(&permit);
     let diagnostic = Arc::clone(&permit);
@@ -104,22 +93,26 @@ fn compiler_worker_permit_remains_owned_by_last_detached_reader()
     if counter.load(Ordering::Acquire) != 0 {
         return Err(String::from("last reader did not restore capacity"));
     }
-    let _reacquired = CompilerWorkerPermit::acquire(&counter, 1)
-        .map_err(|error| error.to_string())?;
+    let _reacquired =
+        CompilerWorkerPermit::acquire(&counter, 1).map_err(|error| error.to_string())?;
     Ok(())
 }
 
 #[cfg(target_os = "linux")]
 #[test]
-fn escaped_compiler_pipe_reader_retains_capacity_after_deadline()
--> Result<(), String> {
+fn escaped_compiler_pipe_reader_retains_capacity_after_deadline() -> Result<(), String> {
     use std::os::unix::process::CommandExt as _;
+    use std::process::{Command, Stdio};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    use super::{BootstrapCompilerError, CompilerWorkerPermit, collect_compiler_output};
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
-    let permit = Arc::new(
-        CompilerWorkerPermit::acquire(&COUNTER, 1)
-            .map_err(|error| error.to_string())?,
-    );
+    let permit =
+        Arc::new(CompilerWorkerPermit::acquire(&COUNTER, 1).map_err(|error| error.to_string())?);
     let mut command = Command::new("/bin/sh");
     let _configured = command
         .args(["-c", "/usr/bin/setsid /usr/bin/sleep 2 & exit 0"])
@@ -128,8 +121,7 @@ fn escaped_compiler_pipe_reader_retains_capacity_after_deadline()
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let child = command.spawn().map_err(|error| error.to_string())?;
-    let result =
-        collect_compiler_output(child, "", Duration::from_millis(80), permit);
+    let result = collect_compiler_output(child, "", Duration::from_millis(80), permit);
     if !matches!(result, Err(BootstrapCompilerError::DeadlineExceeded { .. })) {
         return Err(format!("escaped compiler bypassed deadline: {result:?}"));
     }
@@ -139,15 +131,13 @@ fn escaped_compiler_pipe_reader_retains_capacity_after_deadline()
         return Err(String::from("escaped reader lost its worker permit"));
     }
     let started = Instant::now();
-    while COUNTER.load(Ordering::Acquire) != 0
-        && started.elapsed() < Duration::from_secs(5)
-    {
+    while COUNTER.load(Ordering::Acquire) != 0 && started.elapsed() < Duration::from_secs(5) {
         thread::sleep(Duration::from_millis(10));
     }
     if COUNTER.load(Ordering::Acquire) != 0 {
         return Err(String::from("escaped reader never released capacity"));
     }
-    let _reacquired = CompilerWorkerPermit::acquire(&COUNTER, 1)
-        .map_err(|error| error.to_string())?;
+    let _reacquired =
+        CompilerWorkerPermit::acquire(&COUNTER, 1).map_err(|error| error.to_string())?;
     Ok(())
 }
