@@ -368,6 +368,106 @@ def test_direct_bundle_replay_accepts_exact_payload() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "fault_type",
+    [OSError, ValueError, RuntimeError, TypeError, AttributeError],
+)
+def test_direct_bundle_replay_types_generator_host_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Dependency faults cannot escape the replay evidence boundary."""
+    case, files = _direct_bundle()
+    fault = fault_type("injected canonical challenge generation failure")
+
+    def fail_generation(_identity: generate.ChallengeIdentity) -> None:
+        raise fault
+
+    monkeypatch.setattr(generate, "generate", fail_generation)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError,
+        match="challenge.*regeneration",
+    ) as caught:
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+    assert caught.value.__cause__ is fault
+
+
+class _HostileGeneratorError(generate.ChallengeError):
+    """A synthetic dependency error whose diagnostic hook is unsafe."""
+
+    def __str__(self) -> str:
+        message = "generator exception formatting should not execute"
+        raise AssertionError(message)
+
+
+def test_direct_bundle_replay_does_not_format_generator_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Canonical generation failures retain their original cause safely."""
+    case, files = _direct_bundle()
+    fault = _HostileGeneratorError("injected failure")
+
+    def fail_generation(_identity: generate.ChallengeIdentity) -> None:
+        raise fault
+
+    monkeypatch.setattr(generate, "generate", fail_generation)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="challenge identity"
+    ) as caught:
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+    assert caught.value.__cause__ is fault
+
+
+class _ForgedGeneratedBytes(bytes):
+    """A foreign byte subclass can lie about canonical payload equality."""
+
+    def __eq__(self, _other: object) -> bool:
+        return True
+
+    def __ne__(self, _other: object) -> bool:
+        return False
+
+
+@pytest.mark.parametrize("field", ["source", "oracle", "manifest"])
+def test_direct_bundle_rejects_foreign_generated_payload_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Replayed evidence must not rely on foreign equality hooks."""
+    case, files = _direct_bundle()
+    original = _generated()
+    payloads = {
+        "source": original.source,
+        "oracle": original.oracle,
+        "manifest": original.manifest,
+    }
+    payloads[field] = _ForgedGeneratedBytes(b"forged")
+    forged = generate.GeneratedChallenge(
+        source=payloads["source"],
+        oracle=payloads["oracle"],
+        manifest=payloads["manifest"],
+    )
+    monkeypatch.setattr(generate, "generate", lambda _identity: forged)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="canonical.*payload"
+    ):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+@pytest.mark.parametrize("result", [None, object(), (b"x", b"y", b"z")])
+def test_direct_bundle_rejects_malformed_generator_result(
+    monkeypatch: pytest.MonkeyPatch,
+    result: object,
+) -> None:
+    """A dependency's malformed result is not a verified challenge."""
+    case, files = _direct_bundle()
+    monkeypatch.setattr(generate, "generate", lambda _identity: result)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="canonical.*payload"
+    ):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
 def test_canonical_challenge_bundle_regenerates_without_execution(
     tmp_path: Path,
 ) -> None:

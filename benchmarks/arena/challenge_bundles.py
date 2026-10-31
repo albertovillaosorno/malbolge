@@ -98,10 +98,21 @@ def _regenerate(
             profile=profile,
             nodes=case["difficulty"],
         )
-        return generate.generate(identity)
+        produced = generate.generate(identity)
     except generate.ChallengeError as error:
-        message = f"challenge identity cannot regenerate: {error}"
+        message = "challenge identity cannot regenerate"
         raise ChallengeBundleError(message) from error
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "challenge canonical regeneration dependency failed"
+        raise ChallengeBundleError(message) from error
+    # Only exact native generator output can serve as comparison evidence.
+    # A foreign bytes subclass could override equality to admit forged data.
+    if type(produced) is not generate.GeneratedChallenge or any(
+        type(payload) is not bytes
+        for payload in (produced.source, produced.oracle, produced.manifest)
+    ):
+        _fail("canonical challenge regeneration produced invalid payload")
+    return produced
 
 
 def _admit_files(files: dict[str, bytes]) -> None:
