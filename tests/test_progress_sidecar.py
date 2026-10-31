@@ -11792,3 +11792,76 @@ def test_mutable_cleanup_preserves_foreign_primary_add_note_override(
     assert failure.__notes__ == [
         "mutable temporary cleanup also failed: secondary temporary unlink failure"
     ]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX flock receipt contract")
+@pytest.mark.parametrize("receipt", [False, True, 0], ids=["false", "true", "zero"])
+def test_writer_lock_rejects_noncanonical_acquisition_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A forged flock success cannot enter the unprotected writer body."""
+    candidate = _sidecar(tmp_path)
+    real_import = progress.import_module
+    real_module = real_import("fcntl")
+
+    class ForgedLockModule:
+        LOCK_EX = real_module.LOCK_EX
+        LOCK_UN = real_module.LOCK_UN
+
+        @staticmethod
+        def flock(descriptor: int, operation: int) -> object:
+            del descriptor
+            if operation == ForgedLockModule.LOCK_EX:
+                return receipt
+            assert operation == ForgedLockModule.LOCK_UN
+            return None
+
+    def fake_import(name: str) -> object:
+        assert name == "fcntl"
+        return ForgedLockModule
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "import_module", fake_import)
+        with pytest.raises(ERROR, match="writer lock.*acquisition receipt"):
+            _ = progress.write_atomic(candidate)
+    assert not Path(candidate.progress_path).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX flock receipt contract")
+def test_writer_lock_rejects_noncanonical_release_receipt_after_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An untrusted release result cannot certify lock teardown success."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    real_import = progress.import_module
+    real_module = real_import("fcntl")
+    real_flock = cast("Callable[[int, int], None]", real_module.flock)
+
+    class ForgedReleaseModule:
+        LOCK_EX = real_module.LOCK_EX
+        LOCK_UN = real_module.LOCK_UN
+
+        @staticmethod
+        def flock(descriptor: int, operation: int) -> object:
+            real_flock(descriptor, operation)
+            if operation == ForgedReleaseModule.LOCK_UN:
+                return False
+            return None
+
+    def fake_import(name: str) -> object:
+        assert name == "fcntl"
+        return ForgedReleaseModule
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "import_module", fake_import)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="writer lock cleanup failed",
+        ) as caught:
+            _ = progress.write_atomic(candidate)
+    assert caught.value.published_path == destination
+    assert progress.read(destination) == candidate

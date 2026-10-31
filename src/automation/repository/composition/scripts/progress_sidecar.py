@@ -2077,6 +2077,12 @@ def _writer_lock_path(destination: Path) -> Path:
     return Path(f"{destination}.lock")
 
 
+def _require_native_lock_receipt(receipt: object, action: str) -> None:
+    """Only a native lock API's ``None`` completion proves success."""
+    if receipt is not None:
+        _fail(f"progress writer lock {action} receipt must be None")
+
+
 def _acquire_writer_lock(stream: _LockStream) -> Callable[[], None]:
     file_descriptor = stream.fileno()
     _ = stream.seek(0)
@@ -2085,18 +2091,26 @@ def _acquire_writer_lock(stream: _LockStream) -> Callable[[], None]:
             "_WindowsLockModule",
             cast("object", import_module("msvcrt")),
         )
-        module.locking(file_descriptor, module.LK_LOCK, 1)
+        _require_native_lock_receipt(
+            module.locking(file_descriptor, module.LK_LOCK, 1), "acquisition"
+        )
 
         def release() -> None:
             _ = stream.seek(0)
-            module.locking(file_descriptor, module.LK_UNLCK, 1)
+            _require_native_lock_receipt(
+                module.locking(file_descriptor, module.LK_UNLCK, 1), "release"
+            )
 
         return release
     module = cast("_PosixLockModule", cast("object", import_module("fcntl")))
-    module.flock(file_descriptor, module.LOCK_EX)
+    _require_native_lock_receipt(
+        module.flock(file_descriptor, module.LOCK_EX), "acquisition"
+    )
 
     def release() -> None:
-        module.flock(file_descriptor, module.LOCK_UN)
+        _require_native_lock_receipt(
+            module.flock(file_descriptor, module.LOCK_UN), "release"
+        )
 
     return release
 

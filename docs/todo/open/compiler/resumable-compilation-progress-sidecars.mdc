@@ -603,6 +603,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   its fields are accessed, without advancing publication or altering
   positive native locking behavior.
 
+  Both POSIX and Windows writer-lock system calls now admit only the native
+  `None` acquisition and release receipt. Four red-first POSIX cases show a
+  boolean or integer acquisition claim cannot bypass serialization; an invalid
+  release claim preserves the durably committed pointer and raises exact
+  committed-path evidence. Positive native flock locking remains covered by
+  the existing cross-process contention and process-death tests.
+
   Immutable checkpoint collision and initial post-link publication checks
   now validate native stat metadata before reading inode, type or link count.
   Five red-first regressions cover new committed inode uncertainty and

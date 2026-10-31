@@ -75,6 +75,14 @@ pathname/descriptor identity checks after lock acquisition. A foreign receipt
 fails before its attributes can run or the lock can authorize publication;
 positive native lock ownership and post-staging rechecks remain mandatory.
 
+POSIX `flock` and Windows `locking` acquisition and release must also return
+the native `None` success receipt. A foreign boolean or integer response cannot
+certify that the writer lock was acquired: it rejects before the body and
+pointer publication. A foreign release response is a teardown error and retains
+exact committed-pointer evidence if publication already completed. These
+receipt checks cannot prove a deliberately forged `None` is backed by an OS
+lock; they supplement the independent inode and path checks.
+
 Progress writers also require native `os.stat_result` for the initially
 created staging descriptor and each staged pathname/descriptor size and inode
 check. Foreign receipts reject before property access and before mutable or
