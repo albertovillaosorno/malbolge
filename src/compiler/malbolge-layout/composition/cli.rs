@@ -392,6 +392,15 @@ fn publish_new_with_stage_hook(
     bytes: &[u8],
     after_sync: impl FnOnce(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
+    publish_new_with_hooks(path, bytes, after_sync, |_published| Ok(()))
+}
+
+fn publish_new_with_hooks(
+    path: &Path,
+    bytes: &[u8],
+    after_sync: impl FnOnce(&Path) -> Result<(), String>,
+    after_link: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
     if path.extension() != Some(OsStr::new(MALBOLGE_EXTENSION)) {
         return Err(String::from("output must have a .malbolge extension"));
     }
@@ -414,6 +423,7 @@ fn publish_new_with_stage_hook(
         verify_fsynced_stage(&staged, &mut file, &initial, bytes)?;
         fs::hard_link(&staged, path)
             .map_err(|error| format!("cannot publish new target: {error}"))?;
+        after_link(path)?;
         let opened = file
             .metadata()
             .map_err(|error| format!("cannot inspect published stage: {error}"))?;
@@ -424,6 +434,10 @@ fn publish_new_with_stage_hook(
                 "published target inode changed after stage admission",
             ));
         }
+        // The hard link exposes a writable inode. Recheck the final path and
+        // exact bytes before claiming success; late mutation leaves an already
+        // published target but cannot be falsely called a verified artifact.
+        verify_fsynced_stage(path, &mut file, &opened, bytes)?;
         Ok(())
     })();
     // Retire only our own original staging inode. A stage pathname swapped

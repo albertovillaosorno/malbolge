@@ -32,7 +32,10 @@
 
 //! Crash-stale temporary-name collision regression coverage.
 
-use super::{MAX_STAGE_NAME_ATTEMPTS, publish_new, publish_new_with_stage_hook};
+use super::{
+    MAX_STAGE_NAME_ATTEMPTS, publish_new, publish_new_with_hooks,
+    publish_new_with_stage_hook,
+};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -272,6 +275,36 @@ fn grown_stage_rejects_before_an_unbounded_reread() -> Result<(), String> {
         "oversized stage reached publication: {result:?}"
     );
     assert!(!output.exists());
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "late published-byte mutation must be detected after link"
+)]
+fn published_same_inode_content_rewrite_cannot_report_success()
+-> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let result = publish_new_with_hooks(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |published| {
+            fs::write(published, b"ctX").map_err(|error| error.to_string())
+        },
+    );
+    assert!(
+        result.is_err(),
+        "late content substitution admitted: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctX",
+    );
     assert!(!stage(&output, None).exists());
     Ok(())
 }

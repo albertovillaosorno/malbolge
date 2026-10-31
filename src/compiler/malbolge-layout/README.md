@@ -10,6 +10,16 @@ that all later data writes remain outside source. Jumps after relocation are
 not admitted. There is no conditional branch, backward jump, or executable
 external guest helper.
 
+The no-clobber publisher verifies the synced stage through its original
+open descriptor before creating the final hard link. It also rereads the
+newly published path through that descriptor and rechecks the exact bytes,
+regular inode and timestamps before reporting success. A concurrent rewrite
+after link creation cannot be mistaken for successful publication; if it is
+detected, the command returns an error and retains the already-visible
+target rather than deleting a path which may now belong to another writer.
+The validation is bounded by the exact proposed artifact length, and does
+not claim a perpetual filesystem snapshot against later external mutation.
+
 The encoder assigns code addresses starting at zero and uniquely inverts the
 normative profile decoder over all 94 graphical source bytes. Independent
 admission checks every emitted code byte, selected profile ID/fingerprint,
