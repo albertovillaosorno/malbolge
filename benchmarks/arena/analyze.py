@@ -647,19 +647,27 @@ def _validate_comparison(
     algorithms: dict[str, list[dict[str, Any]]],
     baseline: str,
 ) -> None:
+    # Preserve exact numeric identities in the report, but never ask Python
+    # to format a caller-supplied integer beyond its decimal safety limit.
+    diagnostic_key = tuple(
+        "<integer over 64 bits>"
+        if type(part) is int and part.bit_length() > 64
+        else part
+        for part in key
+    )
     first = _cohort(next(iter(algorithms.values())))
     if any(_cohort(rows) != first for rows in algorithms.values()):
-        _fail(f"unmatched trial/workload cohort for {key}")
+        _fail(f"unmatched trial/workload cohort for {diagnostic_key}")
     verifier_reference = _verifier_cohort(next(iter(algorithms.values())))
     if any(
         _verifier_cohort(rows) != verifier_reference
         for rows in algorithms.values()
     ):
-        _fail(f"unmatched verifier cohort for {key}")
+        _fail(f"unmatched verifier cohort for {diagnostic_key}")
     if baseline not in algorithms:
-        _fail(f"missing declared baseline for {key}")
+        _fail(f"missing declared baseline for {diagnostic_key}")
     if len(algorithms) < MIN_COMPARISON_ALGORITHMS:
-        _fail(f"no comparison algorithm for declared baseline in {key}")
+        _fail(f"no comparison algorithm for declared baseline in {diagnostic_key}")
 
 
 def _paired_test_records(

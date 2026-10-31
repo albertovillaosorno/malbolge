@@ -284,6 +284,55 @@ def test_unmatched_trial_cohorts_fail_closed(field: str) -> None:
         _run(document)
 
 
+@pytest.mark.parametrize("identity", ["version", "difficulty"])
+@pytest.mark.parametrize(
+    ("mismatch", "diagnostic"),
+    [
+        ("workload", "unmatched trial/workload cohort"),
+        ("verifier", "unmatched verifier cohort"),
+        ("baseline", "missing declared baseline"),
+        ("no-candidate", "no comparison algorithm"),
+    ],
+)
+def test_extreme_native_cohort_identity_cannot_break_error_formatting(
+    identity: str,
+    mismatch: str,
+    diagnostic: str,
+) -> None:
+    """Failed direct comparisons retain typed errors for enormous identities."""
+    document = _document()
+    if identity == "difficulty":
+        document["observations"] = [
+            row
+            for row in document["observations"]
+            if row["case"]["difficulty"] == FIRST_DIFFICULTY
+        ]
+    for row in document["observations"]:
+        row["case"][identity] = 1 << 50000
+    if mismatch == "workload":
+        document["observations"][2]["case"]["seed"] = 91
+    elif mismatch == "verifier":
+        document["observations"][2]["verifier"] = "different-oracle"
+    elif mismatch == "baseline":
+        document["study"]["baseline"] = "omitted-baseline"
+    else:
+        document["observations"] = [
+            row for row in document["observations"]
+            if row["algorithm"] == BASELINE
+        ]
+    with pytest.raises(analyze.ArenaError, match=diagnostic):
+        analyze.analyze(document)
+
+
+def test_exact_direct_analysis_preserves_large_matched_case_version() -> None:
+    """A large valid numeric identity need not lose integer precision."""
+    document = _document()
+    for row in document["observations"]:
+        row["case"]["version"] = 1 << 50000
+    report = analyze.analyze(document)
+    assert report["capacity_curve"][0]["version"] == 1 << 50000
+
+
 def test_missing_declared_baseline_rejected() -> None:
     """No study can silently report a candidate-only comparative frontier."""
     document = _document()
