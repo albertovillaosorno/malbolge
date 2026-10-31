@@ -904,12 +904,13 @@ def _initialize_workspace_folders(directory: Path, names: tuple[str, ...]) -> No
     try:
         for name in names:
             (directory / name).mkdir()
-    except (OSError, ValueError, RuntimeError) as error:
-        # Only remove the unique study directory created by this invocation.
-        # A cleanup failure must not erase the original setup failure.
+    except Exception as error:
+        # Host directory dependencies may raise any ordinary exception.
+        # Only remove the unique study directory created by this invocation;
+        # a cleanup failure must not erase the original setup failure.
         try:
             shutil.rmtree(directory)
-        except (OSError, ValueError, RuntimeError) as cleanup_error:
+        except Exception as cleanup_error:
             # Neither the primary nor the cleanup error may run foreign hooks.
             detail = _safe_error_detail(cleanup_error)
             BaseException.add_note(
@@ -923,7 +924,7 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
     emitter, runner = _admit_executable(emitter), _admit_executable(runner)
     try:
         workspace = _TEMP.lstat()
-    except (OSError, ValueError, RuntimeError) as error:
+    except Exception as error:
         message = "target echo reference requires repository .temp directory"
         raise TargetEchoStudyError(message) from error
     if not stat.S_ISDIR(workspace.st_mode):
@@ -936,7 +937,7 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
     toolchain = _tool_identity(emitter, runner)
     try:
         directory = Path(tempfile.mkdtemp(prefix="arena-target-echo-", dir=_TEMP))
-    except (OSError, ValueError, RuntimeError) as error:
+    except Exception as error:
         message = "target echo study workspace creation failed"
         raise TargetEchoStudyError(message) from error
     _initialize_workspace_folders(directory, ("runs", "raw", "candidates"))

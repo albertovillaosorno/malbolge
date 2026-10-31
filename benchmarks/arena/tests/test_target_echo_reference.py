@@ -463,7 +463,10 @@ WORKSPACE_SUBDIR_STAGE = "subdirectory"
 WORKSPACE_ERROR = "study workspace"
 
 
-@pytest.mark.parametrize("error_type", [PermissionError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "error_type",
+    [PermissionError, ValueError, RuntimeError, IndexError, OverflowError, LookupError],
+)
 @pytest.mark.parametrize("stage", [WORKSPACE_CREATE_STAGE, WORKSPACE_SUBDIR_STAGE])
 def test_failed_workspace_setup_is_typed_and_removes_partial_study(
     tmp_path: Path,
@@ -512,7 +515,9 @@ def test_failed_workspace_setup_is_typed_and_removes_partial_study(
     assert not list(temp_root.glob("arena-target-echo-*"))
 
 
-@pytest.mark.parametrize("error_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "error_type", [ValueError, RuntimeError, IndexError, OverflowError]
+)
 def test_target_echo_workspace_root_host_failures_are_typed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -535,7 +540,9 @@ def test_target_echo_workspace_root_host_failures_are_typed(
     assert isinstance(failure.value.__cause__, error_type)
 
 
-@pytest.mark.parametrize("cleanup_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "cleanup_type", [ValueError, RuntimeError, IndexError, OverflowError]
+)
 def test_target_echo_workspace_cleanup_preserves_primary_setup_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -563,6 +570,34 @@ def test_target_echo_workspace_cleanup_preserves_primary_setup_failure(
     assert isinstance(failure.value.__cause__, OSError)
     cleanup_note = "cleanup failed"
     assert any(cleanup_note in note for note in failure.value.__cause__.__notes__)
+
+
+def test_target_echo_workspace_unknown_host_faults_do_not_format_foreign_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both unexpected host errors preserve the primary mkdir rejection."""
+
+    class ForeignHostError(Exception):
+        def __str__(self) -> str:
+            raise AssertionError("foreign workspace error formatter invoked")
+
+    primary = ForeignHostError("untrusted directory creation fault")
+    cleanup = ForeignHostError("untrusted directory removal fault")
+
+    def fail_mkdir(*_args: object, **_kwargs: object) -> None:
+        raise primary
+
+    def fail_cleanup(*_args: object, **_kwargs: object) -> None:
+        raise cleanup
+
+    monkeypatch.setattr(target_echo_reference.Path, "mkdir", fail_mkdir)
+    monkeypatch.setattr(target_echo_reference.shutil, "rmtree", fail_cleanup)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="initialization failed"
+    ) as caught:
+        target_echo_reference._initialize_workspace_folders(tmp_path, ("raw",))
+    assert caught.value.__cause__ is primary
+    assert any("ForeignHostError" in note for note in primary.__notes__)
 
 
 def test_optional_rss_workspace_failure_is_typed_and_cleans_partial_study(
