@@ -1707,3 +1707,81 @@ def test_retained_artifact_native_bounded_reader_receipt_remains_admissible(
             "sha256": sha256(raw).hexdigest(),
         },
     )
+
+
+class _ForeignReferenceInteger(int):
+    """Numeric subclasses must not decide whether a measurement is successful."""
+
+    def __gt__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign host-C elapsed comparison executed")
+
+
+class _ForeignExecutableBytes(bytes):
+    """Artifact subclasses must not forge the recorded compiled size."""
+
+    def __len__(self) -> int:
+        return 1
+
+
+@pytest.mark.parametrize(
+    "measurement",
+    [
+        object(),
+        host_c_oracle.ReferenceMeasurement(_ForeignReferenceInteger(1), b"C", 1024),
+        host_c_oracle.ReferenceMeasurement(0, b"C", 1024),
+        host_c_oracle.ReferenceMeasurement(
+            reference_study.BUDGET_SECONDS * 1_000_000_000 + 1, b"C", 1024
+        ),
+        host_c_oracle.ReferenceMeasurement(1, b"C", 0),
+        host_c_oracle.ReferenceMeasurement(
+            1, b"C", reference_study.BUDGET_MEMORY_MIB * 1_048_576 + 1
+        ),
+        host_c_oracle.ReferenceMeasurement(1, b"C", True),
+        host_c_oracle.ReferenceMeasurement(1, b"", 1024),
+        host_c_oracle.ReferenceMeasurement(1, _ForeignExecutableBytes(b"forged"), 1024),
+        host_c_oracle.ReferenceMeasurement(1, b"longer", 1024),
+    ],
+)
+def test_host_c_measurement_receipt_rejects_foreign_or_invalid_data_before_write(
+    monkeypatch: pytest.MonkeyPatch, measurement: object
+) -> None:
+    """Never publish artifacts or report costs from untrusted native measurements."""
+    monkeypatch.setattr(reference_study, "MAX_ARTIFACT_BYTES", 4)
+    monkeypatch.setattr(host_c_oracle, "measure_reference", lambda *_args: measurement)
+
+    def forbid_write(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("invalid measurement reached artifact publication")
+
+    monkeypatch.setattr(reference_study, "_write_retained_bytes", forbid_write)
+    with pytest.raises(reference_study.ReferenceStudyError, match="measurement receipt"):
+        reference_study._successful(
+            reference_study._ROOT,
+            cast("generate.ChallengeIdentity", object()),
+            "candidate",
+            mode="-O0",
+        )
+
+
+def test_host_c_measurement_receipt_accepts_exact_bounded_native_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid native measurement receipts retain cost and binary identities."""
+    receipt = host_c_oracle.ReferenceMeasurement(10, b"good", 1024)
+    captured: list[bytes] = []
+    monkeypatch.setattr(reference_study, "MAX_ARTIFACT_BYTES", len(receipt.executable))
+    monkeypatch.setattr(host_c_oracle, "measure_reference", lambda *_args: receipt)
+    monkeypatch.setattr(
+        reference_study,
+        "_write_retained_bytes",
+        lambda _path, payload: captured.append(payload),
+    )
+    metrics, artifact = reference_study._successful(
+        reference_study._ROOT,
+        cast("generate.ChallengeIdentity", object()),
+        "candidate",
+        mode="-O0",
+    )
+    assert captured == [b"good"]
+    assert metrics == {"elapsed_ns": 10, "artifact_bytes": 4, "peak_rss_bytes": 1024}
+    assert artifact["sha256"] == sha256(b"good").hexdigest()

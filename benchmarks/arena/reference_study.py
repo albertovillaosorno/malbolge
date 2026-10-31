@@ -315,8 +315,17 @@ def _successful(
     mode: str,
 ) -> tuple[dict[str, int], dict[str, str]]:
     measured = host_c_oracle.measure_reference(identity, mode)
-    if measured.elapsed_ns > BUDGET_SECONDS * 1_000_000_000:
-        _fail("host-C successful measurement exceeds declared budget")
+    if type(measured) is not host_c_oracle.ReferenceMeasurement:
+        _fail("host-C measurement receipt requires native result")
+    if (
+        type(measured.elapsed_ns) is not int
+        or not 0 < measured.elapsed_ns <= BUDGET_SECONDS * 1_000_000_000
+        or type(measured.peak_rss_bytes) is not int
+        or not 0 < measured.peak_rss_bytes <= BUDGET_MEMORY_MIB * 1_048_576
+        or type(measured.executable) is not bytes
+        or not 0 < len(measured.executable) <= MAX_ARTIFACT_BYTES
+    ):
+        _fail("host-C measurement receipt requires bounded native values")
     path = f"candidates/{name}"
     _write_retained_bytes(root / path, measured.executable)
     return (
