@@ -1019,9 +1019,17 @@ def test_tool_fingerprint_close_error_does_not_hide_read_failure(
         assert observed.value.__cause__ is close_error
 
 
+class _UnexpectedHostFault(Exception):
+    """Unclassified host dependency fault with an unsafe string hook."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign target host exception formatter executed")
+
+
 @pytest.mark.parametrize("site", ["lstat", "open", "fstat", "read", "close"])
 @pytest.mark.parametrize(
-    "failure_type", [ValueError, RuntimeError, TypeError, AttributeError]
+    "failure_type",
+    [ValueError, RuntimeError, TypeError, AttributeError, IndexError, _UnexpectedHostFault],
 )
 def test_tool_fingerprint_types_non_oserror_host_faults(
     tmp_path: Path,
@@ -1140,7 +1148,7 @@ def test_tool_fingerprint_rejects_foreign_trailing_read_result(
             _ = target_echo_reference._tool_identity(emitter, runner)
 
 
-@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError, IndexError, _UnexpectedHostFault])
 def test_tool_fingerprint_secondary_non_oserror_close_preserves_primary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

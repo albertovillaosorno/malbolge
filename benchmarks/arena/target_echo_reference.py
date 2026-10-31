@@ -308,13 +308,9 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 primary = sys.exception()
                 try:
                     os.close(descriptor)
-                except (
-                    OSError,
-                    ValueError,
-                    RuntimeError,
-                    TypeError,
-                    AttributeError,
-                ) as cleanup_error:
+                except Exception as cleanup_error:
+                    # An unexpected host cleanup fault must not overwrite the
+                    # original read/hash rejection or execute foreign hooks.
                     if primary is None:
                         raise
                     BaseException.add_note(
@@ -327,13 +323,9 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 _tool_file_identity(latest) != _tool_file_identity(original)
             ):
                 _fail("target echo executable identity changed")
-        except (
-            OSError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            AttributeError,
-        ) as error:
+        except Exception as error:
+            # Host descriptor dependencies may raise arbitrary ordinary
+            # exceptions. Keep every such fault behind the typed boundary.
             if isinstance(error, TargetEchoStudyError):
                 raise
             message = "target echo executable identity changed"
