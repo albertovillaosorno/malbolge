@@ -242,7 +242,7 @@ def _admit_executable(path: Path) -> Path:
         details = path.lstat()
         regular = path.is_file()
         redirected = path.is_symlink()
-    except (OSError, ValueError, RuntimeError) as error:
+    except Exception as error:
         message = "target echo executable is missing"
         raise TargetEchoStudyError(message) from error
     if not regular or redirected or details.st_size <= 0:

@@ -837,7 +837,9 @@ def test_tool_fingerprint_rejects_fifo_substitution_without_blocking(
 
 
 @pytest.mark.parametrize("operation", ["lstat", "is_file", "is_symlink"])
-@pytest.mark.parametrize("error_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "error_type", [ValueError, RuntimeError, IndexError, OverflowError, LookupError]
+)
 def test_target_echo_executable_admission_types_host_inspection_faults(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -863,6 +865,33 @@ def test_target_echo_executable_admission_types_host_inspection_faults(
     ) as failure:
         _ = target_echo_reference._admit_executable(executable)
     assert isinstance(failure.value.__cause__, error_type)
+
+
+def test_target_executable_inspection_never_formats_foreign_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A custom ordinary path dependency failure stays a typed rejection."""
+    executable = tmp_path / "target-emitter"
+    _ = executable.write_bytes(b"real-compiler")
+
+    class HostilePathFailure(Exception):
+        def __str__(self) -> str:
+            raise AssertionError("foreign path error formatter executed")
+
+    error = HostilePathFailure("untrusted path inspection failure")
+    original = Path.is_file
+
+    def fail_file(path: Path) -> bool:
+        if path == executable:
+            raise error
+        return original(path)
+
+    monkeypatch.setattr(target_echo_reference.Path, "is_file", fail_file)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="executable is missing"
+    ) as caught:
+        _ = target_echo_reference._admit_executable(executable)
+    assert caught.value.__cause__ is error
 
 
 @pytest.mark.parametrize("field", ["emitter", "runner"])
