@@ -1167,6 +1167,94 @@ def test_resource_preflight_rejects_invalid_tool_resolution(
 
 @pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="uses Linux tools")
 @pytest.mark.parametrize("tool", [target_process.LIMITER_NAME, target_process.RSS_TOOL])
+@pytest.mark.parametrize("kind", ["symlink", "directory", "missing", "non-executable"])
+def test_resource_preflight_requires_physical_executable_tool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+    kind: str,
+) -> None:
+    """Only real executable system files may provide child resource controls."""
+    fake = tmp_path / "fake-resource-tool"
+    if kind == "symlink":
+        fake.symlink_to(sys.executable)
+    elif kind == "directory":
+        fake.mkdir()
+    elif kind == "non-executable":
+        _ = fake.write_bytes(b"no execution")
+        fake.chmod(0o644)
+    original = target_process.shutil.which
+
+    def fake_resolver(name: str, *, path: str | None = None) -> str | None:
+        if name == tool:
+            return str(fake)
+        return original(name, path=path)
+
+    monkeypatch.setattr(target_process.shutil, "which", fake_resolver)
+    probe = (
+        target_process.require_child_resource_controls
+        if tool == target_process.LIMITER_NAME
+        else target_process.require_child_rss_measurement
+    )
+    diagnostic = "inspection" if kind == "missing" else "physical executable"
+    with pytest.raises(target_process.TargetProcessError, match=diagnostic):
+        probe()
+
+
+@pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="uses Linux tools")
+@pytest.mark.parametrize("tool", [target_process.LIMITER_NAME, target_process.RSS_TOOL])
+@pytest.mark.parametrize("operation", ["lstat", "access"])
+@pytest.mark.parametrize(
+    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_resource_preflight_types_executable_inspection_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+    operation: str,
+    failure_type: type[Exception],
+) -> None:
+    """Unexpected host metadata failures must retain typed child preflight errors."""
+    fake = tmp_path / "fake-resource-tool"
+    _ = fake.write_bytes(b"dummy executable")
+    fake.chmod(0o755)
+    fault = failure_type("injected system executable inspection failure")
+    original_resolver = target_process.shutil.which
+    original_lstat = type(fake).lstat
+    original_access = target_process.os.access
+
+    def fake_resolver(name: str, *, path: str | None = None) -> str | None:
+        if name == tool:
+            return str(fake)
+        return original_resolver(name, path=path)
+
+    def fail_lstat(path: Path) -> object:
+        if path == fake:
+            raise fault
+        return original_lstat(path)
+
+    def fail_access(path: str, mode: int) -> bool:
+        if path == str(fake):
+            raise fault
+        return original_access(path, mode)
+
+    monkeypatch.setattr(target_process.shutil, "which", fake_resolver)
+    if operation == "lstat":
+        monkeypatch.setattr(type(fake), "lstat", fail_lstat)
+    else:
+        monkeypatch.setattr(target_process.os, "access", fail_access)
+    probe = (
+        target_process.require_child_resource_controls
+        if tool == target_process.LIMITER_NAME
+        else target_process.require_child_rss_measurement
+    )
+    with pytest.raises(target_process.TargetProcessError, match="inspection") as caught:
+        probe()
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="uses Linux tools")
+@pytest.mark.parametrize("tool", [target_process.LIMITER_NAME, target_process.RSS_TOOL])
 @pytest.mark.parametrize(
     "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
 )

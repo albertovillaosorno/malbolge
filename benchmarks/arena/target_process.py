@@ -43,7 +43,7 @@ import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from stat import S_ISDIR
+from stat import S_ISDIR, S_ISREG
 from time import monotonic
 from typing import Never
 
@@ -155,6 +155,20 @@ def _system_tool(name: str) -> str | None:
     except UnicodeError as error:
         message = f"bounded target system tool has unencodable path: {name}"
         raise TargetProcessError(message) from error
+    try:
+        mode = Path(resolved).lstat().st_mode
+        executable = os.access(resolved, os.X_OK)
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+    ) as error:
+        message = f"bounded target system tool path inspection failed: {name}"
+        raise TargetProcessError(message) from error
+    if not S_ISREG(mode) or not executable:
+        _fail(f"bounded target system tool requires a physical executable: {name}")
     return resolved
 
 
