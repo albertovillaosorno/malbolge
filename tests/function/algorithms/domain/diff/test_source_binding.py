@@ -38,6 +38,7 @@ import itertools
 from typing import TYPE_CHECKING
 from typing import cast
 
+from algorithms.diff.admission import AdmissionPolicyError
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.source_binding import SourceBindingError
@@ -417,16 +418,13 @@ def test_recovery_rejects_impossible_share_file_topology() -> None:
             _ = recover_secret(malformed, cast("IdentityTree", object()))
 
 
-def test_binding_rejects_windows_drive_prefixed_paths() -> None:
-    """Windows-absolute and drive-relative paths cannot bind source files."""
+def test_binding_inputs_reject_windows_drive_prefixed_paths() -> None:
+    """Source identity admission rejects drive paths before key binding."""
     for drive_path in ("C:/unsafe.c", "C:unsafe.c"):
         files = _files("reference")
         files[drive_path] = files.pop("src/file-0.c")
-        reference = identity_tree(files)
-        with pytest.raises(SourceBindingPolicyError, match="drive"):
-            _ = bind_secret(
-                reference, _SECRET, policy=_policy(), context=_CONTEXT
-            )
+        with pytest.raises(AdmissionPolicyError, match="invalid identity path"):
+            _ = identity_tree(files)
 
 
 def test_recovery_rejects_windows_drive_prefixed_share_paths() -> None:
