@@ -251,12 +251,14 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 digest.update(opened.st_size.to_bytes(8, "big"))
                 remaining = opened.st_size
                 while remaining:
-                    chunk = os.read(descriptor, min(remaining, 1024 * 1024))
-                    if not chunk:
+                    requested = min(remaining, 1024 * 1024)
+                    chunk = os.read(descriptor, requested)
+                    if type(chunk) is not bytes or not 0 < len(chunk) <= requested:
                         _fail("target echo executable identity changed")
                     digest.update(chunk)
                     remaining -= len(chunk)
-                if os.read(descriptor, 1) or (
+                trailer = os.read(descriptor, 1)
+                if type(trailer) is not bytes or trailer or (
                     _tool_file_identity(os.fstat(descriptor))
                     != _tool_file_identity(opened)
                 ):
@@ -265,18 +267,33 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 primary = sys.exception()
                 try:
                     os.close(descriptor)
-                except OSError as cleanup_error:
+                except (
+                    OSError,
+                    ValueError,
+                    RuntimeError,
+                    TypeError,
+                    AttributeError,
+                ) as cleanup_error:
                     if primary is None:
                         raise
                     primary.add_note(
-                        f"target echo executable descriptor cleanup failed: {cleanup_error}"
+                        "target echo executable descriptor cleanup failed: "
+                        + type(cleanup_error).__name__
                     )
             latest = path.lstat()
             if not stat.S_ISREG(latest.st_mode) or (
                 _tool_file_identity(latest) != _tool_file_identity(original)
             ):
                 _fail("target echo executable identity changed")
-        except OSError as error:
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            TypeError,
+            AttributeError,
+        ) as error:
+            if isinstance(error, TargetEchoStudyError):
+                raise
             message = "target echo executable identity changed"
             raise TargetEchoStudyError(message) from error
     return "local-compiler-vm-sha256:" + digest.hexdigest()

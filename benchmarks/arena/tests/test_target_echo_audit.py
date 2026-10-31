@@ -556,6 +556,163 @@ def test_tool_fingerprint_close_error_does_not_hide_read_failure(
         assert observed.value.__cause__ is close_error
 
 
+@pytest.mark.parametrize("site", ["lstat", "open", "fstat", "read", "close"])
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError, TypeError, AttributeError])
+def test_tool_fingerprint_types_non_oserror_host_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+    failure_type: type[Exception],
+) -> None:
+    """Unexpected host inspection and descriptor errors remain typed."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"trusted-emitter")
+    _ = runner.write_bytes(b"trusted-runner")
+    fault = failure_type("injected tool descriptor host fault")
+    original_close = audit.os.close
+    original_lstat = type(emitter).lstat
+
+    def bad_host(*args: object, **kwargs: object) -> object:
+        del kwargs
+        if site == "close":
+            original_close(cast("int", args[0]))
+        raise fault
+
+    def bad_lstat(path: Path) -> object:
+        if path == emitter:
+            return bad_host(path)
+        return original_lstat(path)
+
+    with monkeypatch.context() as patch:
+        if site == "lstat":
+            patch.setattr(type(emitter), "lstat", bad_lstat)
+        else:
+            patch.setattr(audit.os, site, bad_host)
+        with pytest.raises(audit.TargetEchoAuditError, match="executable identity") as caught:
+            _ = audit._tool_identity(emitter, runner)
+    assert caught.value.__cause__ is fault
+
+
+class _ForgedToolBytes(bytes):
+    """A bytes subtype is not a native os.read result."""
+
+
+@pytest.mark.parametrize("kind", ["none", "bool", "integer", "text", "bytearray", "memoryview", "subtype", "overlong"])
+def test_tool_fingerprint_rejects_noncanonical_host_read_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Only native bounded bytes from an opened inode may be hashed."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"trusted-emitter")
+    _ = runner.write_bytes(b"trusted-runner")
+    raw = b"trusted-emitter"
+    invalid: dict[str, object] = {
+        "none": None,
+        "bool": False,
+        "integer": 0,
+        "text": raw.decode("ascii"),
+        "bytearray": bytearray(raw),
+        "memoryview": memoryview(raw),
+        "subtype": _ForgedToolBytes(raw),
+        "overlong": raw + b"x",
+    }
+
+    def altered_read(fd: int, size: int) -> bytes:
+        del fd, size
+        return cast("bytes", invalid[kind])
+
+    with monkeypatch.context() as patch:
+        patch.setattr(audit.os, "read", altered_read)
+        with pytest.raises(audit.TargetEchoAuditError, match="executable identity"):
+            _ = audit._tool_identity(emitter, runner)
+
+
+@pytest.mark.parametrize("trailer", [None, True, b"x", bytearray(), _ForgedToolBytes(b"")])
+def test_tool_fingerprint_rejects_foreign_trailing_read_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    trailer: object,
+) -> None:
+    """EOF after a complete hash must be an exact empty bytes receipt."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"trusted-emitter")
+    _ = runner.write_bytes(b"trusted-runner")
+    original_read = audit.os.read
+
+    def altered_read(fd: int, size: int) -> bytes:
+        if size == 1:
+            return cast("bytes", trailer)
+        return original_read(fd, size)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(audit.os, "read", altered_read)
+        with pytest.raises(audit.TargetEchoAuditError, match="executable identity"):
+            _ = audit._tool_identity(emitter, runner)
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_tool_fingerprint_secondary_non_oserror_close_preserves_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A failing close never replaces the fault that interrupted hashing."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"trusted-emitter")
+    _ = runner.write_bytes(b"trusted-runner")
+    primary = failure_type("primary host read fault")
+    secondary = failure_type("secondary descriptor cleanup fault")
+    original_close = audit.os.close
+
+    def bad_read(fd: int, size: int) -> bytes:
+        del fd, size
+        raise primary
+
+    def bad_close(fd: int) -> None:
+        original_close(fd)
+        raise secondary
+
+    with monkeypatch.context() as patch:
+        patch.setattr(audit.os, "read", bad_read)
+        patch.setattr(audit.os, "close", bad_close)
+        with pytest.raises(audit.TargetEchoAuditError, match="executable identity") as caught:
+            _ = audit._tool_identity(emitter, runner)
+    assert caught.value.__cause__ is primary
+    assert any("cleanup" in note for note in primary.__notes__)
+
+
+def test_tool_fingerprint_accepts_host_short_read_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legitimate partial ordinary-file reads preserve the exact digest."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter_bytes = b"trusted-emitter"
+    runner_bytes = b"trusted-runner"
+    _ = emitter.write_bytes(emitter_bytes)
+    _ = runner.write_bytes(runner_bytes)
+    expected = sha256()
+    for data in (emitter_bytes, runner_bytes):
+        expected.update(len(data).to_bytes(8, "big"))
+        expected.update(data)
+    original_read = audit.os.read
+
+    def partial_read(fd: int, size: int) -> bytes:
+        return original_read(fd, min(size, 3))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(audit.os, "read", partial_read)
+        actual = audit._tool_identity(emitter, runner)
+    assert actual == "local-compiler-vm-sha256:" + expected.hexdigest()
+
+
 def test_tool_fingerprint_preserves_stable_byte_identity(tmp_path: Path) -> None:
     """Descriptor hashing preserves existing size-prefixed toolchain digests."""
     emitter = tmp_path / "emitter"
