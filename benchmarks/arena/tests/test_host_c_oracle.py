@@ -899,6 +899,128 @@ def test_host_child_wait_host_faults_are_typed(
     assert caught.value.__cause__ is fault
 
 
+class _ForeignHostPid(int):
+    """A nonnative integer can choose a different process-group target."""
+
+    def __neg__(self) -> int:
+        return 0
+
+
+@pytest.mark.parametrize(
+    "invalid_pid",
+    [None, False, True, 0, -1, -123, 1.5, "123", _ForeignHostPid(123)],
+    ids=[
+        "missing", "false", "true", "zero", "negative", "foreign-group",
+        "float", "text", "integer-subclass",
+    ],
+)
+def test_host_group_cleanup_rejects_invalid_pid_before_signaling(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_pid: object,
+) -> None:
+    """Unadmitted PIDs cannot target caller or unrelated process groups."""
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = invalid_pid
+        returncode = 0
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            events.append("wait")
+            return 0
+
+    def forbidden_signal(_pid: int, _signal: int) -> None:
+        events.append("unsafe-signal")
+
+    monkeypatch.setattr(host_c_oracle.os, "kill", forbidden_signal)
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as error:
+        host_c_oracle._finish_child(cast("Any", ChildProbe()))
+    assert isinstance(error.value.__cause__, host_c_oracle.HostOracleError)
+    assert "PID" in str(error.value.__cause__)
+    assert events == ["poll", "kill", "wait"]
+
+
+def test_host_group_cleanup_rejects_caller_process_group_before_signaling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An apparently positive child PID cannot kill the caller's group."""
+    events: list[str] = []
+    # The cross-platform pyright profile omits this POSIX-only os member.
+    own_group = getattr(os, "getpgid")(0)  # ruff: ignore[B009]
+
+    class ChildProbe:
+        pid = own_group
+        returncode = 0
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            events.append("wait")
+            return 0
+
+    def forbidden_signal(_pid: int, _signal: int) -> None:
+        events.append("unsafe-signal")
+
+    monkeypatch.setattr(host_c_oracle.os, "kill", forbidden_signal)
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as error:
+        host_c_oracle._finish_child(cast("Any", ChildProbe()))
+    assert isinstance(error.value.__cause__, host_c_oracle.HostOracleError)
+    assert "caller process group" in str(error.value.__cause__)
+    assert events == ["poll", "kill", "wait"]
+
+
+@pytest.mark.parametrize(
+    "caller_group_receipt",
+    [None, False, True, 0, -1, "123", _ForeignHostPid(123)],
+    ids=["none", "false", "true", "zero", "negative", "text", "subclass"],
+)
+def test_host_group_cleanup_rejects_forged_caller_group_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    caller_group_receipt: object,
+) -> None:
+    """Untrusted caller-group identities cannot authorize any process signal."""
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 12345
+        returncode = 0
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            events.append("wait")
+            return 0
+
+    monkeypatch.setattr(host_c_oracle.os, "getpgid", lambda _pid: caller_group_receipt)
+    monkeypatch.setattr(
+        host_c_oracle.os,
+        "kill",
+        lambda _pid, _signal: events.append("unsafe-signal"),
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as error:
+        host_c_oracle._finish_child(cast("Any", ChildProbe()))
+    assert isinstance(error.value.__cause__, host_c_oracle.HostOracleError)
+    assert "caller group identity" in str(error.value.__cause__)
+    assert events == ["poll", "kill", "wait"]
+
+
 def test_host_group_lookup_subclass_cannot_claim_absent_group(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

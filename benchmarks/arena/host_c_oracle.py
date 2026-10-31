@@ -252,10 +252,26 @@ def require_child_resource_controls() -> None:
 
 def _kill_child_group(child: sp.Popen[bytes]) -> None:
     # Linux negative PID targets the child's separate session/process group.
+    # A zero or negative PID would instead signal our own process group or a
+    # foreign process. Reject it before any signal; _finish_child retains
+    # its direct-child fallback and bounded reap on this typed failure.
+    pid = child.pid
+    if type(pid) is not int or pid <= 0:
+        _fail("host-C challenge oracle child PID was not a native positive integer")
+    # This is a Linux-only transport, but the cross-platform type-checking
+    # profile does not expose os.getpgid. Require the host capability at runtime.
+    group_lookup = getattr(os, "getpgid", None)
+    if not callable(group_lookup):
+        _fail("host-C challenge oracle caller process group lookup unavailable")
+    caller_group: object = group_lookup(0)
+    if type(caller_group) is not int or caller_group <= 0:
+        _fail("host-C challenge oracle caller group identity was not native")
+    if pid == caller_group:
+        _fail("host-C challenge oracle child PID targets caller process group")
     # Only a native ESRCH is evidence of an already-missing group. A foreign
     # subclass can falsely claim absence and must trigger direct-child fallback.
     try:
-        receipt = os.kill(-child.pid, GROUP_TERMINATION_SIGNAL)
+        receipt = os.kill(-pid, GROUP_TERMINATION_SIGNAL)
     except ProcessLookupError as error:
         if type(error) is ProcessLookupError:
             return

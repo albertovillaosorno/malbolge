@@ -418,6 +418,14 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   adversarial child probes require direct kill and reap for nonnative statuses,
   while exact native exit codes avoid needless kills. Cleanup-only faults
   remain errors; this does not add process-tree aggregate containment.
+- Host-C oracle child-group cleanup now requires the captured PID to be
+  an exact positive native integer before negating it for group signaling.
+  Nine red-first adversarial probes reject zero, negative, boolean, foreign
+  subclass and noninteger PIDs before any signal, while still attempting the
+  direct-child kill/reap fallback. A separate red-first positive PID equal to
+  the caller's process-group ID also rejects before signaling, and seven
+  forged caller-group lookup receipts cannot authorize a signal. These guards
+  do not certify historical child identity or other process ancestry.
 - Linux host-C reference compile/link/oracle children now require
   util-linux `prlimit`, inherit kernel per-process limits on virtual address
   space, CPU seconds, and output-file size, and execute in separate sessions
