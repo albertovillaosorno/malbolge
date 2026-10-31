@@ -49,7 +49,12 @@ Omitting `--output` writes the selected representation to stdout. Profile,
 representation, and output selection are exact, reject duplicate options, and
 have no fallback. Input is read from one opened regular file with a 1 MiB
 byte ceiling (including whitespace), rejecting nonregular sources and
-post-open growth beyond the ceiling before rendering. On Linux and Android,
+post-open growth beyond the ceiling before rendering. The opened source and
+its pathname are rechecked after reading for stable inode, size, and write/
+change timestamps, rejecting even same-length file replacement before any
+rendering. Linux additionally binds the opened descriptor's canonical dentry
+to the selected path before and after reading, preventing an equivalent-inode
+hardlink swap through a changed parent alias. On Linux and Android,
 nonblocking acquisition ensures a FIFO cannot stall the CLI waiting for a
 writer. `analysis` and `c` share the same admitted profile-bound initial
 model without redefining decompilation as source recovery.

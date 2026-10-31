@@ -36,11 +36,14 @@
 
 #[path = "../src/tooling/decompiler/domain/analysis.rs"]
 pub mod analysis;
+#[path = "../src/tooling/decompiler/composition/cli.rs"]
+pub mod cli;
 #[path = "../src/tooling/decompiler/application/render.rs"]
 pub mod decompiler;
 
 use std::env::temp_dir;
 use std::fs::{self, File};
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, id};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -138,6 +141,125 @@ fn cli_rejects_fifo_and_fifo_symlink_without_waiting() -> Result<(), String> {
         .map_err(|error| format!("remove FIFO fixture: {error}"))?;
     if !failures.is_empty() {
         return Err(format!("FIFO acquisition unsafe: {failures:?}"));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_rejects_same_length_source_inode_substitution_during_read()
+-> Result<(), String> {
+    let directory = temporary_cli_inputs()?;
+    let source = directory.join("original.malbolge");
+    let replacement = directory.join("replacement.malbolge");
+    fs::write(&source, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
+    fs::write(&replacement, OUTPUT_SOURCE)
+        .map_err(|error| error.to_string())?;
+    let result =
+        cli::read_decompiler_source_with_reader(&source, |opened, bytes| {
+            let read = opened.read_to_end(bytes)?;
+            fs::rename(&replacement, &source)?;
+            Ok(read)
+        });
+    fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove source fixture: {error}"))?;
+    if !result.as_ref().is_err_and(|error| {
+        error
+            .to_string()
+            .contains("decompiler source changed during read")
+    }) {
+        return Err(format!("source inode swap was admitted: {result:?}"));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_rejects_same_length_source_rewrite_during_read() -> Result<(), String> {
+    let directory = temporary_cli_inputs()?;
+    let source = directory.join("rewritten.malbolge");
+    fs::write(&source, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
+    let result =
+        cli::read_decompiler_source_with_reader(&source, |opened, bytes| {
+            let read = opened.read_to_end(bytes)?;
+            fs::write(&source, b"ctO")?;
+            File::open(&source)?
+                .set_times(fs::FileTimes::new().set_modified(UNIX_EPOCH))?;
+            Ok(read)
+        });
+    fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove source fixture: {error}"))?;
+    if !result.as_ref().is_err_and(|error| {
+        error
+            .to_string()
+            .contains("decompiler source changed during read")
+    }) {
+        return Err(format!(
+            "in-place source rewrite was admitted: {result:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn cli_rejects_equal_inode_parent_alias_swap_during_read() -> Result<(), String>
+{
+    use std::os::unix::fs::symlink;
+
+    let directory = temporary_cli_inputs()?;
+    let original = directory.join("original");
+    let alternate = directory.join("alternate");
+    fs::create_dir(&original).map_err(|error| error.to_string())?;
+    fs::create_dir(&alternate).map_err(|error| error.to_string())?;
+    let first = original.join("source.malbolge");
+    let second = alternate.join("source.malbolge");
+    fs::write(&first, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
+    fs::hard_link(&first, &second).map_err(|error| error.to_string())?;
+    let link = directory.join("current");
+    symlink(&original, &link).map_err(|error| error.to_string())?;
+    let path = link.join("source.malbolge");
+    let result =
+        cli::read_decompiler_source_with_reader(&path, |opened, bytes| {
+            let read = opened.read_to_end(bytes)?;
+            fs::remove_file(&link)?;
+            symlink(&alternate, &link)?;
+            Ok(read)
+        });
+    fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove source fixture: {error}"))?;
+    if !result.as_ref().is_err_and(|error| {
+        error
+            .to_string()
+            .contains("decompiler source changed during read")
+    }) {
+        return Err(format!(
+            "same-inode source alias swap admitted: {result:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_accepts_stable_regular_source_symlink() -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+
+    let directory = temporary_cli_inputs()?;
+    let source = directory.join("original.malbolge");
+    let alias = directory.join("alias.malbolge");
+    fs::write(&source, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
+    symlink(&source, &alias).map_err(|error| error.to_string())?;
+    let result =
+        cli::read_decompiler_source_with_reader(&alias, |opened, bytes| {
+            opened.read_to_end(bytes)
+        });
+    fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove source fixture: {error}"))?;
+    if !matches!(result.as_deref(), Ok(bytes) if bytes == OUTPUT_SOURCE) {
+        return Err(format!(
+            "stable regular-file symlink rejected: {result:?}"
+        ));
     }
     Ok(())
 }

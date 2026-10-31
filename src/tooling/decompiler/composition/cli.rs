@@ -37,7 +37,7 @@ use std::env;
 use std::ffi::OsString;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use std::fs::OpenOptions;
-use std::fs::{File, write};
+use std::fs::{self, File, write};
 use std::io::{
     Error as IoError, Read as _, Result as IoResult, Write as _, stdout,
 };
@@ -124,25 +124,118 @@ fn open_decompiler_source(path: &Path) -> IoResult<File> {
     File::open(path)
 }
 
+// A bounded read alone does not ensure a stable source. A different inode
+// with the same length or an in-place rewrite can otherwise be decompiled.
+#[cfg(unix)]
+fn source_metadata_matches(
+    before: &fs::Metadata,
+    after: &fs::Metadata,
+) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.dev() == after.dev()
+        && before.ino() == after.ino()
+        && before.len() == after.len()
+        && before.mtime() == after.mtime()
+        && before.mtime_nsec() == after.mtime_nsec()
+        && before.ctime() == after.ctime()
+        && before.ctime_nsec() == after.ctime_nsec()
+}
+
+#[cfg(windows)]
+fn source_metadata_matches(
+    before: &fs::Metadata,
+    after: &fs::Metadata,
+) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.volume_serial_number().is_some()
+        && before.volume_serial_number() == after.volume_serial_number()
+        && before.file_index().is_some()
+        && before.file_index() == after.file_index()
+        && before.last_write_time() == after.last_write_time()
+        && before.change_time() == after.change_time()
+}
+
+#[cfg(not(any(unix, windows)))]
+fn source_metadata_matches(
+    before: &fs::Metadata,
+    after: &fs::Metadata,
+) -> bool {
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.modified().ok().is_some()
+        && before.modified().ok() == after.modified().ok()
+}
+
+// Metadata does not distinguish two hardlinks to the same inode. Linux
+// exposes the opened dentry through /proc, allowing an exact path recheck.
+#[cfg(target_os = "linux")]
+fn verify_opened_source_path(
+    file: &File,
+    path: &Path,
+    expected: &Path,
+) -> IoResult<()> {
+    use std::os::fd::AsRawFd as _;
+
+    let descriptor = format!("/proc/self/fd/{}", file.as_raw_fd());
+    let opened = fs::read_link(descriptor)?;
+    let current = fs::canonicalize(path)?;
+    if opened != expected || current != expected {
+        return Err(IoError::other("decompiler source changed during read"));
+    }
+    Ok(())
+}
+
 fn read_decompiler_source(path: &Path) -> IoResult<Vec<u8>> {
-    let file = open_decompiler_source(path)?;
+    read_decompiler_source_with_reader(path, |file, bytes| {
+        file.take(MAX_DECOMPILER_SOURCE_BYTES + 1)
+            .read_to_end(bytes)
+    })
+}
+
+pub(crate) fn read_decompiler_source_with_reader(
+    path: &Path,
+    read: impl FnOnce(&mut File, &mut Vec<u8>) -> IoResult<usize>,
+) -> IoResult<Vec<u8>> {
+    #[cfg(target_os = "linux")]
+    let expected_open_path = fs::canonicalize(path)?;
+    let mut file = open_decompiler_source(path)?;
+    #[cfg(target_os = "linux")]
+    verify_opened_source_path(&file, path, &expected_open_path)?;
     let metadata = file.metadata()?;
     if !metadata.is_file() || metadata.len() > MAX_DECOMPILER_SOURCE_BYTES {
         return Err(IoError::other(
             "decompiler source must be a regular file at most 1 MiB",
         ));
     }
-    // Metadata can become stale while another process appends to this file.
-    // Read at most one byte beyond the ceiling, and reject that overflow.
+    let named = fs::metadata(path)?;
+    if !source_metadata_matches(&metadata, &named) {
+        return Err(IoError::other("decompiler source changed during read"));
+    }
+    // Limit the production reader to one overflow-detection byte; never
+    // publish a source whose identity, contents, or size changed during read.
     let mut bytes = Vec::new();
-    let _read = file
-        .take(MAX_DECOMPILER_SOURCE_BYTES + 1)
-        .read_to_end(&mut bytes)?;
+    let _read = read(&mut file, &mut bytes)?;
     if u64::try_from(bytes.len()).map_err(IoError::other)?
         > MAX_DECOMPILER_SOURCE_BYTES
     {
         return Err(IoError::other("decompiler source exceeds 1 MiB"));
     }
+    if u64::try_from(bytes.len()).map_err(IoError::other)? != metadata.len()
+        || !source_metadata_matches(&metadata, &file.metadata()?)
+        || !source_metadata_matches(&metadata, &fs::metadata(path)?)
+    {
+        return Err(IoError::other("decompiler source changed during read"));
+    }
+    #[cfg(target_os = "linux")]
+    verify_opened_source_path(&file, path, &expected_open_path)?;
     Ok(bytes)
 }
 
