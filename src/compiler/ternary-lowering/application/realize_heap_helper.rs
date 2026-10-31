@@ -33,63 +33,83 @@
 
 //! Pre-layout execution realization for canonical guest heap helpers.
 
+use super::heap_helper_input::HeapHelperRequest;
+use super::lower_heap_helper::lower_heap_helper;
 use super::model::{
-    HeapAllocateSemantics, HeapAllocateStep, HeapAllocateZeroedSemantics,
-    HeapAllocateZeroedStep, HeapHelperExecutionPlan, HeapHelperOperation,
-    HeapInitStep, HeapReleaseSemantics, HeapReleaseStep,
+    HeapAllocateSemantics, HeapAllocateStep, HeapAllocateZeroedSemantics, HeapAllocateZeroedStep,
+    HeapHelperExecutionPlan, HeapHelperOperation, HeapInitStep, HeapReleaseSemantics,
+    HeapReleaseStep,
 };
 
-/// Expands one admitted heap helper into explicit pre-layout execution.
-#[must_use]
+/// Stable failures for independently checked heap-helper realization.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HeapHelperRealizationError {
+    /// Supplied heap semantics differ from the reviewed ABI/runtime recipe.
+    InvalidPlan,
+}
+
+/// Expands a canonical heap helper into explicit pre-layout execution.
+///
+/// # Errors
+///
+/// Rejects forged allocator geometry, metadata transitions, and status codes
+/// before publishing any execution plan.
 pub fn realize_heap_helper(
     operation: HeapHelperOperation,
-) -> HeapHelperExecutionPlan {
-    match operation {
-        HeapHelperOperation::Allocate(semantics) => {
-            HeapHelperExecutionPlan::Allocate {
-                steps: allocate_steps(semantics),
-            }
-        },
-        HeapHelperOperation::AllocateZeroed(semantics) => {
-            HeapHelperExecutionPlan::AllocateZeroed {
-                steps: allocate_zeroed_steps(semantics),
-            }
-        },
-        HeapHelperOperation::Initialize(semantics) => {
-            HeapHelperExecutionPlan::Initialize {
-                steps: vec![
-                    HeapInitStep::GuardHeapPointerNonNull {
-                        failure_status: semantics.invalid_argument_status,
-                    },
-                    HeapInitStep::GuardArenaPointerNonNull {
-                        failure_status: semantics.invalid_argument_status,
-                    },
-                    HeapInitStep::GuardCapacityAtLeast {
-                        minimum: semantics.minimum_capacity,
-                        failure_status: semantics.invalid_argument_status,
-                    },
-                    HeapInitStep::GuardCapacityAligned {
-                        alignment: semantics.alignment,
-                        failure_status: semantics.invalid_argument_status,
-                    },
-                    HeapInitStep::GuardArenaPointerAligned {
-                        alignment: semantics.alignment,
-                        failure_status: semantics.invalid_argument_status,
-                    },
-                    HeapInitStep::PublishArenaPointer,
-                    HeapInitStep::PublishCapacity,
-                    HeapInitStep::PublishUsedZero,
-                    HeapInitStep::ZeroArenaCapacityBytes,
-                    HeapInitStep::ReturnStatus(semantics.valid_status),
-                ],
-            }
-        },
-        HeapHelperOperation::Release(semantics) => {
-            HeapHelperExecutionPlan::Release {
-                steps: release_steps(semantics),
-            }
-        },
+) -> Result<HeapHelperExecutionPlan, HeapHelperRealizationError> {
+    let identity = match operation {
+        HeapHelperOperation::Allocate(_) => "malbolge_guest_heap_allocate",
+        HeapHelperOperation::AllocateZeroed(_) => "malbolge_guest_heap_allocate_zeroed",
+        HeapHelperOperation::Initialize(_) => "malbolge_guest_heap_init",
+        HeapHelperOperation::Release(_) => "malbolge_guest_heap_release",
+    };
+    let expected = lower_heap_helper(&HeapHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from(identity),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|_error| HeapHelperRealizationError::InvalidPlan)?;
+    if operation != expected {
+        return Err(HeapHelperRealizationError::InvalidPlan);
     }
+    Ok(match operation {
+        HeapHelperOperation::Allocate(semantics) => HeapHelperExecutionPlan::Allocate {
+            steps: allocate_steps(semantics),
+        },
+        HeapHelperOperation::AllocateZeroed(semantics) => HeapHelperExecutionPlan::AllocateZeroed {
+            steps: allocate_zeroed_steps(semantics),
+        },
+        HeapHelperOperation::Initialize(semantics) => HeapHelperExecutionPlan::Initialize {
+            steps: vec![
+                HeapInitStep::GuardHeapPointerNonNull {
+                    failure_status: semantics.invalid_argument_status,
+                },
+                HeapInitStep::GuardArenaPointerNonNull {
+                    failure_status: semantics.invalid_argument_status,
+                },
+                HeapInitStep::GuardCapacityAtLeast {
+                    minimum: semantics.minimum_capacity,
+                    failure_status: semantics.invalid_argument_status,
+                },
+                HeapInitStep::GuardCapacityAligned {
+                    alignment: semantics.alignment,
+                    failure_status: semantics.invalid_argument_status,
+                },
+                HeapInitStep::GuardArenaPointerAligned {
+                    alignment: semantics.alignment,
+                    failure_status: semantics.invalid_argument_status,
+                },
+                HeapInitStep::PublishArenaPointer,
+                HeapInitStep::PublishCapacity,
+                HeapInitStep::PublishUsedZero,
+                HeapInitStep::ZeroArenaCapacityBytes,
+                HeapInitStep::ReturnStatus(semantics.valid_status),
+            ],
+        },
+        HeapHelperOperation::Release(semantics) => HeapHelperExecutionPlan::Release {
+            steps: release_steps(semantics),
+        },
+    })
 }
 
 fn allocate_steps(semantics: HeapAllocateSemantics) -> Vec<HeapAllocateStep> {
@@ -143,9 +163,7 @@ fn allocate_steps(semantics: HeapAllocateSemantics) -> Vec<HeapAllocateStep> {
     ]
 }
 
-fn allocate_zeroed_steps(
-    semantics: HeapAllocateZeroedSemantics,
-) -> Vec<HeapAllocateZeroedStep> {
+fn allocate_zeroed_steps(semantics: HeapAllocateZeroedSemantics) -> Vec<HeapAllocateZeroedStep> {
     let allocation = HeapHelperExecutionPlan::Allocate {
         steps: allocate_steps(semantics.allocation),
     };
@@ -154,9 +172,7 @@ fn allocate_zeroed_steps(
             failure_status: semantics.invalid_argument_status,
         },
         HeapAllocateZeroedStep::PublishResultNull,
-        HeapAllocateZeroedStep::DelegateZeroSizeAllocation(Box::new(
-            allocation.clone(),
-        )),
+        HeapAllocateZeroedStep::DelegateZeroSizeAllocation(Box::new(allocation.clone())),
         HeapAllocateZeroedStep::GuardProductFitsU32 {
             failure_status: semantics.out_of_memory_status,
         },

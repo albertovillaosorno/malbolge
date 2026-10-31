@@ -125,6 +125,9 @@ instruction.
   header+payload extent, performs ascending first-fit split-or-claim reuse, and
   otherwise appends at the old tail with OOM/corruption statuses and exact
   result/`used` publication order.
+  Public heap-helper realization independently recomputes the canonical
+  version-one recipe for init/allocate/allocate-zeroed/release; forged geometry,
+  state transitions, status values, or nested allocation policy fails closed.
 - Zeroed allocation publishes null first, delegates zero count/size to zero-size
   allocation, rejects `count * size` overflow as OOM, delegates positive totals
   to the canonical allocator, preserves the returned status/non-null gate, and

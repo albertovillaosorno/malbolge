@@ -60,7 +60,8 @@ use ternary_lowering::{
     FrameValidationArm, FrameValidationCondition, FrameValidationSemantics,
     HeapAllocateSemantics, HeapAllocateStep, HeapAllocateZeroedSemantics,
     HeapAllocateZeroedStep, HeapHelperExecutionPlan, HeapHelperLoweringError,
-    HeapHelperOperation, HeapHelperRequest, HeapInitSemantics, HeapInitStep,
+    HeapHelperOperation, HeapHelperRealizationError, HeapHelperRequest,
+    HeapInitSemantics, HeapInitStep,
     HeapReleaseSemantics, HeapReleaseStep, I32_TERNARY_TRITS, InputBlock,
     InputDecodeArm, InputDecodeCondition, InputDecodeResult, InputFunction,
     InputInstruction, InputOrderedComparison, InputScalarType,
@@ -20343,7 +20344,7 @@ fn heap_init_realizes_exact_guard_and_mutation_order() -> Result<(), String> {
             HeapInitStep::ReturnStatus(0),
         ],
     };
-    if realize_heap_helper(operation) != expected {
+    if realize_heap_helper(operation) != Ok(expected) {
         return Err(String::from("heap-init execution plan drifted"));
     }
     Ok(())
@@ -20412,7 +20413,7 @@ fn heap_allocate_realizes_first_fit_and_tail_paths() -> Result<(), String> {
         return Err(String::from("heap-allocate semantics drifted"));
     }
     let expected = expected_heap_allocate_plan();
-    if realize_heap_helper(operation) != expected {
+    if realize_heap_helper(operation) != Ok(expected) {
         return Err(String::from("heap-allocate execution plan drifted"));
     }
     Ok(())
@@ -20514,7 +20515,7 @@ fn heap_allocate_zeroed_preserves_delegation_and_zeroing_order()
             HeapAllocateZeroedStep::ReturnStatus(0),
         ],
     };
-    if realize_heap_helper(operation) != expected {
+    if realize_heap_helper(operation) != Ok(expected) {
         return Err(String::from("heap allocate-zeroed execution drifted"));
     }
     Ok(())
@@ -20592,7 +20593,7 @@ fn heap_release_realizes_preflight_coalesce_and_trim_order()
             },
         ],
     };
-    if realize_heap_helper(operation) != expected {
+    if realize_heap_helper(operation) != Ok(expected) {
         return Err(String::from("heap-release execution plan drifted"));
     }
     Ok(())
@@ -20616,6 +20617,45 @@ fn heap_release_authority_matches_runtime_source() -> Result<(), String> {
             return Err(format!(
                 "heap-release source authority missing {expected}"
             ));
+        }
+    }
+    Ok(())
+}
+
+fn canonical_heap_helper(identity: &str) -> Result<HeapHelperOperation, String> {
+    lower_heap_helper(&HeapHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from(identity),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|error| format!("lower heap helper: {error:?}"))
+}
+
+#[test]
+fn heap_realizer_rejects_forged_semantics_for_all_helpers() -> Result<(), String> {
+    let mut init = canonical_heap_helper("malbolge_guest_heap_init")?;
+    let HeapHelperOperation::Initialize(ref mut init_semantics) = init else {
+        return Err(String::from("heap initialization identity changed"));
+    };
+    init_semantics.alignment = 8;
+    let mut allocate = canonical_heap_helper("malbolge_guest_heap_allocate")?;
+    let HeapHelperOperation::Allocate(ref mut allocate_semantics) = allocate else {
+        return Err(String::from("heap allocation identity changed"));
+    };
+    allocate_semantics.minimum_block_span = 16;
+    let mut zeroed = canonical_heap_helper("malbolge_guest_heap_allocate_zeroed")?;
+    let HeapHelperOperation::AllocateZeroed(ref mut zeroed_semantics) = zeroed else {
+        return Err(String::from("zeroed allocation identity changed"));
+    };
+    zeroed_semantics.allocation.corrupt_state_status = 0;
+    let mut release = canonical_heap_helper("malbolge_guest_heap_release")?;
+    let HeapHelperOperation::Release(ref mut release_semantics) = release else {
+        return Err(String::from("heap release identity changed"));
+    };
+    release_semantics.free_state = release_semantics.allocated_state;
+    for forged in [init, allocate, zeroed, release] {
+        if realize_heap_helper(forged) != Err(HeapHelperRealizationError::InvalidPlan) {
+            return Err(format!("forged heap {forged:?} was realized"));
         }
     }
     Ok(())

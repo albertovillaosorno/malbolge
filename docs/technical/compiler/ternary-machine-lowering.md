@@ -868,6 +868,11 @@ requested/reserved words and free state, then coalesces adjacent free blocks.
 Finally it scans for a free tail block and, when present, publishes that block's
 offset as the new `used` extent before returning `VALID`.
 
+Independent heap-helper realization now reconstructs exact version-one
+ABI/runtime recipes before emitting init, allocate, zeroed-allocate, or
+release execution plans. Fabricated alignment, block geometry, heap metadata,
+statuses, or nested zeroed-allocation policy fail closed before plan creation.
+
 Release first validates canonical heap shape and the complete block chain, so a
 late corrupt block fails before the target block is mutated. A null
 pointer
