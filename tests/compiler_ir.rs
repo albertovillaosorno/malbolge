@@ -2761,6 +2761,195 @@ fn instruction_span_must_be_contained_by_owning_block() {
     );
 }
 
+fn module_with_replaced_block_span(
+    index: usize,
+    replacement: SourceSpan,
+) -> Result<Module, String> {
+    let mut blocks = vec![
+        entry_block(),
+        left_block(),
+        right_block(),
+        merge_block(valid_incoming()),
+    ];
+    let original = blocks.get_mut(index)
+        .ok_or_else(|| String::from("fixture block missing"))?;
+    let updated = BasicBlock::new(BasicBlockSpec {
+        id: original.id(),
+        instructions: original.instructions().to_vec(),
+        phis: original.phis().to_vec(),
+        span: replacement,
+        terminator: original.terminator().clone(),
+        terminator_span: original.terminator_span(),
+    });
+    *original = updated;
+    Ok(module_with_function(function_with_blocks(blocks)))
+}
+
+fn module_with_global_span(global_span: SourceSpan) -> Module {
+    let global = Global::new(GlobalSpec {
+        id: GlobalId::new(0),
+        initializer: None,
+        name: String::from("shared_source_global"),
+        span: global_span,
+        type_id: I32_TYPE,
+    });
+    Module::new(ModuleSpec {
+        abi_id: String::from(ABI_ID),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: vec![function_with_blocks(vec![
+            entry_block(),
+            left_block(),
+            right_block(),
+            merge_block(valid_incoming()),
+        ])],
+        globals: vec![global],
+        proof_obligations: Vec::new(),
+        source_id: String::from(SOURCE_ID),
+        source_sha256: SOURCE_HASH,
+        target_profile: String::from(PROFILE_ID),
+        types: standard_types(),
+    })
+}
+
+fn locally_valid_rebased_left_block() -> BasicBlock {
+    let shifted_span = |begin: u32, end: u32| {
+        SourceSpan::new(
+            SourcePosition::new(begin, 1, begin.saturating_add(2)),
+            SourcePosition::new(end, 1, end.saturating_add(2)),
+        )
+    };
+    BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(1),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![7, 0, 0, 0]),
+                result: ValueId::new(2),
+                type_id: I32_TYPE,
+            },
+            shifted_span(4, 5),
+        )],
+        phis: Vec::new(),
+        span: shifted_span(4, 8),
+        terminator: Terminator::Jump { target: BlockId::new(3) },
+        terminator_span: shifted_span(7, 8),
+    })
+}
+
+fn module_with_locally_valid_sibling_coordinate_conflict() -> Module {
+    module_with_function(function_with_blocks(vec![
+        entry_block(),
+        locally_valid_rebased_left_block(),
+        right_block(),
+        merge_block(valid_incoming()),
+    ]))
+}
+
+#[test]
+fn typed_ir_accepts_consistent_multiline_source_coordinates()
+-> Result<(), String> {
+    let start = SourcePosition::new(0, 1, 1);
+    let end = SourcePosition::new(8, 2, 1);
+    let function_span = SourceSpan::new(start, end);
+    let block = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions: vec![LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(32, vec![7, 0, 0, 0]),
+                result: ValueId::new(0),
+                type_id: I32_TYPE,
+            },
+            SourceSpan::new(start, SourcePosition::new(1, 1, 2)),
+        )],
+        phis: Vec::new(),
+        span: function_span,
+        terminator: Terminator::Return {
+            value: Some(ValueId::new(0)),
+        },
+        terminator_span: SourceSpan::new(
+            SourcePosition::new(7, 1, 8),
+            end,
+        ),
+    });
+    let module = module_with_function(Function::new(FunctionSpec {
+        blocks: vec![block],
+        entry: BlockId::new(0),
+        id: FUNCTION_ID,
+        name: String::from("multiline"),
+        parameters: Vec::new(),
+        signature: FUNCTION_TYPE,
+        span: function_span,
+    }));
+    let bytes = canonical_bytes(&module)
+        .map_err(|error| format!("valid multiline identity: {error:?}"))?;
+    let restored = canonical_module(&bytes)
+        .map_err(|error| format!("valid multiline restore: {error:?}"))?;
+    if restored != module
+        || validate_module(&module) != Ok(())
+        || validate_module(&module_with_global_span(span(0, 1))) != Ok(())
+    {
+        return Err(String::from("consistent source coordinates rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_ir_rejects_inconsistent_normalized_source_coordinates()
+-> Result<(), String> {
+    let cases = [
+        (
+            "same-byte function boundary",
+            module_with_replaced_block_span(
+                0,
+                SourceSpan::new(
+                    SourcePosition::new(0, 2, 1),
+                    SourcePosition::new(4, 2, 5),
+                ),
+            )?,
+        ),
+        (
+            "outside parent line range",
+            module_with_replaced_block_span(
+                1,
+                SourceSpan::new(
+                    SourcePosition::new(4, 9, 1),
+                    SourcePosition::new(8, 9, 5),
+                ),
+            )?,
+        ),
+        (
+            "sibling boundary collision",
+            module_with_locally_valid_sibling_coordinate_conflict(),
+        ),
+        (
+            "global/function same-byte disagreement",
+            module_with_global_span(SourceSpan::new(
+                SourcePosition::new(0, 2, 1),
+                SourcePosition::new(1, 2, 2),
+            )),
+        ),
+        (
+            "global/function coordinate reversal",
+            module_with_global_span(SourceSpan::new(
+                SourcePosition::new(2, 3, 1),
+                SourcePosition::new(3, 3, 2),
+            )),
+        ),
+    ];
+    for (label, module) in cases {
+        if validate_module(&module) != Err(ValidationError::SourceProvenance) {
+            return Err(format!("{label} passed admission"));
+        }
+        if canonical_bytes(&module)
+            != Err(CanonicalError::Validation(
+                ValidationError::SourceProvenance
+            ))
+        {
+            return Err(format!("{label} acquired canonical identity"));
+        }
+    }
+    Ok(())
+}
+
 fn plain_char_extension_module(operation: CastOp) -> Module {
     let char_type = TypeId::new(0);
     let i32_type = TypeId::new(1);

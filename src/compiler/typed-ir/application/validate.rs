@@ -62,16 +62,26 @@ pub fn validate_module(module: &Module) -> Result<(), ValidationError> {
     validate_type_table(module.types())?;
     validate_object_layouts(module.types())?;
     let symbols = validate_globals(module)?;
+    let mut source_positions = BTreeMap::new();
+    for global in module.globals() {
+        record_span(&mut source_positions, global.span())?;
+    }
     let mut value_tables = BTreeMap::new();
     let mut function_symbols = symbols;
     for (index, function) in module.functions().iter().enumerate() {
-        validate_function_identity(function, index, &mut function_symbols)?;
+        validate_function_identity(
+            function,
+            index,
+            &mut function_symbols,
+            &mut source_positions,
+        )?;
         let values = collect_values(function)?;
         validate_value_types(module, &values)?;
         let flow = analyze_cfg(function, &values)?;
         validate_function_semantics(module, function, &values, &flow)?;
         let _previous = value_tables.insert(function.id(), values);
     }
+    validate_source_positions(&source_positions)?;
     validate_proofs(module, &value_tables)
 }
 
@@ -110,18 +120,61 @@ pub(super) const fn valid_span(span: SourceSpan) -> bool {
         || (begin.line() == end.line() && begin.column() <= end.column())
 }
 
+const fn position_precedes(
+    before: SourcePosition,
+    after: SourcePosition,
+) -> bool {
+    if before.byte() > after.byte() {
+        return false;
+    }
+    if before.byte() == after.byte() {
+        return before.line() == after.line()
+            && before.column() == after.column();
+    }
+    before.line() < after.line()
+        || (before.line() == after.line() && before.column() <= after.column())
+}
+
 pub(super) const fn span_contains(
     parent: SourceSpan,
     child: SourceSpan,
 ) -> bool {
-    parent.begin().byte() <= child.begin().byte()
-        && child.end().byte() <= parent.end().byte()
+    position_precedes(parent.begin(), child.begin())
+        && position_precedes(child.end(), parent.end())
+}
+
+fn record_span(
+    positions: &mut BTreeMap<u32, SourcePosition>,
+    span: SourceSpan,
+) -> Result<(), ValidationError> {
+    for position in [span.begin(), span.end()] {
+        if let Some(previous) = positions.insert(position.byte(), position)
+            && previous != position
+        {
+            return Err(ValidationError::SourceProvenance);
+        }
+    }
+    Ok(())
+}
+
+fn validate_source_positions(
+    positions: &BTreeMap<u32, SourcePosition>,
+) -> Result<(), ValidationError> {
+    let mut previous = None;
+    for position in positions.values() {
+        if previous.is_some_and(|point| !position_precedes(point, *position)) {
+            return Err(ValidationError::SourceProvenance);
+        }
+        previous = Some(*position);
+    }
+    Ok(())
 }
 
 fn validate_function_identity(
     function: &Function,
     index: usize,
     symbols: &mut BTreeSet<String>,
+    positions: &mut BTreeMap<u32, SourcePosition>,
 ) -> Result<(), ValidationError> {
     let expected = u32::try_from(index)
         .map_err(|_error| ValidationError::FunctionIdentity)?;
@@ -132,26 +185,34 @@ fn validate_function_identity(
     {
         return Err(ValidationError::FunctionIdentity);
     }
-    validate_function_spans(function)
+    validate_function_spans(function, positions)
 }
 
-fn validate_function_spans(function: &Function) -> Result<(), ValidationError> {
+fn validate_function_spans(
+    function: &Function,
+    positions: &mut BTreeMap<u32, SourcePosition>,
+) -> Result<(), ValidationError> {
+    record_span(positions, function.span())?;
     for block in function.blocks() {
         if !valid_span(block.span())
             || !span_contains(function.span(), block.span())
         {
             return Err(ValidationError::SourceProvenance);
         }
+        record_span(positions, block.span())?;
         if !valid_span(block.terminator_span())
             || !span_contains(block.span(), block.terminator_span())
         {
             return Err(ValidationError::SourceProvenance);
         }
+        record_span(positions, block.terminator_span())?;
         for phi in block.phis() {
             validate_phi_span(block.span(), phi)?;
+            record_span(positions, phi.span())?;
         }
         for instruction in block.instructions() {
             validate_instruction_span(block.span(), instruction)?;
+            record_span(positions, instruction.span())?;
         }
     }
     Ok(())

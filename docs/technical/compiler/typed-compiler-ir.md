@@ -130,6 +130,16 @@ Every module carries one portable logical source ID and the exact source
 SHA-256. Globals, functions, blocks, phis, instructions, and terminators carry
 normalized byte/line/column spans. Physical source paths never enter the IR.
 
+Typed-IR admission binds observed normalized positions across module globals,
+functions, blocks, phis, instructions, and terminators. Child spans must be
+contained in both byte offsets and line/column order; shared byte offsets
+must carry identical coordinates even across sibling blocks or declarations,
+and positions at distinct byte offsets must advance monotonically. This
+checks structural consistency of *observed* locations within one source module;
+it does not authenticate source text or constrain unobserved offsets.
+Canonical encoding and checkpoint restoration both use the same admission
+boundary, so contradictory source coordinates cannot acquire typed-IR identity.
+
 The model retains verifier-visible obligations for alignment, in-bounds pointer
 ranges, nonzero values, no-signed-overflow, and target-profile capabilities.
 Alignment and in-bounds obligations require object pointers; function pointers
@@ -244,6 +254,13 @@ converges with fresh lowering, while valid foreign checkpoints and caller
 module/function provenance
 drift, including a valid changed-return-signature checkpoint with unchanged
 module source identity, return `IdentityMismatch` through both entrypoints.
+Inspector transport now caps live pipe-drain worker groups at 32 per
+process. Capacity is acquired before child launch; the ownership permit stays
+with both drain workers after caller timeout or child reap and is released
+only after their pipes close. Exhausted capacity fails closed without spawning
+another inspector, bounding escaped-descendant descriptor retention rather
+than claiming detached descendants were terminated.
+
 The production sidecar inspector and both source-matched selection entrypoints
 now also agree across all ten injected checkpoint/sidecar publication crashes:
 until pointer replacement they restore the valid matching predecessor, and
