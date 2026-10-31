@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 from typing import cast
 
 _ZERO = 0
@@ -71,6 +72,7 @@ def _require_canonical_relative_path(value: object, context: str) -> None:
         or _NUL in value
         or value == _DOT
         or path.is_absolute()
+        or PureWindowsPath(value).drive
         or _PARENT in path.parts
         or path.as_posix() != value
     )
@@ -130,6 +132,14 @@ class TreeSnapshot:
         paths = tuple(item.path for item in self.files)
         if paths != tuple(sorted(set(paths))):
             message = "tree snapshot paths must be unique and sorted"
+            raise TreeModelError(message)
+        file_paths = set(paths)
+        if any(
+            parent.as_posix() in file_paths
+            for path in paths
+            for parent in PurePosixPath(path).parents
+        ):
+            message = "tree snapshot has an ancestor/descendant file overlap"
             raise TreeModelError(message)
 
 

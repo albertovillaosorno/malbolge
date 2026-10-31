@@ -123,6 +123,8 @@ def _synthetic_pair(tmp_path: Path) -> tuple[Path, Path]:
         "/absolute",
         "src//file",
         "src\\file",
+        "C:/unsafe",
+        "C:relative",
         "src\x00file",
         "src\ud800file",
     ],
@@ -178,6 +180,15 @@ def test_exact_passthrough_roots_fail_before_source_reads(
     monkeypatch.setattr(exact_module, "snapshot_tree", deny_snapshot)
     with pytest.raises(TreeModelError, match="relative path"):
         _ = build_exact_plan(source, oracle, passthrough_roots=(invalid_root,))
+
+
+def test_direct_tree_snapshot_rejects_file_ancestor_collisions() -> None:
+    """Snapshot metadata cannot describe a file acting as a directory."""
+    digest = "0" * 64
+    ancestor = FileRecord("src/module", digest, 1)
+    descendant = FileRecord("src/module/dependency", digest, 1)
+    with pytest.raises(TreeModelError, match="ancestor"):
+        _ = TreeSnapshot(files=(ancestor, descendant))
 
 
 def test_exact_plan_reconstructs_synthetic_tree_byte_for_byte(
