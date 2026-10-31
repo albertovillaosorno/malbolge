@@ -161,6 +161,14 @@ def _frame(value: bytes) -> bytes:
     return _u64(len(value)) + value
 
 
+def _utf8_pinned_path(path: str) -> bytes:
+    try:
+        return path.encode("utf-8")
+    except UnicodeError as error:
+        message = "pinned source paths must be UTF-8 encodable"
+        raise SourcePinError(message) from error
+
+
 def _validate_relative_path(relative_path: object) -> str:
     if type(relative_path) is not str:
         message = "pinned source path must use the exact string type"
@@ -178,6 +186,7 @@ def _validate_relative_path(relative_path: object) -> str:
     if unsafe:
         message = f"unsafe pinned source path: {relative_path!r}"
         raise SourcePinError(message)
+    _ = _utf8_pinned_path(relative_path)
     return relative_path
 
 
@@ -320,7 +329,7 @@ def source_snapshot_evidence(
     digest.update(_u64(len(files)))
     for path in files:
         relative_text = path.relative_to(resolved_root).as_posix()
-        relative = relative_text.encode()
+        relative = _utf8_pinned_path(relative_text)
         data = _read_pinned_source(path, relative_text)
         digest.update(_frame(relative))
         digest.update(_frame(hashlib.sha256(data).digest()))

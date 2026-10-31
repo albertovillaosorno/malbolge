@@ -51,6 +51,7 @@ if TYPE_CHECKING:
 
 _COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _EXPECTED_FILE_COUNT = 3
+_WINDOWS_OS_NAME = "nt"
 
 
 def _write(root: Path, relative: str, data: bytes) -> None:
@@ -73,6 +74,32 @@ def _pin(root: Path) -> SourcePin:
         file_count=evidence.file_count,
         snapshot_sha256=evidence.snapshot_sha256,
     )
+
+
+def test_source_pin_rejects_non_utf8_root_metadata(tmp_path: Path) -> None:
+    """Selected roots must be UTF-8 encodable before source inspection."""
+    bad_root = "src\ud800"
+    with pytest.raises(SourcePinError, match="UTF-8"):
+        _ = SourcePin("repo", _COMMIT, (bad_root,), 1, "0" * 64)
+    with pytest.raises(SourcePinError, match="UTF-8"):
+        _ = source_snapshot_evidence(tmp_path, (bad_root,))
+
+
+def test_source_snapshot_rejects_non_utf8_walk_filename(
+    tmp_path: Path,
+) -> None:
+    """Non-UTF-8 filesystem entries cannot leak raw encoding exceptions."""
+    if os.name == _WINDOWS_OS_NAME:
+        pytest.skip("raw-byte filesystem names require POSIX")
+    _write(tmp_path, "src/valid.c", b"valid source")
+    filename = os.fsencode(tmp_path / "src") + b"/invalid-\xff.c"
+    descriptor = os.open(filename, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        _ = os.write(descriptor, b"non-UTF8 path")
+    finally:
+        os.close(descriptor)
+    with pytest.raises(SourcePinError, match="UTF-8"):
+        _ = source_snapshot_evidence(tmp_path, ("src",))
 
 
 def test_source_pin_evidence_rejects_malformed_direct_construction() -> None:
