@@ -1245,3 +1245,27 @@ def test_direct_raw_check_types_unrenderable_native_metric(tmp_path: Path) -> No
     finally:
         sys.set_int_max_str_digits(previous_limit)
     assert isinstance(failure.value.__cause__, ValueError)
+
+
+def test_csv_parser_native_exception_does_not_format_foreign_argument(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exact csv.Error cannot launder foreign values via its args."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("foreign CSV argument formatter executed")
+
+    fault = csv.Error(HostileArgument())
+
+    def broken_reader(source: StringIO, *, strict: bool) -> Iterator[list[str]]:
+        del source, strict
+        raise fault
+
+    monkeypatch.setattr(raw_samples.csv, "reader", broken_reader)
+    with pytest.raises(raw_samples.RawSampleError, match="arena raw CSV") as caught:
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
+    assert caught.value.__cause__ is fault

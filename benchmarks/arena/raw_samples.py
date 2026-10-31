@@ -166,7 +166,14 @@ def _csv_rows(
     except RawSampleError:
         raise
     except csv.Error as error:
-        detail = str(error) if type(error) is csv.Error else type(error).__name__
+        # Even an exact native csv.Error can contain caller-owned arguments.
+        detail = (
+            error.args[0]
+            if type(error) is csv.Error
+            and len(error.args) == 1
+            and type(error.args[0]) is str
+            else type(error).__name__
+        )
         message = f"{label}: invalid arena raw CSV quotes: {detail}"
         raise RawSampleError(message) from error
     except (TypeError, ValueError, RuntimeError) as error:
