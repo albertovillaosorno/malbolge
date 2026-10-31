@@ -822,7 +822,8 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
                 arguments = cleanup_error.args
                 if len(arguments) == 1 and type(arguments[0]) is str:
                     note += f": {arguments[0]}"
-            error.add_note(note)
+            # Bypass foreign primary-exception add_note overrides.
+            BaseException.add_note(error, note)
         message = "host-C reference workspace setup failed"
         raise ReferenceStudyError(message) from error
     return directory, _run_study(directory, plan, commit=commit)

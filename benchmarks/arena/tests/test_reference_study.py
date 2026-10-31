@@ -1308,3 +1308,47 @@ def test_reference_study_refuses_missing_kernel_limit_launcher(
         reference_study.run_study(
             reference_study.StudyPlan(FAMILY, (4,), 7, 1),
         )
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_host_reference_workspace_cleanup_never_dispatches_primary_add_note(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fault_type: type[Exception],
+) -> None:
+    """Foreign primary hooks cannot conceal a failed workspace setup."""
+    directory = tmp_path / "allocated"
+    directory.mkdir()
+
+    class HostilePrimary(fault_type):
+        def add_note(self, note: str) -> None:
+            del note
+            raise AssertionError("foreign primary error add_note hook invoked")
+
+    primary = HostilePrimary("primary workspace setup fault")
+    cleanup = ValueError("cleanup failed")
+
+    def fake_mkdtemp(**kwargs: object) -> str:
+        del kwargs
+        return str(directory)
+
+    def broken_mkdir(path: Path) -> None:
+        del path
+        raise primary
+
+    def broken_cleanup(path: Path) -> None:
+        del path
+        raise cleanup
+
+    monkeypatch.setattr(reference_study, "_validate_plan", lambda _: None)
+    monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
+    monkeypatch.setattr(reference_study, "_LOCAL", tmp_path)
+    monkeypatch.setattr(reference_study.tempfile, "mkdtemp", fake_mkdtemp)
+    monkeypatch.setattr(reference_study.Path, "mkdir", broken_mkdir)
+    monkeypatch.setattr(reference_study.shutil, "rmtree", broken_cleanup)
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="workspace setup"
+    ) as caught:
+        reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
+    assert caught.value.__cause__ is primary
+    assert primary.__notes__ == ["host-C workspace cleanup also failed: cleanup failed"]
