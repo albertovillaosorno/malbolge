@@ -1829,6 +1829,9 @@ class _ShortEvidenceReader:
             return b""
         return self.stream.read(min(count, 3))
 
+    def close(self) -> None:
+        self.stream.close()
+
 
 @pytest.mark.parametrize("premature_eof", [False, True])
 def test_bounded_reader_requires_complete_bytes_across_short_reads(
@@ -1913,6 +1916,44 @@ NONBINARY_READ_KIND = "text"
 
 
 NONBINARY_READ_KIND = "text"
+
+
+@pytest.mark.parametrize("receipt", [False, True, 0, 1, "closed", b"closed"])
+def test_evidence_reader_rejects_forged_close_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Retained evidence bytes need a native completed reader close."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    original_open = evidence._open_evidence
+    close_calls = 0
+
+    class ForgedCloseReader:
+        def __init__(self, stream: IO[bytes]) -> None:
+            self.stream = stream
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, count: int) -> bytes:
+            return self.stream.read(count)
+
+        def close(self) -> None:
+            nonlocal close_calls
+            close_calls += 1
+            return cast("None", receipt)
+
+    @contextmanager
+    def forged_close(path: Path) -> Iterator[IO[bytes]]:
+        with original_open(path) as backing:
+            yield cast("IO[bytes]", ForgedCloseReader(backing))
+
+    monkeypatch.setattr(evidence, "_open_evidence", forged_close)
+    with pytest.raises(evidence.EvidenceError, match="close completion"):
+        evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+    assert close_calls == 1
 
 
 @pytest.mark.parametrize(

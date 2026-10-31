@@ -317,6 +317,18 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
                 completed = _native_stat(os.fstat(stream.fileno()))
                 if _file_identity(completed) != _file_identity(opened):
                     _fail(f"evidence file changed during read: {relative}")
+                # The context manager catches close exceptions but does not
+                # expose non-None completion receipts. Verify the stream's
+                # close after its final descriptor identity check.
+                try:
+                    close_receipt: object = stream.close()
+                except Exception as error:
+                    message = f"evidence stream close failed: {relative}"
+                    raise EvidenceError(message) from error
+                if close_receipt is not None:
+                    _fail(
+                        f"evidence stream close completion was not native None: {relative}"
+                    )
             except Exception as error:
                 primary = error
                 raise
