@@ -316,6 +316,10 @@ class ExactAuthoringPlan:
         ):
             message = "exact plan instructions must be exact immutable records"
             raise TreeModelError(message)
+        paths = tuple(item.output_path for item in self.instructions)
+        if len(paths) != len(set(paths)):
+            message = "exact plan requires unique output paths"
+            raise TreeModelError(message)
         _require_passthrough_roots(self.passthrough_roots)
 
 

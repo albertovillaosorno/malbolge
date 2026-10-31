@@ -260,6 +260,23 @@ def test_exact_plan_is_deterministic(tmp_path: Path) -> None:
     )
 
 
+def test_exact_authoring_plan_rejects_duplicate_output_instructions(
+    tmp_path: Path,
+) -> None:
+    """No output can be assigned two potentially conflicting instructions."""
+    source, oracle = _synthetic_pair(tmp_path)
+    valid = build_exact_plan(source, oracle)
+    duplicate = valid.instructions[0]
+
+    with pytest.raises(TreeModelError, match="unique output paths"):
+        _ = ExactAuthoringPlan(
+            source=valid.source,
+            target=valid.target,
+            instructions=(*valid.instructions, duplicate),
+            passthrough_roots=valid.passthrough_roots,
+        )
+
+
 def test_exact_materialization_wraps_instruction_read_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -766,9 +783,7 @@ def test_snapshot_excluding_nested_root_preserves_static_sibling(
     _write(root, "external/keep.bin", b"keep")
     dynamic = root / "external" / "data" / "game.bin"
     _write(root, "external/data/game.bin", b"dynamic")
-    _deny_file_open(
-        monkeypatch, dynamic, fail_on=1, label="nested passthrough"
-    )
+    _deny_file_open(monkeypatch, dynamic, fail_on=1, label="nested passthrough")
     snapshot = snapshot_tree_excluding(root, ("external/data",))
     paths = tuple(record.path for record in snapshot.files)
     _expect(
