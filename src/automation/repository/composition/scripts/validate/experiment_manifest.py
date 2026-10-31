@@ -35,9 +35,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from pathlib import PureWindowsPath
 import re
+from stat import S_ISREG
 import sys
 import tomllib
 from typing import Never
@@ -49,6 +51,7 @@ from scripts.validate import target_profile
 
 ROOT = repository_root(Path(__file__))
 SCHEMA_VERSION = 1
+MAX_MANIFEST_BYTES = 1024 * 1024
 PARENT_SEGMENT = ".."
 PLAN_RECORD_KIND = "plan"
 RUN_RECORD_KIND = "run"
@@ -411,8 +414,17 @@ def parse_manifest(text: str) -> ExperimentManifest:
 
 
 def _repository_relative(path: Path) -> Path:
+    """Preserve physical path components when admitting an in-root manifest.
+
+    Returns:
+        Repository-relative path without resolving a symlink alias.
+
+    """
+    if PARENT_SEGMENT in path.parts:
+        _fail(f"experiment manifest path must not traverse parents: {path}")
+    supplied = path if path.is_absolute() else Path.cwd() / path
     try:
-        return path.resolve().relative_to(ROOT)
+        return supplied.relative_to(ROOT)
     except ValueError:
         _fail(f"experiment manifest escapes repository: {path}")
 
@@ -451,9 +463,76 @@ def _validate_repository_identity(
         _fail(f"manifest provenance output mismatch: {manifest.output}")
 
 
+def _manifest_identity(
+    status: os.stat_result,
+) -> tuple[int, int, int, int, int]:
+    """Require a bounded regular manifest and retain its source identity.
+
+    Returns:
+        Device, inode, size, mtime and ctime of the admitted manifest.
+
+    """
+    if not S_ISREG(status.st_mode):
+        _fail("experiment manifest must be a regular file")
+    if status.st_size > MAX_MANIFEST_BYTES:
+        _fail("experiment manifest exceeds byte limit")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _check_manifest_parents(path: Path) -> None:
+    """Reject directory aliases before and after manifest admission."""
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            _fail("experiment manifest path must not redirect")
+
+
+def _read_manifest_bytes(path: Path) -> bytes:
+    """Admit exact regular manifest bytes through one stable descriptor.
+
+    Returns:
+        Bounded complete bytes of the unchanged named file.
+
+    """
+    _check_manifest_parents(path)
+    admitted = path.lstat()
+    expected = _manifest_identity(admitted)
+    if path.is_symlink() or path.is_junction():
+        _fail("experiment manifest path must not redirect")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        if _manifest_identity(os.fstat(stream.fileno())) != expected:
+            _fail("experiment manifest changed before read")
+        raw = stream.read(MAX_MANIFEST_BYTES + 1)
+        if (
+            len(raw) != admitted.st_size
+            or _manifest_identity(os.fstat(stream.fileno())) != expected
+            or _manifest_identity(path.lstat()) != expected
+        ):
+            _fail("experiment manifest changed during read")
+    _check_manifest_parents(path)
+    return raw
+
+
 def _read_utf8(path: Path) -> str:
     try:
-        return path.read_text(encoding="utf-8")
+        raw = _read_manifest_bytes(path)
+    except OSError as error:
+        _fail(f"experiment manifest cannot be read: {error}")
+    try:
+        return raw.decode("utf-8")
     except UnicodeDecodeError as error:
         _fail(f"invalid experiment manifest UTF-8: {error}")
 

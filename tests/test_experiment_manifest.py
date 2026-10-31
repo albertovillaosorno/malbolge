@@ -34,14 +34,17 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 
-from scripts.validate import experiment_manifest as validator
-
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
+
+from scripts.validate import experiment_manifest as validator
 
 EXPECTED_IDS = (
     "adaptive-accelerator-resource-budgeting",
@@ -156,6 +159,214 @@ def test_repo_relative_manifest_path_admits_canonical_identity() -> None:
     assert validator.validate_repository_manifest(relative) == (
         validator.validate_repository_manifest(absolute)
     )
+
+
+def _repository_manifest_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """Clone one canonical template under a detached repository-shaped root.
+
+    Returns:
+        A physical and schema-valid experiment manifest path.
+
+    """
+    relative = Path(
+        "src/research/algorithms/domain/algorithms/template/experiment.toml"
+    )
+    original = validator.ROOT / relative
+    fixture = tmp_path / relative
+    fixture.parent.mkdir(parents=True)
+    _ = fixture.write_bytes(original.read_bytes())
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    return fixture
+
+
+def test_repository_manifest_rejects_symlink_leaf_and_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid schema and provenance cannot authorize a linked manifest path."""
+    source = _repository_manifest_fixture(tmp_path, monkeypatch)
+    alias = source.with_name("linked.toml")
+    linked_dir = tmp_path / "linked-directory"
+    try:
+        alias.symlink_to(source)
+        linked_dir.symlink_to(source.parent, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unsupported: {error}")
+    for redirected in (alias, linked_dir / source.name):
+        with pytest.raises(
+            validator.ExperimentManifestError, match=r"redirect|regular"
+        ):
+            _ = validator.validate_repository_manifest(redirected)
+
+
+def test_repository_manifest_rejects_external_alias_to_valid_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An outside symlink cannot be canonicalized into repository authority."""
+    source = _repository_manifest_fixture(tmp_path, monkeypatch)
+    external = tmp_path.parent / f"{tmp_path.name}-external-link.toml"
+    try:
+        external.symlink_to(source)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unsupported: {error}")
+    try:
+        with pytest.raises(
+            validator.ExperimentManifestError, match="escapes repository"
+        ):
+            _ = validator.validate_repository_manifest(external)
+    finally:
+        external.unlink(missing_ok=True)
+
+
+def test_repository_manifest_rejects_parent_traversal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Parent segments are not accepted as evidence path canonicalization."""
+    source = _repository_manifest_fixture(tmp_path, monkeypatch)
+    alternate = source.parent / ".." / source.parent.name / source.name
+    with pytest.raises(
+        validator.ExperimentManifestError, match="must not traverse parents"
+    ):
+        _ = validator.validate_repository_manifest(alternate)
+
+
+def test_manifest_reader_rejects_nonregular_missing_and_oversized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bounded regular admission rejects a directory, missing source or size."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    with pytest.raises(validator.ExperimentManifestError, match="not found"):
+        _ = validator.validate_repository_manifest(tmp_path)
+    with pytest.raises(validator.ExperimentManifestError, match="not found"):
+        _ = validator.validate_repository_manifest(tmp_path / "missing.toml")
+    oversized = tmp_path / "oversized.toml"
+    with oversized.open("wb") as stream:
+        _ = stream.truncate(validator.MAX_MANIFEST_BYTES + 1)
+    with pytest.raises(validator.ExperimentManifestError, match="byte limit"):
+        _ = validator.validate_repository_manifest(oversized)
+
+
+def test_repository_manifest_refuses_fifo_without_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repository admission excludes a writerless FIFO before opening it."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    mkfifo = cast("Callable[[Path], None] | None", getattr(os, "mkfifo", None))
+    if mkfifo is None:
+        pytest.skip("FIFO not supported on this platform")
+    fifo = tmp_path / "source.fifo"
+    mkfifo(fifo)
+    with pytest.raises(validator.ExperimentManifestError, match="not found"):
+        _ = validator.validate_repository_manifest(fifo)
+
+
+def test_manifest_reader_rejects_same_byte_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing a regular file before descriptor opening invalidates it."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    source = tmp_path / "source.toml"
+    replacement = tmp_path / "replacement.toml"
+    _ = source.write_bytes(b"manifest = 1\n")
+    _ = replacement.write_bytes(source.read_bytes())
+    real_open = os.open
+    swapped = False
+
+    def swap_on_open(path: Path, flags: int) -> int:
+        nonlocal swapped
+        if path == source:
+            _ = replacement.replace(source)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_on_open)
+    with pytest.raises(
+        validator.ExperimentManifestError, match="changed before read"
+    ):
+        _ = validator.validate_repository_manifest(source)
+    assert swapped
+
+
+def test_manifest_reader_rejects_same_byte_swap_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An identically formatted replacement does not validate stale bytes."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    source = tmp_path / "source.toml"
+    replacement = tmp_path / "replacement.toml"
+    _ = source.write_bytes(b"manifest = 1\n")
+    _ = replacement.write_bytes(source.read_bytes())
+    real_open = os.open
+    real_lstat = Path.lstat
+    opened = swapped = False
+
+    def track_open(path: Path, flags: int) -> int:
+        nonlocal opened
+        descriptor = real_open(path, flags)
+        if path == source:
+            opened = True
+        return descriptor
+
+    def swap_at_recheck(path: Path) -> os.stat_result:
+        nonlocal swapped
+        if path == source and opened and not swapped:
+            _ = replacement.replace(source)
+            swapped = True
+        return real_lstat(path)
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(Path, "lstat", swap_at_recheck)
+    with pytest.raises(
+        validator.ExperimentManifestError, match="changed during read"
+    ):
+        _ = validator.validate_repository_manifest(source)
+    assert swapped
+
+
+def test_manifest_reader_rejects_in_place_change_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-inode rewrite after byte collection invalidates source evidence."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    source = tmp_path / "source.toml"
+    _ = source.write_bytes(b"manifest = 1\n")
+    real_open = os.open
+    real_lstat = Path.lstat
+    opened = modified = False
+
+    def track_open(path: Path, flags: int) -> int:
+        nonlocal opened
+        descriptor = real_open(path, flags)
+        if path == source:
+            opened = True
+        return descriptor
+
+    def modify_at_recheck(path: Path) -> os.stat_result:
+        nonlocal modified
+        if path == source and opened and not modified:
+            with source.open("r+b") as stream:
+                _ = stream.write(b"x")
+            os.utime(source, ns=(0, 0))
+            modified = True
+        return real_lstat(path)
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(Path, "lstat", modify_at_recheck)
+    with pytest.raises(
+        validator.ExperimentManifestError, match="changed during read"
+    ):
+        _ = validator.validate_repository_manifest(source)
+    assert modified
 
 
 def test_manifest_rejects_windows_drive_relative_path() -> None:

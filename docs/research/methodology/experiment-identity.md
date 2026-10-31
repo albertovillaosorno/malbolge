@@ -46,10 +46,14 @@ Prior-work claims must resolve through canonical records under
 Experiment manifest schema v1 is validated by
 `src/automation/repository/composition/scripts/validate/experiment_manifest.py`.
 Manifest file loading rejects invalid UTF-8 through the stable experiment error
-boundary before TOML admission. Repository-manifest validation normalizes
-working-directory-relative or absolute input paths to one in-root canonical
-path before reading and checking provenance. TOML remains the checked-in
-serialization, but the schema owns semantics independently of that format.
+boundary before TOML admission. It admits only physical, non-redirected regular
+files under a 1 MiB limit, reads through a no-follow/nonblocking descriptor
+where available, and rejects replacement or modification by rechecking device,
+inode, extent, and timestamps after reading. Repository-manifest validation
+accepts working-directory-relative and absolute in-root paths without resolving
+away symbolic-link aliases; parent traversal is rejected. TOML remains the
+checked-in serialization, but the schema owns semantics independently of that
+format.
 Every research mirror carries `algorithms/<id>/experiment.toml` with:
 
 - `schema_version = 1`;
@@ -90,7 +94,7 @@ format](../../bibliography/specifications-and-standards/toml.md).
 
 ## Evidence
 
-- All eight current research-mirror manifests validate under schema v1,
+- All nine current research-mirror manifests validate under schema v1,
   including
   the checked-in template.
 - `tests/test_experiment_manifest.py` proves repository identity, exact run
@@ -108,7 +112,7 @@ format](../../bibliography/specifications-and-standards/toml.md).
 
 ## Results
 
-Eight checked-in research plans now share one validated schema, and every
+Nine checked-in research plans now share one validated schema, and every
 canonical-profile plan is bound to the generated profile fingerprint.
 Recorded-run fixtures demonstrate that source commit, workload hash,
 environment identity, outcome, and raw-output path are mandatory only when
