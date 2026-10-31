@@ -306,6 +306,39 @@ def _check_artifact_index(
     return dict(starmap(_index_entry, source.items()))
 
 
+def _check_trial_file_inventory(
+    document: dict[str, Any],
+    artifacts: dict[str, dict[str, str]],
+    prefix: str,
+) -> None:
+    """Reject undeclared trial files rather than ignoring foreign local data."""
+    expected: dict[str, set[str]] = {
+        "runs": {
+            row["experiment_manifest"].rsplit("/", maxsplit=1)[1]
+            for row in document["observations"]
+        },
+        "raw": {
+            row["raw_sample"].rsplit("/", maxsplit=1)[1]
+            for row in document["observations"]
+        },
+        "candidates": {
+            value["path"].rsplit("/", maxsplit=1)[1]
+            for value in artifacts.values()
+        },
+    }
+    for folder, names in expected.items():
+        directory = _ROOT / prefix / folder
+        if directory.is_symlink() or not directory.is_dir():
+            _fail(f"host-C trial file inventory directory invalid: {folder}")
+        observed: set[str] = set()
+        for entry in directory.iterdir():
+            if entry.name not in names:
+                _fail(f"unregistered host-C trial file in {folder}: {entry.name}")
+            observed.add(entry.name)
+        if observed != names:
+            _fail(f"host-C trial file inventory missing entries in {folder}")
+
+
 def _recorded_source_commit(
     document: dict[str, Any],
     *,
@@ -532,6 +565,7 @@ def _admit_data(
         document,
         artifacts,
     )
+    _check_trial_file_inventory(document, artifacts, prefix)
     failed_diagnostics = _check_retained_failures(
         document, prefix, sidecar_fingerprints
     )
@@ -644,6 +678,7 @@ def audit(
             != data.verified_binaries
         ):
             _fail("host-C retained artifact count changed during audit")
+        _check_trial_file_inventory(data.document, data.artifacts, prefix)
     except (
         analyze.ArenaError,
         evidence.EvidenceError,

@@ -913,6 +913,45 @@ def test_host_c_audit_rejects_linked_source_drift_after_analysis(
         reference_audit.audit(relative)
 
 
+@pytest.mark.parametrize("folder", ["runs", "raw", "candidates"])
+@pytest.mark.parametrize("injection_point", ["before_audit", "after_analysis"])
+def test_host_c_audit_rejects_unindexed_trial_file_inventory(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    folder: str,
+    injection_point: str,
+) -> None:
+    """An extra run, raw sample, or binary cannot be hidden in the study."""
+    directory, relative = live_pilot
+    leaf = {
+        "runs": "unindexed-run.toml",
+        "raw": "unindexed-sample.csv",
+        "candidates": "unindexed-binary",
+    }[folder]
+    path = directory / folder / leaf
+
+    def introduce_extra_file() -> None:
+        _ = path.write_bytes(b"foreign trial evidence")
+
+    if injection_point == "before_audit":
+        introduce_extra_file()
+    else:
+        original_analyze = analyze.analyze
+
+        def mutate_after_analysis(document: dict[str, Any]) -> dict[str, Any]:
+            report = original_analyze(document)
+            introduce_extra_file()
+            return report
+
+        monkeypatch.setattr(analyze, "analyze", mutate_after_analysis)
+
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="unregistered host-C trial file",
+    ):
+        reference_audit.audit(relative)
+
+
 def test_opt_in_git_object_check_rejects_missing_recorded_commit(
     live_pilot: tuple[Path, str],
 ) -> None:

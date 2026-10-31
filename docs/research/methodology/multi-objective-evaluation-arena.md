@@ -644,6 +644,12 @@ strict arena evidence snapshot past report analysis, then rechecks every
 original raw CSV and regenerated challenge-bundle input (source, oracle and
 manifest) without rerunning optional native oracle processes. A late rewrite
 of any of these bytes rejects even if the report was already computed.
+The producer's `runs`, `raw` and `candidates` folders must also contain only
+linked trial manifests, samples and verified executable filenames. The auditor
+rescans these bounded expected inventories after report assembly to reject
+newly inserted unregistered files, while still reading every admitted file
+through its stricter individual evidence checks. This does not enumerate or
+attest other files in the study tree.
 These repeated reads detect observed drift, not an atomic filesystem
 snapshot or authenticated historical authorship.
 It also requires the producer's fixed run method, implementation/configuration
@@ -894,7 +900,9 @@ The original study records remain the result authority.
   also reject post-admission changes to all three JSON receipts, including
   newly created or removed optional failure records. Additional real-pilot
   regressions rewrite each admitted raw CSV or challenge-bundle file during
-  report assembly and require a typed late-drift rejection.
+  report assembly and require a typed late-drift rejection. Six real-pilot
+  cases additionally introduce unregistered run, raw or candidate files both
+  before admission and during analysis, and require an inventory rejection.
 - `benchmarks/arena/reference_study.py` records real pinned host-C reference
   time, native executable sizes, exact binary hashes and versioned trial files
   across multiple canonical difficulties and matched `-O0`/`-O2` arms.
