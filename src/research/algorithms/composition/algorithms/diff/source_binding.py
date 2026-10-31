@@ -86,17 +86,18 @@ class SourceBindingError(RuntimeError):
 
 
 def _binding_fraction(value: object) -> float:
+    message = "threshold_fraction must be a finite value in (0, 1]"
     if type(value) is int:
-        number = float(value)
-    elif type(value) is float:
-        number = value
-    else:
-        message = "threshold_fraction must be a finite value in (0, 1]"
+        # The only integral fraction in (0, 1] is one. Reject large integers
+        # before float conversion, which can otherwise raise OverflowError.
+        if value != _ONE:
+            raise SourceBindingPolicyError(message)
+        return 1.0
+    if type(value) is not float:
         raise SourceBindingPolicyError(message)
-    if not math.isfinite(number) or number <= _ZERO or number > _ONE:
-        message = "threshold_fraction must be a finite value in (0, 1]"
+    if not math.isfinite(value) or value <= _ZERO or value > _ONE:
         raise SourceBindingPolicyError(message)
-    return number
+    return value
 
 
 def _binding_positive_int(

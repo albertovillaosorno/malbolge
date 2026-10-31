@@ -304,6 +304,14 @@ def test_source_binding_policy_rejects_boolean_numeric_fields() -> None:
         _ = hkdf_expand_sha256(b"key", b"info", length=True)
 
 
+def test_source_binding_policy_rejects_huge_integer_fraction() -> None:
+    """An out-of-range integer must not overflow during policy admission."""
+    huge = 10**400
+    for invalid in (huge, -huge):
+        with pytest.raises(SourceBindingPolicyError, match="finite value"):
+            _ = SourceBindingPolicy(threshold_fraction=invalid)
+
+
 def test_public_source_binding_inputs_fail_closed() -> None:
     """Public binding and HKDF APIs reject foreign runtime input types."""
     reference = _reference()
