@@ -40,6 +40,7 @@ import json
 import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
+from typing import override
 
 import pytest
 
@@ -948,6 +949,86 @@ def test_study_stream_cleanup_avoids_foreign_error_formatters(
     with pytest.raises(study_file.StudyFileError, match="primary bounded") as caught:
         study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
     assert caught.value.__notes__ == ["arena input stream cleanup also failed"]
+
+
+def test_descriptor_cleanup_preserves_foreign_primary_add_note_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hostile stream constructor cannot hijack secondary-note attachment."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_close = study_file.os.close
+    closed: list[int] = []
+
+    class ForeignOpenError(RuntimeError):
+        @override
+        def add_note(self, note: str) -> None:
+            del note
+            raise AssertionError("foreign primary add_note executed")
+
+    failure = ForeignOpenError("primary fdopen failure")
+
+    def reject_stream(*_args: object, **_kwargs: object) -> BinaryIO:
+        raise failure
+
+    def close_with_failure(descriptor: int) -> None:
+        original_close(descriptor)
+        closed.append(descriptor)
+        raise OSError("secondary raw descriptor close failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file.os, "fdopen", reject_stream)
+        context.setattr(study_file.os, "close", close_with_failure)
+        with pytest.raises(
+            study_file.StudyFileError, match="stream construction failed"
+        ) as caught:
+            _ = study_file.read_study_bytes(path, limit=1024 * 1024)
+    assert caught.value.__cause__ is failure
+    assert failure.__notes__ == ["arena input descriptor cleanup also failed"]
+    assert len(closed) == 1
+    with pytest.raises(OSError):
+        _ = study_file.os.fstat(closed[0])
+
+
+def test_stream_cleanup_preserves_foreign_primary_add_note_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign primary read errors survive secondary stream-close failures."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    actual_open = study_file._open_study
+
+    class ForeignReadError(study_file.StudyFileError):
+        @override
+        def add_note(self, note: str) -> None:
+            del note
+            raise AssertionError("foreign primary add_note executed")
+
+    failure = ForeignReadError("primary bounded read rejected")
+
+    @contextmanager
+    def open_with_failed_close(target: Path) -> Iterator[BinaryIO]:
+        try:
+            with actual_open(target) as stream:
+                yield stream
+        finally:
+            raise ValueError("secondary bounded stream close failed")
+
+    def reject_read(_stream: BinaryIO, *, size: int) -> bytes:
+        del size
+        raise failure
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file, "_open_study", open_with_failed_close)
+        context.setattr(study_file, "_read_complete", reject_read)
+        with pytest.raises(
+            study_file.StudyFileError, match="primary bounded"
+        ) as caught:
+            _ = study_file.read_study_bytes(path, limit=1024 * 1024)
+    assert caught.value is failure
+    assert failure.__notes__ == ["arena input stream cleanup also failed"]
 
 
 def test_study_stream_constructor_failure_rejects_both_cli_routes(

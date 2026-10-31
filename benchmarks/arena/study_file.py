@@ -124,7 +124,7 @@ def _open_study(path: Path) -> BinaryIO:
         ):
             # Preserve the primary admission failure without invoking a
             # foreign close exception's diagnostic formatter.
-            error.add_note("arena input descriptor cleanup also failed")
+            BaseException.add_note(error, "arena input descriptor cleanup also failed")
         if isinstance(error, StudyFileError):
             raise error  # ruff: ignore[TRY201]
         raise StudyFileError("arena input stream construction failed") from error
@@ -188,7 +188,7 @@ def _read_descriptor(
                 raise
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         if primary is not None and error is not primary:
-            primary.add_note("arena input stream cleanup also failed")
+            BaseException.add_note(primary, "arena input stream cleanup also failed")
             error = primary
         if isinstance(error, StudyFileError):
             # It can be the rejected read, not the active close error.
