@@ -487,7 +487,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   verifier assumptions. Independent exact reference and both-CLI tests pass.
 - The host-C reference-study producer's operator JSON now uses the same
   checked stdout publisher and fails nonzero on incomplete writes or flush,
-  without pretending that already-emitted text can be retracted.
+  without pretending that already-emitted text can be retracted. Unexpected
+  ordinary producer or publisher dependency exceptions now also exit two
+  without an unhandled traceback or foreign formatter calls; six red-first
+  regressions cover both phases and malformed exception hooks.
 - Operator report output now requires exact text write counts and an explicit
   successful stdout flush across both arena CLI routes, rejecting malformed
   return values, truncation, and injected stream errors as nonzero exits.

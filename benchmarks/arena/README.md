@@ -793,6 +793,10 @@ single-record text publisher as the arena analyzer: a complete write count
 and a successful stdout flush are mandatory before it returns code zero.
 A failed stream returns code two even if validated ignored study files have
 already been retained; emitted stdout fragments cannot be rolled back.
+Unexpected ordinary dependency exceptions during study execution or summary
+publication now also exit with status two, retaining only owned native error
+text. Untrusted exception formatters are never called at the operator gate;
+this does not roll back any prior stdout write or retained evidence.
 
 Direct `reference_study.run_study` calls require an exact `StudyPlan` with one
 to four distinct difficulty levels in an integer tuple and one to five trials.

@@ -904,13 +904,9 @@ def main() -> int:
                 args.trials,
             )
         )
-    except (
-        ReferenceStudyError,
-        generate.ChallengeError,
-        analyze.ArenaError,
-        evidence.EvidenceError,
-        OSError,
-    ) as error:
+    except Exception as error:
+        # A dependency may raise an unexpected ordinary exception. Never
+        # leak its traceback or invoke a foreign formatter at this CLI gate.
         detail = _native_error_detail(error) or "error details unavailable"
         parser.exit(2, f"host-C reference study: {detail}\n")
     try:
@@ -924,7 +920,9 @@ def main() -> int:
             },
             sys.stdout,
         )
-    except report_output.ReportOutputError as error:
+    except Exception as error:
+        # The publisher is a dependency and can fail beyond its declared type.
+        # Partial stdout cannot be rolled back, but success must not be claimed.
         detail = _native_error_detail(error) or "error details unavailable"
         parser.exit(2, f"host-C reference study: {detail}\n")
     return 0

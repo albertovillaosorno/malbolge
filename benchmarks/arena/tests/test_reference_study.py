@@ -1523,6 +1523,47 @@ def test_reference_cli_never_formats_foreign_errors(
         assert "native study failure" in output.err
 
 
+class _UnexpectedCliDependencyFault(Exception):
+    def __str__(self) -> str:
+        raise AssertionError("unexpected dependency fault cannot be formatted")
+
+
+@pytest.mark.parametrize("stage", ["study", "publish"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError("unexpected runtime dependency"),
+        TypeError("unexpected type dependency"),
+        _UnexpectedCliDependencyFault("opaque dependency fault"),
+    ],
+    ids=["runtime", "type", "foreign-format-hook"],
+)
+def test_reference_cli_unexpected_dependency_fault_is_status_two_without_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stage: str,
+    failure: Exception,
+) -> None:
+    """Unknown ordinary dependency errors must not escape the operator gate."""
+
+    def reject(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise failure
+
+    monkeypatch.setattr(sys, "argv", ["reference-study", FAMILY])
+    if stage == "study":
+        monkeypatch.setattr(reference_study, "run_study", reject)
+    else:
+        monkeypatch.setattr(reference_study, "run_study", _fake_study_for_stdout)
+        monkeypatch.setattr(report_output, "publish", reject)
+    with pytest.raises(SystemExit) as caught:
+        reference_study.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert output.err == "host-C reference study: error details unavailable\n"
+
+
 def _fake_study_for_stdout(
     plan: reference_study.StudyPlan,
 ) -> tuple[Path, dict[str, Any]]:
