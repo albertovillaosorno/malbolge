@@ -481,6 +481,20 @@ class _StudySources:
     source_commit: str
 
 
+def _admit_benchmark_data(text: str) -> dict[str, Any]:
+    """Admit only native benchmark maps after independent protocol parsing."""
+    document = tomllib.loads(text)
+    if type(document) is not dict or any(
+        type(key) is not str for key in document
+    ):
+        _fail("historical benchmark TOML requires native string keys")
+    for name in ("study", "resources"):
+        table = document.get(name)
+        if type(table) is not dict or any(type(key) is not str for key in table):
+            _fail("historical benchmark TOML requires native string keys")
+    return document
+
+
 def _load_source(root: Path, relative: str) -> _StudySources:
     names = (
         "experiment.toml",
@@ -501,7 +515,7 @@ def _load_source(root: Path, relative: str) -> _StudySources:
         _fail("historical registered repetitions exceed bounded study limit")
     return _StudySources(
         manifest_data=manifest_data,
-        benchmark_data=tomllib.loads(benchmark_text),
+        benchmark_data=_admit_benchmark_data(benchmark_text),
         manifest=experiment_manifest.parse_manifest(manifest_text),
         protocol=protocol,
         records=_csv_rows(

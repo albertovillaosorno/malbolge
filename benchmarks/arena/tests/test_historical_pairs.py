@@ -1005,3 +1005,53 @@ def test_historical_extension_rejects_foreign_toml_keys_before_lookup(
         historical_pairs.HistoricalEvidenceError, match="native string keys"
     ):
         historical_pairs._extension(cast("dict[str, Any]", result))
+
+
+@pytest.mark.parametrize("scope", ["root", "study", "resources"])
+def test_historical_benchmark_reparse_admits_native_mapping_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str
+) -> None:
+    """Reparsed benchmark TOML cannot dispatch foreign mapping equality hooks."""
+    directory = _copy_source(tmp_path, PREFIX)
+    benchmark_text = (directory / "benchmark.toml").read_text(encoding="utf-8")
+    native_loads = historical_pairs.tomllib.loads
+    benchmark_reads = 0
+    key_name = (
+        "study"
+        if scope == "root"
+        else ("baseline" if scope == "study" else "memory_mib")
+    )
+
+    class CollidingKey:
+        def __hash__(self) -> int:
+            return hash(key_name)
+
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("untrusted benchmark TOML equality executed")
+
+    def inject(text: str) -> dict[str, Any]:
+        nonlocal benchmark_reads
+        result = native_loads(text)
+        if text != benchmark_text:
+            return result
+        benchmark_reads += 1
+        if benchmark_reads != 2:
+            return result
+        if scope == "root":
+            del result["study"]
+            cast("dict[object, Any]", result)[CollidingKey()] = {}
+        else:
+            table = result[scope]
+            del table[key_name]
+            cast("dict[object, Any]", table)[CollidingKey()] = (
+                "baseline" if scope == "study" else 512
+            )
+        return result
+
+    monkeypatch.setattr(historical_pairs.tomllib, "loads", inject)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="native string keys"
+    ):
+        historical_pairs.build_report(tmp_path, TEMP)
+    assert benchmark_reads == 2
