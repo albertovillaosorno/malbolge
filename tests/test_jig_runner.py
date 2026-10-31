@@ -306,3 +306,121 @@ def test_subprocess_launch_failure_stays_actionable(
         match="external Jig execution failed: injected Jig process failure",
     ):
         _ = jig_runner.run_jig("check", root=tmp_path)
+
+
+def _resolve_fixture_jig(_name: str) -> str:
+    """Supply a deterministic installed Jig path for injected receipts."""
+    return "/real/jig"
+
+
+@pytest.mark.parametrize(
+    "invalid_status",
+    [None, False, True, "0", 0.0, object()],
+    ids=["missing", "false", "true", "string", "float", "foreign"],
+)
+def test_runner_rejects_malformed_child_exit_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_status: object,
+) -> None:
+    """A forged success receipt cannot make Jig validation look complete."""
+    _ = _pinned_launchers(tmp_path)
+    monkeypatch.setattr(
+        "scripts.validate.jig_runner.shutil.which", _resolve_fixture_jig
+    )
+
+    def execute(args: list[str], **_options: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, cast("int", invalid_status))
+
+    monkeypatch.setattr("scripts.validate.jig_runner.sp.run", execute)
+    with pytest.raises(jig_runner.JigRunnerError, match="invalid process completion"):
+        _ = jig_runner.run_jig("check", root=tmp_path)
+
+
+@pytest.mark.parametrize("result", [None, object()])
+def test_runner_rejects_foreign_child_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    result: object,
+) -> None:
+    """Only an actual completed process may report validation success."""
+    _ = _pinned_launchers(tmp_path)
+    monkeypatch.setattr(
+        "scripts.validate.jig_runner.shutil.which", _resolve_fixture_jig
+    )
+
+    def execute(_args: list[str], **_options: object) -> object:
+        return result
+
+    monkeypatch.setattr("scripts.validate.jig_runner.sp.run", execute)
+    with pytest.raises(jig_runner.JigRunnerError, match="invalid process completion"):
+        _ = jig_runner.run_jig("check", root=tmp_path)
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError, TypeError, AttributeError])
+def test_runner_types_host_launch_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Host subprocess failures retain the cause behind a typed error."""
+    _ = _pinned_launchers(tmp_path)
+    monkeypatch.setattr(
+        "scripts.validate.jig_runner.shutil.which", _resolve_fixture_jig
+    )
+    fault = fault_type("injected launcher host failure")
+
+    def fail_launch(_args: list[str], **_options: object) -> None:
+        raise fault
+
+    monkeypatch.setattr("scripts.validate.jig_runner.sp.run", fail_launch)
+    with pytest.raises(jig_runner.JigRunnerError, match="external Jig execution failed") as caught:
+        _ = jig_runner.run_jig("check", root=tmp_path)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError])
+def test_runner_types_executable_discovery_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A broken executable resolver must not leak untyped exceptions."""
+    fault = fault_type("injected executable discovery failure")
+
+    def fail_resolve(_name: str) -> None:
+        raise fault
+
+    monkeypatch.setattr("scripts.validate.jig_runner.shutil.which", fail_resolve)
+    with pytest.raises(jig_runner.JigRunnerError, match="discovery failed") as caught:
+        _ = jig_runner.run_jig("check")
+    assert caught.value.__cause__ is fault
+
+
+class _HostileLaunchError(OSError):
+    """A caller-owned exception must not execute a diagnostic hook."""
+
+    def __str__(self) -> str:
+        message = "foreign launcher diagnostic formatting was called"
+        raise AssertionError(message)
+
+
+def test_runner_preserves_hostile_launch_cause_without_formatting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A launch failure cannot escape typed admission via its __str__."""
+    _ = _pinned_launchers(tmp_path)
+    fault = _HostileLaunchError("injected launcher failure")
+
+    def fail_launch(_args: list[str], **_options: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(
+        "scripts.validate.jig_runner.shutil.which", _resolve_fixture_jig
+    )
+    monkeypatch.setattr("scripts.validate.jig_runner.sp.run", fail_launch)
+    with pytest.raises(
+        jig_runner.JigRunnerError, match="external Jig execution failed"
+    ) as caught:
+        _ = jig_runner.run_jig("check", root=tmp_path)
+    assert caught.value.__cause__ is fault

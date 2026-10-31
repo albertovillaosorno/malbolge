@@ -128,7 +128,11 @@ def run_jig(command: str, *, root: Path = ROOT) -> int:
     if command not in COMMANDS:
         message = f"unsupported Jig command: {command}"
         raise JigRunnerError(message)
-    executable = shutil.which("jig")
+    try:
+        executable = shutil.which("jig")
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "external Jig executable discovery failed"
+        raise JigRunnerError(message) from error
     if executable is None:
         message = "external Jig executable is unavailable"
         raise JigRunnerError(message)
@@ -141,9 +145,16 @@ def run_jig(command: str, *, root: Path = ROOT) -> int:
             env=environment,
             shell=False,
         )
-    except OSError as error:
-        message = f"external Jig execution failed: {error}"
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "external Jig execution failed"
+        # Keep ordinary built-in OSError details but never call a foreign
+        # exception subclass's potentially unsafe formatting hook.
+        if type(error) is OSError:
+            message = f"{message}: {error}"
         raise JigRunnerError(message) from error
+    if type(result) is not sp.CompletedProcess or type(result.returncode) is not int:
+        message = "external Jig returned invalid process completion"
+        raise JigRunnerError(message)
     return result.returncode
 
 
