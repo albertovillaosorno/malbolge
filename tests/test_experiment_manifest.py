@@ -755,3 +755,70 @@ def test_manifest_host_failures_do_not_format_foreign_exceptions(
     ) as caught:
         validator.validate_repository_manifest(source)
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("fault_type", [validator.ExperimentManifestError, OSError])
+def test_manifest_cli_never_formats_foreign_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """Validation errors cannot execute a caller-controlled __str__ hook."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign experiment CLI formatter executed")
+
+    foreign = type("ForeignManifestCliFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe CLI detail")
+
+    def fail_validate() -> None:
+        raise fault
+
+    monkeypatch.setattr(validator, "validate_repository", fail_validate)
+    assert validator.main() == 1
+    output = capsys.readouterr()
+    assert not output.out
+    assert "ForeignManifestCliFault" in output.err
+
+
+def test_manifest_cli_native_error_retains_detail(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Exact system failures preserve a diagnostic in the operator report."""
+    fault = PermissionError("manifest inspection permission denied")
+
+    def fail_validate() -> None:
+        raise fault
+
+    monkeypatch.setattr(validator, "validate_repository", fail_validate)
+    assert validator.main() == 1
+    assert "manifest inspection permission denied" in capsys.readouterr().err
+
+
+def test_manifest_foreign_bytes_rejected_before_decode_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A supplied byte subclass cannot run custom text decoder callbacks."""
+
+    class ForeignBytes(bytes):
+        def decode(self, *_args: object, **_kwargs: object) -> str:
+            raise AssertionError("foreign experiment byte decoder hook executed")
+
+    monkeypatch.setattr(
+        validator, "_read_manifest_bytes", lambda _path: ForeignBytes(b"data")
+    )
+    with pytest.raises(validator.ExperimentManifestError, match="native byte receipt"):
+        _ = validator._read_utf8(Path("manifest.toml"))
+
+
+def test_manifest_invalid_utf8_keeps_decoder_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native invalid UTF-8 retains the underlying Unicode decoder evidence."""
+    monkeypatch.setattr(validator, "_read_manifest_bytes", lambda _path: b"\xff")
+    with pytest.raises(
+        validator.ExperimentManifestError, match="invalid experiment manifest UTF-8"
+    ) as caught:
+        _ = validator._read_utf8(Path("manifest.toml"))
+    assert type(caught.value.__cause__) is UnicodeDecodeError

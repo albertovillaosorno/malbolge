@@ -163,6 +163,23 @@ def _fail(message: str) -> Never:
     raise ExperimentManifestError(message)
 
 
+def _safe_error_detail(error: Exception) -> str:
+    """Keep native manifest failures readable without foreign formatters.
+
+    Returns:
+        Trusted native text or the exception type name for foreign errors.
+
+    """
+    if type(error) in (
+        ExperimentManifestError,
+        OSError,
+        PermissionError,
+        FileNotFoundError,
+    ):
+        return str(error)
+    return type(error).__name__
+
+
 def _mapping(value: object, context: str) -> dict[str, object]:
     if type(value) is not dict:
         _fail(f"{context} must be an exact native table")
@@ -578,6 +595,8 @@ def _read_manifest_bytes(path: Path) -> bytes:
 def _read_utf8(path: Path) -> str:
     try:
         raw = _read_manifest_bytes(path)
+        if type(raw) is not bytes:
+            _fail("experiment manifest requires native byte receipt")
     except ExperimentManifestError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -593,7 +612,9 @@ def _read_utf8(path: Path) -> str:
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError as error:
-        _fail(f"invalid experiment manifest UTF-8: {error}")
+        raise ExperimentManifestError(
+            f"invalid experiment manifest UTF-8: {error}"
+        ) from error
 
 
 def validate_repository_manifest(path: Path) -> ExperimentManifest:
@@ -650,7 +671,7 @@ def main() -> int:
     try:
         manifests = validate_repository()
     except (ExperimentManifestError, OSError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
         return 1
     _ = sys.stdout.write(f"experiment manifests valid: {len(manifests)}\n")
     return 0
