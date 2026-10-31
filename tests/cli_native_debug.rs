@@ -32,20 +32,16 @@
 
 //! End-to-end native C debug-run evidence for exact guest byte output.
 
-#[cfg(windows)]
 use std::env::temp_dir;
 #[cfg(windows)]
-use std::fs::{remove_file, write};
+use std::fs::write;
+use std::fs::{File, remove_file};
 #[cfg(target_os = "linux")]
 use std::io::Write as _;
-use std::path::Path;
-#[cfg(windows)]
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::process::Stdio;
-#[cfg(windows)]
-use std::process::id;
+use std::process::{Command, Output, id};
 
 use malbolge as _;
 
@@ -67,6 +63,103 @@ const PARITY_FIXTURES: [ParityFixture; 3] = [
 ];
 
 type ParityFixture = (&'static str, &'static [u8]);
+
+struct TemporaryRejectedCSource {
+    path: PathBuf,
+}
+
+impl TemporaryRejectedCSource {
+    fn oversized_sparse() -> Result<Self, String> {
+        let path =
+            temp_dir().join(format!("malbolge-cli-oversized-debug-{}.c", id()));
+        File::create(&path)
+            .map_err(|error| format!("create sparse C source: {error}"))?
+            .set_len(67_108_865)
+            .map_err(|error| format!("extend sparse C source: {error}"))?;
+        Ok(Self { path })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn writerless_fifo() -> Result<Self, String> {
+        let path = temp_dir()
+            .join(format!("malbolge-cli-writerless-debug-{}.c", id()));
+        let status = Command::new("/usr/bin/mkfifo")
+            .arg(&path)
+            .status()
+            .map_err(|error| format!("create C FIFO source: {error}"))?;
+        if !status.success() {
+            return Err(format!("mkfifo failed: {status}"));
+        }
+        Ok(Self { path })
+    }
+}
+
+impl Drop for TemporaryRejectedCSource {
+    fn drop(&mut self) {
+        let _ignored = remove_file(&self.path);
+    }
+}
+
+fn rejected_c_source_command(source: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge"));
+    // Source preflight must finish before invoking any native compiler.
+    let _configured = command
+        .env("MALBOLGE_CC", "nonexistent-c-compiler-for-source-preflight")
+        .arg(source);
+    command
+}
+
+fn assert_rejected_c_source(output: &Output) -> Result<(), String> {
+    let diagnostic = String::from_utf8_lossy(&output.stderr);
+    if output.status.success()
+        || !output.stdout.is_empty()
+        || !diagnostic
+            .contains("C source must be a regular file at most 64 MiB")
+    {
+        return Err(format!("unsafe C debug source admitted: {output:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn oversized_sparse_c_source_rejected_before_compile() -> Result<(), String> {
+    let source = TemporaryRejectedCSource::oversized_sparse()?;
+    let output = rejected_c_source_command(&source.path)
+        .output()
+        .map_err(|error| format!("run oversized C source: {error}"))?;
+    assert_rejected_c_source(&output)
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn writerless_c_fifo_and_symlink_fail_without_waiting_for_writer()
+-> Result<(), String> {
+    use std::os::unix::fs::symlink;
+
+    let source = TemporaryRejectedCSource::writerless_fifo()?;
+    let alias = TemporaryRejectedCSource {
+        path: temp_dir()
+            .join(format!("malbolge-cli-writerless-debug-alias-{}.c", id())),
+    };
+    symlink(&source.path, &alias.path)
+        .map_err(|error| format!("create C FIFO alias: {error}"))?;
+    for path in [&source.path, &alias.path] {
+        let output = Command::new("/usr/bin/timeout")
+            .arg("3s")
+            .arg(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(path)
+            .env("MALBOLGE_CC", "nonexistent-c-compiler-for-source-preflight")
+            .output()
+            .map_err(|error| format!("run writerless C source: {error}"))?;
+        if output.status.code() == Some(124i32) {
+            return Err(format!(
+                "C debug inspection blocked on FIFO: {output:?}"
+            ));
+        }
+        assert_rejected_c_source(&output)?;
+    }
+    Ok(())
+}
 
 #[cfg(windows)]
 struct InvalidTemporaryCSource {

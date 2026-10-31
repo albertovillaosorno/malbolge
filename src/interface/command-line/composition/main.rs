@@ -72,6 +72,7 @@ const DOOM_IWAD_NAMES: [&str; 8] = [
     "tnt.wad",
 ];
 const C_RUN_PREFIX: &str = "malbolge-c-run";
+const MAX_C_DEBUG_SOURCE_BYTES: u64 = 67_108_864;
 const LLVM_VERSION: &str = "22.1.8";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 const INPUT_STDIN_ARGUMENT: &str = "--input-stdin";
@@ -174,8 +175,12 @@ fn build_c_run_plan(
     source: &Path,
     arguments: &[OsString],
 ) -> Result<CRunPlan, String> {
-    let bytes = fs::read(source)
-        .map_err(|error| format!("failed to inspect C source: {error}"))?;
+    let bytes = read_regular_source(
+        source,
+        MAX_C_DEBUG_SOURCE_BYTES,
+        "C source",
+        "64 MiB",
+    )?;
     let adapters = inspect_c_source(&bytes);
     let mut plan = if adapters.doom_host() {
         build_doom_run_plan(source, arguments)?
@@ -770,7 +775,7 @@ fn run_classic(source: &[u8], input: Vec<u8>) -> Result<u64, String> {
 // Nonblocking open prevents an unconnected FIFO from stalling the CLI.
 // The opened handle is checked for regular-file identity before any read.
 #[cfg(any(target_os = "linux", target_os = "android"))]
-fn open_malbolge_source(path: &Path) -> Result<File, String> {
+fn open_regular_source(path: &Path, kind: &str) -> Result<File, String> {
     use std::os::unix::fs::OpenOptionsExt as _;
 
     const LINUX_O_NONBLOCK: i32 = 1 << 11;
@@ -778,44 +783,53 @@ fn open_malbolge_source(path: &Path) -> Result<File, String> {
         .read(true)
         .custom_flags(LINUX_O_NONBLOCK)
         .open(path)
-        .map_err(|error| format!("failed to open Malbolge source: {error}"))
+        .map_err(|error| format!("failed to open {kind}: {error}"))
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
-fn open_malbolge_source(path: &Path) -> Result<File, String> {
+fn open_regular_source(path: &Path, kind: &str) -> Result<File, String> {
     if !fs::metadata(path)
-        .map_err(|error| format!("failed to stat Malbolge source: {error}"))?
+        .map_err(|error| format!("failed to stat {kind}: {error}"))?
         .is_file()
     {
-        return Err(String::from("Malbolge source must be a regular file"));
+        return Err(format!("{kind} must be a regular file"));
     }
-    File::open(path)
-        .map_err(|error| format!("failed to open Malbolge source: {error}"))
+    File::open(path).map_err(|error| format!("failed to open {kind}: {error}"))
+}
+
+fn read_regular_source(
+    path: &Path,
+    max_bytes: u64,
+    kind: &str,
+    limit: &str,
+) -> Result<Vec<u8>, String> {
+    let file = open_regular_source(path, kind)?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("failed to stat {kind}: {error}"))?;
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return Err(format!("{kind} must be a regular file at most {limit}"));
+    }
+    // A file may grow after fstat; the additional byte detects overflow
+    // without allocating or scanning an unbounded source stream.
+    let mut bytes = Vec::new();
+    let _read = file
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read {kind}: {error}"))?;
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > max_bytes {
+        return Err(format!("{kind} exceeds {limit}"));
+    }
+    Ok(bytes)
 }
 
 fn read_malbolge_source(path: &Path) -> Result<Vec<u8>, String> {
-    let file = open_malbolge_source(path)?;
-    let metadata = file
-        .metadata()
-        .map_err(|error| format!("failed to stat Malbolge source: {error}"))?;
-    if !metadata.is_file() || metadata.len() > MAX_MALBOLGE_SOURCE_BYTES {
-        return Err(String::from(
-            "Malbolge source must be a regular file at most 128 MiB",
-        ));
-    }
-    // Even if an ordinary file grows after fstat, never read beyond the
-    // cap plus one overflow-detection byte.
-    let mut bytes = Vec::new();
-    let _read = file
-        .take(MAX_MALBOLGE_SOURCE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("failed to read Malbolge source: {error}"))?;
-    if u64::try_from(bytes.len()).unwrap_or(u64::MAX)
-        > MAX_MALBOLGE_SOURCE_BYTES
-    {
-        return Err(String::from("Malbolge source exceeds 128 MiB"));
-    }
-    Ok(bytes)
+    read_regular_source(
+        path,
+        MAX_MALBOLGE_SOURCE_BYTES,
+        "Malbolge source",
+        "128 MiB",
+    )
 }
 
 fn run_malbolge(

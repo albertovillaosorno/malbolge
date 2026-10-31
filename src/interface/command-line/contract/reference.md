@@ -102,6 +102,13 @@ and reviewed for the matching repository/runtime version.
 
 ## `.c`: fast native debugging only
 
+Before scanning for native-debug adapters, the CLI admits only a regular C
+source file of at most 64 MiB. It reads through a single checked file handle,
+limits reads even if the file grows after inspection, and uses nonblocking
+opens on Linux/Android so a FIFO or a FIFO symlink cannot stall source
+inspection. This host-only source limit does not constrain the C-to-Malbolge
+compiler or the guest runtime.
+
 `malbolge program.c` compiles the C file directly for the current host, runs the
 temporary executable with inherited stdin/stdout/stderr, and removes the native
 artifact after the process exits. This path deliberately does **not** translate
