@@ -36,30 +36,26 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from pathlib import Path
 from typing import cast
 
 import pytest
 
-from scripts.validate import c_abi
-from scripts.validate import c_abi_source
+from scripts.validate import c_abi, c_abi_source
+from scripts.validate import main as manual_validator
 
 ROOT = Path(__file__).resolve().parents[1]
 ABI_PATH = ROOT / "docs/technical/specification/c-abi-v1.json"
 PROFILE_PATH = ROOT / "malbolge.json"
 ABI_CONTRACT_DOC = (
-    ROOT
-    / "docs/technical/compiler/c-profile"
-    / "deterministic-c-to-malbolge-abi.md"
+    ROOT / "docs/technical/compiler/c-profile" / "deterministic-c-to-malbolge-abi.md"
 )
 ACCEPTED = ROOT / "tests/tidy/accepted"
 REJECTED = ROOT / "tests/tidy/rejected"
 CLANG_TIDY = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang-tidy.bin"
-VALIDATOR = (
-    ROOT / "src/automation/repository/composition/scripts/validate/main.py"
-)
+VALIDATOR = ROOT / "src/automation/repository/composition/scripts/validate/main.py"
 VALIDATOR_CONFIGURATION_ERROR = 2
 WRONG_TIDY_VERSION = "clang-tidy must report LLVM 22.1.8"
 EXPECTED_REJECTIONS = {
@@ -106,9 +102,9 @@ def test_c_abi_contract_tracks_current_profile_geometry() -> None:
     memory = cast("dict[str, object]", current["memory"])
     semantics = cast("dict[str, object]", current["semantics"])
     contract = ABI_CONTRACT_DOC.read_text(encoding="utf-8")
-    assert f"{word["trits"]}-trit Malbolge words" in contract
-    assert f"{memory["words"]:,} words" in contract
-    assert f"EOF word {semantics["eof_word"]:,}" in contract
+    assert f"{word['trits']}-trit Malbolge words" in contract
+    assert f"{memory['words']:,} words" in contract
+    assert f"EOF word {semantics['eof_word']:,}" in contract
 
 
 def test_duplicate_abi_keys_fail_closed() -> None:
@@ -122,9 +118,7 @@ def test_unknown_abi_key_fails_closed() -> None:
     document = c_abi.loads_document(_canonical_text())
     document["host_pointer_bits"] = 64
     changed = json.dumps(document)
-    with pytest.raises(
-        c_abi.CAbiValidationError, match=r"unknown=.*host_pointer_bits"
-    ):
+    with pytest.raises(c_abi.CAbiValidationError, match=r"unknown=.*host_pointer_bits"):
         _ = c_abi.validate_text(changed)
 
 
@@ -218,9 +212,7 @@ def test_rejected_abi_fixtures_have_source_located_codes() -> None:
         assert EXPECTED_REJECTIONS[source.name] in {
             diagnostic.code for diagnostic in diagnostics
         }
-        assert all(
-            diagnostic.path == source.resolve() for diagnostic in diagnostics
-        )
+        assert all(diagnostic.path == source.resolve() for diagnostic in diagnostics)
         assert all(diagnostic.line > 0 for diagnostic in diagnostics)
         assert all(diagnostic.column > 0 for diagnostic in diagnostics)
 
@@ -229,11 +221,7 @@ def test_imported_forbidden_alias_is_diagnosed_at_source_use() -> None:
     """Included forbidden types are reported at the selected source use."""
     _require_llvm()
     source = (
-        ROOT
-        / "tests"
-        / "tidy"
-        / "plugin-rejected"
-        / "abi_imported_forbidden_alias.c"
+        ROOT / "tests" / "tidy" / "plugin-rejected" / "abi_imported_forbidden_alias.c"
     )
 
     diagnostics = c_abi_source.analyze_source(source)
@@ -283,9 +271,7 @@ def test_invalid_guest_source_utf8_fails_closed(tmp_path: Path) -> None:
     _require_llvm()
     source = tmp_path / "invalid.c"
     _ = source.write_bytes(bytes((0x69, 0x6E, 0x74, 0x20, 0xFF, 0x3B)))
-    with pytest.raises(
-        c_abi_source.SourceAnalysisError, match="invalid guest-C UTF-8"
-    ):
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="invalid guest-C UTF-8"):
         _ = c_abi_source.analyze_source(source)
 
 
@@ -391,9 +377,7 @@ def test_abi_document_rejects_symlinked_directory(tmp_path: Path) -> None:
     """ABI authority cannot be borrowed through a linked parent directory."""
     external = tmp_path / "outside"
     external.mkdir()
-    _ = (external / "c-abi-v1.json").write_text(
-        _canonical_text(), encoding="utf-8"
-    )
+    _ = (external / "c-abi-v1.json").write_text(_canonical_text(), encoding="utf-8")
     alias = tmp_path / "alias"
     alias.symlink_to(external, target_is_directory=True)
     with pytest.raises(c_abi.CAbiValidationError, match="redirect"):
@@ -406,3 +390,37 @@ def test_abi_document_rejects_oversized_regular_file(tmp_path: Path) -> None:
     _ = manifest.write_bytes(b" " * ((1024 * 1024) + 1))
     with pytest.raises(c_abi.CAbiValidationError, match="byte limit"):
         _ = c_abi.load_document(manifest)
+
+
+@pytest.mark.parametrize("redirect", ("source", "directory", "root"))
+def test_manual_doom_discovery_rejects_redirects(redirect: str, tmp_path: Path) -> None:
+    """Explicit recursive doom scanning must not accept redirected inputs."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    _ = (doom / "regular.c").write_text("int regular;\n", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "hidden.c").write_text("int hidden;\n", encoding="utf-8")
+    if redirect == "source":
+        (doom / "alias.c").symlink_to(outside / "hidden.c")
+    elif redirect == "directory":
+        (doom / "alias").symlink_to(outside, target_is_directory=True)
+    else:
+        _ = doom.rename(tmp_path / "moved")
+        doom.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(manual_validator.InputError, match="redirect"):
+        _ = manual_validator._validated_files([str(doom)])  # pyright: ignore[reportPrivateUsage]
+
+
+def test_manual_doom_accepts_physical_nesting_and_explicit_alias(
+    tmp_path: Path,
+) -> None:
+    """Ordinary nested sources and explicitly named source links still work."""
+    nested = tmp_path / "doom" / "nested"
+    nested.mkdir(parents=True)
+    source = nested / "example.c"
+    _ = source.write_text("int example;\n", encoding="utf-8")
+    assert manual_validator._validated_files([str(tmp_path / "doom")]) == (source,)  # pyright: ignore[reportPrivateUsage]
+    alias = tmp_path / "alias.c"
+    alias.symlink_to(source)
+    assert manual_validator._validated_files([str(alias)]) == (source,)  # pyright: ignore[reportPrivateUsage]

@@ -35,12 +35,12 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-from pathlib import Path
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed executable argv, never a shell command.
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Never
 
 if __package__ in {None, ""}:
@@ -48,11 +48,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(composition_root))
 
 from scripts.repository_root import repository_root
-from scripts.validate import c_abi
-from scripts.validate import c_abi_source
-from scripts.validate import c_libc
-from scripts.validate import c_libc_source
-from scripts.validate import tidy_toolchain
+from scripts.validate import c_abi, c_abi_source, c_libc, c_libc_source, tidy_toolchain
 
 ROOT = repository_root(Path(__file__))
 DEFAULT_PROFILE = (
@@ -165,8 +161,7 @@ def _parser() -> argparse.ArgumentParser:
         nargs="+",
         metavar="INPUT",
         help=(
-            "explicit .c units; a directory is accepted only when its "
-            "basename is doom"
+            "explicit .c units; a directory is accepted only when its basename is doom"
         ),
     )
     _ = parser.add_argument(
@@ -185,10 +180,7 @@ def _parser() -> argparse.ArgumentParser:
         "--clang",
         type=Path,
         default=c_abi_source.PINNED_CLANG,
-        help=(
-            "Clang executable for ABI AST preflight "
-            "(default: pinned LLVM 22.1.8)"
-        ),
+        help=("Clang executable for ABI AST preflight (default: pinned LLVM 22.1.8)"),
     )
     _ = parser.add_argument(
         "--plugin",
@@ -205,13 +197,13 @@ def _parse_arguments() -> _Arguments:
 
 
 def _doom_files(path: Path) -> tuple[Path, ...]:
-    files = tuple(
-        sorted(
-            candidate.resolve()
-            for candidate in path.rglob("*")
-            if candidate.is_file() and candidate.suffix.casefold() == C_SUFFIX
-        )
-    )
+    sources: list[Path] = []
+    for candidate in path.rglob("*"):
+        if candidate.is_symlink() or candidate.is_junction():
+            _fail(f"recursive doom entry must not redirect: {candidate}")
+        if candidate.is_file() and candidate.suffix.casefold() == C_SUFFIX:
+            sources.append(candidate.resolve())
+    files = tuple(sorted(sources))
     if not files:
         _fail(f"doom directory contains no C translation units: {path}")
     return files
@@ -220,6 +212,8 @@ def _doom_files(path: Path) -> tuple[Path, ...]:
 def _expand_directory(path: Path) -> tuple[Path, ...]:
     if path.name.casefold() != DOOM_DIRECTORY:
         _fail(f"only an explicitly named doom directory is accepted: {path}")
+    if path.is_symlink() or path.is_junction():
+        _fail(f"recursive doom directory must not redirect: {path}")
     return _doom_files(path)
 
 

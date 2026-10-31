@@ -152,6 +152,10 @@ Guest-C enrollment remains explicit. The manual validator accepts named `.c`
 translation units, plus one explicitly passed directory whose basename is
 `doom`. It does not infer guest status from file extension, directory ownership,
 source comments, or a repository-wide `.clang-tidy` file.
+Recursive `doom` selection rejects symlink and junction roots or discovered
+entries before admitting the C units. Explicitly named single-file aliases
+remain selectable. These admission checks do not freeze source bytes between
+selection and the subsequent compiler execution.
 
 When the canonical project host and DLL are both present, `main.py` pairs them
 automatically. An explicitly selected upstream `clang-tidy.exe` does not inherit
