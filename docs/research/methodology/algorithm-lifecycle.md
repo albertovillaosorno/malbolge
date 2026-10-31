@@ -48,7 +48,9 @@ Every executable research mirror with `experiment.toml` also carries
 `src/automation/repository/composition/scripts/validate/algorithm_lifecycle.py`.
 Lifecycle file loading accepts at most 1 MiB from a stable regular-file
 descriptor, rejecting symlinked leaves, special files, file replacements, and
-invalid UTF-8 before TOML admission. The stable algorithm ID is bound to its
+invalid UTF-8 before TOML admission. Host TOML parser capacity errors,
+including oversized decimal integer tokens, produce typed lifecycle failures.
+The stable algorithm ID is bound to its
 research record and experiment manifest. Decision dates require the exact TOML
 local-date value, excluding local and offset date-time values even though Python
 `datetime` derives from `date`. Evidence references must be regular

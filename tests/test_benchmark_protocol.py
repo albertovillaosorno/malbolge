@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Never, cast
 
@@ -92,6 +93,17 @@ def _expect_failure(text: str, message: str) -> None:
         return
     failure = "invalid benchmark protocol unexpectedly succeeded"
     raise AssertionError(failure)
+
+
+def test_benchmark_decimal_digit_limit_fails_typed() -> None:
+    """Host TOML integer limits must not escape as raw ValueErrors."""
+    limit = sys.get_int_max_str_digits()
+    if limit == 0 or limit > 20_000:
+        pytest.skip("host decimal token limit unavailable")
+    text = _text(DETERMINISTIC).replace(
+        "repetitions = 5", "repetitions = " + "9" * (limit + 1)
+    )
+    _expect_failure(text, "invalid TOML exceeds host parser capacity")
 
 
 def test_protocol_file_rejects_invalid_utf8(tmp_path: Path) -> None:

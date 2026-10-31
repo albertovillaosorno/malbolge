@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -108,6 +109,17 @@ def _expect_failure(text: str, message: str) -> None:
         return
     failure = "invalid lifecycle unexpectedly succeeded"
     raise AssertionError(failure)
+
+
+def test_lifecycle_decimal_digit_limit_fails_typed() -> None:
+    """Host parser capacity cannot escape as a raw integer ValueError."""
+    limit = sys.get_int_max_str_digits()
+    if limit == 0 or limit > 20_000:
+        pytest.skip("host decimal token limit unavailable")
+    text = _base(validator.EXPERIMENTAL).replace(
+        "schema_version = 1", "schema_version = " + "9" * (limit + 1)
+    )
+    _expect_failure(text, "invalid TOML exceeds host parser capacity")
 
 
 def test_lifecycle_file_rejects_invalid_utf8(tmp_path: Path) -> None:

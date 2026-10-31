@@ -49,6 +49,8 @@ Benchmark evidence protocol v1 is validated by
 `src/automation/repository/composition/scripts/validate/benchmark_protocol.py`.
 Protocol files and their linked experiment manifests reject invalid UTF-8
 through the stable benchmark-protocol error boundary before TOML admission.
+TOML parser capacity errors, such as oversized decimal integer tokens, also
+produce typed benchmark-protocol failures.
 The validator admits only physical regular evidence files whose parent
 components are unlinked directories, before reading and again after. It pins
 the opened descriptor to its device, inode, byte length, and modification/change
