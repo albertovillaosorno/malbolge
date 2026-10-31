@@ -232,6 +232,21 @@ code-size explosion or compilation cost.
   EOF, short, exact, surplus and high-byte input and exact step receipts;
   the samples still do not establish unbounded byte-stream semantics.
 
+- Pilot v10 extends the bounded source-selected shared-code witness to
+  four independently CEB2-bound one/two/three/four-pair programs.
+  All native code is identical apart from graphical operands at physical
+  cells 124, 127 and 130. A real fourth `i@87` reads M[130]=81/97
+  and halts after three echoes or executes a fourth native I/O handler;
+  all 102 descriptor glyphs at 131–232 remain unmodified. Independent
+  canonical host admission rejects other counts, operand/code/data
+  forgeries, and foreign source identities. Actual profile-VM traces
+  establish 233 cells and 86/89/92/94 steps versus direct 3/5/7/9
+  cells and steps. General CLI capsules match independently restored
+  direct VM output on 20 EOF/short/exact/surplus/high-byte cases
+  (40 processes) with exact step receipts. This is a negative bounded
+  size/step result, not a guest bytecode decoder, repeat loop, guest
+  SHA-256 verifier, general I/O proof, or an adopted compiler backend.
+
 - Expected durable artifact surface: `compiler/`, `src/`, `tests/compiler/`.
 - Required evidence: golden/round-trip or normalized stage fixtures,
   deterministic hashes where promised, and end-to-end lowering regression cases.

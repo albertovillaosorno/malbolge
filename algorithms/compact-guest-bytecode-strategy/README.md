@@ -465,11 +465,45 @@ neither reads the packed CEB2 count nor decodes ordinal instructions,
 maintains a bytecode PC, loops, authenticates its own digest or supports
 arbitrary source operations. All other counts reject on the host.
 
+## Four distinct echoes through one shared native code island v10 (2026-10-31)
+
+`quadruple_dispatch.rs` and `pilot-v10.toml` extend the same bounded
+research question to four independently SHA-256-bound canonical CEB2
+one/two/three/four-pair programs. All 233 physical graphical source cells
+share identical native code except three *data* operand words at 124, 127
+and 130; 102 descriptor glyphs occupy source addresses 131–232. The
+first two guest branches are unchanged, but `i@87` now reads `M[130]`
+after the third native `/@85`, `<@86` pair. Loader-valid 81 selects
+`v@82` after three echoed bytes; 97 selects `/@98`, `<@99`, `v@100`
+for a fourth. The third-echo halt therefore costs one additional jump.
+
+The normative profile VM traces real guest reads at 121, 124, 127 and
+130, pointer successors, mandatory XLAT2 code writes at 90, 87/104,
+101/84 and 81/97, actual binary I/O, and all 102 unchanged CEB2 words.
+Two successful four-byte streams per canonical program agree with
+independently encoded direct source. A separate host admission matrix
+rejects every other loader-valid operand rank, selected code/payload
+forgeries, truncated/overlong source, unsupported original counts and
+foreign canonical identities. Mutating only fourth operand 81 to 97
+makes a genuine three-pair guest execute a fourth echo while host
+admission rejects the provenance mismatch.
+
+The real general Malbolge CLI also executes distinct direct/guest capsules
+for all four programs over empty, short, exact, surplus and high-byte
+stdin cases (20 inputs, 40 processes). Its stdout matches a separately
+restored normative direct VM and its step receipt matches each branch.
+Actual source-cell/step costs are **233/86 vs direct 3/3**,
+**233/89 vs 5/5**, **233/92 vs 7/7**, and **233/94 vs 9/9**. These are
+negative small cases. Only source-selected hand-placed native echo paths
+are executed: the guest does not decode the packed ordinal, maintain a
+bytecode counter, iterate a reusable loop, authenticate SHA-256, or lower
+arbitrary C operations. There is no measured general workload benefit.
+
 ## Status
 
 No **reusable** VM-resident bytecode interpreter has been implemented.
-The executable v6/v7 research probes prove one and two hand-placed guest
-opcode dispatches, but no generic decoding, count-driven loop, in-guest
+The v6–v10 research probes prove hand-placed guest choices through up to
+four echoes, but no generic decoding, count-driven loop, in-guest
 source verification or compiler integration. The small equivalent input
 workloads have strictly worse source-cell and guest-step counts than direct
 lowering; no compilation-time, memory or verification-cost advantage has

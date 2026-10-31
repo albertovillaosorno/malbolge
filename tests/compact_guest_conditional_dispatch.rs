@@ -39,6 +39,8 @@ pub mod conditional;
 pub mod guest_probe;
 #[path = "../algorithms/compact-guest-bytecode-strategy/isolated_dispatch.rs"]
 pub mod isolated;
+#[path = "../algorithms/compact-guest-bytecode-strategy/quadruple_dispatch.rs"]
+pub mod quadruple;
 #[path = "../algorithms/compact-guest-bytecode-strategy/echo_macro.rs"]
 pub mod strategy;
 #[path = "../algorithms/compact-guest-bytecode-strategy/triple_dispatch.rs"]
@@ -63,6 +65,8 @@ use strategy::bridge::ternary::{
 
 const CONFIG: &str = include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v8.toml");
 const CONFIG_V9: &str = include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v9.toml");
+const CONFIG_V10: &str =
+    include_str!("../algorithms/compact-guest-bytecode-strategy/pilot-v10.toml");
 
 type CanonicalGuestImage = (TernaryProgram, Vec<u8>);
 
@@ -1192,7 +1196,7 @@ fn three_way_guest_capsules_match_direct_one_two_three_echo_cli() -> Result<(), 
     Ok(())
 }
 
-fn run_three_way_capsule_for_input(
+fn run_compact_echo_capsule_for_input(
     path: &Path,
     input: &[u8],
     expected_steps: usize,
@@ -1286,8 +1290,9 @@ fn three_way_capsules_match_direct_and_vm_on_stdin_boundaries() -> Result<(), St
             );
             let expected = oracle.output();
             let direct_stdout =
-                run_three_way_capsule_for_input(&direct_path, &input, direct_steps)?;
-            let guest_stdout = run_three_way_capsule_for_input(&guest_path, &input, guest_steps)?;
+                run_compact_echo_capsule_for_input(&direct_path, &input, direct_steps)?;
+            let guest_stdout =
+                run_compact_echo_capsule_for_input(&guest_path, &input, guest_steps)?;
             assert_eq!(
                 direct_stdout, expected,
                 "direct CLI differs from normative VM"
@@ -1354,6 +1359,440 @@ fn changing_only_third_operand_changes_real_guest_output_but_fails_source_bindin
                 u32::from(*image.get(address).ok_or("source CEB2 glyph")?),
                 "altered VM still must never encrypt protected data"
             );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn four_way_guest_opcode_contract_is_versioned_and_bounded() {
+    for line in [
+        "schema = \"compact-guest-bytecode-pilot-v10\"",
+        "accepted_original_echo_pairs = [1, 2, 3, 4]",
+        "native_handler_code_identical_across_pair_counts = true",
+        "source_cells = 233",
+        "second_operand_address = 124",
+        "third_operand_address = 127",
+        "fourth_operand_address = 130",
+        "fourth_operand_halt_graphical_word = 81",
+        "fourth_operand_continue_graphical_word = 97",
+        "three_pair_guest_steps = 92",
+        "four_pair_guest_steps = 94",
+        "protected_ce_b2_start = 131",
+        "protected_ce_b2_glyphs = 102",
+        "operand_reads_inside_guest = true",
+        "self_encryption_mutates_descriptor = false",
+        "sha256_checked_inside_guest = false",
+        "count_driven_loop_inside_guest = false",
+        "general_bytecode_decoder_inside_guest = false",
+    ] {
+        assert!(
+            CONFIG_V10.lines().any(|actual| actual == line),
+            "versioned 4-way research must pin {line}"
+        );
+    }
+}
+
+fn canonical_four_way_source(pairs: u32) -> Result<CanonicalGuestImage, String> {
+    let program = canonical_echo_program(pairs)?;
+    let candidate = binding::encode_bound_echo_macro(&program, current_profile())
+        .map_err(|error| format!("CEB2 source identity n={pairs}: {error:?}"))?;
+    let source = quadruple::embed_quadruple_echo_dispatch(&program, current_profile(), &candidate)
+        .map_err(|error| format!("4-way proposal n={pairs}: {error:?}"))?;
+    if quadruple::admit_quadruple_echo_dispatch(&program, current_profile(), &source)
+        != Ok(candidate)
+    {
+        return Err(format!("independent 4-way admission rejected n={pairs}"));
+    }
+    Ok((program, source))
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "four real branch/control-flow witnesses"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "real VM, direct baseline and full protected tail"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "independent branch and XLAT2 trace checks"
+)]
+#[expect(
+    clippy::excessive_nesting,
+    reason = "traces for four source-bound programs"
+)]
+fn four_original_programs_share_guest_handlers_and_reach_four_native_echo_counts()
+-> Result<(), String> {
+    let sources = [
+        canonical_four_way_source(1)?,
+        canonical_four_way_source(2)?,
+        canonical_four_way_source(3)?,
+        canonical_four_way_source(4)?,
+    ];
+    let operands = [
+        (87u32, 101u32, 81u32),
+        (104, 101, 81),
+        (104, 84, 81),
+        (104, 84, 97),
+    ];
+    let code = &sources.first().ok_or("first code image")?.1;
+    for (index, (program, source)) in sources.iter().enumerate() {
+        let pairs = index.saturating_add(1);
+        let (second, third, fourth) = *operands.get(index).ok_or("bound operands")?;
+        assert_eq!(source.len(), quadruple::SOURCE_CELLS);
+        assert_eq!(source.get(quadruple::FIRST_WORD_ADDRESS), Some(&90));
+        for (position, operand) in [
+            (quadruple::SECOND_WORD_ADDRESS, second),
+            (quadruple::THIRD_WORD_ADDRESS, third),
+            (quadruple::FOURTH_WORD_ADDRESS, fourth),
+        ] {
+            assert_eq!(
+                source.get(position).map(|&glyph| u32::from(glyph)),
+                Some(operand)
+            );
+        }
+        for position in 0..quadruple::CEB2_START {
+            if ![
+                quadruple::SECOND_WORD_ADDRESS,
+                quadruple::THIRD_WORD_ADDRESS,
+                quadruple::FOURTH_WORD_ADDRESS,
+            ]
+            .contains(&position)
+            {
+                assert_eq!(
+                    source.get(position),
+                    code.get(position),
+                    "native code at {position} must be byte-identical across all counts"
+                );
+            }
+        }
+        for (position, &glyph) in source.iter().enumerate() {
+            assert!(
+                matches!(
+                    decode_profile_instruction(
+                        u32::from(glyph),
+                        u32::try_from(position).map_err(|error| error.to_string())?
+                    ),
+                    Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                ),
+                "guest and CEB2 loader opcode at {position}"
+            );
+        }
+        let direct = strategy::bridge::encode_successful_byte_echo(program, current_profile())
+            .map_err(|error| format!("direct CEB2 baseline n={pairs}: {error:?}"))?;
+        assert_eq!(direct.source().len(), 2 * pairs + 1);
+        for input in [vec![0, 128, 255, 42], vec![255, 0, 1, 128]] {
+            let steps = *quadruple::GUEST_STEPS.get(index).ok_or("guest bound")?;
+            let mut guest = ProfileMachine::from_source(current_profile(), source, input.clone())
+                .map_err(|error| format!("load four-way guest n={pairs}: {error:?}"))?;
+            let mut jumps = Vec::new();
+            let outcome = guest
+                .run_traced(steps, &mut |trace| {
+                    if [81u32, 93, 107, 87].contains(&trace.before.registers.code_pointer) {
+                        jumps.push(*trace);
+                    }
+                })
+                .map_err(|error| format!("run 4-way guest n={pairs}: {error:?}"))?;
+            assert!(
+                matches!(outcome, RunOutcome::Terminated {
+                steps: actual, ..
+            } if actual == steps),
+                "guest reaches exact v10 halt"
+            );
+            let mut expected = vec![(81u32, 121u32, 90u32), (93, 124, second)];
+            if pairs >= 2 {
+                expected.push((107, 127, third));
+            }
+            if pairs >= 3 {
+                expected.push((87, 130, fourth));
+            }
+            assert_eq!(jumps.len(), expected.len());
+            for (trace, (code_address, data_address, operand)) in jumps.iter().zip(expected) {
+                assert_eq!(trace.decoded, Some(b'i'));
+                assert_eq!(trace.before.registers.code_pointer, code_address);
+                assert_eq!(trace.before.registers.data_pointer, data_address);
+                assert_eq!(
+                    trace
+                        .memory_reads
+                        .data
+                        .map(|read| (read.address, read.value)),
+                    Some((data_address, operand)),
+                    "guest must physically read operand"
+                );
+                assert_eq!(
+                    trace.memory_delta.encryption.map(|write| write.address),
+                    Some(operand),
+                    "native jump may encrypt only unprotected code"
+                );
+                assert_eq!(trace.after.registers.code_pointer, operand + 1);
+            }
+            let mut baseline =
+                ProfileMachine::from_source(current_profile(), direct.source(), input.clone())
+                    .map_err(|error| format!("load independent n={pairs} source: {error:?}"))?;
+            let direct_steps = pairs * 2 + 1;
+            assert!(
+                matches!(baseline.run(direct_steps), Ok(RunOutcome::Terminated {
+                steps: actual, ..
+            }) if actual == direct_steps)
+            );
+            assert_eq!(guest.output(), baseline.output());
+            assert_eq!(guest.output().len(), pairs);
+            assert_eq!(guest.input_consumed(), baseline.input_consumed());
+            for address in quadruple::CEB2_START..quadruple::SOURCE_CELLS {
+                assert_eq!(
+                    guest
+                        .memory_word(u32::try_from(address).map_err(|error| error.to_string())?)
+                        .map_err(|error| format!("read protected source: {error:?}"))?,
+                    u32::from(*source.get(address).ok_or("original CEB2 glyph")?),
+                    "exact CEB2 source-bound data survives all guest self-encryption"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "untrusted graphical source attacks"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "all three operands, code and data boundaries"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "source/descriptor adversarial admission"
+)]
+fn four_way_host_admission_rejects_foreign_bound_sources_and_graphical_forgeries()
+-> Result<(), String> {
+    for unsupported in [5u32, 7, 64, 2047] {
+        let original = canonical_echo_program(unsupported)?;
+        let bound = binding::encode_bound_echo_macro(&original, current_profile())
+            .map_err(|error| format!("unsupported but valid CEB2: {error:?}"))?;
+        assert_eq!(
+            quadruple::embed_quadruple_echo_dispatch(&original, current_profile(), &bound),
+            Err(quadruple::QuadrupleDispatchError::UnsupportedEchoCount)
+        );
+    }
+    for pairs in [1u32, 2, 3, 4] {
+        let (program, source) = canonical_four_way_source(pairs)?;
+        let original = binding::encode_bound_echo_macro(&program, current_profile())
+            .map_err(|error| format!("original source-bound CEB2: {error:?}"))?;
+        for position in [
+            quadruple::SECOND_WORD_ADDRESS,
+            quadruple::THIRD_WORD_ADDRESS,
+            quadruple::FOURTH_WORD_ADDRESS,
+        ] {
+            let phase = u32::try_from(position).map_err(|error| error.to_string())?;
+            let glyph = *source.get(position).ok_or("source operand")?;
+            let mut alternatives = 0usize;
+            for replacement in (33u8..=126).filter(|&value| {
+                value != glyph
+                    && matches!(
+                        decode_profile_instruction(u32::from(value), phase),
+                        Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                    )
+            }) {
+                let mut changed = source.clone();
+                *changed.get_mut(position).ok_or("branch cell")? = replacement;
+                assert!(
+                    quadruple::admit_quadruple_echo_dispatch(&program, current_profile(), &changed)
+                        .is_err(),
+                    "every loader-valid operand forgery must reject"
+                );
+                alternatives += 1;
+            }
+            assert_eq!(alternatives, 7, "all eight source glyph ranks tested");
+        }
+        for position in [
+            0usize, 81, 82, 85, 86, 87, 88, 91, 93, 98, 99, 100, 102, 105, 106, 107, 121,
+        ] {
+            let phase = u32::try_from(position).map_err(|error| error.to_string())?;
+            let glyph = *source.get(position).ok_or("source code glyph")?;
+            let replacement = (33u8..=126)
+                .find(|&value| {
+                    value != glyph
+                        && matches!(
+                            decode_profile_instruction(u32::from(value), phase),
+                            Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                        )
+                })
+                .ok_or("different loader-valid code glyph")?;
+            let mut changed = source.clone();
+            *changed.get_mut(position).ok_or("code cell")? = replacement;
+            assert!(
+                quadruple::admit_quadruple_echo_dispatch(&program, current_profile(), &changed)
+                    .is_err(),
+                "all native code substitutions must reject"
+            );
+        }
+        for position in [
+            quadruple::CEB2_START,
+            quadruple::CEB2_START + 32,
+            quadruple::SOURCE_CELLS - 1,
+        ] {
+            let phase = u32::try_from(position).map_err(|error| error.to_string())?;
+            let glyph = *source.get(position).ok_or("bound glyph")?;
+            let replacement = (33u8..=126)
+                .find(|&value| {
+                    value != glyph
+                        && matches!(
+                            decode_profile_instruction(u32::from(value), phase),
+                            Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                        )
+                })
+                .ok_or("different descriptor glyph")?;
+            let mut changed = source.clone();
+            *changed.get_mut(position).ok_or("descriptor cell")? = replacement;
+            assert!(
+                quadruple::admit_quadruple_echo_dispatch(&program, current_profile(), &changed)
+                    .is_err(),
+                "bound CEB2 digest and padding must reject descriptor drift"
+            );
+        }
+        for length in [0usize, 87, 130, 131, quadruple::SOURCE_CELLS - 1] {
+            assert_eq!(
+                quadruple::admit_quadruple_echo_dispatch(
+                    &program,
+                    current_profile(),
+                    source.get(..length).ok_or("source slice")?
+                ),
+                Err(quadruple::QuadrupleDispatchError::InvalidSource)
+            );
+        }
+        let mut extra = source.clone();
+        extra.push(b'!');
+        assert_eq!(
+            quadruple::admit_quadruple_echo_dispatch(&program, current_profile(), &extra),
+            Err(quadruple::QuadrupleDispatchError::InvalidSource)
+        );
+        let mut foreign = program.clone();
+        foreign.source_id = format!("other/equal-count-{pairs}.c");
+        assert!(
+            quadruple::admit_quadruple_echo_dispatch(&foreign, current_profile(), &source).is_err(),
+            "an equal-count foreign canonical source must fail SHA-256 binding"
+        );
+        assert!(
+            quadruple::embed_quadruple_echo_dispatch(&foreign, current_profile(), &original)
+                .is_err(),
+            "candidate cannot be re-bound to unrelated original source"
+        );
+        assert_eq!(
+            quadruple::admit_quadruple_echo_dispatch(&program, current_profile(), &source),
+            Ok(original)
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "guest/host trust separation witness"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "negative guest/host branch comparison"
+)]
+fn changing_only_fourth_operand_changes_real_guest_io_but_fails_bound_admission()
+-> Result<(), String> {
+    let (program, source) = canonical_four_way_source(3)?;
+    assert_eq!(source.get(quadruple::FOURTH_WORD_ADDRESS), Some(&81));
+    let mut forged = source.clone();
+    *forged
+        .get_mut(quadruple::FOURTH_WORD_ADDRESS)
+        .ok_or("operand")? = 97;
+    assert_eq!(decode_profile_instruction(97, 130), Some(b'*'));
+    assert_eq!(
+        quadruple::admit_quadruple_echo_dispatch(&program, current_profile(), &forged),
+        Err(quadruple::QuadrupleDispatchError::InvalidSource)
+    );
+    for (image, count, steps) in [
+        (&source, 3usize, quadruple::GUEST_STEPS[2]),
+        (&forged, 4, quadruple::GUEST_STEPS[3]),
+    ] {
+        let mut guest =
+            ProfileMachine::from_source(current_profile(), image, vec![0, 128, 255, 42])
+                .map_err(|error| format!("load 4-way altered guest: {error:?}"))?;
+        assert!(matches!(guest.run(steps), Ok(RunOutcome::Terminated {
+            steps: actual, ..
+        }) if actual == steps));
+        assert_eq!(
+            guest.output(),
+            [0u8, 128, 255, 42].get(..count).ok_or("echo prefix")?
+        );
+        assert_eq!(guest.input_consumed(), count);
+        for position in quadruple::CEB2_START..quadruple::SOURCE_CELLS {
+            assert_eq!(
+                guest
+                    .memory_word(u32::try_from(position).map_err(|error| error.to_string())?)
+                    .map_err(|error| format!("verify source-bound memory: {error:?}"))?,
+                u32::from(*image.get(position).ok_or("source glyph")?)
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "real CLI echo evidence")]
+fn four_way_real_cli_capsules_match_independent_direct_vm_on_stdin_boundaries() -> Result<(), String>
+{
+    let fixture = CapsuleFixture::new("v10-stdin")?;
+    let sample = [0u8, 128, 255, 42, 33];
+    for pairs in [1u32, 2, 3, 4] {
+        let (program, source) = canonical_four_way_source(pairs)?;
+        let direct = strategy::bridge::encode_successful_byte_echo(&program, current_profile())
+            .map_err(|error| format!("independent direct n={pairs}: {error:?}"))?;
+        let guest_path = fixture.root.join(format!("v10-guest-{pairs}.malbolge"));
+        let direct_path = fixture.root.join(format!("v10-direct-{pairs}.malbolge"));
+        for (path, image) in [
+            (&guest_path, source.as_slice()),
+            (&direct_path, direct.source()),
+        ] {
+            let capsule = malbolge::build_capsule(current_profile(), image)
+                .map_err(|error| format!("source capsule n={pairs}: {error:?}"))?;
+            fs::write(path, capsule).map_err(|error| format!("publish capsule: {error}"))?;
+        }
+        let count = usize::try_from(pairs).map_err(|error| error.to_string())?;
+        let direct_steps = count * 2 + 1;
+        let guest_steps = *quadruple::GUEST_STEPS.get(count - 1).ok_or("steps")?;
+        let direct_state =
+            ProfileMachine::from_source(current_profile(), direct.source(), Vec::new())
+                .map_err(|error| format!("independent VM preload: {error:?}"))?
+                .snapshot_state();
+        for input in [
+            Vec::new(),
+            sample.get(..count - 1).ok_or("short")?.to_vec(),
+            sample.get(..count).ok_or("exact")?.to_vec(),
+            sample.get(..count + 1).ok_or("surplus")?.to_vec(),
+            vec![255, 1, 2, 3, 4],
+        ] {
+            let mut oracle = ProfileMachine::from_state(
+                current_profile(),
+                direct_state.memory().to_vec(),
+                input.clone(),
+                malbolge::ProfileRegisters::default(),
+            )
+            .map_err(|error| format!("restore trusted direct VM: {error:?}"))?;
+            assert!(
+                matches!(oracle.run(direct_steps), Ok(RunOutcome::Terminated {
+                steps: actual, ..
+            }) if actual == direct_steps)
+            );
+            let expected = oracle.output();
+            let direct_stdout =
+                run_compact_echo_capsule_for_input(&direct_path, &input, direct_steps)?;
+            let guest_stdout =
+                run_compact_echo_capsule_for_input(&guest_path, &input, guest_steps)?;
+            assert_eq!(direct_stdout, expected, "CLI direct source must match VM");
+            assert_eq!(guest_stdout, expected, "v10 source must match direct VM");
+            assert_eq!(guest_stdout.len(), count, "EOF emits one byte per echo");
         }
     }
     Ok(())

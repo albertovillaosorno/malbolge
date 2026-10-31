@@ -605,6 +605,44 @@ possible echo counts, authenticates SHA-256 or implements a general VM.
 The P2 acceptance remains unmet and the cost hypothesis unresolved for
 large/general applications.
 
+## Results: Four-Way Shared Native Guest Dispatch v10 (2026-10-31)
+
+The fourth independent canonical program extends the bounded v9
+three-way source experiment with **one more native data-selected
+branch**, not a new bytecode interpreter. The exact v10 source has
+233 loader-valid cells: shared initial native code except graphical
+branch operands at 124, 127 and 130, followed by 102 independently
+repacked CEB2 glyphs at 131–232. The reached fourth `i@87` reads
+`M[130]`: operand 81 encrypts code address 81 and halts at `v@82`
+after three echoes; operand 97 encrypts code address 97 and executes
+`/@98`, `<@99`, `v@100` for a fourth echo. Earlier one/two/three
+paths choose 87/104 and 101/84 through the same code island. The
+new three-pair variant pays one extra branch step versus v9.
+
+Four canonical original counts independently pass SHA-256 source/profile
+binding before emission; independent admission reconstructs the
+supplied descriptor, checks all three loaded operand words and rejects
+unsupported counts or changes to code, operands, CEB2 or source extent.
+Real normative VM traces confirm every reached guest `i` data read,
+selected C successor and code-only post-jump XLAT2 encryption. All
+102 source-bound data words remain unchanged after execution; binary
+output and consumption match independently emitted direct programs
+for two different successful input streams per count. A negative
+loader-valid one-byte mutation of `M[130]` executes a real fourth echo
+from the original three-pair source while host verification refuses it.
+
+Actual verified source/step ratios (guest versus direct) are
+**233/86 vs 3/3** (one pair), **233/89 vs 5/5** (two pairs),
+**233/92 vs 7/7** (three pairs), and **233/94 vs 9/9** (four pairs).
+No small-case source-size or step-count improvement occurs. The
+independent real general CLI executes four guest and four direct
+capsules across five EOF/short/exact/surplus/high-byte input cases
+per count (40 process executions); it agrees with a restored direct
+VM and independently checks its own exact committed-step receipt.
+These finite traces do not prove all multi-byte inputs or a general
+operation decoder; additional code-size/runtime/memory benchmarks are
+still required before H1 can be evaluated.
+
 ## Threats to Validity
 
 The pilot has no **reusable** guest interpreter or complete bytecode
