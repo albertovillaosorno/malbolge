@@ -1079,6 +1079,38 @@ def test_empty_paired_family_emits_zero_adjusted_tests() -> None:
         assert test["paired_sign_test"] is None
 
 
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("median_intervals_95", "false"),
+        ("median_intervals_95", 1),
+        ("median_intervals_95", None),
+        ("paired_exact_tests_enabled", "no"),
+        ("paired_exact_tests_enabled", 0),
+        ("paired_exact_tests_enabled", object()),
+        ("adjust_paired_tests", "false"),
+        ("adjust_paired_tests", 1),
+        ("adjust_paired_tests", None),
+    ],
+)
+def test_direct_analyzer_rejects_nonboolean_inference_options_before_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+) -> None:
+    """Direct callers cannot enable inferential claims with a truthy string."""
+
+    def forbidden_group(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        message = "invalid statistical option entered cohort analysis"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(analyze, "_case_key", forbidden_group)
+    options: dict[str, Any] = {field: invalid}
+    with pytest.raises(analyze.ArenaError, match="exact booleans"):
+        _ = analyze.analyze(_document(), **options)
+
+
 def test_adjustment_without_paired_tests_is_rejected_before_report() -> None:
     """A caller cannot silently enable a different inferential policy."""
     document = _repeated_success_study(12)

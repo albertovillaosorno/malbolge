@@ -738,6 +738,15 @@ def analyze(
         Deterministically ordered capacity and conditional Pareto evidence.
 
     """
+    if any(
+        type(value) is not bool
+        for value in (
+            median_intervals_95,
+            paired_exact_tests_enabled,
+            adjust_paired_tests,
+        )
+    ):
+        _fail("arena inference options require exact booleans")
     study = document["study"]
     objectives: list[str] = study["objectives"]
     policy = _AnalysisPolicy(
