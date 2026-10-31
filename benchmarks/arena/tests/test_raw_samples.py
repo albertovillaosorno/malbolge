@@ -1249,6 +1249,44 @@ def test_raw_csv_parser_faults_preserve_typed_failure_without_foreign_formatting
     assert caught.value.__cause__ is fault
 
 
+@pytest.mark.parametrize("stage", ["construction", "iteration"])
+def test_foreign_raw_error_subclass_from_csv_parser_is_normalized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Parser-owned exceptions cannot impersonate a trusted native rejection."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+
+    class ForeignRawError(raw_samples.RawSampleError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign raw exception formatter executed")
+
+    fault = ForeignRawError("foreign parser exception")
+
+    def substituted_reader(
+        source: StringIO, *, strict: bool
+    ) -> Iterator[list[str]]:
+        del source, strict
+        if stage == "construction":
+            raise fault
+
+        def rows() -> Iterator[list[str]]:
+            yield list(raw_samples.HEADER)
+            raise fault
+
+        return rows()
+
+    monkeypatch.setattr(raw_samples.csv, "reader", substituted_reader)
+    with pytest.raises(
+        raw_samples.RawSampleError, match="invalid arena raw CSV parser"
+    ) as caught:
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
+    assert type(caught.value) is raw_samples.RawSampleError
+    assert caught.value.__cause__ is fault
+
+
 def test_raw_csv_native_parser_diagnostic_retained(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

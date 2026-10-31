@@ -171,8 +171,13 @@ def _csv_rows(
         header = next(reader, None)
         version, metrics = _header_schema(header, label)
         rows = _limited_rows(reader, label, expected_rows)
-    except RawSampleError:
-        raise
+    except RawSampleError as error:
+        # Only our own exact rejection type may cross this boundary unchanged.
+        # A foreign parser can raise a subclass with hostile format hooks.
+        if type(error) is RawSampleError:
+            raise
+        message = f"{label}: invalid arena raw CSV parser: {type(error).__name__}"
+        raise RawSampleError(message) from error
     except csv.Error as error:
         # Even an exact native csv.Error can contain caller-owned arguments.
         detail = (
