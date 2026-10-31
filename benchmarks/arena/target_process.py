@@ -195,26 +195,27 @@ def require_child_resource_controls() -> None:
 
 def _terminate_group(child: sp.Popen[bytes]) -> None:
     # Never signal an unrelated process: each child owns a fresh session.
-    group_error: OSError | None = None
+    group_error: Exception | None = None
     try:
         os.kill(-child.pid, GROUP_KILL_SIGNAL)
     except ProcessLookupError:
         pass
-    except OSError as error:
+    except Exception as error:
+        # Unexpected host signaling faults must not bypass the direct reap.
         group_error = error
 
     # A refused group signal must not skip direct-child termination and reap.
-    direct_error: OSError | None = None
+    direct_error: Exception | None = None
     try:
         if child.poll() is None:
             with suppress(ProcessLookupError):
                 child.kill()
-    except OSError as error:
+    except Exception as error:
         direct_error = error
     if direct_error is None:
         try:
             _ = child.wait()
-        except OSError as error:
+        except Exception as error:
             direct_error = error
     if group_error is not None:
         if direct_error is not None:

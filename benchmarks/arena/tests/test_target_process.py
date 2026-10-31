@@ -238,6 +238,72 @@ class _UnexpectedTargetHostFault(Exception):
         raise AssertionError("foreign target host error formatter executed")
 
 
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetHostFault]
+)
+def test_unexpected_group_signal_failure_still_reaps_direct_child(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """An opaque group signal failure must still reach direct-child fallback."""
+    fault = fault_class("unexpected group signal fault")
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self) -> int:
+            events.append("wait")
+            return 0
+
+    def signal_group(_group: int, _signal: int) -> None:
+        events.append("group")
+        raise fault
+
+    monkeypatch.setattr(target_process.os, "kill", signal_group)
+    with pytest.raises(fault_class) as caught:
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert caught.value is fault
+    assert events == ["group", "poll", "kill", "wait"]
+
+
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetHostFault]
+)
+def test_unexpected_direct_poll_failure_remains_typed_in_finish_child(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected direct poll faults cannot claim clean child cleanup."""
+    fault = fault_class("unexpected child poll fault")
+
+    class ChildProbe:
+        pid = 123456
+        stdin = None
+        stdout = None
+        stderr = None
+
+        def poll(self) -> None:
+            raise fault
+
+    monkeypatch.setattr(target_process.os, "kill", lambda *_args: None)
+    with pytest.raises(
+        target_process.TargetProcessError, match="cleanup"
+    ) as caught:
+        target_process._finish_child(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert caught.value.__cause__ is fault
+
+
 def test_target_cleanup_native_oserror_with_hostile_filename_is_safe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
