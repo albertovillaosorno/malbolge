@@ -221,12 +221,43 @@ def _require_clang(clang: Path) -> None:
         _fail(f"Clang must report {expected}: {clang}")
 
 
+def _unique_ast_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Keep independently parsed nested AST objects free of duplicate keys.
+
+    Returns:
+        One canonical mapping of AST field names to decoded JSON values.
+
+    """
+    result: dict[str, object] = {}
+    for name, value in pairs:
+        if name in result:
+            _fail(f"duplicate Clang AST JSON key: {name}")
+        result[name] = value
+    return result
+
+
+def _reject_nonfinite_ast_constant(value: str) -> Never:
+    _fail(f"nonfinite Clang AST JSON number: {value}")
+
+
 def _parse_ast(text: str, source: Path) -> JsonObject:
+    if type(text) is not str:
+        _fail("Clang AST JSON requires exact str text")
     try:
-        parsed = cast("object", json.loads(text))
-    except json.JSONDecodeError as error:
-        _fail(f"invalid Clang AST JSON for {source}: {error}")
-    if not isinstance(parsed, dict):
+        parsed = cast(
+            "object",
+            json.loads(
+                text,
+                object_pairs_hook=_unique_ast_fields,
+                parse_constant=_reject_nonfinite_ast_constant,
+            ),
+        )
+    except LibcSourceError:
+        raise
+    except (ValueError, RecursionError) as error:
+        message = f"invalid Clang AST JSON for {source}"
+        raise LibcSourceError(message) from error
+    if type(parsed) is not dict:
         _fail(f"Clang AST root must be an object for {source}")
     return cast("JsonObject", parsed)
 
@@ -592,14 +623,18 @@ def analyze_source(
     ast = _run_ast(resolved, config)
     if snapshot != _source_snapshot(resolved):
         _fail(f"guest C source changed during AST analysis: {resolved}")
-    context = _AnalysisContext(
-        source=resolved,
-        source_bytes=source_bytes,
-        libc=active_libc,
-        local_function_ids=_local_definition_ids(ast, source_bytes),
-    )
-    diagnostics: list[LibcDiagnostic] = []
-    _walk(ast, context, diagnostics)
+    try:
+        context = _AnalysisContext(
+            source=resolved,
+            source_bytes=source_bytes,
+            libc=active_libc,
+            local_function_ids=_local_definition_ids(ast, source_bytes),
+        )
+        diagnostics: list[LibcDiagnostic] = []
+        _walk(ast, context, diagnostics)
+    except RecursionError as error:
+        message = "Clang AST depth exceeds host traversal capacity"
+        raise LibcSourceError(message) from error
     return _deduplicate(diagnostics)
 
 

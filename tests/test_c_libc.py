@@ -654,6 +654,57 @@ def test_atan2_kernel_input_normalizes_without_floating_division(
     assert completed.returncode == 0, completed.stderr
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"kind":"TranslationUnitDecl","kind":"FunctionDecl"}',
+        '{"inner":[{"id":"one","id":"two"}]}',
+    ],
+)
+def test_libc_clang_ast_rejects_duplicate_json_evidence_keys(text: str) -> None:
+    """Later duplicate fields cannot silently replace earlier AST evidence."""
+    with pytest.raises(c_libc_source.LibcSourceError, match="duplicate.*AST"):
+        _ = c_libc_source._parse_ast(text, ACCEPTED)
+
+
+@pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity"])
+def test_libc_clang_ast_rejects_nonstandard_json_numbers(number: str) -> None:
+    """Clang AST evidence must be strict JSON, not Python extensions."""
+    with pytest.raises(c_libc_source.LibcSourceError, match="nonfinite.*AST"):
+        _ = c_libc_source._parse_ast('{"number":' + number + '}', ACCEPTED)
+
+
+@pytest.mark.parametrize("value", [None, b"{}", [], 10])
+def test_libc_clang_ast_rejects_nontext_direct_input(value: object) -> None:
+    """Only exact decoded host text may reach the AST JSON parser."""
+    with pytest.raises(c_libc_source.LibcSourceError, match="AST JSON.*text"):
+        _ = c_libc_source._parse_ast(cast("str", value), ACCEPTED)
+
+
+@pytest.mark.parametrize("stage", ["definitions", "references"])
+def test_libc_clang_ast_deep_nesting_fails_as_typed_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Very deep untrusted AST trees cannot leak Python recursion failures."""
+    source = tmp_path / "source.c"
+    _ = source.write_bytes(b"int guest(void) { return 0; }\n")
+    config = _libc_test_ast_config()
+    node: dict[str, object] = {}
+    for _ in range(1500):
+        node = {"inner": [node]}
+    monkeypatch.setattr(c_libc_source, "_run_ast", lambda *args: node)
+    if stage == "references":
+        monkeypatch.setattr(
+            c_libc_source, "_local_definition_ids", lambda *args: frozenset()
+        )
+    with pytest.raises(c_libc_source.LibcSourceError, match="AST depth"):
+        _ = c_libc_source.analyze_source(
+            source, clang=CLANG, abi=config.abi, libc=config.libc
+        )
+
+
 def _libc_test_ast_config() -> c_libc_source._AstConfig:
     """Provide canonical source AST configuration for isolated host tests."""
     return c_libc_source._AstConfig(
