@@ -571,6 +571,95 @@ def _compile_math_source(source: Path) -> None:
 
 
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("operation", ["lstat", "junction"])
+def test_math_cache_parent_host_status_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """Cache parent status failures cannot redirect build log publication."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    if operation == "lstat":
+        original_lstat = Path.lstat
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            if path == log.parent:
+                raise fault_type("injected log parent lstat failure")
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    else:
+        original_junction = Path.is_junction
+
+        def fail_junction(path: Path) -> bool:
+            if path == log.parent:
+                raise fault_type("injected log parent junction failure")
+            return original_junction(path)
+
+        monkeypatch.setattr(Path, "is_junction", fail_junction)
+    with pytest.raises(validator.MathSpecificationError, match="cache"):
+        validator._write_math_build_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("operation", ["lstat", "symlink", "junction"])
+def test_math_log_leaf_host_status_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """A broken retained-log leaf stat or redirect probe rejects publication."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    if operation == "lstat":
+        original_lstat = Path.lstat
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            if path == log:
+                raise fault_type("injected log leaf lstat failure")
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    else:
+        method = "is_symlink" if operation == "symlink" else "is_junction"
+        original_status = getattr(Path, method)
+
+        def fail_status(path: Path) -> bool:
+            if path == log:
+                raise fault_type("injected log leaf redirect failure")
+            return original_status(path)
+
+        monkeypatch.setattr(Path, method, fail_status)
+    with pytest.raises(validator.MathSpecificationError, match="log"):
+        validator._write_math_build_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_math_log_temporary_creation_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Temporary allocation failure is not an uncaught host exception."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+
+    def fail_mkstemp(*_args: object, **_kwargs: object) -> tuple[int, str]:
+        raise fault_type("injected mkstemp failure")
+
+    monkeypatch.setattr(validator.tempfile, "mkstemp", fail_mkstemp)
+    with pytest.raises(validator.MathSpecificationError, match="log"):
+        validator._write_math_build_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    assert tuple(log.parent.iterdir()) == (log,)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
 def test_math_log_wrapper_failure_releases_owned_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

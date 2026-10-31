@@ -277,9 +277,13 @@ def _cache_component_is_physical(path: Path, relative: Path) -> bool:
         status = path.lstat()
     except FileNotFoundError:
         return False
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         _fail(f"mathematics cache status failed: {error}")
-    if S_ISLNK(status.st_mode) or path.is_junction():
+    try:
+        junction = path.is_junction()
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail(f"mathematics cache redirect status failed: {error}")
+    if S_ISLNK(status.st_mode) or junction:
         _fail(f"mathematics cache path must not redirect: {relative.as_posix()}")
     if not S_ISDIR(status.st_mode):
         _fail(f"mathematics cache path must be a directory: {path}")
@@ -403,13 +407,17 @@ def latex_compiler(
 
 def _admit_math_build_log(log_path: Path) -> None:
     """Reject a redirected or nonregular existing cache-log destination."""
-    if log_path.is_symlink() or log_path.is_junction():
+    try:
+        redirected = log_path.is_symlink() or log_path.is_junction()
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail(f"mathematics cache log redirect status failed: {error}")
+    if redirected:
         _fail(f"mathematics cache log must not redirect: {log_path}")
     try:
         observed = log_path.lstat()
     except FileNotFoundError:
         return
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         _fail(f"mathematics cache log status failed: {error}")
     if not S_ISREG(observed.st_mode):
         _fail(f"mathematics cache log must be a regular file: {log_path}")
@@ -419,9 +427,14 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
     """Atomically replace one physical log without opening a linked leaf."""
     _reject_cache_redirects(log_path.parent)
     _admit_math_build_log(log_path)
-    descriptor, temporary_name = tempfile.mkstemp(
-        dir=log_path.parent, prefix=".build.stdout."
-    )
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            dir=log_path.parent, prefix=".build.stdout."
+        )
+    except (OSError, ValueError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics build log temporary creation failed: {error}"
+        ) from error
     temporary = Path(temporary_name)
     try:
         try:
