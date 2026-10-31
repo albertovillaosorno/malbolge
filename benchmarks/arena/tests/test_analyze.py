@@ -2944,3 +2944,148 @@ def test_paired_reference_matches_independent_small_exact_binomial_grid() -> Non
             tail = sum(comb(count, rank) for rank in range(smaller + 1))
             reference = min(Fraction(1), Fraction(2 * tail, 1 << count))
             assert analyze._paired_sign_reference(left, count - left) == reference
+
+
+@pytest.mark.parametrize(
+    ("verified", "attempts", "lower", "upper"),
+    [
+        (5, 10, [1, 2], [1, 2]),
+        (5, 10, [0, 1], [1, 1]),
+        (0, 10, [0, 1], [0, 1]),
+        (10, 10, [1, 1], [1, 1]),
+        (1, 1, [1, 1], [1, 1]),
+    ],
+)
+def test_success_interval_rejects_false_grid_bounds_even_if_containing_observation(
+    verified: int,
+    attempts: int,
+    lower: list[int],
+    upper: list[int],
+) -> None:
+    """Containment alone cannot certify exact outward-grid inversion."""
+    receipt = {
+        "lower": lower,
+        "upper": upper,
+        "sample_count": attempts,
+        "verified": verified,
+    }
+    with pytest.raises(analyze.ArenaError, match="success interval receipt"):
+        analyze._admit_success_interval_receipt(receipt, verified, attempts)
+
+
+@pytest.mark.parametrize("cli", ["standalone", "linked-evidence"])
+def test_success_interval_clis_reject_plausible_but_false_grid_bounds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cli: str,
+) -> None:
+    """Neither CLI publishes source-plausible but fabricated interval roots."""
+    from benchmarks.arena import evidence
+    from benchmarks.arena.tests.test_evidence import sample_study
+
+    original = analyze.success_intervals.success_interval_95
+
+    def forged(verified: int, attempts: int) -> analyze.success_intervals.SuccessInterval | None:
+        if verified == attempts:
+            return {
+                "lower": [1, 1],
+                "upper": [1, 1],
+                "sample_count": attempts,
+                "verified": verified,
+            }
+        return original(verified, attempts)
+
+    monkeypatch.setattr(analyze.success_intervals, "success_interval_95", forged)
+    doc = _repeated_success_study(10) if cli == "standalone" else sample_study(tmp_path)
+    path = tmp_path / "wrong-interval.json"
+    _ = path.write_text(json.dumps(doc), encoding="utf-8")
+    if cli == "standalone":
+        args = ["arena", str(path), "--success-intervals-95"]
+        entry = analyze.main
+    else:
+        args = [
+            "arena-evidence", str(path), "--root", str(tmp_path),
+            "--success-intervals-95",
+        ]
+        entry = evidence.main
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit, match="2"):
+        entry()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "success interval receipt" in output.err
+
+
+@pytest.mark.parametrize("endpoint", ["lower", "upper"])
+@pytest.mark.parametrize("shift", [-1, 1])
+def test_success_interval_exact_grid_rejects_one_step_endpoint_drift(
+    endpoint: str,
+    shift: int,
+) -> None:
+    """Both undercoverage and gratuitous grid widening must reject."""
+    from fractions import Fraction
+
+    receipt = analyze.success_intervals.success_interval_95(5, 10)
+    assert receipt is not None
+    modified = cast("dict[str, Any]", copy.deepcopy(receipt))
+    index = int(
+        Fraction(*modified[endpoint]) * analyze.success_intervals.GRID_DENOMINATOR
+    ) + shift
+    changed = Fraction(index, analyze.success_intervals.GRID_DENOMINATOR)
+    modified[endpoint] = [changed.numerator, changed.denominator]
+    with pytest.raises(analyze.ArenaError, match="success interval receipt"):
+        analyze._admit_success_interval_receipt(modified, 5, 10)
+
+
+@pytest.mark.parametrize(
+    ("verified", "attempts"),
+    [(0, 1), (1, 1), (0, 10), (5, 10), (10, 10), (256, 512)],
+)
+def test_success_interval_receipt_accepts_real_exact_grid_at_bounds(
+    verified: int, attempts: int
+) -> None:
+    """Independent checks preserve every real exact outward-grid endpoint."""
+    actual = analyze.success_intervals.success_interval_95(verified, attempts)
+    assert actual is not None
+    assert analyze._admit_success_interval_receipt(actual, verified, attempts) == actual
+
+
+def test_success_interval_receipt_matches_exhaustive_small_grid_counts() -> None:
+    """Real grid inversions are admitted across every count through 32 draws."""
+    for attempts in range(1, 33):
+        for verified in range(attempts + 1):
+            actual = analyze.success_intervals.success_interval_95(verified, attempts)
+            assert actual is not None
+            admitted = analyze._admit_success_interval_receipt(
+                actual, verified, attempts
+            )
+            assert admitted == actual
+
+
+def test_success_interval_false_late_grid_receipt_rejects_atomically(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late fabricated grid endpoint cannot leave earlier point CIs."""
+    report = _run(_document())
+    original = analyze.success_intervals.success_interval_95
+    calls = 0
+
+    def forged(verified: int, attempts: int) -> analyze.success_intervals.SuccessInterval | None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            return {
+                "lower": [0, 1],
+                "upper": [1, 1],
+                "sample_count": attempts,
+                "verified": verified,
+            }
+        return original(verified, attempts)
+
+    monkeypatch.setattr(analyze.success_intervals, "success_interval_95", forged)
+    with pytest.raises(analyze.ArenaError, match="success interval receipt"):
+        analyze.annotate_success_intervals(report)
+    assert calls == 2
+    assert all(SUCCESS_INTERVAL_KEY not in row for row in report["capacity_curve"])
+    assert SUCCESS_INTERVAL_POLICY_KEY not in report

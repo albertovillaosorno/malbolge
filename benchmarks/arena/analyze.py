@@ -1050,6 +1050,66 @@ def analyze(
     return report
 
 
+def _exact_grid_binomial_tail(
+    attempts: int,
+    successes: int,
+    grid_index: int,
+    *,
+    at_least: bool,
+) -> int:
+    """Evaluate a bounded exact binomial tail directly at one grid point."""
+    grid = success_intervals.GRID_DENOMINATOR
+    failures = grid - grid_index
+    first = successes if at_least else 0
+    after_last = attempts + 1 if at_least else successes + 1
+    return sum(
+        comb(attempts, count)
+        * grid_index**count
+        * failures ** (attempts - count)
+        for count in range(first, after_last)
+    )
+
+
+def _require_exact_success_grid(
+    verified: int,
+    attempts: int,
+    lower: Fraction,
+    upper: Fraction,
+) -> None:
+    """Check exact outward-grid roots independently of the interval helper."""
+    grid = success_intervals.GRID_DENOMINATOR
+    threshold = grid**attempts
+    tail_factor = success_intervals.TWO_SIDED_TAIL_DENOMINATOR
+    lower_index = int(lower * grid)
+    upper_index = int(upper * grid)
+    if verified == 0:
+        if lower_index != 0:
+            _fail("success interval receipt has wrong zero-success lower bound")
+    elif (
+        lower_index >= grid
+        or tail_factor * _exact_grid_binomial_tail(
+            attempts, verified, lower_index, at_least=True
+        ) > threshold
+        or tail_factor * _exact_grid_binomial_tail(
+            attempts, verified, lower_index + 1, at_least=True
+        ) <= threshold
+    ):
+        _fail("success interval receipt has wrong exact lower grid bound")
+    if verified == attempts:
+        if upper_index != grid:
+            _fail("success interval receipt has wrong all-success upper bound")
+    elif (
+        upper_index <= 0
+        or tail_factor * _exact_grid_binomial_tail(
+            attempts, verified, upper_index, at_least=False
+        ) > threshold
+        or tail_factor * _exact_grid_binomial_tail(
+            attempts, verified, upper_index - 1, at_least=False
+        ) <= threshold
+    ):
+        _fail("success interval receipt has wrong exact upper grid bound")
+
+
 def _admit_success_interval_receipt(
     receipt: object, verified: int, attempts: int
 ) -> dict[str, Any] | None:
@@ -1096,6 +1156,7 @@ def _admit_success_interval_receipt(
         endpoints.append(normalized)
     if not endpoints[0] <= Fraction(verified, attempts) <= endpoints[1]:
         _fail("success interval receipt excludes observed success fraction")
+    _require_exact_success_grid(verified, attempts, endpoints[0], endpoints[1])
     # Do not retain borrowed mutable dictionaries or endpoint lists. The
     # supplier may still hold references after annotation has succeeded.
     return {

@@ -565,8 +565,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   the observed fraction. Sixteen late forged-result cases, a hostile helper
   failure, over-limit controls and both-CLI no-JSON regressions reject without
   partially annotating a report. A separate red-first receipt-alias test
-  proves later helper-side mutation cannot rewrite published interval metadata;
-  no independent math attestation is claimed.
+  proves later helper-side mutation cannot rewrite published interval metadata.
+  Exact integer binomial-tail checks at each rounded endpoint and its adjacent
+  grid point now reject plausible but false or gratuitously widened intervals.
+  Red-first direct and both-CLI no-JSON regressions, one-step drift checks and
+  the 512-attempt boundary pass. This arithmetic check does not authenticate
+  reported outcomes, independence, or physical measurements.
 - Optional median inference now binds each returned interval to the admitted
   sample size, observed central order statistics, and reduced binary-rational
   coverage of at least 95%; copied records cannot be changed through retained

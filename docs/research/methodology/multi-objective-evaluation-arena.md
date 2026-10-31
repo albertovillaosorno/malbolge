@@ -124,8 +124,13 @@ observed success fraction. Missing intervals below the 512-attempt cap,
 spurious intervals above it and unexpected helper exceptions fail atomically
 through the typed analyzer boundary before either CLI can publish JSON.
 The returned interval is copied into an owned native record, preventing later
-helper-side mutation of the report. These guards do not independently verify
-binomial-tail mathematics, sampling assumptions or source authenticity.
+helper-side mutation of the report. The analyzer now separately checks each
+reported grid endpoint and its adjacent grid point against exact binomial
+integer-tail sums, enforcing the nearest outward-rounded root rather than mere
+containment of the observed success fraction. Red-first fabricated in-range
+bounds, one-step endpoint drift, and both CLI no-JSON regressions cover this
+check. The arithmetic check does not validate independence, reported verifier
+outcomes or source authenticity.
 
 The Pareto relation
 minimizes declared costs and maximizes verified trial count inside each matched
