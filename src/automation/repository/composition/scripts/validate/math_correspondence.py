@@ -34,26 +34,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
-from pathlib import PureWindowsPath
 import re
-from stat import S_ISDIR
-from stat import S_ISLNK
-from stat import S_ISREG
 import sys
+from dataclasses import dataclass
+from pathlib import Path, PureWindowsPath
+from stat import S_ISDIR, S_ISLNK, S_ISREG
+from typing import Never, cast
+
 import tomllib
-from typing import Never
-from typing import cast
 
 from scripts.repository_root import repository_root
 
 ROOT = repository_root(Path(__file__))
 MANIFEST = (
-    ROOT
-    / "src/specification/formal-model/math/specification"
-    / "correspondence.toml"
+    ROOT / "src/specification/formal-model/math/specification" / "correspondence.toml"
 )
 MATH_ROOT = ROOT / "src/specification/formal-model/math"
 SCHEMA_VERSION = 1
@@ -165,13 +160,15 @@ def _require_physical_member(
         status = path.lstat()
     except FileNotFoundError:
         _fail(f"{context} does not exist: {relative.as_posix()}")
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         _fail(f"{context} status failed: {error}")
-    if S_ISLNK(status.st_mode) or path.is_junction():
+    try:
+        is_junction = path.is_junction()
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail(f"{context} redirect status failed: {error}")
+    if S_ISLNK(status.st_mode) or is_junction:
         _fail(f"{context} must not redirect: {relative.as_posix()}")
-    admitted = (
-        S_ISDIR(status.st_mode) if directory else S_ISREG(status.st_mode)
-    )
+    admitted = S_ISDIR(status.st_mode) if directory else S_ISREG(status.st_mode)
     if not admitted:
         _fail(f"{context} must be a physical regular artifact: {path}")
 
@@ -234,7 +231,15 @@ def _read_source_descriptor(
         The exact stable physical bytes read from that descriptor.
 
     """
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except (OSError, ValueError, RuntimeError):
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+    with stream:
         if _source_fingerprint(os.fstat(stream.fileno()), context) != expected:
             _fail(f"{context} changed before read")
         payload = stream.read(MAX_CORRESPONDENCE_SOURCE_BYTES + 1)
@@ -256,21 +261,24 @@ def _read_source_bytes(path: Path, context: str) -> bytes:
         Exact source bytes from one stable, named regular file.
 
     """
-    _physical_repository_path(path, context, directory=False)
-    admitted = path.lstat()
-    expected = _source_fingerprint(admitted, context)
-    if admitted.st_size > MAX_CORRESPONDENCE_SOURCE_BYTES:
-        _fail(f"{context} exceeds byte limit")
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_NONBLOCK", 0)
-        | getattr(os, "O_BINARY", 0)
-    )
-    descriptor = os.open(path, flags)
-    return _read_source_descriptor(
-        path, context, descriptor, expected=expected
-    )
+    try:
+        _physical_repository_path(path, context, directory=False)
+        admitted = path.lstat()
+        expected = _source_fingerprint(admitted, context)
+        if admitted.st_size > MAX_CORRESPONDENCE_SOURCE_BYTES:
+            _fail(f"{context} exceeds byte limit")
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_BINARY", 0)
+        )
+        descriptor = os.open(path, flags)
+        return _read_source_descriptor(path, context, descriptor, expected=expected)
+    except CorrespondenceError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise CorrespondenceError(f"cannot read {context}: {error}") from error
 
 
 def _read_source_text(path: Path, context: str) -> str:
@@ -318,15 +326,20 @@ def _tex_sources() -> tuple[Path, ...]:
     def fail_walk(error: OSError) -> None:
         _fail(f"mathematics evidence scan failed: {error}")
 
-    for parent, directories, filenames in MATH_ROOT.walk(on_error=fail_walk):
-        _physical_repository_path(
-            parent, "mathematics directory", directory=True
-        )
-        for name in directories:
-            _physical_repository_path(
-                parent / name, "mathematics directory", directory=True
-            )
-        _append_tex_candidates(parent, filenames, sources)
+    try:
+        for parent, directories, filenames in MATH_ROOT.walk(on_error=fail_walk):
+            _physical_repository_path(parent, "mathematics directory", directory=True)
+            for name in directories:
+                _physical_repository_path(
+                    parent / name, "mathematics directory", directory=True
+                )
+            _append_tex_candidates(parent, filenames, sources)
+    except CorrespondenceError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise CorrespondenceError(
+            f"mathematics evidence scan failed: {error}"
+        ) from error
     return tuple(sorted(sources))
 
 
@@ -514,9 +527,7 @@ def validate_repository() -> tuple[Correspondence, ...]:
         Stable correspondence entries after all repository checks succeed.
 
     """
-    _physical_repository_path(
-        MANIFEST, "correspondence manifest", directory=False
-    )
+    _physical_repository_path(MANIFEST, "correspondence manifest", directory=False)
     return validate_text(_read_source_text(MANIFEST, "correspondence manifest"))
 
 

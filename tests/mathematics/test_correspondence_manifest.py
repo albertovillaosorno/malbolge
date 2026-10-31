@@ -38,7 +38,9 @@ from __future__ import annotations
 # ruff: file-ignore[private-member-access]
 # pyright: reportPrivateUsage=false
 import os
+from collections.abc import Callable
 from pathlib import Path
+from typing import Self
 
 import pytest
 
@@ -72,9 +74,7 @@ def test_direct_correspondence_toml_rejects_noncanonical_wire_text() -> None:
     base = "schema_version = 1\ncorrespondence = []\n"
     limit = validator.MAX_CORRESPONDENCE_SOURCE_BYTES
     exact = base + "#" + "x" * (limit - len(base) - 1)
-    with pytest.raises(
-        validator.CorrespondenceError, match="must not be empty"
-    ):
+    with pytest.raises(validator.CorrespondenceError, match="must not be empty"):
         _ = validator._parse(exact)
     with pytest.raises(validator.CorrespondenceError, match="byte limit"):
         _ = validator._parse(exact + "x")
@@ -96,10 +96,147 @@ def test_correspondence_toml_host_parser_capacity_is_typed(
 ) -> None:
     """Host TOML parser exhaustion cannot leak a raw parser exception."""
     text = "schema_version = 1\ncorrespondence = []\nprobe = " + capacity_token
-    with pytest.raises(
-        validator.CorrespondenceError, match="host parser capacity"
-    ):
+    with pytest.raises(validator.CorrespondenceError, match="host parser capacity"):
         _ = validator._parse(text)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation", ("lstat", "junction", "open", "fdopen", "fstat", "read", "post_lstat")
+)
+def test_correspondence_source_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """Host evidence inspection and stream faults fail at the typed boundary."""
+    source = tmp_path / "witness.rs"
+    _ = source.write_text("fn witness() {}\n", encoding="utf-8")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    if operation in {"lstat", "post_lstat"}:
+        original_lstat = Path.lstat
+        inspected = 0
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            nonlocal inspected
+            if path == source:
+                inspected += 1
+                if operation == "lstat" or inspected >= 3:
+                    raise fault_type("injected evidence lstat failure")
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    elif operation == "junction":
+        original_junction = Path.is_junction
+
+        def fail_junction(path: Path) -> bool:
+            if path == source:
+                raise fault_type("injected junction status failure")
+            return original_junction(path)
+
+        monkeypatch.setattr(Path, "is_junction", fail_junction)
+    elif operation == "open":
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == source:
+                raise fault_type("injected evidence open failure")
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    elif operation == "fdopen":
+
+        def fail_fdopen(_descriptor: int, _mode: str) -> object:
+            raise fault_type("injected evidence fdopen failure")
+
+        monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    elif operation == "fstat":
+
+        def fail_fstat(_descriptor: int) -> os.stat_result:
+            raise fault_type("injected evidence fstat failure")
+
+        monkeypatch.setattr(os, "fstat", fail_fstat)
+    else:
+        original_fdopen = os.fdopen
+
+        class BadReadStream:
+            def __init__(self, descriptor: int) -> None:
+                self._stream = original_fdopen(descriptor, "rb")
+
+            def __enter__(self) -> Self:
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                self._stream.close()
+
+            def fileno(self) -> int:
+                return self._stream.fileno()
+
+            def read(self, _size: int) -> bytes:
+                raise fault_type("injected evidence read failure")
+
+        monkeypatch.setattr(
+            os, "fdopen", lambda descriptor, _mode: BadReadStream(descriptor)
+        )
+    with pytest.raises(validator.CorrespondenceError, match="witness"):
+        _ = validator._read_source_text(source, "witness")
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_correspondence_fdopen_failure_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A failed evidence stream wrapper must not retain its raw descriptor."""
+    source = tmp_path / "witness.rs"
+    _ = source.write_text("fn witness() {}\n", encoding="utf-8")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    original_open = os.open
+    opened: list[int] = []
+
+    def track_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        if path == source:
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(_descriptor: int, _mode: str) -> object:
+        raise fault_type("injected fdopen failure")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    with pytest.raises(validator.CorrespondenceError):
+        _ = validator._read_source_text(source, "witness")
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+def test_correspondence_math_walk_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A broken mathematics source scan must not escape as a host error."""
+    math_root = tmp_path / "math"
+    math_root.mkdir()
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "MATH_ROOT", math_root)
+    original_walk = Path.walk
+
+    def fail_walk(
+        path: Path, *, on_error: Callable[[OSError], object] | None = None
+    ) -> object:
+        if path == math_root:
+            raise fault_type("injected math walk failure")
+        return original_walk(path, on_error=on_error)
+
+    monkeypatch.setattr(Path, "walk", fail_walk)
+    with pytest.raises(validator.CorrespondenceError, match="scan"):
+        _ = validator._tex_sources()
 
 
 def test_repository_correspondence_graph_is_closed() -> None:
@@ -111,9 +248,7 @@ def test_repository_correspondence_graph_is_closed() -> None:
 def test_drive_relative_equation_path_is_not_repository_relative() -> None:
     """Windows drive-relative syntax cannot escape equation-source authority."""
     text = validator.MANIFEST.read_text(encoding="utf-8")
-    marker = next(
-        line for line in text.splitlines() if line.startswith("tex = ")
-    )
+    marker = next(line for line in text.splitlines() if line.startswith("tex = "))
     changed = text.replace(marker, 'tex = "D:escape"', 1)
     with pytest.raises(
         validator.CorrespondenceError,
@@ -179,9 +314,7 @@ def test_correspondence_rejects_redirected_repository_evidence(
     """An external alias cannot count as a real equation or test source."""
     directory = tmp_path / ("math" if kind == EQUATION_KIND else "tests")
     directory.mkdir()
-    source = directory / (
-        "model.tex" if kind == EQUATION_KIND else "evidence.rs"
-    )
+    source = directory / ("model.tex" if kind == EQUATION_KIND else "evidence.rs")
     _ = source.write_text("fn test_example() {}", encoding="utf-8")
     monkeypatch.setattr(validator, "ROOT", tmp_path)
     relative = source.relative_to(tmp_path).as_posix()
@@ -275,9 +408,7 @@ def test_correspondence_rejects_repository_root_as_file(
 ) -> None:
     """An empty relative path is not evidence of an equation."""
     monkeypatch.setattr(validator, "ROOT", tmp_path)
-    with pytest.raises(
-        validator.CorrespondenceError, match="regular repository file"
-    ):
+    with pytest.raises(validator.CorrespondenceError, match="regular repository file"):
         _ = validator._repository_path(".", "equation source")
 
 
@@ -302,9 +433,7 @@ def test_correspondence_source_rejects_replaced_inode_before_read(
         return real_open(path, flags)
 
     monkeypatch.setattr(os, "open", swap_on_open)
-    with pytest.raises(
-        validator.CorrespondenceError, match="changed before read"
-    ):
+    with pytest.raises(validator.CorrespondenceError, match="changed before read"):
         _ = validator._read_source_text(source, "witness")
     assert swapped
 
