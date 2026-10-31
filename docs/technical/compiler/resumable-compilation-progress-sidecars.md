@@ -120,6 +120,13 @@ close then fails; once sync completed, a late close failure instead reports
 confirmed committed durability. Twelve adversarial cases verify those
 boundaries without altering a published generation.
 
+Writer-lock release and stream-close adapters also wrap unexpected native
+`TypeError` and `AttributeError` failures rather than exposing an untyped
+exception. When those failures follow durable pointer publication, the writer
+boundary retains exact committed-path evidence; original teardown causes
+remain available for diagnostics. Eight red-first cases check both adapters
+and postpublication release/close failure paths.
+
 Process-shared progress writer locks now reject nonnative stat metadata on
 pre-existing lock pathname preflight, the opened lock descriptor, and both
 pathname/descriptor identity checks after lock acquisition. A foreign receipt

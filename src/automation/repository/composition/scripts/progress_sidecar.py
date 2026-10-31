@@ -2230,7 +2230,7 @@ def _release_writer_lock(release: Callable[[], None]) -> None:
         _require_native_lock_receipt(release(), "release callback")
     except ProgressSidecarError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         _fail_with_source(
             f"progress writer lock cannot be released: {_host_error_detail(error)}", error
         )
@@ -2241,7 +2241,7 @@ def _close_writer_lock_stream(stream: _LockStream) -> None:
         _require_native_lock_receipt(stream.close(), "close")
     except ProgressSidecarError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         _fail_with_source(
             f"progress writer lock cannot be closed: {_host_error_detail(error)}", error
         )
@@ -2253,7 +2253,7 @@ def _release_writer_lock_preserving_primary(
     primary_error = sys.exception()
     try:
         _release_writer_lock(release)
-    except (ProgressSidecarError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         if primary_error is not None:
             BaseException.add_note(primary_error, f"writer lock release also failed: {_host_error_detail(error)}")
             return
@@ -2264,7 +2264,7 @@ def _close_writer_lock_preserving_primary(stream: _LockStream) -> None:
     primary_error = sys.exception()
     try:
         _close_writer_lock_stream(stream)
-    except (ProgressSidecarError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         if primary_error is not None:
             BaseException.add_note(primary_error, f"writer lock close also failed: {_host_error_detail(error)}")
             return
@@ -2326,7 +2326,7 @@ def _writer_publication_lock(destination: Path) -> Generator[_LockStream]:
             publication_completed = True
     except ProgressSidecarCommittedError:
         raise
-    except (ProgressSidecarError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         if not publication_completed:
             raise
         message = (
@@ -2336,7 +2336,7 @@ def _writer_publication_lock(destination: Path) -> Generator[_LockStream]:
         source = (
             error.__cause__
             if isinstance(error, ProgressSidecarError)
-            and isinstance(error.__cause__, (OSError, ValueError, RuntimeError))
+            and isinstance(error.__cause__, _OUTPUT_STREAM_ERRORS)
             else error
         )
         raise ProgressSidecarCommittedError(message, destination) from source

@@ -637,6 +637,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   committed path and precedence over close cleanup; post-sync close failures
   retain confirmed committed evidence. Twelve red-first cases cover these
   failures for mutable pointers and immutable checkpoint generations.
+  Eight further red-first regressions cover unexpected native
+  `TypeError`/`AttributeError` from lock release/stream close: adapter errors
+  are typed, and postpublication failures retain the durable pointer path
+  and original teardown cause.
   Process-shared writer locks now require native stat results across the
   existing path preflight, opened descriptor and acquired inode identity.
   Exclusive single-link lock ownership is now required both after lock

@@ -2416,6 +2416,63 @@ def test_durability_unexpected_close_failure_preserves_commit(
     assert published.is_file()
 
 
+@pytest.mark.parametrize("phase", ["release", "close"])
+@pytest.mark.parametrize("failure_type", [TypeError, AttributeError])
+def test_writer_lock_unexpected_cleanup_exception_keeps_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    failure_type: type[Exception],
+) -> None:
+    """Atypical teardown errors cannot hide a durable published pointer."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    error = failure_type("injected writer lock teardown failure")
+    method = (
+        "_release_writer_lock"
+        if phase == "release"
+        else "_close_writer_lock_stream"
+    )
+    actual = cast("Callable[[object], None]", vars(progress)[method])
+
+    def fail_after_actual_cleanup(subject: object) -> None:
+        actual(subject)
+        raise error
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, method, fail_after_actual_cleanup)
+        with pytest.raises(progress.ProgressSidecarCommittedError) as captured:
+            _ = progress.write_atomic(sidecar)
+    assert captured.value.published_path == destination
+    assert captured.value.__cause__ is error
+    assert progress.read(destination) == sidecar
+
+
+@pytest.mark.parametrize("phase", ["release", "close"])
+@pytest.mark.parametrize("failure_type", [TypeError, AttributeError])
+def test_writer_lock_unexpected_teardown_exception_is_typed(
+    failure_type: type[Exception], phase: str
+) -> None:
+    """The lock release and close adapters retype unexpected host faults."""
+    failure = failure_type("injected writer lock teardown failure")
+
+    def fail_release() -> None:
+        raise failure
+
+    class FailingLockStream:
+        def close(self) -> None:
+            raise failure
+
+    release = cast("Callable[[Callable[[], None]], None]", vars(progress)["_release_writer_lock"])
+    close = cast("Callable[[object], None]", vars(progress)["_close_writer_lock_stream"])
+    with pytest.raises(ERROR, match="writer lock cannot be") as captured:
+        if phase == "release":
+            release(fail_release)
+        else:
+            close(FailingLockStream())
+    assert captured.value.__cause__ is failure
+
+
 class ForeignOpenedDescriptor:
     """Foreign descriptor whose coercion must never reach OS operations."""
 
