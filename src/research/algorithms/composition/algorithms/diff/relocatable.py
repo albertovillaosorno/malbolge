@@ -66,6 +66,7 @@ _ONE = 1
 _BOUNDARY_BYTES = 32
 _STAGING_SUFFIX = ".relocatable-staging"
 _BACKSLASH = "\\"
+_NUL = "\x00"
 _DOT = "."
 _PARENT = ".."
 
@@ -390,10 +391,16 @@ def _validate_relative_path(relative_path: object) -> str:
     if type(relative_path) is not str:
         message = "relocatable path must use the exact string type"
         raise RelocationError(message)
+    try:
+        _ = relative_path.encode("utf-8")
+    except UnicodeEncodeError as error:
+        message = f"unsafe relocatable tree path: {relative_path!r}"
+        raise RelocationError(message) from error
     candidate = PurePosixPath(relative_path)
     unsafe = (
         not relative_path
         or _BACKSLASH in relative_path
+        or _NUL in relative_path
         or relative_path == _DOT
         or candidate.is_absolute()
         or _PARENT in candidate.parts

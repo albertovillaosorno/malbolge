@@ -514,6 +514,26 @@ def test_relocatable_metadata_rejects_boolean_and_foreign_records() -> None:
         )
 
 
+@pytest.mark.parametrize("unsafe_path", ["src/\x00.bin", "src/\ud800.bin"])
+def test_relocatable_instruction_rejects_nonportable_paths(
+    unsafe_path: str,
+) -> None:
+    """Both source and output paths must be usable as canonical UTF-8."""
+    with pytest.raises(RelocationError, match="unsafe relocatable tree path"):
+        _ = RelocatableInstruction(
+            output_path=unsafe_path,
+            source_path=None,
+            copy_candidate_file=False,
+            literal=b"target",
+        )
+    with pytest.raises(RelocationError, match="unsafe relocatable tree path"):
+        _ = RelocatableInstruction(
+            output_path="output.bin",
+            source_path=unsafe_path,
+            copy_candidate_file=True,
+        )
+
+
 def test_existing_relocatable_staging_is_preserved(tmp_path: Path) -> None:
     """Never delete a staging tree that may belong to another writer."""
     source, oracle, base = _fixture(tmp_path)
