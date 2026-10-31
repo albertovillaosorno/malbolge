@@ -130,6 +130,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   command-line runner accepts explicit `--input-stdin` for raw classic sources
   and profile capsules, with end-to-end exact 256-byte-plus-EOF and current
   profile binary-input tests; its default remains empty input.
+- The binary-stdin close boundary now requires a native `None` completion;
+  forged success-looking bool, integer, or text returns reject the sample.
+  Ten red-first cases preserve original write errors and mark forged close
+  receipts only as secondary cleanup failures. This is not an OS EOF proof.
 - An opt-in `--input-mode patterned` classic target pilot now supplies a
   reproducible eight-byte repeating input sequence including NUL, `0xFF`,
   `0xA8` and high-bit values. A final extra input/output instruction pair

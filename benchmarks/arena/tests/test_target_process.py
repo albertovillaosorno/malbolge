@@ -1023,6 +1023,49 @@ def test_binary_input_close_fault_preserves_delivery_evidence(
         assert type(error.value.__cause__) is RuntimeError
 
 
+@pytest.mark.parametrize("receipt", [False, True, 0, 1, "closed"])
+@pytest.mark.parametrize("delivery_fails", [False, True])
+def test_binary_input_close_refuses_forged_success_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+    delivery_fails: bool,
+) -> None:
+    """An untrusted close return cannot attest stdin EOF or mask a write."""
+
+    class ForgedStream:
+        def fileno(self) -> int:
+            return 1
+
+        def close(self) -> object:
+            return receipt
+
+    class ChildProbe:
+        stdin = ForgedStream()
+
+    def fail_or_deliver(descriptor: int, data: bytes) -> int:
+        del descriptor
+        if delivery_fails:
+            raise OSError("original write failure")
+        return len(data)
+
+    monkeypatch.setattr(target_process.os, "set_blocking", lambda *_args: None)
+    monkeypatch.setattr(target_process.os, "write", fail_or_deliver)
+    with pytest.raises(
+        target_process.TargetProcessError, match="input"
+    ) as caught:
+        target_process._send_input(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()), b"x"
+        )
+    if delivery_fails:
+        assert type(caught.value.__cause__) is OSError
+        assert any(
+            "input close also failed" in note
+            for note in caught.value.__notes__
+        )
+    else:
+        assert "close" in str(caught.value)
+
+
 @pytest.mark.parametrize(
     "invalid",
     [None, False, 0, b"bad".decode(), bytearray(b"bad"), memoryview(b"bad"), [98, 97, 100]],

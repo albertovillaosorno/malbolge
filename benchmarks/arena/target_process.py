@@ -406,7 +406,10 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
     finally:
         primary = sys.exception()
         try:
-            child.stdin.close()
+            if child.stdin.close() is not None:
+                _fail(
+                    "bounded target input pipe close returned invalid receipt"
+                )
         except Exception as error:
             # Foreign stream adapters can fail with any ordinary exception.
             if primary is not None:
