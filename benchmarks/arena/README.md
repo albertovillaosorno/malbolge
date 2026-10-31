@@ -15,8 +15,10 @@ python3.14 -B benchmarks/arena/analyze.py path/to/study.json
 ```
 
 The command prints deterministic JSON, or exits with code 2 without a report
-when admission or comparison fails. Its input limit is 16 MiB. Version-one
-input has one `study` and a nonempty `observations` array:
+when admission or comparison fails. Its input limit is 16 MiB. Direct
+study-file readers require an exact positive integer byte ceiling no higher
+than 16 MiB; malformed or larger ceilings reject before opening any path.
+Version-one input has one `study` and a nonempty `observations` array:
 
 ```json
 {

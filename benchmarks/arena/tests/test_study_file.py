@@ -39,7 +39,7 @@ from __future__ import annotations
 import json
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -53,6 +53,7 @@ if TYPE_CHECKING:
 
 
 STABLE_INPUT = "source.json"
+STUDY_SAMPLE = b"staged"
 SUBSTITUTED = "other.json"
 CHANGED_OPEN = "changed between path and open"
 CHANGED_READ = "changed during read"
@@ -77,6 +78,59 @@ def test_unchanged_regular_study_retains_original_json_bytes(
         path,
         limit=analyze.MAX_INPUT_BYTES,
     ) == original.encode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "invalid_limit",
+    [
+        0,
+        -1,
+        False,
+        True,
+        None,
+        "16",
+        float("nan"),
+        float("inf"),
+        16 * 1024 * 1024 + 1,
+    ],
+)
+def test_invalid_direct_study_budget_rejects_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_limit: object,
+) -> None:
+    """Malformed budgets never bypass limits or reach filesystem I/O."""
+    attempted_open = False
+
+    def forbidden(*args: object, **kwargs: object) -> object:
+        nonlocal attempted_open
+        _ = (args, kwargs)
+        attempted_open = True
+        message = "invalid direct budget reached file admission"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(study_file, "_admit_path", forbidden)
+    with pytest.raises(study_file.StudyFileError, match="byte limit"):
+        _ = study_file.read_study_bytes(
+            tmp_path / "does-not-exist", limit=cast("int", invalid_limit)
+        )
+    assert not attempted_open
+
+
+def test_exact_declared_study_budget_still_reads_normal_file(
+    tmp_path: Path,
+) -> None:
+    """Positive bounded limits admit exact ordinary byte lengths."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    assert study_file.read_study_bytes(
+        path, limit=len(STUDY_SAMPLE)
+    ) == STUDY_SAMPLE
+    assert study_file.read_study_bytes(
+        path, limit=study_file.MAX_STUDY_BYTES
+    ) == STUDY_SAMPLE
+    with pytest.raises(study_file.StudyFileError, match="exceeds"):
+        _ = study_file.read_study_bytes(path, limit=len(STUDY_SAMPLE) - 1)
 
 
 def _same_length_study_rewrite(path: Path) -> None:

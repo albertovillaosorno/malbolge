@@ -39,6 +39,8 @@ import stat
 import sys
 from typing import TYPE_CHECKING, Never
 
+MAX_STUDY_BYTES = 16 * 1024 * 1024
+
 if TYPE_CHECKING:
     from pathlib import Path
     from typing import BinaryIO
@@ -60,6 +62,11 @@ def _identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
 
 def _fail(message: str) -> Never:
     raise StudyFileError(message)
+
+
+def _admit_limit(limit: int) -> None:
+    if type(limit) is not int or not 0 < limit <= MAX_STUDY_BYTES:
+        _fail("arena study byte limit must be a positive integer up to 16 MiB")
 
 
 def _parent_identity(path: Path) -> tuple[int, int]:
@@ -212,6 +219,7 @@ def read_study_bytes(path: Path, *, limit: int) -> bytes:
         Exact bytes from a regular descriptor that remained path-bound.
 
     """
+    _admit_limit(limit)
     before = _admit_path(path, limit)
     original_parent = _parent_identity(path)
     # Even if a different parent resolves to a hard link of the same inode,
