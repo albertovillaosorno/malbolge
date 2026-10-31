@@ -389,6 +389,27 @@ const ROTATED_FOURTEEN_BYTE_SEEDS: &[(u8, usize)] = &[
     (49, 25),
 ];
 
+/// Fifteen-output witnesses omit the unsupported phase 20; no phase extrapolation.
+const ROTATED_FIFTEEN_BYTE_SEEDS: &[(u8, usize)] = &[
+    (142, 0),
+    (21, 1),
+    (6, 2),
+    (141, 3),
+    (10, 4),
+    (140, 6),
+    (4, 8),
+    (251, 9),
+    (18, 10),
+    (3, 11),
+    (11, 12),
+    (23, 13),
+    (2, 14),
+    (22, 16),
+    (1, 17),
+    (8, 21),
+    (255, 23),
+];
+
 /// A failed pre-layout admission, semantic bridge, or final target admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ByteEchoBridgeError {
@@ -424,6 +445,7 @@ const fn rotated_byte_seeds(outputs: usize) -> Option<RotatedByteSeedTable> {
         12 => Some(ROTATED_DODECUPLE_BYTE_SEEDS),
         13 => Some(ROTATED_TREDECUPLE_BYTE_SEEDS),
         14 => Some(ROTATED_FOURTEEN_BYTE_SEEDS),
+        15 => Some(ROTATED_FIFTEEN_BYTE_SEEDS),
         _ => None,
     }
 }
