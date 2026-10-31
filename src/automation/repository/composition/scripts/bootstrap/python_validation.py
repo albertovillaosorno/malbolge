@@ -782,7 +782,9 @@ def _publish_jig_tool_alias(
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "wb") as stream:
-            _ = stream.write(payload)
+            written = stream.write(payload)
+            if type(written) is not int or written != len(payload):
+                _fail("Jig alias temporary write count mismatch")
             if not windows:
                 os.fchmod(stream.fileno(), JIG_BINARY_MODE)
         _check_jig_alias_path(alias_root, directory=True, required=True)
