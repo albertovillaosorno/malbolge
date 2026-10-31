@@ -39,14 +39,14 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
-from dataclasses import FrozenInstanceError
-from dataclasses import replace
 import json
+from copy import deepcopy
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from typing import cast
 
 import pytest
+
 from scripts.validate import profile_requirements as requirements
 from scripts.validate import target_profile
 
@@ -85,9 +85,7 @@ def _requirement(
     required_memory_words: int | None = None,
 ) -> requirements.ProfileRequirement:
     memory_words = (
-        CURRENT_WORDS
-        if required_memory_words is None
-        else required_memory_words
+        CURRENT_WORDS if required_memory_words is None else required_memory_words
     )
     return requirements.build_profile_requirement(
         _document(),
@@ -254,8 +252,7 @@ def test_historical_capacity_diagnostic_matches_rust_byte_for_byte() -> None:
 
     error = caught.value
     assert (
-        error.kind
-        is requirements.ProfileRequirementErrorKind.PROFILE_CAPACITY_EXCEEDED
+        error.kind is requirements.ProfileRequirementErrorKind.PROFILE_CAPACITY_EXCEEDED
     )
     assert error.code == "MALBOLGE-PROFILE-002"
     assert error.missing_dimensions == ()
@@ -503,6 +500,19 @@ def test_requirement_and_runtime_are_immutable() -> None:
         setattr(requirement, requirement_field, HISTORICAL_ID)
     with pytest.raises(FrozenInstanceError):
         setattr(runtime, runtime_field, 1)
+
+
+@pytest.mark.parametrize("foreign_kind", ([1], {"x": 1}, {1}))
+def test_preflight_rejects_unhashable_profile_kind_as_typed_error(
+    foreign_kind: object,
+) -> None:
+    """A forged direct dataclass kind cannot leak a hash-table TypeError."""
+    invalid = replace(_requirement(), kind=cast("str", foreign_kind))
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="profile kind is unsupported",
+    ):
+        requirements.preflight_profile_requirement(invalid, _runtime())
 
 
 def test_preflight_rejects_foreign_requirement_type() -> None:
