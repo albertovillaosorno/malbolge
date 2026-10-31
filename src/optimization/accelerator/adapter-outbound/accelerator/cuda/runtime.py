@@ -41,6 +41,7 @@ from hashlib import sha256
 import os
 from pathlib import Path
 import platform
+from stat import S_ISREG
 from typing import Final
 from typing import TYPE_CHECKING
 from typing import cast
@@ -93,6 +94,7 @@ CUDA_RUNTIME_IDENTITY_ID: Final = "cuda-runtime-toolchain-identity-v1"
 CUDA_HOST_RUNTIME_IDENTITY_ID: Final = "cuda-host-runtime-identity-v1"
 _HEX_DIGITS: Final = frozenset("0123456789abcdef")
 _SHA256_HEX_LENGTH: Final = 64
+_MAX_RUNTIME_MANIFEST_BYTES: Final = 1024 * 1024
 CUDA_SUCCESS: Final = 0
 NVRTC_SUCCESS: Final = 0
 NVML_SUCCESS: Final = 0
@@ -2949,6 +2951,123 @@ def cuda_runtime_identity_id() -> str:
     return CUDA_RUNTIME_IDENTITY_ID
 
 
+def _runtime_manifest_identity(status: os.stat_result) -> tuple[int, ...]:
+    """Admit a physical manifest regular file with stable identity.
+
+    Returns:
+        Device, inode, size and mutation-sensitive timestamps.
+
+    Raises:
+        AcceleratorUnavailableError: Manifest source is not regular.
+
+    """
+    if not S_ISREG(status.st_mode):
+        message = "CUDA toolchain manifest must be regular"
+        raise AcceleratorUnavailableError(message)
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _check_runtime_manifest_parents(path: Path) -> None:
+    """Reject ancestor links in the runtime toolchain identity path.
+
+    Raises:
+        AcceleratorUnavailableError: A manifest parent redirects.
+
+    """
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            message = "CUDA toolchain manifest path must not redirect"
+            raise AcceleratorUnavailableError(message)
+
+
+def _read_runtime_manifest_descriptor(
+    path: Path,
+    descriptor: int,
+    *,
+    size: int,
+    expected: tuple[int, ...],
+) -> bytes:
+    """Verify stable descriptor, named file and parent source identity.
+
+    Returns:
+        Exact unchanged source bytes to hash for runtime identity.
+
+    Raises:
+        AcceleratorUnavailableError: Source changes during the read.
+
+    """
+    with os.fdopen(descriptor, "rb") as stream:
+        if _runtime_manifest_identity(os.fstat(stream.fileno())) != expected:
+            message = "CUDA toolchain manifest changed before read"
+            raise AcceleratorUnavailableError(message)
+        payload = stream.read(_MAX_RUNTIME_MANIFEST_BYTES + 1)
+        if len(payload) != size:
+            message = (
+                "CUDA toolchain manifest changed during read or "
+                "exceeds byte limit"
+            )
+            raise AcceleratorUnavailableError(message)
+        if (
+            _runtime_manifest_identity(os.fstat(stream.fileno())) != expected
+            or _runtime_manifest_identity(path.lstat()) != expected
+        ):
+            message = "CUDA toolchain manifest changed during read"
+            raise AcceleratorUnavailableError(message)
+        _check_runtime_manifest_parents(path)
+        return payload
+
+
+def _read_runtime_manifest_file(path: Path) -> bytes:
+    """Open the runtime manifest without redirects or unbounded reads.
+
+    Returns:
+        Bounded stable physical source bytes.
+
+    Raises:
+        AcceleratorUnavailableError: Manifest is oversized or redirected.
+
+    """
+    _check_runtime_manifest_parents(path)
+    admitted = path.lstat()
+    expected = _runtime_manifest_identity(admitted)
+    if admitted.st_size > _MAX_RUNTIME_MANIFEST_BYTES:
+        message = "CUDA toolchain manifest exceeds byte limit"
+        raise AcceleratorUnavailableError(message)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    return _read_runtime_manifest_descriptor(
+        path, descriptor, size=admitted.st_size, expected=expected
+    )
+
+
+def _read_runtime_manifest_bytes(path: Path) -> bytes:
+    """Admit one exact runtime manifest byte source.
+
+    Returns:
+        Physical unchanged manifest bytes.
+
+    Raises:
+        AcceleratorUnavailableError: Source cannot be admitted or read.
+
+    """
+    try:
+        return _read_runtime_manifest_file(path)
+    except OSError as error:
+        message = f"CUDA toolchain manifest unavailable: {error}"
+        raise AcceleratorUnavailableError(message) from error
+
+
 def measure_cuda_runtime_identity(
     driver_version_fn: _CudaFn,
     nvrtc_version_fn: _CudaFn,
@@ -2961,8 +3080,8 @@ def measure_cuda_runtime_identity(
     Returns:
         Validated immutable runtime identity.
 
-    Raises:
-        AcceleratorUnavailableError: If a query or manifest read fails.
+    Failed queries and invalid manifest sources raise
+    ``AcceleratorUnavailableError``.
 
     """
     driver_version = ctypes.c_int()
@@ -2979,11 +3098,9 @@ def measure_cuda_runtime_identity(
         ),
         "nvrtcVersion",
     )
-    try:
-        manifest_sha256 = sha256(manifest_path.read_bytes()).hexdigest()
-    except OSError as error:
-        message = f"CUDA toolchain manifest unavailable: {error}"
-        raise AcceleratorUnavailableError(message) from error
+    manifest_sha256 = sha256(
+        _read_runtime_manifest_bytes(manifest_path)
+    ).hexdigest()
     observed_environment = environment or CudaRuntimeEnvironment()
     return CudaRuntimeIdentity(
         display_driver_version=observed_environment.display_driver_version,

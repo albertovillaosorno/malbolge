@@ -91,6 +91,9 @@ this Fedora session.
   evidence do not authorize CUDA library selection.
 - The runtime resolves its toolkit root and NVRTC library from the selected
   manifest; it does not embed `13.3.1` or `.dll` in generic execution logic.
+- Measured runtime identity hashes only bounded, unchanged, nonredirected
+  regular platform-manifest source bytes. Linked, oversized, special, or
+  changing files cannot become the recorded CUDA toolchain SHA-256.
 - Missing libraries, unsupported platforms, or manifest disagreement produce a
   typed unavailable result and preserve the mandatory CPU path.
 - Linux enablement cannot change CUDA kernel integer semantics, result ordering,

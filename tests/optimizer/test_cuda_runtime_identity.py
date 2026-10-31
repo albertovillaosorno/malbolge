@@ -38,6 +38,8 @@ from __future__ import annotations
 import ctypes
 from dataclasses import dataclass
 from hashlib import sha256
+import os
+from pathlib import Path
 import platform
 from typing import TYPE_CHECKING
 
@@ -55,7 +57,6 @@ import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 IDENTITY_ID = "cuda-runtime-toolchain-identity-v1"
 HOST_IDENTITY_ID = "cuda-host-runtime-identity-v1"
@@ -69,6 +70,8 @@ LINUX_TOOLCHAIN_MANIFEST = CUDA_TOOLCHAIN_MANIFEST.with_name(
     "toolchain-linux-x86_64.json"
 )
 FAILURE_STATUS = 7
+FILE_REDIRECT = "file"
+SOURCE_RECHECK = 2
 DISPLAY_DRIVER_VERSION = "610.88"
 WINDOWS_SYSTEM = "Windows"
 LINUX_SYSTEM = "Linux"
@@ -380,3 +383,156 @@ def test_live_linux_cuda_runtime_identity_uses_selected_toolchain() -> None:
     assert identity.toolchain_manifest_sha256 == sha256(
         LINUX_TOOLCHAIN_MANIFEST.read_bytes()
     ).hexdigest()
+
+
+def _measured_manifest(path: Path) -> object:
+    """Read toolchain identity using valid deterministic native callbacks.
+
+    Returns:
+        The complete measured CUDA runtime identity record.
+
+    """
+    return measure_cuda_runtime_identity(
+        _version_callback(DRIVER_API_VERSION),
+        _nvrtc_callback(NVRTC_MAJOR, NVRTC_MINOR),
+        path,
+        environment=ENVIRONMENT,
+    )
+
+
+@pytest.mark.parametrize("redirect", ["file", "directory"])
+def test_cuda_runtime_identity_rejects_redirected_manifest(
+    tmp_path: Path,
+    redirect: str,
+) -> None:
+    """Linked manifest paths cannot establish exact runtime identity."""
+    real = tmp_path / "real"
+    real.mkdir()
+    source = real / "toolchain.json"
+    _ = source.write_bytes(b'{"schema_version":1}\n')
+    if redirect == FILE_REDIRECT:
+        alias = tmp_path / "alias.json"
+    else:
+        alias = tmp_path / "alias-dir"
+    try:
+        if redirect == FILE_REDIRECT:
+            _ = alias.symlink_to(source)
+        else:
+            _ = alias.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    path = alias if redirect == FILE_REDIRECT else alias / source.name
+    with pytest.raises(
+        AcceleratorUnavailableError, match=r"regular|redirect"
+    ):
+        _ = _measured_manifest(path)
+
+
+def test_cuda_runtime_identity_rejects_oversized_manifest(
+    tmp_path: Path,
+) -> None:
+    """Manifest hash admission has an explicit byte bound."""
+    source = tmp_path / "toolchain.json"
+    with source.open("wb") as stream:
+        _ = stream.truncate(1024 * 1024 + 1)
+    with pytest.raises(AcceleratorUnavailableError, match="byte limit"):
+        _ = _measured_manifest(source)
+
+
+def test_cuda_runtime_identity_rejects_special_file_manifest(
+    tmp_path: Path,
+) -> None:
+    """No nonregular source may represent the retained toolchain digest."""
+    source = tmp_path / "toolchain.json"
+    source.mkdir()
+    with pytest.raises(AcceleratorUnavailableError, match="regular"):
+        _ = _measured_manifest(source)
+    source.rmdir()
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFO unavailable on host")
+    mkfifo(source)
+    with pytest.raises(AcceleratorUnavailableError, match="regular"):
+        _ = _measured_manifest(source)
+
+
+def test_cuda_runtime_identity_rejects_inode_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equal-byte inode replacement cannot become runtime identity."""
+    source = tmp_path / "toolchain.json"
+    _ = source.write_bytes(b'{"schema_version":1}\n')
+    replacement = tmp_path / "replacement.json"
+    _ = replacement.write_bytes(source.read_bytes())
+    real_open = os.open
+    swapped = False
+
+    def swap_on_open(path: Path, flags: int) -> int:
+        nonlocal swapped
+        if path == source:
+            _ = replacement.replace(source)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_on_open)
+    with pytest.raises(
+        AcceleratorUnavailableError, match="changed before read"
+    ):
+        _ = _measured_manifest(source)
+    assert swapped
+
+
+def test_cuda_runtime_identity_rejects_inode_swap_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Runtime evidence must be the named file after descriptor reading."""
+    source = tmp_path / "toolchain.json"
+    _ = source.write_bytes(b'{"schema_version":1}\n')
+    replacement = tmp_path / "replacement.json"
+    _ = replacement.write_bytes(source.read_bytes())
+    real_lstat = Path.lstat
+    observed = 0
+
+    def swap_at_recheck(path: Path) -> os.stat_result:
+        nonlocal observed
+        if path == source:
+            observed += 1
+            if observed == SOURCE_RECHECK:
+                _ = replacement.replace(source)
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", swap_at_recheck)
+    with pytest.raises(
+        AcceleratorUnavailableError, match="changed during read"
+    ):
+        _ = _measured_manifest(source)
+    assert observed == SOURCE_RECHECK
+
+
+def test_cuda_runtime_identity_rejects_in_place_mutation_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-size, same-inode write invalidates the runtime digest."""
+    source = tmp_path / "toolchain.json"
+    _ = source.write_bytes(b'{"schema_version":1}\n')
+    real_lstat = Path.lstat
+    observed = 0
+
+    def edit_at_recheck(path: Path) -> os.stat_result:
+        nonlocal observed
+        if path == source:
+            observed += 1
+            if observed == SOURCE_RECHECK:
+                with source.open("r+b") as stream:
+                    _ = stream.write(b"x")
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", edit_at_recheck)
+    with pytest.raises(
+        AcceleratorUnavailableError, match="changed during read"
+    ):
+        _ = _measured_manifest(source)
+    assert observed == SOURCE_RECHECK
