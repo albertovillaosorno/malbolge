@@ -195,6 +195,28 @@ def test_rejected_domain_module_is_not_left_registered(tmp_path: Path) -> None:
     )
 
 
+def test_domain_hook_lookup_exception_uses_contract_error(
+    tmp_path: Path,
+) -> None:
+    """A faulty module hook resolver cannot leak its own exception type."""
+    module = tmp_path / "dynamic.py"
+    missing = _COMPLETE.replace(
+        "def build_behavior_programs():\n    return None\n\n", ""
+    )
+    getter = (
+        "def __getattr__(name):\n"
+        "    raise RuntimeError('consumer lookup failed')\n"
+    )
+    _write(module, missing + getter)
+    before = frozenset(sys.modules)
+    with pytest.raises(DomainContractError, match="hook lookup failed"):
+        _ = load_diff_domain(module)
+    registered = frozenset(sys.modules) - before
+    assert not any(
+        name.startswith("_malbolge_diff_domain_") for name in registered
+    )
+
+
 def test_rejected_domain_reload_preserves_previous_registration(
     tmp_path: Path,
 ) -> None:

@@ -190,7 +190,11 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
 
 
 def _callable(module: ModuleType, name: str) -> Callable[..., object]:
-    value = getattr(module, name, None)
+    try:
+        value = getattr(module, name, None)
+    except Exception as error:
+        message = f"diff domain hook lookup failed for {name!r}: {error}"
+        raise DomainContractError(message) from error
     if not callable(value):
         message = f"diff domain module requires callable {name!r}"
         raise DomainContractError(message)
