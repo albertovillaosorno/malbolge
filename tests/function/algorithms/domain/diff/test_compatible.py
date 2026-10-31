@@ -229,6 +229,46 @@ def test_compatible_authoring_rejects_linked_source_after_exact_plan(
     _expect(changed, "post-plan link injection did not execute")
 
 
+def test_compatible_authoring_rejects_linked_directory_ancestor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In-tree directory aliases cannot feed mapped source bytes to a mapper."""
+    source, oracle = _roots(tmp_path)
+    _write(source, "nested/code.src", _SOURCE_CODE)
+    _write(oracle, "nested/code.src", _TARGET_CODE)
+    original_build = build_exact_plan
+    replaced = False
+
+    def replace_directory_after_plan(
+        source_root: Path, oracle_root: Path
+    ) -> ExactAuthoringPlan:
+        nonlocal replaced
+        plan = original_build(source_root, oracle_root)
+        _ = (source_root / "nested").rename(source_root / "real")
+        try:
+            (source_root / "nested").symlink_to(
+                source_root / "real", target_is_directory=True
+            )
+        except OSError:
+            pytest.skip("directory symlinks unavailable")
+        replaced = True
+        return plan
+
+    monkeypatch.setattr(
+        compatible_module, "build_exact_plan", replace_directory_after_plan
+    )
+    request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    with pytest.raises(CompatiblePlanError, match="linked path component"):
+        _ = build_compatible_plan(request)
+    _expect(replaced, "post-plan source directory alias was not created")
+
+
 def _candidate(tmp_path: Path) -> Path:
     candidate = tmp_path / "candidate"
     _write(candidate, "code.src", _CANDIDATE_CODE)
@@ -350,6 +390,54 @@ def test_compatible_materialization_rejects_post_snapshot_linked_candidate(
     ):
         _ = materialize_compatible_plan(request)
     _expect(swapped, "candidate substitution did not execute")
+    _expect(not request.output_root.exists(), "linked candidate was published")
+
+
+def test_compatible_materialization_preserves_regular_nested_directory(
+    tmp_path: Path,
+) -> None:
+    """Unlinked candidate-only directories remain valid source evidence."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    _write(candidate, "nested/only.cfg", _CANDIDATE_ONLY)
+    output = tmp_path / "out"
+    _ = materialize_compatible_plan(_request(candidate, plan, output))
+
+    _expect(
+        (output / "nested/only.cfg").read_bytes() == _CANDIDATE_ONLY,
+        "regular candidate-only nested source was not preserved",
+    )
+
+
+def test_compatible_materialization_rejects_linked_directory_ancestor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Candidate-only aliases cannot feed source bytes into staged output."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    _write(candidate, "nested/only.cfg", b"preserve from candidate")
+    request = _request(candidate, plan, tmp_path / "out")
+    original_snapshot = snapshot_tree
+    replaced = False
+
+    def swap_after_snapshot(root: Path) -> TreeSnapshot:
+        nonlocal replaced
+        result = original_snapshot(root)
+        if root == candidate and not replaced:
+            _ = (candidate / "nested").rename(candidate / "real")
+            try:
+                (candidate / "nested").symlink_to(
+                    candidate / "real", target_is_directory=True
+                )
+            except OSError:
+                pytest.skip("directory symlinks unavailable")
+            replaced = True
+        return result
+
+    monkeypatch.setattr(compatible_module, "snapshot_tree", swap_after_snapshot)
+    with pytest.raises(CompatiblePlanError, match="linked path component"):
+        _ = materialize_compatible_plan(request)
+    _expect(replaced, "post-snapshot candidate alias was not created")
     _expect(not request.output_root.exists(), "linked candidate was published")
 
 

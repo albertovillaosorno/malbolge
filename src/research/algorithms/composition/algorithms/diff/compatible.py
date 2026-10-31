@@ -630,6 +630,19 @@ def _validate_relative_path(relative_path: str) -> str:
     return relative_path
 
 
+def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
+    current = root
+    for component in PurePosixPath(relative_path).parts[:-1]:
+        current /= component
+        if _path_present(current, "compatible path ancestor") and (
+            current.is_symlink() or current.is_junction()
+        ):
+            message = (
+                f"compatible linked path component is unsupported: {current}"
+            )
+            raise CompatiblePlanError(message)
+
+
 def _safe_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
@@ -646,6 +659,7 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     except ValueError as error:
         message = f"compatible path escapes tree root: {relative_path!r}"
         raise CompatiblePlanError(message) from error
+    _reject_linked_ancestors(root, normalized)
     return path
 
 
