@@ -232,8 +232,16 @@ def _discover_iwad(source_directory: Path, explicit: Path | None) -> Path:
 
 
 def _debug_directory(source: Path) -> Path:
-    directory = source.parent / ".debug"
-    directory.mkdir(parents=True, exist_ok=True)
+    """Admit the native Zig debug build directory and executable output.
+
+    Returns:
+        The physical build directory after output-path preflight.
+
+    """
+    directory = _ensure_physical_debug_directory(
+        source.parent / ".debug", label="sanitizer build directory"
+    )
+    _admit_sanitizer_build_output(directory / "doom-sanitize.exe")
     return directory
 
 
@@ -285,11 +293,43 @@ def _timestamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _reject_log_redirects(directory: Path) -> None:
-    """Reject an existing linked directory or ancestor before log creation."""
-    for candidate in (*reversed(directory.parents), directory):
+def _reject_debug_redirects(path: Path, *, label: str) -> None:
+    """Reject an existing linked artifact or ancestor before a debug write."""
+    for candidate in (*reversed(path.parents), path):
         if candidate.is_symlink() or candidate.is_junction():
-            _fail(f"sanitizer log directory must not redirect: {candidate}")
+            _fail(f"{label} must not redirect: {candidate}")
+
+
+def _ensure_physical_debug_directory(directory: Path, *, label: str) -> Path:
+    """Create or admit a real directory without following redirecting paths.
+
+    Returns:
+        One physical directory selected for sanitizer artifacts.
+
+    """
+    _reject_debug_redirects(directory, label=label)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        status = directory.lstat()
+    except OSError as error:
+        _fail(f"{label} unavailable: {error}")
+    _reject_debug_redirects(directory, label=label)
+    if not S_ISDIR(status.st_mode):
+        _fail(f"{label} must be a physical directory: {directory}")
+    return directory
+
+
+def _admit_sanitizer_build_output(path: Path) -> None:
+    """Refuse linked and nonregular executable targets before invoking Zig."""
+    _reject_debug_redirects(path, label="sanitizer executable output")
+    try:
+        status = path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        _fail(f"sanitizer executable output unavailable: {error}")
+    if not S_ISREG(status.st_mode):
+        _fail(f"sanitizer executable output must be regular: {path}")
 
 
 def _prepare_sanitizer_log_directory(executable: Path) -> Path:
@@ -299,17 +339,9 @@ def _prepare_sanitizer_log_directory(executable: Path) -> Path:
         Accepted directory for the diagnostic output file.
 
     """
-    log_directory = executable.parent / "logs"
-    _reject_log_redirects(log_directory)
-    try:
-        log_directory.mkdir(parents=True, exist_ok=True)
-        status = log_directory.lstat()
-    except OSError as error:
-        _fail(f"sanitizer log directory unavailable: {error}")
-    _reject_log_redirects(log_directory)
-    if not S_ISDIR(status.st_mode):
-        _fail(f"sanitizer log directory is not physical: {log_directory}")
-    return log_directory
+    return _ensure_physical_debug_directory(
+        executable.parent / "logs", label="sanitizer log directory"
+    )
 
 
 def _log_file_identity(
@@ -333,7 +365,7 @@ def _log_file_identity(
 def _verify_sanitizer_log(log_file: BinaryIO) -> None:
     """Reject a path substituted while subprocess was writing diagnostics."""
     log_path = Path(log_file.name)
-    _reject_log_redirects(log_path.parent)
+    _reject_debug_redirects(log_path.parent, label="sanitizer log directory")
     try:
         named = log_path.lstat()
         opened = os.fstat(log_file.fileno())

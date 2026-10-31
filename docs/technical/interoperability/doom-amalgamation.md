@@ -70,8 +70,12 @@ preserves translation-unit preprocessing, internal linkage isolation,
 declaration ordering, include behavior, and provenance.
 
 The accepted `doom.c` passes strict six-target Clang validation and builds with
-ASan+UBSan plus the Windows adapter. The optional Windows direct sanitizer-debug
-runner creates a unique physical log in the executable's `logs/` directory for
+ASan+UBSan plus the Windows adapter. The optional Windows sanitizer build
+preflights its `.debug` directory and `doom-sanitize.exe` output to reject
+redirected parents/leaves and nonregular existing executable targets before
+invoking native Zig. This admission is not atomic with Zig's later output open.
+
+The direct sanitizer-debug runner creates a unique physical log in the executable's `logs/` directory for
 each run, refusing linked log directories or parents instead of writing outside
 the selected debug tree. It verifies that the named output still matches its
 open descriptor before echoing at most one MiB to the console. The complete

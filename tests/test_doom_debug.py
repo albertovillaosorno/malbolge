@@ -57,6 +57,7 @@ ECHO_NOTICE = "truncated"
 RUN_DIRECT = cast(
     "Callable[[doom.LaunchConfiguration], int]", vars(doom)["_run_direct"]
 )
+DEBUG_DIRECTORY = cast("Callable[[Path], Path]", vars(doom)["_debug_directory"])
 
 
 def _configuration(tmp_path: Path) -> doom.LaunchConfiguration:
@@ -258,3 +259,60 @@ def test_doom_debug_detects_equal_content_inode_swap(
     monkeypatch.setattr(sp, "run", replace_log)
     with pytest.raises(doom.DoomDebugError, match="changed"):
         _ = RUN_DIRECT(config)
+
+
+def test_doom_debug_build_rejects_linked_build_directory(
+    tmp_path: Path,
+) -> None:
+    """The Zig output directory must not redirect into another tree."""
+    config = _configuration(tmp_path)
+    debug_root = config.executable.parent
+    relocated = tmp_path / "relocated-build"
+    _ = debug_root.rename(relocated)
+    try:
+        _ = debug_root.symlink_to(relocated, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(doom.DoomDebugError, match="redirect"):
+        _ = DEBUG_DIRECTORY(config.source)
+    assert not (relocated / "logs").exists()
+
+
+def test_doom_debug_build_rejects_linked_binary_output(
+    tmp_path: Path,
+) -> None:
+    """A prior executable symlink cannot select another Zig output file."""
+    config = _configuration(tmp_path)
+    outside = tmp_path / "outside.exe"
+    _ = outside.write_bytes(OUTSIDE_BYTES)
+    config.executable.unlink()
+    try:
+        _ = config.executable.symlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(doom.DoomDebugError, match="redirect"):
+        _ = DEBUG_DIRECTORY(config.source)
+    assert outside.read_bytes() == OUTSIDE_BYTES
+
+
+def test_doom_debug_build_rejects_nonregular_binary_output(
+    tmp_path: Path,
+) -> None:
+    """A directory at the output name is never a build-ready executable."""
+    config = _configuration(tmp_path)
+    config.executable.unlink()
+    config.executable.mkdir()
+    with pytest.raises(doom.DoomDebugError, match="regular"):
+        _ = DEBUG_DIRECTORY(config.source)
+
+
+def test_doom_debug_build_accepts_physical_existing_or_missing_output(
+    tmp_path: Path,
+) -> None:
+    """Build may replace a regular file or create an absent executable."""
+    config = _configuration(tmp_path)
+    debug_root = config.executable.parent
+    assert DEBUG_DIRECTORY(config.source) == debug_root
+    config.executable.unlink()
+    assert DEBUG_DIRECTORY(config.source) == debug_root
+    assert not config.executable.exists()
