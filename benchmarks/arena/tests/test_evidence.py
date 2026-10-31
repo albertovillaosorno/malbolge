@@ -59,6 +59,14 @@ if TYPE_CHECKING:
     from os import stat_result
     from typing import IO
 
+
+class _UnanticipatedEvidenceError(Exception):
+    """Ordinary dependency faults cannot require foreign string rendering."""
+
+    def __str__(self) -> str:
+        raise AssertionError("unexpected evidence exception formatted")
+
+
 REPLACE_AFTER_LSTAT_COUNT = 3
 SECOND_FSTAT_CALL = 2
 PAIRED_TEST_METHOD = "two-sided-exact-conditional-binomial"
@@ -1546,7 +1554,15 @@ def test_bounded_reader_fails_closed_when_fd_path_provenance_unavailable(
 
 @pytest.mark.parametrize(
     "fault",
-    [OSError, ValueError, RuntimeError, TypeError, AttributeError],
+    [
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        IndexError,
+        _UnanticipatedEvidenceError,
+    ],
 )
 def test_evidence_stream_constructor_failure_closes_descriptor(
     tmp_path: Path,
@@ -1771,7 +1787,15 @@ class _FaultEvidenceReader:
 
 @pytest.mark.parametrize(
     "fault",
-    [OSError, ValueError, RuntimeError, TypeError, AttributeError],
+    [
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        IndexError,
+        _UnanticipatedEvidenceError,
+    ],
 )
 def test_bounded_reader_classifies_stream_read_failure(
     tmp_path: Path,
@@ -1804,7 +1828,16 @@ NONBINARY_READ_KIND = "text"
 
 
 @pytest.mark.parametrize(
-    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+    "fault",
+    [
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        IndexError,
+        _UnanticipatedEvidenceError,
+    ],
 )
 def test_evidence_stream_close_failure_is_typed(
     tmp_path: Path,
@@ -2168,7 +2201,16 @@ def test_evidence_cli_success_intervals_remain_downstream_of_source_links(
 
 
 @pytest.mark.parametrize(
-    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+    "fault",
+    [
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        IndexError,
+        _UnanticipatedEvidenceError,
+    ],
 )
 @pytest.mark.parametrize("stage", ["root-resolve", "segment-lstat", "leaf-lstat"])
 def test_direct_evidence_path_inspection_faults_remain_typed(
@@ -2210,7 +2252,17 @@ def test_direct_evidence_path_inspection_faults_remain_typed(
     assert type(failure.value.__cause__) is fault
 
 
-@pytest.mark.parametrize("fault", [ValueError, RuntimeError, TypeError, AttributeError])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        IndexError,
+        _UnanticipatedEvidenceError,
+    ],
+)
 def test_evidence_raw_descriptor_open_failures_remain_typed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2232,7 +2284,16 @@ def test_evidence_raw_descriptor_open_failures_remain_typed(
 
 
 @pytest.mark.parametrize(
-    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+    "fault",
+    [
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        IndexError,
+        _UnanticipatedEvidenceError,
+    ],
 )
 @pytest.mark.parametrize("target_call", [3, 6], ids=["pre-open", "post-read"])
 def test_bounded_evidence_reader_types_late_path_stat_faults(
@@ -2437,3 +2498,70 @@ def test_exact_native_exception_with_foreign_argument_never_formats_it(
     captured = capsys.readouterr()
     assert captured.err.startswith("arena evidence:")
     assert not captured.out
+
+
+@pytest.mark.parametrize("fault_type", [IndexError, _UnanticipatedEvidenceError])
+def test_unanticipated_stream_close_preserves_primary_evidence_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Unexpected close errors cannot replace an existing raw-read rejection."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"evidence")
+    original_open = evidence._open_evidence
+    primary = evidence.EvidenceError("primary evidence read failure")
+    secondary = fault_type("unanticipated stream close failure")
+
+    @contextmanager
+    def fail_close(path: Path) -> Iterator[IO[bytes]]:
+        try:
+            with original_open(path) as stream:
+                yield stream
+        finally:
+            raise secondary
+
+    def fail_read(_stream: IO[bytes], *, size: int, relative: str) -> bytes:
+        del size, relative
+        raise primary
+
+    monkeypatch.setattr(evidence, "_open_evidence", fail_close)
+    monkeypatch.setattr(evidence, "_read_complete", fail_read)
+    with pytest.raises(evidence.EvidenceError, match="primary evidence") as caught:
+        evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+    assert caught.value is primary
+    assert primary.__notes__ == ["evidence stream cleanup also failed"]
+
+
+@pytest.mark.parametrize("fault_type", [IndexError, _UnanticipatedEvidenceError])
+def test_unanticipated_descriptor_close_retains_evidence_constructor_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Unexpected raw descriptor cleanup must retain the fdopen rejection."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"evidence")
+    original_close = evidence.os.close
+    primary = RuntimeError("primary evidence constructor failure")
+    secondary = fault_type("unanticipated descriptor close failure")
+    closed: list[int] = []
+
+    def fail_fdopen(*_args: object, **_kwargs: object) -> IO[bytes]:
+        raise primary
+
+    def fail_close(descriptor: int) -> None:
+        original_close(descriptor)
+        closed.append(descriptor)
+        raise secondary
+
+    with monkeypatch.context() as context:
+        context.setattr(evidence.os, "fdopen", fail_fdopen)
+        context.setattr(evidence.os, "close", fail_close)
+        with pytest.raises(
+            evidence.EvidenceError, match="stream could not open"
+        ) as caught:
+            evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+    assert caught.value.__cause__ is primary
+    assert primary.__notes__ == ["evidence descriptor cleanup also failed"]
+    assert len(closed) == 1
+    with pytest.raises(OSError):
+        evidence.os.fstat(closed[0])

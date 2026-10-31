@@ -134,7 +134,7 @@ def _path_lstat(path: Path, relative: str) -> os.stat_result:
     except FileNotFoundError:
         # Preserve the missing-source contract for historical import callers.
         raise
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         message = f"evidence path inspection failed: {relative}"
         raise EvidenceError(message) from error
 
@@ -158,7 +158,7 @@ def regular_path(
         current = root.resolve(strict=True)
     except FileNotFoundError:
         raise
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         message = f"evidence path inspection failed: {relative}"
         raise EvidenceError(message) from error
     for segment in _segments(relative):
@@ -210,7 +210,7 @@ def _open_evidence(path: Path) -> IO[bytes]:
     )
     try:
         descriptor = os.open(path, flags)
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         message = f"evidence file could not open safely: {path}"
         raise EvidenceError(message) from error
     try:
@@ -224,18 +224,12 @@ def _open_evidence(path: Path) -> IO[bytes]:
             if actual_path != os.fspath(path):
                 _fail(f"evidence opened path changed: {path}")
         return os.fdopen(descriptor, "rb")
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         # Stream construction/path admission failed before stream ownership.
         # An unsuccessful close must not erase the original admission failure.
         try:
             os.close(descriptor)
-        except (
-            OSError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            AttributeError,
-        ) as close_error:
+        except Exception as close_error:
             BaseException.add_note(
                 error,
                 _cleanup_note("evidence descriptor cleanup also failed", close_error),
@@ -261,13 +255,7 @@ def _read_complete(stream: IO[bytes], *, size: int, relative: str) -> bytes:
         requested = min(size - len(data), 1024 * 1024)
         try:
             chunk = stream.read(requested)
-        except (
-            OSError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            AttributeError,
-        ) as error:
+        except Exception as error:
             message = f"evidence read failed: {relative}"
             raise EvidenceError(message) from error
         if type(chunk) is not bytes or len(chunk) > requested:
@@ -303,10 +291,10 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
                 completed = os.fstat(stream.fileno())
                 if _file_identity(completed) != _file_identity(opened):
                     _fail(f"evidence file changed during read: {relative}")
-            except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+            except Exception as error:
                 primary = error
                 raise
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         if primary is not None and error is not primary:
             # The stream's close error must not replace a rejected read.
             BaseException.add_note(
