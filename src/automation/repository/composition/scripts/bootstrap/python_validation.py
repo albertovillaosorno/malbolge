@@ -83,9 +83,7 @@ SHA256_HEX_LENGTH: Final = 64
 LOWER_HEX_DIGITS: Final = frozenset("0123456789abcdef")
 PARENT_SEGMENT: Final = ".."
 PATH_SEPARATORS: Final = frozenset(("/", "\\"))
-UV_RELEASE_BASE: Final = (
-    "https://github.com/astral-sh/uv/releases/download/"
-)
+UV_RELEASE_BASE: Final = "https://github.com/astral-sh/uv/releases/download/"
 UV_SCHEMA_VERSION: Final = 1
 MAX_UV_MANIFEST_BYTES: Final = 1_048_576
 URL_SUFFIX_MARKERS: Final = frozenset(("?", "#"))
@@ -143,10 +141,12 @@ def uv_platform_id(
     operating_system = SYSTEM_NAMES.get(observed_system)
     architecture = MACHINE_NAMES.get(observed_machine)
     if operating_system is None or architecture is None:
-        _fail("".join((
-            "unsupported uv bootstrap platform: ",
-            f"{observed_system}-{observed_machine}",
-        )))
+        _fail(
+            "".join((
+                "unsupported uv bootstrap platform: ",
+                f"{observed_system}-{observed_machine}",
+            ))
+        )
     return f"{operating_system}-{architecture}"
 
 
@@ -352,12 +352,7 @@ def uv_executable(
     """
     suffix = ".exe" if artifact.platform_id.startswith("windows-") else ""
     return (
-        root
-        / ".dependencies"
-        / "uv"
-        / artifact.version
-        / "bin"
-        / f"uv{suffix}"
+        root / ".dependencies" / "uv" / artifact.version / "bin" / f"uv{suffix}"
     )
 
 
@@ -365,10 +360,12 @@ def verify_uv_archive(data: bytes, expected_sha256: str) -> None:
     """Reject uv archive bytes that do not match the tracked SHA-256."""
     observed = hashlib.sha256(data).hexdigest()
     if observed != expected_sha256:
-        _fail("".join((
-            f"uv archive SHA-256 mismatch: expected {expected_sha256}; ",
-            f"got {observed}",
-        )))
+        _fail(
+            "".join((
+                f"uv archive SHA-256 mismatch: expected {expected_sha256}; ",
+                f"got {observed}",
+            ))
+        )
 
 
 def _download_uv_archive(artifact: UvArtifact) -> bytes:
@@ -536,9 +533,9 @@ def _windows_launcher_text(*, pytest: bool) -> str:
 def _posix_script_directory_text() -> str:
     return (
         'case "$0" in\n'
-        '    */*) SCRIPT_DIR=${0%/*} ;;\n'
-        '    *) SCRIPT_DIR=. ;;\n'
-        'esac\n'
+        "    */*) SCRIPT_DIR=${0%/*} ;;\n"
+        "    *) SCRIPT_DIR=. ;;\n"
+        "esac\n"
         'SCRIPT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR" && pwd)\n'
     )
 
@@ -642,9 +639,7 @@ def _expected_jig_tool_version_line(
         if candidate == executable
     ]
     if len(matches) != 1:
-        _fail(
-            f"Jig tool alias requires one version authority: {executable}"
-        )
+        _fail(f"Jig tool alias requires one version authority: {executable}")
     return matches[0]
 
 
