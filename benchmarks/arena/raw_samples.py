@@ -228,6 +228,8 @@ def check_rows(
         SHA-256 of the exact inspected source bytes for reproducible review.
 
     """
+    if type(label) is not str:
+        _fail("arena raw CSV requires an exact string label")
     text = _decode_raw(raw, label)
     _admit_observation_containers(observations, label)
     version, metrics, actual_rows = _csv_rows(

@@ -1091,3 +1091,34 @@ def test_version_two_reports_unknown_energy_as_empty_cell_not_zero(
         raw = (tmp_path / row["raw_sample"]).read_text(encoding="utf-8")
         line = next(iter(csv.DictReader(StringIO(raw))))
         assert not line[ENERGY_METRIC]
+
+
+class _RawHostileLabel:
+    """An arbitrary diagnostic label can execute code when formatted."""
+
+    def __format__(self, spec: str) -> str:
+        del spec
+        message = "caller-owned raw diagnostic formatting executed"
+        raise AssertionError(message)
+
+
+class _RawHostileStringLabel(str):
+    """Even a string subclass can override diagnostic formatting."""
+
+    def __format__(self, spec: str) -> str:
+        del spec
+        message = "caller-owned string diagnostic formatting executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    "foreign_label",
+    [_RawHostileLabel(), _RawHostileStringLabel("source.csv"), None, 17, b"source.csv"],
+    ids=["foreign-format", "string-subclass-format", "none", "integer", "bytes"],
+)
+def test_direct_raw_check_rejects_non_native_labels_before_diagnostics(
+    foreign_label: object,
+) -> None:
+    """Caller-controlled label formatting cannot escape typed raw errors."""
+    with pytest.raises(raw_samples.RawSampleError, match="exact string label"):
+        raw_samples.check_rows(b"", [], cast("str", foreign_label))
