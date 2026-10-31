@@ -932,9 +932,15 @@ def materialize_exact_plan(
     The candidate source must match the authoring snapshot exactly. Fuzzy
     admission belongs to later layers.
 
+    Raises:
+        ExactTreeError: The source is invalid or the output is not separate.
+
     """
     resolved_source = _resolved_tree_root(source_root)
     resolved_output = _resolved_output_root(output_root)
+    if resolved_output.is_relative_to(resolved_source):
+        message = "exact output root must not be inside the source tree"
+        raise ExactTreeError(message)
     _verify_source(resolved_source, plan)
     staging_root = _prepare_staging(resolved_output)
     try:

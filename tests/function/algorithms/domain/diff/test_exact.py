@@ -397,6 +397,35 @@ def test_exact_rejects_linked_source_path_ancestor_before_read(
     _expect(not output.exists(), "linked source ancestor published output")
 
 
+@pytest.mark.parametrize("linked_parent", [False, True])
+def test_exact_materialization_rejects_output_inside_source_tree(
+    tmp_path: Path,
+    *,
+    linked_parent: bool,
+) -> None:
+    """Staging and publication may never mutate the candidate source tree."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output_parent = source
+    if linked_parent:
+        output_parent = tmp_path / "source-alias"
+        try:
+            output_parent.symlink_to(source, target_is_directory=True)
+        except OSError:
+            pytest.skip("directory symlinks unavailable")
+    output = output_parent / "published"
+    baseline = snapshot_tree(source)
+
+    with pytest.raises(ExactTreeError, match=r"output root.*source tree"):
+        materialize_exact_plan(source, plan, output)
+    _expect(not output.exists(), "nested output was published")
+    _expect(snapshot_tree(source) == baseline, "nested output mutated source")
+    _expect(
+        not (source / ".published.exact-staging").exists(),
+        "nested output left staging inside source",
+    )
+
+
 def test_exact_materialization_rejects_linked_source_root_when_supported(
     tmp_path: Path,
 ) -> None:
