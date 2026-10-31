@@ -316,6 +316,9 @@ class _FragmentedStudyStream:
             return b""
         return self.stream.read(min(count, 7))
 
+    def close(self) -> None:
+        self.stream.close()
+
 
 @pytest.mark.parametrize("premature_eof", [False, True])
 def test_fragmented_study_reads_are_complete_or_fail_closed(
@@ -828,6 +831,44 @@ def test_study_stream_construction_preserves_primary_when_close_fails(
     assert primary.__notes__ == [
         "arena input descriptor cleanup also failed"
     ]
+
+
+@pytest.mark.parametrize("receipt", [False, True, 0, 1, "closed", b"closed"])
+def test_study_reader_requires_native_close_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A false completion from read-stream close cannot admit source bytes."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file._open_study
+    close_calls = 0
+
+    class ForgedCloseStream:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream = stream
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, count: int) -> bytes:
+            return self.stream.read(count)
+
+        def close(self) -> None:
+            nonlocal close_calls
+            close_calls += 1
+            return cast("None", receipt)
+
+    @contextmanager
+    def forged_close(target: Path) -> Iterator[BinaryIO]:
+        with original_open(target) as backing:
+            yield cast("BinaryIO", ForgedCloseStream(backing))
+
+    monkeypatch.setattr(study_file, "_open_study", forged_close)
+    with pytest.raises(study_file.StudyFileError, match="close completion"):
+        _ = study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
+    assert close_calls == 1
 
 
 @pytest.mark.parametrize(

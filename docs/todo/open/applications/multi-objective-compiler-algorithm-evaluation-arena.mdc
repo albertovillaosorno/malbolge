@@ -311,6 +311,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   The standalone analyzer separately requires native bounded study bytes and
   original native source text before its final drift comparison. These checks
   do not attest producer timing, source authorship or physical execution.
+- Arena JSON study-file admission now checks the read stream's exact native
+  `None` close completion after the final descriptor identity check, before
+  returning any bytes to either operator. Six red-first forged close receipts
+  previously passed as successful reads and now reject with typed errors;
+  this does not authenticate the file writer or make the read atomic.
 - A bounded real host-C reference-study producer now measures pinned Clang
   `-O0` and `-O2` compile/link/oracle-run wall time and executable size on
   matched canonical challenge cases and difficulties. It retains actual native

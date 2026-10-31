@@ -15,7 +15,7 @@
 # - Allows:
 #   - Inputs: an explicit local path and a positive byte-size budget.
 #   - Outputs: exact file bytes if path and descriptor identity remain stable.
-#   - Side effects: one read-only descriptor open and close.
+#   - Side effects: one read-only descriptor open and checked stream close.
 # - Split-When:
 #   - Cross-process atomic filesystem snapshots require a separate owner.
 # - Merge-When:
@@ -193,6 +193,16 @@ def _read_descriptor(
                 completed = _native_stat(os.fstat(stream.fileno()))
                 if _identity(completed) != _identity(opened):
                     _fail("arena input changed during read")
+                # The context manager can raise on close, but cannot expose a
+                # forged non-None close receipt. Close explicitly after the
+                # final descriptor check, while retaining its cleanup path.
+                try:
+                    close_receipt: object = stream.close()
+                except Exception as error:
+                    message = "arena input stream close failed"
+                    raise StudyFileError(message) from error
+                if close_receipt is not None:
+                    _fail("arena input stream close completion was not native None")
             except Exception as error:
                 primary = error
                 raise
