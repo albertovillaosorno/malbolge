@@ -4094,6 +4094,42 @@ def test_loads_and_reads_reject_overbudget_canonical_metadata(
         _ = progress.read(pointer)
 
 
+@pytest.mark.parametrize("source", ["pointer", "checkpoint"])
+def test_progress_json_decoders_reject_foreign_mapping_without_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+) -> None:
+    """Parser results must be native objects before mapping-method access."""
+
+    class ForeignMapping(dict[str, object]):
+        pass
+
+    invoked: list[bool] = []
+
+    def hostile_items(_self: object) -> None:
+        invoked.append(True)
+        raise AssertionError("foreign decoded JSON mapping items invoked")
+
+    def foreign_decoder(_text: str, **_kwargs: object) -> object:
+        return ForeignMapping()
+
+    pointer_json = progress.encode(_sidecar(tmp_path)).decode("utf-8")
+    with monkeypatch.context() as context:
+        context.setattr(ForeignMapping, "items", hostile_items)
+        context.setattr(json, "loads", foreign_decoder)
+        with pytest.raises(ERROR, match="must be an object"):
+            if source == "pointer":
+                _ = progress.loads(pointer_json)
+            else:
+                decoder = cast(
+                    "Callable[[bytes], object]",
+                    vars(progress)["_decode_portable_checkpoint_document"],
+                )
+                _ = decoder(b"{}")
+    assert not invoked
+
+
 def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:
     """JSON transport cannot overwrite authority or extend v1 silently."""
     sidecar = _sidecar(tmp_path)
