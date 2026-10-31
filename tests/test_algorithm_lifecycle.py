@@ -34,13 +34,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+
 from scripts.validate import algorithm_lifecycle as validator
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from os import stat_result
 
 DECISION_DATE = "2026-07-27"
 SUCCESSOR = "successor-v2"
@@ -217,3 +219,127 @@ def test_superseded_by_is_reserved_for_retired_state() -> None:
         + _decision(superseded_by="other")
     )
     _expect_failure(text, "superseded_by is valid only for retired")
+
+
+def _fixture_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lifecycle: str,
+) -> Path:
+    """Create a small complete repository for lifecycle evidence admission.
+
+    Returns:
+        The canonical lifecycle manifest location.
+
+    """
+    root = tmp_path / "repository"
+    experiment = root / EXPERIMENT
+    experiment.parent.mkdir(parents=True)
+    _ = experiment.write_text("schema_version = 1\n")
+    research = root / RESEARCH
+    research.parent.mkdir(parents=True)
+    _ = research.write_text("# Research\n")
+    manifest = experiment.parent / "lifecycle.toml"
+    _ = manifest.write_text(lifecycle)
+    monkeypatch.setattr(validator, "ROOT", root)
+    return manifest
+
+
+@pytest.mark.parametrize("linked_parent", [False, True])
+def test_lifecycle_evidence_cannot_redirect_outside_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    linked_parent: bool,
+) -> None:
+    """A linked evidence leaf or parent is not repository-owned evidence."""
+    decision = _decision(negative_results="evidence/proof.md").replace(
+        EVIDENCE, "evidence/proof.md"
+    )
+    manifest = _fixture_repository(
+        tmp_path, monkeypatch, _base(validator.REJECTED) + decision
+    )
+    root = manifest.parents[6]
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "proof.md").write_text("unrelated outside evidence\n")
+    if linked_parent:
+        (root / "evidence").symlink_to(outside, target_is_directory=True)
+    else:
+        (root / "evidence").mkdir()
+        (root / "evidence/proof.md").symlink_to(outside / "proof.md")
+    with pytest.raises(validator.AlgorithmLifecycleError, match="evidence"):
+        _ = validator.validate_repository_lifecycle(manifest)
+
+
+def test_lifecycle_manifest_cannot_redirect_to_another_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The lifecycle file itself must not be a symlink to foreign content."""
+    manifest = _fixture_repository(
+        tmp_path, monkeypatch, _base(validator.EXPERIMENTAL)
+    )
+    source = tmp_path / "other.toml"
+    _ = source.write_text(manifest.read_text())
+    manifest.unlink()
+    manifest.symlink_to(source)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="lifecycle"):
+        _ = validator.validate_repository_lifecycle(manifest)
+
+
+def test_lifecycle_rejects_post_status_symlink_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A link switched after lstat cannot substitute equal TOML bytes."""
+    manifest = _fixture_repository(
+        tmp_path, monkeypatch, _base(validator.EXPERIMENTAL)
+    )
+    replacement = tmp_path / "replacement.toml"
+    _ = replacement.write_text(manifest.read_text())
+    original_lstat = Path.lstat
+    changed = False
+
+    def swap_after_status(candidate: Path) -> stat_result:
+        nonlocal changed
+        status = original_lstat(candidate)
+        if candidate == manifest and not changed:
+            manifest.unlink()
+            manifest.symlink_to(replacement)
+            changed = True
+        return status
+
+    monkeypatch.setattr(Path, "lstat", swap_after_status)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="lifecycle"):
+        _ = validator.validate_repository_lifecycle(manifest)
+    assert changed
+
+
+def test_lifecycle_rejects_oversized_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A manifest above its size ceiling must fail before TOML decoding."""
+    manifest = _fixture_repository(
+        tmp_path, monkeypatch, _base(validator.EXPERIMENTAL)
+    )
+    _ = manifest.write_bytes(b"#" * (validator.MAX_LIFECYCLE_BYTES + 1))
+    with pytest.raises(validator.AlgorithmLifecycleError, match="size limit"):
+        _ = validator.validate_repository_lifecycle(manifest)
+
+
+def test_lifecycle_parent_link_is_rejected_by_evidence_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A linked algorithm directory cannot supply checked-in evidence."""
+    manifest = _fixture_repository(
+        tmp_path, monkeypatch, _base(validator.EXPERIMENTAL)
+    )
+    original = manifest.parent
+    outside = tmp_path / "outside-algorithm"
+    _ = original.rename(outside)
+    original.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="evidence"):
+        _ = validator.validate_repository_lifecycle(manifest)

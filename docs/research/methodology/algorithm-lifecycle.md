@@ -46,9 +46,14 @@ that explains the decision.
 Every executable research mirror with `experiment.toml` also carries
 `lifecycle.toml`. Schema v1 is validated by
 `src/automation/repository/composition/scripts/validate/algorithm_lifecycle.py`.
-Lifecycle file loading rejects invalid UTF-8 through the stable lifecycle error
-boundary before TOML admission and binds the stable algorithm ID to its
-research record and experiment manifest.
+Lifecycle file loading accepts at most 1 MiB from a stable regular-file
+descriptor, rejecting symlinked leaves, special files, file replacements, and
+invalid UTF-8 before TOML admission. The stable algorithm ID is bound to its
+research record and experiment manifest. Evidence references must be regular
+files under the repository root, with no symlinked leaves or parent directories.
+On hosts with directory-relative file opening, checks pin every parent
+directory through the evidence admission; other hosts reject links during
+component-by-component path inspection.
 
 ### States
 
@@ -108,7 +113,7 @@ lifecycle state.
 
 ## Evidence
 
-- All eight current research mirrors carry `lifecycle.toml` and validate as
+- All nine current research mirrors carry `lifecycle.toml` and validate as
   `experimental`; no current algorithm is falsely labeled promotion-ready.
 - `src/automation/repository/composition/scripts/validate/research_mirror.py`
   now requires `lifecycle.toml` alongside
@@ -119,14 +124,15 @@ lifecycle state.
 - The lifecycle validator requires repository-relative evidence references,
   rejects drive-relative/rooted Windows syntax and parent traversal independent
   of validator host, and for checked-in records verifies that linked evidence
-  paths exist.
+  paths exist as regular repository-owned files, rejecting linked evidence
+  components and special files.
 - `tests/test_research_mirror.py` keeps the two-sided mirror identity and
   ignored
   output contract intact while lifecycle metadata becomes mandatory.
 
 ## Results
 
-Lifecycle schema v1 is active. The repository currently reports eight
+Lifecycle schema v1 is active. The repository currently reports nine
 `experimental` algorithms and zero promotion candidates, promoted algorithms,
 rejections, or retirements. That result is intentional: implementing lifecycle
 policy does not fabricate promotion evidence for current research.

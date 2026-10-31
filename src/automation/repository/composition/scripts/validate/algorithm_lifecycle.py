@@ -36,19 +36,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+import os
 from pathlib import Path
 from pathlib import PureWindowsPath
+from stat import S_ISDIR
+from stat import S_ISREG
 import sys
 import tomllib
 from typing import Never
+from typing import TYPE_CHECKING
 from typing import cast
 
 from scripts.repository_root import repository_root
 from scripts.research_layout import research_algorithm_directories
 
+if TYPE_CHECKING:
+    from typing import BinaryIO
+
 ROOT = repository_root(Path(__file__))
 SCHEMA_VERSION = 1
 PARENT_SEGMENT = ".."
+MAX_LIFECYCLE_BYTES = 1024 * 1024
 EXPERIMENTAL = "experimental"
 PROMOTION_CANDIDATE = "promotion-candidate"
 PROMOTED = "promoted"
@@ -310,10 +318,112 @@ def parse_lifecycle(text: str) -> AlgorithmLifecycle:
     )
 
 
+def _same_regular_file(first: os.stat_result, second: os.stat_result) -> bool:
+    return (
+        S_ISREG(first.st_mode)
+        and S_ISREG(second.st_mode)
+        and (
+            first.st_dev,
+            first.st_ino,
+            first.st_size,
+            first.st_mtime_ns,
+            first.st_ctime_ns,
+        )
+        == (
+            second.st_dev,
+            second.st_ino,
+            second.st_size,
+            second.st_mtime_ns,
+            second.st_ctime_ns,
+        )
+    )
+
+
+def _evidence_fallback(parts: tuple[str, ...]) -> None:
+    """Check link-free path components where dir_fd is unsupported.
+
+    Raises:
+        OSError: An evidence component redirects or is not a regular file.
+
+    """
+    current = ROOT
+    for index, part in enumerate(parts):
+        current /= part
+        status = current.lstat()
+        required = S_ISREG if index == len(parts) - 1 else S_ISDIR
+        if current.is_symlink() or current.is_junction():
+            message = f"linked evidence component: {current}"
+            raise OSError(message)
+        if not required(status.st_mode):
+            message = f"nonregular evidence component: {current}"
+            raise OSError(message)
+
+
+def _next_directory_fd(current: int, part: str, flags: int) -> int:
+    """Descend through one pinned, non-symlink directory.
+
+    Returns:
+        The opened child directory descriptor, replacing the caller's.
+
+    """
+    next_fd = os.open(part, flags, dir_fd=current)
+    os.close(current)
+    return next_fd
+
+
+def _check_evidence_leaf(directory: int, name: str) -> None:
+    """Require a regular leaf still named by its pinned parent.
+
+    Raises:
+        OSError: The candidate is not a stable regular file.
+
+    """
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    leaf = os.open(name, flags, dir_fd=directory)
+    try:
+        opened = os.fstat(leaf)
+        visible = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        if not _same_regular_file(opened, visible):
+            message = f"unstable or nonregular evidence file: {name}"
+            raise OSError(message)
+    finally:
+        os.close(leaf)
+
+
+def _evidence_descriptor_walk(parts: tuple[str, ...]) -> None:
+    """Pin each directory while admitting one regular evidence leaf."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    current = os.open(ROOT, flags)
+    try:
+        for part in parts[:-1]:
+            current = _next_directory_fd(current, part, flags)
+        _check_evidence_leaf(current, parts[-1])
+    finally:
+        os.close(current)
+
+
 def _require_existing(relative: str, context: str) -> None:
-    path = ROOT / relative
-    if not path.is_file():
-        _fail(f"{context} evidence path does not exist: {relative}")
+    """Admit only repository-owned regular evidence, without link traversal."""
+    relative = _relative_path(relative, f"{context} evidence")
+    parts = Path(relative).parts
+    if not parts:
+        _fail(f"{context} evidence path is not a file: {relative}")
+    try:
+        if os.open in os.supports_dir_fd and hasattr(os, "O_NOFOLLOW"):
+            _evidence_descriptor_walk(parts)
+        else:
+            _evidence_fallback(parts)
+    except OSError as error:
+        message = f"{context} evidence not admitted: {relative}: {error}"
+        _fail(message)
 
 
 def _validate_evidence_paths(record: AlgorithmLifecycle) -> None:
@@ -337,9 +447,67 @@ def _validate_evidence_paths(record: AlgorithmLifecycle) -> None:
             )
 
 
+def _read_lifecycle_bytes(
+    stream: BinaryIO,
+    admitted: os.stat_result,
+    path: Path,
+) -> bytes:
+    """Read one stable bounded regular descriptor.
+
+    Returns:
+        Lifecycle bytes, prior to strict UTF-8 decoding.
+
+    """
+    opened = os.fstat(stream.fileno())
+    if not _same_regular_file(admitted, opened):
+        _fail(f"algorithm lifecycle manifest changed: {path}")
+    if opened.st_size > MAX_LIFECYCLE_BYTES:
+        _fail(f"algorithm lifecycle manifest exceeds size limit: {path}")
+    raw = stream.read(MAX_LIFECYCLE_BYTES + 1)
+    after = os.fstat(stream.fileno())
+    visible = path.lstat()
+    if (
+        len(raw) != opened.st_size
+        or not _same_regular_file(opened, after)
+        or not _same_regular_file(opened, visible)
+    ):
+        _fail(f"algorithm lifecycle manifest changed: {path}")
+    return raw
+
+
+def _read_lifecycle_file(path: Path) -> bytes:
+    """Admit and read one lifecycle file without following its leaf.
+
+    Returns:
+        The bounded stable file contents.
+
+    """
+    admitted = path.lstat()
+    if not S_ISREG(admitted.st_mode):
+        _fail(f"algorithm lifecycle manifest must be regular: {path}")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        return _read_lifecycle_bytes(stream, admitted, path)
+
+
 def _read_utf8(path: Path) -> str:
+    """Read a lifecycle manifest from a stable regular file.
+
+    Returns:
+        Decoded lifecycle text.
+
+    """
     try:
-        return path.read_text(encoding="utf-8")
+        raw = _read_lifecycle_file(path)
+    except OSError as error:
+        _fail(f"algorithm lifecycle manifest cannot be read: {path}: {error}")
+    try:
+        return raw.decode("utf-8")
     except UnicodeDecodeError as error:
         _fail(f"invalid algorithm lifecycle UTF-8: {error}")
 
@@ -351,8 +519,6 @@ def validate_repository_lifecycle(path: Path) -> AlgorithmLifecycle:
         Parsed lifecycle after repository identity/evidence checks.
 
     """
-    if not path.is_file():
-        _fail(f"algorithm lifecycle manifest not found: {path}")
     record = parse_lifecycle(_read_utf8(path))
     directory_ids = {
         directory: identifier
