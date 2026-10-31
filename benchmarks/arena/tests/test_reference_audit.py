@@ -42,7 +42,7 @@ import sys
 from dataclasses import replace
 from types import SimpleNamespace
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, SupportsIndex, cast, override
 
 import pytest
 
@@ -1214,7 +1214,7 @@ def test_audit_git_runner_fault_is_typed(
     assert type(error.value.__cause__) is failure_type
 
 
-def test_audit_git_runner_rejects_foreign_result_accessor_fault(
+def test_audit_git_runner_rejects_foreign_result_before_accessor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A returned process receipt cannot run a hostile property accessor."""
@@ -1225,18 +1225,22 @@ def test_audit_git_runner_rejects_foreign_result_accessor_fault(
 
     fault = OpaqueFault("process response fault")
 
+    accessed = False
+
     class BadCompleted:
         @property
         def returncode(self) -> int:
+            nonlocal accessed
+            accessed = True
             raise fault
 
     monkeypatch.setattr(reference_audit.sp, "run", lambda *_args, **_kwargs: BadCompleted())
     with pytest.raises(
         reference_audit.ReferenceAuditError,
-        match="object lookup",
-    ) as caught:
+        match="local Git commit object",
+    ):
         reference_audit._require_git_commit("0" * 40)
-    assert caught.value.__cause__ is fault
+    assert not accessed
 
 
 @pytest.mark.parametrize(
@@ -2033,3 +2037,137 @@ def test_host_c_rebuild_preserves_native_bounded_compiler_receipt(
         )
         == 1
     )
+
+
+def test_audit_git_rejects_forged_successful_process_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a real native subprocess completion may attest Git object type."""
+    fake = SimpleNamespace(returncode=0, stdout=b"commit\n", stderr=b"")
+    monkeypatch.setattr(reference_audit.sp, "run", lambda *_a, **_kw: fake)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="local Git commit object"
+    ):
+        reference_audit._require_git_commit("0" * 40)
+
+
+def test_audit_git_admits_native_successful_process_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The native successful no-diagnostic Git receipt remains admissible."""
+    completed = reference_audit.sp.CompletedProcess(
+        ["git", "cat-file"], 0, stdout=b"commit\n", stderr=b""
+    )
+    monkeypatch.setattr(reference_audit.sp, "run", lambda *_a, **_kw: completed)
+    reference_audit._require_git_commit("0" * 40)
+
+
+class _ForeignGitEnvName(str):  # ruff: ignore[subclass-builtin]
+    """An unadmitted name must not hide a Git redirection variable."""
+
+    @override
+    def startswith(
+        self,
+        prefix: str | tuple[str, ...],
+        start: SupportsIndex | None = None,
+        end: SupportsIndex | None = None,
+    ) -> bool:
+        del prefix, start, end
+        return False
+
+
+@pytest.mark.parametrize("foreign", ["name", "value"])
+def test_audit_git_rejects_non_native_environment_before_launch(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: str,
+) -> None:
+    """Environment subclasses cannot redirect the independent Git object check."""
+    environment = (
+        {_ForeignGitEnvName("GIT_DIR"): "/foreign"}
+        if foreign == "name"
+        else {"NORMAL": _ForeignGitEnvName("foreign")}
+    )
+    child = reference_audit.sp.CompletedProcess(
+        ["git", "cat-file"], 0, stdout=b"commit\n", stderr=b""
+    )
+    monkeypatch.setattr(reference_audit.os, "environ", environment)
+    monkeypatch.setattr(reference_audit.sp, "run", lambda *_a, **_kw: child)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="native Git environment"
+    ):
+        reference_audit._require_git_commit("0" * 40)
+
+
+def test_audit_git_filters_native_git_environment_from_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordinary native non-Git environment values survive sanitization."""
+    child = reference_audit.sp.CompletedProcess(
+        ["git", "cat-file"], 0, stdout=b"commit\n", stderr=b""
+    )
+    observed: list[dict[str, str]] = []
+
+    def check_child(*_args: object, **kwargs: object) -> object:
+        observed.append(cast("dict[str, str]", kwargs["env"]))
+        return child
+
+    monkeypatch.setattr(
+        reference_audit.os,
+        "environ",
+        {"GIT_DIR": "/forged", "NORMAL": "native"},
+    )
+    monkeypatch.setattr(reference_audit.sp, "run", check_child)
+    reference_audit._require_git_commit("0" * 40)
+    assert observed == [{"NORMAL": "native"}]
+
+
+@pytest.mark.parametrize("receipt", ["stat", "access"])
+def test_audit_git_rejects_non_native_executable_inspection_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """Physical Git admission requires native metadata and executable verdicts."""
+    fake = tmp_path / "candidate-git"
+    _ = fake.write_bytes(b"physical file")
+    fake.chmod(0o755)
+    original_lstat = type(fake).lstat
+    original_access = reference_audit.os.access
+    child = reference_audit.sp.CompletedProcess(
+        ["git", "cat-file"], 0, stdout=b"commit\n", stderr=b""
+    )
+
+    def injected_lstat(path: Path) -> object:
+        if receipt == "stat" and path == fake:
+            return SimpleNamespace(st_mode=0o100755)
+        return original_lstat(path)
+
+    def injected_access(path: str, mode: int) -> object:
+        if receipt == "access" and path == str(fake):
+            return 1
+        return original_access(path, mode)
+
+    monkeypatch.setattr(reference_audit.shutil, "which", lambda *_a, **_kw: str(fake))
+    monkeypatch.setattr(type(fake), "lstat", injected_lstat)
+    monkeypatch.setattr(reference_audit.os, "access", injected_access)
+    monkeypatch.setattr(reference_audit.sp, "run", lambda *_a, **_kw: child)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="Git metadata|physical executable Git",
+    ):
+        reference_audit._require_git_commit("0" * 40)
+
+
+@pytest.mark.parametrize("stderr", [None, "", b"unexpected Git diagnostics"])
+def test_audit_git_rejects_noncanonical_or_nonempty_stderr_receipt(
+    monkeypatch: pytest.MonkeyPatch, stderr: object
+) -> None:
+    """A source commit object check requires complete quiet native output."""
+    child = reference_audit.sp.CompletedProcess(
+        ["git", "cat-file"], 0, stdout=b"commit\n", stderr=stderr
+    )
+    monkeypatch.setattr(reference_audit.sp, "run", lambda *_a, **_kw: child)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="local Git commit object"
+    ):
+        reference_audit._require_git_commit("0" * 40)

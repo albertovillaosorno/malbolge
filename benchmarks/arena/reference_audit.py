@@ -478,19 +478,30 @@ def _require_git_commit(commit: str) -> None:
         message = "host-C source commit admission requires encodable Git executable"
         raise ReferenceAuditError(message) from error
     try:
-        mode = Path(executable).lstat().st_mode
+        metadata = Path(executable).lstat()
         is_executable = os.access(executable, os.X_OK)
     except Exception as error:
         # Do not allow a substituted host inspector to escape this boundary.
         message = "host-C source commit Git path inspection failed"
         raise ReferenceAuditError(message) from error
-    if not stat.S_ISREG(mode) or not is_executable:
+    if type(metadata) is not os.stat_result:
+        _fail("host-C source commit has invalid Git metadata")
+    if not stat.S_ISREG(metadata.st_mode) or is_executable is not True:
         _fail("host-C source commit requires physical executable Git")
     # Foreign GIT_DIR and object alternates cannot satisfy local admission.
     try:
-        clean_env = {
-            name: value for name, value in os.environ.items() if not name.startswith("GIT_")
-        }
+        clean_env: dict[str, str] = {}
+        for name, value in os.environ.items():
+            if type(name) is not str or type(value) is not str:
+                _fail("host-C source commit requires native Git environment strings")
+            if not name.startswith("GIT_"):
+                clean_env[name] = value
+    except ReferenceAuditError:
+        raise
+    except Exception as error:
+        message = "host-C source commit Git environment unavailable"
+        raise ReferenceAuditError(message) from error
+    try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [executable, "cat-file", "-t", commit],
             cwd=_ROOT,
@@ -501,17 +512,21 @@ def _require_git_commit(commit: str) -> None:
             capture_output=True,
             timeout=5,
         )
-        returncode = getattr(completed, "returncode", None)
-        stdout = getattr(completed, "stdout", None)
     except Exception as error:
-        # Include clean environment capture and foreign receipt accessors.
+        # Contain child launch and observation faults without foreign formatting.
         message = "host-C source commit object lookup failed"
         raise ReferenceAuditError(message) from error
+    if type(completed) is not sp.CompletedProcess:
+        _fail("host-C recorded source commit is not a local Git commit object")
+    returncode = completed.returncode
+    stdout = completed.stdout
     if (
         type(returncode) is not int
         or returncode != 0
         or type(stdout) is not bytes
         or stdout.strip() != GIT_COMMIT_TYPE
+        or type(completed.stderr) is not bytes
+        or completed.stderr != b""
     ):
         _fail("host-C recorded source commit is not a local Git commit object")
 
