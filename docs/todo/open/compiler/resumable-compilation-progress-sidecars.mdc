@@ -622,6 +622,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   before pointer/immutable publication, and exact committed-path evidence for
   failed parent-directory descriptor admission; ordinary valid file opens
   retain their existing tests.
+  Staged verification-reader closes now additionally require exact native
+  `None` completion: six red-first forged-close success tests reject both
+  pointer and immutable checkpoint publication, and two read-failure cases
+  keep the original error primary with secondary close-receipt notes.
   Process-shared writer locks now require native stat results across the
   existing path preflight, opened descriptor and acquired inode identity.
   Exclusive single-link lock ownership is now required both after lock

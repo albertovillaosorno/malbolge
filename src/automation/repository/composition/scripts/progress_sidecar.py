@@ -2504,7 +2504,8 @@ def _close_staged_reader(descriptor: int) -> None:
     """Preserve the earlier staged-read error over descriptor-close failure."""
     primary_error = sys.exception()
     try:
-        os.close(descriptor)
+        if os.close(descriptor) is not None:
+            _fail("progress temporary descriptor close receipt must be None")
     except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
             BaseException.add_note(

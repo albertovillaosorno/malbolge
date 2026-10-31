@@ -8507,6 +8507,108 @@ def test_same_size_progress_mutation_keeps_prior_durable_pointer(
     assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
 
 
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+@pytest.mark.parametrize("receipt", [True, 7, "closed"])
+def test_staged_reader_close_requires_native_none_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    receipt: object,
+) -> None:
+    """A false raw close completion cannot authorize staged publication."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    original_open = os.open
+    original_close = os.close
+    staged_readers: set[int] = set()
+    returned = 0
+
+    def tracked_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = original_open(path, flags, mode)
+        if Path(path).name.endswith(".tmp"):
+            staged_readers.add(descriptor)
+        return descriptor
+
+    def forged_close(descriptor: int) -> object:
+        nonlocal returned
+        result = original_close(descriptor)
+        if descriptor in staged_readers:
+            staged_readers.remove(descriptor)
+            returned += 1
+            return receipt
+        return result
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", tracked_open)
+        context.setattr(os, "close", forged_close)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        with pytest.raises(ERROR, match="descriptor close failed"):
+            if kind == TEMP_MUTABLE:
+                _ = progress.write_atomic(sidecar)
+            else:
+                _ = writer(destination, b"checkpoint", platform=os.name)
+    assert returned == 1
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+def test_staged_reader_false_close_receipt_preserves_primary_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Close receipt is secondary to an earlier typed content-read fault."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    original_open = os.open
+    original_close = os.close
+    staged_readers: set[int] = set()
+    primary = ERROR("primary staged read refusal")
+
+    def tracked_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = original_open(path, flags, mode)
+        if Path(path).name.endswith(".tmp"):
+            staged_readers.add(descriptor)
+        return descriptor
+
+    def forged_close(descriptor: int) -> object:
+        result = original_close(descriptor)
+        if descriptor in staged_readers:
+            staged_readers.remove(descriptor)
+            return True
+        return result
+
+    def fail_staged_read(descriptor: int, requested: int) -> bytes:
+        del descriptor, requested
+        raise primary
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", tracked_open)
+        context.setattr(os, "close", forged_close)
+        context.setattr(progress, "_read_staged_chunk", fail_staged_read)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        with pytest.raises(ERROR, match="primary staged read refusal") as captured:
+            if kind == TEMP_MUTABLE:
+                _ = progress.write_atomic(sidecar)
+            else:
+                _ = writer(destination, b"checkpoint", platform=os.name)
+    assert captured.value is primary
+    assert getattr(primary, "__notes__", None) == [
+        "progress temporary descriptor close also failed: "
+        "progress temporary descriptor close receipt must be None"
+    ]
+    assert not destination.exists()
+
+
 def test_staged_reader_close_failure_rejects_immutable_publication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

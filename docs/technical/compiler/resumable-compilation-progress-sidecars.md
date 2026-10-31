@@ -98,6 +98,12 @@ retain committed-path evidence if a nonnative directory descriptor prevents
 durability confirmation, and reject staged-reader substitutions before any
 pointer or immutable generation is published.
 
+Staged verification also requires an exact native `None` receipt from raw
+reader-descriptor close. A false success receipt prevents both pointer and
+immutable checkpoint publication, while a preceding staged-read failure stays
+primary and records the false closure as a secondary note. This supplements
+existing exception-path cleanup admission without changing committed bytes.
+
 Process-shared progress writer locks now reject nonnative stat metadata on
 pre-existing lock pathname preflight, the opened lock descriptor, and both
 pathname/descriptor identity checks after lock acquisition. A foreign receipt
