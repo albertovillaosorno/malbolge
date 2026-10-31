@@ -262,7 +262,8 @@ def _extension(
 
 
 def _require(condition: object, message: str) -> None:
-    if not condition:
+    # A foreign truthy comparison return is not an admitted evidence verdict.
+    if condition is not True:
         _fail(message)
 
 

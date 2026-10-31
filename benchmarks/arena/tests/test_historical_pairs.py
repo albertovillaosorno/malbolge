@@ -135,6 +135,36 @@ def test_historical_source_rejects_oversized_reader_receipt_before_hash(
         historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
 
 
+@pytest.mark.parametrize(
+    "receipt", [1, "true", object(), [1]],
+    ids=["integer", "text", "object", "list"],
+)
+def test_historical_assertion_rejects_non_boolean_truthy_receipts(
+    receipt: object,
+) -> None:
+    """A malformed dependency comparison must not claim an admitted match."""
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="native check"):
+        historical_pairs._require(receipt, "native check")
+
+
+def test_historical_assertion_does_not_invoke_foreign_truthiness() -> None:
+    """Reject a forged boolean receipt before its caller-owned hook can run."""
+
+    class HostileTruth:
+        def __bool__(self) -> bool:
+            pytest.fail("foreign historical comparison truthiness executed")
+
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="native check"):
+        historical_pairs._require(HostileTruth(), "native check")
+
+
+def test_historical_assertion_preserves_native_truth_values() -> None:
+    """Canonical true accepts and canonical false rejects source evidence."""
+    historical_pairs._require(True, "native check")
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="native check"):
+        historical_pairs._require(False, "native check")
+
+
 def test_historical_quality_digest_rejects_foreign_string_before_hooks() -> None:
     """Source-reported digest validation cannot invoke subclass iterators."""
 
