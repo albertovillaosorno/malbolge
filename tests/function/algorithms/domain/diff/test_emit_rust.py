@@ -91,6 +91,8 @@ _LINK_TARGET = b"link-target"
 _TEMP_COLLISION_ID = "collision-id"
 _EXCLUSIVE_CREATE_MODE = "x"
 _LATE_OUTPUT_RECHECK = 2
+_LOCATION_LEAF = "leaf"
+_LOCATION_PARENT = "parent"
 _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
 )
@@ -667,6 +669,39 @@ def test_writer_wraps_output_status_failure(
         write_rust_transform(protected, _PROFILE, output)
 
 
+@pytest.mark.parametrize("location", [_LOCATION_LEAF, _LOCATION_PARENT])
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_writer_wraps_output_junction_inspection_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    location: str,
+    failure_type: type[Exception],
+) -> None:
+    """Broken junction checks cannot leak host errors before publication."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    if location == _LOCATION_LEAF:
+        _ = output.write_bytes(_SENTINEL)
+    checked_path = output if location == _LOCATION_LEAF else tmp_path
+    original_is_junction = Path.is_junction
+
+    def fail_junction(path: Path) -> bool:
+        if path == checked_path:
+            message = "blocked Rust output junction status"
+            raise failure_type(message)
+        return original_is_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", fail_junction)
+    with pytest.raises(RustEmissionError, match="junction status failed"):
+        write_rust_transform(protected, _PROFILE, output)
+    if location == _LOCATION_LEAF:
+        assert output.read_bytes() == _SENTINEL
+    else:
+        assert not output.exists()
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
+
+
 @pytest.mark.parametrize(
     "failure_type", [PermissionError, ValueError, RuntimeError]
 )
@@ -700,6 +735,35 @@ def test_writer_wraps_output_parent_creation_failure(
         write_rust_transform(protected, _PROFILE, output)
     assert not parent.exists(), "failed output creation left generated parent"
     assert not output.exists(), "failed output creation published Rust"
+
+
+def test_writer_cleans_staging_after_late_junction_inspection_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed post-staging junction query keeps original output intact."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    _ = output.write_bytes(_SENTINEL)
+    original_is_junction = Path.is_junction
+    checked = 0
+
+    def fail_late_junction(path: Path) -> bool:
+        nonlocal checked
+        if path == output:
+            checked += 1
+            if checked == _LATE_OUTPUT_RECHECK:
+                assert list(tmp_path.glob(".generated.rs.*.tmp"))
+                message = "blocked late Rust output junction status"
+                raise OSError(message)
+        return original_is_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", fail_late_junction)
+    with pytest.raises(RustEmissionError, match="junction status failed"):
+        write_rust_transform(protected, _PROFILE, output)
+    assert checked == _LATE_OUTPUT_RECHECK
+    assert output.read_bytes() == _SENTINEL
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
 
 
 def test_writer_cleans_temporary_after_output_recheck_rejects(

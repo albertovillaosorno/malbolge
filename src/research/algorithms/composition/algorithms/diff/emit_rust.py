@@ -276,7 +276,11 @@ def _output_mode(path: Path, description: str) -> int | None:
 
 
 def _output_redirects(path: Path, mode: int) -> bool:
-    return S_ISLNK(mode) or path.is_junction()
+    try:
+        return S_ISLNK(mode) or path.is_junction()
+    except (OSError, ValueError, RuntimeError) as error:
+        message = f"Rust output junction status failed: {path}: {error}"
+        raise RustEmissionError(message) from error
 
 
 def _validate_output_leaf(output_path: Path) -> None:
