@@ -136,7 +136,13 @@ def _commit() -> str:
     ) as error:
         message = "host reference study cannot identify source commit"
         raise ReferenceStudyError(message) from error
-    output = getattr(completed, "stdout", None)
+    if (
+        type(completed) is not sp.CompletedProcess
+        or type(completed.returncode) is not int
+        or completed.returncode != 0
+    ):
+        _fail("host reference study has invalid source commit exit status")
+    output = completed.stdout
     if type(output) is not str:
         _fail("host reference study has invalid source commit output")
     commit = output.strip()

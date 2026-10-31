@@ -417,6 +417,44 @@ def test_reference_git_rejects_nontext_revision_receipts(
         reference_study._commit()  # ruff: ignore[private-member-access]
 
 
+@pytest.mark.parametrize("exit_status", [None, False, True, "0", 1, -1, float("nan")])
+def test_reference_git_rejects_malformed_or_failed_exit_receipts(
+    monkeypatch: pytest.MonkeyPatch, exit_status: object
+) -> None:
+    """A commit-shaped stdout string never overrides child exit failure."""
+    expected = "a" * 40
+
+    def fake_run(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        return reference_study.sp.CompletedProcess(
+            ["git", "rev-parse", "HEAD"],
+            cast("int", exit_status),
+            stdout=expected + "\n",
+        )
+
+    monkeypatch.setattr(reference_study.sp, "run", fake_run)
+    with pytest.raises(reference_study.ReferenceStudyError, match="source commit exit"):
+        reference_study._commit()  # ruff: ignore[private-member-access]
+
+
+def test_reference_git_accepts_exact_zero_exit_and_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid subprocess completion still records the exact source commit."""
+    expected = "a" * 40
+
+    def fake_run(*args: object, **kwargs: object) -> object:
+        del args
+        assert kwargs["check"] is True
+        assert kwargs["shell"] is False
+        return reference_study.sp.CompletedProcess(
+            ["git", "rev-parse", "HEAD"], 0, stdout=expected + "\n"
+        )
+
+    monkeypatch.setattr(reference_study.sp, "run", fake_run)
+    assert reference_study._commit() == expected  # ruff: ignore[private-member-access]
+
+
 @pytest.mark.parametrize(
     "failure_type",
     [
