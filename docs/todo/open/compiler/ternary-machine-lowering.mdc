@@ -839,7 +839,10 @@ instruction.
   18 distinct shortest witnesses; typed/CLI output 138 and 41 is
   verified. Twenty-eight outputs pass 23 independent real-VM phases
   (excluding five, six and seven), yielding 22 shortest distinct bytes;
-  typed/CLI runner confirms 63 and 19; twenty-nine or more outputs reject.
+  typed/CLI runner confirms 63 and 19. Twenty-nine outputs pass 23
+  bounded guest phases (excluding five through seven), retaining 19
+  shortest distinct bytes; typed/runner confirms 12 and 25. Thirty or
+  more outputs reject.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper
