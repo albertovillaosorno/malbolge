@@ -29,8 +29,15 @@ codec authority.
 
 ## Failure semantics
 
-A missing destination loads as absent. Reads probe one byte beyond the admitted
-bound and reject oversized blobs without returning partial bytes. Publication
+A missing destination loads as absent. Before opening a present destination,
+the adapter requires a regular file from `symlink_metadata`, rejecting symlinks,
+directories, FIFOs and devices with typed `NonRegularSource` evidence. It also
+checks the opened descriptor is regular before reading. This prevents a
+configured FIFO without a writer from blocking the load; a hostile concurrent
+pathname replacement outside cooperating locks is not an atomic snapshot and
+remains outside the coordination contract. Reads probe one byte beyond the
+admitted bound and reject oversized blobs without returning partial bytes.
+Publication
 uses a new same-directory staging file, writes and synchronizes all bytes,
 closes the staging handle, then renames it onto the destination. If staging,
 writing,

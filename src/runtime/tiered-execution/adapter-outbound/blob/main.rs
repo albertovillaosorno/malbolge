@@ -91,6 +91,8 @@ pub enum NativeContinuationFileBlobStoreError {
     CoordinationMismatch,
     /// Configured destination does not name one file entry.
     InvalidDestination,
+    /// Existing destination is a symlink, directory, FIFO, or other non-file.
+    NonRegularSource,
     /// A loaded file contained more bytes than the caller admitted.
     LoadByteLimit {
         /// Exact positive bound supplied by application orchestration.
@@ -261,6 +263,20 @@ impl NativeContinuationFileBlobStore {
         maximum_bytes: NonZeroUsize,
     ) -> NativeContinuationBlobLoadResult<NativeContinuationFileBlobStoreError>
     {
+        // Reject FIFOs before opening: ordinary File::open can block forever
+        // when no writer has joined. Do not follow a symlink to foreign state.
+        let metadata = match fs::symlink_metadata(&self.destination) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(NativeContinuationFileBlobStoreError::Open {
+                    kind: error.kind(),
+                });
+            },
+        };
+        if !metadata.is_file() {
+            return Err(NativeContinuationFileBlobStoreError::NonRegularSource);
+        }
         let mut file = match File::open(&self.destination) {
             Ok(file) => file,
             Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -272,6 +288,16 @@ impl NativeContinuationFileBlobStore {
                 });
             },
         };
+        // Check the opened descriptor too; do not trust only the pathname.
+        if !file
+            .metadata()
+            .map_err(|error| NativeContinuationFileBlobStoreError::Open {
+                kind: error.kind(),
+            })?
+            .is_file()
+        {
+            return Err(NativeContinuationFileBlobStoreError::NonRegularSource);
+        }
         let read_limit =
             u64::try_from(maximum_bytes.get()).map_err(|_error| {
                 NativeContinuationFileBlobStoreError::ByteLimitRepresentation {

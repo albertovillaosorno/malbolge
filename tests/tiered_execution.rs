@@ -121471,6 +121471,62 @@ fn cached_retry_file_blob_store_rejects_oversized_load() -> Result<(), String> {
     result
 }
 
+#[cfg(unix)]
+#[test]
+fn cached_retry_file_blob_store_does_not_follow_symlink_on_load() -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+
+    let fixture = file_blob_store_fixture("symlink-load")?;
+    let target = fixture.directory.join("admitted-elsewhere.bin");
+    fs::write(&target, b"foreign")
+        .map_err(|error| format!("create foreign file: {error}"))?;
+    symlink("admitted-elsewhere.bin", &fixture.destination)
+        .map_err(|error| format!("create blob symlink: {error}"))?;
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    let maximum_bytes = nonzero_test_limit(64, "symlink blob limit")?;
+    let restored = blob_persistence::restore_blob(&mut store, maximum_bytes);
+    if !matches!(restored, Err(BlobPersistenceError::Store(
+        NativeContinuationFileBlobStoreError::NonRegularSource
+    ))) {
+        return Err(format!("blob restore accepted foreign symlink: {restored:?}"));
+    }
+    fs::remove_file(&fixture.destination)
+        .map_err(|error| format!("remove link fixture: {error}"))?;
+    fs::create_dir(&fixture.destination)
+        .map_err(|error| format!("create directory source: {error}"))?;
+    let restored = blob_persistence::restore_blob(&mut store, maximum_bytes);
+    if !matches!(restored, Err(BlobPersistenceError::Store(
+        NativeContinuationFileBlobStoreError::NonRegularSource
+    ))) {
+        return Err(format!("blob restore accepted directory: {restored:?}"));
+    }
+    remove_file_blob_store_fixture(&fixture.directory)
+}
+
+#[cfg(unix)]
+#[test]
+fn cached_retry_file_blob_store_rejects_fifo_before_opening() -> Result<(), String> {
+    let fixture = file_blob_store_fixture("fifo-load")?;
+    let status = Command::new("mkfifo")
+        .arg(&fixture.destination)
+        .status()
+        .map_err(|error| format!("create FIFO source: {error}"))?;
+    if !status.success() {
+        return Err(format!("mkfifo failed: {status}"));
+    }
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.destination.clone());
+    let maximum_bytes = nonzero_test_limit(64, "FIFO blob limit")?;
+    let restored = blob_persistence::restore_blob(&mut store, maximum_bytes);
+    if !matches!(restored, Err(BlobPersistenceError::Store(
+        NativeContinuationFileBlobStoreError::NonRegularSource
+    ))) {
+        return Err(format!("blob restore accepted FIFO: {restored:?}"));
+    }
+    remove_file_blob_store_fixture(&fixture.directory)
+}
+
 #[test]
 fn cached_retry_file_blob_store_roundtrips_count_window() -> Result<(), String>
 {
