@@ -328,7 +328,12 @@ def _decode_payload(encoded: str) -> bytes:
     except (BinasciiError, ValueError) as error:
         detail = _decode_error_detail(error)
         _fail(f"search checkpoint payload_base64 is invalid: {detail}")
-    if b64encode(payload).decode("ascii") != encoded:
+    if type(payload) is not bytes:
+        _fail("search checkpoint decoded payload must use exact bytes")
+    encoded_receipt = b64encode(payload)
+    if type(encoded_receipt) is not bytes:
+        _fail("search checkpoint encoded payload must use exact bytes")
+    if encoded_receipt.decode("ascii") != encoded:
         _fail("search checkpoint payload_base64 is not canonical")
     return payload
 

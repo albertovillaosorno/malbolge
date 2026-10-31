@@ -548,3 +548,64 @@ def test_search_checkpoint_rejects_foreign_base64_parser_error_safely(
         SearchCheckpointError, match="payload_base64 is invalid"
     ):
         _ = decode_search_checkpoint(encoded, _request(), _batch())
+
+
+class _ForeignBase64Bytes(bytes):
+    """Decode receipt shaped like bytes may override Python-facing methods."""
+
+    @override
+    def decode(self, *_args: object, **_kwargs: object) -> Never:
+        raise AssertionError
+
+
+@pytest.mark.parametrize(
+    "foreign",
+    [
+        pytest.param(object(), id="object"),
+        pytest.param(bytearray(b"evidence-a"), id="mutable"),
+        pytest.param(_ForeignBase64Bytes(b"evidence-a"), id="subclass"),
+    ],
+)
+def test_checkpoint_decoder_rejects_foreign_base64_decode_receipts(
+    monkeypatch: pytest.MonkeyPatch, foreign: object
+) -> None:
+    """No non-native decoded receipt can enter re-encoding or evidence state."""
+    request = _request()
+    batch = _batch()
+    encoded = encode_search_checkpoint(request, batch, _evidence())
+
+    def fake_decode(_payload: str, *, validate: bool) -> object:
+        del _payload, validate
+        return foreign
+
+    monkeypatch.setattr(checkpoint_module, "b64decode", fake_decode)
+    with pytest.raises(
+        SearchCheckpointError, match="decoded payload must use exact bytes"
+    ):
+        _ = decode_search_checkpoint(encoded, request, batch)
+
+
+@pytest.mark.parametrize(
+    "foreign",
+    [
+        pytest.param(object(), id="object"),
+        pytest.param(_ForeignBase64Bytes(b"ZXZpZGVuY2UtYQ=="), id="subclass"),
+    ],
+)
+def test_checkpoint_decoder_rejects_foreign_base64_encode_receipts(
+    monkeypatch: pytest.MonkeyPatch, foreign: object
+) -> None:
+    """A forged canonicalization receipt cannot execute foreign decoders."""
+    request = _request()
+    batch = _batch()
+    encoded = encode_search_checkpoint(request, batch, _evidence())
+
+    def fake_encode(_payload: bytes) -> object:
+        del _payload
+        return foreign
+
+    monkeypatch.setattr(checkpoint_module, "b64encode", fake_encode)
+    with pytest.raises(
+        SearchCheckpointError, match="encoded payload must use exact bytes"
+    ):
+        _ = decode_search_checkpoint(encoded, request, batch)
