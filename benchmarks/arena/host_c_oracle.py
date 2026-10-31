@@ -240,57 +240,103 @@ def _read_stage_rss(path: Path) -> int:
     return peak_kib * KIB_BYTES
 
 
-def _finish_child(child: sp.Popen[bytes]) -> None:
+def _finish_child(child: sp.Popen[bytes]) -> int:
+    """Reap the direct child and require a consistent native wait receipt.
+
+    Returns:
+        The exact reaped process exit code, including unsuccessful statuses.
+
+    """
     failures: list[Exception] = []
+    reaped: object = None
     try:
         _kill_child_group(child)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         failures.append(error)
         # A group-signal failure must not skip the direct-child fallback.
         try:
             if child.poll() is None:
                 child.kill()
-        except OSError as direct_error:
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            TypeError,
+            AttributeError,
+        ) as direct_error:
             failures.append(direct_error)
     try:
-        _ = child.wait(timeout=1)
+        reaped = child.wait(timeout=1)
     except sp.TimeoutExpired:
         # The original group may have become unavailable while its direct
         # child is still alive; retry one bounded direct kill and reap.
         try:
             child.kill()
-            _ = child.wait(timeout=1)
-        except (OSError, sp.SubprocessError) as error:
+            reaped = child.wait(timeout=1)
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            TypeError,
+            AttributeError,
+            sp.SubprocessError,
+        ) as error:
             failures.append(error)
-    except (OSError, ValueError) as error:
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        sp.SubprocessError,
+    ) as error:
         failures.append(error)
     if failures:
         message = "host-C challenge oracle child cleanup failed"
         failure = HostOracleError(message)
         for error in failures[1:]:
-            failure.add_note(f"additional host-C cleanup failure: {error}")
+            failure.add_note("additional host-C child cleanup failure")
         raise failure from failures[0]
+    if (
+        type(reaped) is not int
+        or type(child.returncode) is not int
+        or reaped != child.returncode
+    ):
+        _fail("host-C challenge oracle child exit receipt disagrees with wait")
+    return reaped
 
 
 def _wait_child(child: sp.Popen[bytes], label: str) -> None:
+    observed: object = None
+    reaped: int | None = None
     try:
         try:
             _ = child.communicate(timeout=SUBPROCESS_TIMEOUT_SECONDS)
+            observed = child.returncode
         except sp.TimeoutExpired as error:
             message = f"host-C challenge oracle {label} timed out"
             raise HostOracleError(message) from error
-        except (OSError, ValueError, RuntimeError, sp.SubprocessError) as error:
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            TypeError,
+            AttributeError,
+            sp.SubprocessError,
+        ) as error:
             message = f"host-C challenge oracle {label} transport failed"
             raise HostOracleError(message) from error
     finally:
         original = sys.exception()
         try:
-            _finish_child(child)
+            reaped = _finish_child(child)
         except HostOracleError as error:
             if original is None:
                 raise
             original.add_note(f"host-C cleanup also failed: {error}")
-    if child.returncode != 0:
+    if type(observed) is not int or reaped is None or observed != reaped:
+        _fail(f"host-C challenge oracle {label} inconsistent child exit receipt")
+    if reaped != 0:
         _fail(f"host-C challenge oracle {label} failed")
 
 
@@ -396,6 +442,28 @@ def _bounded_nodes(nodes: object, *, limit: int, scope: str) -> None:
         _fail(f"host-C {scope} exceeds {limit}-node limit")
 
 
+def _generate_canonical(
+    identity: generate.ChallengeIdentity,
+    *,
+    scope: str,
+) -> generate.GeneratedChallenge:
+    """Require native canonical generator bytes before any host-C execution."""
+    try:
+        generated = generate.generate(identity)
+    except generate.ChallengeError as error:
+        message = f"host-C {scope} identity cannot regenerate"
+        raise HostOracleError(message) from error
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = f"host-C {scope} regeneration dependency failed"
+        raise HostOracleError(message) from error
+    if type(generated) is not generate.GeneratedChallenge or any(
+        type(payload) is not bytes
+        for payload in (generated.source, generated.oracle, generated.manifest)
+    ):
+        _fail("host-C canonical challenge generator returned invalid payload")
+    return generated
+
+
 def _canonical_payload(
     case: dict[str, Any],
     profile: str,
@@ -420,19 +488,16 @@ def _canonical_payload(
     _bounded_nodes(
         case["difficulty"], limit=MAX_REPLAY_NODES, scope="challenge oracle"
     )
-    try:
-        generated = generate.generate(
-            generate.ChallengeIdentity(
-                family=case["family"],
-                version=case["version"],
-                seed=case["seed"],
-                profile=profile,
-                nodes=case["difficulty"],
-            )
-        )
-    except generate.ChallengeError as error:
-        message = f"host-C challenge identity cannot regenerate: {error}"
-        raise HostOracleError(message) from error
+    generated = _generate_canonical(
+        generate.ChallengeIdentity(
+            family=case["family"],
+            version=case["version"],
+            seed=case["seed"],
+            profile=profile,
+            nodes=case["difficulty"],
+        ),
+        scope="challenge",
+    )
     digest = sha256(generated.source).hexdigest()
     if digest != source_sha256 or len(generated.oracle) != ORACLE_BYTES:
         _fail("host-C challenge oracle source or output identity differs")
@@ -488,11 +553,7 @@ def _reference_source(
         _fail("host-C reference identity requires native challenge fields")
     _bounded_nodes(identity.nodes, limit=MAX_REPLAY_NODES, scope="reference")
     _require_local_scratch_root()
-    try:
-        return generate.generate(identity)
-    except generate.ChallengeError as error:
-        message = f"host-C reference identity cannot regenerate: {error}"
-        raise HostOracleError(message) from error
+    return _generate_canonical(identity, scope="reference")
 
 
 def _write_canonical_source(

@@ -577,6 +577,132 @@ def test_host_c_reference_rejects_invalid_identity_before_native_execution(
     assert not called
 
 
+class _HostileGeneratorFailure(generate.ChallengeError):
+    """Foreign exception diagnostics must never be formatted by replay."""
+
+    def __str__(self) -> str:
+        raise AssertionError("hostile challenge error formatting invoked")
+
+
+class _ForgedCanonicalBytes(bytes):
+    """A foreign byte subclass could spoof canonical value equality."""
+
+    def __eq__(self, _other: object) -> bool:
+        return True
+
+    def __ne__(self, _other: object) -> bool:
+        return False
+
+
+@pytest.mark.parametrize("route", ["replay", "reference"])
+@pytest.mark.parametrize(
+    "fault_type",
+    [OSError, ValueError, RuntimeError, TypeError, AttributeError],
+)
+def test_host_c_canonical_generation_host_faults_are_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    fault_type: type[Exception],
+) -> None:
+    """Unavailable canonical generation never reaches native compilation."""
+    original_digest = _digest()
+    fault = fault_type("injected generator host failure")
+
+    def fail_generate(_identity: generate.ChallengeIdentity) -> None:
+        raise fault
+
+    monkeypatch.setattr(generate, "generate", fail_generate)
+    monkeypatch.setattr(host_c_oracle, "_require_local_scratch_root", lambda: None)
+    with pytest.raises(host_c_oracle.HostOracleError, match="regenerat") as caught:
+        if route == "replay":
+            host_c_oracle._canonical_payload(_case(), PROFILE, original_digest)
+        else:
+            host_c_oracle._reference_source(
+                generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES),
+                "-O0",
+            )
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("route", ["replay", "reference"])
+def test_host_c_canonical_generation_does_not_format_hostile_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+) -> None:
+    """A generator's unsafe exception formatter cannot replace typed errors."""
+    original_digest = _digest()
+    fault = _HostileGeneratorFailure("injected generator failure")
+
+    def fail_generate(_identity: generate.ChallengeIdentity) -> None:
+        raise fault
+
+    monkeypatch.setattr(generate, "generate", fail_generate)
+    monkeypatch.setattr(host_c_oracle, "_require_local_scratch_root", lambda: None)
+    with pytest.raises(host_c_oracle.HostOracleError, match="regenerat") as caught:
+        if route == "replay":
+            host_c_oracle._canonical_payload(_case(), PROFILE, original_digest)
+        else:
+            host_c_oracle._reference_source(
+                generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES),
+                "-O0",
+            )
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("route", ["replay", "reference"])
+@pytest.mark.parametrize("field", ["source", "oracle", "manifest"])
+def test_host_c_canonical_generation_rejects_foreign_byte_subclass(
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    field: str,
+) -> None:
+    """Only exact generated native bytes can supply executable C evidence."""
+    original_digest = _digest()
+    original = generate.generate(
+        generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    )
+    payload = {
+        "source": original.source,
+        "oracle": original.oracle,
+        "manifest": original.manifest,
+    }
+    payload[field] = _ForgedCanonicalBytes(b"forged")
+    forged = generate.GeneratedChallenge(**payload)
+    monkeypatch.setattr(generate, "generate", lambda _identity: forged)
+    monkeypatch.setattr(host_c_oracle, "_require_local_scratch_root", lambda: None)
+    with pytest.raises(host_c_oracle.HostOracleError, match="payload"):
+        if route == "replay":
+            host_c_oracle._canonical_payload(_case(), PROFILE, original_digest)
+        else:
+            host_c_oracle._reference_source(
+                generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES),
+                "-O0",
+            )
+
+
+@pytest.mark.parametrize("route", ["replay", "reference"])
+@pytest.mark.parametrize(
+    "result", [None, object(), (b"source", b"oracle", b"manifest")]
+)
+def test_host_c_canonical_generation_rejects_malformed_result(
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    result: object,
+) -> None:
+    """Canonical generator result shape must be exact before execution."""
+    original_digest = _digest()
+    monkeypatch.setattr(generate, "generate", lambda _identity: result)
+    monkeypatch.setattr(host_c_oracle, "_require_local_scratch_root", lambda: None)
+    with pytest.raises(host_c_oracle.HostOracleError, match="payload"):
+        if route == "replay":
+            host_c_oracle._canonical_payload(_case(), PROFILE, original_digest)
+        else:
+            host_c_oracle._reference_source(
+                generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES),
+                "-O0",
+            )
+
+
 def test_host_c_replay_rejects_noncanonical_source_digest() -> None:
     """No unadmitted candidate C source may run through this bounded gate."""
     with pytest.raises(host_c_oracle.HostOracleError, match="source"):
@@ -629,6 +755,79 @@ def test_child_timeout_is_reported_as_replay_failure(
             tmp_path,
             "O0 compile",
         )
+
+
+@pytest.mark.parametrize(
+    ("communicated", "waited", "final"),
+    [
+        (None, 0, 0),
+        (False, 0, 0),
+        (0, False, 0),
+        (0, None, 0),
+        (0, 5, 5),
+        (0, 0, 5),
+        (5, 0, 0),
+    ],
+)
+def test_host_child_requires_consistent_native_exit_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    communicated: object,
+    waited: object,
+    final: object,
+) -> None:
+    """Neither forged success nor mismatched wait receipts can admit replay."""
+    events: list[str] = []
+
+    class ChildProbe:
+        returncode: object = None
+
+        def communicate(self, *, timeout: int) -> tuple[None, None]:
+            assert timeout == host_c_oracle.SUBPROCESS_TIMEOUT_SECONDS
+            events.append("communicate")
+            self.returncode = communicated
+            return (None, None)
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            events.append("wait")
+            self.returncode = final
+            return cast("int", waited)
+
+    monkeypatch.setattr(
+        host_c_oracle,
+        "_kill_child_group",
+        lambda _child: events.append("group"),
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="exit receipt"):
+        host_c_oracle._wait_child(cast("Any", ChildProbe()), "O0 compile")
+    assert events == ["communicate", "group", "wait"]
+
+
+@pytest.mark.parametrize(
+    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_host_child_wait_host_faults_are_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Failed direct child reaping cannot claim a verified host-C stage."""
+    fault = failure_type("synthetic wait failure")
+
+    class ChildProbe:
+        returncode = 0
+
+        def communicate(self, *, timeout: int) -> tuple[None, None]:
+            assert timeout == host_c_oracle.SUBPROCESS_TIMEOUT_SECONDS
+            return (None, None)
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            raise fault
+
+    monkeypatch.setattr(host_c_oracle, "_kill_child_group", lambda _child: None)
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as caught:
+        host_c_oracle._wait_child(cast("Any", ChildProbe()), "O0 compile")
+    assert caught.value.__cause__ is fault
 
 
 @pytest.mark.parametrize("timeout", [False, True])
