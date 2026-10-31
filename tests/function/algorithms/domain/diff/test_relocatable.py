@@ -365,6 +365,55 @@ def test_relocatable_materialization_rejects_linked_candidate(
     )
 
 
+def test_relocatable_rejects_linked_authoring_directory(
+    tmp_path: Path,
+) -> None:
+    """An in-tree directory alias cannot replace a pinned authoring subtree."""
+    source = tmp_path / "source"
+    oracle = tmp_path / "oracle"
+    content = _blocks("source")
+    _write(source, "tree/file.bin", content)
+    _write(oracle, "tree/file.bin", content[:900] + _TARGET + content[900:])
+    exact = build_exact_plan(source, oracle)
+    (source / "tree").rename(source / "actual")
+    try:
+        (source / "tree").symlink_to(
+            source / "actual", target_is_directory=True
+        )
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+
+    with pytest.raises(RelocationError, match="linked path component"):
+        _ = build_relocatable_plan(source, exact)
+
+
+def test_relocatable_rejects_linked_candidate_directory(
+    tmp_path: Path,
+) -> None:
+    """In-tree directory aliases cannot masquerade as admitted source paths."""
+    candidate = tmp_path / "candidate"
+    _write(candidate, "real/file.bin", b"ordinary source bytes")
+    try:
+        (candidate / "alias").symlink_to(
+            candidate / "real", target_is_directory=True
+        )
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            output_path="copy.bin",
+            source_path="alias/file.bin",
+            copy_candidate_file=True,
+        ),
+    ))
+    output = tmp_path / "out"
+
+    with pytest.raises(RelocationError, match="linked path component"):
+        materialize_relocatable_plan(candidate, plan, output)
+    assert not output.exists()
+    assert not (tmp_path / ".out.relocatable-staging").exists()
+
+
 def test_relocatable_authoring_read_error_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
