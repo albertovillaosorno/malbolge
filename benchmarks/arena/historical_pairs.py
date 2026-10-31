@@ -242,12 +242,18 @@ def _csv_rows(
 def _extension(
     manifest: dict[str, Any],
 ) -> tuple[dict[str, Any], tuple[str, ...]]:
+    if type(manifest) is not dict or any(
+        type(key) is not str for key in manifest
+    ):
+        _fail("historical measurement manifest requires native string keys")
     available = [name for name in EXTENSION_CONFIG if name in manifest]
     if len(available) != 1:
         _fail("unsupported historical paired measurement extension")
     section = manifest[available[0]]
-    if not isinstance(section, dict):
-        _fail("invalid historical paired measurement extension")
+    if type(section) is not dict or any(
+        type(key) is not str for key in section
+    ):
+        _fail("historical measurement extension requires native string keys")
     return section, EXTENSION_CONFIG[available[0]]
 
 

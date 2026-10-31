@@ -977,3 +977,31 @@ def test_historical_cli_keeps_exact_native_failure_text(
     with pytest.raises(SystemExit, match="2"):
         historical_pairs.main()
     assert "exact local source rejection" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("scope", ["manifest", "measurement"])
+def test_historical_extension_rejects_foreign_toml_keys_before_lookup(
+    scope: str,
+) -> None:
+    """A dependency-owned TOML key must not execute equality during admission."""
+
+    class CollidingKey:
+        def __hash__(self) -> int:
+            return hash(
+                "prefix_decomposition_measurement"
+                if scope == "manifest"
+                else "baseline_strategy"
+            )
+
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign historical TOML key comparison executed")
+
+    if scope == "manifest":
+        result: dict[object, object] = {CollidingKey(): {}}
+    else:
+        result = {"prefix_decomposition_measurement": {CollidingKey(): "baseline"}}
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="native string keys"
+    ):
+        historical_pairs._extension(cast("dict[str, Any]", result))
