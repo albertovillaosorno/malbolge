@@ -1293,6 +1293,63 @@ fn populate_staging(
     }
     Ok(())
 }
+#[cfg(target_os = "linux")]
+fn publish_staging_no_replace(
+    staging: &Path,
+    output: &Path,
+) -> Result<(), String> {
+    use std::ffi::{c_char, c_int, c_uint, CString};
+    use std::os::unix::ffi::OsStrExt;
+
+    unsafe extern "C" {
+        fn renameat2(
+            olddirfd: c_int,
+            oldpath: *const c_char,
+            newdirfd: c_int,
+            newpath: *const c_char,
+            flags: c_uint,
+        ) -> c_int;
+    }
+    const AT_FDCWD: c_int = -100;
+    const RENAME_NOREPLACE: c_uint = 1;
+    let old = CString::new(staging.as_os_str().as_bytes())
+        .map_err(|_| String::from("staging path contains NUL"))?;
+    let new = CString::new(output.as_os_str().as_bytes())
+        .map_err(|_| String::from("output path contains NUL"))?;
+    let status = unsafe {
+        renameat2(
+            AT_FDCWD,
+            old.as_ptr(),
+            AT_FDCWD,
+            new.as_ptr(),
+            RENAME_NOREPLACE,
+        )
+    };
+    if status != 0 {
+        return Err(format!(
+            "cannot publish staging {}: {}",
+            staging.display(),
+            std::io::Error::last_os_error(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn publish_staging_no_replace(
+    staging: &Path,
+    output: &Path,
+) -> Result<(), String> {
+    fs::rename(staging, output).map_err(|e| {
+        format!("cannot publish staging {}: {e}", staging.display())
+    })
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+fn publish_staging_no_replace(_: &Path, _: &Path) -> Result<(), String> {
+    Err(String::from("atomic no-replace publication is unsupported"))
+}
+
 fn materialize(
     source: &Path,
     output: &Path,
@@ -1310,9 +1367,7 @@ fn materialize(
                     "source tree changed during materialization",
                 ));
             }
-            fs::rename(&staging, output).map_err(|e| {
-                format!("cannot publish staging {}: {e}", staging.display())
-            })
+            publish_staging_no_replace(&staging, output)
         });
     if result.is_err() && staging.exists() {
         let _ = fs::remove_dir_all(&staging);

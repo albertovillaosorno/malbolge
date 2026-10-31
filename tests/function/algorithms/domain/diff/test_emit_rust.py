@@ -506,6 +506,51 @@ def test_emitted_rust_allows_late_passthrough_change(
     )
 
 
+def _inject_late_empty_output_collision(generated: str) -> str:
+    seam = "        .and_then(|()| {\n"
+    _expect(generated.count(seam) == 1, "publication seam changed")
+    collision = (
+        seam
+        + "            fs::create_dir(output)\n"
+        + (
+            "                .map_err(|e| "
+            'format!("test collision failed: {e}"))?;\n'
+        )
+    )
+    return generated.replace(seam, collision, 1)
+
+
+def test_emitted_rust_preserves_late_empty_output_collision(
+    tmp_path: Path,
+) -> None:
+    """An intervening empty destination cannot be replaced at publication."""
+    source, _, _, protected = _fixture(tmp_path)
+    rust_source = tmp_path / "late-collision.rs"
+    executable = tmp_path / "late-collision"
+    output = tmp_path / "late-out"
+    _ = rust_source.write_text(
+        _inject_late_empty_output_collision(
+            emit_rust_transform(protected, _PROFILE)
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(
+        compiled.returncode == 0,
+        "collision runtime failed to compile: "
+        + compiled.stderr.decode(errors="replace"),
+    )
+    completed = _run(executable, source, output)
+    _expect(completed.returncode != 0, "late output collision was overwritten")
+    _expect(output.is_dir(), "foreign output directory was removed")
+    _expect(not any(output.iterdir()), "foreign output contents changed")
+    _expect(
+        not (tmp_path / ".late-out.diff-staging").exists(),
+        "collision left owned staging files",
+    )
+
+
 def test_emitter_wraps_runtime_template_read_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

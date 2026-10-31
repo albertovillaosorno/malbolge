@@ -528,6 +528,10 @@ source snapshot before publication and excludes authenticated dynamic
 passthrough roots from that comparison. This catches persistent source drift
 throughout staging; concurrent writers can still race the final check and
 rename because the filesystem operation is not an atomic input snapshot.
+Final publication uses atomic no-replace directory semantics on Linux
+(`renameat2` with `RENAME_NOREPLACE`) and the Windows no-overwrite rename;
+unsupported hosts fail closed. A competing empty output directory cannot be
+replaced even when it appears between staging and publication.
 Compatible/fuzzy emission remains
 fail-closed
 until the runtime can reproduce consumer-selected canonical identity, structural
