@@ -43,6 +43,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import os
 from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
@@ -358,6 +359,15 @@ def _validate_path(value: object, context: str) -> None:
     if not isinstance(value, Path):
         message = f"{context} must use a pathlib Path value"
         raise RelocationError(message)
+    text = str(value)
+    if _NUL in text:
+        message = f"{context} is not a representable filesystem path"
+        raise RelocationError(message)
+    try:
+        _ = os.fsencode(text)
+    except UnicodeError as error:
+        message = f"{context} is not a representable filesystem path"
+        raise RelocationError(message) from error
 
 
 def build_relocatable_plan(

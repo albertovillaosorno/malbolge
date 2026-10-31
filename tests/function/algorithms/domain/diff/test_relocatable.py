@@ -64,6 +64,8 @@ _TARGET = b"TARGET-ONLY-CORRECTION"
 _CREATED = b"created-target"
 _FOREIGN_STAGING = b"foreign-writer"
 _FOREIGN_OUTPUT = b"foreign-output"
+_POSIX = "posix"
+_ROOT_TARGET = b"target"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -552,6 +554,47 @@ def test_existing_relocatable_staging_is_preserved(tmp_path: Path) -> None:
         "preexisting relocatable staging was modified",
     )
     _expect(not output.exists(), "staging conflict published output")
+
+
+@pytest.mark.parametrize("bad_suffix", ["\x00", "\ud800"])
+def test_relocatable_root_paths_reject_nonfilesystem_text(
+    tmp_path: Path, bad_suffix: str
+) -> None:
+    """Reject unrepresentable roots before staging or source-file reads."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    plan = build_relocatable_plan(source, exact)
+    invalid_root = tmp_path / f"invalid{bad_suffix}"
+    output = tmp_path / "out"
+
+    with pytest.raises(RelocationError, match="filesystem path"):
+        _ = build_relocatable_plan(invalid_root, exact)
+    with pytest.raises(RelocationError, match="filesystem path"):
+        materialize_relocatable_plan(invalid_root, plan, output)
+    with pytest.raises(RelocationError, match="filesystem path"):
+        materialize_relocatable_plan(source, plan, invalid_root)
+    assert not output.exists()
+    assert not (tmp_path / ".out.relocatable-staging").exists()
+
+
+@pytest.mark.skipif(
+    os.name != _POSIX, reason="requires POSIX raw-byte pathnames"
+)
+def test_relocatable_root_accepts_surrogateescaped_filesystem_name(
+    tmp_path: Path,
+) -> None:
+    """Admit real POSIX root bytes even when the display name is not UTF-8."""
+    raw_root = os.fsencode(tmp_path) + b"/source-\xff"
+    source = Path(os.fsdecode(raw_root))
+    source.mkdir()
+    oracle = tmp_path / "oracle"
+    _write(source, "code.bin", b"source")
+    _write(oracle, "code.bin", _ROOT_TARGET)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+
+    output = tmp_path / "out"
+    materialize_relocatable_plan(source, plan, output)
+    assert (output / "code.bin").read_bytes() == _ROOT_TARGET
 
 
 def test_relocatable_public_boundaries_reject_foreign_inputs(
