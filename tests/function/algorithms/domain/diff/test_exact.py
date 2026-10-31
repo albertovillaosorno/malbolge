@@ -696,8 +696,13 @@ def test_exact_publication_collision_preserves_foreign_output(
     assert not (tmp_path / ".result.staging").exists()
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_exact_materialization_wraps_output_write_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """A staging write failure stays inside the exact-tree boundary."""
     source, oracle = _synthetic_pair(tmp_path)
@@ -709,7 +714,7 @@ def test_exact_materialization_wraps_output_write_failure(
     def fail_write(path: Path, data: bytes) -> int:
         if path == blocked:
             message = "blocked staging write"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_write(path, data)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
@@ -717,6 +722,40 @@ def test_exact_materialization_wraps_output_write_failure(
         materialize_exact_plan(source, plan, output)
     _expect(not output.exists(), "write failure published output")
     _expect(not (tmp_path / ".result.staging").exists(), "staging survived")
+
+
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
+def test_exact_materialization_wraps_staging_directory_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Staging mkdir failures cannot leak outside the exact-tree boundary."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "result"
+    staging = tmp_path / ".result.staging"
+    original_mkdir = Path.mkdir
+
+    def fail_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        if path == staging:
+            message = "blocked staging directory"
+            raise failure_type(message)
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    with pytest.raises(ExactTreeError, match="staging root creation failed"):
+        materialize_exact_plan(source, plan, output)
+    _expect(not output.exists(), "staging mkdir failure published output")
+    _expect(not staging.exists(), "staging mkdir failure left staging")
 
 
 @pytest.mark.parametrize(

@@ -764,7 +764,7 @@ def _write_output_file(path: Path, data: bytes, context: str) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_bytes(data)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} write failed: {path}: {error}"
         raise ExactTreeError(message) from error
 
@@ -778,7 +778,7 @@ def _make_output_directory(
 ) -> None:
     try:
         path.mkdir(parents=parents, exist_ok=exist_ok)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} creation failed: {path}: {error}"
         raise ExactTreeError(message) from error
 
