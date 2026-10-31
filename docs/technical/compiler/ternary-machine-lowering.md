@@ -925,11 +925,14 @@ operations
 without hardcoded `/` or `<` characters; colliding projected input/output
 instructions or profile drift fail closed.
 
-For an already-selected code-pointer position, the target-cell encoder exhausts
-graphical ASCII `33..126` through a canonical instruction-decoder port and
-requires exactly one source cell whose VM decode equals the realized operation.
-The compiler therefore does not copy XLAT1. Missing or ambiguous inverse
-encodings fail closed.
+For an already-selected code-pointer position, the target-cell encoder first
+re-derives the complete `InputWord`/`OutputByte` machine operation from the
+supplied target-profile projection. Forged operation kinds, opcodes, or EOF
+state, as well as invalid profile projections, fail before source-cell
+selection. It then exhausts graphical ASCII `33..126` through the canonical
+instruction-decoder port and requires exactly one source cell whose VM decode
+equals the admitted operation. The compiler therefore does not copy XLAT1.
+Missing or ambiguous inverse encodings fail closed.
 
 A separate startup port accepts a heap extent only after another stage has
 resolved its guest logical location. Startup planning validates the exact

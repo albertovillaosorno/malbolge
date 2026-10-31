@@ -151,7 +151,9 @@ instruction.
   copying XLAT1. The encoder requires exactly one graphical source cell for the
   realized opcode at an already-chosen code position; tests exhaust all 94 VM
   decode phases for both current-profile I/O operations and reject missing or
-  ambiguous inverse decoders.
+  ambiguous inverse decoders. Before inverse encoding, independent profile
+  realization now rejects forged instruction/opcode, input/output kind, EOF
+  state, and malformed projected profiles.
 - The typed semantic slice lowers exact `i32` bitwise AND, OR, and XOR,
   plus validated `i32`-to-`u8` truncation. Canonical round trips preserve SSA
   operands, return values, and provenance; direct runtime-helper call

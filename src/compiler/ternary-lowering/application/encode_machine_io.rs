@@ -36,7 +36,11 @@
 //! Deterministic single-cell encoder for realized machine I/O operations.
 
 use super::instruction_decoder_input::ProfileInstructionDecoder;
-use super::model::{EncodedMachineIo, MachineIoOperation};
+use super::model::{
+    EncodedMachineIo, MachineIoKind, MachineIoOperation, RuntimeIntrinsicOperation,
+};
+use super::realize_runtime_io::realize_runtime_io;
+use super::target_profile_input::TargetProfileIo;
 
 const GRAPHICAL_END: u8 = 126;
 const GRAPHICAL_START: u8 = 33;
@@ -46,6 +50,10 @@ const GRAPHICAL_START: u8 = 33;
 pub enum MachineIoEncodingError {
     /// More than one graphical source cell decoded to the requested operation.
     AmbiguousEncoding,
+    /// A caller-supplied machine operation does not match the selected profile.
+    InvalidOperation,
+    /// The target-profile I/O projection is not admissible.
+    InvalidProfile,
     /// No graphical source cell decoded to the requested operation.
     MissingEncoding,
 }
@@ -54,26 +62,34 @@ pub enum MachineIoEncodingError {
 ///
 /// # Errors
 ///
-/// Returns [`MachineIoEncodingError`] unless canonical decoding produces
-/// exactly one graphical source cell for the requested decoded instruction.
+/// Returns [`MachineIoEncodingError`] unless the operation independently
+/// matches the selected profile and canonical decoding produces exactly one
+/// graphical source cell for its decoded instruction.
 pub fn encode_machine_io(
     operation: MachineIoOperation,
     code_pointer: u32,
     decoder: &dyn ProfileInstructionDecoder,
+    profile: &TargetProfileIo,
 ) -> Result<EncodedMachineIo, MachineIoEncodingError> {
+    let intrinsic = match operation.kind {
+        MachineIoKind::InputWord => RuntimeIntrinsicOperation::InputWord,
+        MachineIoKind::OutputByte => RuntimeIntrinsicOperation::OutputByte,
+    };
+    let expected = realize_runtime_io(intrinsic, profile)
+        .map_err(|_error| MachineIoEncodingError::InvalidProfile)?;
+    if operation != expected {
+        return Err(MachineIoEncodingError::InvalidOperation);
+    }
     let mut selected = None;
     for cell in GRAPHICAL_START..=GRAPHICAL_END {
-        if decoder.decode(u32::from(cell), code_pointer)
-            == Some(operation.instruction)
-        {
+        if decoder.decode(u32::from(cell), code_pointer) == Some(operation.instruction) {
             if selected.is_some() {
                 return Err(MachineIoEncodingError::AmbiguousEncoding);
             }
             selected = Some(cell);
         }
     }
-    let source_cell =
-        selected.ok_or(MachineIoEncodingError::MissingEncoding)?;
+    let source_cell = selected.ok_or(MachineIoEncodingError::MissingEncoding)?;
     Ok(EncodedMachineIo {
         code_pointer,
         operation,

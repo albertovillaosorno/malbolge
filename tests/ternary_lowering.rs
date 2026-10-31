@@ -21273,7 +21273,7 @@ fn machine_io_cells_round_trip_every_decode_phase() -> Result<(), String> {
         ] {
             let operation = realize_runtime_io(semantic, &projection)
                 .map_err(|error| format!("realize machine I/O: {error:?}"))?;
-            let encoded = encode_machine_io(operation, code_pointer, &decoder)
+            let encoded = encode_machine_io(operation, code_pointer, &decoder, &projection)
                 .map_err(|error| format!("encode machine I/O: {error:?}"))?;
             if !(33..=126).contains(&encoded.source_cell)
                 || encoded.code_pointer != code_pointer
@@ -21297,17 +21297,54 @@ fn machine_io_encoder_rejects_broken_decoder_ports() -> Result<(), String> {
         &current_profile_io(),
     )
     .map_err(|error| format!("realize machine I/O: {error:?}"))?;
-    if encode_machine_io(operation, 0, &MissingInstructionDecoder)
+    if encode_machine_io(operation, 0, &MissingInstructionDecoder, &current_profile_io())
         != Err(MachineIoEncodingError::MissingEncoding)
     {
         return Err(String::from("missing inverse encoding was not rejected"));
     }
-    if encode_machine_io(operation, 0, &AmbiguousInstructionDecoder)
+    if encode_machine_io(operation, 0, &AmbiguousInstructionDecoder, &current_profile_io())
         != Err(MachineIoEncodingError::AmbiguousEncoding)
     {
         return Err(String::from(
             "ambiguous inverse encoding was not rejected",
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn machine_io_encoder_rejects_forged_realization() -> Result<(), String> {
+    let projection = current_profile_io();
+    let decoder = VmProfileInstructionDecoder;
+    let input = realize_runtime_io(RuntimeIntrinsicOperation::InputWord, &projection)
+        .map_err(|error| format!("realize input: {error:?}"))?;
+    let output = realize_runtime_io(RuntimeIntrinsicOperation::OutputByte, &projection)
+        .map_err(|error| format!("realize output: {error:?}"))?;
+    for forged in [
+        MachineIoOperation { eof_word: None, ..input },
+        MachineIoOperation { instruction: output.instruction, ..input },
+        MachineIoOperation { kind: MachineIoKind::OutputByte, ..input },
+        MachineIoOperation { eof_word: Some(projection.eof_word), ..output },
+    ] {
+        if encode_machine_io(forged, 0, &decoder, &projection)
+            != Err(MachineIoEncodingError::InvalidOperation)
+        {
+            return Err(format!("forged machine-I/O operation {forged:?} encoded"));
+        }
+    }
+    let mut foreign = projection.clone();
+    foreign.profile_id = String::from("malbolge-1998");
+    if encode_machine_io(input, 0, &decoder, &foreign)
+        != Err(MachineIoEncodingError::InvalidProfile)
+    {
+        return Err(String::from("foreign-profile I/O operation encoded"));
+    }
+    let mut colliding = projection;
+    colliding.output_instruction = colliding.input_instruction;
+    if encode_machine_io(input, 0, &decoder, &colliding)
+        != Err(MachineIoEncodingError::InvalidProfile)
+    {
+        return Err(String::from("colliding-profile I/O operation encoded"));
     }
     Ok(())
 }
