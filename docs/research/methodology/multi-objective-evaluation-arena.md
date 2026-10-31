@@ -177,6 +177,10 @@ execution or timeout fails the entire preflight without emitting a report.
 This is real host-C **challenge oracle replay**, not verification of an
 algorithm's generated candidate artifact, not proof of Malbolge semantics,
 and not authentication of any producer-reported elapsed time or memory use.
+Direct host-C replay and reference builder calls now admit exact positive
+bounded node identities before invoking native tools. Malformed direct inputs
+reject with typed host-oracle errors; this does not authenticate the supplied
+challenge or turn a reference run into a candidate-verification result.
 There is no OS sandbox or physical budget enforcement. The final candidate
 verifier and real multi-difficulty compiler comparison remain outstanding.
 

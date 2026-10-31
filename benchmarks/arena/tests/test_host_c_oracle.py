@@ -42,7 +42,7 @@ import sys
 import time
 from hashlib import sha256
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, cast
 
 import pytest
 
@@ -261,6 +261,78 @@ def test_host_c_replay_requires_canonical_bundle_preflight(
                 require_host_c_challenge_oracle=True
             ),
         )
+
+
+@pytest.mark.parametrize(
+    "bad_case",
+    [
+        None,
+        {},
+        {"difficulty": None},
+        {"difficulty": False},
+        {"difficulty": "8"},
+        {"difficulty": 0},
+        {"family": []},
+    ],
+    ids=["none", "empty", "none-nodes", "bool", "text", "zero", "family-list"],
+)
+def test_direct_host_oracle_rejects_invalid_case_before_native_execution(
+    bad_case: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed direct inputs cannot trigger Clang or leak host exceptions."""
+    called = False
+
+    def forbidden(*args: object, **kwargs: object) -> int:
+        nonlocal called
+        del args, kwargs
+        called = True
+        return 0
+
+    monkeypatch.setattr(host_c_oracle, "_replay_mode", forbidden)
+    case = _case()
+    if isinstance(bad_case, dict) and bad_case:
+        case.update(cast("dict[str, Any]", bad_case))
+    else:
+        case = cast("dict[str, Any]", bad_case)
+    with pytest.raises(host_c_oracle.HostOracleError, match=r"identity|nodes"):
+        host_c_oracle.replay_one(case, PROFILE, _digest())
+    assert not called
+
+
+@pytest.mark.parametrize("rebuild", [True, False], ids=["rebuild", "measure"])
+@pytest.mark.parametrize("bad_nodes", [None, False, "8"])
+def test_host_c_reference_rejects_invalid_identity_before_native_execution(
+    *,
+    rebuild: bool,
+    bad_nodes: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bad reference identities must fail at their bounded admission gate."""
+    called = False
+
+    def forbidden(*args: object, **kwargs: object) -> int:
+        nonlocal called
+        del args, kwargs
+        called = True
+        return 0
+
+    monkeypatch.setattr(host_c_oracle, "_replay_mode", forbidden)
+    identity = generate.ChallengeIdentity(
+        family="arithmetic-dag",
+        version=1,
+        seed=7,
+        profile=PROFILE,
+        nodes=cast("int", bad_nodes),
+    )
+    action = (
+        host_c_oracle.rebuild_reference
+        if rebuild
+        else host_c_oracle.measure_reference
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match=r"identity|nodes"):
+        _ = action(identity, "-O0")
+    assert not called
 
 
 def test_host_c_replay_rejects_noncanonical_source_digest() -> None:

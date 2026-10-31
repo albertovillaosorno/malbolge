@@ -64,6 +64,7 @@ RSS_REPORT_MAX_BYTES = 32
 SYSTEM_TOOL_SEARCH_PATH = os.defpath
 KIB_BYTES = 1024
 OPTIMIZATION_MODES = ("-O0", "-O2")
+REQUIRED_CASE_FIELDS = frozenset({"family", "version", "seed", "difficulty"})
 _ROOT = Path(__file__).resolve().parents[2]
 _PINNED_CLANG = _ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 _TEMP = _ROOT / ".temp"
@@ -334,13 +335,25 @@ def _replay_mode(directory: Path, mode: str) -> int:
     return max(compile_rss, link_rss, execute_rss)
 
 
+def _bounded_nodes(nodes: object, *, limit: int, scope: str) -> None:
+    if type(nodes) is not int or nodes < 1:
+        _fail(f"host-C {scope} identity requires positive integer nodes")
+    if nodes > limit:
+        _fail(f"host-C {scope} exceeds {limit}-node limit")
+
+
 def _canonical_payload(
     case: dict[str, Any],
     profile: str,
     source_sha256: str,
 ) -> generate.GeneratedChallenge:
-    if case["difficulty"] > MAX_REPLAY_NODES:
-        _fail("host-C challenge oracle exceeds 512-node limit")
+    if type(case) is not dict or not REQUIRED_CASE_FIELDS.issubset(case):
+        _fail("host-C challenge oracle identity requires complete case fields")
+    if type(case["family"]) is not str:
+        _fail("host-C challenge oracle identity requires a string family")
+    _bounded_nodes(
+        case["difficulty"], limit=MAX_REPLAY_NODES, scope="challenge oracle"
+    )
     try:
         generated = generate.generate(
             generate.ChallengeIdentity(
@@ -398,8 +411,9 @@ def _reference_source(
 ) -> generate.GeneratedChallenge:
     if mode not in OPTIMIZATION_MODES:
         _fail("unsupported host-C reference optimization mode")
-    if identity.nodes > MAX_REPLAY_NODES:
-        _fail("host-C reference exceeds 512-node limit")
+    if type(identity) is not generate.ChallengeIdentity:
+        _fail("host-C reference identity requires canonical challenge fields")
+    _bounded_nodes(identity.nodes, limit=MAX_REPLAY_NODES, scope="reference")
     if not _PINNED_CLANG.is_file() or not _TEMP.is_dir():
         _fail("pinned host-C compiler or local temporary directory unavailable")
     try:
