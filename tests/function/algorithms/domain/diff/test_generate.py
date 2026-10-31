@@ -148,6 +148,44 @@ def build_behavior_probe_context(source_root, repository_root):
     return module
 
 
+def test_generator_rejects_huge_integer_fractions_before_output(
+    tmp_path: Path,
+) -> None:
+    """Invalid large integers cannot bypass the public policy error type."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    invalid_fractions: tuple[int, ...] = (
+        10**400,
+        -(10**400),
+        10**5000,
+        -(10**5000),
+    )
+    for invalid in invalid_fractions:
+        for field, candidate in (
+            (
+                "minimum_source_similarity",
+                replace(recipe, minimum_source_similarity=invalid),
+            ),
+            (
+                "minimum_anchor_coverage",
+                replace(recipe, minimum_anchor_coverage=invalid),
+            ),
+            (
+                "minimum_behavior_similarity",
+                replace(recipe, minimum_behavior_similarity=invalid),
+            ),
+            (
+                "source_binding_threshold",
+                replace(recipe, source_binding_threshold=invalid),
+            ),
+        ):
+            with pytest.raises(ValueError, match=field):
+                write_algorithm(candidate)
+            _expect(
+                not recipe.output_algorithm.exists(),
+                "unrepresentable fraction wrote a generated transform",
+            )
+
+
 def test_generator_rejects_invalid_fraction_before_output(
     tmp_path: Path,
 ) -> None:
