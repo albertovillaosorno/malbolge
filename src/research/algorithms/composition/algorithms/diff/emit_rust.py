@@ -34,7 +34,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from secrets import token_hex
 from stat import S_ISDIR
@@ -54,6 +53,10 @@ _DEFAULT_OUTPUT_PATH = Path("generated/main.rs")
 _BEGIN = "// BEGIN GENERATED CONSTANTS"
 _END = "// END GENERATED CONSTANTS"
 _HEX_CHUNK = 64
+_SURROGATE_START = 0xD800
+_SURROGATE_END = 0xDFFF
+_PRINTABLE_ASCII_START = 0x20
+_PRINTABLE_ASCII_END = 0x7E
 
 
 class RustEmissionError(ValueError):
@@ -92,8 +95,27 @@ def _binding_bytes(binding: ThresholdBinding) -> bytes:
     return b"".join(parts)
 
 
+def _rust_character(character: str) -> str:
+    escapes = {
+        "\\": "\\\\",
+        '"': '\\"',
+        "\n": "\\n",
+        "\r": "\\r",
+        "\t": "\\t",
+    }
+    if character in escapes:
+        return escapes[character]
+    scalar = ord(character)
+    if _SURROGATE_START <= scalar <= _SURROGATE_END:
+        message = "Rust transform profile must contain Unicode scalar values"
+        raise RustEmissionError(message)
+    if scalar < _PRINTABLE_ASCII_START or scalar > _PRINTABLE_ASCII_END:
+        return f"\\u{{{scalar:x}}}"
+    return character
+
+
 def _rust_string(value: str) -> str:
-    return json.dumps(value, ensure_ascii=True)
+    return '"' + "".join(_rust_character(char) for char in value) + '"'
 
 
 def _hex_constant(name: str, data: bytes) -> str:

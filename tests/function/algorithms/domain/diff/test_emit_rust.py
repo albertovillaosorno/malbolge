@@ -224,6 +224,35 @@ def test_emitter_rejects_foreign_public_inputs(tmp_path: Path) -> None:
         )
 
 
+def test_emitted_rust_accepts_unicode_and_control_profile(
+    tmp_path: Path,
+) -> None:
+    """A valid Unicode profile must compile with Rust string escaping."""
+    _, _, _, protected = _fixture(tmp_path)
+    profile = 'Unicode-\u2603-\U0001f40d\b\f\n"\\'
+    source = tmp_path / "unicode-profile.rs"
+    executable = tmp_path / "unicode-transform"
+    _ = source.write_text(
+        emit_rust_transform(protected, profile),
+        encoding="utf-8",
+    )
+    compiled = _compile(source, executable)
+    _expect(
+        compiled.returncode == 0,
+        "Unicode profile did not compile as Rust: "
+        + compiled.stderr.decode(errors="replace"),
+    )
+
+
+def test_emitter_rejects_surrogate_profile_before_render(
+    tmp_path: Path,
+) -> None:
+    """Non-scalar Unicode cannot be embedded in a Rust string literal."""
+    _, _, _, protected = _fixture(tmp_path)
+    with pytest.raises(RustEmissionError, match="Unicode scalar"):
+        _ = emit_rust_transform(protected, "bad\ud800profile")
+
+
 def test_emitted_rust_is_deterministic_and_hides_plaintext_literals(
     tmp_path: Path,
 ) -> None:
