@@ -43,6 +43,7 @@ import sys
 from contextlib import contextmanager
 from time import monotonic, sleep
 from typing import TYPE_CHECKING, Any, cast
+from typing import override
 
 import pytest
 
@@ -1723,3 +1724,115 @@ def test_wait_requires_native_matching_recorded_child_status(
     monkeypatch.setattr(target_process.sp.Popen, "wait", forged_record)
     with pytest.raises(target_process.TargetProcessError, match="exit status"):
         target_process.invoke(_child("import sys; sys.exit(7)"), timeout_seconds=3)
+
+
+class _HostilePrimaryTargetError(target_process.TargetProcessError):
+    """A foreign primary error must not control secondary note attachment."""
+
+    @override
+    def add_note(self, note: str) -> None:
+        del note
+        raise AssertionError("foreign primary target add_note hook was invoked")
+
+
+def test_target_finish_child_bypasses_foreign_primary_add_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Closing a broken process stream cannot replace the primary failure."""
+
+    class BrokenStream:
+        closed = False
+
+        def close(self) -> None:
+            raise OSError("secondary target stream close failure")
+
+    class ChildProbe:
+        stdin = BrokenStream()
+        stdout = None
+        stderr = None
+
+    monkeypatch.setattr(target_process, "_terminate_group", lambda _child: None)
+    failure = _HostilePrimaryTargetError("original target process failure")
+    with pytest.raises(_HostilePrimaryTargetError, match="original target") as caught:
+        try:
+            raise failure
+        finally:
+            target_process._finish_child(  # ruff: ignore[private-member-access]
+                cast("sp.Popen[bytes]", ChildProbe())
+            )
+    assert caught.value is failure
+    assert failure.__notes__ == [
+        "bounded target cleanup also failed: secondary target stream close failure"
+    ]
+
+
+def test_target_input_close_bypasses_foreign_primary_add_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed input close cannot mask a foreign typed delivery failure."""
+
+    class InputProbe:
+        def fileno(self) -> int:
+            return 1
+
+        def close(self) -> None:
+            raise OSError("secondary target input close failure")
+
+    class ChildProbe:
+        stdin = InputProbe()
+
+    failure = _HostilePrimaryTargetError("original input delivery failure")
+
+    def reject_blocking(_descriptor: int, _blocking: bool) -> None:
+        raise failure
+
+    monkeypatch.setattr(target_process.os, "set_blocking", reject_blocking)
+    with pytest.raises(_HostilePrimaryTargetError, match="original input") as caught:
+        target_process._send_input(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()), b""
+        )
+    assert caught.value is failure
+    assert failure.__notes__ == [
+        "bounded target input close also failed: secondary target input close failure"
+    ]
+
+
+def test_target_group_cleanup_bypasses_hostile_primary_and_direct_formatters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refused group signal survives an untrusted direct-child failure."""
+
+    class HostileGroupError(OSError):
+        @override
+        def add_note(self, note: str) -> None:
+            del note
+            raise AssertionError("foreign group add_note hook invoked")
+
+    class HostileDirectError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign direct-child formatter invoked")
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            raise HostileDirectError("secondary direct child failure")
+
+    failure = HostileGroupError("primary process group failure")
+
+    def reject_group(_group: int, _signal: int) -> None:
+        raise failure
+
+    monkeypatch.setattr(target_process.os, "kill", reject_group)
+    with pytest.raises(HostileGroupError, match="primary process group") as caught:
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert caught.value is failure
+    assert failure.__notes__ == [
+        "direct child cleanup also failed: HostileDirectError"
+    ]

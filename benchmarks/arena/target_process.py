@@ -222,7 +222,10 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
             direct_error = error
     if group_error is not None:
         if direct_error is not None:
-            group_error.add_note(f"direct child cleanup also failed: {direct_error}")
+            BaseException.add_note(
+                group_error,
+                "direct child cleanup also failed: " + _cleanup_error_detail(direct_error),
+            )
         raise group_error
     if direct_error is not None:
         raise direct_error
@@ -324,7 +327,8 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
             child.stdin.close()
         except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
             if primary is not None:
-                primary.add_note(
+                BaseException.add_note(
+                    primary,
                     "bounded target input close also failed: "
                 + _cleanup_error_detail(error)
                 )
@@ -350,7 +354,8 @@ def _finish_child(child: sp.Popen[bytes]) -> None:
         return
     if primary is not None:
         for error in cleanup_errors:
-            primary.add_note(
+            BaseException.add_note(
+                primary,
                 "bounded target cleanup also failed: "
                 + _cleanup_error_detail(error)
             )
@@ -360,7 +365,7 @@ def _finish_child(child: sp.Popen[bytes]) -> None:
                 if type(notes) is list:
                     for detail in notes:
                         if type(detail) is str:
-                            primary.add_note(f"bounded target cleanup detail: {detail}")
+                            BaseException.add_note(primary, f"bounded target cleanup detail: {detail}")
         return
     message = "bounded target cleanup failed: " + _cleanup_error_detail(
         cleanup_errors[0]
@@ -637,7 +642,8 @@ def _measured_limited(
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         if primary is not None and error is not primary:
             # Directory cleanup must not replace the original child failure.
-            primary.add_note(
+            BaseException.add_note(
+                primary,
                 "bounded target RSS cleanup also failed: "
                 + _cleanup_error_detail(error)
             )
