@@ -3727,7 +3727,7 @@ fn canonical_typed_rotated_literal_rejects_unproved_constants() -> Result<(), St
 
 #[test]
 fn canonical_typed_rotated_literal_rejects_unwitnessed_output_counts() -> Result<(), String> {
-    for (byte, outputs) in [(43, 5), (183, 5), (255, 5), (21, 6), (47, 7)] {
+    for (byte, outputs) in [(43, 5), (183, 5), (255, 5), (21, 6), (47, 7), (10, 8)] {
         let canonical = wire(&typed_rotated_literal_module_with_outputs(byte, outputs)?)?;
         if adapter::compile_canonical_typed_rotated_byte_literal(&canonical, current_profile())
             != Err(TypedEchoAdapterError::Layout(
@@ -3739,11 +3739,11 @@ fn canonical_typed_rotated_literal_rejects_unwitnessed_output_counts() -> Result
             ));
         }
     }
-    let eighth = wire(&typed_rotated_literal_module_with_outputs(10, 8)?)?;
-    if adapter::compile_canonical_typed_rotated_byte_literal(&eighth, current_profile())
+    let ninth = wire(&typed_rotated_literal_module_with_outputs(175, 9)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&ninth, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed eighth output admitted"));
+        return Err(String::from("typed ninth output admitted"));
     }
     Ok(())
 }
@@ -3945,6 +3945,15 @@ fn seeded_six_and_seven_output_canonical_publisher_and_real_runner() -> Result<(
         (21, 7, true, false, true),
         (253, 7, false, true, true),
     ] {
+        verify_seeded_publisher_case(&workspace, case)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_eight_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for case in [(175, 8, true, false, true), (197, 8, false, true, true)] {
         verify_seeded_publisher_case(&workspace, case)?;
     }
     Ok(())
