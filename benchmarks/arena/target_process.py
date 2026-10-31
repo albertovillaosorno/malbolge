@@ -192,15 +192,19 @@ def _collect(
     if child.stdout is None or child.stderr is None:
         _fail("bounded target process requires separate output pipes")
     buffers = [bytearray(), bytearray()]
-    with selectors.DefaultSelector() as watched:
-        watched.register(child.stdout, selectors.EVENT_READ, 0)
-        watched.register(child.stderr, selectors.EVENT_READ, 1)
-        while watched.get_map():
-            remaining = deadline - monotonic()
-            if remaining <= 0:
-                raise sp.TimeoutExpired(child.args, limits.timeout_seconds)
-            for key, _ in watched.select(remaining):
-                _read_ready(key, watched, buffers=buffers, limits=limits)
+    try:
+        with selectors.DefaultSelector() as watched:
+            watched.register(child.stdout, selectors.EVENT_READ, 0)
+            watched.register(child.stderr, selectors.EVENT_READ, 1)
+            while watched.get_map():
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    raise sp.TimeoutExpired(child.args, limits.timeout_seconds)
+                for key, _ in watched.select(remaining):
+                    _read_ready(key, watched, buffers=buffers, limits=limits)
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "bounded target output capture failed"
+        raise TargetProcessError(message) from error
     return bytes(buffers[0]), bytes(buffers[1])
 
 
@@ -211,13 +215,26 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
         # At most 256 bytes fit in an initially empty POSIX pipe. Nonblocking
         # prevents a broken child from extending the same wall deadline.
         os.set_blocking(child.stdin.fileno(), False)
-        if data and os.write(child.stdin.fileno(), data) != len(data):
-            _fail("bounded target input could not be delivered completely")
+        if data:
+            written = os.write(child.stdin.fileno(), data)
+            if type(written) is not int or written != len(data):
+                _fail("bounded target input could not be delivered completely")
     except BrokenPipeError as error:
         message = "bounded target input pipe closed before delivery"
         raise TargetProcessError(message) from error
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "bounded target input delivery failed"
+        raise TargetProcessError(message) from error
     finally:
-        child.stdin.close()
+        primary = sys.exception()
+        try:
+            child.stdin.close()
+        except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+            if primary is not None:
+                primary.add_note(f"bounded target input close also failed: {error}")
+            else:
+                message = "bounded target input pipe close failed"
+                raise TargetProcessError(message) from error
 
 
 def _finish_child(child: sp.Popen[bytes]) -> None:

@@ -42,7 +42,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from contextlib import contextmanager
 from time import monotonic, sleep
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -240,6 +240,149 @@ def test_secondary_direct_reap_failure_remains_in_primary_diagnostics(
             )
     assert any("group signal denied" in note for note in error.value.__notes__)
     assert any("direct kill denied" in note for note in error.value.__notes__)
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_output_pipe_read_fault_is_typed_and_retains_cause(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """An unreadable pipe never escapes as an untyped partial capture."""
+
+    def fail_read(descriptor: int, count: int) -> bytes:
+        del descriptor, count
+        raise fault("injected output pipe read failure")
+
+    # subprocess.Popen reads its own exec-status pipe before returning.
+    # Inject only after launch to exercise our capture boundary instead.
+    original_popen = target_process.sp.Popen
+
+    def launch(*args: Any, **kwargs: Any) -> sp.Popen[bytes]:
+        child = cast("sp.Popen[bytes]", original_popen(*args, **kwargs))
+        monkeypatch.setattr(target_process.os, "read", fail_read)
+        return child
+
+    monkeypatch.setattr(target_process.sp, "Popen", launch)
+    with pytest.raises(target_process.TargetProcessError, match="capture") as error:
+        target_process.invoke(
+            _child("import os; os.write(1, b'output')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    assert type(error.value.__cause__) is fault
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_output_selector_failure_is_typed_and_retains_cause(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """A broken selector cannot turn incomplete capture into success."""
+    original_selector = target_process.selectors.DefaultSelector
+
+    def fail_select() -> target_process.selectors.BaseSelector:
+        selector = original_selector()
+
+        def broken_select(timeout: float | None = None) -> None:
+            del timeout
+            raise fault("injected output selector failure")
+
+        monkeypatch.setattr(selector, "select", broken_select)
+        return selector
+
+    monkeypatch.setattr(target_process.selectors, "DefaultSelector", fail_select)
+    with pytest.raises(target_process.TargetProcessError, match="capture") as error:
+        target_process.invoke(
+            _child("import os; os.write(1, b'output')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    assert type(error.value.__cause__) is fault
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_binary_input_delivery_fault_is_typed_and_retains_cause(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Input pipe write errors cannot surface as untyped transport faults."""
+
+    def fail_write(descriptor: int, data: bytes) -> int:
+        del descriptor, data
+        raise fault("injected input pipe write failure")
+
+    monkeypatch.setattr(target_process.os, "write", fail_write)
+    with pytest.raises(target_process.TargetProcessError, match="input") as error:
+        target_process.invoke_with_input(
+            _child("import sys; sys.stdin.buffer.read()"),
+            b"x",
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    assert type(error.value.__cause__) is fault
+
+
+@pytest.mark.parametrize("written", [None, True, False, 0, 2])
+def test_binary_input_rejects_nonexact_write_counts(
+    monkeypatch: pytest.MonkeyPatch,
+    written: int | bool | None,
+) -> None:
+    """A synthetic write return never proves an exact byte delivery."""
+
+    def report_write(descriptor: int, data: bytes) -> int | bool | None:
+        del descriptor, data
+        return written
+
+    monkeypatch.setattr(target_process.os, "write", report_write)
+    with pytest.raises(target_process.TargetProcessError, match="completely"):
+        target_process.invoke_with_input(
+            _child("import sys; sys.stdin.buffer.read()"),
+            b"x",
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+
+
+@pytest.mark.parametrize("delivery_fails", [False, True])
+def test_binary_input_close_fault_preserves_delivery_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    delivery_fails: bool,
+) -> None:
+    """An input pipe close failure is typed and never masks a prior write."""
+
+    class FaultyStream:
+        def fileno(self) -> int:
+            return 1
+
+        def close(self) -> None:
+            raise RuntimeError("injected input stream close fault")
+
+    class ChildProbe:
+        stdin = FaultyStream()
+
+    def no_op_set_blocking(descriptor: int, blocking: bool) -> None:
+        del descriptor, blocking
+
+    def deliver(descriptor: int, data: bytes) -> int:
+        del descriptor
+        if delivery_fails:
+            raise OSError("injected input delivery failure")
+        return len(data)
+
+    monkeypatch.setattr(target_process.os, "set_blocking", no_op_set_blocking)
+    monkeypatch.setattr(target_process.os, "write", deliver)
+    with pytest.raises(target_process.TargetProcessError, match="input") as error:
+        target_process._send_input(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()), b"x"
+        )
+    if delivery_fails:
+        assert type(error.value.__cause__) is OSError
+        assert any("input close also failed" in note for note in error.value.__notes__)
+    else:
+        assert type(error.value.__cause__) is RuntimeError
 
 
 def test_exact_bounded_output_and_stderr_roundtrip() -> None:

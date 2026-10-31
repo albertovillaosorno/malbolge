@@ -214,6 +214,14 @@ capture allocations; it is not an OS memory quota, process sandbox, complete
 descendant containment (detached sessions remain outside the group), or a
 physically enforced study-wide budget. The pilot requires POSIX for this
 subprocess boundary and makes no Windows process-supervision claim.
+
+Pipe-reader, selector, and binary-stdin delivery faults now reject through
+one typed target-process boundary, preserving the originating I/O exception.
+Injected stream-close errors remain secondary to a prior delivery failure;
+close-only faults also refuse a successful run. Binary writes must report an
+exact integer byte count, never a boolean or partial count. These checks
+reject incomplete measurements but do not attest the child or host OS.
+
 The same transport now supports an optional bounded exact 256-byte binary
 input channel, with nonblocking delivery and a positive wall deadline even
 when the child refuses to read. A new opt-in `--input-stdin` mode in the
