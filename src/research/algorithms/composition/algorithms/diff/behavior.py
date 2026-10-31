@@ -41,6 +41,7 @@ from typing import cast
 
 _ZERO = 0
 _ONE = 1
+_NUL = "\x00"
 
 
 class BehaviorPolicyError(ValueError):
@@ -63,6 +64,14 @@ def _require_identifier(value: object, context: str) -> str:
     if type(value) is not str or not value:
         message = f"{context} must be a non-empty string"
         raise BehaviorPolicyError(message)
+    if _NUL in value:
+        message = f"{context} must be portable UTF-8 text without NUL"
+        raise BehaviorPolicyError(message)
+    try:
+        _ = value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        message = f"{context} must be portable UTF-8 text"
+        raise BehaviorPolicyError(message) from error
     return value
 
 

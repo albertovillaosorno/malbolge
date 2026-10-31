@@ -223,6 +223,25 @@ def test_behavior_metadata_rejects_foreign_runtime_types() -> None:
         _ = BugObservation("bug", cast("BugState", object()))
 
 
+@pytest.mark.parametrize(
+    "invalid", ["nul\x00identifier", "surrogate\ud800identifier"]
+)
+def test_behavior_identifiers_require_portable_unicode(invalid: str) -> None:
+    """Direct behavior metadata never admits nonportable probe labels."""
+    constructors = (
+        lambda: IdentityProbe(invalid, b"digest"),
+        lambda: CompatibilityProbe(invalid),
+        lambda: BugProbe(invalid, "fix"),
+        lambda: BugProbe("bug", invalid),
+        lambda: IdentityObservation(invalid, b"digest"),
+        lambda: CompatibilityObservation(invalid, compatible=True),
+        lambda: BugObservation(invalid, BugState.PRESENT),
+    )
+    for build in constructors:
+        with pytest.raises(BehaviorPolicyError, match="portable"):
+            _ = build()
+
+
 def test_behavior_containers_require_exact_records() -> None:
     """Profiles and observations reject mutable or foreign collections."""
     profile = _profile()
