@@ -43,9 +43,10 @@ import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 import tomllib
@@ -88,6 +89,84 @@ BAD_PROFILE_PROVENANCE = 'implementation = "forged/fake_compiler.py"'
 REAL_PROFILE_PROVENANCE = (
     'implementation = "benchmarks/arena/target_echo_reference.py"'
 )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("replay_candidates", "false"),
+        ("replay_candidates", 0),
+        ("require_source_commit_object", "no"),
+        ("require_source_commit_object", 1),
+        ("stage_rss_breakdown", None),
+        ("stage_rss_breakdown", object()),
+    ],
+)
+def test_direct_target_audit_rejects_nonboolean_options_before_access(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+) -> None:
+    """Forged opt-in values cannot enable replay or publish nonboolean claims."""
+    options = replace(audit.AuditOptions(), **{field: invalid})
+
+    def forbidden_prefix(*args: object, **kwargs: object) -> str:
+        _ = (args, kwargs)
+        message = "invalid options reached path or replay admission"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(audit, "_prefix", forbidden_prefix)
+    with pytest.raises(audit.TargetEchoAuditError, match="exact booleans"):
+        audit.audit(".temp/arena-target-echo-options/study.json", options=options)
+
+
+@pytest.mark.parametrize("invalid", [None, False, 0, "disabled", object()])
+def test_direct_target_audit_rejects_foreign_option_container(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """Foreign option containers fail before the first file read."""
+
+    def forbidden_prefix(*args: object, **kwargs: object) -> str:
+        _ = (args, kwargs)
+        message = "foreign options reached path admission"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(audit, "_prefix", forbidden_prefix)
+    with pytest.raises(audit.TargetEchoAuditError, match="exact booleans"):
+        audit.audit(
+            ".temp/arena-target-echo-options/study.json",
+            options=cast("audit.AuditOptions", invalid),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("emitter", "/tmp/foreign-emitter"),
+        ("emitter", False),
+        ("emitter", object()),
+        ("runner", "/tmp/foreign-runner"),
+        ("runner", 1),
+        ("runner", object()),
+    ],
+)
+def test_direct_target_audit_rejects_foreign_tool_locator_before_access(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+) -> None:
+    """Optional native binary locators require Path or None before any I/O."""
+    options = replace(audit.AuditOptions(), **{field: invalid})
+
+    def forbidden_prefix(*args: object, **kwargs: object) -> str:
+        _ = (args, kwargs)
+        message = "malformed tool locator reached file admission"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(audit, "_prefix", forbidden_prefix)
+    with pytest.raises(audit.TargetEchoAuditError, match="exact Paths"):
+        audit.audit(".temp/arena-target-echo-options/study.json", options=options)
 
 
 @pytest.mark.parametrize(

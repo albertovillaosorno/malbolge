@@ -156,6 +156,25 @@ def _fail(message: str) -> Never:
     raise TargetEchoAuditError(message)
 
 
+def _admit_options(options: AuditOptions) -> None:
+    """Require exact replay/provenance opt-ins before reading retained files."""
+    if type(options) is not AuditOptions or any(
+        type(value) is not bool
+        for value in (
+            options.replay_candidates,
+            options.require_source_commit_object,
+            options.stage_rss_breakdown,
+        )
+    ):
+        _fail("target echo audit options require exact booleans")
+    native_path_type = type(Path())
+    if any(
+        value is not None and type(value) is not native_path_type
+        for value in (options.emitter, options.runner)
+    ):
+        _fail("target echo audit tool overrides require exact Paths")
+
+
 def _prefix(relative: str) -> str:
     if type(relative) is not str:
         _fail("target audit requires a canonical study path")
@@ -1520,6 +1539,7 @@ def audit(
         TargetEchoAuditError: The producer evidence fails any required gate.
 
     """
+    _admit_options(options)
     try:
         (document, checked, source_hashes, snapshots, commit, replayed) = (
             _admit_study(relative_study, options=options)
