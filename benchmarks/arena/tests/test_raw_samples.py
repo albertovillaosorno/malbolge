@@ -175,6 +175,68 @@ def test_raw_admission_rejects_foreign_input_as_typed_failure(
         raw_samples.check_rows(cast("bytes", foreign), [], ROOT_LABEL)
 
 
+class _RawSpoofList(list[dict[str, Any]]):
+    """Caller-controlled row-array length must not reach CSV parsing."""
+
+    def __len__(self) -> int:
+        """Reject if invoked before admission.
+
+        Returns:
+            No length: the caller-owned method must never run.
+
+        """
+        message = "caller-owned row-array size executed"
+        raise AssertionError(message)
+
+
+class _RawSpoofMap(dict[str, Any]):
+    """Caller-controlled row accessor must not reach CSV matching."""
+
+    def __getitem__(self, key: str) -> Any:
+        """Reject if invoked before admission.
+
+        Returns:
+            No row data: the caller-owned method must never run.
+
+        """
+        del key
+        message = "caller-owned raw row accessor executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["empty", "none", "tuple", "row_none", "row_map", "case_map", "metrics_map", "list_spoof"],
+)
+def test_direct_raw_checker_rejects_non_native_or_empty_observation_rows(
+    tmp_path: Path, kind: str,
+) -> None:
+    """A CSV header without admitted trials cannot receive a content-match hash."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([] if kind == "empty" else [record])
+    rows: object = [record]
+    if kind == "empty":
+        rows = []
+    elif kind == "none":
+        rows = None
+    elif kind == "tuple":
+        rows = (record,)
+    elif kind == "row_none":
+        rows = [None]
+    elif kind == "row_map":
+        rows = [_RawSpoofMap(record)]
+    elif kind == "case_map":
+        rows = [{**record, "case": _RawSpoofMap(record["case"])}]
+    elif kind == "metrics_map":
+        rows = [{**record, "metrics": _RawSpoofMap(record["metrics"])}]
+    elif kind == "list_spoof":
+        rows = _RawSpoofList([record])
+    with pytest.raises(raw_samples.RawSampleError, match="native nonempty observation"):
+        _ = raw_samples.check_rows(
+            raw, cast("list[dict[str, Any]]", rows), ROOT_LABEL
+        )
+
+
 def test_strict_raw_sample_rechecked_after_report_assembly(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

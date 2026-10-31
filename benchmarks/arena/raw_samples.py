@@ -175,6 +175,48 @@ def _decode_raw(raw: bytes, label: str) -> str:
     return text
 
 
+def _admit_observation_containers(
+    observations: list[dict[str, Any]], label: str
+) -> None:
+    """Require native pre-admitted row shapes before constructing CSV values."""
+    message = f"{label}: raw CSV requires native nonempty observation rows"
+    if type(observations) is not list or not observations:
+        _fail(message)
+    for row in observations:
+        if (
+            type(row) is not dict
+            or any(type(name) is not str for name in row)
+            or set(row) != analyze.OBSERVATION_FIELDS
+        ):
+            _fail(message)
+        case = row["case"]
+        metrics = row["metrics"]
+        if (
+            type(case) is not dict
+            or any(type(name) is not str for name in case)
+            or set(case) != analyze.CASE_FIELDS
+            or type(metrics) is not dict
+            or any(type(name) is not str for name in metrics)
+            or not set(metrics) <= analyze.COST_METRICS
+            or analyze.ELAPSED not in metrics
+        ):
+            _fail(message)
+        if (
+            any(
+                type(row[name]) is not str
+                for name in (
+                    "algorithm", "outcome", "verifier", "verifier_verdict",
+                    "experiment_manifest", "raw_sample",
+                )
+            )
+            or type(row["trial"]) is not int
+            or any(type(case[name]) is not str for name in ("family", "workload_sha256"))
+            or any(type(case[name]) is not int for name in ("version", "difficulty", "seed"))
+            or any(type(quantity) is not int for quantity in metrics.values())
+        ):
+            _fail(message)
+
+
 def check_rows(
     raw: bytes,
     observations: list[dict[str, Any]],
@@ -187,6 +229,7 @@ def check_rows(
 
     """
     text = _decode_raw(raw, label)
+    _admit_observation_containers(observations, label)
     version, metrics, actual_rows = _csv_rows(
         text, label, expected_rows=len(observations)
     )
