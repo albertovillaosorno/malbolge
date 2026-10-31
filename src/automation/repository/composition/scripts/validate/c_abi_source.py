@@ -37,11 +37,18 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
+from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from typing import Never
+from typing import TYPE_CHECKING
 from typing import cast
+
+if TYPE_CHECKING:
+    from os import stat_result
+    from typing import BinaryIO
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -53,9 +60,7 @@ from scripts.validate import c_abi
 ROOT = repository_root(Path(__file__))
 PINNED_LLVM_VERSION = "22.1.8"
 PINNED_CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
-GUEST_LIBC_INCLUDE = (
-    ROOT / "src/runtime/guest-c-library/contract/include"
-)
+GUEST_LIBC_INCLUDE = ROOT / "src/runtime/guest-c-library/contract/include"
 DIAGNOSTIC_BIT_FIELD = "MALBOLGE-ABI-001"
 DIAGNOSTIC_PACKED = "MALBOLGE-ABI-002"
 DIAGNOSTIC_PRAGMA_PACK = "MALBOLGE-ABI-003"
@@ -115,6 +120,12 @@ class _Location:
 class _AnalysisContext:
     source: Path
     source_bytes: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class _SourceSnapshot:
+    content: bytes
+    identity: tuple[int, int, int, int, int]
 
 
 class SourceAnalysisError(RuntimeError):
@@ -592,6 +603,72 @@ def _deduplicate(diagnostics: list[AbiDiagnostic]) -> tuple[AbiDiagnostic, ...]:
     return tuple(result)
 
 
+def _source_identity(status: stat_result) -> tuple[int, int, int, int, int]:
+    """Return stable regular-file identity and mutation evidence.
+
+    Returns:
+        Device, inode, size, mtime, and ctime.
+
+    """
+    if not S_ISREG(status.st_mode):
+        _fail("guest C source must be a regular file")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _snapshot_open_source(
+    stream: BinaryIO,
+    source: Path,
+    admitted: stat_result,
+) -> _SourceSnapshot:
+    """Read one admitted source and detect concurrent replacement.
+
+    Returns:
+        Stable source bytes and file identity.
+
+    """
+    opened = os.fstat(stream.fileno())
+    identity = _source_identity(opened)
+    if identity != _source_identity(admitted):
+        _fail(f"guest C source changed before read: {source}")
+    content = stream.read()
+    after = os.fstat(stream.fileno())
+    visible = source.lstat()
+    if identity != _source_identity(after):
+        _fail(f"guest C source changed during read: {source}")
+    if identity != _source_identity(visible):
+        _fail(f"guest C source changed during read: {source}")
+    if len(content) != opened.st_size:
+        _fail(f"guest C source changed during read: {source}")
+    return _SourceSnapshot(content=content, identity=identity)
+
+
+def _source_snapshot(source: Path) -> _SourceSnapshot:
+    """Read regular guest-C source bytes with no-follow descriptor admission.
+
+    Returns:
+        One stable input source snapshot.
+
+    """
+    try:
+        admitted = source.lstat()
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        descriptor = os.open(source, flags)
+        with os.fdopen(descriptor, "rb") as stream:
+            return _snapshot_open_source(stream, source, admitted)
+    except OSError as error:
+        _fail(f"failed to read guest C source {source}: {error}")
+
+
 def analyze_source(
     source: Path,
     *,
@@ -606,14 +683,15 @@ def analyze_source(
     """
     resolved = source.resolve()
     active_projection = projection or c_abi.canonical_projection()
+    snapshot = _source_snapshot(resolved)
+    source_bytes = snapshot.content
     try:
-        source_bytes = resolved.read_bytes()
         _ = source_bytes.decode("utf-8")
     except UnicodeDecodeError as error:
         _fail(f"invalid guest-C UTF-8 in {resolved}: {error}")
-    except OSError as error:
-        _fail(f"failed to read guest C source {resolved}: {error}")
     ast = _run_ast(resolved, clang.resolve(), active_projection.clang_target)
+    if snapshot != _source_snapshot(resolved):
+        _fail(f"guest C source changed during AST analysis: {resolved}")
     diagnostics: list[AbiDiagnostic] = []
     context = _AnalysisContext(source=resolved, source_bytes=source_bytes)
     _walk_ast(

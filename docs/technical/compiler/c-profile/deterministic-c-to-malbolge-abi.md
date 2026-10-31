@@ -317,6 +317,15 @@ arbitrary C has a complete Malbolge lowering.
 
 ## Verification
 
+The independent ABI source preflight reads a stable regular-file snapshot with
+no-follow descriptor admission. Before using source-offset diagnostics, it
+compares the source's regular-file identity, extent, and bytes to a second
+snapshot after Clang's AST parse. An in-place edit, file substitution, or
+source truncation in the intervening window is a deterministic validation
+error, including a same-byte replacement with a different inode. This
+preflight proves consistency of the observed source evidence; it does not
+assert that Clang provides complete guest-C lowering.
+
 ### Compatibility fixtures
 
 `tests/tidy/accepted/` contains ABI-positive evidence. The fixtures currently

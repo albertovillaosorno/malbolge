@@ -42,6 +42,7 @@ import sys
 from typing import cast
 
 import pytest
+
 from scripts.validate import c_abi
 from scripts.validate import c_abi_source
 
@@ -105,9 +106,9 @@ def test_c_abi_contract_tracks_current_profile_geometry() -> None:
     memory = cast("dict[str, object]", current["memory"])
     semantics = cast("dict[str, object]", current["semantics"])
     contract = ABI_CONTRACT_DOC.read_text(encoding="utf-8")
-    assert f"{word['trits']}-trit Malbolge words" in contract
-    assert f"{memory['words']:,} words" in contract
-    assert f"EOF word {semantics['eof_word']:,}" in contract
+    assert f"{word["trits"]}-trit Malbolge words" in contract
+    assert f"{memory["words"]:,} words" in contract
+    assert f"EOF word {semantics["eof_word"]:,}" in contract
 
 
 def test_duplicate_abi_keys_fail_closed() -> None:
@@ -336,3 +337,41 @@ def test_missing_guest_source_fails_closed(tmp_path: Path) -> None:
         c_abi_source.SourceAnalysisError, match="failed to read guest C"
     ):
         _ = c_abi_source.analyze_source(missing)
+
+
+def test_abi_preflight_rejects_source_rewrite_during_ast(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clang AST must not be combined with stale diagnostic source bytes."""
+    source = tmp_path / "changed.c"
+    _ = source.write_text("int one;\n", encoding="utf-8")
+
+    def rewrite_source(_path: Path, _clang: Path, _target: str) -> object:
+        _ = (_path, _clang, _target)
+        _ = source.write_text("int two;\n", encoding="utf-8")
+        return {}
+
+    monkeypatch.setattr(c_abi_source, "_run_ast", rewrite_source)
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="changed"):
+        _ = c_abi_source.analyze_source(source)
+
+
+def test_abi_preflight_rejects_same_byte_inode_swap_during_ast(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-byte inode substitution is not proof of a stable AST source."""
+    source = tmp_path / "source.c"
+    content = "int one;\n"
+    _ = source.write_text(content, encoding="utf-8")
+
+    def swap_source(_path: Path, _clang: Path, _target: str) -> object:
+        _ = (_path, _clang, _target)
+        source.unlink()
+        _ = source.write_text(content, encoding="utf-8")
+        return {}
+
+    monkeypatch.setattr(c_abi_source, "_run_ast", swap_source)
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="changed"):
+        _ = c_abi_source.analyze_source(source)
