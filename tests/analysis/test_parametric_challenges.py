@@ -1455,6 +1455,36 @@ def test_public_writer_rejects_redirected_output_subclass_before_generation(
     assert not (tmp_path / "substituted-output").exists()
 
 
+class _ExplosiveIdentityField:
+    """Foreign identity fields must not execute custom formatting callbacks."""
+
+    def __str__(self) -> str:
+        message = "foreign challenge identity formatting executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("field", ["family", "version"])
+def test_generator_rejects_foreign_identity_before_formatting(field: str) -> None:
+    """Type rejection must happen before interpolating an invalid field."""
+    identity = _GENERATOR_MODULE.ChallengeIdentity(
+        family=(
+            cast("str", _ExplosiveIdentityField())
+            if field == "family"
+            else "arithmetic-dag"
+        ),
+        version=(
+            cast("int", _ExplosiveIdentityField())
+            if field == "version"
+            else 1
+        ),
+        seed=7,
+        profile=_REPLAY_PROFILE,
+        nodes=4,
+    )
+    with pytest.raises(_GENERATOR_MODULE.ChallengeError, match="unsupported"):
+        _ = _GENERATOR_MODULE.generate(identity)
+
+
 def test_invalid_identity_fails_closed() -> None:
     """Malformed or non-canonical identity dimensions never generate output."""
     invalid = (

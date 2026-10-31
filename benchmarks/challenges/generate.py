@@ -213,10 +213,14 @@ class ChallengeIdentity:
 
 
 def _validate_family_version(family: str, version: int) -> None:
-    if type(family) is not str or family not in _FAMILIES:
+    if type(family) is not str:
+        _fail("unsupported challenge family type")
+    if family not in _FAMILIES:
         message = f"unsupported challenge family: {family}"
         _fail(message)
-    if type(version) is not int or version != _VERSION:
+    if type(version) is not int:
+        _fail(f"unsupported {family} version type")
+    if version != _VERSION:
         message = f"unsupported {family} version: {version}"
         _fail(message)
 
