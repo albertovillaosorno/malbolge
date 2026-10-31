@@ -155,8 +155,14 @@ final bytes and inode, so successful publication includes a directory-entry
 durability barrier. A failed parent sync returns an error and retains the
 already-visible linked target; the stage is removed only if still owned.
 An injected sync failure and an altered final byte separately verify these
-ordering gates. Windows retains file-sync and no-overwrite guarantees but does
-not claim parent-directory crash durability through portable `std::fs`.
+ordering gates. After the directory-sync boundary, the original staging
+handle and final pathname are re-admitted with the same identity, exact byte,
+link-count and resolved-path checks. Injected in-place rewrites and equal-byte
+inode substitutions during sync now refuse success, retaining any already
+visible target rather than claiming its contents are verified. This narrows
+an observable publication race but does not make ongoing foreign writes an
+atomic snapshot. Windows retains file-sync and no-overwrite guarantees but
+does not claim parent-directory crash durability through portable `std::fs`.
 Existing targets and symlinks are never replaced; invalid profiles, operands,
 paths or layout shapes fail closed. Process-level integration tests execute
 the built binary, reopen emitted files under historical/current canonical profiles with real

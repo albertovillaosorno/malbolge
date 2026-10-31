@@ -521,6 +521,64 @@ fn published_same_inode_content_rewrite_cannot_report_success()
 
 #[cfg(unix)]
 #[test]
+#[expect(clippy::panic_in_result_fn, reason = "recheck source after sync hook")]
+fn publication_sync_in_place_rewrite_cannot_report_success() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let result = super::publish_new_with_directory_sync_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        |_directory| fs::write(&output, b"ctX").map_err(|error| error.to_string()),
+    );
+    assert!(
+        result.is_err(),
+        "post-sync rewrite was admitted: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctX"
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "recheck inode after sync hook")]
+fn publication_sync_equal_byte_inode_swap_cannot_report_success() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let moved = fixture.0.join("original-published-link");
+    let result = super::publish_new_with_directory_sync_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        |_directory| {
+            fs::rename(&output, &moved).map_err(|error| error.to_string())?;
+            fs::write(&output, b"ctO").map_err(|error| error.to_string())
+        },
+    );
+    assert!(
+        result.is_err(),
+        "post-sync inode swap was admitted: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert_eq!(
+        fs::read(&moved).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 #[expect(
     clippy::panic_in_result_fn,
     reason = "publication-directory sync failure must not report success"

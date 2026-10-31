@@ -551,6 +551,12 @@ fn publish_new_with_directory_sync_hook(
             .parent()
             .ok_or("cannot identify publication directory")?;
         sync_directory(parent)?;
+        // The durability barrier is not the end of the trust boundary: a
+        // competing writer may replace the final name or rewrite its inode
+        // while that directory is being synced. Check the same original
+        // descriptor, pathname, link count and exact bytes once more before
+        // declaring the published artifact verified.
+        verify_fsynced_stage(path, &mut file, bytes, (&opened, 2, &resolved_target))?;
         Ok(())
     })();
     // Retire only our own original staging inode. A stage pathname swapped

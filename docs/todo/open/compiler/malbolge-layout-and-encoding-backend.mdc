@@ -148,7 +148,11 @@ emission.
   original resolved parent directory after final inode/byte admission;
   injected sync failure refuses success while retaining the already-linked
   target, and late content mutation never reaches the directory-sync gate.
-  Windows does not claim the same directory crash-durability guarantee.
+  Post-sync byte/identity re-admission now also rejects an in-place rewrite
+  or equal-byte inode substitution during the sync hook; the already-visible
+  target is retained but cannot be called verified. This does not prove an
+  atomic snapshot under continuous foreign writes. Windows does not claim
+  the same directory crash-durability guarantee.
   Optional `--capsule` uses the version-one builder,
   round-trips canonical ID/fingerprint and exact raw payload via its independent
   parser before publication, and executes modern output through the actual
