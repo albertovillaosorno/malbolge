@@ -263,6 +263,97 @@ def test_host_c_replay_requires_canonical_bundle_preflight(
         )
 
 
+class _SpoofedDigest(str):  # ruff: ignore[subclass-builtin]
+    """Untrusted hash objects may forge both directions of comparison."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        return True
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+
+class _SpoofedMode(str):  # ruff: ignore[subclass-builtin]
+    """Optimization-mode membership must not call foreign equality hooks."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        return True
+
+
+def test_direct_host_oracle_rejects_spoofed_digest_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fake source digest must not reach either native compiler stage."""
+
+    def forbidden(*args: object, **kwargs: object) -> int:
+        del args, kwargs
+        message = "host-C compiler stage reached for forged digest"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(host_c_oracle, "_replay_mode", forbidden)
+    with pytest.raises(host_c_oracle.HostOracleError, match="source"):
+        _ = host_c_oracle.replay_one(
+            _case(), PROFILE, _SpoofedDigest("f" * 64)
+        )
+
+
+@pytest.mark.parametrize("method", ["measure_reference", "rebuild_reference"])
+def test_direct_host_oracle_rejects_spoofed_mode_before_execution(
+    monkeypatch: pytest.MonkeyPatch, method: str,
+) -> None:
+    """Foreign mode equality cannot approve an unregistered Clang option."""
+
+    def forbidden(*args: object, **kwargs: object) -> int:
+        del args, kwargs
+        message = "host-C compiler stage reached for forged mode"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(host_c_oracle, "_replay_mode", forbidden)
+    identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    action = (
+        host_c_oracle.measure_reference
+        if method == "measure_reference"
+        else host_c_oracle.rebuild_reference
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="mode"):
+        _ = action(identity, _SpoofedMode("-Wl,--fatal-warnings"))
+
+
+class _HostileIdentityField:
+    """Formatting foreign dataclass fields can execute arbitrary callbacks."""
+
+    def __str__(self) -> str:
+        message = "caller-owned host-C identity formatter executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("field", ["family", "version"])
+def test_host_c_reference_rejects_hostile_identity_fields_before_generation(
+    field: str,
+) -> None:
+    """Even nominally frozen identity records must have native field types."""
+    values: dict[str, object] = {
+        "family": "arithmetic-dag",
+        "version": 1,
+        "seed": 7,
+        "profile": PROFILE,
+        "nodes": NODES,
+    }
+    values[field] = _HostileIdentityField()
+    identity = generate.ChallengeIdentity(
+        family=cast("str", values["family"]),
+        version=cast("int", values["version"]),
+        seed=7,
+        profile=PROFILE,
+        nodes=NODES,
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="identity"):
+        _ = host_c_oracle._reference_source(identity, "-O0")
+
+
 @pytest.mark.parametrize(
     "bad_case",
     [

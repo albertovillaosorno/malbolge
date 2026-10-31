@@ -347,10 +347,22 @@ def _canonical_payload(
     profile: str,
     source_sha256: str,
 ) -> generate.GeneratedChallenge:
-    if type(case) is not dict or not REQUIRED_CASE_FIELDS.issubset(case):
+    if (
+        type(case) is not dict
+        or any(type(key) is not str for key in case)
+        or not REQUIRED_CASE_FIELDS.issubset(case)
+    ):
         _fail("host-C challenge oracle identity requires complete case fields")
     if type(case["family"]) is not str:
         _fail("host-C challenge oracle identity requires a string family")
+    if type(case["version"]) is not int or type(case["seed"]) is not int:
+        _fail("host-C challenge oracle identity requires integer version and seed")
+    if (
+        type(source_sha256) is not str
+        or len(source_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in source_sha256)
+    ):
+        _fail("host-C challenge oracle source requires canonical SHA-256")
     _bounded_nodes(
         case["difficulty"], limit=MAX_REPLAY_NODES, scope="challenge oracle"
     )
@@ -409,10 +421,17 @@ def _reference_source(
     identity: generate.ChallengeIdentity,
     mode: str,
 ) -> generate.GeneratedChallenge:
-    if mode not in OPTIMIZATION_MODES:
+    if type(mode) is not str or mode not in OPTIMIZATION_MODES:
         _fail("unsupported host-C reference optimization mode")
     if type(identity) is not generate.ChallengeIdentity:
         _fail("host-C reference identity requires canonical challenge fields")
+    if (
+        type(identity.family) is not str
+        or type(identity.version) is not int
+        or type(identity.seed) is not int
+        or type(identity.profile) is not str
+    ):
+        _fail("host-C reference identity requires native challenge fields")
     _bounded_nodes(identity.nodes, limit=MAX_REPLAY_NODES, scope="reference")
     if not _PINNED_CLANG.is_file() or not _TEMP.is_dir():
         _fail("pinned host-C compiler or local temporary directory unavailable")
