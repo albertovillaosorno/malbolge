@@ -53,7 +53,7 @@ pub const NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES: usize = 74;
 pub enum NativeProcessCallWireError {
     /// A declared capacity cannot be represented or its byte size overflowed.
     CounterOverflow,
-    /// The request input-consumed cursor exceeds its scalar input capacity.
+    /// A request or response input-consumed cursor exceeds its input capacity.
     InputCursor,
     /// The request input payload differs from its scalar input capacity.
     InputLength,
@@ -61,7 +61,7 @@ pub enum NativeProcessCallWireError {
     MappingIdentity,
     /// The memory payload differs from the required guest-memory capacity.
     MemoryLength,
-    /// The request output-written cursor exceeds its scalar output capacity.
+    /// A request or response output-written cursor exceeds output capacity.
     OutputCursor,
     /// The output payload differs from the required output capacity.
     OutputLength,
@@ -262,8 +262,8 @@ pub fn decode_native_process_call_request(
 /// # Errors
 ///
 /// Returns [`NativeProcessCallWireError`] for malformed framing, zero mapping,
-/// invalid pointer flag, unrepresentable request capacities, truncation, or
-/// trailing bytes.
+/// invalid pointer flag, over-capacity response cursors, unrepresentable
+/// request capacities, truncation, or trailing bytes.
 pub fn decode_native_process_call_response(
     bytes: &[u8],
     request: &NativeProcessCallRequest,
@@ -279,6 +279,9 @@ pub fn decode_native_process_call_response(
     let state = decode_state(&mut reader)?;
     let raw_status = reader.i32()?;
     let pointers_unchanged = decode_pointer_flag(reader.u8()?)?;
+    // Child progress is untrusted. Reject impossible cursors against the
+    // original request before reserving its complete memory/output payload.
+    validate_response_progress(request, state)?;
     let memory_words = request.memory().len();
     let output_capacity = request.output().len();
     // Both payload sizes originate in the request. A malicious child can
@@ -523,9 +526,27 @@ const fn validate_response_shape(
     if response.output().len() != request.output().len() {
         return Err(NativeProcessCallWireError::OutputLength);
     }
+    validate_response_progress(request, response.state())
+}
+
+const fn validate_response_progress(
+    request: &NativeProcessCallRequest,
+    state: NativeProcessCallState,
+) -> Result<(), NativeProcessCallWireError> {
+    // The child's claimed capacities are not allocation or validation authority.
+    // Only the already-admitted original request sets cursor limits here.
+    if state.input_consumed() > request.state().input_len() {
+        return Err(NativeProcessCallWireError::InputCursor);
+    }
+    if state.output_len() > request.state().output_capacity() {
+        return Err(NativeProcessCallWireError::OutputCursor);
+    }
     Ok(())
 }
 
 #[cfg(test)]
 #[path = "../../../../../tests/tiered/process_call_wire_request.rs"]
 mod request_shape_tests;
+#[cfg(test)]
+#[path = "../../../../../tests/tiered/process_call_wire_response.rs"]
+mod response_shape_tests;

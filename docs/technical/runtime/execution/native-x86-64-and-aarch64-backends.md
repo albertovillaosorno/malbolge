@@ -912,6 +912,14 @@ progress immediately after the fixed state header, before copying payloads.
 The regression covers one-past-capacity and `u64::MAX` for both cursors, plus
 exactly-at-capacity success, without granting wire framing semantic authority.
 
+Returned MBNPC1 cursors now undergo a separate fixed-header preallocation
+check against the *original* admitted request's input and output capacities.
+The response decoder rejects one-past-capacity and `u64::MAX` cursors even when
+the response contains only its 74-byte header, before allocating guest-memory
+or output payloads. Response encoding applies the same bounds, while exact
+at-capacity round trips remain valid. This is structural resource admission,
+not a replacement for later immutable-state or guest-effect verification.
+
 This does not replace independent native-call semantic verification.
 
 `PreparedVerifiedDirectInvocation` reconstructs complete key identity using the

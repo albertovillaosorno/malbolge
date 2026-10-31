@@ -2269,6 +2269,13 @@ input/jump-code, input/jump-data, input/no-operation,
   Red-first fixtures cover one-past-capacity, `u64::MAX`, and exact-boundary
   acceptance for both counters. Child responses remain independently verified.
 
+  The response wire codec now rejects untrusted input/output progress beyond
+  the original request capacities immediately after its fixed 74-byte header,
+  before allocating request-sized guest memory or output. Response encoding
+  rejects the same forged state. Red-first fixtures exercise full and
+  header-only frames, one-past-capacity and `u64::MAX` for each cursor, and
+  successful exact-boundary round trips. Semantic completion remains separate.
+
   A weighted exact-key FIFO reuses complete loaded chains without refreshing
   hits. Positive limits cover entries
   and can also cover live mappings plus admitted mapped bytes. Candidate weight
