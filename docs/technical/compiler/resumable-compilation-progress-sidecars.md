@@ -919,6 +919,14 @@ status.
 The original output error is retained as the cause, without making any
 partially emitted bytes authoritative checkpoint data.
 
+Eight red-first direct sink regressions extend the same typed write/flush
+boundary to unexpected ordinary `IndexError` and `OverflowError` for both
+binary extraction and operator text. The two writers preserve the precise
+original exception as the cause of `ProgressSidecarError`, and failed write
+attempts never proceed to flush. This applies beneath the existing nonzero
+CLI exit boundary without claiming that already emitted output can be rolled
+back or intercepted `BaseException` cancellation signals.
+
 The progress-sidecar inspector provides two verified portable-checkpoint views.
 `--checkpoint-info PROGRESS.json` validates the mutable sidecar, immutable
 generation bytes, outer checkpoint digest, resume identity and position,

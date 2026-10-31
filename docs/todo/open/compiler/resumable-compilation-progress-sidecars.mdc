@@ -118,6 +118,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   or immutable checkpoint publication, retaining descriptor cleanup evidence,
   unexpected binary checkpoint stdout write or flush exceptions likewise
   produce typed extraction failure and a nonzero operator CLI exit,
+  eight additional red-first direct text/binary output cases type
+  `IndexError`/`OverflowError` from write and flush, preserve the exact
+  original exception cause, and avoid flush after a failed write; already
+  emitted stdout remains nonauthoritative after a rejected operation,
   operator text output across inspection, checkpoint discovery, and follow
   likewise rejects unexpected stdout write and follow flush exceptions and
   demands an exact integer text-write count, rejecting boolean, missing,

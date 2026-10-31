@@ -14840,3 +14840,75 @@ def test_unexpected_pointer_preflight_fault_fails_before_generation(
     if publication == "checkpoint":
         assert sidecar.checkpoint_path is not None
         assert not Path(sidecar.checkpoint_path).exists()
+
+
+@pytest.mark.parametrize("sink", ["binary", "text"])
+@pytest.mark.parametrize("phase", ["write", "flush"])
+@pytest.mark.parametrize("failure_type", [IndexError, OverflowError])
+def test_operator_output_unexpected_ordinary_fault_is_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    sink: str,
+    phase: str,
+    failure_type: type[Exception],
+) -> None:
+    """Unexpected sink failures preserve a stable typed public API boundary."""
+    payload = b"verified-opaque-state"
+    description = "checkpoint_seq=1\n"
+    fault = failure_type("injected unexpected output dependency fault")
+    writes: list[bytes | str] = []
+    flushes = 0
+
+    @final
+    class StubBinarySink:
+        def write(self, data: bytes) -> int:
+            writes.append(data)
+            if phase == "write":
+                raise fault
+            return len(data)
+
+        def flush(self) -> None:
+            nonlocal flushes
+            flushes += 1
+            if phase == "flush":
+                raise fault
+
+    @final
+    class StubTextSink:
+        def write(self, data: str) -> int:
+            writes.append(data)
+            if phase == "write":
+                raise fault
+            return len(data)
+
+        def flush(self) -> None:
+            nonlocal flushes
+            flushes += 1
+            if phase == "flush":
+                raise fault
+
+    binary_writer = cast(
+        "Callable[[bytes], None]", vars(progress)["_write_binary_stdout"]
+    )
+    text_writer = cast(
+        "Callable[[str], None]", vars(progress)["_write_operator_text"]
+    )
+    with monkeypatch.context() as context:
+        if sink == "binary":
+            context.setattr(progress, "_binary_stdout", StubBinarySink)
+        else:
+            context.setattr(sys, "stdout", StubTextSink())
+        with pytest.raises(
+            ERROR,
+            match=(
+                "portable checkpoint extraction stdout failed"
+                if sink == "binary"
+                else "progress operator stdout failed"
+            ),
+        ) as captured:
+            if sink == "binary":
+                binary_writer(payload)
+            else:
+                text_writer(description)
+    assert captured.value.__cause__ is fault
+    assert writes == [payload if sink == "binary" else description]
+    assert flushes == (0 if phase == "write" else 1)

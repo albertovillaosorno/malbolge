@@ -3508,7 +3508,7 @@ def _write_binary_stdout(payload: bytes) -> None:
             )
     except ProgressSidecarError:
         raise
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         _fail_with_source(
             f"portable checkpoint extraction stdout failed: {_host_error_detail(error)}", error
         )
@@ -3529,7 +3529,7 @@ def _write_operator_text(text: str) -> None:
             _fail("progress operator stdout noncanonical flush completion")
     except ProgressSidecarError:
         raise
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         _fail_with_source(f"progress operator stdout failed: {_host_error_detail(error)}", error)
 
 
