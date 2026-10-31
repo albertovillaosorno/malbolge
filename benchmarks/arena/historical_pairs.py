@@ -178,6 +178,11 @@ def _bounded_csv_rows(
     for row in reader:
         if len(records) >= expected_rows:
             _fail("historical raw CSV has more rows than registered trials")
+        if type(row) is not dict or any(
+            type(name) is not str or (type(value) is not str and value is not None)
+            for name, value in row.items()
+        ):
+            _fail("historical raw CSV parser returned non-native CSV row")
         records.append(row)
     return records
 
@@ -195,10 +200,20 @@ def _csv_rows(
         _fail("historical raw CSV columns exceed registered count")
     try:
         reader = csv.DictReader(StringIO(text, newline=""), strict=True)
-        fields = reader.fieldnames or []
+        fields = reader.fieldnames
+        if fields is None:
+            fields = []
+        if type(fields) is not list or any(type(field) is not str for field in fields):
+            _fail("historical raw CSV parser returned non-native CSV header")
         records = _bounded_csv_rows(reader, expected_rows)
+    except HistoricalEvidenceError:
+        raise
     except csv.Error as error:
-        message = f"malformed historical raw CSV: {error}"
+        detail = str(error) if type(error) is csv.Error else type(error).__name__
+        message = f"malformed historical raw CSV: {detail}"
+        raise HistoricalEvidenceError(message) from error
+    except (TypeError, ValueError, RuntimeError) as error:
+        message = f"malformed historical raw CSV parser: {type(error).__name__}"
         raise HistoricalEvidenceError(message) from error
     _csv_shape(fields, records, registered_fields=registered_fields)
     return records

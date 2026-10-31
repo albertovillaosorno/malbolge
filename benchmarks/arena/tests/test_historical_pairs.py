@@ -37,6 +37,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import sys
 from hashlib import sha256
@@ -438,8 +439,134 @@ def test_historical_parser_fault_rejects_hostile_exception_formatters(
 
 
 @pytest.mark.parametrize(
+    "fault_type", [csv.Error, TypeError, ValueError, RuntimeError, RecursionError]
+)
+def test_historical_raw_csv_direct_parser_fault_never_formats_foreign_error(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """The CSV adapter itself must not interpolate foreign parser errors."""
+
+    def forbidden_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign historical CSV parser exception formatted")
+
+    hostile = type(
+        "ForeignHistoricalCSVFault", (fault_type,), {"__str__": forbidden_str}
+    )
+    fault = hostile("foreign CSV failure")
+
+    def bad_reader(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    monkeypatch.setattr(historical_pairs.csv, "DictReader", bad_reader)
+    fields = historical_pairs.REGISTERED_RAW_COLUMNS[
+        "prefix_decomposition_measurement"
+    ]
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="historical raw CSV"
+    ) as caught:
+        historical_pairs._csv_rows(
+            "repetition,strategy_id\n0,baseline\n",
+            registered_fields=fields,
+            expected_rows=1,
+        )
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
+    "variant", ["header-container", "header-cell", "row-container", "row-cell"]
+)
+def test_historical_csv_parser_foreign_record_objects_reject_without_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    variant: str,
+) -> None:
+    """Substituted parser rows cannot invoke caller-defined comparison methods."""
+    native_fields = sorted(
+        historical_pairs.REGISTERED_RAW_COLUMNS[
+            "prefix_decomposition_measurement"
+        ]
+    )
+
+    class HostileHeader(list[str]):
+        def __iter__(self) -> Iterator[str]:
+            raise AssertionError("foreign CSV header iteration executed")
+
+    class HostileField(str):
+        def __hash__(self) -> int:
+            raise AssertionError("foreign CSV field hashing executed")
+
+    class HostileRow(dict[str, str]):
+        def values(self) -> Any:
+            raise AssertionError("foreign CSV row iteration executed")
+
+    class HostileValue(str):
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign CSV value equality executed")
+
+    header: list[str] = native_fields
+    row: dict[str, str] = dict.fromkeys(native_fields, "0")
+    if variant == "header-container":
+        header = HostileHeader(native_fields)
+    elif variant == "header-cell":
+        header = [HostileField("repetition"), *native_fields[1:]]
+    elif variant == "row-container":
+        row = HostileRow(row)
+    else:
+        row["repetition"] = HostileValue("0")
+
+    class FakeReader:
+        fieldnames = header
+
+        def __iter__(self) -> Iterator[dict[str, str]]:
+            return iter([row])
+
+    def substitute(*args: object, **kwargs: object) -> FakeReader:
+        del args, kwargs
+        return FakeReader()
+
+    monkeypatch.setattr(historical_pairs.csv, "DictReader", substitute)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="native CSV"):
+        historical_pairs._csv_rows(
+            ",".join(native_fields) + "\n" + ",".join(["0"] * len(native_fields)),
+            registered_fields=frozenset(native_fields),
+            expected_rows=1,
+        )
+
+
+def test_historical_raw_csv_native_parser_error_retains_detail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real CSV syntax diagnostics remain distinguishable from host faults."""
+    fault = csv.Error("unexpected end of data")
+
+    def bad_reader(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    monkeypatch.setattr(historical_pairs.csv, "DictReader", bad_reader)
+    fields = historical_pairs.REGISTERED_RAW_COLUMNS[
+        "prefix_decomposition_measurement"
+    ]
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="unexpected end of data"
+    ) as caught:
+        historical_pairs._csv_rows(
+            "repetition,strategy_id\n0,baseline\n",
+            registered_fields=fields,
+            expected_rows=1,
+        )
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
     "error",
-    [ValueError("native syntax failure"), historical_pairs.HistoricalEvidenceError("missing trial")],
+    [
+        ValueError("native syntax failure"),
+        historical_pairs.HistoricalEvidenceError("missing trial"),
+    ],
 )
 def test_historical_native_parser_fault_retains_useful_diagnostic(
     tmp_path: Path,
