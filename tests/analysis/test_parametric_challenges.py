@@ -260,6 +260,10 @@ class _ChallengeIdentity(Protocol):
     profile: str
     nodes: int
 
+    def validate(self) -> None:
+        """Validate exact identity dimensions before challenge generation."""
+        ...
+
 
 class _GeneratedChallenge(Protocol):
     """Typed test view of generated challenge bytes."""
@@ -1485,6 +1489,26 @@ def test_generator_rejects_foreign_identity_before_formatting(field: str) -> Non
         _ = _GENERATOR_MODULE.generate(identity)
 
 
+@pytest.mark.parametrize(
+    "huge_version", [1 << 50_000, -(1 << 50_000)], ids=["positive", "negative"]
+)
+def test_extreme_native_generator_version_uses_typed_diagnostic(
+    huge_version: int,
+) -> None:
+    """Malformed enormous versions must not trigger decimal formatting errors."""
+    identity = _GENERATOR_MODULE.ChallengeIdentity(
+        "arithmetic-dag", huge_version, 7, _REPLAY_PROFILE, 4
+    )
+    with pytest.raises(
+        _GENERATOR_MODULE.ChallengeError, match="integer over 64 bits"
+    ):
+        identity.validate()
+    with pytest.raises(
+        _GENERATOR_MODULE.ChallengeError, match="integer over 64 bits"
+    ):
+        _ = _GENERATOR_MODULE.generate(identity)
+
+
 def test_invalid_identity_fails_closed() -> None:
     """Malformed or non-canonical identity dimensions never generate output."""
     invalid = (
@@ -1525,6 +1549,81 @@ def test_publication_never_deletes_unrelated_output(tmp_path: Path) -> None:
     ):
         _GENERATOR_MODULE.write_challenge(_identity(), output)
     assert sentinel.read_text(encoding="utf-8") == _SENTINEL
+
+
+@pytest.mark.parametrize(
+    "artifact_name", sorted(("manifest.json", "oracle.bin", "program.c"))
+)
+def test_oversized_existing_artifact_rejected_without_reading_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artifact_name: str,
+) -> None:
+    """A foreign oversized replay candidate cannot force an unbounded read."""
+    output = tmp_path / "challenge"
+    output.mkdir()
+    generated = _GENERATOR_MODULE.generate(_identity())
+    for name, payload in (
+        ("program.c", generated.source),
+        ("oracle.bin", generated.oracle),
+        ("manifest.json", generated.manifest),
+    ):
+        _ = (output / name).write_bytes(payload)
+    oversized = output / artifact_name
+    with oversized.open("wb") as stream:
+        _ = stream.truncate(128 * 1024 * 1024)
+
+    original_read = Path.read_bytes
+
+    def reject_unbounded_read(path: Path) -> bytes:
+        if path == oversized:
+            pytest.fail("oversized retained payload reached read_bytes")
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", reject_unbounded_read)
+    with pytest.raises(
+        _GENERATOR_MODULE.ChallengeError, match="output path already exists"
+    ):
+        _GENERATOR_MODULE.write_challenge(_identity(), output)
+    assert oversized.stat().st_size == 128 * 1024 * 1024
+    assert not (tmp_path / ".challenge.staging").exists()
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires POSIX FIFOs")
+def test_raced_existing_artifact_fifo_rejected_without_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After replay inventory, a substituted FIFO cannot block on open."""
+    output = tmp_path / "challenge"
+    _GENERATOR_MODULE.write_challenge(_identity(), output)
+    oracle = output / "oracle.bin"
+    displaced = tmp_path / "displaced-oracle.bin"
+    original_check = cast(
+        "Callable[[Path], tuple[Path, Path, Path] | None]",
+        vars(_GENERATOR_MODULE)["_published_artifact_paths"],
+    )
+
+    def swap_after_inventory(root: Path) -> tuple[Path, Path, Path] | None:
+        paths = original_check(root)
+        assert paths is not None
+        _ = oracle.rename(displaced)
+        fifo = cast("Callable[[Path], None]", getattr(os, "mkfifo"))
+        fifo(oracle)
+        return paths
+
+    monkeypatch.setattr(
+        _GENERATOR_MODULE, "_published_artifact_paths", swap_after_inventory
+    )
+    with pytest.raises(
+        _GENERATOR_MODULE.ChallengeError, match="output path already exists"
+    ):
+        _GENERATOR_MODULE.write_challenge(_identity(), output)
+    assert oracle.is_fifo()
+    assert displaced.read_bytes() == (
+        _GENERATOR_MODULE.generate(_identity()).oracle
+    )
+    assert not (tmp_path / ".challenge.staging").exists()
 
 
 @pytest.mark.parametrize(

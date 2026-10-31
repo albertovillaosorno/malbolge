@@ -43,6 +43,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import sys
 from typing import Final
 from typing import Never
@@ -113,6 +114,7 @@ _CLASSIC_TRITS: Final = 10
 _CLASSIC_MODULUS: Final = 59_049
 _MASK32: Final = (1 << 32) - 1
 _MASK64: Final = (1 << 64) - 1
+_MAX_DIAGNOSTIC_INTEGER_BITS: Final = 64
 _MAX_NODES: Final = 1_000_000
 _OP_ADD: Final = 0
 _OP_XOR: Final = 1
@@ -221,7 +223,14 @@ def _validate_family_version(family: str, version: int) -> None:
     if type(version) is not int:
         _fail(f"unsupported {family} version type")
     if version != _VERSION:
-        message = f"unsupported {family} version: {version}"
+        # A direct caller may provide a native integer too large for Python's
+        # decimal formatting limit. Reject it through the challenge boundary.
+        detail = (
+            str(version)
+            if version.bit_length() <= _MAX_DIAGNOSTIC_INTEGER_BITS
+            else "<integer over 64 bits>"
+        )
+        message = f"unsupported {family} version: {detail}"
         _fail(message)
 
 
@@ -1375,19 +1384,48 @@ def _published_artifact_paths(
     return None if redirected else artifacts
 
 
-def _published_payload(root: Path) -> GeneratedChallenge | None:
+def _published_artifact_matches(path: Path, expected: bytes) -> bool:
+    """Compare retained bytes without reading beyond the expected length.
+
+    Returns:
+        True only for the exact already-generated payload in a regular file.
+
+    """
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = os.open(path, flags)
+    try:
+        details = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(details.st_mode)
+            or details.st_size != len(expected)
+        ):
+            return False
+        # The open descriptor, not the earlier pathname precheck, owns the
+        # size check. A concurrent growth can consume at most one extra byte.
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            return stream.read(len(expected) + 1) == expected
+    finally:
+        os.close(descriptor)
+
+
+def _published_payload(root: Path, expected: GeneratedChallenge) -> bool:
     try:
         artifacts = _published_artifact_paths(root)
         if artifacts is None:
-            return None
+            return False
         source, oracle, manifest = artifacts
-        return GeneratedChallenge(
-            source=source.read_bytes(),
-            oracle=oracle.read_bytes(),
-            manifest=manifest.read_bytes(),
+        return (
+            _published_artifact_matches(source, expected.source)
+            and _published_artifact_matches(oracle, expected.oracle)
+            and _published_artifact_matches(manifest, expected.manifest)
         )
     except OSError:
-        return None
+        return False
 
 
 def _existing_output_is_replay(
@@ -1396,7 +1434,7 @@ def _existing_output_is_replay(
 ) -> bool:
     if not output_root.exists() and not _path_redirects(output_root):
         return False
-    if _published_payload(output_root) == generated:
+    if _published_payload(output_root, generated):
         return True
     message = f"output path already exists: {output_root}"
     _fail(message)
