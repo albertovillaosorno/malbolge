@@ -1364,6 +1364,117 @@ def test_vm_step_receipt_admits_one_canonical_decimal() -> None:
     )
 
 
+def test_emitter_rejects_foreign_source_receipt_before_graphical_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A substituted reader cannot forge emitter length or graphical bytes."""
+
+    class ForgedSource(bytes):
+        def __len__(self) -> int:
+            pytest.fail("foreign emitter source length executed")
+
+    path = tmp_path / "candidate.malbolge"
+    _ = path.write_bytes(b"!")
+    context = _synthetic_target_context(tmp_path, site="raw")
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_reference,
+        "_emit_attempt",
+        lambda *_args, **_kwargs: sp.CompletedProcess([], 0, b"", b""),
+    )
+    monkeypatch.setattr(
+        evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: ForgedSource(b"!"),
+    )
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="exact nonempty bounded bytes",
+    ):
+        target_echo_reference._classify_attempt(path, context, ["input"], pairs=1)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [None, bytearray(b"!"), b"", b"!" * (target_echo_reference.MAX_TARGET_BYTES + 1)],
+    ids=["missing", "mutable", "empty", "oversized"],
+)
+def test_timed_source_verifier_rejects_reader_receipt_before_auditor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid: object
+) -> None:
+    """A malformed source receipt cannot be passed to independent verification."""
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: cast("bytes", invalid),
+    )
+
+    def forbidden_audit(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unvalidated target source reached the auditor")
+
+    monkeypatch.setattr(
+        target_echo_audit, "check_forward_candidate_source", forbidden_audit
+    )
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="exact nonempty bounded bytes",
+    ):
+        target_echo_reference._timed_source_verifier(tmp_path / "source.malbolge", 1, "direct")
+
+
+def test_retained_study_rejects_foreign_bytes_decode_before_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retained evidence hash parity cannot authorize a foreign decoder hook."""
+
+    class ForgedSource(bytes):
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            del encoding, errors
+            pytest.fail("foreign retained-study decode executed")
+
+    raw = ForgedSource(json.dumps(sample_study(tmp_path)).encode("utf-8"))
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_audit,
+        "audit",
+        lambda _relative: {"retained_study_sha256": sha256(raw).hexdigest()},
+    )
+    monkeypatch.setattr(evidence, "read_bounded_regular", lambda *_a, **_k: raw)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="exact nonempty bounded bytes",
+    ):
+        target_echo_reference._audit_retained_study(tmp_path / "study.json")
+
+
+def test_retained_study_rejects_oversized_reader_before_sha256(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An injected reader cannot bypass the retained study's sixteen-MiB cap."""
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_audit,
+        "audit",
+        lambda _relative: {"retained_study_sha256": "0" * 64},
+    )
+    monkeypatch.setattr(
+        evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: b"x" * (target_echo_audit.MAX_STUDY_BYTES + 1),
+    )
+
+    def forbidden_hash(_raw: bytes) -> None:
+        pytest.fail("oversized target study reached hashing")
+
+    monkeypatch.setattr(target_echo_reference, "sha256", forbidden_hash)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="exact nonempty bounded bytes",
+    ):
+        target_echo_reference._audit_retained_study(tmp_path / "study.json")
+
+
 @pytest.mark.parametrize("tamper_after_audit", [False, True])
 def test_publisher_uses_exact_audited_study_bytes(
     tmp_path: Path,

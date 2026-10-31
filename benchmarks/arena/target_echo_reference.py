@@ -175,6 +175,19 @@ def _fail(message: str) -> Never:
     raise TargetEchoStudyError(message)
 
 
+def _read_source_bytes(relative: str, *, limit: int) -> bytes:
+    """Require an exact bounded reader receipt before source interpretation.
+
+    Returns:
+        Native, nonempty bytes admitted under the caller's fixed source cap.
+
+    """
+    raw = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
+    if type(raw) is not bytes or not 0 < len(raw) <= limit:
+        _fail("target echo source reader requires exact nonempty bounded bytes")
+    return raw
+
+
 def _safe_error_detail(
     error: Exception, *, trusted: type[Exception] | None = None
 ) -> str:
@@ -584,10 +597,8 @@ def _classify_attempt(
     emitted = _emit_attempt(context, [*command, *operations])
     if emitted.returncode != 0 or emitted.stdout or not path.is_file():
         return "tool_failed", None, None
-    source = evidence.read_bounded_regular(
-        _ROOT,
-        path.relative_to(_ROOT).as_posix(),
-        limit=MAX_TARGET_BYTES,
+    source = _read_source_bytes(
+        path.relative_to(_ROOT).as_posix(), limit=MAX_TARGET_BYTES
     )
     expected_length = (
         2 * (pairs + 1) + WALKED_NOOPS + 1
@@ -631,8 +642,8 @@ def _timed_source_verifier(path: Path, pairs: int, algorithm: str) -> int:
     )
 
     started = perf_counter_ns()
-    source = evidence.read_bounded_regular(
-        _ROOT, path.relative_to(_ROOT).as_posix(), limit=MAX_TARGET_BYTES
+    source = _read_source_bytes(
+        path.relative_to(_ROOT).as_posix(), limit=MAX_TARGET_BYTES
     )
     target_echo_audit.check_forward_candidate_source(
         source, pairs=pairs, algorithm=algorithm
@@ -1182,9 +1193,7 @@ def _audit_retained_study(path: Path) -> dict[str, Any]:
             f"{_safe_error_detail(error, trusted=target_echo_audit.TargetEchoAuditError)}"
         )
         raise TargetEchoStudyError(message) from error
-    raw = evidence.read_bounded_regular(
-        _ROOT, relative, limit=target_echo_audit.MAX_STUDY_BYTES
-    )
+    raw = _read_source_bytes(relative, limit=target_echo_audit.MAX_STUDY_BYTES)
     if sha256(raw).hexdigest() != checked["retained_study_sha256"]:
         _fail("target echo retained study changed after independent audit")
     return analyze.parse_document(raw.decode("utf-8"))
