@@ -319,8 +319,24 @@ def _decode_document(text: str) -> object:
             object_pairs_hook=_pairs,
             parse_constant=_reject_constant,
         )
-    except (ValueError, TypeError, RecursionError) as error:
-        message = f"invalid arena JSON: {error}"
+    except ArenaError as error:
+        # Preserve exact local hook rejections, never foreign subclasses.
+        if type(error) is ArenaError:
+            raise
+        message = f"invalid arena JSON: {type(error).__name__}"
+        raise ArenaError(message) from error
+    except (ValueError, TypeError, RuntimeError) as error:
+        # Foreign exception subclasses can execute code in __str__.
+        native_errors = (
+            json.JSONDecodeError,
+            ValueError,
+            TypeError,
+            RecursionError,
+        )
+        detail = (
+            str(error) if type(error) in native_errors else type(error).__name__
+        )
+        message = f"invalid arena JSON: {detail}"
         raise ArenaError(message) from error
 
 

@@ -410,6 +410,47 @@ def test_duplicate_keys_and_nonfinite_numbers_fail_closed(text: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "fault_type", [analyze.ArenaError, ValueError, TypeError, RecursionError, RuntimeError]
+)
+def test_direct_json_parser_types_foreign_exception_without_formatting(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Foreign decoder faults cannot replace evidence rejection via __str__."""
+    source = json.dumps(_document())
+
+    def hostile_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign JSON exception formatter executed")
+
+    hostile_type = type("ForeignJSONFault", (fault_type,), {"__str__": hostile_str})
+    fault = hostile_type("untrusted decoder detail")
+
+    def broken_loader(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    monkeypatch.setattr(analyze.json, "loads", broken_loader)
+    with pytest.raises(analyze.ArenaError, match="invalid arena JSON") as caught:
+        analyze.parse_document(source)
+    assert caught.value.__cause__ is fault
+
+
+def test_direct_json_syntax_error_retains_native_decoder_diagnostic() -> None:
+    """Exact stdlib parser errors keep useful ordinary syntax positions."""
+    with pytest.raises(analyze.ArenaError, match="Extra data") as caught:
+        analyze.parse_document("{} trailing")
+    assert type(caught.value.__cause__) is json.JSONDecodeError
+
+
+def test_direct_json_duplicate_field_preserves_project_rejection() -> None:
+    """Schema hooks do not rewrap the existing typed rejection as a parser fault."""
+    with pytest.raises(analyze.ArenaError, match="duplicate JSON field") as caught:
+        analyze.parse_document('{"a":1,"a":2}')
+    assert caught.value.__cause__ is None
+
+
+@pytest.mark.parametrize(
     "foreign",
     [
         b"{}",
