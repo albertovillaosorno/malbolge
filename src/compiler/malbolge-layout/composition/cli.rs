@@ -706,8 +706,28 @@ fn read_canonical_wire_with_reader(
         return Err(String::from("canonical wire changed during read"));
     }
     #[cfg(target_os = "linux")]
-    verify_opened_canonical_path(&file, &expected_opened_path, kind)?;
+    {
+        verify_opened_canonical_path(&file, &expected_opened_path, kind)?;
+        verify_requested_canonical_path(path, &expected_opened_path, kind)?;
+    }
     Ok(bytes)
+}
+
+// The opened descriptor can still name its original physical path after an
+// initially stable parent symlink is rebound to a different hard link of the
+// same inode. The caller's requested path must still resolve to that source.
+#[cfg(target_os = "linux")]
+fn verify_requested_canonical_path(
+    path: &Path,
+    expected: &Path,
+    kind: &str,
+) -> Result<(), String> {
+    let current = fs::canonicalize(path)
+        .map_err(|error| format!("cannot resolve canonical {kind} path after read: {error}"))?;
+    if current != expected {
+        return Err(String::from("canonical wire requested path changed during read"));
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]

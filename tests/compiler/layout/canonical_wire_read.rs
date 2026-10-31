@@ -184,6 +184,42 @@ fn redirected_parent_equal_inode_must_not_admit_wire() -> Result<(), String> {
 
 #[cfg(target_os = "linux")]
 #[test]
+#[expect(clippy::panic_in_result_fn, reason = "assert requested path stability")]
+fn rebound_symlink_parent_to_same_inode_hardlink_must_not_admit_wire() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let original = fixture.path("original");
+    let alternate = fixture.path("alternate");
+    fs::create_dir_all(&original).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&alternate).map_err(|error| error.to_string())?;
+    let original_wire = original.join("wire.mctr");
+    fs::write(&original_wire, b"abcdefgh").map_err(|error| error.to_string())?;
+    fs::hard_link(&original_wire, alternate.join("wire.mctr"))
+        .map_err(|error| error.to_string())?;
+    let alias = fixture.path("alias");
+    std::os::unix::fs::symlink(&original, &alias)
+        .map_err(|error| error.to_string())?;
+    let requested = alias.join("wire.mctr");
+    let result = read_canonical_wire_with_reader(&requested, "ternary", |file, bytes| {
+        read_and_then(file, bytes, || {
+            fs::remove_file(&alias)?;
+            std::os::unix::fs::symlink(&alternate, &alias)
+        })
+    });
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("requested path changed")),
+        "rebound same-inode requested path was admitted: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&requested).map_err(|error| error.to_string())?,
+        b"abcdefgh"
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 #[expect(clippy::panic_in_result_fn, reason = "test asserts stable parent alias")]
 fn stable_parent_symlink_remains_admitted() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;

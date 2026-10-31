@@ -212,9 +212,12 @@ emission.
   regular-file symlinks. Stable FIFO and symlinked FIFO inputs reject in
   both publisher modes; 32 external-process Linux stress invocations under
   concurrent atomic regular-file/FIFO symlink swaps also refuse to block
-  or publish invalid wires. Other OSes keep the pre-open path check plus
-  independent descriptor admission and retain a pathname race limitation;
-  the stress fixture is not exhaustive proof of every scheduling interleave.
+  or publish invalid wires. A Linux post-read canonical requested-path
+  comparison also rejects an initially stable parent symlink rebound to a
+  second hard link of the same inode, even when descriptor-path and metadata
+  checks still match. Other OSes keep the pre-open path check plus independent
+  descriptor admission and retain a pathname race limitation; the stress
+  fixture is not exhaustive proof of every scheduling interleave.
 - The separate `--seeded-byte-literal` compiler publisher admits one
   complete current-profile typed/MCTR `u8` literal-output function for
   14 independently verified nonzero guest rotation seeds. Real `j`, `*`,
