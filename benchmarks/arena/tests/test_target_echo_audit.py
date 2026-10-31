@@ -2049,6 +2049,71 @@ def test_audit_cli_rejects_bad_path_without_stdout(
     assert AUDIT_MESSAGE in output.err
 
 
+@pytest.mark.parametrize("stage", ["admission", "report"])
+@pytest.mark.parametrize("fault_type", [IndexError, RuntimeError, AssertionError])
+def test_target_audit_types_unexpected_dependency_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    fault_type: type[Exception],
+) -> None:
+    """An unknown host or parser failure never escapes the public audit type."""
+
+    class HostileFault(fault_type):
+        def __str__(self) -> str:
+            raise AssertionError("foreign target audit formatter executed")
+
+    failure = HostileFault("untrusted host details")
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    if stage == "admission":
+        monkeypatch.setattr(audit, "_admit_study", fail)
+    else:
+        monkeypatch.setattr(
+            audit,
+            "_admit_study",
+            lambda *_args, **_kwargs: ({"observations": []}, {}, {}, {}, "commit", 0),
+        )
+        monkeypatch.setattr(audit, "_checked_report", fail)
+    with pytest.raises(
+        audit.TargetEchoAuditError,
+        match="target echo retained study audit failed: HostileFault",
+    ) as caught:
+        audit.audit(".temp/arena-target-echo-fault/study.json")
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize("fault_type", [IndexError, RuntimeError, AssertionError])
+def test_target_audit_cli_types_unexpected_dependency_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """An unknown direct audit failure must yield exit two, never JSON."""
+
+    class HostileFault(fault_type):
+        def __str__(self) -> str:
+            raise AssertionError("foreign target CLI formatter executed")
+
+    failure = HostileFault("untrusted host details")
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(audit, "audit", fail)
+    monkeypatch.setattr(
+        sys, "argv", ["target-audit", ".temp/arena-target-echo-fault/study.json"]
+    )
+    with pytest.raises(SystemExit) as caught:
+        audit.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert "HostileFault" in output.err
+    assert "untrusted host details" not in output.err
+
+
 @pytest.mark.parametrize(
     "fault_type",
     [

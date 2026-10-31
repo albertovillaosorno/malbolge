@@ -1689,15 +1689,12 @@ def audit(
         _recheck_sources(source_hashes)
         _recheck_linked_inputs(snapshots)
         _recheck_inventory(document, relative_study)
-    except (
-        analyze.ArenaError,
-        evidence.EvidenceError,
-        experiment_manifest.ExperimentManifestError,
-        producer.TargetEchoStudyError,
-        OSError,
-        UnicodeError,
-        sp.SubprocessError,
-    ) as error:
+    except Exception as error:
+        # Own native failures retain their exact diagnostic and identity;
+        # foreign subclasses and unexpected ordinary host/parser failures
+        # must not escape the typed boundary or execute __str__ hooks.
+        if type(error) is TargetEchoAuditError:
+            raise
         message = (
             f"target echo retained study audit failed: {_safe_error_detail(error)}"
         )
@@ -1751,7 +1748,9 @@ def main() -> int:
             ),
         )
         report_output.publish(result, sys.stdout)
-    except (TargetEchoAuditError, report_output.ReportOutputError) as error:
+    except Exception as error:
+        # A failed audit or publisher dependency must never exit successfully
+        # or leak a foreign exception formatter into the operator channel.
         parser.exit(2, f"target echo audit: {_safe_error_detail(error)}\n")
     return 0
 
