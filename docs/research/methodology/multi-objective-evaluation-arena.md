@@ -836,6 +836,11 @@ The original study records remain the result authority.
   parser rejects the first row beyond the reported trial count instead of
   materializing attacker-controlled numbers of CSV rows from a 16 MiB file;
   this limits row-object amplification, not retained-source authenticity.
+- Shared `csv_admission.py` preflights logical CSV field counts without
+  allocating field objects. Its direct API requires decoded text and an exact
+  positive integer column cap; forged NaN/infinite/Boolean limits and nontext
+  inputs fail closed instead of bypassing the resource bound or raising host
+  type errors. This preflight is not full CSV syntax or provenance admission.
 - `benchmarks/arena/trial_runs.py` admits a versioned per-trial manifest
   extension under strict opt-in preflight. Synthetic regressions check
   distinct trial-run bindings, raw-file digests, complete shared CSVs, malformed

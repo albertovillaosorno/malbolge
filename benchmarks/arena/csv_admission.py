@@ -53,7 +53,7 @@ def within_column_limit(  # ruff: ignore[complex-structure,too-many-branches,too
         Whether each logical record has at most the admitted column count.
 
     """
-    if maximum < 1:
+    if type(text) is not str or type(maximum) is not int or maximum < 1:
         return False
     columns = 1
     at_start = True

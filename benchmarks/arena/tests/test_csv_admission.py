@@ -39,6 +39,7 @@ from __future__ import annotations
 import csv
 from io import StringIO
 from random import Random
+from typing import cast
 
 import pytest
 
@@ -75,6 +76,30 @@ def test_csv_record_field_admission_matches_registered_limit(
 ) -> None:
     """Quoted separators must not count as CSV column separators."""
     assert csv_admission.within_column_limit(text, maximum) is admitted
+
+
+@pytest.mark.parametrize(
+    "invalid_limit",
+    [float("nan"), float("inf"), True, 1.0, None, "2", []],
+    ids=["nan", "infinity", "boolean", "float", "missing", "text", "list"],
+)
+def test_noninteger_csv_limit_cannot_bypass_preflight(
+    invalid_limit: object,
+) -> None:
+    """Unregistered capacities cannot disable the column-allocation bound."""
+    assert not csv_admission.within_column_limit(
+        "a,b,c,d,e", cast("int", invalid_limit)
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid_text",
+    [None, b"a,b", 123],
+    ids=["missing", "raw-bytes", "integer"],
+)
+def test_nontext_csv_preflight_fails_closed(invalid_text: object) -> None:
+    """The preflight only accepts already decoded bounded CSV source text."""
+    assert not csv_admission.within_column_limit(cast("str", invalid_text), 2)
 
 
 def test_seeded_csv_writer_preserves_quoted_delimiter_counts() -> None:
