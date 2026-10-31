@@ -731,6 +731,20 @@ def _start_writer(
     return writer
 
 
+def _close_unowned_pipe(
+    stream: IO[bytes] | None,
+    worker: threading.Thread | None,
+    failure: Exception,
+) -> None:
+    """Close only pipes with no live worker to release their descriptors."""
+    if stream is None or (worker is not None and worker.is_alive()):
+        return
+    try:
+        stream.close()
+    except (OSError, RuntimeError, ValueError) as error:
+        failure.add_note(f"probe unused pipe close failed: {error}")
+
+
 def _start_capture(
     process: subprocess.Popen[bytes], command: ProbeCommand
 ) -> _RunningProbe:
@@ -738,6 +752,11 @@ def _start_capture(
 
     Returns:
         Process, stream states and active pipe workers.
+
+    Raises:
+        OSError: A pipe worker or stdin stream could not start.
+        RuntimeError: A pipe worker could not start.
+        ValueError: A pipe worker or stdin stream was invalid.
 
     """
     stdout_pipe, stderr_pipe = _capture_pipes(process)
@@ -751,13 +770,22 @@ def _start_capture(
             target=_drain_pipe, args=(stderr_pipe, stderr), daemon=True
         ),
     )
-    for reader in readers:
-        reader.start()
-    stdin_errors: list[Exception] = []
-    stdin_complete = threading.Event()
-    writer = _start_writer(
-        process, command.stdin, stdin_errors, completed=stdin_complete
-    )
+    try:
+        for reader in readers:
+            reader.start()
+        stdin_errors: list[Exception] = []
+        stdin_complete = threading.Event()
+        writer = _start_writer(
+            process, command.stdin, stdin_errors, completed=stdin_complete
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        # Never close a stream underneath a reader still draining it.
+        for pipe, reader in zip(
+            (stdout_pipe, stderr_pipe), readers, strict=True
+        ):
+            _close_unowned_pipe(pipe, reader, error)
+        _close_unowned_pipe(process.stdin, None, error)
+        raise
     return _RunningProbe(
         process, stdout, stderr, readers, writer, stdin_errors, stdin_complete
     )
@@ -854,6 +882,18 @@ def _start_capture_checked(
         raise ProbeExecutionError(message) from error
 
 
+def _close_failed_running_pipes(
+    running: _RunningProbe, failure: Exception
+) -> None:
+    """Reclaim pipes from workers that aborted before their normal close."""
+    process = running.process
+    _close_unowned_pipe(process.stdin, running.writer, failure)
+    for pipe, reader in zip(
+        (process.stdout, process.stderr), running.readers, strict=True
+    ):
+        _close_unowned_pipe(pipe, reader, failure)
+
+
 def _probe_wall_deadline(timeout_ms: int) -> float:
     """Compute a bounded deadline without leaking integer conversion errors.
 
@@ -882,6 +922,7 @@ def _launch_command(
     """
     deadline = _probe_wall_deadline(command.timeout_ms)
     process = _spawn_probe(argv, scratch_root)
+    running: _RunningProbe | None = None
     try:
         running = _start_capture_checked(process, command)
         _wait_for_bounded_pipes(running, deadline)
@@ -896,6 +937,8 @@ def _launch_command(
             _stop_child(process)
         except ProbeExecutionError as cleanup_error:
             error.add_note(f"probe child cleanup also failed: {cleanup_error}")
+        if running is not None:
+            _close_failed_running_pipes(running, error)
         raise
     else:
         # A successful leader may have left detached-stdio descendants in its

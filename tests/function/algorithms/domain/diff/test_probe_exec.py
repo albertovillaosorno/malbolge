@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from contextlib import suppress
 from dataclasses import replace
+import gc
 import hashlib
 import os
 from pathlib import Path
@@ -742,6 +743,8 @@ def test_probe_worker_startup_failures_are_wrapped(
             _context(source, tmp_path),
         )
     _expect(triggered[0], "worker start failure was not injected")
+    # Force unowned Popen pipe finalizers to run inside the strict warning gate.
+    _ = gc.collect()
 
 
 def test_uncaught_stdin_writer_failure_rejects_probe(
@@ -774,6 +777,7 @@ def test_uncaught_stdin_writer_failure_rejects_probe(
     with pytest.raises(ProbeExecutionError, match="pipe communication failed"):
         _ = run_probe_program(program, _context(source, tmp_path))
     _expect(bool(uncaught), "stdin worker failure was not exercised")
+    _ = gc.collect()
 
 
 @pytest.mark.parametrize("stream", [_STDOUT_NAME, _STDERR_NAME])
