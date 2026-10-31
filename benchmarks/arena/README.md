@@ -235,7 +235,11 @@ python3.14 -B -m benchmarks.arena.target_echo_reference \
 
 The study requires repository-local built executables under
 `.cache/rust/target/debug/`, an existing `.temp` root, and an explicit
-canonical `malbolge-1998` profile. It rejects zero, duplicate, invalid or
+canonical `malbolge-1998` profile. Each external emitter/VM executable
+must be a regular nonempty file of at most 128 MiB; both the producer and
+read-only replay auditor enforce this cap before hashing the full executable
+identity. This bounds tool fingerprint I/O, not tool behavior or host memory.
+It rejects zero, duplicate, invalid or
 more than four difficulty levels; each level has between 1 and 64 echo
 pairs, with one to three repetitions. The two arms alternate execution order
 by repetition to reduce (but not eliminate) order bias.

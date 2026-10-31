@@ -819,8 +819,10 @@ def _admit_tool(path: Path) -> Path:
     if not path.is_absolute():
         _fail("target audit requires absolute binary paths")
     details = path.lstat()
-    if not stat.S_ISREG(details.st_mode) or details.st_size == 0:
+    if not stat.S_ISREG(details.st_mode) or details.st_size <= 0:
         _fail("target audit requires regular nonempty executable files")
+    if details.st_size > producer.MAX_TOOL_BYTES:
+        _fail("target audit executable exceeds 128 MiB limit")
     return path
 
 
@@ -843,6 +845,8 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             original = path.lstat()
             if not stat.S_ISREG(original.st_mode) or original.st_size <= 0:
                 _fail("target audit executable identity changed")
+            if original.st_size > producer.MAX_TOOL_BYTES:
+                _fail("target audit executable exceeds 128 MiB limit")
             flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(
                 os, "O_NOFOLLOW", 0
             )

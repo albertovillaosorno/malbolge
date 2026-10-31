@@ -334,6 +334,37 @@ def test_producer_rejects_path_subclass_before_tool_admission(
         )
 
 
+def test_oversized_sparse_emitter_rejects_before_tool_identity_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An oversized tool cannot force unbounded producer fingerprint work."""
+    emitter = tmp_path / "oversized-emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"x")
+    _ = runner.write_bytes(b"runner")
+    with emitter.open("r+b") as handle:
+        handle.truncate(target_echo_reference.MAX_TOOL_BYTES)
+    assert target_echo_reference._admit_executable(emitter) == emitter
+    with emitter.open("r+b") as handle:
+        handle.truncate(target_echo_reference.MAX_TOOL_BYTES + 1)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="128 MiB"
+    ):
+        _ = target_echo_reference._admit_executable(emitter)
+
+    def forbid_open(*args: object, **kwargs: object) -> int:
+        _ = (args, kwargs)
+        message = "producer tried to hash an oversized sparse tool"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(target_echo_reference.os, "open", forbid_open)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="128 MiB"
+    ):
+        _ = target_echo_reference._tool_identity(emitter, runner)
+
+
 def test_tool_fingerprint_preserves_stable_byte_identity(tmp_path: Path) -> None:
     """Descriptor hashing preserves existing size-prefixed toolchain digests."""
     emitter = tmp_path / "emitter"

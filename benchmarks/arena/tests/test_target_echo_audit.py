@@ -91,6 +91,33 @@ REAL_PROFILE_PROVENANCE = (
 )
 
 
+def test_oversized_sparse_tool_rejects_before_auditor_hashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Read-only replay must refuse unbounded tool hashes on sparse files."""
+    emitter = tmp_path / "oversized-emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"x")
+    _ = runner.write_bytes(b"runner")
+    with emitter.open("r+b") as handle:
+        handle.truncate(producer.MAX_TOOL_BYTES)
+    assert audit._admit_tool(emitter) == emitter
+    with emitter.open("r+b") as handle:
+        handle.truncate(producer.MAX_TOOL_BYTES + 1)
+    with pytest.raises(audit.TargetEchoAuditError, match="128 MiB"):
+        _ = audit._admit_tool(emitter)
+
+    def forbid_open(*args: object, **kwargs: object) -> int:
+        _ = (args, kwargs)
+        message = "auditor tried to hash an oversized sparse tool"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(audit.os, "open", forbid_open)
+    with pytest.raises(audit.TargetEchoAuditError, match="128 MiB"):
+        _ = audit._tool_identity(emitter, runner)
+
+
 @pytest.mark.parametrize("folder", ["runs", "raw", "candidates"])
 def test_target_audit_inventory_rejects_foreign_entry_before_traversing_rest(
     tmp_path: Path,

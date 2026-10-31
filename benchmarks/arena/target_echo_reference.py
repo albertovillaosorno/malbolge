@@ -75,6 +75,7 @@ MAX_PAIRS = 64
 MAX_LEVELS = 4
 MAX_TRIALS = 3
 MAX_TARGET_BYTES = 256
+MAX_TOOL_BYTES = 128 * 1024 * 1024
 COMMIT_HEX_WIDTH = 40
 GRAPHICAL_LOW = 33
 GRAPHICAL_HIGH = 126
@@ -207,8 +208,10 @@ def _admit_executable(path: Path) -> Path:
     except OSError as error:
         message = "target echo executable is missing"
         raise TargetEchoStudyError(message) from error
-    if not path.is_file() or path.is_symlink() or details.st_size == 0:
+    if not path.is_file() or path.is_symlink() or details.st_size <= 0:
         _fail("target echo executables must be ordinary nonempty files")
+    if details.st_size > MAX_TOOL_BYTES:
+        _fail("target echo executable exceeds 128 MiB limit")
     return path
 
 
@@ -231,6 +234,8 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             original = path.lstat()
             if not stat.S_ISREG(original.st_mode) or original.st_size <= 0:
                 _fail("target echo executable identity changed")
+            if original.st_size > MAX_TOOL_BYTES:
+                _fail("target echo executable exceeds 128 MiB limit")
             flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(
                 os, "O_NOFOLLOW", 0
             )
