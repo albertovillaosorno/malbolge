@@ -827,6 +827,140 @@ def test_host_child_wait_host_faults_are_typed(
     assert caught.value.__cause__ is fault
 
 
+def test_host_group_lookup_subclass_cannot_claim_absent_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged ESRCH cannot suppress direct-child fallback or cleanup error."""
+    events: list[str] = []
+
+    class ForeignMissingGroup(ProcessLookupError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign process lookup formatter executed")
+
+    fault = ForeignMissingGroup("injected lookup failure")
+
+    def forged_missing_group(_pid: int, _signal: int) -> None:
+        events.append("signal")
+        raise fault
+
+    class ChildProbe:
+        pid = 12345
+        returncode = 0
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            events.append("wait")
+            return 0
+
+    monkeypatch.setattr(host_c_oracle.os, "kill", forged_missing_group)
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as error:
+        host_c_oracle._finish_child(cast("Any", ChildProbe()))
+    assert error.value.__cause__ is fault
+    assert events == ["signal", "poll", "kill", "wait"]
+
+
+@pytest.mark.parametrize("receipt", [False, True, 0, 1, "killed", object()])
+def test_host_group_signal_requires_native_void_completion(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A forged successful kill receipt cannot certify descendant cleanup."""
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 12345
+        returncode = 0
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            events.append("wait")
+            return 0
+
+    def forged_signal(_pid: int, _signal: int) -> None:
+        events.append("signal")
+        return cast("None", receipt)
+
+    monkeypatch.setattr(host_c_oracle.os, "kill", forged_signal)
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as error:
+        host_c_oracle._finish_child(cast("Any", ChildProbe()))
+    assert type(error.value.__cause__) is host_c_oracle.HostOracleError
+    assert "group signal" in str(error.value.__cause__)
+    assert events == ["signal", "poll", "kill", "wait"]
+
+
+def test_host_group_signal_native_absence_preserves_existing_reap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real ESRCH is benign when the direct child is successfully reaped."""
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 12345
+        returncode = 0
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            events.append("wait")
+            return 0
+
+    def absent_group(_pid: int, _signal: int) -> None:
+        raise ProcessLookupError("already gone")
+
+    monkeypatch.setattr(host_c_oracle.os, "kill", absent_group)
+    assert host_c_oracle._finish_child(cast("Any", ChildProbe())) == 0
+    assert events == ["wait"]
+
+
+@pytest.mark.parametrize("receipt", [False, True, 0, 1, "killed", object()])
+def test_host_direct_timeout_retry_requires_native_void_kill_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A fake direct-kill acknowledgement cannot certify a reaped child."""
+    import subprocess as sp  # ruff: ignore[import-outside-top-level,suspicious-subprocess-import]
+
+    events: list[str] = []
+
+    class ChildProbe:
+        returncode = 0
+        waits = 0
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            self.waits += 1
+            events.append("wait")
+            if self.waits == 1:
+                raise sp.TimeoutExpired("fake-child", timeout)
+            return 0
+
+        def kill(self) -> None:
+            events.append("kill")
+            return cast("None", receipt)
+
+    monkeypatch.setattr(
+        host_c_oracle,
+        "_kill_child_group",
+        lambda _child: events.append("group"),
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as error:
+        host_c_oracle._finish_child(cast("Any", ChildProbe()))
+    assert type(error.value.__cause__) is host_c_oracle.HostOracleError
+    assert "direct kill" in str(error.value.__cause__)
+    assert events == ["group", "wait", "kill", "wait"]
+
+
 @pytest.mark.parametrize("timeout", [False, True])
 def test_host_cleanup_reaps_direct_child_when_group_signal_refused(
     monkeypatch: pytest.MonkeyPatch,

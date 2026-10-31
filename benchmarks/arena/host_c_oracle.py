@@ -42,7 +42,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -240,10 +240,17 @@ def require_child_resource_controls() -> None:
 
 
 def _kill_child_group(child: sp.Popen[bytes]) -> None:
-
     # Linux negative PID targets the child's separate session/process group.
-    with suppress(ProcessLookupError):
-        os.kill(-child.pid, GROUP_TERMINATION_SIGNAL)
+    # Only a native ESRCH is evidence of an already-missing group. A foreign
+    # subclass can falsely claim absence and must trigger direct-child fallback.
+    try:
+        receipt = os.kill(-child.pid, GROUP_TERMINATION_SIGNAL)
+    except ProcessLookupError as error:
+        if type(error) is ProcessLookupError:
+            return
+        raise
+    if receipt is not None:
+        _fail("host-C challenge oracle group signal returned nonnative receipt")
 
 
 def _ascii_digits(value: bytes) -> bool:
@@ -284,7 +291,9 @@ def _finish_child(child: sp.Popen[bytes]) -> int:
         # A group-signal failure must not skip the direct-child fallback.
         try:
             if child.poll() is None:
-                child.kill()
+                direct_receipt = child.kill()
+                if direct_receipt is not None:
+                    _fail("host-C challenge oracle direct kill returned nonnative receipt")
         except Exception as direct_error:
             failures.append(direct_error)
     try:
@@ -293,8 +302,11 @@ def _finish_child(child: sp.Popen[bytes]) -> int:
         # The original group may have become unavailable while its direct
         # child is still alive; retry one bounded direct kill and reap.
         try:
-            child.kill()
+            direct_receipt = child.kill()
+            # Attempt the bounded reap even after a forged kill acknowledgement.
             reaped = child.wait(timeout=1)
+            if direct_receipt is not None:
+                _fail("host-C challenge oracle direct kill returned nonnative receipt")
         except Exception as error:
             failures.append(error)
     except Exception as error:
