@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from algorithms.diff.fingerprints import StableAnchor
 
 _BACKSLASH = "\\"
+_NUL = "\x00"
 _DOT = "."
 _PARENT = ".."
 _ZERO = 0
@@ -62,6 +63,25 @@ class AdmissionPolicyError(ValueError):
 
 class AdmissionError(RuntimeError):
     """Raised when candidate source evidence does not satisfy admission."""
+
+
+def _is_portable_relative_path(path: str) -> bool:
+    if (
+        not path
+        or path == _DOT
+        or any(char in path for char in (_NUL, _BACKSLASH))
+    ):
+        return False
+    try:
+        _ = path.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    candidate = PurePosixPath(path)
+    return (
+        not candidate.is_absolute()
+        and _PARENT not in candidate.parts
+        and candidate.as_posix() == path
+    )
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -84,15 +104,7 @@ class IdentityFile:
         if type(self.canonical) is not bytes:
             message = "identity canonical content must use exact bytes"
             raise AdmissionPolicyError(message)
-        candidate = PurePosixPath(self.path)
-        unsafe = (
-            not self.path
-            or _BACKSLASH in self.path
-            or self.path == _DOT
-            or candidate.is_absolute()
-            or _PARENT in candidate.parts
-        )
-        if unsafe or candidate.as_posix() != self.path:
+        if not _is_portable_relative_path(self.path):
             message = f"invalid identity path: {self.path!r}"
             raise AdmissionPolicyError(message)
 
@@ -187,16 +199,7 @@ def _require_evidence_path(value: object) -> str:
     if type(value) is not str:
         message = "file admission path must use the exact string type"
         raise AdmissionPolicyError(message)
-    candidate = PurePosixPath(value)
-    unsafe = (
-        not value
-        or _BACKSLASH in value
-        or value == _DOT
-        or candidate.is_absolute()
-        or _PARENT in candidate.parts
-        or candidate.as_posix() != value
-    )
-    if unsafe:
+    if not _is_portable_relative_path(value):
         message = f"invalid file admission path: {value!r}"
         raise AdmissionPolicyError(message)
     return value

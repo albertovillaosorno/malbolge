@@ -313,6 +313,19 @@ def test_identity_records_reject_foreign_runtime_types() -> None:
         })
 
 
+@pytest.mark.parametrize("unsafe_path", ["src/\x00.c", "src/\ud800.c"])
+def test_identity_paths_reject_nonportable_names(unsafe_path: str) -> None:
+    """Malformed path metadata must fail before source binding and encoding."""
+    with pytest.raises(AdmissionPolicyError, match="invalid identity path"):
+        _ = IdentityFile(path=unsafe_path, canonical=b"source")
+    with pytest.raises(AdmissionPolicyError, match="invalid identity path"):
+        _ = identity_tree({unsafe_path: b"source"})
+    with pytest.raises(
+        AdmissionPolicyError, match="invalid file admission path"
+    ):
+        _ = FileAdmissionEvidence(unsafe_path, 1.0, 1.0, 1, 1)
+
+
 def test_admission_rejects_foreign_tree_and_policy_objects() -> None:
     """Lineage evaluation fails typed before dereferencing foreign objects."""
     reference = identity_tree(_reference_files())
