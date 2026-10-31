@@ -42,8 +42,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from contextlib import contextmanager
 from time import monotonic, sleep
-from typing import TYPE_CHECKING, Any, cast
-from typing import override
+from typing import TYPE_CHECKING, Any, cast, override
 
 import pytest
 
@@ -745,6 +744,157 @@ def test_output_selector_failure_is_typed_and_retains_cause(
             timeout_seconds=LARGE_TIMEOUT_SECONDS,
         )
     assert type(error.value.__cause__) is fault
+
+
+@pytest.mark.parametrize(
+    "forgery", ["swapped-stream", "boolean-slot", "copied-key", "write-mask"]
+)
+def test_output_selector_rejects_forged_readiness_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """A selector cannot relabel a ready stdout fd or invent its read mask."""
+    original_selector = target_process.selectors.DefaultSelector
+    injected = False
+
+    def forged_selector() -> target_process.selectors.BaseSelector:
+        selector = original_selector()
+        real_select = selector.select
+
+        def forged_select(timeout: float | None = None):
+            nonlocal injected
+            ready = real_select(timeout)
+            if injected or not ready:
+                return ready
+            injected = True
+            key, mask = ready[0]
+            if forgery == "swapped-stream":
+                key = key._replace(data=1 if key.data == 0 else 0)
+            elif forgery == "boolean-slot":
+                key = key._replace(data=bool(key.data))
+            elif forgery == "copied-key":
+                key = key._replace()
+            else:
+                mask = target_process.selectors.EVENT_WRITE
+            return [(key, mask), *ready[1:]]
+
+        monkeypatch.setattr(selector, "select", forged_select)
+        return selector
+
+    monkeypatch.setattr(
+        target_process.selectors, "DefaultSelector", forged_selector
+    )
+    with pytest.raises(target_process.TargetProcessError, match="readiness"):
+        target_process.invoke(
+            _child("import os; os.write(1, b'only-stdout')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    assert injected
+
+
+def test_output_capture_requires_both_real_eof_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fabricated empty selector map cannot silently discard child stdout."""
+    original_selector = target_process.selectors.DefaultSelector
+
+    def empty_map_selector() -> target_process.selectors.BaseSelector:
+        selector = original_selector()
+        monkeypatch.setattr(selector, "get_map", dict)
+        return selector
+
+    monkeypatch.setattr(
+        target_process.selectors, "DefaultSelector", empty_map_selector
+    )
+    result = target_process.invoke(
+        _child("import os; os.write(1, b'complete-record')"),
+        timeout_seconds=LARGE_TIMEOUT_SECONDS,
+    )
+    assert result.returncode == 0
+    assert result.stdout == b"complete-record"
+    assert result.stderr == b""
+
+
+@pytest.mark.parametrize(
+    "forgery",
+    [
+        "foreign-fd",
+        "foreign-stream",
+        "wrong-events",
+        "swapped-slot",
+        "boolean-slot",
+        "absent-key",
+    ],
+)
+def test_output_selector_rejects_forged_registration_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """Only registered stdout/stderr read keys can authorize future reads."""
+    original_selector = target_process.selectors.DefaultSelector
+
+    def forged_selector() -> target_process.selectors.BaseSelector:
+        selector = original_selector()
+        real_register = selector.register
+        injected = False
+
+        def forged_register(fileobj: Any, events: int, data: object = None):
+            nonlocal injected
+            key = real_register(fileobj, events, data)
+            if injected:
+                return key
+            injected = True
+            if forgery == "foreign-fd":
+                return key._replace(fd=key.fd + 1)
+            if forgery == "foreign-stream":
+                return key._replace(fileobj=object())
+            if forgery == "wrong-events":
+                return key._replace(events=target_process.selectors.EVENT_WRITE)
+            if forgery == "swapped-slot":
+                return key._replace(data=1)
+            if forgery == "boolean-slot":
+                return key._replace(data=False)
+            return None
+
+        monkeypatch.setattr(selector, "register", forged_register)
+        return selector
+
+    monkeypatch.setattr(
+        target_process.selectors, "DefaultSelector", forged_selector
+    )
+    with pytest.raises(target_process.TargetProcessError, match="registration"):
+        target_process.invoke(
+            _child("import os; os.write(1, b'output')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+
+
+def test_output_selector_requires_exact_eof_unregistration_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged unregister result cannot certify that both pipes closed."""
+    original_selector = target_process.selectors.DefaultSelector
+
+    def forged_selector() -> target_process.selectors.BaseSelector:
+        selector = original_selector()
+        real_unregister = selector.unregister
+
+        def forged_unregister(fileobj: Any) -> None:
+            real_unregister(fileobj)
+
+        monkeypatch.setattr(selector, "unregister", forged_unregister)
+        return selector
+
+    monkeypatch.setattr(
+        target_process.selectors, "DefaultSelector", forged_selector
+    )
+    with pytest.raises(
+        target_process.TargetProcessError, match="unregister receipt"
+    ):
+        target_process.invoke(
+            _child("import os; os.write(1, b'output')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
 
 
 class _HostileSelectorFault(Exception):

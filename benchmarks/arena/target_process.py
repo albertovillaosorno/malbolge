@@ -269,7 +269,8 @@ def _read_ready(
     *,
     buffers: list[bytearray],
     limits: _ProcessLimits,
-) -> None:
+) -> bool:
+    """Capture bytes or return an exact EOF receipt for one registered pipe."""
     slot: int = key.data
     limit = limits.stdout_limit if slot == 0 else limits.stderr_limit
     admitted = limit - len(buffers[slot])
@@ -278,12 +279,14 @@ def _read_ready(
     if type(chunk) is not bytes or len(chunk) > requested:
         _fail("bounded target output read returned invalid bytes")
     if not chunk:
-        watched.unregister(key.fileobj)
-        return
+        if watched.unregister(key.fileobj) is not key:
+            _fail("bounded target output selector unregister receipt invalid")
+        return True
     if len(chunk) > admitted:
         label = "stdout" if slot == 0 else "stderr"
         _fail(f"bounded target {label} exceeded byte limit")
     buffers[slot].extend(chunk)
+    return False
 
 
 def _collect(
@@ -297,14 +300,53 @@ def _collect(
     buffers = [bytearray(), bytearray()]
     try:
         with selectors.DefaultSelector() as watched:
-            watched.register(child.stdout, selectors.EVENT_READ, 0)
-            watched.register(child.stderr, selectors.EVENT_READ, 1)
-            while watched.get_map():
+            # Preserve exact keys from registration: a forged readiness key
+            # must not relabel stdout as stderr or read an unrelated fd.
+            streams = (child.stdout, child.stderr)
+            registered = tuple(
+                watched.register(stream, selectors.EVENT_READ, slot)
+                for slot, stream in enumerate(streams)
+            )
+            for slot, (stream, key) in enumerate(
+                zip(streams, registered, strict=True)
+            ):
+                if (
+                    type(key) is not selectors.SelectorKey
+                    or key.fileobj is not stream
+                    or type(key.fd) is not int
+                    or key.fd != stream.fileno()
+                    or type(key.events) is not int
+                    or key.events != selectors.EVENT_READ
+                    or type(key.data) is not int
+                    or key.data != slot
+                ):
+                    _fail("bounded target output selector registration invalid")
+            # The selector's mutable map cannot testify that both child pipes
+            # reached EOF. Track exactly two confirmed EOFs instead.
+            open_streams = {0, 1}
+            while open_streams:
                 remaining = deadline - monotonic()
                 if remaining <= 0:
                     raise sp.TimeoutExpired(child.args, limits.timeout_seconds)
-                for key, _ in watched.select(remaining):
-                    _read_ready(key, watched, buffers=buffers, limits=limits)
+                for key, mask in watched.select(remaining):
+                    if (
+                        (key is not registered[0] and key is not registered[1])
+                        or type(mask) is not int
+                        or mask != selectors.EVENT_READ
+                    ):
+                        _fail(
+                            "bounded target output selector readiness invalid"
+                        )
+                    slot = 0 if key is registered[0] else 1
+                    if slot not in open_streams:
+                        _fail(
+                            "bounded target output selector repeated EOF"
+                        )
+                    reached_eof = _read_ready(
+                        key, watched, buffers=buffers, limits=limits
+                    )
+                    if reached_eof:
+                        open_streams.remove(slot)
     except (TargetProcessError, sp.TimeoutExpired):
         # Preserve exact quota and deadline failures from our own transport.
         raise

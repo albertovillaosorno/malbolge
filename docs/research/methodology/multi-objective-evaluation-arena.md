@@ -235,6 +235,19 @@ close-only faults also refuse a successful run. Binary writes must report an
 exact integer byte count, never a boolean or partial count. These checks
 reject incomplete measurements but do not attest the child or host OS.
 
+Selector output collection now anchors each readiness key to the exact
+registration receipt for its original stdout/stderr descriptor, checks the
+read-event mask, and rejects altered registration metadata rather than reading
+from a relabeled or foreign descriptor. Each pipe must separately reach an
+observed, confirmed EOF/unregistration before the capture can succeed; a
+fabricated empty selector map cannot silently publish truncated output.
+
+Red-first adversarial regressions demonstrate the former false success for
+swapped readiness keys, copied keys, fabricated masks, and premature map
+emptiness. Registration and unregister receipt mutations also fail closed.
+These are producer-side consistency checks on the selector's observed results,
+not a guarantee against compromised OS facilities or child measurement fraud.
+
 The same transport now supports an optional bounded exact 256-byte binary
 input channel, with nonblocking delivery and a positive wall deadline even
 when the child refuses to read. A new opt-in `--input-stdin` mode in the

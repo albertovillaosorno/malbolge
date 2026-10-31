@@ -117,6 +117,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   inherited-pipe descendant stalls are typed failures, not verified samples.
   Independent subprocess regressions cover stream fragmentation, one-byte
   overrun, timeout, process-group cleanup and a flood judged as tool failure.
+- Selector capture additionally binds both stream identities to exact returned
+  registration keys, verifies read masks, and requires independent real EOF
+  receipts; a forged empty map can no longer suppress stdout. Red-first
+  regressions show swapped/copied readiness keys and masks previously yielded
+  apparent success, while registration/EOF forgeries now fail typed admission.
+  This guards producer-side evidence handling, not source authenticity.
 - This does not impose physical study-wide RAM limits or contain detached
   child sessions, and Windows execution of this pilot remains unsupported.
   A separately opt-in 256-byte binary-stdin channel now proves host pipe
