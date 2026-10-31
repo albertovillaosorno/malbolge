@@ -40,6 +40,7 @@ from typing import Never
 
 NANOSECONDS_PER_SECOND = 1_000_000_000
 BYTES_PER_MIB = 1_048_576
+MAX_RUN_MANIFEST_BYTES = 1_048_576
 
 
 class BudgetLinkError(ValueError):
@@ -65,6 +66,20 @@ def _positive_integer(table: dict[str, object], key: str) -> int:
     return value
 
 
+def _admit_text(text: str) -> None:
+    if type(text) is not str:
+        _fail("budget run manifest requires exact str text")
+    if len(text) > MAX_RUN_MANIFEST_BYTES:
+        _fail("budget run manifest exceeds byte limit")
+    try:
+        encoded_size = len(text.encode("utf-8"))
+    except UnicodeEncodeError as error:
+        message = "budget run manifest requires strict UTF-8 text"
+        raise BudgetLinkError(message) from error
+    if encoded_size > MAX_RUN_MANIFEST_BYTES:
+        _fail("budget run manifest exceeds byte limit")
+
+
 def parse_run_budgets(text: str) -> RunBudgets:
     """Read optional strict arena budget links from experiment-run TOML.
 
@@ -75,6 +90,7 @@ def parse_run_budgets(text: str) -> RunBudgets:
         BudgetLinkError: The run lacks the required declared resource limits.
 
     """
+    _admit_text(text)
     try:
         document = tomllib.loads(text)
     except (ValueError, RecursionError) as error:

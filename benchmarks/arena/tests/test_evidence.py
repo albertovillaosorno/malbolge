@@ -42,7 +42,9 @@ import json
 from pathlib import Path
 import sys
 from typing import Any
+from typing import SupportsIndex
 from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 
@@ -477,6 +479,66 @@ def test_optional_run_extension_parser_contains_toml_capacity_failure(
     with pytest.raises(expected[0], match=r"invalid .* TOML") as error:
         parser(text)
     assert isinstance(error.value.__cause__, expected[1])
+
+
+BUDGET_MANIFEST = "[budget]\nseconds = 1\nmemory_mib = 128\n"
+TRIAL_MANIFEST = (
+    '[arena_trial]\nschema_version = 1\ntrial = 0\nraw_sha256 = "'
+    + "a" * analyze.SHA256_HEX_LENGTH
+    + '"\n'
+)
+
+
+class _ForgedManifestText(str):  # ruff: ignore[subclass-builtin]
+    """Malformed wire text that replaces itself with a different TOML input."""
+
+    __slots__ = ()
+    replacement = ""
+
+    def replace(self, old: str, new: str, count: SupportsIndex = -1) -> str:
+        """Supply a different document during tomllib normalization.
+
+        Returns:
+            The forged text, unrelated to the underlying source string.
+
+        """
+        del old, new, count
+        return self.replacement
+
+
+@pytest.mark.parametrize(
+    ("parser", "valid", "error_type"),
+    [
+        (
+            budget_links.parse_run_budgets,
+            BUDGET_MANIFEST,
+            budget_links.BudgetLinkError,
+        ),
+        (trial_runs.parse_trial_run, TRIAL_MANIFEST, trial_runs.TrialRunError),
+    ],
+    ids=["budget", "trial"],
+)
+def test_direct_run_extension_parser_admits_only_bounded_exact_utf8_text(
+    parser: Callable[[str], object],
+    valid: str,
+    error_type: type[ValueError],
+) -> None:
+    """Direct manifest parsers cannot bypass the one-MiB wire-file boundary."""
+    padding = "#" + "x" * (evidence.MAX_MANIFEST_BYTES - len(valid) - 1)
+    assert parser(valid + padding)
+    with pytest.raises(error_type, match="byte limit"):
+        parser(valid + padding + "x")
+    with pytest.raises(error_type, match="byte limit"):
+        parser(valid + "#" + "é" * (evidence.MAX_MANIFEST_BYTES // 2))
+    with pytest.raises(error_type, match="UTF-8"):
+        parser(valid + "#\ud800")
+
+    _ForgedManifestText.replacement = valid
+    with pytest.raises(error_type, match="exact str"):
+        parser(_ForgedManifestText("invalid = {"))
+    for foreign in (None, b"[budget]", bytearray(b"[budget]"), 1):
+        with pytest.raises(error_type, match="exact str"):
+            parser(cast("str", foreign))
 
 
 BUDGET_SECONDS = 1

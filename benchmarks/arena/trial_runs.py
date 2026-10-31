@@ -43,6 +43,7 @@ from benchmarks.arena import analyze
 EXTENSION_NAME = "arena_trial"
 EXTENSION_FIELDS = frozenset({"schema_version", "trial", "raw_sha256"})
 SCHEMA_VERSION = 1
+MAX_RUN_MANIFEST_BYTES = 1_048_576
 
 
 class TrialRunError(ValueError):
@@ -69,6 +70,20 @@ def _digest(value: object) -> str:
     return value
 
 
+def _admit_text(text: str) -> None:
+    if type(text) is not str:
+        _fail("per-trial run manifest requires exact str text")
+    if len(text) > MAX_RUN_MANIFEST_BYTES:
+        _fail("per-trial run manifest exceeds byte limit")
+    try:
+        encoded_size = len(text.encode("utf-8"))
+    except UnicodeEncodeError as error:
+        message = "per-trial run manifest requires strict UTF-8 text"
+        raise TrialRunError(message) from error
+    if encoded_size > MAX_RUN_MANIFEST_BYTES:
+        _fail("per-trial run manifest exceeds byte limit")
+
+
 def parse_trial_run(text: str) -> TrialRun:
     """Parse the arena extension without replacing the core run validator.
 
@@ -79,6 +94,7 @@ def parse_trial_run(text: str) -> TrialRun:
         TrialRunError: The arena extension is malformed or missing.
 
     """
+    _admit_text(text)
     try:
         document = tomllib.loads(text)
     except (ValueError, RecursionError) as error:
