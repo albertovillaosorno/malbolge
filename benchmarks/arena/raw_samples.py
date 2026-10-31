@@ -156,7 +156,15 @@ def _csv_rows(
     expected_rows: int,
 ) -> tuple[str, tuple[str, ...], list[tuple[str, ...]]]:
     _require_bounded_csv_header(text, label)
-    if not csv_admission.within_column_limit(text, len(HEADER_2)):
+    try:
+        column_receipt = csv_admission.within_column_limit(text, len(HEADER_2))
+    except Exception as error:
+        # A substituted preflight dependency cannot leak arbitrary host faults.
+        message = f"{label}: arena raw CSV column preflight failed"
+        raise RawSampleError(message) from error
+    if type(column_receipt) is not bool:
+        _fail(f"{label}: arena raw CSV column preflight returned nonnative verdict")
+    if not column_receipt:
         _fail(f"{label}: arena raw CSV columns exceed registered count")
     try:
         reader = csv.reader(StringIO(text, newline=""), strict=True)

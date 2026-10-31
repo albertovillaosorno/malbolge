@@ -503,6 +503,71 @@ def test_excessive_data_row_columns_reject_before_parser(
         raw_samples.check_rows(raw, [record], ROOT_LABEL)
 
 
+@pytest.mark.parametrize("foreign_receipt", [1, "admitted", object()])
+def test_raw_column_preflight_rejects_nonboolean_success_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    foreign_receipt: object,
+) -> None:
+    """A substituted capacity guard cannot certify rows with a truthy token."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+
+    def forged_guard(text: str, maximum: int) -> bool:
+        assert text
+        assert maximum == len(raw_samples.HEADER_2)
+        return cast("bool", foreign_receipt)
+
+    monkeypatch.setattr(raw_samples.csv_admission, "within_column_limit", forged_guard)
+    with pytest.raises(raw_samples.RawSampleError, match="column preflight"):
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
+
+
+def test_raw_column_preflight_never_dispatches_foreign_truth_methods(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The preflight verdict must be native before any truth-value check."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+
+    class HostileVerdict:
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign CSV preflight truth executed")
+
+    monkeypatch.setattr(
+        raw_samples.csv_admission,
+        "within_column_limit",
+        lambda *_args: cast("bool", HostileVerdict()),
+    )
+    with pytest.raises(raw_samples.RawSampleError, match="column preflight"):
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
+
+
+def test_raw_column_preflight_dependency_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unexpected guard failure cannot leak a foreign exception formatter."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+
+    class ForeignGuardError(RuntimeError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign preflight diagnostic executed")
+
+    fault = ForeignGuardError("untrusted fault")
+
+    def broken_guard(text: str, maximum: int) -> bool:
+        del text, maximum
+        raise fault
+
+    monkeypatch.setattr(raw_samples.csv_admission, "within_column_limit", broken_guard)
+    with pytest.raises(raw_samples.RawSampleError, match="column preflight") as error:
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
+    assert error.value.__cause__ is fault
+
+
 def test_quoted_commas_in_raw_data_remain_admissible(tmp_path: Path) -> None:
     """Real quoted comma data is not mistaken for extra columns."""
     record = _setup(tmp_path)["observations"][0]
