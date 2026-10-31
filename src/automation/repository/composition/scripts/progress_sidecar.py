@@ -3068,9 +3068,9 @@ def _validate_existing_pointer(
 ) -> None:
     try:
         _ = destination.stat(follow_symlinks=False)
-    except FileNotFoundError:
-        return
     except OSError as error:
+        if type(error) is FileNotFoundError:
+            return
         _fail(f"progress pointer preflight failed: {_host_error_detail(error)}")
     _ = validate_transition(read(destination), sidecar)
 

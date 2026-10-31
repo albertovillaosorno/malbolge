@@ -8777,6 +8777,52 @@ def test_pointer_preflight_denial_preserves_committed_predecessor(
     assert not Path(candidate.checkpoint_path).exists()
 
 
+@pytest.mark.parametrize("publish_generation", [False, True], ids=["pointer", "generation"])
+def test_progress_pointer_preflight_rejects_foreign_missing_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    publish_generation: bool,
+) -> None:
+    """A foreign missing-file subclass cannot authorize a stale overwrite."""
+
+    class ForeignMissing(FileNotFoundError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign missing-file formatter executed")
+
+    original = _sidecar(tmp_path)
+    destination = progress.write_atomic(original)
+    checkpoint = b"new-checkpoint-state"
+    candidate = replace(original, operation_id="different-operation")
+    if publish_generation:
+        candidate = _checkpointed(candidate, checkpoint=checkpoint, partial=None)
+    original_stat = Path.stat
+    hits: list[Path] = []
+
+    def forge_missing_pointer(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if path == destination:
+            hits.append(path)
+            raise ForeignMissing("malicious missing-file result")
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "stat", forge_missing_pointer)
+        with pytest.raises(ERROR, match="pointer preflight"):
+            if publish_generation:
+                _ = progress.write_checkpoint_generation(candidate, checkpoint)
+            else:
+                _ = progress.write_atomic(candidate)
+
+    assert hits
+    assert progress.read(destination) == original
+    if publish_generation:
+        assert not Path(candidate.checkpoint_path or "").exists()
+    assert not tuple(tmp_path.glob(".*.tmp"))
+
+
 def test_write_atomic_rejects_short_stream_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
