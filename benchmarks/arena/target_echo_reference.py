@@ -104,9 +104,7 @@ FORWARD_ALGORITHMS = (WALK, SKIP)
 FORWARD_STUDY = "classic-patterned-forward-skip-steps-v1"
 FORWARD_VERIFIER_COST_STUDY = "classic-patterned-forward-skip-verifier-cost-v2"
 FORWARD_REPLAY_COST_STUDY = "classic-patterned-forward-skip-replay-cost-v3"
-FORWARD_LIMITED_REPLAY_STUDY = (
-    "classic-patterned-forward-skip-limited-replay-v4"
-)
+FORWARD_LIMITED_REPLAY_STUDY = "classic-patterned-forward-skip-limited-replay-v4"
 FORWARD_RSS_STUDY = "classic-patterned-forward-skip-limited-rss-v5"
 FORWARD_RSS_RECEIPTS_STUDY = "classic-patterned-forward-skip-rss-receipts-v6"
 FORWARD_RAW_RSS_STUDY = "classic-patterned-forward-skip-raw-rss-v7"
@@ -176,6 +174,31 @@ def _fail(message: str) -> Never:
     raise TargetEchoStudyError(message)
 
 
+def _safe_error_detail(
+    error: Exception, *, trusted: type[Exception] | None = None
+) -> str:
+    """Keep native error details without calling foreign subclass formatters.
+
+    Returns:
+        Exact owned/built-in text or a safe foreign exception type name.
+
+    """
+    if type(error) is trusted or type(error) in (
+        TargetEchoStudyError,
+        analyze.ArenaError,
+        evidence.EvidenceError,
+        experiment_manifest.ExperimentManifestError,
+        report_output.ReportOutputError,
+        OSError,
+        PermissionError,
+        FileNotFoundError,
+        sp.SubprocessError,
+        sp.TimeoutExpired,
+    ):
+        return str(error)
+    return type(error).__name__
+
+
 def _validate_plan(plan: StudyPlan) -> None:
     if type(plan) is not StudyPlan:
         _fail("target echo requires an exact StudyPlan")
@@ -238,8 +261,10 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 _fail("target echo executable identity changed")
             if original.st_size > MAX_TOOL_BYTES:
                 _fail("target echo executable exceeds 128 MiB limit")
-            flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(
-                os, "O_NOFOLLOW", 0
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_NONBLOCK", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
             )
             descriptor = os.open(path, flags)
             try:
@@ -258,9 +283,13 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                     digest.update(chunk)
                     remaining -= len(chunk)
                 trailer = os.read(descriptor, 1)
-                if type(trailer) is not bytes or trailer or (
-                    _tool_file_identity(os.fstat(descriptor))
-                    != _tool_file_identity(opened)
+                if (
+                    type(trailer) is not bytes
+                    or trailer
+                    or (
+                        _tool_file_identity(os.fstat(descriptor))
+                        != _tool_file_identity(opened)
+                    )
                 ):
                     _fail("target echo executable identity changed")
             finally:
@@ -336,9 +365,7 @@ def _commit() -> str:
         _fail("target echo source revision Git executable is not an ordinary file")
     # Source revision must belong to this checkout, not an ambient Git dir.
     clean_env = {
-        name: value
-        for name, value in os.environ.items()
-        if not name.startswith("GIT_")
+        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
     }
     try:
         output = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
@@ -369,10 +396,7 @@ def _commit() -> str:
     ):
         _fail("target echo reference has invalid Git revision receipt")
     commit = output.stdout.strip()
-    if (
-        len(commit) != COMMIT_HEX_WIDTH
-        or not set(commit) <= analyze.SHA256_ALPHABET
-    ):
+    if len(commit) != COMMIT_HEX_WIDTH or not set(commit) <= analyze.SHA256_ALPHABET:
         _fail("target echo reference has invalid Git revision")
     return commit
 
@@ -380,9 +404,7 @@ def _commit() -> str:
 def _input_bytes(pairs: int, mode: str) -> bytes:
     if mode == EOF_MODE:
         return b""
-    return bytes(
-        PATTERN_BYTES[index % len(PATTERN_BYTES)] for index in range(pairs)
-    )
+    return bytes(PATTERN_BYTES[index % len(PATTERN_BYTES)] for index in range(pairs))
 
 
 def _parse_step_receipt(stderr: bytes) -> int:
@@ -401,9 +423,7 @@ def _parse_step_receipt(stderr: bytes) -> int:
 
 
 def _algorithms(layout_mode: str) -> tuple[str, str]:
-    return (
-        FORWARD_ALGORITHMS if layout_mode == FORWARD_SKIP_LAYOUT else ALGORITHMS
-    )
+    return FORWARD_ALGORITHMS if layout_mode == FORWARD_SKIP_LAYOUT else ALGORITHMS
 
 
 def _operations(
@@ -441,9 +461,7 @@ def _case(
             f"input={payload.hex()}:eof-after"
         ).encode("ascii")
     elif mode == EOF_MODE:
-        workload = f"classic-eof-echo-v1:pairs={pairs}:empty-input".encode(
-            "ascii"
-        )
+        workload = f"classic-eof-echo-v1:pairs={pairs}:empty-input".encode("ascii")
     else:
         payload = _input_bytes(pairs, mode)
         workload = (
@@ -472,12 +490,10 @@ def _measure_guest_rss(
     if stages is None:
         _fail("target echo RSS measurement missing per-trial stage witness")
     if context.retain_raw_rss:
-        result, peak, raw = (
-            target_process.invoke_with_input_limited_measured_raw(
-                command,
-                _input_bytes(pairs, context.input_mode),
-                timeout_seconds=TIMEOUT_SECONDS,
-            )
+        result, peak, raw = target_process.invoke_with_input_limited_measured_raw(
+            command,
+            _input_bytes(pairs, context.input_mode),
+            timeout_seconds=TIMEOUT_SECONDS,
         )
         if context.raw_rss_stages is None:
             _fail("target echo raw RSS measurements need an owned stage list")
@@ -492,9 +508,7 @@ def _measure_guest_rss(
     return result
 
 
-def _run_guest(
-    context: _Context, path: Path, pairs: int
-) -> sp.CompletedProcess[bytes]:
+def _run_guest(context: _Context, path: Path, pairs: int) -> sp.CompletedProcess[bytes]:
     command = [str(context.runner), str(path)]
     if context.input_mode == PATTERNED_MODE:
         command.append("--input-stdin")
@@ -504,9 +518,7 @@ def _run_guest(
         return _measure_guest_rss(context, command, pairs)
     if context.input_mode == EOF_MODE:
         return (
-            target_process.invoke_limited(
-                command, timeout_seconds=TIMEOUT_SECONDS
-            )
+            target_process.invoke_limited(command, timeout_seconds=TIMEOUT_SECONDS)
             if context.limit_child_resources
             else _invoke(command)
         )
@@ -535,9 +547,7 @@ def _verified_steps(
         return "tool_failed", None
 
 
-def _emit_attempt(
-    context: _Context, command: list[str]
-) -> sp.CompletedProcess[bytes]:
+def _emit_attempt(context: _Context, command: list[str]) -> sp.CompletedProcess[bytes]:
     if context.measure_child_rss:
         stages = context.rss_stages
         if stages is None:
@@ -547,9 +557,7 @@ def _emit_attempt(
                 command, timeout_seconds=TIMEOUT_SECONDS
             )
             if context.raw_rss_stages is None:
-                _fail(
-                    "target echo raw RSS measurements need an owned stage list"
-                )
+                _fail("target echo raw RSS measurements need an owned stage list")
             context.raw_rss_stages.append(raw)
         else:
             result, peak = target_process.invoke_limited_measured(
@@ -579,10 +587,7 @@ def _classify_attempt(
         str(path),
         "--",
     ]
-    if (
-        context.layout_mode == FORWARD_SKIP_LAYOUT
-        and operations[0] == JUMP_OPERATION
-    ):
+    if context.layout_mode == FORWARD_SKIP_LAYOUT and operations[0] == JUMP_OPERATION:
         command.append("--auto-layout")
     emitted = _emit_attempt(context, [*command, *operations])
     if emitted.returncode != 0 or emitted.stdout or not path.is_file():
@@ -768,9 +773,7 @@ def _complete_raw_rss_stages(context: _Context) -> bool:
     return readings is not None and len(readings) == RSS_MEASURED_STAGES
 
 
-def _admit_peak_rss(
-    context: _Context, outcome: str, metrics: dict[str, int]
-) -> str:
+def _admit_peak_rss(context: _Context, outcome: str, metrics: dict[str, int]) -> str:
     if not context.measure_child_rss or outcome != analyze.VERIFIED:
         return outcome
     stages = context.rss_stages or []
@@ -829,14 +832,14 @@ def _manifest(
         "schema_version = 1",
         "",
         "[experiment]",
-        f"id = {quote(row["algorithm"])}",
+        f"id = {quote(row['algorithm'])}",
         'record_kind = "run"',
         'method_class = "benchmarking"',
         "seed = 0",
         "",
         "[challenge]",
-        f"family = {quote(case["family"])}",
-        f"difficulty = {case["difficulty"]}",
+        f"family = {quote(case['family'])}",
+        f"difficulty = {case['difficulty']}",
         f"target_profile = {quote(PROFILE)}",
         f"target_profile_fingerprint = {quote(context.fingerprint)}",
         "",
@@ -846,7 +849,7 @@ def _manifest(
         "",
         "[verification]",
         "required = true",
-        f"oracle = {quote(row["verifier"])}",
+        f"oracle = {quote(row['verifier'])}",
         "",
         "[provenance]",
         'implementation = "benchmarks/arena/target_echo_reference.py"',
@@ -855,28 +858,30 @@ def _manifest(
         "",
         "[run]",
         f"commit = {quote(context.commit)}",
-        f"workload_sha256 = {quote(case["workload_sha256"])}",
+        f"workload_sha256 = {quote(case['workload_sha256'])}",
         f"host = {quote(context.host)}",
         'accelerator = "none"',
         f"toolchain = {quote(context.toolchain)}",
-        f"outcome = {quote(evidence.RUN_OUTCOMES[row["outcome"]])}",
-        f"raw_output = {quote(row["raw_sample"])}",
+        f"outcome = {quote(evidence.RUN_OUTCOMES[row['outcome']])}",
+        f"raw_output = {quote(row['raw_sample'])}",
         "",
         "[arena_trial]",
         "schema_version = 1",
-        f"trial = {row["trial"]}",
+        f"trial = {row['trial']}",
         f"raw_sha256 = {quote(raw_hash)}",
         "",
     ]
     if context.retain_rss_stages and row["outcome"] == analyze.VERIFIED:
         if rss_hash is None:
             _fail("retained RSS stage receipt digest is required")
-        lines.extend([
-            "[arena_rss]",
-            f"schema_version = {2 if context.retain_raw_rss else 1}",
-            f"sha256 = {quote(rss_hash)}",
-            "",
-        ])
+        lines.extend(
+            [
+                "[arena_rss]",
+                f"schema_version = {2 if context.retain_raw_rss else 1}",
+                f"sha256 = {quote(rss_hash)}",
+                "",
+            ]
+        )
     text = "\n".join(lines)
     experiment_manifest.parse_manifest(text)
     return text
@@ -955,9 +960,7 @@ def _write_rss_stages(
         return None
     if values is None or len(values) != RSS_MEASURED_STAGES:
         _fail("retained RSS stage receipt requires all three samples")
-    stages = dict(
-        zip(("emitter", "primary_vm", "verifier_vm"), values, strict=True)
-    )
+    stages = dict(zip(("emitter", "primary_vm", "verifier_vm"), values, strict=True))
     case = row["case"]
     identity = {
         "algorithm": row["algorithm"],
@@ -986,7 +989,7 @@ def _write_rss_stages(
         )
         + "\n"
     ).encode("utf-8")
-    stem = f"{row["algorithm"]}-pairs-{case["difficulty"]}-trial-{row["trial"]}"
+    stem = f"{row['algorithm']}-pairs-{case['difficulty']}-trial-{row['trial']}"
     path = context.directory / "rss" / f"{stem}.json"
     _write_retained_bytes(path, content)
     return sha256(content).hexdigest()
@@ -1010,9 +1013,7 @@ def _write_attempt(
         if context.measure_child_rss
         else context
     )
-    outcome, metrics = _measure(
-        artifact, observed_context, pairs, algorithm=algorithm
-    )
+    outcome, metrics = _measure(artifact, observed_context, pairs, algorithm=algorithm)
     verdict = {
         analyze.VERIFIED: analyze.ACCEPTED,
         analyze.VERIFIER_REJECTED: analyze.REJECTED,
@@ -1052,9 +1053,7 @@ def _write_attempt(
         row,
         values=observed_context.rss_stages,
     )
-    receipt = _manifest(
-        row, context, sha256(raw).hexdigest(), rss_hash=receipt_hash
-    )
+    receipt = _manifest(row, context, sha256(raw).hexdigest(), rss_hash=receipt_hash)
     _write_retained_text(context.directory / "runs" / f"{stem}.toml", receipt)
     return row
 
@@ -1074,8 +1073,7 @@ def _make_document(
         else FORWARD_LIMITED_REPLAY_STUDY
         if context.limit_child_resources
         else FORWARD_REPLAY_COST_STUDY
-        if context.measure_verifier
-        and context.verifier_mode == REPLAY_VERIFIER_MODE
+        if context.measure_verifier and context.verifier_mode == REPLAY_VERIFIER_MODE
         else FORWARD_VERIFIER_COST_STUDY
         if context.measure_verifier
         else FORWARD_STUDY
@@ -1091,15 +1089,9 @@ def _make_document(
             "question": (
                 "Can a forward jump skip otherwise executed graphical padding?"
                 if context.layout_mode == FORWARD_SKIP_LAYOUT
-                else (
-                    "Does padding worsen the classic patterned "
-                    "byte-echo frontier?"
-                )
+                else ("Does padding worsen the classic patterned byte-echo frontier?")
                 if patterned
-                else (
-                    "Does redundant no-op padding worsen the "
-                    "classic VM frontier?"
-                )
+                else ("Does redundant no-op padding worsen the classic VM frontier?")
             ),
             "hypothesis": (
                 "Equal-sized forward-jump code executes fewer guest steps."
@@ -1169,7 +1161,10 @@ def _audit_retained_study(path: Path) -> dict[str, Any]:
     try:
         checked = target_echo_audit.audit(relative)
     except target_echo_audit.TargetEchoAuditError as error:
-        message = f"target echo source admission failed: {error}"
+        message = (
+            "target echo source admission failed: "
+            f"{_safe_error_detail(error, trusted=target_echo_audit.TargetEchoAuditError)}"
+        )
         raise TargetEchoStudyError(message) from error
     raw = evidence.read_bounded_regular(
         _ROOT, relative, limit=target_echo_audit.MAX_STUDY_BYTES
@@ -1184,10 +1179,7 @@ def _validate_verifier_measurement(plan: StudyPlan) -> None:
         _fail("target echo requires a boolean verifier timing selection")
     if plan.measure_verifier and plan.layout_mode != FORWARD_SKIP_LAYOUT:
         _fail("target echo verifier cost requires the forward-skip study")
-    if (
-        type(plan.verifier_mode) is not str
-        or plan.verifier_mode not in VERIFIER_MODES
-    ):
+    if type(plan.verifier_mode) is not str or plan.verifier_mode not in VERIFIER_MODES:
         _fail("target echo verifier mode must be source or replay")
     if plan.verifier_mode == REPLAY_VERIFIER_MODE and not plan.measure_verifier:
         _fail("target echo replay verifier requires measured verifier cost")
@@ -1225,10 +1217,7 @@ def _validate_study_options(plan: StudyPlan) -> None:
     _validate_input_mode(plan.input_mode)
     if type(plan.measure_steps) is not bool:
         _fail("target echo requires a boolean measure_steps selection")
-    if (
-        type(plan.layout_mode) is not str
-        or plan.layout_mode not in LAYOUT_MODES
-    ):
+    if type(plan.layout_mode) is not str or plan.layout_mode not in LAYOUT_MODES:
         _fail("target echo layout mode must be linear or forward-skip")
     if plan.layout_mode == FORWARD_SKIP_LAYOUT and (
         plan.input_mode != PATTERNED_MODE or not plan.measure_steps
@@ -1283,9 +1272,7 @@ def run_study(
     ]
     document = _make_document(context, observations)
     path = context.directory / "study.json"
-    _write_retained_text(
-        path, json.dumps(document, sort_keys=True, indent=2) + "\n"
-    )
+    _write_retained_text(path, json.dumps(document, sort_keys=True, indent=2) + "\n")
     admitted = _audit_retained_study(path)
     if _tool_identity(context.emitter, context.runner) != context.toolchain:
         _fail("target echo executables changed during the measured study")
@@ -1304,9 +1291,7 @@ def main() -> int:
     parser.add_argument("--trials", type=int, default=2)
     parser.add_argument("--input-mode", choices=INPUT_MODES, default=EOF_MODE)
     parser.add_argument("--measure-steps", action="store_true")
-    parser.add_argument(
-        "--layout-mode", choices=LAYOUT_MODES, default=LINEAR_LAYOUT
-    )
+    parser.add_argument("--layout-mode", choices=LAYOUT_MODES, default=LINEAR_LAYOUT)
     parser.add_argument("--measure-verifier", action="store_true")
     parser.add_argument(
         "--verifier-mode", choices=VERIFIER_MODES, default=SOURCE_VERIFIER_MODE
@@ -1334,9 +1319,7 @@ def main() -> int:
         )
         report_output.publish(
             {
-                "study": (directory / "study.json")
-                .relative_to(_ROOT)
-                .as_posix(),
+                "study": (directory / "study.json").relative_to(_ROOT).as_posix(),
                 "observations": len(document["observations"]),
                 "scope": (
                     "Actual classic VM execution with bounded I/O oracle; "
@@ -1355,7 +1338,7 @@ def main() -> int:
         sp.SubprocessError,
         report_output.ReportOutputError,
     ) as error:
-        parser.exit(2, f"target echo reference: {error}\n")
+        parser.exit(2, f"target echo reference: {_safe_error_detail(error)}\n")
     return 0
 
 

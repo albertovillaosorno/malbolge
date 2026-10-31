@@ -48,7 +48,13 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from benchmarks.arena import analyze, evidence, target_echo_audit, target_echo_reference
+from benchmarks.arena import (
+    analyze,
+    evidence,
+    report_output,
+    target_echo_audit,
+    target_echo_reference,
+)
 from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
@@ -81,9 +87,7 @@ class _FaultyTargetWriter:
         def injected_bytes(path: Path, data: bytes) -> int:
             return self.write_bytes(path, data)
 
-        def injected_text(
-            path: Path, data: str, encoding: str | None = None
-        ) -> int:
+        def injected_text(path: Path, data: str, encoding: str | None = None) -> int:
             return self.write_text(path, data, encoding=encoding)
 
         monkeypatch.setattr(type(root), "write_bytes", injected_bytes)
@@ -184,25 +188,20 @@ def _invoke_target_attempt(
         Reported trial row on complete writes.
 
     """
-    def fake_measure(
-        *args: object, **kwargs: object
-    ) -> tuple[str, dict[str, int]]:
+
+    def fake_measure(*args: object, **kwargs: object) -> tuple[str, dict[str, int]]:
         _ = (args, kwargs)
         return analyze.VERIFIED, {"elapsed_ns": 1}
 
     monkeypatch.setattr(target_echo_reference, "_measure", fake_measure)
-    monkeypatch.setattr(
-        target_echo_reference, "_raw_csv", lambda *_: b"test-raw"
-    )
+    monkeypatch.setattr(target_echo_reference, "_raw_csv", lambda *_: b"test-raw")
 
     def fake_manifest(*args: object, **kwargs: object) -> str:
         _ = (args, kwargs)
         return "test-manifest"
 
     monkeypatch.setattr(target_echo_reference, "_manifest", fake_manifest)
-    return target_echo_reference._write_attempt(
-        context, 1, 0, algorithm="direct"
-    )
+    return target_echo_reference._write_attempt(context, 1, 0, algorithm="direct")
 
 
 def _invoke_target_study(
@@ -215,9 +214,7 @@ def _invoke_target_study(
         Admitted report only if the output write and audit succeed.
 
     """
-    monkeypatch.setattr(
-        target_echo_reference, "_prepare_context", lambda *_: context
-    )
+    monkeypatch.setattr(target_echo_reference, "_prepare_context", lambda *_: context)
 
     def fake_attempt(*args: object, **kwargs: object) -> dict[str, Any]:
         _ = (args, kwargs)
@@ -234,12 +231,8 @@ def _invoke_target_study(
         _ = path
         pytest.fail("invalid write reached independent source audit")
 
-    monkeypatch.setattr(
-        target_echo_reference, "_audit_retained_study", forbidden
-    )
-    return target_echo_reference.run_study(
-        target_echo_reference.StudyPlan((1,), 1)
-    )
+    monkeypatch.setattr(target_echo_reference, "_audit_retained_study", forbidden)
+    return target_echo_reference.run_study(target_echo_reference.StudyPlan((1,), 1))
 
 
 def _invoke_target_retained_site(
@@ -261,9 +254,7 @@ def _invoke_target_retained_site(
     return _invoke_target_attempt(monkeypatch, context)
 
 
-@pytest.mark.parametrize(
-    "site", [TARGET_RAW, TARGET_RUNS, TARGET_RSS, TARGET_STUDY]
-)
+@pytest.mark.parametrize("site", [TARGET_RAW, TARGET_RUNS, TARGET_RSS, TARGET_STUDY])
 @pytest.mark.parametrize("bad_count", [None, True, -1, 1, 1_000_000])
 def test_target_retained_output_rejects_invalid_write_acknowledgements(
     monkeypatch: pytest.MonkeyPatch,
@@ -274,12 +265,8 @@ def test_target_retained_output_rejects_invalid_write_acknowledgements(
 ) -> None:
     """A short or foreign host write never certifies target trial evidence."""
     context = _synthetic_target_context(tmp_path, site=site)
-    faulty = _FaultyTargetWriter(
-        monkeypatch, tmp_path, site=site, bad_count=bad_count
-    )
-    with pytest.raises(
-        target_echo_reference.TargetEchoStudyError, match="write count"
-    ):
+    faulty = _FaultyTargetWriter(monkeypatch, tmp_path, site=site, bad_count=bad_count)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="write count"):
         _ = _invoke_target_retained_site(monkeypatch, context, site=site)
     assert faulty.faults == 1
 
@@ -313,7 +300,8 @@ PREFLIGHT_REJECTED = "preflight rejected"
 
 
 @pytest.mark.parametrize(
-    "receipt", ["", "relative/git", "bad\0path", b"/usr/bin/git", False, 7],
+    "receipt",
+    ["", "relative/git", "bad\0path", b"/usr/bin/git", False, 7],
     ids=["empty", "relative", "nul", "bytes", "boolean", "integer"],
 )
 def test_target_echo_commit_rejects_invalid_git_resolver_receipt(
@@ -373,11 +361,14 @@ def test_target_echo_commit_types_git_resolver_errors(
     failure: type[Exception],
 ) -> None:
     """Host lookup faults remain within the typed source-revision boundary."""
+
     def broken(*_args: object, **_kwargs: object) -> None:
         raise failure("host resolver failed")
 
     monkeypatch.setattr(target_echo_reference.shutil, "which", broken)
-    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="revision") as caught:
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="revision"
+    ) as caught:
         target_echo_reference._commit()
     assert isinstance(caught.value.__cause__, failure)
 
@@ -390,11 +381,14 @@ def test_target_echo_commit_types_git_transport_errors(
     failure: type[Exception],
 ) -> None:
     """A trusted executable still cannot leak malformed host subprocess faults."""
+
     def broken(*_args: object, **_kwargs: object) -> None:
         raise failure("Git subprocess unavailable")
 
     monkeypatch.setattr(target_echo_reference.sp, "run", broken)
-    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="revision") as caught:
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="revision"
+    ) as caught:
         target_echo_reference._commit()
     assert isinstance(caught.value.__cause__, failure)
 
@@ -417,7 +411,9 @@ def test_target_echo_commit_rejects_noncanonical_git_receipts(
             ["git"], cast("int", status), cast("str", stdout), ""
         ),
     )
-    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="Git revision"):
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="Git revision"
+    ):
         target_echo_reference._commit()
 
 
@@ -467,12 +463,8 @@ WORKSPACE_SUBDIR_STAGE = "subdirectory"
 WORKSPACE_ERROR = "study workspace"
 
 
-@pytest.mark.parametrize(
-    "error_type", [PermissionError, ValueError, RuntimeError]
-)
-@pytest.mark.parametrize(
-    "stage", [WORKSPACE_CREATE_STAGE, WORKSPACE_SUBDIR_STAGE]
-)
+@pytest.mark.parametrize("error_type", [PermissionError, ValueError, RuntimeError])
+@pytest.mark.parametrize("stage", [WORKSPACE_CREATE_STAGE, WORKSPACE_SUBDIR_STAGE])
 def test_failed_workspace_setup_is_typed_and_removes_partial_study(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -494,6 +486,7 @@ def test_failed_workspace_setup_is_typed_and_removes_partial_study(
     monkeypatch.setattr(target_echo_reference, "_commit", lambda: "a" * 40)
 
     if stage == WORKSPACE_CREATE_STAGE:
+
         def failed_creation(*args: object, **kwargs: object) -> str:
             _ = (args, kwargs)
             message = "injected workspace creation failure"
@@ -532,9 +525,7 @@ def test_target_echo_workspace_root_host_failures_are_typed(
         message = "injected workspace root inspection failure"
         raise error_type(message)
 
-    monkeypatch.setattr(
-        target_echo_reference, "_admit_executable", lambda path: path
-    )
+    monkeypatch.setattr(target_echo_reference, "_admit_executable", lambda path: path)
     monkeypatch.setattr(target_echo_reference.Path, "lstat", faulty_lstat)
     monkeypatch.setattr(target_echo_reference, "_TEMP", tmp_path)
     with pytest.raises(
@@ -571,9 +562,7 @@ def test_target_echo_workspace_cleanup_preserves_primary_setup_failure(
         target_echo_reference._initialize_workspace_folders(tmp_path, ("raw",))
     assert isinstance(failure.value.__cause__, OSError)
     cleanup_note = "cleanup failed"
-    assert any(
-        cleanup_note in note for note in failure.value.__cause__.__notes__
-    )
+    assert any(cleanup_note in note for note in failure.value.__cause__.__notes__)
 
 
 def test_optional_rss_workspace_failure_is_typed_and_cleans_partial_study(
@@ -672,7 +661,10 @@ def test_tool_fingerprint_rejects_fifo_substitution_without_blocking(
     mkfifo = getattr(os, "mkfifo", None)
     assert callable(mkfifo)
     mkfifo(emitter)
-    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="target echo executable identity changed"):
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="target echo executable identity changed",
+    ):
         target_echo_reference._tool_identity(emitter, runner)
 
 
@@ -779,9 +771,7 @@ def test_oversized_sparse_emitter_rejects_before_tool_identity_read(
     assert target_echo_reference._admit_executable(emitter) == emitter
     with emitter.open("r+b") as handle:
         handle.truncate(target_echo_reference.MAX_TOOL_BYTES + 1)
-    with pytest.raises(
-        target_echo_reference.TargetEchoStudyError, match="128 MiB"
-    ):
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="128 MiB"):
         _ = target_echo_reference._admit_executable(emitter)
 
     def forbid_open(*args: object, **kwargs: object) -> int:
@@ -790,9 +780,7 @@ def test_oversized_sparse_emitter_rejects_before_tool_identity_read(
         raise AssertionError(message)
 
     monkeypatch.setattr(target_echo_reference.os, "open", forbid_open)
-    with pytest.raises(
-        target_echo_reference.TargetEchoStudyError, match="128 MiB"
-    ):
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="128 MiB"):
         _ = target_echo_reference._tool_identity(emitter, runner)
 
 
@@ -835,7 +823,9 @@ def test_tool_fingerprint_close_error_does_not_hide_read_failure(
 
 
 @pytest.mark.parametrize("site", ["lstat", "open", "fstat", "read", "close"])
-@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError, TypeError, AttributeError])
+@pytest.mark.parametrize(
+    "failure_type", [ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_tool_fingerprint_types_non_oserror_host_faults(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -867,7 +857,9 @@ def test_tool_fingerprint_types_non_oserror_host_faults(
             patch.setattr(type(emitter), "lstat", bad_lstat)
         else:
             patch.setattr(target_echo_reference.os, site, bad_host)
-        with pytest.raises(target_echo_reference.TargetEchoStudyError, match="executable identity") as caught:
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="executable identity"
+        ) as caught:
             _ = target_echo_reference._tool_identity(emitter, runner)
     assert caught.value.__cause__ is fault
 
@@ -876,7 +868,19 @@ class _ForgedToolBytes(bytes):
     """A bytes subtype is not a native os.read result."""
 
 
-@pytest.mark.parametrize("kind", ["none", "bool", "integer", "text", "bytearray", "memoryview", "subtype", "overlong"])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "none",
+        "bool",
+        "integer",
+        "text",
+        "bytearray",
+        "memoryview",
+        "subtype",
+        "overlong",
+    ],
+)
 def test_tool_fingerprint_rejects_noncanonical_host_read_chunks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -905,11 +909,15 @@ def test_tool_fingerprint_rejects_noncanonical_host_read_chunks(
 
     with monkeypatch.context() as patch:
         patch.setattr(target_echo_reference.os, "read", altered_read)
-        with pytest.raises(target_echo_reference.TargetEchoStudyError, match="executable identity"):
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="executable identity"
+        ):
             _ = target_echo_reference._tool_identity(emitter, runner)
 
 
-@pytest.mark.parametrize("trailer", [None, True, b"x", bytearray(), _ForgedToolBytes(b"")])
+@pytest.mark.parametrize(
+    "trailer", [None, True, b"x", bytearray(), _ForgedToolBytes(b"")]
+)
 def test_tool_fingerprint_rejects_foreign_trailing_read_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -929,7 +937,9 @@ def test_tool_fingerprint_rejects_foreign_trailing_read_result(
 
     with monkeypatch.context() as patch:
         patch.setattr(target_echo_reference.os, "read", altered_read)
-        with pytest.raises(target_echo_reference.TargetEchoStudyError, match="executable identity"):
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="executable identity"
+        ):
             _ = target_echo_reference._tool_identity(emitter, runner)
 
 
@@ -959,7 +969,9 @@ def test_tool_fingerprint_secondary_non_oserror_close_preserves_primary(
     with monkeypatch.context() as patch:
         patch.setattr(target_echo_reference.os, "read", bad_read)
         patch.setattr(target_echo_reference.os, "close", bad_close)
-        with pytest.raises(target_echo_reference.TargetEchoStudyError, match="executable identity") as caught:
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="executable identity"
+        ) as caught:
             _ = target_echo_reference._tool_identity(emitter, runner)
     assert caught.value.__cause__ is primary
     assert any("cleanup" in note for note in primary.__notes__)
@@ -1021,7 +1033,10 @@ def test_tool_fingerprint_rejects_symlink_substitution_after_admission(
     assert target_echo_reference._admit_executable(emitter) == emitter
     emitter.unlink()
     emitter.symlink_to(foreign)
-    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="target echo executable identity changed"):
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="target echo executable identity changed",
+    ):
         target_echo_reference._tool_identity(emitter, runner)
 
 
@@ -1171,14 +1186,10 @@ def test_real_target_programs_produce_complete_paired_arena_evidence(
         assert direct["metrics"]["artifact_bytes"] == 2 * pair_count + 1
         assert padded["metrics"]["artifact_bytes"] == 3 * pair_count + 1
         for row in (direct, padded):
-            stem = f"{row["algorithm"]}-pairs-{pair_count}-trial-{row["trial"]}"
-            source = (
-                directory / "candidates" / f"{stem}.malbolge"
-            ).read_bytes()
+            stem = f"{row['algorithm']}-pairs-{pair_count}-trial-{row['trial']}"
+            source = (directory / "candidates" / f"{stem}.malbolge").read_bytes()
             assert len(source) == row["metrics"]["artifact_bytes"]
-            assert all(
-                GRAPHICAL_LOW <= byte <= GRAPHICAL_HIGH for byte in source
-            )
+            assert all(GRAPHICAL_LOW <= byte <= GRAPHICAL_HIGH for byte in source)
 
 
 @pytest.mark.skipif(
@@ -1255,9 +1266,7 @@ def test_producer_rejects_forged_graphical_source_and_vm_agreement(
             target_echo_reference.TargetEchoStudyError,
             match="source instruction",
         ):
-            target_echo_reference.run_study(
-                target_echo_reference.StudyPlan((1,), 1)
-            )
+            target_echo_reference.run_study(target_echo_reference.StudyPlan((1,), 1))
     finally:
         for directory in directories:
             shutil.rmtree(directory)
@@ -1273,9 +1282,7 @@ def test_missing_counter_with_correct_vm_output_is_instrumentation_failure(
     """Failure to report VM steps is tool failure, not a guest rejection."""
     runner = tmp_path / "no-counter-vm"
     runner.write_text(
-        f"#!{sys.executable}\n"
-        "import sys\n"
-        "sys.stdout.buffer.write(bytes([0,168]))\n"
+        f"#!{sys.executable}\nimport sys\nsys.stdout.buffer.write(bytes([0,168]))\n"
     )
     runner.chmod(0o700)
     with tempfile.TemporaryDirectory(
@@ -1294,16 +1301,12 @@ def test_missing_counter_with_correct_vm_output_is_instrumentation_failure(
             runner=runner,
         )
     try:
+        assert all(row["outcome"] == TOOL_FAILED for row in document["observations"])
         assert all(
-            row["outcome"] == TOOL_FAILED for row in document["observations"]
+            RUNTIME_STEPS not in row["metrics"] for row in document["observations"]
         )
         assert all(
-            RUNTIME_STEPS not in row["metrics"]
-            for row in document["observations"]
-        )
-        assert all(
-            ARTIFACT_BYTES not in row["metrics"]
-            for row in document["observations"]
+            ARTIFACT_BYTES not in row["metrics"] for row in document["observations"]
         )
     finally:
         shutil.rmtree(directory)
@@ -1329,16 +1332,12 @@ def test_wrong_external_vm_step_receipt_does_not_publish_success(
     directories: list[Path] = []
     original = target_echo_reference._prepare_context
 
-    def capture_context(
-        emitter: Path, vm: Path
-    ) -> target_echo_reference._Context:
+    def capture_context(emitter: Path, vm: Path) -> target_echo_reference._Context:
         context = original(emitter, vm)
         directories.append(context.directory)
         return context
 
-    monkeypatch.setattr(
-        target_echo_reference, "_prepare_context", capture_context
-    )
+    monkeypatch.setattr(target_echo_reference, "_prepare_context", capture_context)
     with tempfile.TemporaryDirectory(
         dir=target_echo_reference._TEMP,
         prefix="arena-steps-test-tools-",
@@ -1365,9 +1364,7 @@ def test_wrong_external_vm_step_receipt_does_not_publish_success(
                 (directories[0] / "study.json").read_text(encoding="utf-8")
             )["observations"]
             assert all(row["outcome"] == analyze.VERIFIED for row in rows)
-            assert all(
-                row["metrics"]["runtime_steps"] == FORGED_COUNT for row in rows
-            )
+            assert all(row["metrics"]["runtime_steps"] == FORGED_COUNT for row in rows)
         finally:
             for directory in directories:
                 shutil.rmtree(directory)
@@ -1382,9 +1379,7 @@ def test_flooding_vm_is_recorded_as_tool_failure_not_verified(
 ) -> None:
     """Successful child exit with huge stdout must not certify a trial."""
     script = tmp_path / "flood-runner"
-    script.write_text(
-        f"#!{sys.executable}\nimport os\nos.write(1, b'Z' * 8192)\n"
-    )
+    script.write_text(f"#!{sys.executable}\nimport os\nos.write(1, b'Z' * 8192)\n")
     script.chmod(0o700)
     with tempfile.TemporaryDirectory(
         dir=target_echo_reference._TEMP,
@@ -1398,16 +1393,11 @@ def test_flooding_vm_is_recorded_as_tool_failure_not_verified(
             runner=script,
         )
     try:
+        assert all(row["outcome"] == TOOL_FAILED for row in document["observations"])
         assert all(
-            row["outcome"] == TOOL_FAILED for row in document["observations"]
+            ARTIFACT_BYTES not in row["metrics"] for row in document["observations"]
         )
-        assert all(
-            ARTIFACT_BYTES not in row["metrics"]
-            for row in document["observations"]
-        )
-        assert not analyze.analyze(document)["pareto_frontiers"][0][
-            "algorithms"
-        ]
+        assert not analyze.analyze(document)["pareto_frontiers"][0]["algorithms"]
     finally:
         shutil.rmtree(directory)
 
@@ -1438,12 +1428,8 @@ def test_patterned_mode_records_true_non_eof_input_and_final_eof() -> None:
             rows = document["observations"]
             assert len(rows) == EXPECTED_OBSERVATIONS
             assert all(row["outcome"] == analyze.VERIFIED for row in rows)
-            assert all(
-                row["verifier_verdict"] == analyze.ACCEPTED for row in rows
-            )
-            assert (
-                document["study"]["id"] == target_echo_reference.PATTERNED_STUDY
-            )
+            assert all(row["verifier_verdict"] == analyze.ACCEPTED for row in rows)
+            assert document["study"]["id"] == target_echo_reference.PATTERNED_STUDY
             assert (
                 len(analyze.analyze(document)["pareto_frontiers"])
                 == PATTERNED_LEVEL_COUNT
@@ -1490,12 +1476,9 @@ def test_patterned_vm_that_ignores_input_retains_verifier_rejection(
             for row in document["observations"]
         )
         assert all(
-            ARTIFACT_BYTES not in row["metrics"]
-            for row in document["observations"]
+            ARTIFACT_BYTES not in row["metrics"] for row in document["observations"]
         )
-        assert (
-            analyze.analyze(document)["pareto_frontiers"][0]["algorithms"] == []
-        )
+        assert analyze.analyze(document)["pareto_frontiers"][0]["algorithms"] == []
     finally:
         shutil.rmtree(directory)
 
@@ -1518,16 +1501,12 @@ def test_changed_producer_pattern_fails_independent_oracle_even_if_linked(
     original_prepare = target_echo_reference._prepare_context
     directories: list[Path] = []
 
-    def capture_context(
-        emitter: Path, runner: Path
-    ) -> target_echo_reference._Context:
+    def capture_context(emitter: Path, runner: Path) -> target_echo_reference._Context:
         context = original_prepare(emitter, runner)
         directories.append(context.directory)
         return context
 
-    monkeypatch.setattr(
-        target_echo_reference, "_prepare_context", capture_context
-    )
+    monkeypatch.setattr(target_echo_reference, "_prepare_context", capture_context)
     with tempfile.TemporaryDirectory(
         dir=target_echo_reference._TEMP,
         prefix="arena-patterned-test-tools-",
@@ -1611,13 +1590,8 @@ def test_timed_independent_verifier_failure_cannot_record_verified_cost(
             runner=runner,
         )
         try:
-            outcomes = {
-                row["algorithm"]: row for row in document["observations"]
-            }
-            assert (
-                outcomes[target_echo_reference.WALK]["outcome"]
-                == analyze.VERIFIED
-            )
+            outcomes = {row["algorithm"]: row for row in document["observations"]}
+            assert outcomes[target_echo_reference.WALK]["outcome"] == analyze.VERIFIED
             assert outcomes[target_echo_reference.SKIP]["outcome"] == expected
             failed = outcomes[target_echo_reference.SKIP]
             assert failed["metrics"].keys() == {"elapsed_ns"}
@@ -1689,9 +1663,7 @@ def test_real_postexecution_source_mutation_is_independently_rejected(
                 analyze.VERIFIED,
                 analyze.VERIFIER_REJECTED,
             ]
-            assert document["observations"][1]["metrics"].keys() == {
-                "elapsed_ns"
-            }
+            assert document["observations"][1]["metrics"].keys() == {"elapsed_ns"}
             checked = target_echo_audit.audit(
                 (directory / "study.json")
                 .relative_to(target_echo_reference._ROOT)
@@ -1762,9 +1734,7 @@ def test_cli_opt_in_verifier_cost_publishes_four_objective_study(
             assert target_echo_reference.main() == 0
             output = json.loads(capsys.readouterr().out)
             relative = output["study"]
-            study = json.loads(
-                (target_echo_reference._ROOT / relative).read_text()
-            )
+            study = json.loads((target_echo_reference._ROOT / relative).read_text())
             assert study["study"]["id"] == (
                 target_echo_reference.FORWARD_REPLAY_COST_STUDY
                 if mode == target_echo_reference.REPLAY_VERIFIER_MODE
@@ -1780,9 +1750,7 @@ def test_cli_opt_in_verifier_cost_publishes_four_objective_study(
                     replay_candidates=True, emitter=emitter, runner=runner
                 ),
             )
-            assert (
-                checked["target_sources_replayed"] == SINGLE_PAIRED_TRIAL_ARMS
-            )
+            assert checked["target_sources_replayed"] == SINGLE_PAIRED_TRIAL_ARMS
         finally:
             for directory in generated:
                 shutil.rmtree(directory)
@@ -1806,9 +1774,7 @@ def test_direct_target_plan_rejects_foreign_pair_collections_before_setup(
     invalid_pairs: object,
 ) -> None:
     """Malformed collections cannot pass or crash before target setup."""
-    plan = target_echo_reference.StudyPlan(
-        cast("tuple[int, ...]", invalid_pairs), 1
-    )
+    plan = target_echo_reference.StudyPlan(cast("tuple[int, ...]", invalid_pairs), 1)
 
     def forbidden(*args: object, **kwargs: object) -> None:
         _ = (args, kwargs)
@@ -1816,9 +1782,7 @@ def test_direct_target_plan_rejects_foreign_pair_collections_before_setup(
         raise AssertionError(message)
 
     monkeypatch.setattr(target_echo_reference, "_prepare_context", forbidden)
-    with pytest.raises(
-        target_echo_reference.TargetEchoStudyError, match="exact tuple"
-    ):
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="exact tuple"):
         target_echo_reference.run_study(plan)
 
 
@@ -1968,9 +1932,7 @@ def test_invalid_plan_refuses_before_creating_study(
         raise AssertionError(message)
 
     monkeypatch.setattr(target_echo_reference, "_prepare_context", forbidden)
-    with pytest.raises(
-        target_echo_reference.TargetEchoStudyError, match="target echo"
-    ):
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="target echo"):
         target_echo_reference.run_study(plan)
 
 
@@ -2004,15 +1966,95 @@ def test_wrong_external_vm_output_retains_failed_trial_not_success(
         )
     try:
         assert all(
-            row["outcome"] == expected_outcome
-            for row in document["observations"]
+            row["outcome"] == expected_outcome for row in document["observations"]
         )
         assert all(
-            ARTIFACT_BYTES not in row["metrics"]
-            for row in document["observations"]
+            ARTIFACT_BYTES not in row["metrics"] for row in document["observations"]
         )
         report = analyze.analyze(document)
         assert report["pareto_frontiers"][0]["algorithms"] == []
         assert json.loads((directory / "study.json").read_text()) == document
     finally:
         shutil.rmtree(directory)
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [
+        target_echo_reference.TargetEchoStudyError,
+        analyze.ArenaError,
+        evidence.EvidenceError,
+        OSError,
+        sp.SubprocessError,
+        report_output.ReportOutputError,
+    ],
+)
+def test_target_reference_cli_never_formats_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """Operator failure remains typed even with a malicious error formatter."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign target reference CLI formatter executed")
+
+    foreign = type(
+        "ForeignTargetReferenceFault", (fault_type,), {"__str__": unsafe_str}
+    )
+    fault = foreign("unsafe target reference dependency error")
+
+    def fail_study(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(target_echo_reference, "run_study", fail_study)
+    monkeypatch.setattr(sys, "argv", ["target-reference", "--pairs", "1"])
+    with pytest.raises(SystemExit) as caught:
+        target_echo_reference.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert "ForeignTargetReferenceFault" in output.err
+
+
+def test_target_reference_source_audit_never_formats_foreign_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A retained source audit failure cannot execute a foreign formatter."""
+
+    class ForeignAuditFailure(target_echo_audit.TargetEchoAuditError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign target source audit formatter executed")
+
+    fault = ForeignAuditFailure("unsafe retained source fault")
+
+    def fail_audit(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_echo_audit, "audit", fail_audit)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="source admission failed"
+    ) as caught:
+        target_echo_reference._audit_retained_study(tmp_path / "study.json")
+    assert caught.value.__cause__ is fault
+    assert "ForeignAuditFailure" in str(caught.value)
+
+
+def test_target_reference_native_audit_failure_keeps_detail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An exact native audit failure retains its detail and exception cause."""
+    fault = target_echo_audit.TargetEchoAuditError("retained source mismatch")
+
+    def fail_audit(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_echo_audit, "audit", fail_audit)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="retained source mismatch"
+    ) as caught:
+        target_echo_reference._audit_retained_study(tmp_path / "study.json")
+    assert caught.value.__cause__ is fault
