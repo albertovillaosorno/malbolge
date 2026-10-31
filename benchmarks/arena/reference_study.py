@@ -717,7 +717,7 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
     # This is static admission, not a cross-process filesystem race guarantee.
     try:
         local_mode = _LOCAL.lstat().st_mode
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = "host-C reference workspace root is unavailable"
         raise ReferenceStudyError(message) from error
     if not stat.S_ISDIR(local_mode):
@@ -729,18 +729,18 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
                 dir=_LOCAL,
             )
         )
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = "host-C reference workspace allocation failed"
         raise ReferenceStudyError(message) from error
     try:
         for child in ("raw", "runs", "candidates"):
             (directory / child).mkdir()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         # Only remove our newly allocated, not-yet-measured study directory.
         # Preserve the original failure if cleanup also fails.
         try:
             shutil.rmtree(directory)
-        except OSError as cleanup_error:
+        except (OSError, ValueError, RuntimeError) as cleanup_error:
             error.add_note(f"host-C workspace cleanup also failed: {cleanup_error}")
         message = "host-C reference workspace setup failed"
         raise ReferenceStudyError(message) from error

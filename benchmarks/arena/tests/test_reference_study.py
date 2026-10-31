@@ -415,11 +415,45 @@ def test_host_reference_requires_an_existing_directory_for_output(
         reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
 
 
+@pytest.mark.parametrize("error_type", [ValueError, RuntimeError])
+def test_host_reference_types_workspace_root_inspection_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    error_type: type[Exception],
+) -> None:
+    """A host path-inspection error cannot escape the reference boundary."""
+
+    def broken_lstat(path: Path) -> None:
+        _ = path
+        message = "injected host path inspection error"
+        raise error_type(message)
+
+    def forbidden_allocate(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("failed root inspection allocated an output directory")
+
+    monkeypatch.setattr(reference_study, "_validate_plan", lambda _: None)
+    monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
+    monkeypatch.setattr(reference_study, "_LOCAL", tmp_path)
+    monkeypatch.setattr(reference_study.Path, "lstat", broken_lstat)
+    monkeypatch.setattr(reference_study.tempfile, "mkdtemp", forbidden_allocate)
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="workspace root"
+    ) as error:
+        _ = reference_study.run_study(
+            reference_study.StudyPlan(FAMILY, (4,), 7, 1)
+        )
+    assert isinstance(error.value.__cause__, error_type)
+
+
+@pytest.mark.parametrize("error_type", [OSError, ValueError, RuntimeError])
 @pytest.mark.parametrize("failed_stage", ["allocate", "raw", "runs", "candidates"])
 def test_host_reference_workspace_failures_are_typed_and_cleanup_own_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    *,
     failed_stage: str,
+    error_type: type[Exception],
 ) -> None:
     """Failed setup cannot leak host errors or an incomplete local study."""
     directory = tmp_path / "arena-host-c-study-setup"
@@ -429,7 +463,7 @@ def test_host_reference_workspace_failures_are_typed_and_cleanup_own_output(
         assert prefix == "arena-host-c-study-"
         assert dir == reference_study._LOCAL  # ruff: ignore[private-member-access]
         if failed_stage == "allocate":
-            raise OSError("injected workspace allocation failure")
+            raise error_type("injected workspace allocation failure")
         original_mkdir(directory)
         return str(directory)
 
@@ -437,7 +471,7 @@ def test_host_reference_workspace_failures_are_typed_and_cleanup_own_output(
         path: Path, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
     ) -> None:
         if path.parent == directory and path.name == failed_stage:
-            raise OSError("injected workspace child failure")
+            raise error_type("injected workspace child failure")
         original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
 
     def forbidden_measurement(*args: object, **kwargs: object) -> None:
@@ -451,8 +485,50 @@ def test_host_reference_workspace_failures_are_typed_and_cleanup_own_output(
     monkeypatch.setattr(reference_study, "_run_study", forbidden_measurement)
     with pytest.raises(reference_study.ReferenceStudyError, match="workspace") as error:
         reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
-    assert isinstance(error.value.__cause__, OSError)
+    assert isinstance(error.value.__cause__, error_type)
     assert not directory.exists()
+
+
+@pytest.mark.parametrize("cleanup_type", [ValueError, RuntimeError])
+def test_host_reference_setup_cleanup_failure_preserves_original_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cleanup_type: type[Exception],
+) -> None:
+    """Unexpected cleanup faults cannot hide the failed workspace setup."""
+    directory = tmp_path / "allocated"
+    directory.mkdir()
+
+    def fake_mkdtemp(**kwargs: object) -> str:
+        _ = kwargs
+        return str(directory)
+
+    def broken_mkdir(path: Path) -> None:
+        _ = path
+        message = "injected primary workspace creation failure"
+        raise OSError(message)
+
+    def broken_cleanup(path: Path) -> None:
+        _ = path
+        message = "injected cleanup error"
+        raise cleanup_type(message)
+
+    monkeypatch.setattr(reference_study, "_validate_plan", lambda _: None)
+    monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
+    monkeypatch.setattr(reference_study, "_LOCAL", tmp_path)
+    monkeypatch.setattr(reference_study.tempfile, "mkdtemp", fake_mkdtemp)
+    monkeypatch.setattr(reference_study.Path, "mkdir", broken_mkdir)
+    monkeypatch.setattr(reference_study.shutil, "rmtree", broken_cleanup)
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="workspace setup"
+    ) as error:
+        _ = reference_study.run_study(
+            reference_study.StudyPlan(FAMILY, (4,), 7, 1)
+        )
+    original = error.value.__cause__
+    assert isinstance(original, OSError)
+    cleanup_note = "cleanup also failed"
+    assert any(cleanup_note in note for note in original.__notes__)
 
 
 @pytest.mark.skipif(
