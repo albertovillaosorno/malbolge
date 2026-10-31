@@ -72,7 +72,7 @@ def _admit_limit(limit: int) -> None:
 def _parent_identity(path: Path) -> tuple[int, int]:
     try:
         parent = path.parent.stat()
-    except (OSError, RuntimeError) as error:
+    except Exception as error:
         message = "arena input parent directory changed"
         raise StudyFileError(message) from error
     if not stat.S_ISDIR(parent.st_mode):
@@ -110,18 +110,12 @@ def _open_study(path: Path) -> BinaryIO:
             if opened_path != expected_path:
                 _fail("arena input opened path changed")
         return os.fdopen(descriptor, "rb")
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         # fdopen has not taken ownership when path or stream admission fails.
         # Cleanup cannot replace the original reason for rejecting this file.
         try:
             os.close(descriptor)
-        except (
-            OSError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            AttributeError,
-        ):
+        except Exception:
             # Preserve the primary admission failure without invoking a
             # foreign close exception's diagnostic formatter.
             BaseException.add_note(error, "arena input descriptor cleanup also failed")
@@ -145,13 +139,7 @@ def _read_complete(stream: BinaryIO, *, size: int) -> bytes:
         requested = min(size - len(data), 1024 * 1024)
         try:
             chunk = stream.read(requested)
-        except (
-            OSError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            AttributeError,
-        ) as error:
+        except Exception as error:
             message = "arena input stream read failed"
             raise StudyFileError(message) from error
         if type(chunk) is not bytes or len(chunk) > requested:
@@ -183,10 +171,10 @@ def _read_descriptor(
                 completed = os.fstat(stream.fileno())
                 if _identity(completed) != _identity(opened):
                     _fail("arena input changed during read")
-            except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+            except Exception as error:
                 primary = error
                 raise
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         if primary is not None and error is not primary:
             BaseException.add_note(primary, "arena input stream cleanup also failed")
             error = primary
@@ -226,7 +214,7 @@ def _read_admitted_study(path: Path, *, limit: int) -> bytes:
     if original_target is not None:
         try:
             current_target = path.resolve(strict=True)
-        except (OSError, RuntimeError) as error:
+        except Exception as error:
             message = "arena input parent path changed during read"
             raise StudyFileError(message) from error
         if current_target != original_target:
@@ -255,12 +243,6 @@ def read_study_bytes(path: Path, *, limit: int) -> bytes:
         return _read_admitted_study(path, limit=limit)
     except StudyFileError:
         raise
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-    ) as error:
+    except Exception as error:
         message = "arena input path access failed"
         raise StudyFileError(message) from error

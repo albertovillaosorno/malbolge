@@ -48,6 +48,8 @@ from benchmarks.arena import analyze, evidence, study_file
 from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
+    import os
+
     from collections.abc import Iterator
     from pathlib import Path
     from typing import BinaryIO
@@ -1056,3 +1058,167 @@ def test_study_stream_constructor_failure_rejects_both_cli_routes(
             output = capsys.readouterr()
             assert not output.out
             assert "arena input stream construction failed" in output.err
+
+
+class _UnexpectedStudyError(Exception):
+    """Unexpected dependency exceptions must not require string formatting."""
+
+    def __str__(self) -> str:
+        raise AssertionError("unexpected study dependency exception formatted")
+
+
+@pytest.mark.parametrize("fault_class", [IndexError, _UnexpectedStudyError])
+def test_unexpected_stream_read_error_stays_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Unusual ordinary read failures retain their native cause and typed error."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    actual_open = study_file._open_study
+    fault = fault_class("unusual read failure")
+
+    @contextmanager
+    def faulty_open(target: Path) -> Iterator[BinaryIO]:
+        with actual_open(target) as stream:
+
+            class UnusualReader:
+                def fileno(self) -> int:
+                    return stream.fileno()
+
+                def read(self, _count: int) -> bytes:
+                    raise fault
+
+            yield cast("BinaryIO", UnusualReader())
+
+    monkeypatch.setattr(study_file, "_open_study", faulty_open)
+    with pytest.raises(study_file.StudyFileError, match="stream read failed") as caught:
+        study_file.read_study_bytes(path, limit=1024 * 1024)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("fault_class", [IndexError, _UnexpectedStudyError])
+def test_unexpected_stream_construction_closes_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected fdopen errors cannot leak a raw file descriptor."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file.os.open
+    opened: list[int] = []
+    fault = fault_class("unusual stream constructor failure")
+
+    def track_open(target: Path, flags: int) -> int:
+        descriptor = original_open(target, flags)
+        opened.append(descriptor)
+        return descriptor
+
+    def broken_fdopen(*_args: object, **_kwargs: object) -> BinaryIO:
+        raise fault
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file.os, "open", track_open)
+        context.setattr(study_file.os, "fdopen", broken_fdopen)
+        with pytest.raises(
+            study_file.StudyFileError, match="stream construction failed"
+        ) as caught:
+            study_file.read_study_bytes(path, limit=1024 * 1024)
+    assert caught.value.__cause__ is fault
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        study_file.os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("fault_class", [IndexError, _UnexpectedStudyError])
+def test_unexpected_close_preserves_primary_read_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected secondary cleanup failures cannot mask rejected study bytes."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    actual_open = study_file._open_study
+    primary = study_file.StudyFileError("primary study read rejection")
+    secondary = fault_class("secondary stream close failure")
+
+    @contextmanager
+    def broken_close(target: Path) -> Iterator[BinaryIO]:
+        try:
+            with actual_open(target) as stream:
+                yield stream
+        finally:
+            raise secondary
+
+    def broken_read(_stream: BinaryIO, *, size: int) -> bytes:
+        del size
+        raise primary
+
+    monkeypatch.setattr(study_file, "_open_study", broken_close)
+    monkeypatch.setattr(study_file, "_read_complete", broken_read)
+    with pytest.raises(study_file.StudyFileError, match="primary study") as caught:
+        study_file.read_study_bytes(path, limit=1024 * 1024)
+    assert caught.value is primary
+    assert primary.__notes__ == ["arena input stream cleanup also failed"]
+
+
+@pytest.mark.parametrize("fault_class", [IndexError, _UnexpectedStudyError])
+def test_unexpected_descriptor_close_preserves_constructor_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected raw descriptor close faults retain the primary fdopen cause."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_close = study_file.os.close
+    opened: list[int] = []
+    primary = RuntimeError("primary stream constructor error")
+    secondary = fault_class("secondary raw descriptor close failure")
+
+    def broken_fdopen(*_args: object, **_kwargs: object) -> BinaryIO:
+        raise primary
+
+    def broken_close(descriptor: int) -> None:
+        original_close(descriptor)
+        opened.append(descriptor)
+        raise secondary
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file.os, "fdopen", broken_fdopen)
+        context.setattr(study_file.os, "close", broken_close)
+        with pytest.raises(
+            study_file.StudyFileError, match="stream construction failed"
+        ) as caught:
+            study_file.read_study_bytes(path, limit=1024 * 1024)
+    assert caught.value.__cause__ is primary
+    assert primary.__notes__ == ["arena input descriptor cleanup also failed"]
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        study_file.os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("fault_class", [IndexError, _UnexpectedStudyError])
+def test_unexpected_path_stat_error_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """A failing path stat dependency cannot escape the public reader."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    fault = fault_class("unexpected path stat failure")
+
+    def broken_lstat(_path: Path) -> os.stat_result:
+        raise fault
+
+    with monkeypatch.context() as context:
+        context.setattr(type(path), "lstat", broken_lstat)
+        with pytest.raises(
+            study_file.StudyFileError, match="path access failed"
+        ) as caught:
+            study_file.read_study_bytes(path, limit=1024 * 1024)
+    assert caught.value.__cause__ is fault
