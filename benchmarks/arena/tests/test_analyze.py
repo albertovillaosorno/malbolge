@@ -1661,3 +1661,63 @@ def test_cli_preserves_exact_native_input_and_output_diagnostics(
         with pytest.raises(SystemExit, match="2"):
             analyze.main()
     assert "exact local output failure" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("boundary", "kind"),
+    [
+        ("decoder", analyze.ArenaError),
+        ("decoder", ValueError),
+        ("decoder", TypeError),
+        ("decoder", RecursionError),
+        ("study", analyze.study_file.StudyFileError),
+        ("cli", analyze.ArenaError),
+        ("cli", OSError),
+        ("cli", UnicodeError),
+        ("output", analyze.report_output.ReportOutputError),
+    ],
+)
+def test_exact_native_failure_with_foreign_argument_is_not_formatted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    boundary: str,
+    kind: type[Exception],
+) -> None:
+    """An exact exception type cannot launder caller-owned formatter hooks."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("native error invoked foreign argument formatter")
+
+    failure = kind(HostileArgument())
+
+    def fail(*_args: object, **_kwargs: object) -> Never:
+        raise failure
+
+    if boundary == "decoder":
+        monkeypatch.setattr(analyze.json, "loads", fail)
+        with pytest.raises(analyze.ArenaError, match="invalid arena JSON") as caught:
+            _ = analyze.parse_document("{}")
+        assert caught.value.__cause__ is failure
+        return
+    if boundary == "study":
+        monkeypatch.setattr(analyze.study_file, "read_study_bytes", fail)
+        with pytest.raises(analyze.ArenaError) as caught:
+            _ = analyze.read_input(cast("Path", "ignored.json"))
+        assert caught.value.__cause__ is failure
+        return
+
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(_document()), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["arena", str(path)])
+    if boundary == "cli":
+        monkeypatch.setattr(analyze, "read_input", fail)
+    else:
+        monkeypatch.setattr(analyze.report_output, "publish", fail)
+    with pytest.raises(SystemExit) as caught:
+        analyze.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert output.err.startswith("arena:")
+    assert not output.out

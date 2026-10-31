@@ -119,6 +119,22 @@ def _fail(message: str) -> Never:
     raise ArenaError(message)
 
 
+def _native_error_detail(error: Exception, *trusted: type[Exception]) -> str | None:
+    """Retain literal host diagnostics without formatting untrusted arguments."""
+    if type(error) in trusted:
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+        if (
+            type(error) in (OSError, FileNotFoundError, PermissionError)
+            and len(arguments) == 2
+            and type(arguments[0]) is int
+            and type(arguments[1]) is str
+        ):
+            return f"{type(error).__name__}: [Errno {arguments[0]}] {arguments[1]}"
+    return None
+
+
 def _mapping(value: object, keys: set[str], where: str) -> dict[str, Any]:
     if (
         type(value) is not dict
@@ -321,7 +337,7 @@ def _decode_document(text: str) -> object:
         )
     except ArenaError as error:
         # Preserve exact local hook rejections, never foreign subclasses.
-        if type(error) is ArenaError:
+        if _native_error_detail(error, ArenaError) is not None:
             raise
         message = f"invalid arena JSON: {type(error).__name__}"
         raise ArenaError(message) from error
@@ -333,9 +349,7 @@ def _decode_document(text: str) -> object:
             TypeError,
             RecursionError,
         )
-        detail = (
-            str(error) if type(error) in native_errors else type(error).__name__
-        )
+        detail = _native_error_detail(error, *native_errors) or type(error).__name__
         message = f"invalid arena JSON: {detail}"
         raise ArenaError(message) from error
 
@@ -919,9 +933,8 @@ def read_input(path: Path) -> str:
     except study_file.StudyFileError as error:
         # A foreign subclass may execute arbitrary code in its formatter.
         detail = (
-            str(error)
-            if type(error) is study_file.StudyFileError
-            else "arena study input rejected"
+            _native_error_detail(error, study_file.StudyFileError)
+            or "arena study input rejected"
         )
         raise ArenaError(detail) from error
     try:
@@ -981,19 +994,16 @@ def main() -> int:
             UnicodeDecodeError,
             UnicodeEncodeError,
         )
-        detail = (
-            str(error)
-            if type(error) in native_errors
-            else "arena input processing failed"
+        detail = _native_error_detail(error, *native_errors) or (
+            "arena input processing failed"
         )
         parser.exit(2, f"arena: {detail}\n")
     try:
         report_output.publish(report, sys.stdout)
     except report_output.ReportOutputError as error:
         detail = (
-            str(error)
-            if type(error) is report_output.ReportOutputError
-            else "arena report output failed"
+            _native_error_detail(error, report_output.ReportOutputError)
+            or "arena report output failed"
         )
         parser.exit(2, f"arena: {detail}\n")
     return 0
