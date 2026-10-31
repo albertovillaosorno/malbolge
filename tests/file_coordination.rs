@@ -272,3 +272,72 @@ fn stable_symlink_parent_allows_new_regular_lock_file() -> Result<(), String> {
     assert!(directory.join("coordinator.lock").is_file());
     Ok(())
 }
+
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "removed lock has no authority")]
+fn unlinked_path_invalidates_a_live_shared_guard() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let path = fixture.path("coordinator.lock");
+    let coordinator = Coordination::new(path.clone());
+    let guard = coordinator
+        .acquire_shared()
+        .map_err(|error| format!("shared guard: {error:?}"))?;
+    fs::remove_file(&path).map_err(|error| error.to_string())?;
+    assert!(!coordinator.matches_shared(&guard));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "symlink cannot borrow a lock guard"
+)]
+fn same_inode_symlink_substitution_invalidates_exclusive_guard() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let path = fixture.path("coordinator.lock");
+    let parked = fixture.path("parked.lock");
+    let coordinator = Coordination::new(path.clone());
+    let guard = coordinator
+        .acquire_exclusive()
+        .map_err(|error| format!("exclusive guard: {error:?}"))?;
+    fs::rename(&path, &parked).map_err(|error| error.to_string())?;
+    symlink(&parked, &path).map_err(|error| error.to_string())?;
+    assert!(!coordinator.matches_exclusive(&guard));
+    assert!(matches!(
+        coordinator.acquire_shared(),
+        Err(CoordinationError::Open { .. })
+    ));
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "parent redirect loses authority")]
+fn equal_inode_parent_symlink_replacement_invalidates_shared_guard() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let original = fixture.path("original");
+    let foreign = fixture.path("foreign");
+    let parked = fixture.path("parked");
+    #[expect(clippy::create_dir, reason = "fresh isolated fixture directories")]
+    fs::create_dir(&original).map_err(|error| error.to_string())?;
+    #[expect(clippy::create_dir, reason = "fresh isolated fixture directories")]
+    fs::create_dir(&foreign).map_err(|error| error.to_string())?;
+    let path = original.join("coordinator.lock");
+    let coordinator = Coordination::new(path.clone());
+    let guard = coordinator
+        .acquire_shared()
+        .map_err(|error| format!("shared guard: {error:?}"))?;
+    fs::hard_link(&path, foreign.join("coordinator.lock")).map_err(|error| error.to_string())?;
+    fs::rename(&original, &parked).map_err(|error| error.to_string())?;
+    symlink(&foreign, &original).map_err(|error| error.to_string())?;
+    assert!(path.is_file());
+    assert!(
+        !coordinator.matches_shared(&guard),
+        "parent redirect to same-inode hard link retained authority"
+    );
+    fs::remove_file(&original).map_err(|error| error.to_string())?;
+    fs::rename(&parked, &original).map_err(|error| error.to_string())?;
+    assert!(coordinator.matches_shared(&guard));
+    Ok(())
+}

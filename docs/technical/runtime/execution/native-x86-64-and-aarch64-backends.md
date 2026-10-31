@@ -2908,8 +2908,8 @@ configured filename has been replaced even though the guard still locks its
 original inode. Linux additionally binds the opened `/proc/self/fd` dentry to
 the currently resolved configured path, rejecting a renamed-and-relinked
 hard-link alias of the same inode. Stable symlink *parent* directories remain
-usable. Nine isolated host-real cases cover both guard types, fresh creation,
-foreign nodes and changed lock-file names. These are observed identity checks,
+usable. Twelve isolated host-real cases cover both guard types, fresh creation,
+foreign nodes, stale symlink aliases, parent redirection and unlinked paths. These are observed identity checks,
 not a transaction-wide guarantee against uncooperative namespace mutation.
 
 The guarded prelocked seam is now implemented as well. Crate-internal bounded
