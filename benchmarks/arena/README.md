@@ -636,6 +636,21 @@ Both modes are still only bounded classic I/O shapes: neither claims arbitrary
 C lowering, arbitrary guest bytecode, calibrated speedup, authenticated
 historical execution, or a physically enforced study-wide RAM quota.
 
+The target producer's direct Python API admits only an exact `StudyPlan`
+with an exact tuple of bounded integer difficulties and canonical option
+values before native setup or study publication. Optional `emitter` and
+`runner` overrides must be native `Path` objects, not foreign path wrappers
+or subclasses that can redirect filesystem access. Its read-only auditor
+also rejects foreign `AuditOptions`, nonboolean replay/provenance/RSS opt-ins,
+and non-native executable paths before opening retained study files.
+
+The target producer, audit, replay and resource regression fixtures use
+private copies of the built compiler/VM tools. Hardlinks to the shared build
+inodes could change their ctime as concurrent tests created or removed links,
+causing a false executable-identity drift failure. The fixtures preserve
+strict production tool identity and replay checks without sharing that
+mutable inode metadata.
+
 New studies retain `study.json`, actual raw graphical `candidates/*.malbolge`,
 one per-attempt `arena-raw-v1` CSV and versioned experiment-run TOML, under a
 unique Git-ignored `.temp/arena-target-echo-*/` directory. Their raw-byte
