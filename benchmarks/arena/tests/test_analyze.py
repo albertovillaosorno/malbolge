@@ -1772,6 +1772,89 @@ def test_cli_rejects_unanticipated_analysis_dependency_faults_without_json(
     assert not result.out
 
 
+@pytest.mark.parametrize(
+    "foreign_bytes", [None, "{}", object(), bytearray(b"{}"), True]
+)
+def test_direct_input_reader_rejects_nonnative_byte_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign_bytes: object,
+) -> None:
+    """A substitute bounded reader cannot launder nonbytes into trusted JSON."""
+    monkeypatch.setattr(
+        analyze.study_file,
+        "read_study_bytes",
+        lambda *_args, **_kwargs: foreign_bytes,
+    )
+    with pytest.raises(analyze.ArenaError, match="nonnative bytes"):
+        analyze.read_input(cast("Path", "ignored.json"))
+
+
+def test_direct_input_reader_does_not_dispatch_foreign_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bytes subclass must not fake an admitted source through decode()."""
+
+    class ForgedBytes(bytes):  # ruff: ignore[subclass-builtin]
+        def decode(self, *_args: object, **_kwargs: object) -> str:
+            raise AssertionError("foreign source decoder invoked")
+
+    monkeypatch.setattr(
+        analyze.study_file,
+        "read_study_bytes",
+        lambda *_args, **_kwargs: ForgedBytes(b"{}"),
+    )
+    with pytest.raises(analyze.ArenaError, match="nonnative bytes"):
+        analyze.read_input(cast("Path", "ignored.json"))
+
+
+def test_direct_input_reader_rejects_oversized_dependency_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even a substituted reader cannot enlarge the public byte budget."""
+    monkeypatch.setattr(
+        analyze.study_file,
+        "read_study_bytes",
+        lambda *_args, **_kwargs: b" " * (analyze.MAX_INPUT_BYTES + 1),
+    )
+    with pytest.raises(analyze.ArenaError, match="exceeds 16 MiB"):
+        analyze.read_input(cast("Path", "ignored.json"))
+
+
+def test_late_recheck_rejects_foreign_source_without_comparing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source subclass cannot falsely certify a changed file with __ne__."""
+
+    class ForgedOriginal(str):  # ruff: ignore[subclass-builtin]
+        def __ne__(self, _other: object) -> bool:
+            raise AssertionError("foreign late-source comparison invoked")
+
+    def forbidden_read(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("foreign original reached file admission")
+
+    monkeypatch.setattr(analyze, "read_input", forbidden_read)
+    with pytest.raises(analyze.ArenaError, match="exact native source text"):
+        analyze.require_unchanged_study_input(
+            cast("Path", "ignored.json"), ForgedOriginal("source")
+        )
+
+
+def test_late_recheck_rejects_forged_equality_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller-defined comparison must never suppress observed source drift."""
+
+    class ForgedOriginal(str):  # ruff: ignore[subclass-builtin]
+        def __ne__(self, _other: object) -> bool:
+            return False
+
+    monkeypatch.setattr(analyze, "read_input", lambda _path: "changed")
+    with pytest.raises(analyze.ArenaError, match="exact native source text"):
+        analyze.require_unchanged_study_input(
+            cast("Path", "ignored.json"), ForgedOriginal("original")
+        )
+
+
 @pytest.mark.parametrize("fault_type", [IndexError, Exception])
 def test_direct_input_reader_types_unanticipated_dependency_fault(
     monkeypatch: pytest.MonkeyPatch,

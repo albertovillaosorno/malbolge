@@ -938,6 +938,13 @@ def read_input(path: Path) -> str:
             or "arena study input rejected"
         )
         raise ArenaError(detail) from error
+    # The lower-level reader guarantees exact bytes and a bounded length,
+    # but its public receipt must be checked before calling .decode(): a
+    # substituted dependency can otherwise forge text or run foreign hooks.
+    if type(data) is not bytes:
+        _fail("arena study reader returned nonnative bytes")
+    if len(data) > MAX_INPUT_BYTES:
+        _fail("arena study input exceeds 16 MiB limit")
     try:
         return data.decode("utf-8")
     except UnicodeError as error:
@@ -952,6 +959,8 @@ def require_unchanged_study_input(path: Path, original: str) -> None:
         ArenaError: The retained path no longer has the original bytes.
 
     """
+    if type(original) is not str:
+        _fail("arena late recheck requires exact native source text")
     if read_input(path) != original:
         raise ArenaError("arena study input changed after initial admission")
 
