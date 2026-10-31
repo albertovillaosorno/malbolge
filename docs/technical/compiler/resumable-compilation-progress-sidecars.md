@@ -133,7 +133,9 @@ inode at the canonical generation pathname before and after the bounded raw
 read, with the same device/inode identity. Foreign aliases present at entry or
 introduced after byte collection reject even when the SHA-256 would match;
 replacing the generation inode with a byte-identical file after the raw read
-also rejects. The mutable progress-pointer reader is not subject to this
+also rejects.
+
+The mutable progress-pointer reader is not subject to this
 immutable-generation link-count policy. These checks cannot prevent writes
 through an already-open descriptor or filesystem changes after final admission.
 Descriptor read errors remain primary if stream close also fails; close-only
@@ -184,27 +186,37 @@ they require the temporary pathname to remain a regular, non-symlink entry
 with the same device, inode, exact expected byte length, and **one hard link**.
 This prevents a staged inode already accessible through another pathname from
 becoming a published pointer or checkpoint that can later be mutated through
-its alias. Both writers reopen that temporary through a nonfollowing,
+its alias.
+
+Both writers reopen that temporary through a nonfollowing,
 nonblocking descriptor, check stable pathname/inode and modification timestamps,
 and independently SHA-256
 compare the complete staged bytes against the original payload using raw reads
 capped at 64 KiB each. This catches a same-inode, same-length rewrite that
 previously passed inode/size admission, while keeping opaque checkpoint size
 unbounded and peak *additional* verification buffering independent of payload
-length. A short read or a changed inode/time also rejects. Substituting a
+length.
+
+A short read or a changed inode/time also rejects. Substituting a
 regular file, a symlink, or truncating the original inode still fails before
-publication in both paths. On rejection, cleanup removes only the original
+publication in both paths.
+
+On rejection, cleanup removes only the original
 staging inode once its identity has been admitted. If another regular file or
 symlink replaces the staging pathname, the foreign entry survives rather than
-being unlinked by a failed publication. A failed initial descriptor admission
+being unlinked by a failed publication.
+
+A failed initial descriptor admission
 still uses best-effort pathname cleanup because no verified inode was captured;
 like all path-based cleanup, the identity recheck and unlink are not one atomic
 filesystem operation. Neither publication path claims protection from a
 substitution precisely between its final cleanup identity check and unlink.
+
 Regular-inode and single-hard-link admission is repeated before reopening,
 after hashing on the open descriptor, and after reader closure. Deterministic
 POSIX tests insert a hard-link alias at each boundary, including between hash
 completion and the final pathname check; none may publish the aliased inode.
+
 After mutable pointer replacement and durability sync, the writer also checks
 that its committed path still resolves to the previously staged regular inode,
 with the expected size and exactly one hard link. The pointer additionally
@@ -212,12 +224,15 @@ receives a bounded post-publication raw read against its exact canonical bytes,
 with device/inode and link-count re-admission after that read. This closes the
 observed same-inode, same-size byte-rewrite window between staging verification
 and atomic replacement/durability confirmation, including a rewrite to a
-*different but still valid* progress JSON object. A late alias, identical-byte
-inode replacement, or changed pointer content no longer reports success: the
-writer returns the exact path with `ProgressSidecarCommittedError`. This costs
+*different but still valid* progress JSON object.
+
+A late alias, identical-byte inode replacement, or changed pointer content no
+longer reports success: the writer returns the exact path with
+`ProgressSidecarCommittedError`. This costs
 an extra read of at most the already enforced 1 MiB pointer wire budget. It is
 a diagnostic admission rather than rollback, and cannot prevent filesystem
 mutation after its final check.
+
 The immutable POSIX publisher's intentional no-replace hard link happens only
 after these staging checks and is cleaned up when staging completes. After
 successfully confirming directory durability and removing the temporary entry,
@@ -225,12 +240,15 @@ the immutable writer now re-admits the published path as a regular single-link
 inode and compares its device/inode with the one recorded directly after the
 no-replace publication or collision reuse. It additionally repeats the staged
 content SHA-256 comparison using the existing 64 KiB raw-read chunk budget,
-without a second checkpoint-sized allocation. A foreign alias, byte-identical
-inode replacement, or same-inode/same-length *content* rewrite after staging
+without a second checkpoint-sized allocation.
+
+A foreign alias, byte-identical inode replacement, or same-inode/same-length
+*content* rewrite after staging
 now fails before a successful return. Because this occurs after the committed
 generation, any rejection reports `ProgressSidecarCommittedError` with its exact
 published member path, never claiming that a filesystem change was undone.
 Generation publication stops before the mutable pointer on that failure.
+
 The additional verification costs another complete opaque checkpoint read;
 this is still a bounded observation, not protection against writes after the
 final check or via another open descriptor.
@@ -871,6 +889,7 @@ these selectors once a product C-to-Malbolge pipeline exists.
   inode before and after this read, with stable device/inode identity. This
   rejects pre-existing or newly linked foreign aliases even when bytes match,
   so byte-identical collision reuse cannot certify externally mutable state.
+
   The immutable publisher also retains the exact fsynced staging inode on a
   new no-replace publication, or the admitted collision inode on reuse. Its
   first post-publication pathname stat must still identify that inode; an
@@ -878,6 +897,7 @@ these selectors once a product C-to-Malbolge pipeline exists.
   durability or final-verification baseline. An observed swap fails with
   committed-path evidence and cannot publish a new progress pointer. This
   check does not promise an atomic snapshot against adversarial later writes.
+
   One narrow recovery case preserves post-commit cleanup failure semantics: if
   the collision has exactly two links, and the extra link is the sole
   same-inode sibling matching the writer's temporary naming convention, the
@@ -888,18 +908,22 @@ these selectors once a product C-to-Malbolge pipeline exists.
   regular-inode admission immediately before unlink to reject an unrelated
   replacement inserted after the full alias check, leaving that foreign entry
   untouched; this remains subject to a final pathname check-to-unlink race.
+
   A mismatched, oversized, or concurrently rewritten collision leaves the
   suspected alias untouched; a
   foreign alias without that narrow recovery path remains rejected. Recovery
   scans escape the destination's literal filename before applying the suffix
   wildcard: `?`, `*`, and `[` in a valid POSIX filename cannot match unrelated
-  siblings and cause their hard links to be removed. Furthermore, recovery
-  accepts only the eight-character lowercase/digit/underscore temporary token
+  siblings and cause their hard links to be removed.
+
+  Furthermore, recovery accepts only the eight-character
+  lowercase/digit/underscore temporary token
   format emitted by the pinned Python 3.14 `mkstemp`, not arbitrary
   temporary-looking suffixes. Legitimate retained aliases for these literal
   filenames remain recoverable. The token is only an accidental-match guard,
   not proof that a same-pattern entry was created by this writer; an adversary
   with directory-write access and the expected spelling can still forge it.
+
   If the destination disappears or becomes unreadable during the collision
   check, publication fails with the stable sidecar error rather than leaking
   a raw filesystem exception. These checks remain subject to post-admission

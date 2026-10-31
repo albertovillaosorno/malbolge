@@ -6132,7 +6132,9 @@ def test_immutable_rejects_same_byte_swap_immediately_after_publication(
         return admitted
 
     with monkeypatch.context() as context:
-        context.setattr(progress, "_publish_immutable_payload", publish_then_swap)
+        context.setattr(
+            progress, "_publish_immutable_payload", publish_then_swap
+        )
         with pytest.raises(
             progress.ProgressSidecarCommittedError,
             match="committed but published inode",
@@ -6507,8 +6509,12 @@ def test_progress_cleanup_preserves_foreign_staging_replacement(
             if kind == TEMP_MUTABLE:
                 _ = progress.write_atomic(sidecar)
             else:
-                writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
-                _ = writer(destination, b"expected-checkpoint", platform=os.name)
+                writer = cast(
+                    "ImmutableWriter", vars(progress)["_write_immutable"]
+                )
+                _ = writer(
+                    destination, b"expected-checkpoint", platform=os.name
+                )
 
     assert not destination.exists()
     assert len(replaced_path) == 1
@@ -8507,7 +8513,7 @@ def test_write_atomic_revalidates_stale_candidate_after_lock(
     )
     with writer_lock(fixture.destination):
         # jig-ignore-next-line: Ruff suppression is indivisible
-        contender = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
+        child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
             [
                 sys.executable,
                 "-c",
@@ -8523,13 +8529,13 @@ def test_write_atomic_revalidates_stale_candidate_after_lock(
         try:
             _wait_for_signal(fixture.attempted)
             time.sleep(0.2)
-            assert contender.poll() is None
+            assert child.poll() is None
             _ = write_bytes(fixture.destination, progress.encode(fixture.newer))
         except BaseException:
-            _terminate_child(contender)
+            _terminate_child(child)
             raise
-    stdout, stderr = contender.communicate(timeout=10)
-    assert contender.returncode == STALE_WRITER_EXIT, (stdout, stderr)
+    stdout, stderr = child.communicate(timeout=10)
+    assert child.returncode == STALE_WRITER_EXIT, (stdout, stderr)
     assert MOVED_BACKWARD in stderr
     assert progress.read(fixture.destination) == fixture.newer
 
