@@ -246,6 +246,43 @@ def test_direct_bundle_rejects_unhashable_identity_fields(
         challenge_bundles.verify_bundle(case, PROFILE, files)
 
 
+class _HostileVersion:
+    """A non-JSON version can execute its formatting hook during rejection."""
+
+    def __str__(self) -> str:
+        message = "caller-owned version formatting executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("version", _HostileVersion()),
+        ("version", True),
+        ("version", 1.0),
+        ("seed", True),
+        ("seed", 7.0),
+    ],
+    ids=[
+        "hostile-version",
+        "boolean-version",
+        "floating-version",
+        "boolean-seed",
+        "floating-seed",
+    ],
+)
+def test_direct_bundle_rejects_foreign_numeric_identity_before_generation(
+    field: str, invalid: object,
+) -> None:
+    """Only exact JSON integers can reach the generator's identity checks."""
+    case, files = _direct_bundle()
+    case[field] = invalid
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="challenge"
+    ):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
 @pytest.mark.parametrize(
     ("member", "limit"),
     [

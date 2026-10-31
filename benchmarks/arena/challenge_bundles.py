@@ -71,6 +71,8 @@ def _bounded_case(case: dict[str, Any]) -> None:
         or type(case["workload_sha256"]) is not str
     ):
         _fail("challenge replay requires string identity fields")
+    if type(case["version"]) is not int or type(case["seed"]) is not int:
+        _fail("challenge replay requires integer identity fields")
     nodes = case["difficulty"]
     if type(nodes) is not int or nodes < 1:
         _fail("challenge replay requires positive integer nodes")
