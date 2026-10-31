@@ -75,6 +75,42 @@ def test_publication_rejects_foreign_or_aliased_inputs() -> None:
     assert aliased.value.errno == errno.EINVAL
 
 
+@pytest.mark.parametrize(
+    "paths",
+    [
+        (Path("staging\x00suffix"), Path("destination")),
+        (Path("staging"), Path("destination\x00suffix")),
+    ],
+)
+@pytest.mark.parametrize(
+    "host",
+    [("posix", _LINUX_PLATFORM), (_WINDOWS_OS_NAME, "win32")],
+)
+def test_nul_paths_fail_before_any_rename(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    paths: tuple[Path, Path],
+    host: tuple[str, str],
+) -> None:
+    """A C ABI must not truncate embedded NUL pathnames before publication."""
+    staging, destination = paths
+    os_name, platform = host
+    calls: list[tuple[Path, Path]] = []
+
+    def record_rename(source: Path, target: Path) -> Path:
+        calls.append((source, target))
+        return target
+
+    monkeypatch.setattr(Path, "rename", record_rename)
+    monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
+    with pytest.raises(OSError, match="NUL") as invalid:
+        publication.publish_directory_no_replace(
+            staging, destination, os_name=os_name, platform=platform
+        )
+    assert invalid.value.errno == errno.EINVAL
+    assert not calls
+
+
 def test_windows_route_uses_path_rename(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

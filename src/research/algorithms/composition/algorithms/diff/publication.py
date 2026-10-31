@@ -48,6 +48,7 @@ _WINDOWS_OS_NAME: Final = "nt"
 _LINUX_PLATFORM: Final = "linux"
 _AT_FDCWD: Final = -100
 _RENAME_NOREPLACE: Final = 1
+_NUL: Final = "\x00"
 
 
 class _RenameAt2(Protocol):
@@ -106,6 +107,12 @@ def _validate_publication_inputs(
         raise OSError(
             errno.EINVAL,
             "directory publication paths must use pathlib Path",
+        )
+    if _NUL in str(staging) or _NUL in str(destination):
+        raise OSError(
+            errno.EINVAL,
+            "directory publication paths must not contain NUL bytes",
+            destination,
         )
     if type(os_name) is not str or type(platform) is not str:
         raise OSError(
