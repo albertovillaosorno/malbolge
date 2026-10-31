@@ -2109,7 +2109,9 @@ def _open_regular_writer_lock(lock_path: Path) -> _LockStream:
 
     """
     context = "progress writer lock"
-    if lock_path.exists() and not stat.S_ISREG(lock_path.stat().st_mode):
+    if lock_path.exists() and not stat.S_ISREG(
+        _admit_native_stat(lock_path.stat(), context).st_mode
+    ):
         _fail(f"{context} must be a regular file")
     flags = os.O_RDWR | os.O_CREAT | os.O_APPEND
     flags |= cast("int", getattr(os, "O_NONBLOCK", 0))
@@ -2118,7 +2120,7 @@ def _open_regular_writer_lock(lock_path: Path) -> _LockStream:
     # Persistent coordination files must not request broad access or execute.
     descriptor = os.open(lock_path, flags, 0o600)
     try:
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        if not stat.S_ISREG(_admit_native_stat(os.fstat(descriptor), context).st_mode):
             _fail(f"{context} must be a regular file")
         return FileIO(descriptor, "r+b", closefd=True)
     except BaseException as error:
@@ -2196,8 +2198,10 @@ def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
     """Reject a linked or replaced lock after acquiring serialization."""
     _reject_path_redirect(lock_path, "progress writer lock")
     try:
-        opened = os.fstat(stream.fileno())
-        current = lock_path.stat(follow_symlinks=False)
+        opened = _admit_native_stat(os.fstat(stream.fileno()), "progress writer lock")
+        current = _admit_native_stat(
+            lock_path.stat(follow_symlinks=False), "progress writer lock"
+        )
     except (OSError, ValueError, RuntimeError) as error:
         _fail(f"progress writer lock identity cannot be verified: {_host_error_detail(error)}")
     if (

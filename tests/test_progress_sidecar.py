@@ -3850,6 +3850,69 @@ def test_writer_lock_identity_probe_failure_is_typed(
         assert not destination.exists()
 
 
+@pytest.mark.parametrize(
+    "source",
+    ["preflight_path", "opened_descriptor", "acquired_descriptor", "acquired_path"],
+)
+def test_writer_lock_rejects_foreign_inode_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+) -> None:
+    """A foreign lock stat result must never authorize serialization."""
+    destination = tmp_path / PROGRESS_NAME
+    lock_path = Path(f"{destination}.lock")
+    _ = lock_path.write_bytes(b"")
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+    original_stat = Path.stat
+    original_fstat = os.fstat
+    path_receipts = 0
+    descriptor_receipts = 0
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign lock metadata accessed: {field}")
+
+    def forged_path_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal path_receipts
+        if path == lock_path:
+            if source == "preflight_path" and follow_symlinks:
+                path_receipts += 1
+                return cast("os.stat_result", cast("object", ForeignStat()))
+            if source == "acquired_path" and not follow_symlinks:
+                path_receipts += 1
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    def forged_descriptor_stat(descriptor: int) -> os.stat_result:
+        nonlocal descriptor_receipts
+        native = original_fstat(descriptor)
+        if stat.S_ISREG(native.st_mode):
+            descriptor_receipts += 1
+            expected = 1 if source == "opened_descriptor" else 2
+            if descriptor_receipts == expected:
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return native
+
+    with monkeypatch.context() as context:
+        if source.endswith("descriptor"):
+            context.setattr(os, "fstat", forged_descriptor_stat)
+        else:
+            context.setattr(Path, "stat", forged_path_stat)
+        with (
+            pytest.raises(ERROR, match="native os.stat_result"),
+            writer_lock(destination),
+        ):
+            pytest.fail("foreign lock metadata was accepted")
+    assert not destination.exists()
+    if source.endswith("descriptor"):
+        assert descriptor_receipts == (1 if source == "opened_descriptor" else 2)
+    else:
+        assert path_receipts >= 1
+
+
 def test_writer_lock_rejects_replaced_inode_after_acquisition(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

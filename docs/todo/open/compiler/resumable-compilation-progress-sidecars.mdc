@@ -597,6 +597,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   receipts with typed uncertain-durability errors and exact committed paths;
   unrelated checkpoint metadata and final artifacts remain unchanged.
 
+  Process-shared writer locks now require native stat results across the
+  existing path preflight, opened descriptor and acquired inode identity.
+  Four adversarial lock fixtures prove every foreign receipt rejects before
+  its fields are accessed, without advancing publication or altering
+  positive native locking behavior.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact

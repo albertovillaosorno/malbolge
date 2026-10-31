@@ -69,6 +69,12 @@ may authorize an immutable-generation no-replace collision and its subsequent
 byte-verified reuse. Foreign subclasses of either exception fail closed, even
 when a matching generation inode already exists.
 
+Process-shared progress writer locks now reject nonnative stat metadata on
+pre-existing lock pathname preflight, the opened lock descriptor, and both
+pathname/descriptor identity checks after lock acquisition. A foreign receipt
+fails before its attributes can run or the lock can authorize publication;
+positive native lock ownership and post-staging rechecks remain mandatory.
+
 Progress writers also require native `os.stat_result` for the initially
 created staging descriptor and each staged pathname/descriptor size and inode
 check. Foreign receipts reject before property access and before mutable or
