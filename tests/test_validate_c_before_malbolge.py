@@ -36,11 +36,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from pathlib import Path
 
 import pytest
+
+from scripts.validate import validate_c_before_malbolge as preflight
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (
@@ -117,3 +119,64 @@ def test_preflight_rejects_ambient_host_header(tmp_path: Path) -> None:
     assert PRE_DIAGNOSTIC in completed.stderr
     assert HOST_HEADER in completed.stderr
     assert NOT_FOUND in completed.stderr
+
+
+@pytest.mark.parametrize("redirect", ("leaf", "nested-directory", "root"))
+def test_recursive_doom_rejects_redirected_sources(
+    redirect: str, tmp_path: Path
+) -> None:
+    """Recursive doom selection must not leave its explicitly chosen tree."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    _ = (doom / "plain.c").write_text("int plain;\n", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "other.c").write_text("int outside;\n", encoding="utf-8")
+    if redirect == "leaf":
+        (doom / "alias.c").symlink_to(outside / "other.c")
+    elif redirect == "nested-directory":
+        (doom / "alias").symlink_to(outside, target_is_directory=True)
+    else:
+        _ = doom.rename(tmp_path / "saved")
+        doom.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(preflight.ValidationInputError, match="redirect"):
+        _ = preflight._validated_files([str(doom)])  # pyright: ignore[reportPrivateUsage]
+
+
+def test_explicit_source_alias_and_physical_doom_nesting_remain_supported(
+    tmp_path: Path,
+) -> None:
+    """Only recursive discovery prohibits links, not explicit C file paths."""
+    source = tmp_path / "actual.c"
+    _ = source.write_text("int actual;\n", encoding="utf-8")
+    alias = tmp_path / "alias.c"
+    alias.symlink_to(source)
+    assert preflight._validated_files([str(alias)]) == (source,)  # pyright: ignore[reportPrivateUsage]
+
+    nested = tmp_path / "doom" / "src"
+    nested.mkdir(parents=True)
+    child = nested / "child.c"
+    _ = child.write_text("int child;\n", encoding="utf-8")
+    assert preflight._validated_files([str(tmp_path / "doom")]) == (child,)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_recursive_doom_cli_reports_configuration_error(
+    tmp_path: Path,
+) -> None:
+    """A redirected recursive input fails before invoking any Clang tool."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    outside = tmp_path / "outside.c"
+    _ = outside.write_text("int outside;\n", encoding="utf-8")
+    (doom / "alias.c").symlink_to(outside)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true] - exact validator argv.
+        [sys.executable, str(SCRIPT), "--preflight-only", str(doom)],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        encoding="utf-8",
+        shell=False,
+    )
+    assert completed.returncode == preflight.CONFIGURATION_ERROR
+    assert "recursive doom entry must not redirect" in completed.stderr
+    assert not completed.stdout

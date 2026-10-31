@@ -40,9 +40,9 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from pathlib import Path
 from typing import Never
 
 if __package__ in {None, ""}:
@@ -50,9 +50,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(composition_root))
 
 from scripts.repository_root import repository_root
-from scripts.validate import c_abi
-from scripts.validate import c_abi_source
-from scripts.validate import c_libc
+from scripts.validate import c_abi, c_abi_source, c_libc
 from scripts.validate import main as guest_validator
 
 ROOT = repository_root(Path(__file__))
@@ -137,13 +135,15 @@ def _parse_arguments() -> _Arguments:
 def _expand_directory(path: Path) -> tuple[Path, ...]:
     if path.name.casefold() != DOOM_DIRECTORY:
         _fail(f"only an explicitly named doom directory is recursive: {path}")
-    files = tuple(
-        sorted(
-            candidate.resolve()
-            for candidate in path.rglob("*")
-            if candidate.is_file() and candidate.suffix.casefold() == C_SUFFIX
-        )
-    )
+    if path.is_symlink() or path.is_junction():
+        _fail(f"recursive doom directory must not redirect: {path}")
+    sources: list[Path] = []
+    for candidate in path.rglob("*"):
+        if candidate.is_symlink() or candidate.is_junction():
+            _fail(f"recursive doom entry must not redirect: {candidate}")
+        if candidate.is_file() and candidate.suffix.casefold() == C_SUFFIX:
+            sources.append(candidate.resolve())
+    files = tuple(sorted(sources))
     if not files:
         _fail(f"doom directory contains no C translation units: {path}")
     return files
@@ -165,9 +165,7 @@ def _expand_input(raw: str) -> tuple[Path, ...]:
 
 
 def _validated_files(raw_inputs: list[str]) -> tuple[Path, ...]:
-    expanded = (
-        source for raw in raw_inputs for source in _expand_input(raw)
-    )
+    expanded = (source for raw in raw_inputs for source in _expand_input(raw))
     files = tuple(dict.fromkeys(expanded))
     if not files:
         _fail("no C translation units were selected")
@@ -262,11 +260,13 @@ def _strict_preflight(
     for source in sources:
         completed = _tool_output(strict_clang_command(source, abi))
         if completed.returncode != 0:
-            message = " ".join((
-                f"{source}: error:",
-                "MALBOLGE-PRE-001",
-                "deterministic pre-lowering Clang validation failed\n",
-            ))
+            message = " ".join(
+                (
+                    f"{source}: error:",
+                    "MALBOLGE-PRE-001",
+                    "deterministic pre-lowering Clang validation failed\n",
+                )
+            )
             _ = sys.stderr.write(message)
             _write_tool_output(completed)
             status = 1
@@ -285,9 +285,7 @@ def _canonical_validator(sources: tuple[Path, ...]) -> int:
 
 
 def _success_message(label: str, count: int) -> None:
-    _ = sys.stdout.write(
-        f"{label}: {count} translation unit(s)\n"
-    )
+    _ = sys.stdout.write(f"{label}: {count} translation unit(s)\n")
 
 
 def _run_validation(arguments: _Arguments) -> int:

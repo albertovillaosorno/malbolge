@@ -43,6 +43,13 @@ clang-tidy policy to the existing manual validator. This is early rejection
 evidence only; it does not claim that every surviving translation unit can
 already lower through the incomplete typed-IR/compiler pipeline.
 
+Recursive discovery is reserved for an explicitly selected `doom` directory.
+This convenience rejects linked or junction directory roots and descendants
+before admitting C sources, rather than following an alias outside the chosen
+tree or silently skipping linked subdirectories. Explicit single-file C input
+retains caller-selected path alias compatibility. These checks are not an
+atomic source snapshot against subsequent filesystem changes.
+
 ## Invariants
 
 - Every accepted fixture compiles successfully for its declared profile, and
