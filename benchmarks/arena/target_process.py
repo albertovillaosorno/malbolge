@@ -196,7 +196,11 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
     # Never signal an unrelated process: each child owns a fresh session.
     group_error: Exception | None = None
     try:
-        os.kill(-child.pid, GROUP_KILL_SIGNAL)
+        signal_receipt: object = os.kill(-child.pid, GROUP_KILL_SIGNAL)
+        if signal_receipt is not None:
+            group_error = TargetProcessError(
+                "bounded target cleanup has invalid group signal receipt"
+            )
     except ProcessLookupError as error:
         # Only the native kernel ESRCH exception proves group absence.
         # A foreign subclass must not forge a successful cleanup receipt.
@@ -209,6 +213,7 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
     # A refused group signal must not skip direct-child termination and reap.
     direct_error: Exception | None = None
     invalid_poll = False
+    invalid_kill = False
     try:
         polled = child.poll()
         invalid_poll = polled is not None and type(polled) is not int
@@ -216,7 +221,8 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
         # Reap the child even when the poll receipt itself must be rejected.
         if polled is None or invalid_poll:
             try:
-                child.kill()
+                kill_receipt: object = child.kill()
+                invalid_kill = kill_receipt is not None
             except ProcessLookupError as error:
                 if type(error) is not ProcessLookupError:
                     raise
@@ -234,6 +240,10 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
     if invalid_poll and direct_error is None:
         direct_error = TargetProcessError(
             "bounded target child cleanup has invalid poll receipt"
+        )
+    if invalid_kill and direct_error is None:
+        direct_error = TargetProcessError(
+            "bounded target child cleanup has invalid kill receipt"
         )
     if group_error is not None:
         if direct_error is not None:

@@ -126,6 +126,67 @@ def test_group_cleanup_signal_error_is_typed_after_child_exit(
     assert isinstance(error.value.__cause__, PermissionError)
 
 
+@pytest.mark.parametrize("invalid", [False, True, 0, b"sent"])
+def test_foreign_group_signal_acknowledgement_cannot_claim_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """Only native os.kill's void result can confirm group signaling."""
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> int:
+            events.append("poll")
+            return 0
+
+        def wait(self) -> int:
+            events.append("wait")
+            return 0
+
+    def forged_group_acknowledgement(_group: int, _signal: int) -> object:
+        events.append("group")
+        return invalid
+
+    monkeypatch.setattr(target_process.os, "kill", forged_group_acknowledgement)
+    with pytest.raises(target_process.TargetProcessError, match="group signal"):
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert events == ["group", "poll", "wait"]
+
+
+@pytest.mark.parametrize("invalid", [False, True, 0, b"sent"])
+def test_foreign_direct_kill_acknowledgement_cannot_claim_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """An invalid child.kill receipt still permits direct reaping."""
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> object:
+            events.append("kill")
+            return invalid
+
+        def wait(self) -> int:
+            events.append("wait")
+            return 0
+
+    monkeypatch.setattr(target_process.os, "kill", lambda *_args: None)
+    with pytest.raises(target_process.TargetProcessError, match="kill"):
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert events == ["poll", "kill", "wait"]
+
+
 @pytest.mark.parametrize("invalid", [False, True, "exited", 0.0])
 def test_foreign_child_poll_receipt_cannot_skip_direct_cleanup(
     monkeypatch: pytest.MonkeyPatch,
