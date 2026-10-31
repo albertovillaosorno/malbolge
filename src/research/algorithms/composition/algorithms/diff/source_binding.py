@@ -697,6 +697,18 @@ def _validate_binding_extent(binding: ThresholdBinding) -> None:
         raise SourceBindingError(message)
 
 
+def _require_possible_share_paths(source_paths: set[str]) -> None:
+    if any(
+        parent.as_posix() in source_paths
+        for path in source_paths
+        for parent in PurePosixPath(path).parents
+    ):
+        message = (
+            "source-binding share paths contain an ancestor/descendant overlap"
+        )
+        raise SourceBindingError(message)
+
+
 def _validate_binding_shares(binding: ThresholdBinding) -> None:
     x_values: set[int] = set()
     anchor_keys: set[tuple[str, bytes]] = set()
@@ -713,6 +725,7 @@ def _validate_binding_shares(binding: ThresholdBinding) -> None:
         x_values.add(share.x)
         anchor_keys.add(anchor_key)
         source_paths.add(share.source_path)
+    _require_possible_share_paths(source_paths)
     if binding.minimum_anchor_files > len(source_paths):
         message = (
             "source-binding minimum anchor files exceeds represented files"

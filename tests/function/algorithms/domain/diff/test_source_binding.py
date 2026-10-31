@@ -393,6 +393,30 @@ def test_recovery_rejects_malformed_binding_before_candidate_use() -> None:
             _ = recover_secret(candidate, cast("IdentityTree", object()))
 
 
+def test_recovery_rejects_impossible_share_file_topology() -> None:
+    """A file cannot also be the ancestor directory of another bound file."""
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    first, second = binding.shares[:2]
+    for first_path, second_path in (
+        (first.source_path, f"{first.source_path}/child.c"),
+        (f"{second.source_path}/parent.c", second.source_path),
+    ):
+        malformed = replace(
+            binding,
+            shares=(
+                replace(first, source_path=first_path),
+                replace(second, source_path=second_path),
+                *binding.shares[2:],
+            ),
+        )
+        with pytest.raises(SourceBindingError, match="ancestor/descendant"):
+            _ = validate_threshold_binding(malformed)
+        with pytest.raises(SourceBindingError, match="ancestor/descendant"):
+            _ = recover_secret(malformed, cast("IdentityTree", object()))
+
+
 def test_recovery_rejects_malformed_share_metadata() -> None:
     """Every serialized share is canonical even when enough peers remain."""
     reference = _reference()
