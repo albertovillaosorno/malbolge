@@ -391,7 +391,7 @@ def _registered_count(section: dict[str, Any], name: str) -> int:
 
 def _quality_digest(extension: dict[str, Any]) -> None:
     value = extension["quality_map_sha256"]
-    if not isinstance(value, str) or len(value) != analyze.SHA256_HEX_LENGTH:
+    if type(value) is not str or len(value) != analyze.SHA256_HEX_LENGTH:
         _fail("historical quality-map fingerprint is not SHA-256")
     if not set(value) <= HEX_DIGITS:
         _fail("historical quality-map fingerprint is not lowercase SHA-256")

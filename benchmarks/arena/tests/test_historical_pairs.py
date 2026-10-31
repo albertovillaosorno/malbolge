@@ -135,6 +135,27 @@ def test_historical_source_rejects_oversized_reader_receipt_before_hash(
         historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
 
 
+def test_historical_quality_digest_rejects_foreign_string_before_hooks() -> None:
+    """Source-reported digest validation cannot invoke subclass iterators."""
+
+    class ForgedDigest(str):
+        def __len__(self) -> int:
+            pytest.fail("historical digest subclass length hook executed")
+
+        def __iter__(self) -> Iterator[str]:
+            pytest.fail("historical digest subclass iteration executed")
+
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="not SHA-256"
+    ):
+        historical_pairs._quality_digest({"quality_map_sha256": ForgedDigest("0" * 64)})
+
+
+def test_historical_quality_digest_accepts_native_lowercase_sha256() -> None:
+    """Native lowercase identity remains accepted without a parser shortcut."""
+    historical_pairs._quality_digest({"quality_map_sha256": "c" * 64})
+
+
 def test_historical_source_preserves_native_bounded_bytes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
