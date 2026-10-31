@@ -1624,6 +1624,12 @@ behavior.
   when a held shared/exclusive guard is rechecked. Two red-first fixtures
   prove failure for preexisting foreign aliases and late link additions;
   Windows and adversarial races after the identity check remain outside this
-  Unix evidence. Temporal retention scheduling, non-filesystem coordination,
+  Unix evidence. A Rust 1.98.1 cross-target check for
+  `x86_64-pc-windows-gnu --test file_coordination` separately exposes
+  `E0658 windows_by_handle` in the existing Windows `MetadataExt` lock-identity
+  calls. That Rust adapter is not yet Windows-cross-build evidence; the pinned
+  Windows C worker/COFF checks are separate and unaffected. A stable, verified
+  Windows lock-identity implementation remains open; no unstable feature flag
+  was introduced. Temporal retention scheduling, non-filesystem coordination,
   broader platform execution evidence, and broader end-to-end tier performance
   policy remain open.

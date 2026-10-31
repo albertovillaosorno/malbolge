@@ -3230,6 +3230,14 @@ before admitting either shared or exclusive guards. A red-first regression
 rejects foreign linked-inode lock acquisition and late hard-link additions to
 already-held guards; this is local pathname/inode admission, not distributed
 coordination or proof against mutation after the final identity check.
+A pinned-Rust 1.98.1 cross-target check,
+`cargo check --target x86_64-pc-windows-gnu --test file_coordination`,
+currently fails with `E0658 windows_by_handle` for the pre-existing Windows
+`MetadataExt::volume_serial_number()`/`file_index()` calls in `fs_coord/main.rs`.
+Those Rust lock-identity paths are not Windows-cross-build evidence; the
+separately cross-compiled Windows C worker and COFF artifacts are unaffected. Windows
+metadata identity needs a stable, independently verified implementation before
+host-real coordination tests can be admitted. No unstable feature was enabled.
 Temporal retention scheduling and non-filesystem coordination remain separate.
 
 Concrete same-process native memory/runner integration and broader end-to-end
