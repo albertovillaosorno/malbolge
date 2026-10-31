@@ -36,8 +36,9 @@
 //! Profile-driven trace conformance for current scalable Malbolge.
 
 use malbolge::{
-    ProfileMachine, ProfileMachineError, ProfileStepTrace, RunOutcome,
-    StepOutcome, Termination, TraceInput, current_profile,
+    ProfileMachine, ProfileMachineError, ProfileMemoryDelta,
+    ProfileMemoryWrite, ProfileStepTrace, RunOutcome, StepOutcome, Termination,
+    TraceInput, current_profile,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -249,4 +250,40 @@ fn current_rejected_jump_trace_is_observationally_atomic() -> TestResult {
         &before_target,
         "current rejection preserves jump target",
     )
+}
+
+#[test]
+fn profile_memory_delta_counts_distinct_addresses() -> TestResult {
+    // Profile-width changes count addresses, not independently named roles.
+    let data = ProfileMemoryWrite {
+        address: 15,
+        before: 0,
+        after: 1,
+    };
+    let same_cell = ProfileMemoryWrite {
+        address: data.address,
+        after: 2,
+        ..data
+    };
+    let different_cell = ProfileMemoryWrite { address: 16, ..data };
+    for (data_write, encryption, expected, context) in [
+        (None, None, 0usize, "profile empty memory delta"),
+        (Some(data), None, 1, "profile data-only delta"),
+        (None, Some(data), 1, "profile encryption-only delta"),
+        (Some(data), Some(same_cell), 1, "profile same-address roles"),
+        (
+            Some(data),
+            Some(different_cell),
+            2,
+            "profile distinct roles",
+        ),
+    ] {
+        let actual = ProfileMemoryDelta {
+            data: data_write,
+            encryption,
+        }
+        .changed_cells();
+        check_equal(&actual, &expected, context)?;
+    }
+    Ok(())
 }

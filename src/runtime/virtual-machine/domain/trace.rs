@@ -62,15 +62,15 @@ impl MemoryDelta {
     /// Returns the number of distinct memory cells changed by this step.
     #[must_use]
     pub const fn changed_cells(self) -> usize {
-        let data = match self.data {
-            Some(_write) => 1usize,
-            None => 0usize,
-        };
-        let encryption = match self.encryption {
-            Some(_write) => 1usize,
-            None => 0usize,
-        };
-        data.saturating_add(encryption)
+        match (self.data, self.encryption) {
+            (None, None) => 0,
+            (Some(data), Some(encryption))
+                if data.address.value() != encryption.address.value() =>
+            {
+                2
+            },
+            _ => 1,
+        }
     }
 }
 

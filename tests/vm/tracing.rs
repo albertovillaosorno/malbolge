@@ -34,8 +34,9 @@
 //! Trace-hook conformance for the classic VM.
 
 use malbolge::{
-    InterpreterUndefinedBehavior, Machine, MachineError, Memory, Registers,
-    RunOutcome, StepOutcome, StepTrace, Termination, TraceInput, Word,
+    InterpreterUndefinedBehavior, Machine, MachineError, Memory, MemoryDelta,
+    MemoryWrite, Registers, RunOutcome, StepOutcome, StepTrace, Termination,
+    TraceInput, Word,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -228,4 +229,43 @@ fn non_graphical_non_progress_is_traced_without_decode() -> TestResult {
         &None,
         "trace preserves live interpreter state",
     )
+}
+
+#[test]
+fn classic_memory_delta_counts_distinct_addresses() -> TestResult {
+    // Two role entries for one address represent one changed memory cell.
+    let data = MemoryWrite {
+        address: Word::from_byte(1),
+        before: Word::ZERO,
+        after: Word::from_byte(2),
+    };
+    let same_cell = MemoryWrite {
+        address: data.address,
+        before: data.before,
+        after: Word::from_byte(3),
+    };
+    let different_cell = MemoryWrite {
+        address: Word::from_byte(4),
+        ..data
+    };
+    for (data_write, encryption, expected, context) in [
+        (None, None, 0usize, "classic empty memory delta"),
+        (Some(data), None, 1, "classic data-only delta"),
+        (None, Some(data), 1, "classic encryption-only delta"),
+        (Some(data), Some(same_cell), 1, "classic same-address roles"),
+        (
+            Some(data),
+            Some(different_cell),
+            2,
+            "classic distinct roles",
+        ),
+    ] {
+        let actual = MemoryDelta {
+            data: data_write,
+            encryption,
+        }
+        .changed_cells();
+        check_equal(&actual, &expected, context)?;
+    }
+    Ok(())
 }
