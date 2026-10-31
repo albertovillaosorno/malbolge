@@ -2782,6 +2782,8 @@ def _matches_retained_immutable_stage(
 
     """
     name = entry.name
+    if type(name) is not str:
+        return False
     if not (
         name.startswith(prefix)
         and name.endswith(".tmp")

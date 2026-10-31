@@ -645,6 +645,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   Two more red-first alias-discovery probes reject native
   `TypeError`/`AttributeError` directory-entry stat failures without
   admitting unverified retained-stage ownership.
+  Two further red-first retained-alias filename probes reject foreign string
+  subclasses or non-string objects before their comparison hooks can certify
+  any same-inode staging alias; only exact native names are eligible.
   Three red-first post-generation pointer-preflight cases retain the last
   durable member and original native `OSError`, `TypeError`, or
   `AttributeError` cause when final pointer admission cannot finish.

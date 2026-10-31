@@ -324,7 +324,9 @@ its stream-close failure stays secondary when acquisition already failed.
 Retained-immutable-stage alias discovery also treats unusual native
 `DirEntry.stat` exceptions as unverified entries. It never infers alias
 ownership from a failed probe; existing hard-link admission still blocks
-uncertain collisions from being reused as immutable payloads.
+uncertain collisions from being reused as immutable payloads. An entry whose
+filename is not an exact native string is ignored before prefix or token
+matching, so foreign string subclasses cannot certify staging ownership.
 After all immutable checkpoint-generation members commit, an unexpected
 `OSError`, `TypeError`, or `AttributeError` from final pointer preflight is
 reported as a committed-generation error. The exact last durable member path

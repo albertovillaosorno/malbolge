@@ -7552,6 +7552,43 @@ def test_retained_alias_scan_rejects_failed_entry_stat(
     assert matcher(entry, ".checkpoint.", (1, 2)) is False
 
 
+@pytest.mark.parametrize("foreign_kind", ["str-subclass", "foreign-object"])
+def test_retained_alias_scan_rejects_foreign_filename_receipt(
+    foreign_kind: str,
+) -> None:
+    """A forged entry name never establishes ownership of a staging alias."""
+    matcher = cast(
+        "Callable[[os.DirEntry[str], str, tuple[int, int]], bool]",
+        vars(progress)["_matches_retained_immutable_stage"],
+    )
+    inspected: list[bool] = []
+
+    class SpoofedName(str):
+        pass
+
+    class ForeignName:
+        def startswith(self, prefix: str) -> object:
+            del prefix
+            raise AssertionError("foreign filename method executed")
+
+    class ForgedEntry:
+        name: object = (
+            SpoofedName(".checkpoint.abcdefgh.tmp")
+            if foreign_kind == "str-subclass"
+            else ForeignName()
+        )
+
+        @staticmethod
+        def stat(*, follow_symlinks: bool = True) -> os.stat_result:
+            assert not follow_symlinks
+            inspected.append(True)
+            return os.stat_result((stat.S_IFREG | 0o600, 1, 2, 1, 0, 0, 0, 0, 0, 0))
+
+    entry = cast("os.DirEntry[str]", cast("object", ForgedEntry()))
+    assert matcher(entry, ".checkpoint.", (2, 1)) is False
+    assert inspected == []
+
+
 def test_retained_alias_scan_rejects_foreign_entry_stat() -> None:
     """An untrusted directory entry cannot authenticate a retained stage."""
     matcher = cast(
