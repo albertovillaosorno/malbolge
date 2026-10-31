@@ -309,7 +309,7 @@ def _read_bound_file(path: Path, context: str) -> bytes:
                 raise
 
 
-def _read_file_bytes(path: Path, context: str) -> bytes:
+def read_exact_regular_file(path: Path, context: str) -> bytes:
     """Read from an admitted regular inode, never an opened FIFO or link.
 
     Returns:
@@ -347,7 +347,7 @@ def _record_file(root: Path, path: Path) -> FileRecord | None:
         raise ExactTreeError(message)
     relative = path.relative_to(root).as_posix()
     relative_path = _validate_relative_path(relative)
-    data = _read_file_bytes(path, "tree entry")
+    data = read_exact_regular_file(path, "tree entry")
     return FileRecord(path=relative_path, sha256=_sha256(data), size=len(data))
 
 
@@ -421,7 +421,7 @@ def _source_paths_by_content(
 def _tree_bytes(root: Path, relative_path: str) -> bytes:
     relative = PurePosixPath(relative_path)
     path = root.joinpath(*relative.parts)
-    return _read_file_bytes(path, "tree file")
+    return read_exact_regular_file(path, "tree file")
 
 
 def _oracle_bytes(oracle_root: Path, target_record: FileRecord) -> bytes:
@@ -697,7 +697,7 @@ def _instruction_bytes(
         message = "source-backed instruction lost its source path"
         raise ExactTreeError(message)
     source_path = _safe_tree_path(source_root, instruction.source_path)
-    source = _read_file_bytes(source_path, "instruction source")
+    source = read_exact_regular_file(source_path, "instruction source")
     if instruction.kind is ExactInstructionKind.COPY_SOURCE:
         return source
     return _patch_bytes(source, instruction.segments)
@@ -774,7 +774,7 @@ def _prepare_staging(output_root: Path) -> Path:
 
 
 def _copy_passthrough_file(source: Path, target: Path) -> None:
-    data = _read_file_bytes(source, "passthrough file")
+    data = read_exact_regular_file(source, "passthrough file")
     _write_output_file(target, data, "passthrough output")
 
 

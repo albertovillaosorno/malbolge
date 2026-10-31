@@ -74,6 +74,12 @@ protected
 plan AAD, so transform metadata cannot silently widen the dynamic-input
 boundary.
 
+The exact generator also replays source-binding identity with this admitted
+regular-descriptor reader and verifies each replayed file against the original
+path-sorted plan snapshot by byte length and SHA-256 before emitting. A source
+mutation after planning cannot silently bind a transform to different bytes;
+these checks still require external writer coordination for non-atomic races.
+
 `ExactAuthoringPlan` is intentionally non-distributable. Its target-only literal
 segments are local generator state. `protect_exact_plan()` moves those bytes
 into

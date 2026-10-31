@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import hashlib
 import math
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -47,6 +48,7 @@ from algorithms.diff.domain import load_diff_domain
 from algorithms.diff.emit_rust import write_rust_transform
 from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import build_exact_plan
+from algorithms.diff.exact import read_exact_regular_file
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinEvidence
@@ -56,6 +58,8 @@ _MAX_SHARES = 255
 
 if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityTree
+    from algorithms.diff.model import FileRecord
+    from algorithms.diff.model import TreeSnapshot
 
 
 class TransformMode(StrEnum):
@@ -212,24 +216,25 @@ def _validate_recipe(recipe: DiffRecipe) -> None:
     _validate_binding_policy(recipe)
 
 
-def _read_exact_identity_file(path: Path, relative: str) -> bytes:
-    try:
-        return path.read_bytes()
-    except OSError as error:
-        message = f"exact source identity read failed: {relative}: {error}"
-        raise ExactTreeError(message) from error
+def _read_exact_identity_file(path: Path, record: FileRecord) -> bytes:
+    replay = read_exact_regular_file(path, "exact source identity")
+    if len(replay) != record.size or hashlib.sha256(replay).hexdigest() != (
+        record.sha256
+    ):
+        message = f"exact source identity changed after planning: {record.path}"
+        raise ExactTreeError(message)
+    return replay
 
 
 def _raw_exact_identity(
     recipe: DiffRecipe,
-    source_paths: tuple[str, ...],
+    source: TreeSnapshot,
 ) -> IdentityTree:
     files = {
-        relative: _read_exact_identity_file(
-            recipe.source_root / relative,
-            relative,
+        record.path: _read_exact_identity_file(
+            recipe.source_root / record.path, record
         )
-        for relative in source_paths
+        for record in source.files
     }
     return identity_tree(files)
 
@@ -240,8 +245,7 @@ def _write_exact_algorithm(recipe: DiffRecipe) -> None:
         recipe.oracle_root,
         passthrough_roots=recipe.passthrough_roots,
     )
-    source_paths = tuple(record.path for record in exact.source.files)
-    identity = _raw_exact_identity(recipe, source_paths)
+    identity = _raw_exact_identity(recipe, exact.source)
     policy = SourceBindingPolicy(
         threshold_fraction=recipe.source_binding_threshold,
         maximum_anchors=recipe.source_binding_maximum_anchors,

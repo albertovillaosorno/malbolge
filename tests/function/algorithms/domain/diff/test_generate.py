@@ -36,16 +36,24 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
-from pathlib import Path
+import os
+from typing import TYPE_CHECKING
 from typing import cast
 
+from algorithms.diff import generate as generate_module
 from algorithms.diff.domain import DomainContractError
 from algorithms.diff.exact import ExactTreeError
+from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.generate import DiffGeneratorUnavailableError
 from algorithms.diff.generate import DiffRecipe
 from algorithms.diff.generate import TransformMode
 from algorithms.diff.generate import write_algorithm
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from algorithms.diff.model import ExactAuthoringPlan
 
 _BLOCKS = 48
 _STD_MARKER = b"use std::"
@@ -251,22 +259,96 @@ def test_exact_identity_second_read_failure_stays_in_exact_boundary(
     """A source-binding identity reread cannot leak a host I/O exception."""
     recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
     blocked = recipe.source_root / "b.bin"
-    original_read = Path.read_bytes
+    original_open = os.open
+    attempts = 0
 
-    def fail_identity_read(path: Path) -> bytes:
-        if path == blocked:
-            message = "blocked exact identity reread"
-            raise PermissionError(message)
-        return original_read(path)
+    def fail_identity_open(
+        file: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal attempts
+        if os.fspath(file) == os.fspath(blocked):
+            attempts += 1
+            if attempts > 1:
+                message = "blocked exact identity reread"
+                raise PermissionError(message)
+        return original_open(file, flags, mode, dir_fd=dir_fd)
 
-    # Tree admission now uses descriptor reads; identity replay uses this API.
-    monkeypatch.setattr(Path, "read_bytes", fail_identity_read)
+    monkeypatch.setattr(os, "open", fail_identity_open)
     with pytest.raises(ExactTreeError, match="source identity read failed"):
         write_algorithm(recipe)
     _expect(
         not recipe.output_algorithm.exists(),
         "failed identity wrote output",
     )
+
+
+def test_exact_generator_rejects_source_rewrite_after_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A changed post-plan source cannot become the bound input identity."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    original_build = build_exact_plan
+    mutated = False
+
+    def mutate_after_plan(
+        source_root: Path,
+        oracle_root: Path,
+        *,
+        passthrough_roots: tuple[str, ...] = (),
+    ) -> ExactAuthoringPlan:
+        nonlocal mutated
+        plan = original_build(
+            source_root, oracle_root, passthrough_roots=passthrough_roots
+        )
+        _ = (source_root / "b.bin").write_bytes(_blocks("changed"))
+        mutated = True
+        return plan
+
+    monkeypatch.setattr(generate_module, "build_exact_plan", mutate_after_plan)
+    with pytest.raises(ExactTreeError, match="source identity changed"):
+        write_algorithm(recipe)
+    _expect(mutated, "post-plan mutation was not exercised")
+    _expect(not recipe.output_algorithm.exists(), "changed source was emitted")
+
+
+def test_exact_generator_rejects_linked_source_identity_after_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A linked replay is not source identity even if its bytes are equal."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    source_file = recipe.source_root / "b.bin"
+    foreign = tmp_path / "foreign.bin"
+    _ = foreign.write_bytes(source_file.read_bytes())
+    original_build = build_exact_plan
+    mutated = False
+
+    def replace_after_plan(
+        source_root: Path,
+        oracle_root: Path,
+        *,
+        passthrough_roots: tuple[str, ...] = (),
+    ) -> ExactAuthoringPlan:
+        nonlocal mutated
+        plan = original_build(
+            source_root, oracle_root, passthrough_roots=passthrough_roots
+        )
+        source_file.unlink()
+        try:
+            source_file.symlink_to(foreign)
+        except OSError:
+            pytest.skip("source symlink fixtures unavailable")
+        mutated = True
+        return plan
+
+    monkeypatch.setattr(generate_module, "build_exact_plan", replace_after_plan)
+    with pytest.raises(ExactTreeError, match="source identity read failed"):
+        write_algorithm(recipe)
+    _expect(mutated, "post-plan symlink mutation was not exercised")
+    _expect(not recipe.output_algorithm.exists(), "linked source was emitted")
 
 
 def test_exact_mode_runs_domain_preflight_with_passthrough(
