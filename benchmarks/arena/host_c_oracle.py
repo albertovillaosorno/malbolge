@@ -142,8 +142,42 @@ def resource_controls_record() -> dict[str, str | int]:
 
 
 def _system_tool(name: str) -> str | None:
-    """Resolve OS-provided child tools without a caller-controlled PATH."""
-    return shutil.which(name, path=SYSTEM_TOOL_SEARCH_PATH)
+    """Admit a real executable selected outside the caller's PATH.
+
+    A malformed resolver result must not turn resource-limited native replay
+    into a child launch with an unverified limiter or RSS measurement utility.
+    """
+    try:
+        resolved = shutil.which(name, path=SYSTEM_TOOL_SEARCH_PATH)
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = f"host-C resource tool lookup failed: {name}"
+        raise HostOracleError(message) from error
+    if resolved is None:
+        return None
+    if (
+        type(resolved) is not str
+        or not resolved
+        or "\0" in resolved
+        or not Path(resolved).is_absolute()
+    ):
+        _fail(f"host-C resource tool has invalid executable path: {name}")
+    try:
+        _ = os.fsencode(resolved)
+        mode = Path(resolved).lstat().st_mode
+        executable = os.access(resolved, os.X_OK)
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        UnicodeError,
+    ) as error:
+        message = f"host-C resource tool path inspection failed: {name}"
+        raise HostOracleError(message) from error
+    if not stat.S_ISREG(mode) or not executable:
+        _fail(f"host-C resource tool is not a physical executable: {name}")
+    return resolved
 
 
 def _limited_command(command: list[str]) -> list[str]:

@@ -747,6 +747,85 @@ def test_host_child_missing_limit_tool_fails_closed(
         host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "limits")
 
 
+@pytest.mark.parametrize("tool", ["prlimit", "time"])
+@pytest.mark.parametrize(
+    "response",
+    ["", "relative/bin", "bad\0name", 17, False, b"/bin/time"],
+    ids=["empty", "relative", "nul", "integer", "bool", "bytes"],
+)
+def test_host_c_resource_preflight_rejects_noncanonical_resolver_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+    response: object,
+) -> None:
+    """Untrusted resolver results cannot authorize unbounded native replay."""
+    original = host_c_oracle.shutil.which
+
+    def forged(name: str, *, path: str | None = None) -> str | None:
+        if name == tool:
+            return cast("str", response)
+        return original(name, path=path)
+
+    monkeypatch.setattr(host_c_oracle.shutil, "which", forged)
+    with pytest.raises(host_c_oracle.HostOracleError, match=tool):
+        host_c_oracle.require_child_resource_controls()
+
+
+@pytest.mark.parametrize("tool", ["prlimit", "time"])
+@pytest.mark.parametrize(
+    "failure", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_host_c_resource_preflight_types_resolver_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+    failure: type[Exception],
+) -> None:
+    """A broken resolver is a typed preflight failure, never a raw exception."""
+    original = host_c_oracle.shutil.which
+
+    def broken(name: str, *, path: str | None = None) -> str | None:
+        if name == tool:
+            raise failure("host resolver unavailable")
+        return original(name, path=path)
+
+    monkeypatch.setattr(host_c_oracle.shutil, "which", broken)
+    with pytest.raises(host_c_oracle.HostOracleError, match=tool) as caught:
+        host_c_oracle.require_child_resource_controls()
+    assert isinstance(caught.value.__cause__, failure)
+
+
+@pytest.mark.parametrize("tool", ["prlimit", "time"])
+@pytest.mark.parametrize("kind", ["missing", "directory", "nonexecutable", "symlink"])
+def test_host_c_resource_preflight_requires_physical_executable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+    kind: str,
+) -> None:
+    """Host tool must be an existing physical executable, not an unsafe path."""
+    original = host_c_oracle.shutil.which
+    path = tmp_path / "host-tool"
+    if kind == "directory":
+        path.mkdir()
+    elif kind == "nonexecutable":
+        _ = path.write_bytes(b"not executable")
+        path.chmod(0o600)
+    elif kind == "symlink":
+        target = tmp_path / "regular"
+        _ = target.write_bytes(b"#!/bin/sh\nexit 0\n")
+        target.chmod(0o700)
+        path.symlink_to(target)
+
+    def forged(name: str, *, path: str | None = None) -> str | None:
+        if name == tool:
+            return str(tmp_path / "host-tool")
+        return original(name, path=path)
+
+    monkeypatch.setattr(host_c_oracle.shutil, "which", forged)
+    with pytest.raises(host_c_oracle.HostOracleError, match=tool):
+        host_c_oracle.require_child_resource_controls()
+
+
 def test_host_child_nonzero_exit_fails_closed(tmp_path: Path) -> None:
     """Child failures remain distinct from passing oracle checks."""
     with pytest.raises(host_c_oracle.HostOracleError, match="failed"):
