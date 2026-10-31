@@ -41,6 +41,8 @@ import os
 from pathlib import Path
 import tarfile
 from typing import TYPE_CHECKING
+from typing import cast
+import zipfile
 
 import pytest
 from scripts.bootstrap import cuda_validation
@@ -535,3 +537,105 @@ def test_provision_completion_marker_rejects_redirected_parent(
             LINUX_PLATFORM,
             downloader=_download_fixture(payload),
         )
+
+
+_BAD_WRITE_RESULTS = ("short", "overlong", "boolean", "missing")
+_TAR_FORMAT = "tar"
+_ZIP_FORMAT = "zip"
+_ZIP_PACKAGE_PATH = "cuda_nvrtc/linux-x86_64/cuda_nvrtc-fixture.zip"
+
+
+def _bad_write_count(kind: str, expected: int) -> int:
+    """Simulate an invalid host byte write result.
+
+    Returns:
+        A short, overstated, boolean, or missing count.
+
+    """
+    results: dict[str, object] = {
+        "short": expected - 1,
+        "overlong": expected + 1,
+        "boolean": True,
+        "missing": None,
+    }
+    return cast("int", results[kind])
+
+
+def _zip_payload() -> bytes:
+    """Build a matching synthetic NVIDIA zip archive.
+
+    Returns:
+        An in-memory archive containing both required library members.
+
+    """
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, mode="w") as archive:
+        archive.writestr(NVRTC_MEMBER, NVRTC_BYTES)
+        archive.writestr(BUILTINS_MEMBER, BUILTINS_BYTES)
+    return stream.getvalue()
+
+
+def _inject_short_write(
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+    invalid_count: str,
+) -> None:
+    real_write = Path.write_bytes
+
+    def wrong_write(path: Path, data: bytes) -> int:
+        if path.name == filename:
+            _ = real_write(path, data[:-1])
+            return _bad_write_count(invalid_count, len(data))
+        return real_write(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", wrong_write)
+
+
+@pytest.mark.parametrize("invalid_count", list(_BAD_WRITE_RESULTS))
+@pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
+def test_package_extraction_rejects_incomplete_member_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    invalid_count: str,
+    archive_format: str,
+) -> None:
+    """Neither tar nor zip archive members may report incomplete writes."""
+    is_tar = archive_format == _TAR_FORMAT
+    payload = _payload() if is_tar else _zip_payload()
+    path = PACKAGE_PATH if is_tar else _ZIP_PACKAGE_PATH
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path,
+        _manifest(tmp_path, payload, {"relative_path": path}),
+        LINUX_PLATFORM,
+    ).packages[0]
+    _inject_short_write(monkeypatch, "libnvrtc.so.13", invalid_count)
+    destination = tmp_path / "toolkit"
+    with pytest.raises(cuda_validation.CudaProvisionError, match="write count"):
+        cuda_validation.extract_cuda_package(
+            payload, package, destination, staging=tmp_path / "staging"
+        )
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("invalid_count", list(_BAD_WRITE_RESULTS))
+def test_provision_rejects_incomplete_toolkit_marker_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_count: str,
+) -> None:
+    """A toolkit must not publish when its marker write is incomplete."""
+    payload = _payload()
+    manifest_path = _manifest(tmp_path, payload)
+    _inject_short_write(
+        monkeypatch, cuda_validation.CUDA_PROVISION_MARKER, invalid_count
+    )
+    with pytest.raises(cuda_validation.CudaProvisionError, match="write count"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest_path,
+            LINUX_PLATFORM,
+            downloader=_download_fixture(payload),
+        )
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+    assert not (tmp_path / ".temp/cuda-provision-linux-x86_64").exists()

@@ -400,6 +400,13 @@ def _tar_members(
     return root_name, members
 
 
+def _write_verified_bytes(path: Path, payload: bytes) -> None:
+    """Reject incomplete archive or marker writes before toolkit publication."""
+    written = path.write_bytes(payload)
+    if type(written) is not int or written != len(payload):
+        _fail(f"CUDA staging write count mismatch: {path.name}")
+
+
 def _write_tar_member(
     archive: tarfile.TarFile,
     member: tarfile.TarInfo,
@@ -420,7 +427,7 @@ def _write_tar_member(
     if source is None:
         _fail(f"CUDA archive member is not readable: {member.name}")
     with source:
-        _ = destination.write_bytes(source.read())
+        _write_verified_bytes(destination, source.read())
 
 
 def _extract_tar_archive(archive: tarfile.TarFile, staging: Path) -> Path:
@@ -451,7 +458,7 @@ def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
             destination.mkdir(parents=True, exist_ok=True)
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
-        _ = destination.write_bytes(archive.read(info))
+        _write_verified_bytes(destination, archive.read(info))
     extracted = staging / root_name
     if not extracted.is_dir():
         _fail("CUDA archive package root is not a directory")
@@ -579,8 +586,8 @@ def provision_cuda_manifest(
                 staged_toolkit,
                 staging=package_staging,
             )
-        _ = (staged_toolkit / CUDA_PROVISION_MARKER).write_bytes(
-            _marker_bytes(manifest)
+        _write_verified_bytes(
+            staged_toolkit / CUDA_PROVISION_MARKER, _marker_bytes(manifest)
         )
         manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
         _ = staged_toolkit.replace(manifest.toolkit_root)
