@@ -51,6 +51,8 @@ format.
   Boolean numeric aliases, mutable collection substitutes, and foreign records
   fail through the owning domain boundary. Compatible mappers and postconditions
   also keep exceptions and foreign return records inside that boundary.
+  Compatible instruction/correction paths and provenance-pin roots reject
+  Windows drive-prefixed labels before they can influence a consumer path.
 - The exact authoring planner/materializer reconstructs deterministic byte
   trees,
   reuses whole source files and source spans, and publishes only after full

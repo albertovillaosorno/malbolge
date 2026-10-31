@@ -71,8 +71,11 @@ All implemented public metadata boundaries now admit exact runtime types before
 using them as evidence or touching output. Numeric thresholds and counts reject
 boolean aliases. Identity trees, anchors, behavior observations, probe programs,
 provenance pins, mapped and semantic edits, exact, relocatable, and compatible
-plans, and source-bound shares require immutable exact records. Cryptographic
-key, nonce, plaintext, AAD, and payload fields require exact bytes. Invalid
+plans, and source-bound shares require immutable exact records. Compatible
+instruction/correction paths and selected provenance-pin roots additionally
+reject Windows drive-absolute and drive-relative labels at construction, before
+consumer tree access. Cryptographic key, nonce, plaintext, AAD, and payload
+fields require exact bytes. Invalid
 direct Python construction fails through the owning domain error rather than
 relying on coercion or leaking `TypeError`, `AttributeError`, or
 
