@@ -2773,7 +2773,11 @@ _RETAINED_STAGING_TOKEN = re.compile(r"[a-z0-9_]{8}")
 
 
 def _matches_retained_immutable_stage(
-    entry: os.DirEntry[str], prefix: str, identity: tuple[int, int]
+    entry: os.DirEntry[str],
+    prefix: str,
+    identity: tuple[int, int],
+    *,
+    name: str | None = None,
 ) -> bool:
     """Check one literal-pattern, regular, same-inode staging entry.
 
@@ -2781,7 +2785,8 @@ def _matches_retained_immutable_stage(
         Whether this entry is a candidate retained alias.
 
     """
-    name = entry.name
+    if name is None:
+        name = entry.name
     if type(name) is not str:
         return False
     if not (
@@ -2819,8 +2824,13 @@ def _find_retained_immutable_stage(
         for count, entry in enumerate(entries, start=1):
             if count > _MAX_RETAINED_STAGING_DIRECTORY_ENTRIES:
                 _fail("immutable staging alias directory scan exceeds budget")
-            if _matches_retained_immutable_stage(entry, raw_prefix, identity):
-                matches.append(destination.parent / entry.name)
+            name = entry.name
+            if type(name) is not str:
+                continue
+            if _matches_retained_immutable_stage(
+                entry, raw_prefix, identity, name=name
+            ):
+                matches.append(destination.parent / name)
     return matches[0] if len(matches) == 1 else None
 
 

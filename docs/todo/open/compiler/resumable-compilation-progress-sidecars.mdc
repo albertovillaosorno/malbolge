@@ -648,6 +648,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   Two further red-first retained-alias filename probes reject foreign string
   subclasses or non-string objects before their comparison hooks can certify
   any same-inode staging alias; only exact native names are eligible.
+  An additional red-first alias-discovery test proves a changing directory
+  entry name cannot redirect recovery to another pathname after matching;
+  the single admitted filename now binds both matching and cleanup.
   Three red-first post-generation pointer-preflight cases retain the last
   durable member and original native `OSError`, `TypeError`, or
   `AttributeError` cause when final pointer admission cannot finish.

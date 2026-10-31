@@ -327,6 +327,9 @@ ownership from a failed probe; existing hard-link admission still blocks
 uncertain collisions from being reused as immutable payloads. An entry whose
 filename is not an exact native string is ignored before prefix or token
 matching, so foreign string subclasses cannot certify staging ownership.
+The scan captures each native filename once and uses that exact value for
+both pattern admission and the returned cleanup pathname. A mutable or
+forged directory-entry name cannot redirect cleanup after the inode probe.
 After all immutable checkpoint-generation members commit, an unexpected
 `OSError`, `TypeError`, or `AttributeError` from final pointer preflight is
 reported as a committed-generation error. The exact last durable member path

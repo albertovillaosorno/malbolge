@@ -7589,6 +7589,52 @@ def test_retained_alias_scan_rejects_foreign_filename_receipt(
     assert inspected == []
 
 
+def test_retained_alias_scan_uses_the_admitted_filename_only_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing an untrusted entry name cannot redirect recovery cleanup."""
+    finder = cast(
+        "Callable[[Path, tuple[int, int]], Path | None]",
+        vars(progress)["_find_retained_immutable_stage"],
+    )
+    destination = tmp_path / "checkpoint"
+    matching_name = ".checkpoint.abcdefgh.tmp"
+    foreign_name = "unrelated-user-hardlink"
+    name_reads = 0
+
+    class ChangingEntry:
+        @property
+        def name(self) -> str:
+            nonlocal name_reads
+            name_reads += 1
+            return matching_name if name_reads == 1 else foreign_name
+
+        @staticmethod
+        def stat(*, follow_symlinks: bool = True) -> os.stat_result:
+            assert not follow_symlinks
+            return os.stat_result((stat.S_IFREG | 0o600, 1, 2, 1, 0, 0, 0, 0, 0, 0))
+
+    class Scan:
+        def __enter__(self) -> tuple[ChangingEntry]:
+            return (ChangingEntry(),)
+
+        def __exit__(
+            self, exception: object, value: object, traceback: object
+        ) -> None:
+            del exception, value, traceback
+
+    def fake_scandir(directory: Path) -> Scan:
+        assert directory == tmp_path
+        return Scan()
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "scandir", fake_scandir)
+        retained = finder(destination, (2, 1))
+    assert retained == tmp_path / matching_name
+    assert name_reads == 1
+
+
 def test_retained_alias_scan_rejects_foreign_entry_stat() -> None:
     """An untrusted directory entry cannot authenticate a retained stage."""
     matcher = cast(
