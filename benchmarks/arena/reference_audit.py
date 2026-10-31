@@ -38,6 +38,7 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from dataclasses import dataclass
@@ -432,6 +433,20 @@ def _require_git_commit(commit: str) -> None:
     except UnicodeError as error:
         message = "host-C source commit admission requires encodable Git executable"
         raise ReferenceAuditError(message) from error
+    try:
+        mode = Path(executable).lstat().st_mode
+        is_executable = os.access(executable, os.X_OK)
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+    ) as error:
+        message = "host-C source commit Git path inspection failed"
+        raise ReferenceAuditError(message) from error
+    if not stat.S_ISREG(mode) or not is_executable:
+        _fail("host-C source commit requires physical executable Git")
     # Foreign GIT_DIR and object alternates cannot satisfy local admission.
     clean_env = {
         name: value for name, value in os.environ.items() if not name.startswith("GIT_")

@@ -984,6 +984,78 @@ def test_audit_git_resolver_rejects_noncanonical_paths_before_launch(
 
 
 @pytest.mark.parametrize(
+    "kind", ["symlink", "directory", "missing", "non-executable"]
+)
+def test_audit_git_resolver_requires_physical_executable_before_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A redirected or non-executable Git path cannot attest source commits."""
+    fake = tmp_path / "candidate-git"
+    if kind == "symlink":
+        fake.symlink_to(sys.executable)
+    elif kind == "directory":
+        fake.mkdir()
+    elif kind == "non-executable":
+        _ = fake.write_bytes(b"not an executable")
+        fake.chmod(0o644)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("unadmitted Git path reached child launch")
+
+    monkeypatch.setattr(reference_audit.shutil, "which", lambda *_a, **_kw: str(fake))
+    monkeypatch.setattr(reference_audit.sp, "run", forbidden)
+    diagnostic = "path inspection" if kind == "missing" else "physical executable"
+    with pytest.raises(reference_audit.ReferenceAuditError, match=diagnostic):
+        reference_audit._require_git_commit("0" * 40)
+
+
+@pytest.mark.parametrize("operation", ["lstat", "access"])
+@pytest.mark.parametrize(
+    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_audit_git_executable_inspection_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    failure_type: type[Exception],
+) -> None:
+    """Host Git binary metadata and permissions remain typed audit evidence."""
+    fake = tmp_path / "candidate-git"
+    _ = fake.write_bytes(b"test executable")
+    fake.chmod(0o755)
+    fault = failure_type("injected Git executable inspection failure")
+    original_lstat = type(fake).lstat
+    original_access = reference_audit.os.access
+
+    def broken_lstat(path: Path) -> object:
+        if path == fake:
+            raise fault
+        return original_lstat(path)
+
+    def broken_access(path: str, mode: int) -> bool:
+        if str(path) == str(fake):
+            raise fault
+        return original_access(path, mode)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("faulty Git executable reached child launch")
+
+    monkeypatch.setattr(reference_audit.shutil, "which", lambda *_a, **_kw: str(fake))
+    monkeypatch.setattr(reference_audit.sp, "run", forbidden)
+    if operation == "lstat":
+        monkeypatch.setattr(type(fake), "lstat", broken_lstat)
+    else:
+        monkeypatch.setattr(reference_audit.os, "access", broken_access)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="path inspection") as caught:
+        reference_audit._require_git_commit("0" * 40)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
     "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
 )
 def test_audit_git_resolver_fault_is_typed(
