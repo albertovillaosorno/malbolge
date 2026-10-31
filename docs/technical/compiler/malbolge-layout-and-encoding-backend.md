@@ -336,18 +336,18 @@ publication remain distinct guarantees.
 ### Genuine Nonzero Byte Constant Artifact Pilot
 
 The explicit `--seeded-byte-literal` mode admits one verified nonzero
-`u8` literal and one to eighteen matching outputs via canonical MCTI
+`u8` literal and one to nineteen matching outputs via canonical MCTI
 or MCTR file/stdin. The original 14-value current-profile seed table
 remains exclusive to single-output sources. Ten different byte values
 `55, 64, 65, 66, 163, 164, 165, 182, 183, 200` have a separately
-verified two-output seed table. Third- through eighteenth-output phases
-add 21, 24, 18, 19, 18, 21, 21, 25, 17, 20, 19, 22, 17, 24, 19 and 20
+verified two-output seed table. Third- through nineteenth-output phases
+add 21, 24, 18, 19, 18, 21, 21, 25, 17, 20, 19, 22, 17, 24, 19, 20 and 19
 independently re-executed distinct byte values, respectively. All 26
-reviewed phases for counts three through fourteen, sixteen, seventeen and
-eighteen halt with equal nonzero bytes. Fifteen outputs have 25 verified
-phases; phase 20 is excluded. Separate 26-phase sixteen-, seventeen- and
-eighteen-output oracles and real guest CLI fixtures prove bytes 41/194,
-6/133 and 66/59 at distinct source positions, respectively. The admission
+reviewed phases for counts three through fourteen and sixteen through
+nineteen halt with equal nonzero bytes. Fifteen outputs have 25 verified
+phases; phase 20 is excluded. Separate 26-phase VM scans for sixteen through
+nineteen outputs and real CLI fixtures prove bytes 41/194, 6/133, 66/59 and
+20/6 at distinct source positions, respectively. The admission
 table retains only the shortest phase per witnessed byte, not inferred values
 for untested source lengths.
 Each additional `<` changes source position decoding and loader-expanded
@@ -359,7 +359,7 @@ no-overwrite semantics. General-runner process tests select the current
 profile through a capsule; raw graphical source carries no profile ID and
 can produce different values under the runner's historical default.
 The guest computes the byte without a host-provided result. Other profiles,
-unknown literals, zero/nineteen-or-more outputs, additional effects and
+unknown literals, zero/twenty-or-more outputs, additional effects and
 arbitrary arithmetic reject.
 
 ### Signed/unsigned byte identity-cast artifact publication

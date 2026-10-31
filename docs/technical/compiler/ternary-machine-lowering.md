@@ -1162,7 +1162,7 @@ computation, heap, C ABI or guest libc/EOF realization.
 ### First Verified Nonzero Guest U8 Literal
 
 An opt-in `encode_rotated_byte_literal` bridge admits one exact
-`MaterializeU8` with one to eighteen same-SSA `ByteOutput`s, then `ReturnVoid`.
+`MaterializeU8` with one to nineteen same-SSA `ByteOutput`s, then `ReturnVoid`.
 For one output, 14 current-profile nonzero bytes are realized:
 `4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253`. A bounded
 graphical no-op prefix,
@@ -1192,16 +1192,17 @@ Independent 256-byte-domain checks reject the 237 and 238 unseeded values
 respectively. Separate eight- and nine-output short-phase scans each confirm 21
 distinct shortest seeds, rejecting the other 235 bytes per count.
 The tenth-output scan confirms 25 shortest seeds and rejects the other
-231 bytes. Independently re-executed eleven- through eighteen-output
-scans admit 17, 20, 19, 22, 17, 24, 19 and 20 distinct nonzero bytes,
-respectively. The seventeen- and eighteen-output scans each verify all
-26 tested phases, retaining the shortest valid seed per byte. Eighteen
-outputs retain 20 unique byte values from 26 successful source phases,
-including repeat values. Nineteen or more outputs,
+231 bytes. Independently re-executed eleven- through nineteen-output
+scans admit 17, 20, 19, 22, 17, 24, 19, 20 and 19 distinct nonzero bytes,
+respectively. The seventeen-, eighteen-, and nineteen-output scans each
+verify all 26 tested phases, retaining the shortest seed per byte. Eighteen
+outputs retain 20 unique byte values and nineteen outputs retain 19 values
+from 26 successful phases each, including repeated values. Twenty or more
+outputs,
 foreign profiles, unknown byte values and mixed SSA effects still reject.
 
 `compile_canonical_typed_rotated_byte_literal` projects complete
-canonical MCTI with one `u8 ConstantInteger`, one to eighteen matching
+canonical MCTI with one `u8 ConstantInteger`, one to nineteen matching
 `ByteOutput`s and final void return. Canonical MCTR re-admission and source
 comparison
 retain source/SSA/ABI/target provenance. The standalone CLI adds explicit

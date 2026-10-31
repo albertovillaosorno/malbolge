@@ -488,6 +488,30 @@ const ROTATED_EIGHTEEN_BYTE_SEEDS: &[(u8, usize)] = &[
     (59, 25),
 ];
 
+/// Nineteen repeated outputs require a separate VM-verified data/phase table.
+/// Duplicated phases retain only the shortest graphical no-op prefix.
+const ROTATED_NINETEEN_BYTE_SEEDS: &[(u8, usize)] = &[
+    (20, 0),
+    (5, 1),
+    (252, 2),
+    (19, 3),
+    (4, 4),
+    (251, 5),
+    (18, 6),
+    (3, 7),
+    (9, 8),
+    (17, 9),
+    (12, 10),
+    (8, 11),
+    (16, 12),
+    (10, 13),
+    (7, 14),
+    (15, 15),
+    (14, 18),
+    (13, 21),
+    (6, 25),
+];
+
 /// A failed pre-layout admission, semantic bridge, or final target admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ByteEchoBridgeError {
@@ -527,6 +551,7 @@ const fn rotated_byte_seeds(outputs: usize) -> Option<RotatedByteSeedTable> {
         16 => Some(ROTATED_SIXTEEN_BYTE_SEEDS),
         17 => Some(ROTATED_SEVENTEEN_BYTE_SEEDS),
         18 => Some(ROTATED_EIGHTEEN_BYTE_SEEDS),
+        19 => Some(ROTATED_NINETEEN_BYTE_SEEDS),
         _ => None,
     }
 }
@@ -835,9 +860,9 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
     Some((*result, *value))
 }
 
-/// Emits a nonzero `u8` one to eighteen times using guest data rotation.
+/// Emits a nonzero `u8` one to nineteen times using guest data rotation.
 ///
-/// Accepts one `MaterializeU8` with one to eighteen same-SSA `ByteOutput`s and
+/// Accepts one `MaterializeU8` with one to nineteen same-SSA `ByteOutput`s and
 /// `ReturnVoid` for the current profile. A bounded source-address-specific
 /// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
 /// memory word; the guest `*` changes its own accumulator, not the host.
