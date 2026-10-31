@@ -41,13 +41,23 @@ _LF = b"\n"
 _SPACE = 0x20
 
 
+class CanonicalIdentityError(ValueError):
+    """Raised when generic identity canonicalization inputs are invalid."""
+
+
 def normalize_line_endings(data: bytes) -> bytes:
     """Normalize CRLF and bare CR to LF without other byte changes.
 
     Returns:
         Bytes with deterministic LF line endings.
 
+    Raises:
+        CanonicalIdentityError: Input does not use exact bytes.
+
     """
+    if type(data) is not bytes:
+        message = "canonical identity input must use exact bytes"
+        raise CanonicalIdentityError(message)
     return data.replace(_CRLF, _LF).replace(_CR, _LF)
 
 
@@ -78,6 +88,13 @@ def collapse_ascii_whitespace(data: bytes) -> bytes:
     return bytes(output)
 
 
+def _require_formatting_policy(value: object) -> bool:
+    if type(value) is not bool:
+        message = "identity formatting policy must use exact bool"
+        raise CanonicalIdentityError(message)
+    return value
+
+
 def canonicalize_text_identity(
     data: bytes,
     *,
@@ -90,6 +107,7 @@ def canonicalize_text_identity(
         collapsed.
 
     """
-    if ignore_formatting:
+    admitted_formatting = _require_formatting_policy(ignore_formatting)
+    if admitted_formatting:
         return collapse_ascii_whitespace(data)
     return normalize_line_endings(data)

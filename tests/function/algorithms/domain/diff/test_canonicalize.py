@@ -32,9 +32,19 @@
 
 """Tests for generic canonical identity helpers."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from typing import cast
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+from algorithms.diff.canonicalize import CanonicalIdentityError
 from algorithms.diff.canonicalize import canonicalize_text_identity
 from algorithms.diff.canonicalize import collapse_ascii_whitespace
 from algorithms.diff.canonicalize import normalize_line_endings
+import pytest
 
 _NORMALIZED_LINES = b"alpha\nbeta\ngamma\n"
 _PRESERVED_SPACING = b"alpha  beta\n"
@@ -67,3 +77,37 @@ def test_formatting_preservation_mode_keeps_spacing() -> None:
     source = b"alpha  beta\r\n"
     observed = canonicalize_text_identity(source, ignore_formatting=False)
     _expect(observed == _PRESERVED_SPACING, "formatting changed unexpectedly")
+
+
+@pytest.mark.parametrize(
+    "identity_helper",
+    [normalize_line_endings, collapse_ascii_whitespace],
+)
+def test_canonicalization_rejects_foreign_bytes(
+    identity_helper: Callable[[bytes], bytes],
+) -> None:
+    """Canonical content must not coerce arbitrary text or mutable buffers."""
+    for invalid in ("text", bytearray(b"text"), None):
+        with pytest.raises(CanonicalIdentityError, match="exact bytes"):
+            _ = identity_helper(cast("bytes", cast("object", invalid)))
+
+
+@pytest.mark.parametrize("ignore_formatting", [1, 0, "false", None, object()])
+def test_canonicalization_rejects_foreign_formatting_policy(
+    ignore_formatting: object,
+) -> None:
+    """Foreign policy values must not silently select identity semantics."""
+    with pytest.raises(CanonicalIdentityError, match="exact bool"):
+        _ = canonicalize_text_identity(
+            b"alpha  beta\n",
+            ignore_formatting=cast("bool", ignore_formatting),
+        )
+
+
+def test_canonicalization_text_entry_requires_exact_bytes() -> None:
+    """Text identity admission rejects input without implicit coercion."""
+    with pytest.raises(CanonicalIdentityError, match="exact bytes"):
+        _ = canonicalize_text_identity(
+            cast("bytes", cast("object", "not-bytes")),
+            ignore_formatting=False,
+        )
