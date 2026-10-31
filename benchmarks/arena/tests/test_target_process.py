@@ -1438,3 +1438,41 @@ def test_child_wait_noncanonical_status_cannot_claim_completion(
     with pytest.raises(target_process.TargetProcessError, match="exit status"):
         target_process.invoke(_child("print('completed')"), timeout_seconds=3)
     assert calls >= 2
+
+
+@pytest.mark.parametrize("reported", [0, 1, -9])
+def test_wait_integer_receipt_must_match_actual_reaped_child(
+    monkeypatch: pytest.MonkeyPatch,
+    reported: int,
+) -> None:
+    """A native integer is not proof of the actual reaped child exit status."""
+    original_wait = target_process.sp.Popen.wait
+    real_statuses: list[int] = []
+
+    def wrong_wait(child: sp.Popen[bytes], timeout: float | None = None) -> int:
+        real_status = original_wait(child, timeout=timeout)
+        real_statuses.append(real_status)
+        return reported
+
+    monkeypatch.setattr(target_process.sp.Popen, "wait", wrong_wait)
+    with pytest.raises(target_process.TargetProcessError, match="exit status"):
+        target_process.invoke(_child("import sys; sys.exit(7)"), timeout_seconds=3)
+    assert real_statuses == [7, 7]
+
+
+@pytest.mark.parametrize("recorded", [None, False, "7", 0, object()])
+def test_wait_requires_native_matching_recorded_child_status(
+    monkeypatch: pytest.MonkeyPatch,
+    recorded: object,
+) -> None:
+    """The returned exit code must agree with Popen's internal reaped value."""
+    original_wait = target_process.sp.Popen.wait
+
+    def forged_record(child: sp.Popen[bytes], timeout: float | None = None) -> int:
+        status = original_wait(child, timeout=timeout)
+        child.returncode = cast("int", recorded)
+        return status
+
+    monkeypatch.setattr(target_process.sp.Popen, "wait", forged_record)
+    with pytest.raises(target_process.TargetProcessError, match="exit status"):
+        target_process.invoke(_child("import sys; sys.exit(7)"), timeout_seconds=3)
