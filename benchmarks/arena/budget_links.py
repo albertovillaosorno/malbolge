@@ -100,9 +100,13 @@ def parse_run_budgets(text: str) -> RunBudgets:
         raise BudgetLinkError(message) from error
     if type(document) is not dict:
         _fail("invalid experiment run budget TOML root")
+    if any(type(key) is not str for key in document):
+        _fail("experiment run budget TOML requires native string keys")
     budget = document.get("budget")
     if type(budget) is not dict:
         _fail("experiment run budget table is missing")
+    if any(type(key) is not str for key in budget):
+        _fail("experiment run budget table requires native string keys")
     return RunBudgets(
         time_ns=_positive_integer(budget, "seconds") * NANOSECONDS_PER_SECOND,
         memory_bytes=_positive_integer(budget, "memory_mib") * BYTES_PER_MIB,

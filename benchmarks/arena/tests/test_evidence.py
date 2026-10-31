@@ -2581,3 +2581,30 @@ def test_unanticipated_descriptor_close_retains_evidence_constructor_error(
     assert len(closed) == 1
     with pytest.raises(OSError):
         evidence.os.fstat(closed[0])
+
+
+@pytest.mark.parametrize("scope", ["root", "budget"])
+def test_budget_links_reject_foreign_toml_keys_before_mapping_access(
+    monkeypatch: pytest.MonkeyPatch, scope: str
+) -> None:
+    """Colliding foreign TOML keys cannot run comparison hooks during admission."""
+
+    class CollidingKey:
+        def __hash__(self) -> int:
+            return hash("budget" if scope == "root" else "seconds")
+
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign budget TOML equality executed")
+
+    budget: dict[object, object] = {"memory_mib": 128}
+    if scope == "root":
+        budget["seconds"] = 1
+        document: dict[object, object] = {CollidingKey(): budget}
+    else:
+        budget[CollidingKey()] = 1
+        document = {"budget": budget}
+
+    monkeypatch.setattr(budget_links.tomllib, "loads", lambda _: document)
+    with pytest.raises(budget_links.BudgetLinkError, match="native string keys"):
+        budget_links.parse_run_budgets(BUDGET_MANIFEST)
