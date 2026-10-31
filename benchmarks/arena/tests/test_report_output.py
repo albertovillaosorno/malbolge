@@ -103,6 +103,32 @@ class _FakeStream:
         self.flushed = True
 
 
+class _NonCanonicalFlushStream(_FakeStream):
+    """A writer that returns fabricated flush completion instead of None."""
+
+    def __init__(self, response: object) -> None:
+        super().__init__("healthy")
+        self.response = response
+
+    def flush(self) -> None:
+        """Report a malformed completion result without flushing."""
+        return cast("None", self.response)
+
+
+@pytest.mark.parametrize(
+    "response", [False, True, 0, 1, "complete", b"done"]
+)
+def test_flush_must_have_exact_void_completion_receipt(
+    response: object,
+) -> None:
+    """Streams cannot claim output success with malformed flush receipts."""
+    output = _NonCanonicalFlushStream(response)
+    with pytest.raises(report_output.ReportOutputError, match="stdout flush"):
+        report_output.publish({"status": "reported"}, output)
+    assert output.records
+    assert not output.flushed
+
+
 def test_report_publisher_preserves_byte_exact_default_json() -> None:
     """A successful writer emits exactly one newline-terminated JSON object."""
     output = _FakeStream("healthy")
