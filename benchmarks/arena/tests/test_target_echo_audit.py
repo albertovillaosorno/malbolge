@@ -849,6 +849,92 @@ def test_tool_fingerprint_accepts_host_short_read_chunks(
     assert actual == "local-compiler-vm-sha256:" + expected.hexdigest()
 
 
+@pytest.mark.parametrize(
+    "receipt",
+    [None, False, True, -1, 1.5, "3", 1 << 128],
+    ids=["none", "false", "true", "negative", "float", "text", "overflow"],
+)
+def test_tool_fingerprint_rejects_foreign_open_descriptor_before_host_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A forged open result cannot drive fstat/read/close on a caller FD."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"trusted-emitter")
+    runner.write_bytes(b"trusted-runner")
+
+    def fail_downstream(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("foreign descriptor reached a host descriptor operation")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(audit.os, "open", lambda *_args, **_kwargs: receipt)
+        patch.setattr(audit.os, "fstat", fail_downstream)
+        patch.setattr(audit.os, "read", fail_downstream)
+        patch.setattr(audit.os, "close", fail_downstream)
+        with pytest.raises(audit.TargetEchoAuditError, match="executable identity"):
+            audit._tool_identity(emitter, runner)
+
+
+@pytest.mark.parametrize("receipt", [False, True, 0, 1, "closed", b"closed"])
+def test_tool_fingerprint_requires_native_void_close_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Hash completion is unconfirmed if descriptor cleanup forges success."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"trusted-emitter")
+    runner.write_bytes(b"trusted-runner")
+    real_close = audit.os.close
+    closed: list[int] = []
+
+    def forged_close(fd: int) -> None:
+        real_close(fd)
+        closed.append(fd)
+        return cast("None", receipt)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(audit.os, "close", forged_close)
+        with pytest.raises(audit.TargetEchoAuditError, match="executable identity"):
+            audit._tool_identity(emitter, runner)
+    assert len(closed) == 1
+
+
+@pytest.mark.parametrize("receipt", [False, 0, "closed"])
+def test_tool_fingerprint_forged_close_preserves_primary_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """The original read failure prevails over a forged cleanup receipt."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"trusted-emitter")
+    runner.write_bytes(b"trusted-runner")
+    primary = OSError("primary executable hash read failed")
+    real_close = audit.os.close
+
+    def fail_read(_fd: int, _size: int) -> bytes:
+        raise primary
+
+    def forged_close(fd: int) -> None:
+        real_close(fd)
+        return cast("None", receipt)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(audit.os, "read", fail_read)
+        patch.setattr(audit.os, "close", forged_close)
+        with pytest.raises(
+            audit.TargetEchoAuditError, match="executable identity"
+        ) as caught:
+            audit._tool_identity(emitter, runner)
+    assert caught.value.__cause__ is primary
+    assert any("cleanup" in note for note in primary.__notes__)
+
+
 def test_tool_fingerprint_preserves_stable_byte_identity(tmp_path: Path) -> None:
     """Descriptor hashing preserves existing size-prefixed toolchain digests."""
     emitter = tmp_path / "emitter"

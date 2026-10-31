@@ -71,6 +71,8 @@ METHOD_CLASS = "benchmarking"
 ACCELERATOR = "none"
 GIT_COMMIT_TYPE = b"commit"
 GIT_TIMEOUT_SECONDS = 5
+# os.open returns a signed C int; reject impossible injected descriptors.
+MAX_NATIVE_DESCRIPTOR = (1 << 31) - 1
 RUN_PREFIX = "arena-target-echo-"
 ROOT_PART = ".temp"
 DIRECTORY_NAMES = ("runs", "raw", "candidates")
@@ -925,6 +927,11 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 | getattr(os, "O_NOFOLLOW", 0)
             )
             descriptor = os.open(path, flags)
+            if (
+                type(descriptor) is not int
+                or not 0 <= descriptor <= MAX_NATIVE_DESCRIPTOR
+            ):
+                _fail("target audit executable identity changed: invalid descriptor")
             try:
                 opened = os.fstat(descriptor)
                 if type(opened) is not os.stat_result:
@@ -955,7 +962,12 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             finally:
                 primary = sys.exception()
                 try:
-                    os.close(descriptor)
+                    closed = os.close(descriptor)
+                    if closed is not None:
+                        _fail(
+                            "target audit executable identity changed: "
+                            "noncanonical descriptor close receipt"
+                        )
                 except (
                     OSError,
                     ValueError,
