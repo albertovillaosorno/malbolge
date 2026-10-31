@@ -34,14 +34,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import os
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-import sys
-from typing import Never
-from typing import cast
+from typing import Never, cast
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -67,97 +66,113 @@ STACK_ALIGNMENT = 16
 FRAME_HEADER_BYTES = 32
 MAX_DOCUMENT_BYTES = 1024 * 1024
 
-TOP_LEVEL_KEYS = frozenset({
-    "abi_id",
-    "aggregate",
-    "byte",
-    "call",
-    "failure",
-    "floating",
-    "frontend_projection",
-    "integer",
-    "io",
-    "pointer",
-    "schema_version",
-    "target_profile",
-})
+TOP_LEVEL_KEYS = frozenset(
+    {
+        "abi_id",
+        "aggregate",
+        "byte",
+        "call",
+        "failure",
+        "floating",
+        "frontend_projection",
+        "integer",
+        "io",
+        "pointer",
+        "schema_version",
+        "target_profile",
+    }
+)
 FRONTEND_KEYS = frozenset({"clang_target", "llvm_data_layout"})
 BYTE_KEYS = frozenset({"bits", "endianness"})
 SCALAR_LAYOUT_KEYS = frozenset({"alignment", "size"})
 WCHAR_KEYS = frozenset({"alignment", "signed", "size"})
 ENUM_KEYS = frozenset({"default_underlying", "fixed_underlying"})
-INTEGER_KEYS = frozenset({
-    "bool",
-    "char",
-    "enum",
-    "int",
-    "long",
-    "long_long",
-    "negative_right_shift",
-    "plain_char_signed",
-    "short",
-    "signed_representation",
-    "unsigned_arithmetic",
-    "wchar_t",
-})
-FLOAT_LAYOUT_KEYS = frozenset({
-    "alignment",
-    "format",
-    "mantissa_bits",
-    "max_exponent",
-    "size",
-})
-FLOATING_KEYS = frozenset({
-    "double",
-    "excess_precision",
-    "float",
-    "long_double",
-    "nan_result",
-    "radix",
-    "rounding",
-    "subnormals",
-})
-POINTER_KEYS = frozenset({
-    "address_spaces",
-    "alignment",
-    "bits",
-    "function_encoding",
-    "intptr_t",
-    "null",
-    "object_encoding",
-    "ptrdiff_t",
-    "size",
-    "size_t",
-    "uintptr_t",
-})
-AGGREGATE_KEYS = frozenset({
-    "array_stride",
-    "bit_fields",
-    "bit_precise_integers",
-    "extended_alignment",
-    "max_alignment",
-    "packed_layout",
-    "padding",
-    "struct_layout",
-    "union_layout",
-})
-CALL_KEYS = frozenset({
-    "argument_order",
-    "frame_fields",
-    "frame_header_bytes",
-    "result_rule",
-    "stack_alignment",
-    "stack_direction",
-    "variadic_rule",
-})
+INTEGER_KEYS = frozenset(
+    {
+        "bool",
+        "char",
+        "enum",
+        "int",
+        "long",
+        "long_long",
+        "negative_right_shift",
+        "plain_char_signed",
+        "short",
+        "signed_representation",
+        "unsigned_arithmetic",
+        "wchar_t",
+    }
+)
+FLOAT_LAYOUT_KEYS = frozenset(
+    {
+        "alignment",
+        "format",
+        "mantissa_bits",
+        "max_exponent",
+        "size",
+    }
+)
+FLOATING_KEYS = frozenset(
+    {
+        "double",
+        "excess_precision",
+        "float",
+        "long_double",
+        "nan_result",
+        "radix",
+        "rounding",
+        "subnormals",
+    }
+)
+POINTER_KEYS = frozenset(
+    {
+        "address_spaces",
+        "alignment",
+        "bits",
+        "function_encoding",
+        "intptr_t",
+        "null",
+        "object_encoding",
+        "ptrdiff_t",
+        "size",
+        "size_t",
+        "uintptr_t",
+    }
+)
+AGGREGATE_KEYS = frozenset(
+    {
+        "array_stride",
+        "bit_fields",
+        "bit_precise_integers",
+        "extended_alignment",
+        "max_alignment",
+        "packed_layout",
+        "padding",
+        "struct_layout",
+        "union_layout",
+    }
+)
+CALL_KEYS = frozenset(
+    {
+        "argument_order",
+        "frame_fields",
+        "frame_header_bytes",
+        "result_rule",
+        "stack_alignment",
+        "stack_direction",
+        "variadic_rule",
+    }
+)
 FRAME_FIELD_KEYS = frozenset({"name", "offset", "type"})
 IO_KEYS = frozenset({"eof_value", "read_result", "write_input"})
-FAILURE_KEYS = frozenset({
-    "invalid_pointer",
-    "signed_overflow",
-    "stack_exhaustion",
-    "unknown_abi",
-})
+FAILURE_KEYS = frozenset(
+    {
+        "invalid_pointer",
+        "signed_overflow",
+        "stack_exhaustion",
+        "unknown_abi",
+    }
+)
 
 
 type JsonScalar = bool | int | float | str | None
@@ -304,7 +319,16 @@ def _read_open_document(
         UTF-8-compatible bytes before decoding.
 
     """
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except BaseException:
+        # This reader retains descriptor ownership until wrapping succeeds.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+    with stream:
         opened = os.fstat(stream.fileno())
         _check_document_identity(admitted, opened)
         data = stream.read(MAX_DOCUMENT_BYTES + 1)
@@ -349,10 +373,14 @@ def load_document(path: Path = DEFAULT_ABI) -> JsonObject:
     """
     try:
         text = _read_document_bytes(path).decode("utf-8-sig")
+    except CAbiValidationError:
+        raise
     except UnicodeDecodeError as error:
         _fail(f"invalid C ABI UTF-8: {error}")
-    except OSError as error:
-        _fail(f"failed to read C ABI document {path}: {error}")
+    except (OSError, ValueError, RuntimeError) as error:
+        raise CAbiValidationError(
+            f"failed to read C ABI document {path}: {error}"
+        ) from error
     return loads_document(text)
 
 
@@ -691,9 +719,7 @@ def canonical_projection() -> CAbiProjection:
     target_profile.validate_document(profile)
     selected = profile["current_profile"]
     if selected != projection.target_profile:
-        message = (
-            "C ABI target profile disagrees with canonical current profile: "
-        )
+        message = "C ABI target profile disagrees with canonical current profile: "
         message += f"abi={projection.target_profile!r}, current={selected!r}"
         _fail(message)
     return projection

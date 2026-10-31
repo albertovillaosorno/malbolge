@@ -36,6 +36,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
@@ -313,6 +314,114 @@ def test_missing_abi_manifest_fails_closed(tmp_path: Path) -> None:
     missing = tmp_path / "missing-c-abi.json"
     with pytest.raises(c_abi.CAbiValidationError, match="failed to read C ABI"):
         _ = c_abi.load_document(missing)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation",
+    (
+        "parent_symlink",
+        "parent_junction",
+        "leaf_lstat",
+        "leaf_symlink",
+        "leaf_junction",
+        "open",
+        "fdopen",
+        "fstat",
+    ),
+)
+def test_c_abi_document_host_file_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """Unexpected host filesystem errors cannot escape the ABI boundary."""
+    source = tmp_path / "c-abi.json"
+    _ = source.write_text(_canonical_text(), encoding="utf-8")
+    if operation == "leaf_lstat":
+        original_lstat = Path.lstat
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            if path == source:
+                raise fault_type("injected ABI lstat fault")
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    elif operation in {
+        "parent_symlink",
+        "parent_junction",
+        "leaf_symlink",
+        "leaf_junction",
+    }:
+        target = source.parent if operation.startswith("parent_") else source
+        original = (
+            Path.is_symlink if operation.endswith("symlink") else Path.is_junction
+        )
+
+        def fail_redirect(path: Path) -> bool:
+            if path == target:
+                raise fault_type("injected ABI redirect status fault")
+            return original(path)
+
+        monkeypatch.setattr(
+            Path,
+            "is_symlink" if operation.endswith("symlink") else "is_junction",
+            fail_redirect,
+        )
+    elif operation == "open":
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == source:
+                raise fault_type("injected ABI open fault")
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    elif operation == "fdopen":
+
+        def fail_fdopen(_descriptor: int, _mode: str) -> object:
+            raise fault_type("injected ABI fdopen fault")
+
+        monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    else:
+
+        def fail_fstat(_descriptor: int) -> os.stat_result:
+            raise fault_type("injected ABI fstat fault")
+
+        monkeypatch.setattr(os, "fstat", fail_fstat)
+    with pytest.raises(c_abi.CAbiValidationError, match="failed to read C ABI"):
+        _ = c_abi.load_document(source)
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+def test_c_abi_fdopen_failure_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A failed ABI stream wrapper releases its opened file descriptor."""
+    source = tmp_path / "c-abi.json"
+    _ = source.write_text(_canonical_text(), encoding="utf-8")
+    original_open = os.open
+    opened: list[int] = []
+
+    def track_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        if path == source:
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(_descriptor: int, _mode: str) -> object:
+        raise fault_type("injected ABI fdopen fault")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    with pytest.raises(c_abi.CAbiValidationError, match="failed to read C ABI"):
+        _ = c_abi.load_document(source)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
 
 
 def test_missing_guest_source_fails_closed(tmp_path: Path) -> None:
