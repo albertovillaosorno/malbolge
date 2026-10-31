@@ -153,10 +153,37 @@ def test_direct_study_reader_and_analyzer_type_missing_paths(
 
 
 def test_direct_reader_types_invalid_path_argument() -> None:
-    """A foreign pathname is rejected through the same admission boundary."""
-    with pytest.raises(study_file.StudyFileError, match="access") as result:
+    """A foreign pathname is rejected before reaching filesystem operations."""
+    with pytest.raises(study_file.StudyFileError, match="exact native Path"):
         _ = study_file.read_study_bytes(cast("Path", "not-a-path"), limit=1024)
-    assert isinstance(result.value.__cause__, AttributeError)
+
+
+def test_direct_reader_rejects_redirected_path_subclass_before_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged path cannot describe one file while reading another file."""
+    claimed = tmp_path / "claimed.json"
+    alternate = tmp_path / "alternate.json"
+    _ = claimed.write_bytes(b"claimed")
+    _ = alternate.write_bytes(b"alternate")
+
+    class RedirectedPath(type(tmp_path)):
+        def __fspath__(self) -> str:
+            return str(alternate)
+
+    forged = RedirectedPath(claimed)
+    assert str(forged) == str(claimed)
+    assert forged.__fspath__() == str(alternate)
+
+    def forbidden_admission(*args: object, **kwargs: object) -> object:
+        _ = (args, kwargs)
+        message = "forged path reached filesystem access"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(study_file, "_admit_path", forbidden_admission)
+    with pytest.raises(study_file.StudyFileError, match="exact native Path"):
+        _ = study_file.read_study_bytes(forged, limit=1024)
 
 
 def test_direct_analyzer_types_invalid_utf8_input(tmp_path: Path) -> None:

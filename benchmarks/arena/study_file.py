@@ -37,12 +37,12 @@ from __future__ import annotations
 import os
 import stat
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Never
 
 MAX_STUDY_BYTES = 16 * 1024 * 1024
 
 if TYPE_CHECKING:
-    from pathlib import Path
     from typing import BinaryIO
 
 
@@ -245,6 +245,10 @@ def read_study_bytes(path: Path, *, limit: int) -> bytes:
 
     """
     _admit_limit(limit)
+    # A Path subclass can override __fspath__ to name a different file than
+    # its displayed path. Never perform stat/open/resolve on foreign methods.
+    if type(path) is not type(Path()):
+        _fail("arena input path requires an exact native Path")
     try:
         return _read_admitted_study(path, limit=limit)
     except StudyFileError:
