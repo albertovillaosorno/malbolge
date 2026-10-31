@@ -42,7 +42,11 @@ The executable runner is
 `benchmarks/interpreter/sanitizer-cases.json`; reviewed results live in
 `benchmarks/interpreter/evidence/windows-x86_64-sanitizer-findings.json`.
 Both JSON authorities reject duplicate keys and invalid UTF-8 through the stable
-sanitizer-harness error boundary before evidence comparison.
+sanitizer-harness error boundary before evidence comparison. Case identifiers
+must be portable ASCII filename stems (at most 128 characters), excluding path
+separators, traversal, and Windows device names; case-insensitive duplicates
+are rejected before any fixture file is written. Direct case construction and
+the execution sink enforce the same filename admission.
 
 ## Invariants
 

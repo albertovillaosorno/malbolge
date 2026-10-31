@@ -75,6 +75,11 @@ RUN_TIMEOUT_SECONDS = 15
 WINDOWS_OS_NAME = "nt"
 ASAN_ERROR = re.compile(r"ERROR: AddressSanitizer: ([a-z0-9-]+)")
 UBSAN_ERROR = re.compile(r"runtime error: ([^\r\n]+)")
+CASE_IDENTIFIER_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
+WINDOWS_DEVICE_STEM = re.compile(
+    r"(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?\Z",
+    flags=re.IGNORECASE,
+)
 HALLOC_HEADER = (
     "#include <stddef.h>\nvoid *_halloc(size_t count, size_t size);\n"
 )
@@ -103,6 +108,10 @@ class SanitizerCase:
     input_bytes: bytes
     source_bytes: bytes
 
+    def __post_init__(self) -> None:
+        """Reject direct cases that could escape temporary fixture filenames."""
+        _ = _validated_case_identifier(self.identifier)
+
 
 class _Arguments(argparse.Namespace):
     print_json: bool
@@ -114,6 +123,17 @@ class _Arguments(argparse.Namespace):
 
 def _fail(message: str) -> Never:
     raise SanitizerHarnessError(message)
+
+
+def _validated_case_identifier(value: object) -> str:
+    if type(value) is not str or not value:
+        _fail("sanitizer case id must be non-empty")
+    if (
+        CASE_IDENTIFIER_PATTERN.fullmatch(value) is None
+        or WINDOWS_DEVICE_STEM.fullmatch(value) is not None
+    ):
+        _fail("sanitizer case id must be a portable filename stem")
+    return value
 
 
 def is_supported() -> bool:
@@ -217,12 +237,11 @@ def _parse_case(
     source_root: Path,
 ) -> SanitizerCase:
     case = _mapping(raw, "sanitizer case")
-    identifier = case.get("id")
-    if not isinstance(identifier, str) or not identifier:
-        _fail("sanitizer case id must be non-empty")
-    if identifier in identifiers:
+    identifier = _validated_case_identifier(case.get("id"))
+    normalized_identifier = identifier.casefold()
+    if normalized_identifier in identifiers:
         _fail(f"duplicate sanitizer case: {identifier}")
-    identifiers.add(identifier)
+    identifiers.add(normalized_identifier)
     return SanitizerCase(
         identifier=identifier,
         input_bytes=_decode_hex(
@@ -366,7 +385,8 @@ def _execute_case(
     work: Path,
     case: SanitizerCase,
 ) -> JsonObject:
-    source = work / f"{case.identifier}.malbolge"
+    identifier = _validated_case_identifier(case.identifier)
+    source = work / f"{identifier}.malbolge"
     _ = source.write_bytes(case.source_bytes)
     environment = os.environ.copy()
     environment["ASAN_OPTIONS"] = (

@@ -35,9 +35,11 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import json
 from typing import TYPE_CHECKING
 
 import pytest
+
 from scripts.validate import historical_interpreter_sanitizer as harness
 
 if TYPE_CHECKING:
@@ -59,6 +61,87 @@ def test_sanitizer_manifest_and_source_identity_are_exact() -> None:
     evidence = harness.load_evidence()
     assert evidence["schema_version"] == harness.SCHEMA_VERSION
     assert evidence["source_sha256"] == harness.SOURCE_SHA256
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    [
+        "../escaped",
+        "child/escaped",
+        r"child\escaped",
+        "C:escape",
+        ".hidden",
+        "NUL",
+        "con.copy",
+        "x" * 129,
+    ],
+)
+def test_sanitizer_rejects_unsafe_case_ids_before_file_creation(
+    identifier: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unchecked fixture IDs must not select filenames outside the sandbox."""
+    document = {
+        "schema_version": harness.SCHEMA_VERSION,
+        "source_root": "tests/compatibility/specification",
+        "cases": [{
+            "id": identifier,
+            "source_hex": "44",
+            "input_hex": "",
+        }],
+    }
+    cases = tmp_path / "cases.json"
+    _ = cases.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(harness, "CASES", cases)
+    with pytest.raises(
+        harness.SanitizerHarnessError,
+        match="portable filename stem",
+    ):
+        _ = harness.load_cases()
+    with pytest.raises(
+        harness.SanitizerHarnessError,
+        match="portable filename stem",
+    ):
+        _ = harness.SanitizerCase(
+            identifier=identifier,
+            input_bytes=b"",
+            source_bytes=b"D",
+        )
+
+
+def test_sanitizer_rejects_case_insensitive_fixture_name_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Case-only aliases cannot overwrite one another on Windows hosts."""
+    document = {
+        "schema_version": harness.SCHEMA_VERSION,
+        "source_root": "tests/compatibility/specification",
+        "cases": [
+            {"id": identifier, "source_hex": "44", "input_hex": ""}
+            for identifier in ("roundtrip", "RoundTrip")
+        ],
+    }
+    cases = tmp_path / "cases.json"
+    _ = cases.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(harness, "CASES", cases)
+    with pytest.raises(
+        harness.SanitizerHarnessError,
+        match="duplicate sanitizer case: RoundTrip",
+    ):
+        _ = harness.load_cases()
+
+
+def test_sanitizer_case_allows_safe_portable_filename_stem() -> None:
+    """Portable punctuation remains admissible in fixture names."""
+    identifier = "case_2.part-b"
+    case = harness.SanitizerCase(
+        identifier=identifier,
+        input_bytes=b"",
+        source_bytes=b"D",
+    )
+    assert case.identifier == identifier
 
 
 def test_sanitizer_evidence_rejects_invalid_utf8(
