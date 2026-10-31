@@ -66,15 +66,37 @@ impl ParallelExecutionPort for ScopedThreadParallelism {
                 let handle = scope.spawn(move || execute_chunk(chunk, execute));
                 handles.push((worker, handle));
             }
-            let mut results = Vec::new();
-            for (worker, handle) in handles {
-                let mut chunk_results =
-                    handle.join().map_err(|_panic| worker_panicked(worker))?;
-                results.append(&mut chunk_results);
-            }
-            Ok(results)
+            collect_joined_workers(handles)
         })
     }
+}
+
+type WorkerHandle<'scope, Output> =
+    (usize, thread::ScopedJoinHandle<'scope, Vec<Output>>);
+
+fn collect_joined_workers<Output>(
+    handles: Vec<WorkerHandle<'_, Output>>,
+) -> Result<Vec<Output>, ParallelExecutionError> {
+    let mut results = Vec::new();
+    let mut failed_worker = None;
+    // Explicitly join every handle, even after a prior panic. Otherwise the
+    // scope may itself unwind on another unjoined panicking worker.
+    for (worker, handle) in handles {
+        match handle.join() {
+            Ok(mut chunk_results) => {
+                if failed_worker.is_none() {
+                    results.append(&mut chunk_results);
+                }
+            },
+            Err(_panic) => {
+                if failed_worker.is_none() {
+                    failed_worker = Some(worker);
+                }
+            },
+        }
+    }
+    failed_worker
+        .map_or_else(|| Ok(results), |worker| Err(worker_panicked(worker)))
 }
 
 fn execute_chunk<Request, Output>(
@@ -103,3 +125,7 @@ fn owned_chunks<Request>(
 const fn worker_panicked(worker: usize) -> ParallelExecutionError {
     ParallelExecutionError::WorkerPanicked { worker }
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/vm/threading_panic.rs"]
+mod panic_tests;

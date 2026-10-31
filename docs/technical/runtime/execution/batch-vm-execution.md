@@ -47,7 +47,10 @@ classic/profile result; it does not terminate the whole batch. Runtime failures
 retain the constructed machine so atomic-state evidence remains inspectable.
 Host worker panic is a shared scheduler-level typed error and is never
 translated
-into guest semantics.
+into guest semantics. The scoped-thread adapter explicitly joins every spawned
+handle even when an earlier worker panics, so multiple simultaneous panics do
+not escape as a host unwind. It reports the lowest-index failed worker in
+stable spawn order and discards partial results.
 
 Classic integration tests compare sequential results with worker counts 1, 2,
 and 8, including full-memory fingerprints, registers, I/O, termination, run
