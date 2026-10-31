@@ -162,6 +162,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   long valid mutable and immutable destinations now share a bounded
   compact digest staging prefix with collision-independent inode admission
   and crash-alias recovery; ordinary literal staging names remain stable,
+  including recovery of long multibyte UTF-8 and POSIX `surrogateescape`
+  basenames using the underlying filesystem byte spelling,
   with POSIX rejection and positive recovery tests for `?`, `*`, and `[` names,
   and rejects arbitrary temporary-looking aliases lacking the pinned Python
   3.14 eight-character candidate-token spelling (not provenance authentication);

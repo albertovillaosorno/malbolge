@@ -3348,9 +3348,10 @@ def test_long_valid_output_basename_publishes_progress_pointer(
     )
     assert progress.write_atomic(candidate) == destination
     assert progress.read(destination) == candidate
-    assert sorted(path.name for path in tmp_path.iterdir()) == sorted(
-        [destination.name, f"{destination.name}.lock"]
-    )
+    assert sorted(path.name for path in tmp_path.iterdir()) == sorted([
+        destination.name,
+        f"{destination.name}.lock",
+    ])
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX filename budget")
@@ -3568,15 +3569,18 @@ def test_writer_lock_rejects_late_hard_link_added_during_staging(
 
     with monkeypatch.context() as context:
         context.setattr(tempfile, "mkstemp", stage_and_link)
-        with pytest.raises(ERROR, match="writer lock has an external hard link"):
+        with pytest.raises(
+            ERROR, match="writer lock has an external hard link"
+        ):
             _ = progress.write_atomic(sidecar)
     assert injected
     assert lock_path.stat().st_nlink == 2
     assert alias.stat().st_ino == lock_path.stat().st_ino
     assert not destination.exists()
-    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
-        [lock_path.name, alias.name]
-    )
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([
+        lock_path.name,
+        alias.name,
+    ])
 
 
 def test_write_atomic_rejects_linked_writer_lock(tmp_path: Path) -> None:
@@ -6675,6 +6679,41 @@ def test_retained_alias_scan_rejects_foreign_entry_stat() -> None:
 
     foreign = cast("os.DirEntry[str]", cast("object", ForeignEntry()))
     assert matcher(foreign, ".checkpoint.", (1, 2)) is False
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX byte-oriented filenames require link semantics",
+)
+@pytest.mark.parametrize(
+    "basename",
+    ["é" * 100 + ".checkpoint", "\udc80" * 150 + ".checkpoint"],
+    ids=["multibyte-utf8", "surrogateescape-byte"],
+)
+def test_compact_stage_recovery_hashes_filesystem_filename_bytes(
+    tmp_path: Path,
+    basename: str,
+) -> None:
+    """Long encoded names recover the digest stage, not a character prefix."""
+    destination = tmp_path / basename
+    assert len(os.fsencode(destination.name)) > 128
+    payload = b"long-encoded-durable-generation"
+    try:
+        _ = destination.write_bytes(payload)
+    except OSError as error:
+        pytest.skip(f"byte-oriented filesystem filename unavailable: {error}")
+    prefix = (
+        ".progress-"
+        + sha256(os.fsencode(destination.name)).hexdigest()[:24]
+        + "."
+    )
+    alias = tmp_path / f"{prefix}abcdefgh.tmp"
+    os.link(destination, alias)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    assert writer(destination, payload, platform=os.name) == destination
+    assert destination.read_bytes() == payload
+    assert destination.stat().st_nlink == 1
+    assert not alias.exists()
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link recovery")

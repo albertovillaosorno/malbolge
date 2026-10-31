@@ -1030,6 +1030,9 @@ these selectors once a product C-to-Malbolge pipeline exists.
   Valid long target names no longer fail solely because their temporary
   name would exceed the filesystem's per-component length limit; target
   and writer-lock filenames must still be individually representable.
+  The digest and prefix threshold operate on filesystem-encoded basename
+  bytes, not Unicode code-point counts. Positive recovery fixtures include
+  long multibyte UTF-8 basenames and POSIX `surrogateescape` filenames.
 
   Furthermore, recovery accepts only the eight-character
   lowercase/digit/underscore temporary token
