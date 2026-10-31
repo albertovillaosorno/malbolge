@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import] - Git-only fixture.
 from pathlib import Path
 
 import pytest
@@ -99,9 +100,7 @@ def test_empty_research_mirror_fails_closed() -> None:
 def test_non_research_algorithm_suites_are_explicitly_excluded() -> None:
     """Keep reusable/product suites in algorithms without academic mirroring."""
     executable_ids = frozenset((*EXPECTED_IDS, "diff", "doom"))
-    assert validator.executable_research_ids(executable_ids) == frozenset(
-        EXPECTED_IDS
-    )
+    assert validator.executable_research_ids(executable_ids) == frozenset(EXPECTED_IDS)
     assert frozenset({"diff", "doom"}) == validator.NON_RESEARCH_ALGORITHM_IDS
 
 
@@ -130,9 +129,9 @@ def test_mirror_rejects_redirected_evidence(
     for directory in (document, executable, test_directory):
         directory.mkdir(parents=True)
     for filename in ("README.md", "research.md"):
-        (document / filename).write_text("fixture", encoding="utf-8")
+        _ = (document / filename).write_text("fixture", encoding="utf-8")
     for filename in ("README.md", "experiment.toml", "lifecycle.toml"):
-        (executable / filename).write_text("fixture", encoding="utf-8")
+        _ = (executable / filename).write_text("fixture", encoding="utf-8")
     monkeypatch.setattr(validator, "ROOT", tmp_path)
     monkeypatch.setattr(validator, "DOCUMENT_ROOT", documents)
     assert validator.validate_repository(_always_ignored) == ("fixture",)
@@ -147,7 +146,7 @@ def test_mirror_rejects_redirected_evidence(
         victim = executable / "README.md"
     outside = tmp_path / "outside" / victim.name
     outside.parent.mkdir(exist_ok=True)
-    victim.rename(outside)
+    _ = victim.rename(outside)
     victim.symlink_to(outside, target_is_directory=outside.is_dir())
     with pytest.raises(validator.ResearchMirrorError, match="redirect"):
         _ = validator.validate_repository(_always_ignored)
@@ -164,4 +163,37 @@ def test_mirror_rejects_directory_id_symlink(
     outside.mkdir()
     (documents / "alias").symlink_to(outside, target_is_directory=True)
     with pytest.raises(validator.ResearchMirrorError, match="redirect"):
-        _ = validator._directory_ids(documents)
+        _ = validator._directory_ids(documents)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_output_policy_checks_directory_not_just_one_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ignoring a single probe must not admit trackable research outputs."""
+    _ = sp.run(
+        ["git", "init", "--quiet", str(tmp_path)],
+        check=True,
+        capture_output=True,
+        shell=False,
+    )
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    executable = tmp_path / "algorithms" / "fixture"
+    executable.mkdir(parents=True)
+    entry = validator.MirrorEntry(
+        document=tmp_path / "docs" / "fixture",
+        executable=executable,
+        research_id="fixture",
+    )
+    ignore_file = tmp_path / ".gitignore"
+
+    _ = ignore_file.write_text("**/out/.mirror-probe\n", encoding="utf-8")
+    assert not validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+    _ = ignore_file.write_text("**/out/\n", encoding="utf-8")
+    assert validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+    _ = ignore_file.write_text("**/out/*.bin\n", encoding="utf-8")
+    assert not validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+    _ = ignore_file.write_text("**/out/*\n", encoding="utf-8")
+    assert validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]

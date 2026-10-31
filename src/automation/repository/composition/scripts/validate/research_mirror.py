@@ -179,18 +179,15 @@ def _require_file(path: Path, context: str) -> None:
         _fail(f"{context} file not found: {path.relative_to(ROOT)}")
 
 
-def _out_probe(entry: MirrorEntry) -> str:
-    return (
-        (entry.executable / "out" / ".mirror-probe")
-        .relative_to(ROOT)
-        .as_posix()
-    )
+def _out_directory(entry: MirrorEntry) -> str:
+    """Select the complete output directory, not a single probe filename."""
+    return (entry.executable / "out").relative_to(ROOT).as_posix() + "/"
 
 
 def _out_is_ignored(entry: MirrorEntry) -> bool:
     # jig-ignore-next-line: indivisible reviewed identifier
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Git argv, no shell.
-        [GIT, "check-ignore", "--quiet", "--no-index", _out_probe(entry)],
+        [GIT, "check-ignore", "--quiet", "--no-index", "--", _out_directory(entry)],
         cwd=ROOT,
         check=False,
         shell=False,
@@ -232,7 +229,7 @@ def _validate_entry(
     if not output_policy(entry):
         message = (
             "research output is not Git ignored: "
-            f"{(entry.executable / "out").relative_to(ROOT).as_posix()}/"
+            f"{(entry.executable / 'out').relative_to(ROOT).as_posix()}/"
         )
         _fail(message)
 

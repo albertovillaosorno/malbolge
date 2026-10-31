@@ -35,10 +35,10 @@ ancestors before admitting an `experiment.toml` identity. Every direct
 research ID under either mirror root must exist on both sides. The documentation
 half requires `README.md` and `research.md`; the executable half requires
 `README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via
-`check-ignore --no-index`, whether `algorithms/<id>/out/` is ignored. Optional
-`math/algorithms/<id>.tex` remains a research-specific addition rather than a
-
-universal mirror requirement.
+`check-ignore --no-index`, whether `algorithms/<id>/out/` itself is ignored.
+A rule matching only a synthetic child filename cannot satisfy this
+directory-level output policy. Optional `math/algorithms/<id>.tex` remains a
+research-specific addition rather than a universal mirror requirement.
 
 Research conclusions may recommend promotion, rejection, or retirement, but an
 experiment does not modify trusted compiler semantics or production policy by
