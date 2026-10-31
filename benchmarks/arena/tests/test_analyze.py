@@ -1606,7 +1606,11 @@ def test_read_input_does_not_format_foreign_study_file_error(
         ("input", analyze.ArenaError),
         ("input", OSError),
         ("input", UnicodeError),
+        ("input", IndexError),
+        ("input", Exception),
         ("output", analyze.report_output.ReportOutputError),
+        ("output", IndexError),
+        ("output", Exception),
     ],
 )
 def test_cli_does_not_format_foreign_boundary_failures(
@@ -1731,3 +1735,38 @@ def test_exact_native_failure_with_foreign_argument_is_not_formatted(
     output = capsys.readouterr()
     assert output.err.startswith("arena:")
     assert not output.out
+
+
+@pytest.mark.parametrize(
+    "dependency", ["parse_document", "analyze", "require_unchanged_study_input"]
+)
+@pytest.mark.parametrize("fault_type", [IndexError, Exception])
+def test_cli_rejects_unanticipated_analysis_dependency_faults_without_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    dependency: str,
+    fault_type: type[Exception],
+) -> None:
+    """Unexpected parser, analyzer or recheck faults cannot publish a report."""
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(_document()), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["arena", str(path)])
+
+    class HostileAnalysisError(fault_type):
+        def __str__(self) -> str:
+            raise AssertionError("unanticipated analysis formatter invoked")
+
+    primary = HostileAnalysisError("untrusted analysis diagnostic")
+
+    def fail_analysis(*_args: object, **_kwargs: object) -> Never:
+        raise primary
+
+    monkeypatch.setattr(analyze, dependency, fail_analysis)
+    with pytest.raises(SystemExit) as caught:
+        analyze.main()
+    assert caught.value.code == 2
+    result = capsys.readouterr()
+    assert result.err.startswith("arena:")
+    assert "untrusted analysis diagnostic" not in result.err
+    assert not result.out

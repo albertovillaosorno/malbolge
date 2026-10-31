@@ -982,8 +982,9 @@ def main() -> int:
         if args.success_intervals_95:
             annotate_success_intervals(report)
         require_unchanged_study_input(args.input, source)
-    except (ArenaError, OSError, UnicodeError) as error:
+    except Exception as error:
         # Keep useful native diagnostics; never execute a foreign formatter.
+        # Unexpected ordinary host faults must not escape operator status two.
         native_errors = (
             ArenaError,
             OSError,
@@ -1001,7 +1002,8 @@ def main() -> int:
         parser.exit(2, f"arena: {detail}\n")
     try:
         report_output.publish(report, sys.stdout)
-    except report_output.ReportOutputError as error:
+    except Exception as error:
+        # A publisher dependency can fail outside its declared error class.
         detail = (
             _native_error_detail(error, report_output.ReportOutputError)
             or "arena report output failed"
