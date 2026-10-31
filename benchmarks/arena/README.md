@@ -164,9 +164,11 @@ requires an available pinned compiler and the repository's `.temp/` workspace;
 all temporary objects/executables are removed on completion or failure. The
 output adds `host_c_challenge_oracles_replayed`, `host_c_replay_modes`, and
 `host_c_replay_source_sha256` under `evidence_preflight`. An error or timeout
-fails admission without emitting a capacity/Pareto report. Without the new
-flag, no host compiler subprocess is launched and previous outputs are
-unchanged.
+fails admission without emitting a capacity/Pareto report. Group-signal
+failure attempts direct-child termination and a bounded reap instead of
+abandoning the child; cleanup failures remain typed and cannot mask an earlier
+child timeout. Without the new flag, no host compiler subprocess is launched
+and previous outputs are unchanged.
 
 **Scope:** This checks the generator oracle against separate native C
 execution on the recorded host, at two optimization levels. It does *not*

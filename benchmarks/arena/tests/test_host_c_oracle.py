@@ -183,6 +183,98 @@ def test_child_timeout_is_reported_as_replay_failure(
         )
 
 
+@pytest.mark.parametrize("timeout", [False, True])
+def test_host_cleanup_reaps_direct_child_when_group_signal_refused(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    timeout: bool,
+) -> None:
+    """Denied group termination cannot hide timeouts or abandon direct reaps."""
+    import subprocess as sp  # ruff: ignore[import-outside-top-level,suspicious-subprocess-import]
+    from typing import cast  # ruff: ignore[import-outside-top-level]
+
+    events: list[str] = []
+
+    class ChildProbe:
+        returncode = 0
+
+        def communicate(self, *, timeout: int) -> tuple[bytes, bytes]:
+            events.append("communicate")
+            if timeout == host_c_oracle.SUBPROCESS_TIMEOUT_SECONDS and timed_out:
+                raise sp.TimeoutExpired("fake-child", timeout)
+            return (b"", b"")
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self, *, timeout: int) -> int:
+            events.append("wait")
+            assert timeout > 0
+            return 0
+
+    def refuse_group(_child: object) -> None:
+        raise PermissionError("group termination denied")
+
+    timed_out = timeout
+    monkeypatch.setattr(host_c_oracle, "_kill_child_group", refuse_group)
+    with pytest.raises(
+        host_c_oracle.HostOracleError,
+        match="timed out" if timeout else "cleanup failed",
+    ) as error:
+        host_c_oracle._wait_child(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()), "O0 compile"
+        )
+    assert events == ["communicate", "poll", "kill", "wait"]
+    if timeout:
+        assert isinstance(error.value.__cause__, sp.TimeoutExpired)
+        assert any("cleanup also failed" in note for note in error.value.__notes__)
+    else:
+        assert isinstance(error.value.__cause__, PermissionError)
+
+
+def test_host_cleanup_retries_direct_reap_after_group_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A killed process group never authorizes an unbounded direct wait."""
+    import subprocess as sp  # ruff: ignore[import-outside-top-level,suspicious-subprocess-import]
+    from typing import cast  # ruff: ignore[import-outside-top-level]
+
+    events: list[str] = []
+
+    class ChildProbe:
+        returncode = 0
+        waits = 0
+
+        def communicate(self, *, timeout: int) -> tuple[bytes, bytes]:
+            assert timeout == host_c_oracle.SUBPROCESS_TIMEOUT_SECONDS
+            events.append("communicate")
+            return (b"", b"")
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            self.waits += 1
+            events.append("wait")
+            if self.waits == 1:
+                raise sp.TimeoutExpired("fake-child", timeout)
+            return 0
+
+        def kill(self) -> None:
+            events.append("kill")
+
+    monkeypatch.setattr(
+        host_c_oracle,
+        "_kill_child_group",
+        lambda _child: events.append("group"),
+    )
+    host_c_oracle._wait_child(  # ruff: ignore[private-member-access]
+        cast("sp.Popen[bytes]", ChildProbe()), "O0 compile"
+    )
+    assert events == ["communicate", "group", "wait", "kill", "wait"]
+
+
 def test_host_child_has_real_kernel_limits(tmp_path: Path) -> None:
     """Linux enforces the resource limits before executing user code."""
     script = (

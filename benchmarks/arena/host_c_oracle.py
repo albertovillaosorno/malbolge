@@ -178,6 +178,38 @@ def _read_stage_rss(path: Path) -> int:
     return peak_kib * KIB_BYTES
 
 
+def _finish_child(child: sp.Popen[bytes]) -> None:
+    failures: list[Exception] = []
+    try:
+        _kill_child_group(child)
+    except OSError as error:
+        failures.append(error)
+        # A group-signal failure must not skip the direct-child fallback.
+        try:
+            if child.poll() is None:
+                child.kill()
+        except OSError as direct_error:
+            failures.append(direct_error)
+    try:
+        _ = child.wait(timeout=1)
+    except sp.TimeoutExpired:
+        # The original group may have become unavailable while its direct
+        # child is still alive; retry one bounded direct kill and reap.
+        try:
+            child.kill()
+            _ = child.wait(timeout=1)
+        except (OSError, sp.SubprocessError) as error:
+            failures.append(error)
+    except (OSError, ValueError) as error:
+        failures.append(error)
+    if failures:
+        message = "host-C challenge oracle child cleanup failed"
+        failure = HostOracleError(message)
+        for error in failures[1:]:
+            failure.add_note(f"additional host-C cleanup failure: {error}")
+        raise failure from failures[0]
+
+
 def _wait_child(child: sp.Popen[bytes], label: str) -> None:
     try:
         try:
@@ -185,9 +217,17 @@ def _wait_child(child: sp.Popen[bytes], label: str) -> None:
         except sp.TimeoutExpired as error:
             message = f"host-C challenge oracle {label} timed out"
             raise HostOracleError(message) from error
+        except (OSError, ValueError, RuntimeError, sp.SubprocessError) as error:
+            message = f"host-C challenge oracle {label} transport failed"
+            raise HostOracleError(message) from error
     finally:
-        _kill_child_group(child)
-        _ = child.wait()
+        original = sys.exception()
+        try:
+            _finish_child(child)
+        except HostOracleError as error:
+            if original is None:
+                raise
+            original.add_note(f"host-C cleanup also failed: {error}")
     if child.returncode != 0:
         _fail(f"host-C challenge oracle {label} failed")
 
