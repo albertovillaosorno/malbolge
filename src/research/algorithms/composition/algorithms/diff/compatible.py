@@ -729,10 +729,13 @@ def _read_compatible_bytes(path: Path, context: str) -> bytes:
 def _write_compatible_bytes(path: Path, data: bytes, context: str) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_bytes(data)
+        written = path.write_bytes(data)
     except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} write failed: {path}: {error}"
         raise CompatiblePlanError(message) from error
+    if type(written) is not int or written != len(data):
+        message = f"{context} short or invalid byte count: {path}"
+        raise CompatiblePlanError(message)
 
 
 def _make_compatible_directory(
@@ -744,7 +747,7 @@ def _make_compatible_directory(
 ) -> None:
     try:
         path.mkdir(parents=parents, exist_ok=exist_ok)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} creation failed: {path}: {error}"
         raise CompatiblePlanError(message) from error
 

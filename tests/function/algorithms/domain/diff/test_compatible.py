@@ -1269,6 +1269,93 @@ def test_compatible_output_write_error_fails_closed(
     )
 
 
+def test_compatible_short_write_must_not_publish_truncated_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Never publish a partial byte write as a completed transformation."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    blocked = tmp_path / ".out.compatible-staging" / "created.bin"
+    original_write = Path.write_bytes
+
+    def short_write(path: Path, data: bytes) -> int:
+        if path == blocked:
+            return original_write(path, data[:1])
+        return original_write(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", short_write)
+    with pytest.raises(
+        CompatiblePlanError, match="short or invalid byte count"
+    ):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    assert not output.exists()
+    assert not (tmp_path / ".out.compatible-staging").exists()
+
+
+@pytest.mark.parametrize("returned", [None, True, -1, 999])
+def test_compatible_invalid_write_count_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    returned: object,
+) -> None:
+    """Foreign write counts are not accepted as complete I/O evidence."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    blocked = tmp_path / ".out.compatible-staging" / "created.bin"
+    original_write = Path.write_bytes
+
+    def invalid_write(path: Path, data: bytes) -> int:
+        written = original_write(path, data)
+        if path == blocked:
+            return cast("int", returned)
+        return written
+
+    monkeypatch.setattr(Path, "write_bytes", invalid_write)
+    with pytest.raises(
+        CompatiblePlanError, match="short or invalid byte count"
+    ):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    assert not output.exists()
+    assert not (tmp_path / ".out.compatible-staging").exists()
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_compatible_staging_creation_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Malformed host mkdir failures cannot escape the plan boundary."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    blocked = tmp_path / ".out.compatible-staging"
+    original_mkdir = Path.mkdir
+
+    def fail_staging_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        if path == blocked:
+            message = "injected staging directory failure"
+            raise failure_type(message)
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    monkeypatch.setattr(Path, "mkdir", fail_staging_mkdir)
+    with pytest.raises(
+        CompatiblePlanError, match="staging root creation failed"
+    ):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    assert not output.exists()
+    assert not blocked.exists()
+
+
 def test_target_only_path_conflict_fails_closed(tmp_path: Path) -> None:
     """Reject upstream conflict with required target-only material."""
     plan = _plan(tmp_path)
