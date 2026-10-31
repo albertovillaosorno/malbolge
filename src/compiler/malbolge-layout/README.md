@@ -369,7 +369,7 @@ failed I/O, memory, arbitrary C, or guest ABI is realized.
 ### Guest-computed finite nonzero byte literals
 
 An explicit `--seeded-byte-literal` canonical MCTI or MCTR file/stdin mode
-admits one source `u8` constant followed by one to twenty-three same-SSA
+admits one source `u8` constant followed by one to twenty-four same-SSA
 outputs.
 The exact output counts have independent current-profile witness tables:
 14 distinct bytes with one output, 10 with two, 21 with three, 24 with four,
@@ -377,11 +377,14 @@ The exact output counts have independent current-profile witness tables:
 and 25 with ten, plus 17 with eleven, 20 with twelve, 19 with thirteen,
 22 with fourteen, 17 with fifteen, 24 with sixteen, 19 with seventeen and
 20 with eighteen, 19 with nineteen, 21 with twenty, 20 with twenty-one
-and 25 with twenty-two and 21 with twenty-three. Each bounded
-source-prefix scan for counts three through twenty-three confirms 25 or
-26 tested phases emit identical nonzero bytes and retains the shortest
-valid prefix per distinct value. Every extra `<` changes source positions
-and loader-expanded data, so seeds cannot be shared across counts. The admitted `j`/`*`/`<`/`v` layout computes bytes through actual
+and 25 with twenty-two, 21 with twenty-three and 21 with twenty-four.
+For each count from three through twenty-four, a bounded source-prefix
+scan confirms that 25 or 26 tested phases emit identical nonzero bytes.
+The admission keeps the shortest prefix per value; phase seven of the
+24-output scan is excluded.
+Every extra `<` changes source positions and loader-expanded data, so
+seeds cannot be shared across counts.
+The admitted `j`/`*`/`<`/`v` layout computes bytes through actual
 guest data rotation, never a host literal-output callback.
 Each candidate source is re-admitted, then the *real normative VM* verifies
 exact termination, every requested output byte and zero input consumption before
@@ -397,8 +400,9 @@ cargo run --bin malbolge_layout -- \
 ```
 
 This mode is separate from strict echo, identity-bitcast, latest-read,
-initial-zero and zero-prefixed traces. Unknown constants, twenty-two or more
-writes, input consumption, guest heap, EOF and general C arithmetic still reject.
+initial-zero and zero-prefixed traces. Unknown constants, twenty-five
+or more writes, input consumption, guest heap, EOF and general C
+arithmetic still reject.
 
 ### Bounded canonical wire streaming on standard input
 

@@ -264,12 +264,14 @@ emission.
   Twenty-three outputs also pass all 26 bounded phases, yielding 21
   distinct nonzero byte values and retaining shortest duplicate prefixes.
   Typed/ternary capsule CLI and real runner validate values 251 and 27.
+  Twenty-four outputs admit 25 of 26 phases (phase seven fails) and 21
+  distinct shortest byte witnesses, with typed capsule/runner 65 and 155.
   All retained counts use shortest valid prefixes, reject unsupported values
   and counts, and verify real MCTI/MCTR file/stdin capsule publication with
   the guest VM.
   The full 256-byte admission domain, real CLI raw/capsule publisher, guest
   runner and zero-consumed-input checks preserve rejection of unsupported
-  values, foreign profiles and twenty-four or more outputs. This is not general
+  values, foreign profiles and twenty-five or more outputs. This is not general
   guest integer computation or proof of arbitrary output sequences.
 - The explicit `--identity-byte-trace` MCTI/MCTR file/stdin publisher
   admits latest-input signed/unsigned eight-bit SSA bitcasts through
