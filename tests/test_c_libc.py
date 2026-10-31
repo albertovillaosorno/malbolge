@@ -681,6 +681,40 @@ def test_libc_clang_ast_rejects_nontext_direct_input(value: object) -> None:
         _ = c_libc_source._parse_ast(cast("str", value), ACCEPTED)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "{}",
+        '{"kind":"FunctionDecl","id":"0x1","inner":[{}]}',
+        '{"kind":"TranslationUnitDecl","inner":[{}]}',
+        '{"kind":"TranslationUnitDecl","id":"0x1"}',
+        '{"kind":"TranslationUnitDecl","id":"0x1","inner":[]}',
+        '{"kind":"TranslationUnitDecl","id":"0x1","inner":[null]}',
+        '{"kind":"TranslationUnitDecl","id":true,"inner":[{}]}',
+    ],
+)
+def test_libc_clang_ast_requires_real_translation_unit_shape(text: str) -> None:
+    """Empty or synthetic AST roots cannot be mistaken for clean source scans."""
+    with pytest.raises(c_libc_source.LibcSourceError, match="AST root"):
+        _ = c_libc_source._parse_ast(text, ACCEPTED)
+
+
+def test_libc_clang_ast_empty_receipt_cannot_admit_forbidden_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A zero-exit process returning {} is not evidence of a clean C source."""
+    monkeypatch.setattr(c_libc_source, "_require_clang", lambda _: None)
+    monkeypatch.setattr(
+        sp,
+        "run",
+        lambda *args, **kwargs: sp.CompletedProcess(
+            args=[], returncode=0, stdout="{}", stderr=""
+        ),
+    )
+    with pytest.raises(c_libc_source.LibcSourceError, match="AST root"):
+        _ = c_libc_source._run_ast(ACCEPTED, _libc_test_ast_config())
+
+
 @pytest.mark.parametrize("stage", ["definitions", "references"])
 def test_libc_clang_ast_deep_nesting_fails_as_typed_error(
     tmp_path: Path,

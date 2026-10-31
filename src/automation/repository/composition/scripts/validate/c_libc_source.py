@@ -259,7 +259,19 @@ def _parse_ast(text: str, source: Path) -> JsonObject:
         raise LibcSourceError(message) from error
     if type(parsed) is not dict:
         _fail(f"Clang AST root must be an object for {source}")
-    return cast("JsonObject", parsed)
+    root = cast("JsonObject", parsed)
+    identifier = root.get("id")
+    children = root.get("inner")
+    if (
+        root.get("kind") != "TranslationUnitDecl"
+        or type(identifier) is not str
+        or not identifier
+        or type(children) is not list
+        or not children
+        or any(type(child) is not dict for child in children)
+    ):
+        _fail(f"Clang AST root must describe a nonempty translation unit: {source}")
+    return root
 
 
 def _run_ast(source: Path, config: _AstConfig) -> JsonObject:
