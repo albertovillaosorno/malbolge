@@ -1770,3 +1770,25 @@ def test_cli_rejects_unanticipated_analysis_dependency_faults_without_json(
     assert result.err.startswith("arena:")
     assert "untrusted analysis diagnostic" not in result.err
     assert not result.out
+
+
+@pytest.mark.parametrize("fault_type", [IndexError, Exception])
+def test_direct_input_reader_types_unanticipated_dependency_fault(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Unexpected bounded-reader faults stay typed and do not format hooks."""
+
+    class HostileReaderError(fault_type):
+        def __str__(self) -> str:
+            raise AssertionError("foreign input reader formatter invoked")
+
+    failure = HostileReaderError("untrusted reader fault")
+
+    def fail_read(*_args: object, **_kwargs: object) -> Never:
+        raise failure
+
+    monkeypatch.setattr(analyze.study_file, "read_study_bytes", fail_read)
+    with pytest.raises(analyze.ArenaError, match="arena study input rejected") as caught:
+        analyze.read_input(cast("Path", "ignored.json"))
+    assert caught.value.__cause__ is failure

@@ -931,8 +931,8 @@ def read_input(path: Path) -> str:
     """
     try:
         data = study_file.read_study_bytes(path, limit=MAX_INPUT_BYTES)
-    except study_file.StudyFileError as error:
-        # A foreign subclass may execute arbitrary code in its formatter.
+    except Exception as error:
+        # A foreign dependency fault or subclass may execute code in its formatter.
         detail = (
             _native_error_detail(error, study_file.StudyFileError)
             or "arena study input rejected"
