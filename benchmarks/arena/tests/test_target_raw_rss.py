@@ -91,8 +91,9 @@ def pinned_tools() -> Iterator[tuple[Path, Path]]:
     ) as folder:
         emitter = Path(folder) / "malbolge_layout"
         runner = Path(folder) / "malbolge"
-        emitter.hardlink_to(producer.DEFAULT_EMITTER)
-        runner.hardlink_to(producer.DEFAULT_RUNNER)
+        # Private copies avoid shared executable ctime drift across tests.
+        shutil.copy2(producer.DEFAULT_EMITTER, emitter)
+        shutil.copy2(producer.DEFAULT_RUNNER, runner)
         yield emitter, runner
 
 
