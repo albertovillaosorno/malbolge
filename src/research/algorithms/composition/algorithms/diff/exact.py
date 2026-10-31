@@ -39,6 +39,7 @@ import hashlib
 import os
 from pathlib import Path
 from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 import shutil
 from stat import S_ISDIR
 from stat import S_ISLNK
@@ -102,6 +103,30 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _require_portable_path_label(value: object) -> str:
+    """Admit one UTF-8 relative-path label before filesystem use.
+
+    Returns:
+        The unchanged path label.
+
+    Raises:
+        TreeModelError: The label is malformed or cannot encode as UTF-8.
+
+    """
+    if type(value) is not str or not value:
+        message = f"invalid relative path: {value!r}"
+        raise TreeModelError(message)
+    if _BACKSLASH in value or _NUL in value:
+        message = f"invalid relative path: {value!r}"
+        raise TreeModelError(message)
+    try:
+        _ = value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        message = f"invalid relative path: {value!r}"
+        raise TreeModelError(message) from error
+    return value
+
+
 def _validate_relative_path(relative_path: str) -> str:
     """Validate and normalize one portable relative file path.
 
@@ -112,19 +137,19 @@ def _validate_relative_path(relative_path: str) -> str:
         TreeModelError: The path is empty, unsafe, or non-canonical.
 
     """
-    if not relative_path or _BACKSLASH in relative_path:
-        message = f"invalid relative path: {relative_path!r}"
-        raise TreeModelError(message)
-    candidate = PurePosixPath(relative_path)
+    admitted = _require_portable_path_label(relative_path)
+    candidate = PurePosixPath(admitted)
     unsafe_part = any(part in _UNSAFE_PATH_PARTS for part in candidate.parts)
-    if candidate.is_absolute() or unsafe_part:
-        message = f"unsafe relative path: {relative_path!r}"
+    if (
+        candidate.is_absolute()
+        or PureWindowsPath(admitted).drive
+        or unsafe_part
+    ):
+        message = f"unsafe relative path: {admitted!r}"
         raise TreeModelError(message)
     normalized = candidate.as_posix()
-    if normalized != relative_path:
-        message = (
-            f"relative path is not canonically normalized: {relative_path!r}"
-        )
+    if normalized != admitted:
+        message = f"relative path is not canonically normalized: {admitted!r}"
         raise TreeModelError(message)
     return normalized
 

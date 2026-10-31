@@ -158,6 +158,28 @@ def test_exact_authoring_metadata_rejects_noncanonical_paths(
         )
 
 
+@pytest.mark.parametrize(
+    "invalid_root", ["dynamic\x00tail", "dynamic\ud800tail", "C:/escape"]
+)
+def test_exact_passthrough_roots_fail_before_source_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_root: str,
+) -> None:
+    """Malformed paths cannot begin tree traversal before policy rejection."""
+    source, oracle = _synthetic_pair(tmp_path)
+
+    def deny_snapshot(root: Path) -> TreeSnapshot:
+        message = f"source snapshot ran before root validation: {root}"
+        raise AssertionError(message)
+
+    with pytest.raises(TreeModelError, match="relative path"):
+        _ = snapshot_tree_excluding(source, (invalid_root,))
+    monkeypatch.setattr(exact_module, "snapshot_tree", deny_snapshot)
+    with pytest.raises(TreeModelError, match="relative path"):
+        _ = build_exact_plan(source, oracle, passthrough_roots=(invalid_root,))
+
+
 def test_exact_plan_reconstructs_synthetic_tree_byte_for_byte(
     tmp_path: Path,
 ) -> None:

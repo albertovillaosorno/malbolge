@@ -574,6 +574,26 @@ def _publish_relocatable_output(staging: Path, destination: Path) -> None:
         raise RelocationError(message) from error
 
 
+def _require_external_output_root(
+    candidate_root: Path, output_root: Path
+) -> None:
+    """Reject a destination inside the candidate before staging writes.
+
+    Raises:
+        RelocationError: Root resolution fails or output is source-contained.
+
+    """
+    try:
+        candidate = candidate_root.resolve()
+        output = output_root.resolve()
+    except (OSError, RuntimeError) as error:
+        message = f"relocatable root resolution failed: {error}"
+        raise RelocationError(message) from error
+    if output.is_relative_to(candidate):
+        message = "relocatable output must not be inside the candidate source"
+        raise RelocationError(message)
+
+
 def materialize_relocatable_plan(
     candidate_root: Path,
     plan: RelocatableAuthoringPlan,
@@ -594,6 +614,7 @@ def materialize_relocatable_plan(
     if type(plan) is not RelocatableAuthoringPlan:
         message = "relocatable materialization requires the exact plan type"
         raise RelocationError(message)
+    _require_external_output_root(candidate_root, output_root)
     staging = _prepare_staging(output_root)
     try:
         for instruction in plan.instructions:

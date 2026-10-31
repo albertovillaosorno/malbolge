@@ -98,6 +98,40 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, bytes]:
     return source, oracle, base
 
 
+@pytest.mark.parametrize("linked_output", [False, True])
+def test_relocatable_rejects_output_inside_candidate_source(
+    tmp_path: Path,
+    *,
+    linked_output: bool,
+) -> None:
+    """Reject source-contained publication before creating staging files."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    output_parent = candidate
+    if linked_output:
+        output_parent = tmp_path / "candidate-alias"
+        try:
+            _ = output_parent.symlink_to(candidate, target_is_directory=True)
+        except OSError:
+            pytest.skip("directory symlinks unavailable")
+    output = output_parent / "generated" / "out"
+
+    with pytest.raises(RelocationError, match="inside the candidate source"):
+        materialize_relocatable_plan(candidate, plan, output)
+
+    _expect(not output.exists(), "source-contained output was published")
+    entries = sorted(
+        path.relative_to(candidate).as_posix() for path in candidate.rglob("*")
+    )
+    _expect(
+        entries == ["code.bin", "copy.bin"],
+        "relocatable materialization mutated the candidate source tree",
+    )
+
+
 def test_candidate_insertion_inside_source_range_is_preserved(
     tmp_path: Path,
 ) -> None:
@@ -377,9 +411,9 @@ def test_relocatable_rejects_linked_authoring_directory(
     _write(source, "tree/file.bin", content)
     _write(oracle, "tree/file.bin", content[:900] + _TARGET + content[900:])
     exact = build_exact_plan(source, oracle)
-    (source / "tree").rename(source / "actual")
+    _ = (source / "tree").rename(source / "actual")
     try:
-        (source / "tree").symlink_to(
+        _ = (source / "tree").symlink_to(
             source / "actual", target_is_directory=True
         )
     except OSError:
