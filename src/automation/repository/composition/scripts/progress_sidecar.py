@@ -2068,14 +2068,14 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
             _verify_durability_directory(path, descriptor)
             _require_native_sync_receipt(os.fsync(descriptor), "progress directory")
             _verify_durability_directory(path, descriptor)
-        except _OUTPUT_STREAM_ERRORS as error:
+        except Exception as error:
             sync_error = error
             raise
     finally:
         try:
             if os.close(descriptor) is not None:
                 _fail("progress directory close receipt must be None")
-        except _OUTPUT_STREAM_ERRORS as error:
+        except Exception as error:
             if sync_error is not None:
                 BaseException.add_note(
                     sync_error,
@@ -2100,7 +2100,7 @@ def _confirm_publication_durability(
             f"{_host_error_detail(error)}"
         )
         raise ProgressSidecarCommittedError(message, published_path) from error
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         message = (
             f"{context} committed but durability confirmation failed: "
             f"{_host_error_detail(error)}"

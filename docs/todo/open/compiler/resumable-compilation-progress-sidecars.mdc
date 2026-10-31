@@ -201,6 +201,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   fails, including `ValueError` and `RuntimeError` from raw directory close,
   typed uncertain-durability outcomes also cover non-`OSError` directory
   sync failures, keeping them primary over later close errors,
+  eighteen red-first pointer/checkpoint durability cases also cover
+  `IndexError`/`OverflowError` at parent directory open, sync, post-sync path
+  stat, and close. Every failure retains the exact committed destination:
+  sync and admission faults report uncertain durability, close-only failure
+  reports a confirmed commit, and simultaneous sync/close errors preserve the
+  sync error as cause with secondary cleanup notes,
   POSIX parent-directory fsync now rejects non-directory inodes, linked parent
   paths, and linked parent swaps during sync using directory/no-follow flags,
   and independently binds open-directory device/inode to the nonfollowing

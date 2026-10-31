@@ -603,6 +603,16 @@ Directory `fsync` failures of types `OSError`, `ValueError`, and
 `RuntimeError` all retain uncertain-durability path evidence. A non-OS sync
 failure remains primary even if the subsequent directory close also fails.
 
+The same uncertain-versus-confirmed distinction now covers unexpected ordinary
+`IndexError` and `OverflowError` during POSIX directory opening, `fsync`,
+pre/post-sync inode admission, and close. Mutable pointer and immutable
+checkpoint publication retain the exact published path: failed sync or identity
+admission yields `ProgressSidecarDurabilityError`, while a close failure after
+confirmed sync yields `ProgressSidecarCommittedError`. If sync and close both
+fail, sync remains the cause with close recorded as a secondary note. Eighteen
+red-first integrated publication cases establish this classification without
+intercepting `BaseException` cancellation signals.
+
 POSIX durability confirmation requires a directory descriptor rather than
 accepting a regular file's successful `fsync`. The parent is opened with
 `O_DIRECTORY` and `O_NOFOLLOW` where supported, and its path is checked for

@@ -14321,3 +14321,164 @@ def test_unexpected_lock_admission_fault_rejects_before_pointer_commit(
     assert observed == [site]
     assert isinstance(captured.value.__cause__, fault_type)
     assert not Path(sidecar.progress_path).exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX durability confirmation opens a directory descriptor",
+)
+@pytest.mark.parametrize("publication", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("site", ["open", "sync", "close", "post-sync-stat"])
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_unexpected_directory_durability_fault_keeps_published_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publication: str,
+    site: str,
+    fault_type: type[Exception],
+) -> None:
+    """Unexpected directory dependency failure cannot erase commit evidence."""
+    sidecar = _sidecar(tmp_path)
+    payload = b"durable-generation"
+    candidate = _checkpointed(sidecar, checkpoint=payload, partial=None)
+    destination = (
+        Path(sidecar.progress_path)
+        if publication == "pointer"
+        else Path(candidate.checkpoint_path or "")
+    )
+    failure = fault_type("injected directory durability fault")
+    original_open = os.open
+    original_fsync = os.fsync
+    original_close = os.close
+    original_stat = Path.stat
+    directory_flag = cast("int", getattr(os, "O_DIRECTORY", 0))
+    saw_sync = False
+    injected = False
+
+    def failing_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        nonlocal injected
+        if site == "open" and Path(path) == tmp_path and flags & directory_flag:
+            injected = True
+            raise failure
+        return original_open(path, flags, mode)
+
+    def failing_fsync(descriptor: int) -> None:
+        nonlocal injected, saw_sync
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            if site == "sync":
+                injected = True
+                raise failure
+            result = original_fsync(descriptor)
+            saw_sync = True
+            return result
+        return original_fsync(descriptor)
+
+    def failing_close(descriptor: int) -> None:
+        nonlocal injected
+        directory = stat.S_ISDIR(os.fstat(descriptor).st_mode)
+        result = original_close(descriptor)
+        if site == "close" and directory:
+            injected = True
+            raise failure
+        return result
+
+    def failing_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal injected
+        if (
+            site == "post-sync-stat"
+            and saw_sync
+            and not injected
+            and path == tmp_path
+            and not follow_symlinks
+        ):
+            injected = True
+            raise failure
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    expected = (
+        progress.ProgressSidecarCommittedError
+        if site == "close"
+        else progress.ProgressSidecarDurabilityError
+    )
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", failing_open)
+        context.setattr(os, "fsync", failing_fsync)
+        context.setattr(os, "close", failing_close)
+        context.setattr(Path, "stat", failing_stat)
+        with pytest.raises(expected) as captured:
+            if publication == "pointer":
+                _ = progress.write_atomic(sidecar)
+            else:
+                _ = progress.write_checkpoint_generation(candidate, payload)
+    assert injected
+    assert captured.value.published_path == destination
+    if site == "close":
+        intermediate = captured.value.__cause__
+        assert isinstance(intermediate, Exception)
+        assert intermediate.__cause__ is failure
+    else:
+        assert captured.value.__cause__ is failure
+    assert destination.is_file()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+    if publication == "checkpoint":
+        assert not Path(sidecar.progress_path).exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX durability confirmation opens a directory descriptor",
+)
+@pytest.mark.parametrize("publication", ["pointer", "checkpoint"])
+def test_unexpected_directory_close_fault_preserves_failed_sync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publication: str,
+) -> None:
+    """Sync uncertainty stays primary when directory close also misbehaves."""
+    sidecar = _sidecar(tmp_path)
+    payload = b"durable-generation"
+    candidate = _checkpointed(sidecar, checkpoint=payload, partial=None)
+    destination = (
+        Path(sidecar.progress_path)
+        if publication == "pointer"
+        else Path(candidate.checkpoint_path or "")
+    )
+    primary = IndexError("primary directory fsync failure")
+    secondary = OverflowError("secondary directory close failure")
+    original_fsync = os.fsync
+    original_close = os.close
+    observed: list[str] = []
+
+    def failing_fsync(descriptor: int) -> None:
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            observed.append("sync")
+            raise primary
+        return original_fsync(descriptor)
+
+    def failing_close(descriptor: int) -> None:
+        directory = stat.S_ISDIR(os.fstat(descriptor).st_mode)
+        result = original_close(descriptor)
+        if directory:
+            observed.append("close")
+            raise secondary
+        return result
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", failing_fsync)
+        context.setattr(os, "close", failing_close)
+        with pytest.raises(progress.ProgressSidecarDurabilityError) as captured:
+            if publication == "pointer":
+                _ = progress.write_atomic(sidecar)
+            else:
+                _ = progress.write_checkpoint_generation(candidate, payload)
+    assert observed == ["sync", "close"]
+    assert captured.value.published_path == destination
+    assert captured.value.__cause__ is primary
+    assert getattr(primary, "__notes__", None) == [
+        "directory descriptor close also failed: OverflowError"
+    ]
+    assert destination.is_file()
+    if publication == "checkpoint":
+        assert not Path(sidecar.progress_path).exists()
