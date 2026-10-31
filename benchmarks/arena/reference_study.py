@@ -120,9 +120,19 @@ def _commit() -> str:
     ):
         _fail("host-C reference study Git executable is not an ordinary file")
     # Caller Git selectors cannot redirect a source provenance lookup.
-    clean_env = {
-        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
-    }
+    # Admit native keys before calling methods on externally supplied names.
+    try:
+        clean_env: dict[str, str] = {}
+        for name, value in os.environ.items():
+            if type(name) is not str or type(value) is not str:
+                _fail("host-C reference study Git environment requires native strings")
+            if not name.startswith("GIT_"):
+                clean_env[name] = value
+    except ReferenceStudyError:
+        raise
+    except Exception as error:
+        message = "host-C reference study Git environment unavailable"
+        raise ReferenceStudyError(message) from error
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [executable, "rev-parse", "HEAD"],
@@ -763,6 +773,9 @@ def _validate_plan(plan: StudyPlan) -> None:
             "host-C reference requires enforced child limits: "
             f"{_failure_diagnostic(error)}"
         )
+        raise ReferenceStudyError(message) from error
+    except Exception as error:
+        message = "host-C reference child limits preflight failed"
         raise ReferenceStudyError(message) from error
 
 

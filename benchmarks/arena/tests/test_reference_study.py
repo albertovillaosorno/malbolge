@@ -517,6 +517,71 @@ def test_reference_git_resolver_fault_preserves_typed_source_error(
     assert type(captured.value.__cause__) is failure_type
 
 
+class _HostileGitEnvironmentKey(str):
+    def startswith(self, prefix: str | tuple[str, ...], *args: object) -> bool:
+        del prefix, args
+        raise AssertionError("foreign Git environment key method called")
+
+
+@pytest.mark.parametrize("scenario", ["read-fault", "foreign-key", "foreign-value"])
+def test_reference_git_environment_admission_precedes_child_launch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scenario: str,
+) -> None:
+    """Host environment failures and foreign keys fail before Git is invoked."""
+    executable = tmp_path / "git"
+    executable.write_bytes(b"native executable")
+    executable.chmod(0o700)
+    fault = _UnexpectedHostFault("environment snapshot failed")
+
+    class ForeignEnvironment(dict[str, str]):
+        def items(self) -> Any:
+            if scenario == "read-fault":
+                raise fault
+            if scenario == "foreign-key":
+                return [(_HostileGitEnvironmentKey("GIT_DIR"), "redirected")]
+            return [("PATH", object())]
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("invalid Git environment reached child launch")
+
+    monkeypatch.setattr(reference_study.shutil, "which", lambda *_a, **_k: str(executable))
+    monkeypatch.setattr(reference_study.os, "environ", ForeignEnvironment())
+    monkeypatch.setattr(reference_study.sp, "run", forbidden)
+    with pytest.raises(reference_study.ReferenceStudyError, match="Git environment") as caught:
+        reference_study._commit()  # ruff: ignore[private-member-access]
+    if scenario == "read-fault":
+        assert caught.value.__cause__ is fault
+
+
+def test_reference_git_environment_sanitizer_preserves_native_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Native environment fields survive while Git selectors are removed."""
+    executable = tmp_path / "git"
+    executable.write_bytes(b"native executable")
+    executable.chmod(0o700)
+
+    class NativeEnvironment(dict[str, str]):
+        def items(self) -> Any:
+            return [("GIT_DIR", "/malicious-redirect"), ("PATH", "/usr/bin")]
+
+    def fake_git(*args: object, **kwargs: object) -> object:
+        del args
+        assert kwargs["env"] == {"PATH": "/usr/bin"}
+        return reference_study.sp.CompletedProcess(
+            ["git", "rev-parse", "HEAD"], 0, stdout="a" * 40 + "\n"
+        )
+
+    monkeypatch.setattr(reference_study.shutil, "which", lambda *_a, **_k: str(executable))
+    monkeypatch.setattr(reference_study.os, "environ", NativeEnvironment())
+    monkeypatch.setattr(reference_study.sp, "run", fake_git)
+    assert reference_study._commit() == "a" * 40  # ruff: ignore[private-member-access]
+
+
 @pytest.mark.parametrize("bad_output", [None, True, b"0" * 40, "missing"])
 def test_reference_git_rejects_nontext_revision_receipts(
     monkeypatch: pytest.MonkeyPatch, bad_output: object
@@ -1341,6 +1406,23 @@ def test_reference_study_refuses_missing_kernel_limit_launcher(
         reference_study.run_study(
             reference_study.StudyPlan(FAMILY, (4,), 7, 1),
         )
+
+
+def test_reference_resource_admission_types_unexpected_dependency_fault(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign host-resource probe fault must not escape direct admission."""
+    fault = _UnexpectedHostFault("unexpected child resource probe fault")
+
+    def fail_probe() -> None:
+        raise fault
+
+    monkeypatch.setattr(host_c_oracle, "require_child_resource_controls", fail_probe)
+    with pytest.raises(reference_study.ReferenceStudyError, match="child limits") as caught:
+        reference_study._validate_plan(  # ruff: ignore[private-member-access]
+            reference_study.StudyPlan(FAMILY, (4,), 7, 1)
+        )
+    assert caught.value.__cause__ is fault
 
 
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
