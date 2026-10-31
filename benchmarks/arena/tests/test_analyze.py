@@ -3089,3 +3089,74 @@ def test_success_interval_false_late_grid_receipt_rejects_atomically(
     assert calls == 2
     assert all(SUCCESS_INTERVAL_KEY not in row for row in report["capacity_curve"])
     assert SUCCESS_INTERVAL_POLICY_KEY not in report
+
+
+@pytest.mark.parametrize("forgery", ["wide", "coverage", "tied-coverage"])
+def test_median_interval_rejects_false_exact_rank_or_coverage(
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """Observed median containment cannot prove statistical coverage or ranks."""
+    values = [5] * 10 if forgery == "tied-coverage" else list(range(10))
+    original = analyze.median_intervals.median_interval_95(values)
+    assert original is not None
+    forged = copy.deepcopy(original)
+    if forgery == "wide":
+        forged["lower"] = values[0]
+        forged["upper"] = values[-1]
+    else:
+        forged["coverage"] = [1, 1]
+    monkeypatch.setattr(
+        analyze.median_intervals,
+        "median_interval_95",
+        lambda *_: forged,
+    )
+    with pytest.raises(analyze.ArenaError, match="median interval receipt"):
+        analyze._median_interval_receipt(values)
+
+
+def test_median_interval_cli_rejects_plausible_but_false_exact_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Canonical but false coverage cannot publish the median inferential view."""
+    original = analyze.median_intervals.median_interval_95
+
+    def forged(values: list[int]) -> analyze.median_intervals.MedianInterval | None:
+        interval = original(values)
+        if interval is not None:
+            interval["coverage"] = [1, 1]
+        return interval
+
+    monkeypatch.setattr(analyze.median_intervals, "median_interval_95", forged)
+    path = tmp_path / "fictitious-coverage.json"
+    _ = path.write_text(json.dumps(_repeated_success_study(10)), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["arena", str(path), "--median-intervals-95"])
+    with pytest.raises(SystemExit, match="2"):
+        analyze.main()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "median interval receipt" in output.err
+
+
+@pytest.mark.parametrize("count", [6, 10, 21, 64, 4096])
+@pytest.mark.parametrize("ties", [False, True])
+def test_median_exact_rank_reference_preserves_native_intervals_at_limits(
+    count: int,
+    ties: bool,
+) -> None:
+    """Correct rank and coverage survive ties and the 4096-sample bound."""
+    values = [7] * count if ties else list(range(count))
+    expected = analyze.median_intervals.median_interval_95(values)
+    assert expected is not None
+    assert analyze._median_interval_receipt(values) == expected
+
+
+def test_median_exact_rank_reference_accepts_all_small_supported_counts() -> None:
+    """Integer binomial rank search agrees for every finite 6..64 sample."""
+    for count in range(6, 65):
+        values = list(range(count))
+        expected = analyze.median_intervals.median_interval_95(values)
+        assert expected is not None
+        assert analyze._median_interval_receipt(values) == expected

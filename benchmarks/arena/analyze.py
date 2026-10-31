@@ -494,6 +494,37 @@ def _paired_outcomes(
     return counts
 
 
+def _binomial_prefix_reverse(size: int, through: int) -> int:
+    """Sum binomial coefficients from an independent high-rank anchor."""
+    coefficient = comb(size, through)
+    total = 0
+    for index in range(through, -1, -1):
+        total += coefficient
+        if index:
+            coefficient = coefficient * index // (size - index + 1)
+    return total
+
+
+def _exact_median_rank_reference(size: int) -> tuple[int, Fraction]:
+    """Find the largest eligible symmetric median rank independently."""
+    denominator = 1 << size
+    confidence = median_intervals.REQUESTED_CONFIDENCE
+    lower_rank = 0
+    upper_rank = size // 2 + 1
+    while upper_rank - lower_rank > 1:
+        rank = (lower_rank + upper_rank) // 2
+        excluded_tail = _binomial_prefix_reverse(size, rank - 1)
+        remainder = denominator - 2 * excluded_tail
+        if remainder * confidence.denominator >= confidence.numerator * denominator:
+            lower_rank = rank
+        else:
+            upper_rank = rank
+    if lower_rank == 0:
+        _fail("median interval receipt has no eligible exact confidence rank")
+    tail = _binomial_prefix_reverse(size, lower_rank - 1)
+    return lower_rank, Fraction(denominator - 2 * tail, denominator)
+
+
 def _median_interval_receipt(values: list[int]) -> dict[str, Any] | None:
     """Accept only native, bounded and owned median inference metadata.
 
@@ -556,6 +587,13 @@ def _median_interval_receipt(values: list[int]) -> dict[str, Any] | None:
         or [rational.numerator, rational.denominator] != coverage
     ):
         _fail("median interval receipt has unsupported confidence coverage")
+    rank, expected_coverage = _exact_median_rank_reference(count)
+    if (
+        lower != ordered[rank - 1]
+        or upper != ordered[-rank]
+        or rational != expected_coverage
+    ):
+        _fail("median interval receipt differs from exact order-statistic interval")
     # Never publish the dependency's mutable mapping or fraction list.
     return {
         "lower": lower,

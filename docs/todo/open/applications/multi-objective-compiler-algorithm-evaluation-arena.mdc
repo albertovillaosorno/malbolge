@@ -578,7 +578,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   costs, all-attempt elapsed time, and paired differences. Additional tests
   reject hostile helper exceptions and false over-limit intervals, confirm
   both CLIs publish no JSON on drift, and preserve the legitimate null path.
-  The returned coverage is structurally checked, not mathematically certified.
+  The returned median interval now additionally must match the independently
+  reconstructed largest eligible order-statistic rank and exact binomial-tail
+  coverage. A `math.comb`-anchored descending tail and integer rank search
+  reject plausible but fabricated bounds and confidence with red-first direct
+  and no-JSON operator tests; iid sampling remains unauthenticated.
 - The host-C reference-study producer's operator JSON now uses the same
   checked stdout publisher and fails nonzero on incomplete writes or flush,
   without pretending that already-emitted text can be retracted. Unexpected

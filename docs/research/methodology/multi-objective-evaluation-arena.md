@@ -101,7 +101,11 @@ sample count, observed middle-rank containment, reduced binary-rational
 coverage of at least 95%, and owned copied output. A missing eligible result,
 a fabricated over-limit bound, or unexpected helper exception rejects before
 publication; foreign results cannot mutate the retained report afterward.
-These checks do not independently certify exact binomial-tail computations.
+An independent integer-binomial reference now binary-searches for the largest
+qualifying symmetric rank, summing tails with a descending recurrence anchored
+by `math.comb`. The report must match both exact observed rank endpoints and
+the canonical achieved coverage; widened bounds or invented confidence cannot
+enter either operator view. This arithmetic check does not validate iid draws.
 
 A third optional inference view, `--success-intervals-95`, bounds the
 reported probability of verifier success among **all** attempts, retaining
