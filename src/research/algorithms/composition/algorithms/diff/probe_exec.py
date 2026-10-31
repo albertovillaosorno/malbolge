@@ -591,6 +591,13 @@ def _drain_pipe(stream: IO[bytes], capture: _PipeCapture) -> None:
     capture.finished = True
 
 
+def _write_complete_probe_stdin(stream: IO[bytes], data: bytes) -> None:
+    written = stream.write(data)
+    if type(written) is not int or written != len(data):
+        message = "probe stdin reported short or invalid byte count"
+        raise ValueError(message)
+
+
 def _feed_stdin(
     stream: IO[bytes],
     data: bytes,
@@ -601,7 +608,7 @@ def _feed_stdin(
     """Write stdin and acknowledge only a clean worker completion."""
     wrote = False
     try:
-        _ = stream.write(data)
+        _write_complete_probe_stdin(stream, data)
         wrote = True
     except BrokenPipeError:
         wrote = True

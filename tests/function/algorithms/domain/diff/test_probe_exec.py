@@ -38,6 +38,7 @@ from contextlib import suppress
 from dataclasses import replace
 import gc
 import hashlib
+import io
 import os
 from pathlib import Path
 import shutil
@@ -46,9 +47,11 @@ import sys
 import tempfile
 import threading
 import time
+from typing import Protocol
 from typing import TYPE_CHECKING
 from typing import cast
 
+from algorithms.diff import probe_exec as probe_exec_module
 from algorithms.diff.probe_exec import PathArgument
 from algorithms.diff.probe_exec import ProbeCommand
 from algorithms.diff.probe_exec import ProbeExecutionError
@@ -65,6 +68,7 @@ import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import IO
 
 _PYTHON_TOOL = "python"
 _WINDOWS_OS_NAME = "nt"
@@ -76,6 +80,7 @@ _STDOUT_NAME = "stdout"
 _STDERR_NAME = "stderr"
 _POSIX_OS_NAME = "posix"
 _PROBE_WRITER_THREAD_NAME = "probe-stdin-writer"
+_SHORT_STDIN_MESSAGE = "short or invalid"
 _GROUP_CLEANUP_FAILURE = "group cleanup failed"
 _PROBE_BATCH_PREFIX = "diff-probe-batch-"
 _PROBE_SCRATCH_PREFIX = "diff-probe-"
@@ -96,6 +101,35 @@ _MUTATE_CODE = (
 def _expect(condition: object, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+class _ProbeStdinWriter(Protocol):
+    def __call__(
+        self,
+        stream: IO[bytes],
+        data: bytes,
+        errors: list[Exception],
+        *,
+        completed: threading.Event,
+    ) -> None: ...
+
+
+class _ShortStdinStream:
+    def __init__(self, reported: object, *, partial: bool) -> None:
+        self.stream: io.BytesIO = io.BytesIO()
+        self.reported: object = reported
+        self.partial: bool = partial
+
+    def write(self, data: bytes) -> int:
+        written = self.stream.write(data[:1] if self.partial else data)
+        return written if self.partial else cast("int", self.reported)
+
+    def close(self) -> None:
+        self.stream.close()
+
+    @property
+    def closed(self) -> bool:
+        return self.stream.closed
 
 
 def _context(source_root: Path, repository_root: Path) -> ProbeRunContext:
@@ -816,6 +850,32 @@ def test_probe_worker_startup_failures_are_wrapped(
     _expect(triggered[0], "worker start failure was not injected")
     # Force unowned Popen pipe finalizers to run inside the strict warning gate.
     _ = gc.collect()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [(True, None), (False, None), (False, True), (False, -1), (False, 999)],
+)
+def test_stdin_worker_rejects_short_or_foreign_write_counts(
+    case: tuple[bool, object],
+) -> None:
+    """The writer must not acknowledge partial stdin as fully delivered."""
+    partial, reported = case
+    stream = _ShortStdinStream(reported, partial=partial)
+    errors: list[Exception] = []
+    completed = threading.Event()
+    feed = cast("_ProbeStdinWriter", vars(probe_exec_module)["_feed_stdin"])
+    feed(
+        cast("IO[bytes]", cast("object", stream)),
+        b"required-input",
+        errors,
+        completed=completed,
+    )
+    assert not completed.is_set()
+    assert len(errors) == 1
+    assert isinstance(errors[0], ValueError)
+    assert _SHORT_STDIN_MESSAGE in str(errors[0])
+    assert stream.closed
 
 
 def test_uncaught_stdin_writer_failure_rejects_probe(
