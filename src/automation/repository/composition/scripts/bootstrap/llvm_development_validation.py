@@ -173,6 +173,13 @@ def _reject_include_symlinks(include_root: Path) -> None:
             _fail(f"LLVM RPM include tree contains a symlink: {candidate}")
 
 
+def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
+    """Admit a staged RPM or marker only after a complete host write."""
+    written = path.write_bytes(content)
+    if type(written) is not int or written != len(content):
+        _fail(f"LLVM development staging write count mismatch: {path.name}")
+
+
 def _extract_rpm_headers(
     data: bytes,
     asset: tidy_toolchain.DevelopmentAsset,
@@ -184,7 +191,7 @@ def _extract_rpm_headers(
     package_staging = staging / asset.name.removesuffix(RPM_SUFFIX)
     package_staging.mkdir(parents=True)
     rpm_path = package_staging / asset.name
-    _ = rpm_path.write_bytes(data)
+    _write_verified_staging_bytes(rpm_path, data)
     payload = _cpio_payload(rpm_path)
     _ = _cpio_members(payload)
     _ = _command_bytes(
@@ -446,8 +453,8 @@ def provision_development_identity(
             functions,
             package_staging=staging / "packages",
         )
-        _ = (staged_root / LLVM_DEVELOPMENT_MARKER).write_bytes(
-            _marker_bytes(identity)
+        _write_verified_staging_bytes(
+            staged_root / LLVM_DEVELOPMENT_MARKER, _marker_bytes(identity)
         )
         identity.development_root.parent.mkdir(parents=True, exist_ok=True)
         _ = staged_root.replace(identity.development_root)

@@ -39,6 +39,7 @@ import hashlib
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 from scripts.bootstrap import llvm_development_validation
@@ -292,3 +293,87 @@ def test_development_marker_rejects_fifo_without_blocking(
     marker.unlink()
     mkfifo(marker)
     assert not llvm_development_validation.development_root_matches(identity)
+
+
+_BAD_WRITE_RESULTS = ("short", "overlong", "boolean", "missing")
+
+
+def _bad_write_count(kind: str, expected: int) -> int:
+    """Simulate a host reporting an invalid byte count.
+
+    Returns:
+        A short, overlong, boolean, or missing write acknowledgement.
+
+    """
+    results: dict[str, object] = {
+        "short": expected - 1,
+        "overlong": expected + 1,
+        "boolean": True,
+        "missing": None,
+    }
+    return cast("int", results[kind])
+
+
+@pytest.mark.parametrize("invalid_count", list(_BAD_WRITE_RESULTS))
+def test_provision_rejects_incomplete_marker_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_count: str,
+) -> None:
+    """No development tree publishes when marker write reports bad count."""
+    identity = _identity(tmp_path)
+    real_write = Path.write_bytes
+
+    def wrong_write(path: Path, data: bytes) -> int:
+        if path.name == llvm_development_validation.LLVM_DEVELOPMENT_MARKER:
+            _ = real_write(path, data[:-1])
+            return _bad_write_count(invalid_count, len(data))
+        return real_write(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", wrong_write)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="write count",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path,
+            identity,
+            downloader=_downloader([]),
+            extractor=_extract_headers,
+        )
+    assert not identity.development_root.exists()
+    staging = tmp_path / ".temp/llvm-development-provision-linux-x86_64"
+    assert not staging.exists()
+
+
+@pytest.mark.parametrize("invalid_count", list(_BAD_WRITE_RESULTS))
+def test_rpm_extraction_rejects_incomplete_staging_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_count: str,
+) -> None:
+    """Never execute a staged RPM with an invalid host write count."""
+    identity = _identity(tmp_path)
+    real_write = Path.write_bytes
+
+    def wrong_write(path: Path, data: bytes) -> int:
+        if path.name == PACKAGE_NAME:
+            _ = real_write(path, data[:-1])
+            return _bad_write_count(invalid_count, len(data))
+        return real_write(path, data)
+
+    def unexpected_cpio(path: Path) -> bytes:
+        pytest.fail(f"unverified RPM reached CPIO: {path.name}")
+
+    monkeypatch.setattr(Path, "write_bytes", wrong_write)
+    monkeypatch.setattr(
+        llvm_development_validation, "_cpio_payload", unexpected_cpio
+    )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="write count",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path, identity, downloader=_downloader([])
+        )
+    assert not identity.development_root.exists()
