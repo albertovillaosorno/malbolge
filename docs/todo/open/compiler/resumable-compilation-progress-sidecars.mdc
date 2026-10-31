@@ -159,6 +159,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   or concurrently rewritten alias without publication, then re-admitted before
   durable generation reuse so retry after cleanup failure remains recoverable;
   staging-alias scans escape glob metacharacters in literal output names,
+  long valid mutable and immutable destinations now share a bounded
+  compact digest staging prefix with collision-independent inode admission
+  and crash-alias recovery; ordinary literal staging names remain stable,
   with POSIX rejection and positive recovery tests for `?`, `*`, and `[` names,
   and rejects arbitrary temporary-looking aliases lacking the pinned Python
   3.14 eight-character candidate-token spelling (not provenance authentication);

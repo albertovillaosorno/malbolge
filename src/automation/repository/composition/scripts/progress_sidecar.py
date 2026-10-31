@@ -102,6 +102,8 @@ _FOLLOW_INTERVAL_SECONDS: Final = 1.0
 _MAX_SIDECAR_BYTES: Final = 1_048_576
 _RAW_READ_CHUNK_BYTES: Final = 65_536
 _MAX_NATIVE_FILE_DESCRIPTOR: Final = (1 << (8 * calcsize("@i") - 1)) - 1
+_MAX_STAGING_PREFIX_BYTES: Final = 128
+_STAGING_DIGEST_HEX_CHARS: Final = 24
 _JOB_IDENTITY_FIELD_COUNT: Final = 3
 WINDOWS_PLATFORM: Final = "nt"
 _NUL_PATH_CHARACTER: Final = "\x00"
@@ -2571,6 +2573,22 @@ def _confirm_mutable_postpublication_identity(
         raise ProgressSidecarCommittedError(message, destination) from error
 
 
+def _temporary_stage_prefix(destination: Path) -> str:
+    """Keep exclusive staging names short even for long valid destinations.
+
+    Returns:
+        A reproducible naming hint; inode checks, not this name, own identity.
+
+    """
+    direct = f".{destination.name}."
+    if len(os.fsencode(direct)) <= _MAX_STAGING_PREFIX_BYTES:
+        return direct
+    # This digest is only a collision-prone name hint. The exclusive mkstemp
+    # creator and verified stage inode remain the publication authority.
+    digest = sha256(os.fsencode(destination.name)).hexdigest()
+    return f".progress-{digest[:_STAGING_DIGEST_HEX_CHARS]}."
+
+
 def _write_atomic_bytes(
     destination: Path,
     payload: bytes,
@@ -2581,7 +2599,7 @@ def _write_atomic_bytes(
     _reject_path_redirect(destination, "progress sidecar")
     descriptor, temporary_name = tempfile.mkstemp(
         dir=destination.parent,
-        prefix=f".{destination.name}.",
+        prefix=_temporary_stage_prefix(destination),
         suffix=".tmp",
     )
     temporary = Path(temporary_name)
@@ -2758,7 +2776,7 @@ def _find_retained_immutable_stage(
 
     """
     matches: list[Path] = []
-    raw_prefix = f".{destination.name}."
+    raw_prefix = _temporary_stage_prefix(destination)
     with os.scandir(destination.parent) as entries:
         for count, entry in enumerate(entries, start=1):
             if count > _MAX_RETAINED_STAGING_DIRECTORY_ENTRIES:
@@ -2926,7 +2944,7 @@ def _write_immutable(
     _reject_path_redirect(destination, "immutable progress payload")
     descriptor, temporary_name = tempfile.mkstemp(
         dir=destination.parent,
-        prefix=f".{destination.name}.",
+        prefix=_temporary_stage_prefix(destination),
         suffix=".tmp",
     )
     temporary = Path(temporary_name)

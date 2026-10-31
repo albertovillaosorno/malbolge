@@ -1011,8 +1011,20 @@ these selectors once a product C-to-Malbolge pipeline exists.
   foreign alias without that narrow recovery path remains rejected. Recovery
   inventories at most 4,096 physical directory entries, counting unrelated
   siblings; a larger inventory fails closed without unlinking a retained alias.
-  It matches the destination's literal filename and exact staging suffix:
-  `?`, `*`, and `[` in a valid POSIX filename are never treated as wildcards.
+  For ordinary basenames the staging prefix retains the destination's
+  literal filename and exact suffix: `?`, `*`, and `[` in a valid POSIX
+  filename are never treated as wildcards. When the filesystem-encoded
+  direct prefix would exceed 128 bytes, mutable pointer and immutable
+  generation writers instead use the reproducible compact prefix
+  `.progress-` followed by 24 lowercase SHA-256 hex digits and a period,
+  derived from the full destination basename.
+  Both writers use this prefix for exclusive temporary creation; immutable
+  recovery searches the identical prefix. The digest is a naming hint,
+  never an identity authority: retained aliases still require the original
+  regular inode, exact content, link count and eight-character stage token.
+  Valid long target names no longer fail solely because their temporary
+  name would exceed the filesystem's per-component length limit; target
+  and writer-lock filenames must still be individually representable.
 
   Furthermore, recovery accepts only the eight-character
   lowercase/digit/underscore temporary token

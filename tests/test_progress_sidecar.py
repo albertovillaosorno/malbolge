@@ -3332,6 +3332,42 @@ def test_read_rejects_linked_progress_parent(tmp_path: Path) -> None:
     assert real.read_bytes() == payload
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX filename budget")
+def test_long_valid_output_basename_publishes_progress_pointer(
+    tmp_path: Path,
+) -> None:
+    """A valid final/lock basename must not overflow staging names."""
+    original = _sidecar(tmp_path)
+    output = tmp_path / ("o" * 224 + ".malbolge")
+    destination = progress.progress_path(output)
+    # These are valid 255-byte POSIX components despite an overlong stage.
+    assert len(os.fsencode(destination.name)) <= 255
+    assert len(os.fsencode(f"{destination.name}.lock")) <= 255
+    candidate = replace(
+        original, output_path=str(output), progress_path=str(destination)
+    )
+    assert progress.write_atomic(candidate) == destination
+    assert progress.read(destination) == candidate
+    assert sorted(path.name for path in tmp_path.iterdir()) == sorted(
+        [destination.name, f"{destination.name}.lock"]
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX filename budget")
+def test_long_valid_immutable_basename_publishes_and_reuses_generation(
+    tmp_path: Path,
+) -> None:
+    """An immutable generation can use a long valid final filename."""
+    destination = tmp_path / ("c" * 236 + ".checkpoint")
+    assert len(os.fsencode(destination.name)) <= 255
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    payload = b"long-destination-durable-state"
+    assert writer(destination, payload, platform=os.name) == destination
+    assert writer(destination, payload, platform=os.name) == destination
+    assert destination.read_bytes() == payload
+    assert [path.name for path in tmp_path.iterdir()] == [destination.name]
+
+
 def test_write_atomic_rejects_linked_progress_parent(tmp_path: Path) -> None:
     """Writing a sidecar never follows a redirected parent directory."""
     linked, target = _linked_directory(tmp_path, "linked-write-parent")
@@ -6576,6 +6612,51 @@ def test_retained_alias_scan_rejects_foreign_entry_stat() -> None:
 
     foreign = cast("os.DirEntry[str]", cast("object", ForeignEntry()))
     assert matcher(foreign, ".checkpoint.", (1, 2)) is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link recovery")
+def test_long_compact_stage_alias_recovered_only_for_own_inode(
+    tmp_path: Path,
+) -> None:
+    """Crash recovery uses the same compact name while checking inode truth."""
+    destination = tmp_path / ("c" * 236 + ".checkpoint")
+    payload = b"long-destination-retained-generation"
+    _ = destination.write_bytes(payload)
+    stage_prefix = (
+        ".progress-"
+        + sha256(os.fsencode(destination.name)).hexdigest()[:24]
+        + "."
+    )
+    retained = tmp_path / f"{stage_prefix}abcdefgh.tmp"
+    os.link(destination, retained)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    assert writer(destination, payload, platform=os.name) == destination
+    assert destination.read_bytes() == payload
+    assert destination.stat().st_nlink == 1
+    assert not retained.exists()
+    assert [path.name for path in tmp_path.iterdir()] == [destination.name]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link recovery")
+def test_long_compact_stage_pattern_cannot_recover_foreign_alias(
+    tmp_path: Path,
+) -> None:
+    """A plausible compact name is not evidence for an unrelated inode."""
+    destination = tmp_path / ("c" * 236 + ".checkpoint")
+    payload = b"long-destination-retained-generation"
+    _ = destination.write_bytes(payload)
+    stage_prefix = (
+        ".progress-"
+        + sha256(os.fsencode(destination.name)).hexdigest()[:24]
+        + "."
+    )
+    foreign = tmp_path / f"{stage_prefix}bad!.tmp"
+    os.link(destination, foreign)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    with pytest.raises(ERROR, match="external hard link"):
+        _ = writer(destination, payload, platform=os.name)
+    assert destination.read_bytes() == foreign.read_bytes() == payload
+    assert destination.stat().st_nlink == 2
 
 
 @pytest.mark.skipif(
