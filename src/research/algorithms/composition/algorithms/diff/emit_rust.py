@@ -366,7 +366,12 @@ def write_rust_transform(
     profile: str,
     output_path: Path,
 ) -> None:
-    """Write one generated transform atomically."""
+    """Write one generated transform atomically.
+
+    Raises:
+        RustEmissionError: Emission or publication validation fails.
+
+    """
     source = emit_rust_transform(plan, profile, output_path)
     prepared_output = _prepare_output_path(output_path)
     temporary = _temporary_output_path(prepared_output)
@@ -381,3 +386,9 @@ def write_rust_transform(
     except OSError as error:
         cleanup_error = _cleanup_owned_temporary(temporary)
         _raise_publication_error(error, cleanup_error=cleanup_error)
+    except RustEmissionError as error:
+        cleanup_error = _cleanup_owned_temporary(temporary)
+        if cleanup_error is not None:
+            message = f"{error}; temporary cleanup failed: {cleanup_error}"
+            raise RustEmissionError(message) from error
+        raise

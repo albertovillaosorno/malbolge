@@ -84,6 +84,7 @@ _LEGACY_TEMP = b"legacy-temp"
 _FOREIGN_TEMP = b"foreign-temp"
 _LINK_TARGET = b"link-target"
 _TEMP_COLLISION_ID = "collision-id"
+_LATE_OUTPUT_RECHECK = 2
 _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
 )
@@ -444,6 +445,30 @@ def test_writer_wraps_output_status_failure(
     monkeypatch.setattr(Path, "lstat", fail_lstat)
     with pytest.raises(RustEmissionError, match="output file status failed"):
         write_rust_transform(protected, _PROFILE, output)
+
+
+def test_writer_cleans_temporary_after_output_recheck_rejects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A post-write output swap cannot leave an orphaned owned temporary."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    checks = 0
+
+    def reject_late(path: Path) -> None:
+        nonlocal checks
+        assert path == output
+        checks += 1
+        if checks == _LATE_OUTPUT_RECHECK:
+            assert list(tmp_path.glob(".generated.rs.*.tmp"))
+            message = "Rust output path must not be linked after staging"
+            raise RustEmissionError(message)
+
+    monkeypatch.setattr(emit_rust_module, "_validate_output_leaf", reject_late)
+    with pytest.raises(RustEmissionError, match="must not be linked"):
+        write_rust_transform(protected, _PROFILE, output)
+    assert not output.exists()
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
 
 
 def test_writer_preserves_legacy_fixed_temporary_file(tmp_path: Path) -> None:
