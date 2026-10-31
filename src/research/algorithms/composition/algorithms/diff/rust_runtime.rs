@@ -1139,6 +1139,52 @@ fn instruction_bytes(
         },
     }
 }
+fn validate_output_separation(
+    source: &Path,
+    output: &Path,
+) -> Result<(), String> {
+    let source_root = fs::canonicalize(source)
+        .map_err(|e| format!("cannot resolve source root: {e}"))?;
+    let absolute_output = if output.is_absolute() {
+        output.to_path_buf()
+    } else {
+        env::current_dir()
+            .map_err(|e| format!("cannot resolve current directory: {e}"))?
+            .join(output)
+    };
+    if absolute_output
+        .components()
+        .any(|component| component == Component::ParentDir)
+    {
+        return Err(String::from("output path must not traverse parents"));
+    }
+    let mut ancestor = absolute_output.as_path();
+    loop {
+        match fs::symlink_metadata(ancestor) {
+            Ok(_) => {
+                let resolved = fs::canonicalize(ancestor).map_err(|e| {
+                    format!("cannot resolve {}: {e}", ancestor.display())
+                })?;
+                if resolved.starts_with(&source_root) {
+                    return Err("output must be outside source root".into());
+                }
+                return Ok(());
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                ancestor = ancestor.parent().ok_or_else(|| {
+                    String::from("output has no existing ancestor")
+                })?;
+            },
+            Err(error) => {
+                return Err(format!(
+                    "cannot inspect output ancestor {}: {error}",
+                    ancestor.display()
+                ));
+            },
+        }
+    }
+}
+
 fn prepare_staging(output: &Path) -> Result<PathBuf, String> {
     if output.exists() {
         return Err(format!("output already exists: {}", output.display()));
@@ -1252,6 +1298,7 @@ fn materialize(
     metadata: &Metadata,
     plaintext: &[u8],
 ) -> Result<(), String> {
+    validate_output_separation(source, output)?;
     let staging = prepare_staging(output)?;
     let result = populate_staging(source, &staging, metadata, plaintext)
         .and_then(|()| {
