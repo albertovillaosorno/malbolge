@@ -66,7 +66,15 @@ Jig consumes only repository-local validation aliases. Linux Rust linking
 receives a generated `cc` adapter that names the observed host linker explicitly
 instead of restoring ambient `PATH` lookup. Jig-facing Cargo aliases replace a
 validator-supplied target-linker environment value with that repository-local
-adapter before entering native Cargo or Clippy. Windows keeps its native
+adapter before entering native Cargo or Clippy. Linux Rust readiness additionally
+requires exact adapter marker bytes and a physical, executable `bin/cc` with the
+generated two-line direct-exec shell structure. Both files are admitted through
+bounded, stable no-follow reads; stale or redirected markers, oversized data,
+linked launcher ancestors, or nonexecutable scripts are not ready evidence.
+Adapter publication also preflights the `cc`, marker, and generated neutral
+alias destinations before writing, rejecting linked leaves or parent paths
+rather than modifying unrelated files through filesystem redirects.
+Windows keeps its native
 executable layout behind the same neutral Jig-facing paths where applicable.
 
 ## Invariants

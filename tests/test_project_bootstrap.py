@@ -1297,6 +1297,79 @@ def test_rust_linker_adapter_binds_explicit_linux_host_linker(
     )
 
 
+def _linux_adapter_writer_tree(tmp_path: Path) -> tuple[Path, Path]:
+    """Create one valid Rust import destination and explicit host cc path.
+
+    Returns:
+        Synthetic stable Rust toolchain and observed host linker paths.
+
+    """
+    root = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    native = root / "bin/cargo"
+    native.parent.mkdir(parents=True)
+    _ = native.write_bytes(RUST_CARGO_BYTES)
+    linker = tmp_path / "host-cc"
+    _ = linker.write_bytes(b"host-linker")
+    return root, linker
+
+
+def test_rust_adapter_writer_rejects_linked_cc_target(tmp_path: Path) -> None:
+    """Writing a pinned linker shim must not overwrite an aliased target."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    external = tmp_path / "unrelated-linker"
+    original = b"unrelated linker content"
+    _ = external.write_bytes(original)
+    try:
+        _ = (root / "bin/cc").symlink_to(external)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(project.InitializationError, match="redirect"):
+        _ = project.write_rust_linker_adapters(
+            (root,), LINUX_PLATFORM, linker=linker
+        )
+    assert external.read_bytes() == original
+    assert not (root / project.RUST_LINUX_ADAPTER_MARKER).exists()
+
+
+def test_rust_adapter_writer_rejects_linked_marker_target(
+    tmp_path: Path,
+) -> None:
+    """Marker publication must not follow a symlink to another file."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    external = tmp_path / "unrelated-marker"
+    original = b"original unrelated marker"
+    _ = external.write_bytes(original)
+    try:
+        _ = (root / project.RUST_LINUX_ADAPTER_MARKER).symlink_to(external)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(project.InitializationError, match="redirect"):
+        _ = project.write_rust_linker_adapters(
+            (root,), LINUX_PLATFORM, linker=linker
+        )
+    assert external.read_bytes() == original
+    assert not (root / "bin/cc").exists()
+
+
+def test_rust_adapter_writer_rejects_linked_bin_directory(
+    tmp_path: Path,
+) -> None:
+    """A redirected bin parent must not create shims outside toolchain."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    original = root / "bin"
+    relocated = tmp_path / "external-bin"
+    _ = original.replace(relocated)
+    try:
+        _ = original.symlink_to(relocated, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(project.InitializationError, match="redirect"):
+        _ = project.write_rust_linker_adapters(
+            (root,), LINUX_PLATFORM, linker=linker
+        )
+    assert not (relocated / "cc").exists()
+
+
 def test_rust_linker_adapters_leave_windows_aliases_unchanged(
     tmp_path: Path,
 ) -> None:
@@ -1573,7 +1646,10 @@ def test_rust_inspection_requires_completed_neutral_alias(
     linux_before_linker = project.inspect_rust(tmp_path, LINUX_PLATFORM)
     windows = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
     linker = toolchain / "bin" / "cc"
-    linker.touch()
+    _ = linker.write_text(
+        '#!/bin/sh\nexec /usr/bin/cc "$@"\n', encoding="ascii"
+    )
+    linker.chmod(0o700)
     linux_before_marker = project.inspect_rust(tmp_path, LINUX_PLATFORM)
     _ = (toolchain / project.RUST_LINUX_ADAPTER_MARKER).write_text(
         "malbolge-rust-linux-adapter/v1\n",
@@ -1587,6 +1663,200 @@ def test_rust_inspection_requires_completed_neutral_alias(
     assert windows.path == cargo
     assert linux.state is project.ComponentState.READY
     assert linux.path == cargo
+
+
+def _linux_rust_inspection_tree(tmp_path: Path) -> Path:
+    """Construct a ready synthetic Linux Rust toolchain for mutation tests.
+
+    Returns:
+        The version-pinned imported toolchain directory.
+
+    """
+    _ = _write_rust_manifest(tmp_path)
+    toolchain = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    binary = toolchain / "bin"
+    binary.mkdir(parents=True)
+    _ = (binary / "cargo.bin").write_bytes(RUST_CARGO_BYTES)
+    _ = (toolchain / project.RUST_IMPORT_MARKER).write_text(
+        "malbolge-rust-toolchain-import/v1\n", encoding="ascii"
+    )
+    linker = binary / "cc"
+    _ = linker.write_text(
+        '#!/bin/sh\nexec /usr/bin/cc "$@"\n', encoding="ascii"
+    )
+    linker.chmod(0o700)
+    _ = (toolchain / project.RUST_LINUX_ADAPTER_MARKER).write_text(
+        "malbolge-rust-linux-adapter/v1\n", encoding="ascii"
+    )
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.READY
+    )
+    return toolchain
+
+
+def test_rust_inspection_rejects_wrong_linux_adapter_marker(
+    tmp_path: Path,
+) -> None:
+    """An unrelated marker cannot authorize Linux linker readiness."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    _ = (toolchain / project.RUST_LINUX_ADAPTER_MARKER).write_text(
+        "other-adapter/v1\n", encoding="ascii"
+    )
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_rejects_linked_linux_adapter_marker(
+    tmp_path: Path,
+) -> None:
+    """Matching adapter marker bytes behind a symlink are not evidence."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    marker = toolchain / project.RUST_LINUX_ADAPTER_MARKER
+    relocated = marker.with_name("actual-adapter-marker")
+    _ = marker.replace(relocated)
+    try:
+        _ = marker.symlink_to(relocated)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_rejects_linked_linux_adapter_executable(
+    tmp_path: Path,
+) -> None:
+    """An aliased cc launcher cannot masquerade as imported linker glue."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    cc = toolchain / "bin/cc"
+    real = cc.with_name("real-cc")
+    _ = cc.replace(real)
+    try:
+        _ = cc.symlink_to(real)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_requires_executable_linux_adapter(
+    tmp_path: Path,
+) -> None:
+    """A nonexecutable cc path is not a ready linker adapter."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    cc = toolchain / "bin/cc"
+    cc.chmod(0o600)
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_rejects_nonadapter_linker_script(
+    tmp_path: Path,
+) -> None:
+    """An arbitrary executable script is not a pinned Linux linker shim."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    _ = (toolchain / "bin/cc").write_text(
+        "#!/bin/sh\nexit 0\n", encoding="ascii"
+    )
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_rejects_fifo_linux_adapter_marker(
+    tmp_path: Path,
+) -> None:
+    """A pipe cannot become ready by waiting for an external writer."""
+    mkfifo = cast("Callable[[Path], None] | None", getattr(os, "mkfifo", None))
+    if mkfifo is None:
+        pytest.skip("FIFO unsupported")
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    marker = toolchain / project.RUST_LINUX_ADAPTER_MARKER
+    marker.unlink()
+    mkfifo(marker)
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_rejects_replaced_linux_adapter_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-byte inode swap invalidates the admitted marker snapshot."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    marker = toolchain / project.RUST_LINUX_ADAPTER_MARKER
+    replacement = marker.with_name("replacement-marker")
+    _ = replacement.write_bytes(marker.read_bytes())
+    original_open = os.open
+
+    def swap_before_open(path: Path, flags: int) -> int:
+        if path == marker:
+            _ = replacement.replace(marker)
+        return original_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_before_open)
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_rejects_linked_adapter_directory(
+    tmp_path: Path,
+) -> None:
+    """All native launcher ancestors must stay within the physical tree."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    binary = toolchain / "bin"
+    real = binary.with_name("physical-bin")
+    _ = binary.replace(real)
+    try:
+        _ = binary.symlink_to(real, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_rejects_oversized_adapter_marker(
+    tmp_path: Path,
+) -> None:
+    """Sparse, excessive marker bytes cannot be admitted as ready."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    marker = toolchain / project.RUST_LINUX_ADAPTER_MARKER
+    with marker.open("wb") as stream:
+        _ = stream.truncate(project.MAX_AUTHORITY_BYTES + 1)
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_rejects_embedded_linker_commands(
+    tmp_path: Path,
+) -> None:
+    """Linker shims must be the generated two-line direct-exec form."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    _ = (toolchain / "bin/cc").write_text(
+        '#!/bin/sh\nexec /usr/bin/cc\necho unexpected "$@"\n',
+        encoding="ascii",
+    )
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
 
 
 def test_git_version_match_accepts_portable_and_windows_distribution() -> None:

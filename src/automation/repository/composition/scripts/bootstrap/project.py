@@ -79,6 +79,8 @@ AARCH64_MACHINES: Final = frozenset(("aarch64", "arm64"))
 RUST_IMPORT_MARKER: Final = ".malbolge-rust-toolchain-import-v1"
 RUST_NIGHTLY_CHANNEL: Final = "nightly-2026-07-14"
 RUST_LINUX_ADAPTER_MARKER: Final = ".malbolge-rust-linux-adapter-v1"
+RUST_LINUX_ADAPTER_CONTENT: Final = b"malbolge-rust-linux-adapter/v1\n"
+RUST_LINUX_ADAPTER_LINE_COUNT: Final = 2
 GIT_IMPORT_MARKER: Final = ".malbolge-git-import-v1"
 CARGO_HOME_RELATIVE: Final = Path(".dependencies/cargo-home")
 UNKNOWN_PLATFORM: Final = "unknown"
@@ -746,14 +748,15 @@ def _write_rust_validation_alias(
         _fail(f"imported Rust validation tool is missing: {native}")
     alias = toolchain_root / "bin" / f"{tool_id}.bin"
     alias.unlink(missing_ok=True)
-    script = "\n".join(
-        (
+    script = (
+        "\n".join((
             "#!/bin/sh",
             "tool_dir=${0%/*}",
             f'export {linker_environment}="$tool_dir/cc"',
             f'exec "$tool_dir/{tool_id}" "$@"',
-        )
-    ) + "\n"
+        ))
+        + "\n"
+    )
     _ = alias.write_text(
         script,
         encoding="ascii",
@@ -763,12 +766,31 @@ def _write_rust_validation_alias(
     return alias
 
 
+def _admit_rust_adapter_write_target(path: Path) -> None:
+    _reject_authority_parent_redirects(path)
+    if path.is_symlink() or path.is_junction():
+        _fail(f"Rust adapter write target must not redirect: {path}")
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(metadata.st_mode):
+        _fail(f"Rust adapter write target must be regular: {path}")
+
+
 def _write_rust_toolchain_linker_adapters(
     toolchain_root: Path,
     linker_path: str,
     linker_environment: str,
 ) -> Path:
     adapter = toolchain_root / "bin" / "cc"
+    marker = toolchain_root / RUST_LINUX_ADAPTER_MARKER
+    aliases = tuple(
+        toolchain_root / "bin" / f"{tool_id}.bin"
+        for tool_id in _rust_validation_tool_ids(toolchain_root)
+    )
+    for destination in (adapter, marker, *aliases):
+        _admit_rust_adapter_write_target(destination)
     _ = adapter.write_text(
         f'#!/bin/sh\nexec {linker_path} "$@"\n',
         encoding="ascii",
@@ -781,11 +803,7 @@ def _write_rust_toolchain_linker_adapters(
             tool_id,
             linker_environment,
         )
-    _ = (toolchain_root / RUST_LINUX_ADAPTER_MARKER).write_text(
-        "malbolge-rust-linux-adapter/v1\n",
-        encoding="ascii",
-        newline="\n",
-    )
+    _ = marker.write_bytes(RUST_LINUX_ADAPTER_CONTENT)
     return adapter
 
 
@@ -1082,6 +1100,25 @@ def _imported_cargo(root: Path, channel: str) -> Path:
     return root / ".dependencies" / "rust" / channel / "bin" / "cargo.bin"
 
 
+def _linux_adapter_script_ready(linker: Path) -> bool:
+    """Validate one stable, physical and executable Linux linker shim.
+
+    Returns:
+        Whether the saved script has the generated direct-exec structure.
+
+    """
+    try:
+        content = _read_authority_bytes(linker)
+    except InitializationError, OSError:
+        return False
+    return (
+        content.startswith(b"#!/bin/sh\nexec ")
+        and content.endswith(b' "$@"\n')
+        and content.count(b"\n") == RUST_LINUX_ADAPTER_LINE_COUNT
+        and os.access(linker, os.X_OK)
+    )
+
+
 def _rust_validation_adapter_ready(
     toolchain_root: Path,
     platform_id: str,
@@ -1090,7 +1127,13 @@ def _rust_validation_adapter_ready(
         return True
     linker = toolchain_root / "bin" / "cc"
     marker = toolchain_root / RUST_LINUX_ADAPTER_MARKER
-    return linker.is_file() and marker.is_file()
+    try:
+        marker_matches = (
+            _read_authority_bytes(marker) == RUST_LINUX_ADAPTER_CONTENT
+        )
+    except InitializationError, OSError:
+        return False
+    return marker_matches and _linux_adapter_script_ready(linker)
 
 
 def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
@@ -1158,9 +1201,7 @@ def _llvm_status(root: Path, platform_id: str) -> ComponentStatus:
         name="llvm",
         path=observed.path,
         state=(
-            ComponentState.READY
-            if observed.ready
-            else ComponentState.MISSING
+            ComponentState.READY if observed.ready else ComponentState.MISSING
         ),
     )
 
