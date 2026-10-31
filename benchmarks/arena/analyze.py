@@ -341,8 +341,9 @@ def _decode_document(text: str) -> object:
             raise
         message = f"invalid arena JSON: {type(error).__name__}"
         raise ArenaError(message) from error
-    except (ValueError, TypeError, RuntimeError) as error:
-        # Foreign exception subclasses can execute code in __str__.
+    except Exception as error:
+        # An unexpected ordinary decoder fault must remain an arena rejection;
+        # foreign exception subclasses can execute code in __str__.
         native_errors = (
             json.JSONDecodeError,
             ValueError,

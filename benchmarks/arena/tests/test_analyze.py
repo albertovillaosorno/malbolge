@@ -411,7 +411,17 @@ def test_duplicate_keys_and_nonfinite_numbers_fail_closed(text: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "fault_type", [analyze.ArenaError, ValueError, TypeError, RecursionError, RuntimeError]
+    "fault_type",
+    [
+        analyze.ArenaError,
+        ValueError,
+        TypeError,
+        RecursionError,
+        RuntimeError,
+        IndexError,
+        OverflowError,
+        Exception,
+    ],
 )
 def test_direct_json_parser_types_foreign_exception_without_formatting(
     monkeypatch: pytest.MonkeyPatch,
