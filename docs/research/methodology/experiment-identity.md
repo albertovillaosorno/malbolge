@@ -51,9 +51,10 @@ files under a 1 MiB limit, reads through a no-follow/nonblocking descriptor
 where available, and rejects replacement or modification by rechecking device,
 inode, extent, and timestamps after reading. Repository-manifest validation
 accepts working-directory-relative and absolute in-root paths without resolving
-away symbolic-link aliases; parent traversal is rejected. TOML remains the
-checked-in serialization, but the schema owns semantics independently of that
-format.
+away symbolic-link aliases; parent traversal is rejected. TOML parser
+capacity errors (including oversized decimal integer tokens) return typed
+manifest errors instead of host exceptions. TOML remains the checked-in
+serialization, but the schema owns semantics independently of that format.
 Every research mirror carries `algorithms/<id>/experiment.toml` with:
 
 - `schema_version = 1`;
@@ -71,7 +72,8 @@ already occurred and must not contain a `[run]` table. `record_kind = "run"`
 additionally requires a lowercase 40-hex Git commit, lowercase SHA-256 workload
 hash, host identity, accelerator identity, toolchain identity, a closed outcome,
 and the repository-relative raw-output path. Repository-relative paths reject
-absolute, Windows drive/root, and parent-traversal forms independent of host.
+absolute, Windows drive/root, parent-traversal, and TOML-escaped NUL forms before
+filesystem consumers receive them, independent of host.
 Accepted outcomes include success,
 no solution, candidate invalidity, resource exhaustion, and tool failure so
 negative evidence remains reconstructible instead of disappearing from analysis.

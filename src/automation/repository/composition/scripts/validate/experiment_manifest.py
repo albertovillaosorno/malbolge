@@ -34,16 +34,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
-from pathlib import PureWindowsPath
 import re
-from stat import S_ISREG
 import sys
+from dataclasses import dataclass
+from pathlib import Path, PureWindowsPath
+from stat import S_ISREG
+from typing import Never, cast
+
 import tomllib
-from typing import Never
-from typing import cast
 
 from scripts.repository_root import repository_root
 from scripts.research_layout import research_algorithm_directories
@@ -55,20 +54,24 @@ MAX_MANIFEST_BYTES = 1024 * 1024
 PARENT_SEGMENT = ".."
 PLAN_RECORD_KIND = "plan"
 RUN_RECORD_KIND = "run"
-METHOD_CLASSES = frozenset({
-    "benchmarking",
-    "engineering",
-    "exploratory",
-    "mathematical",
-    "optimization",
-    "replication",
-})
+METHOD_CLASSES = frozenset(
+    {
+        "benchmarking",
+        "engineering",
+        "exploratory",
+        "mathematical",
+        "optimization",
+        "replication",
+    }
+)
 RECORD_KINDS = frozenset({PLAN_RECORD_KIND, RUN_RECORD_KIND})
-NONCANONICAL_TARGET_SCOPES = frozenset({
-    "malbolge-1998-classic-word-domain",
-    "multi-profile",
-    "profile-independent",
-})
+NONCANONICAL_TARGET_SCOPES = frozenset(
+    {
+        "malbolge-1998-classic-word-domain",
+        "multi-profile",
+        "profile-independent",
+    }
+)
 NONCANONICAL_FINGERPRINT_ERROR = (
     "manifest.challenge.target_profile_fingerprint must be absent for "
     "noncanonical target scope"
@@ -77,13 +80,15 @@ CANONICAL_FINGERPRINT_REQUIRED_ERROR = (
     "manifest.challenge.target_profile_fingerprint is required for canonical "
     "target profile"
 )
-RUN_OUTCOMES = frozenset({
-    "candidate-invalid",
-    "no-solution",
-    "resource-exhausted",
-    "success",
-    "tool-failure",
-})
+RUN_OUTCOMES = frozenset(
+    {
+        "candidate-invalid",
+        "no-solution",
+        "resource-exhausted",
+        "success",
+        "tool-failure",
+    }
+)
 HEX_40 = re.compile(r"[0-9a-f]{40}\Z")
 HEX_64 = re.compile(r"[0-9a-f]{64}\Z")
 CORE_TABLES = (
@@ -198,11 +203,11 @@ def _boolean(table: dict[str, object], name: str, context: str) -> bool:
 
 
 def _relative_path(value: str, context: str) -> str:
+    if "\x00" in value:
+        _fail(f"{context} must not contain NUL")
     path = Path(value)
     windows_path = PureWindowsPath(value)
-    native_relative = (
-        not path.is_absolute() and PARENT_SEGMENT not in path.parts
-    )
+    native_relative = not path.is_absolute() and PARENT_SEGMENT not in path.parts
     windows_relative = (
         not windows_path.drive
         and not windows_path.root
@@ -230,6 +235,8 @@ def _parse_document(text: str) -> dict[str, object]:
         parsed = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:
         _fail(f"invalid TOML: {error}")
+    except ValueError:
+        _fail("invalid TOML exceeds host parser capacity")
     document = _mapping(parsed, "manifest")
     version = document.get("schema_version")
     if type(version) is not int or version != SCHEMA_VERSION:
@@ -312,12 +319,14 @@ def _profile_fingerprint_mismatch(
     declared: str,
     observed: str,
 ) -> str:
-    return " ".join((
-        "MALBOLGE-PROFILE-ID-001",
-        f"profile={profile_id}",
-        f"expected={declared}",
-        f"observed={observed}",
-    ))
+    return " ".join(
+        (
+            "MALBOLGE-PROFILE-ID-001",
+            f"profile={profile_id}",
+            f"expected={declared}",
+            f"observed={observed}",
+        )
+    )
 
 
 def _provenance_fields(document: dict[str, object]) -> _ProvenanceFields:
@@ -439,24 +448,24 @@ def _validate_repository_identity(
     }
     algorithm_id = directory_ids.get(path.parent, path.parent.name)
     if manifest.identifier != algorithm_id:
-        message = " ".join((
-            "experiment ID does not match canonical directory:",
-            f"{manifest.identifier} != {algorithm_id}",
-        ))
+        message = " ".join(
+            (
+                "experiment ID does not match canonical directory:",
+                f"{manifest.identifier} != {algorithm_id}",
+            )
+        )
         _fail(message)
     expected_implementation = f"algorithms/{algorithm_id}"
     expected_configuration = path.relative_to(ROOT).as_posix()
     expected_output = f"{expected_implementation}/out"
     if manifest.implementation != expected_implementation:
         message = (
-            f"manifest provenance implementation mismatch: "
-            f"{manifest.implementation}"
+            f"manifest provenance implementation mismatch: {manifest.implementation}"
         )
         _fail(message)
     if manifest.configuration != expected_configuration:
         message = (
-            f"manifest provenance configuration mismatch: "
-            f"{manifest.configuration}"
+            f"manifest provenance configuration mismatch: {manifest.configuration}"
         )
         _fail(message)
     if manifest.output != expected_output:

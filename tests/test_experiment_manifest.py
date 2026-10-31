@@ -35,9 +35,9 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -288,9 +288,7 @@ def test_manifest_reader_rejects_same_byte_swap_before_open(
         return real_open(path, flags)
 
     monkeypatch.setattr(os, "open", swap_on_open)
-    with pytest.raises(
-        validator.ExperimentManifestError, match="changed before read"
-    ):
+    with pytest.raises(validator.ExperimentManifestError, match="changed before read"):
         _ = validator.validate_repository_manifest(source)
     assert swapped
 
@@ -325,9 +323,7 @@ def test_manifest_reader_rejects_same_byte_swap_after_read(
 
     monkeypatch.setattr(os, "open", track_open)
     monkeypatch.setattr(Path, "lstat", swap_at_recheck)
-    with pytest.raises(
-        validator.ExperimentManifestError, match="changed during read"
-    ):
+    with pytest.raises(validator.ExperimentManifestError, match="changed during read"):
         _ = validator.validate_repository_manifest(source)
     assert swapped
 
@@ -362,11 +358,35 @@ def test_manifest_reader_rejects_in_place_change_after_read(
 
     monkeypatch.setattr(os, "open", track_open)
     monkeypatch.setattr(Path, "lstat", modify_at_recheck)
-    with pytest.raises(
-        validator.ExperimentManifestError, match="changed during read"
-    ):
+    with pytest.raises(validator.ExperimentManifestError, match="changed during read"):
         _ = validator.validate_repository_manifest(source)
     assert modified
+
+
+def test_manifest_oversized_decimal_token_fails_typed() -> None:
+    """Host parser digit limits cannot leak untyped ValueErrors."""
+    limit = sys.get_int_max_str_digits()
+    if limit == 0 or limit > 20_000:
+        pytest.skip("host decimal digit limit unavailable")
+    text = _run_manifest().replace("seconds = 1", "seconds = " + "9" * (limit + 1))
+    _expect_failure(text, "invalid TOML exceeds host parser capacity")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("implementation", "algorithms/example/"),
+        ("configuration", "algorithms/example/experiment.toml"),
+        ("output", "algorithms/example/out/"),
+        ("raw_output", "algorithms/example/out/raw.json"),
+    ),
+)
+def test_manifest_paths_reject_toml_escaped_nul(field: str, value: str) -> None:
+    """Escaped NUL path segments fail typed admission before consumers use them."""
+    text = _run_manifest().replace(
+        f'{field} = "{value}"', f'{field} = "algorithms/\\u0000invalid"'
+    )
+    _expect_failure(text, "must not contain NUL")
 
 
 def test_manifest_rejects_windows_drive_relative_path() -> None:
@@ -391,9 +411,7 @@ def test_recorded_run_requires_exact_commit_and_workload_hash() -> None:
 
 def test_recorded_run_retains_negative_outcome_identity() -> None:
     """A non-success run remains a valid recorded experiment outcome."""
-    manifest = validator.parse_manifest(
-        _run_manifest(outcome=RESOURCE_EXHAUSTED)
-    )
+    manifest = validator.parse_manifest(_run_manifest(outcome=RESOURCE_EXHAUSTED))
     assert manifest.run is not None
     assert manifest.run.outcome == RESOURCE_EXHAUSTED
 
@@ -417,12 +435,8 @@ def test_verification_cannot_be_disabled_by_manifest() -> None:
 
 def test_plan_cannot_smuggle_recorded_run_metadata() -> None:
     """A plan does not masquerade as already observed run evidence."""
-    text = _run_manifest().replace(
-        'record_kind = "run"', 'record_kind = "plan"'
-    )
-    _expect_failure(
-        text, "plan experiment manifest must not contain a run table"
-    )
+    text = _run_manifest().replace('record_kind = "run"', 'record_kind = "plan"')
+    _expect_failure(text, "plan experiment manifest must not contain a run table")
 
 
 def test_canonical_target_profile_requires_fingerprint() -> None:
@@ -440,12 +454,14 @@ def test_canonical_target_profile_mismatch_is_deterministic() -> None:
         CURRENT_PROFILE_FINGERPRINT,
         MISMATCH_FINGERPRINT,
     )
-    expected = " ".join((
-        "MALBOLGE-PROFILE-ID-001",
-        "profile=malbolge-2026.2",
-        f"expected={MISMATCH_FINGERPRINT}",
-        f"observed={CURRENT_PROFILE_FINGERPRINT}",
-    ))
+    expected = " ".join(
+        (
+            "MALBOLGE-PROFILE-ID-001",
+            "profile=malbolge-2026.2",
+            f"expected={MISMATCH_FINGERPRINT}",
+            f"observed={CURRENT_PROFILE_FINGERPRINT}",
+        )
+    )
     _expect_failure(text, expected)
 
 
