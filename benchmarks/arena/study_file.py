@@ -62,6 +62,17 @@ def _fail(message: str) -> Never:
     raise StudyFileError(message)
 
 
+def _parent_identity(path: Path) -> tuple[int, int]:
+    try:
+        parent = path.parent.stat()
+    except (OSError, RuntimeError) as error:
+        message = "arena input parent directory changed"
+        raise StudyFileError(message) from error
+    if not stat.S_ISDIR(parent.st_mode):
+        _fail("arena input parent directory changed")
+    return parent.st_dev, parent.st_ino
+
+
 def _admit_path(path: Path, limit: int) -> os.stat_result:
     original = path.lstat()
     if not stat.S_ISREG(original.st_mode):
@@ -202,6 +213,21 @@ def read_study_bytes(path: Path, *, limit: int) -> bytes:
 
     """
     before = _admit_path(path, limit)
+    original_parent = _parent_identity(path)
+    # Even if a different parent resolves to a hard link of the same inode,
+    # the source's canonical location must remain the originally admitted one.
+    # The descriptor check in _open_study independently binds the open itself.
+    original_target = path.resolve(strict=True) if sys.platform == "linux" else None
     data, opened = _read_descriptor(path, before, limit=limit)
     _admit_completion(path, opened, data, limit=limit)
+    if original_target is not None:
+        try:
+            current_target = path.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            message = "arena input parent path changed during read"
+            raise StudyFileError(message) from error
+        if current_target != original_target:
+            _fail("arena input parent path changed during read")
+    if _parent_identity(path) != original_parent:
+        _fail("arena input parent directory changed")
     return data

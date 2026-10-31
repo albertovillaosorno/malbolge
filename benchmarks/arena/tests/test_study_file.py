@@ -341,6 +341,94 @@ def test_study_reader_rejects_transient_symlink_parent_equal_inode(
 
 @pytest.mark.skipif(
     sys.platform != "linux",
+    reason="Linux opened-descriptor path provenance is required",
+)
+def test_study_reader_rejects_post_read_same_inode_parent_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-open parent redirection must not pass same-inode lstat checks."""
+    directory = tmp_path / "original"
+    directory.mkdir()
+    source = directory / STABLE_INPUT
+    original = b'{"schema_version": 1}'
+    _ = source.write_bytes(original)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    _ = study_file.os.link(source, foreign / STABLE_INPUT)
+    parked = tmp_path / "parked"
+    original_read = study_file._read_complete
+    swapped = False
+
+    def redirect_after_read(stream: BinaryIO, *, size: int) -> bytes:
+        nonlocal swapped
+        content = original_read(stream, size=size)
+        directory.rename(parked)
+        directory.symlink_to(foreign, target_is_directory=True)
+        swapped = True
+        return content
+
+    monkeypatch.setattr(study_file, "_read_complete", redirect_after_read)
+    try:
+        with pytest.raises(
+            study_file.StudyFileError, match="arena input parent path changed"
+        ):
+            study_file.read_study_bytes(source, limit=1024)
+    finally:
+        if swapped:
+            directory.unlink()
+            parked.rename(directory)
+    assert swapped
+    assert source.read_bytes() == original
+    assert (foreign / STABLE_INPUT).read_bytes() == original
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux opened-descriptor path provenance is required",
+)
+def test_study_reader_rejects_parent_directory_swap_with_same_inode_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A different directory at the same path must not authorize the old file."""
+    directory = tmp_path / "original"
+    directory.mkdir()
+    source = directory / STABLE_INPUT
+    original = b'{"schema_version": 1}'
+    _ = source.write_bytes(original)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    _ = study_file.os.link(source, foreign / STABLE_INPUT)
+    parked = tmp_path / "parked"
+    original_read = study_file._read_complete
+    swapped = False
+
+    def redirect_after_read(stream: BinaryIO, *, size: int) -> bytes:
+        nonlocal swapped
+        content = original_read(stream, size=size)
+        directory.rename(parked)
+        foreign.rename(directory)
+        swapped = True
+        return content
+
+    monkeypatch.setattr(study_file, "_read_complete", redirect_after_read)
+    try:
+        with pytest.raises(
+            study_file.StudyFileError, match="arena input parent directory changed"
+        ):
+            study_file.read_study_bytes(source, limit=1024)
+    finally:
+        if swapped:
+            directory.rename(foreign)
+            parked.rename(directory)
+    assert swapped
+    assert source.read_bytes() == original
+    assert (foreign / STABLE_INPUT).read_bytes() == original
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
     reason="Linux descriptor path preflight is required",
 )
 def test_study_reader_preserves_stable_parent_symlink(

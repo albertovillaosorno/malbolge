@@ -106,7 +106,12 @@ the opened descriptor, then rechecks device/inode/size and nanosecond
 modification/change timestamps before and after the read. Where available,
 nonblocking/no-follow open flags prevent a raced FIFO or linked leaf from
 turning a previously admitted regular path into a blocking or redirected read.
-A replaced input or prematurely ended read fails before publishing any report.
+Parent directory device/inode identity is checked before and after reading;
+Linux also binds the resolved pathname, so an ancestor alias switch to another
+hard link of the same file cannot silently pass file-inode checks. A stable
+parent symlink remains admissible. This cannot freeze a path
+against changes after its last check. A replaced input or prematurely ended
+read fails before publishing any report.
 Legitimate partial reads are accumulated to the inode's admitted byte length;
 nonbinary/overlong chunks and read-stream failures reject without a report.
 These checks defend against observed races but do not provide a filesystem
