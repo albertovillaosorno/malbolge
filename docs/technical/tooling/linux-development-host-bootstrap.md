@@ -80,12 +80,13 @@ The runner admits only one absolute, nonredirected external directory with a
 physical executable `chktex`; it rejects symlinks in either path, missing
 executables, path-list injection and directories inside the repository. The
 explicit directory sits after `.dependencies/bin` and before the system
-default on the child `PATH`. With no opt-in, the original pinned-and-system
-selection remains unchanged. Jig still owns version/digest attestation,
-launcher regeneration, validation policy and exact exit status; the runner
-does not bypass any tool proof. Prefer a dedicated directory containing only
-the intended external tool if additional user-local commands should not be
-visible to Jig.
+default on the child `PATH`.
+
+With no opt-in, the original pinned-and-system selection remains unchanged.
+Jig still owns version/digest attestation, launcher regeneration, validation
+policy and exact exit status; the runner does not bypass any tool proof.
+Prefer a dedicated directory containing only the intended external tool if
+additional user-local commands should not be visible to Jig.
 
 The same entrypoint supports `doctor` and `validate` and fails if either pinned
 ChkTeX or LaTeXmk launcher is missing. The runner preflights its configured

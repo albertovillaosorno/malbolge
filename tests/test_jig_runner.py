@@ -111,7 +111,9 @@ def test_explicit_external_tool_bin_precedes_system_without_shifting_pinned(
     assert inherited["PATH"] == "/untrusted/bin"
 
 
-@pytest.mark.parametrize("invalid", ["relative", "/tmp/first:/tmp/second", "../escape"])
+@pytest.mark.parametrize(
+    "invalid", ["relative", "/tmp/first:/tmp/second", "../escape", ""]
+)
 def test_external_tool_bin_rejects_ambiguous_paths(
     tmp_path: Path, invalid: str
 ) -> None:
@@ -127,7 +129,7 @@ def test_external_tool_bin_rejects_ambiguous_paths(
 def test_external_tool_bin_rejects_repository_and_linked_locations(
     tmp_path: Path,
 ) -> None:
-    """External tool authority cannot resolve through the project or symlinks."""
+    """Reject linked or in-repository external tool directory authority."""
     _ = _pinned_launchers(tmp_path)
     external = tmp_path.parent / "external-tool-real"
     external.mkdir()
@@ -137,8 +139,14 @@ def test_external_tool_bin_rejects_repository_and_linked_locations(
     linked = tmp_path.parent / "external-tool-linked"
     linked.symlink_to(external, target_is_directory=True)
     variable = "MALBOLGE_JIG_EXTERNAL_TOOL_BIN"
-    for invalid in [tmp_path / ".dependencies/bin", linked, tmp_path.parent / "absent"]:
-        with pytest.raises(jig_runner.JigRunnerError, match="external.*directory"):
+    invalid_locations = (
+        tmp_path / ".dependencies/bin",
+        linked,
+        tmp_path.parent / "absent",
+    )
+    expected_error = "external.*directory"
+    for invalid in invalid_locations:
+        with pytest.raises(jig_runner.JigRunnerError, match=expected_error):
             _ = jig_runner.jig_environment(tmp_path, {variable: str(invalid)})
     tool.chmod(0o600)
     with pytest.raises(jig_runner.JigRunnerError, match="external.*directory"):
