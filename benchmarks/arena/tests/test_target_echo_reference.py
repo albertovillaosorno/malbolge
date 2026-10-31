@@ -977,6 +977,49 @@ def test_tool_fingerprint_secondary_non_oserror_close_preserves_primary(
     assert any("cleanup" in note for note in primary.__notes__)
 
 
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_tool_fingerprint_close_bypasses_foreign_primary_note_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A secondary close failure cannot run a primary's overridden hook."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"trusted-emitter")
+    _ = runner.write_bytes(b"trusted-runner")
+
+    def hostile_add_note(self: BaseException, note: str) -> None:
+        del self, note
+        raise AssertionError("foreign primary note hook executed")
+
+    foreign_type = type(
+        "ForeignPrimaryReadError", (failure_type,), {"add_note": hostile_add_note}
+    )
+    primary = foreign_type("read failed")
+    secondary = OSError("close failed")
+    original_close = target_echo_reference.os.close
+
+    def bad_read(fd: int, size: int) -> bytes:
+        del fd, size
+        raise primary
+
+    def bad_close(fd: int) -> None:
+        original_close(fd)
+        raise secondary
+
+    with monkeypatch.context() as patch:
+        patch.setattr(target_echo_reference.os, "read", bad_read)
+        patch.setattr(target_echo_reference.os, "close", bad_close)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="executable identity"
+        ) as caught:
+            _ = target_echo_reference._tool_identity(emitter, runner)
+
+    assert caught.value.__cause__ is primary
+    assert any("cleanup" in note for note in primary.__notes__)
+
+
 def test_tool_fingerprint_accepts_host_short_read_chunks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -316,9 +316,10 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 ) as cleanup_error:
                     if primary is None:
                         raise
-                    primary.add_note(
+                    BaseException.add_note(
+                        primary,
                         "target echo executable descriptor cleanup failed: "
-                        + type(cleanup_error).__name__
+                        + type(cleanup_error).__name__,
                     )
             latest = path.lstat()
             if not stat.S_ISREG(latest.st_mode) or (
