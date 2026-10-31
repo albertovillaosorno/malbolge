@@ -5604,10 +5604,7 @@ def test_generation_rejects_wrong_partial_length_before_hashing(
 
     def guard_digest(payload: bytes) -> str:
         digested.append(len(payload))
-        if len(payload) == len(oversized):
-            raise AssertionError(
-                "invalid partial was hashed before size admission"
-            )
+        assert len(payload) != len(oversized)
         return _digest(payload)
 
     with monkeypatch.context() as context:
