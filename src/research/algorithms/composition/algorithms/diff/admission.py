@@ -84,6 +84,23 @@ def _is_portable_relative_path(path: str) -> bool:
     )
 
 
+def _require_file_path_topology(paths: tuple[str, ...]) -> None:
+    """Reject file labels that also name another file's ancestor directory.
+
+    Raises:
+        AdmissionPolicyError: A file path is the ancestor of another file.
+
+    """
+    file_paths = set(paths)
+    if any(
+        parent.as_posix() in file_paths
+        for path in paths
+        for parent in PurePosixPath(path).parents
+    ):
+        message = "identity file paths contain an ancestor/descendant overlap"
+        raise AdmissionPolicyError(message)
+
+
 @dataclass(frozen=True, slots=True, order=True)
 class IdentityFile:
     """One consumer-canonicalized file admitted to source identity."""
@@ -132,6 +149,7 @@ class IdentityTree:
         if paths != tuple(sorted(set(paths))):
             message = "identity tree paths must be unique and sorted"
             raise AdmissionPolicyError(message)
+        _require_file_path_topology(paths)
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,6 +292,7 @@ def _require_file_evidence_tuple(
     if paths != tuple(sorted(set(paths))):
         message = "tree admission file paths must be unique and sorted"
         raise AdmissionPolicyError(message)
+    _require_file_path_topology(paths)
     return files
 
 

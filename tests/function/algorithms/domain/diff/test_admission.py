@@ -121,6 +121,26 @@ def test_admission_evidence_rejects_incoherent_direct_construction() -> None:
         _ = TreeAdmissionEvidence(1.0, 0.0, 1, 1, (unmatched,), ())
 
 
+def test_identity_tree_rejects_file_ancestor_overlap() -> None:
+    """File identities cannot also act as containing directories."""
+    ancestor = IdentityFile(path="src/file", canonical=b"A")
+    child = IdentityFile(path="src/file/child", canonical=b"B")
+    with pytest.raises(AdmissionPolicyError, match="ancestor"):
+        _ = IdentityTree(files=(ancestor, child))
+    with pytest.raises(AdmissionPolicyError, match="ancestor"):
+        _ = identity_tree({
+            ancestor.path: ancestor.canonical,
+            child.path: child.canonical,
+        })
+
+    ancestor_evidence = FileAdmissionEvidence(ancestor.path, 1.0, 1.0, 1, 1)
+    child_evidence = FileAdmissionEvidence(child.path, 1.0, 1.0, 1, 1)
+    with pytest.raises(AdmissionPolicyError, match="ancestor"):
+        _ = TreeAdmissionEvidence(
+            1.0, 1.0, 2, 2, (ancestor_evidence, child_evidence), ()
+        )
+
+
 def test_exact_identity_tree_is_admitted() -> None:
     """Exact source lineage satisfies both independent source metrics."""
     files = _reference_files()
