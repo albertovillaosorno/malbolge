@@ -35,11 +35,9 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import shutil
-from typing import Never
-from typing import TYPE_CHECKING
-from typing import cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Never, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -184,9 +182,7 @@ def test_benchmark_rejects_file_swapped_after_admission(
     """A post-status replacement cannot substitute checked benchmark input."""
     if replacement == SWAP_FIFO and not hasattr(os, "mkfifo"):
         pytest.skip("FIFO regression requires os.mkfifo")
-    fixture_dir, protocol, run = _isolated_benchmark_fixture(
-        tmp_path, monkeypatch
-    )
+    fixture_dir, protocol, run = _isolated_benchmark_fixture(tmp_path, monkeypatch)
     victim = protocol if swapped == SWAP_PROTOCOL else run
     shadow = fixture_dir / "shadow.toml"
     _ = shutil.copyfile(victim, shadow)
@@ -242,9 +238,7 @@ def test_benchmark_rejects_linked_parent_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A valid manifest or raw CSV via an alias parent is not evidence."""
-    fixture_dir, protocol, run = _isolated_benchmark_fixture(
-        tmp_path, monkeypatch
-    )
+    fixture_dir, protocol, run = _isolated_benchmark_fixture(tmp_path, monkeypatch)
     if linked == SWAP_PROTOCOL:
         payload = tmp_path / "source-directory"
         _ = fixture_dir.rename(payload)
@@ -259,9 +253,7 @@ def test_benchmark_rejects_linked_parent_evidence(
             )
             _ = protocol.write_text(text, encoding="utf-8")
         else:
-            original = (
-                "benchmarks/research/protocol/examples/deterministic-raw.csv"
-            )
+            original = "benchmarks/research/protocol/examples/deterministic-raw.csv"
             changed = "untrusted-parent/deterministic-raw.csv"
             _ = protocol.write_text(
                 protocol.read_text(encoding="utf-8").replace(original, changed),
@@ -271,9 +263,7 @@ def test_benchmark_rejects_linked_parent_evidence(
                 run.read_text(encoding="utf-8").replace(original, changed),
                 encoding="utf-8",
             )
-    with pytest.raises(
-        validator.BenchmarkProtocolError, match=r"redirect|linked"
-    ):
+    with pytest.raises(validator.BenchmarkProtocolError, match=r"redirect|linked"):
         _ = validator.validate_example(protocol)
 
 
@@ -284,9 +274,7 @@ def test_benchmark_rejects_linked_parent_swapped_during_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Moving a folder behind an alias must not retain trusted file bytes."""
-    fixture_dir, protocol, _ = _isolated_benchmark_fixture(
-        tmp_path, monkeypatch
-    )
+    fixture_dir, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
     original_read = os.read
     reads = 0
     changed = False
@@ -304,9 +292,7 @@ def test_benchmark_rejects_linked_parent_swapped_during_read(
         return read
 
     monkeypatch.setattr(os, "read", swap_parent_on_read)
-    with pytest.raises(
-        validator.BenchmarkProtocolError, match=r"redirect|linked"
-    ):
+    with pytest.raises(validator.BenchmarkProtocolError, match=r"redirect|linked"):
         _ = validator.validate_example(protocol)
     assert changed
 
@@ -318,9 +304,7 @@ def test_benchmark_reader_rejects_in_place_change_during_read(
     """The exact admitted contents must survive all read chunks."""
     _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
     source = (
-        protocol.read_bytes()
-        + b"\n#"
-        + b"x" * (validator.FILE_READ_CHUNK_BYTES + 3)
+        protocol.read_bytes() + b"\n#" + b"x" * (validator.FILE_READ_CHUNK_BYTES + 3)
     )
     _ = protocol.write_bytes(source)
     original_read = os.read
@@ -356,9 +340,7 @@ def test_benchmark_reader_bounds_text_and_reads_in_chunks(
     assert record.kind == validator.DETERMINISTIC_KIND
 
     _ = protocol.write_bytes(b"x" * (validator.MAX_PROTOCOL_BYTES + 1))
-    with pytest.raises(
-        validator.BenchmarkProtocolError, match="admission limit"
-    ):
+    with pytest.raises(validator.BenchmarkProtocolError, match="admission limit"):
         _ = validator.validate_example(protocol)
 
 
@@ -369,6 +351,22 @@ def test_repository_protocol_examples_are_valid_and_retain_raw_data() -> None:
         "deterministic",
         "stochastic",
     )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("experiment_manifest", "deterministic.experiment.toml"),
+        ("path", "deterministic-raw.csv"),
+    ),
+)
+def test_benchmark_evidence_paths_reject_escaped_nul(field: str, value: str) -> None:
+    """TOML NUL escapes cannot reach host path APIs as raw ValueErrors."""
+    text = _text(DETERMINISTIC).replace(
+        f'{field} = "benchmarks/research/protocol/examples/{value}"',
+        f'{field} = "benchmarks/\\u0000invalid"',
+    )
+    _expect_failure(text, "must not contain NUL")
 
 
 def test_protocol_rejects_windows_drive_relative_path() -> None:

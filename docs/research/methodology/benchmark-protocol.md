@@ -57,7 +57,8 @@ in-place mutation, uses nonblocking/no-follow opens where available, and reads
 text in at most 64 KiB chunks under a 1 MiB admission limit. Linked run
 manifests and retained raw CSV evidence obey the same physical-parent boundary.
 The retained raw CSV is checked for regular-file presence and nonzero size, not
-parsed as performance proof.
+parsed as performance proof. TOML-escaped NUL bytes are rejected in linked run
+and raw sample paths before any host filesystem access.
 A performance record must reference an
 Experiment Manifest v1 with `record_kind = "run"`; commit, workload SHA-256,
 toolchain, run outcome, and canonical target-profile fingerprint where

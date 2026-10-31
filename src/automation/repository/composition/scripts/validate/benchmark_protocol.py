@@ -34,17 +34,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
-from pathlib import PureWindowsPath
-from stat import S_ISDIR
-from stat import S_ISLNK
-from stat import S_ISREG
 import sys
+from dataclasses import dataclass
+from pathlib import Path, PureWindowsPath
+from stat import S_ISDIR, S_ISLNK, S_ISREG
+from typing import Never, cast
+
 import tomllib
-from typing import Never
-from typing import cast
 
 from scripts.repository_root import repository_root
 from scripts.validate import experiment_manifest
@@ -65,19 +62,23 @@ NO_OUTLIER_RULE = "none"
 OUTLIER_POLICIES = frozenset({PREREGISTERED_FILTER, RETAIN_ALL})
 ORDERING_POLICIES = frozenset({"fixed", "seeded-random"})
 CENTER_METHODS = frozenset({"mean", "median"})
-DISPERSION_METHODS = frozenset({
-    "bootstrap-ci",
-    "iqr",
-    "min-max",
-    "standard-deviation",
-    "trial-distribution",
-})
-UNCERTAINTY_METHODS = frozenset({
-    "bootstrap-ci",
-    "observed-range",
-    "standard-error",
-    "trial-distribution",
-})
+DISPERSION_METHODS = frozenset(
+    {
+        "bootstrap-ci",
+        "iqr",
+        "min-max",
+        "standard-deviation",
+        "trial-distribution",
+    }
+)
+UNCERTAINTY_METHODS = frozenset(
+    {
+        "bootstrap-ci",
+        "observed-range",
+        "standard-error",
+        "trial-distribution",
+    }
+)
 REQUIRED_TABLES = (
     "measurement",
     "objectives",
@@ -224,11 +225,11 @@ def _enum(value: str, allowed: frozenset[str], context: str) -> str:
 
 
 def _relative_path(value: str, context: str) -> str:
+    if "\x00" in value:
+        _fail(f"{context} must not contain NUL")
     path = Path(value)
     windows_path = PureWindowsPath(value)
-    native_relative = (
-        not path.is_absolute() and PARENT_SEGMENT not in path.parts
-    )
+    native_relative = not path.is_absolute() and PARENT_SEGMENT not in path.parts
     windows_relative = (
         not windows_path.drive
         and not windows_path.root
@@ -572,9 +573,7 @@ def _linked_run(
     path = ROOT / record.experiment_manifest
     admitted = _regular_file_status(path, "benchmark experiment run")
     if admitted is None:
-        _fail(
-            f"benchmark experiment run not found: {record.experiment_manifest}"
-        )
+        _fail(f"benchmark experiment run not found: {record.experiment_manifest}")
     manifest = experiment_manifest.parse_manifest(
         _read_utf8(path, "benchmark experiment manifest", admitted)
     )
@@ -627,9 +626,7 @@ def main() -> int:
     except (BenchmarkProtocolError, OSError) as error:
         _ = sys.stderr.write(f"error: {error}\n")
         return 1
-    _ = sys.stdout.write(
-        f"benchmark protocol examples valid: {len(examples)}\n"
-    )
+    _ = sys.stdout.write(f"benchmark protocol examples valid: {len(examples)}\n")
     return 0
 
 
