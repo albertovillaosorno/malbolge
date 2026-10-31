@@ -60,7 +60,9 @@ requires a stable, non-redirected regular file, reads at most 1 MiB through a
 descriptor with no-follow and nonblocking opening where supported, and checks
 inode, extent, and write-time evidence before and after the read. Replacement
 or mutation fails closed. File loading rejects
-invalid UTF-8 as a typed profile-validation failure before JSON admission. It
+invalid UTF-8 as a typed profile-validation failure before JSON admission.
+Parser capacity failures, including integer-token digit limits, also produce a
+typed profile-validation error without hiding duplicate-key diagnostics. It
 enforces exact schema keys, ternary word consistency, single-word memory
 consistency, EOF at the
 maximum profile word, the frozen 1998 machine envelope, exactly one selected

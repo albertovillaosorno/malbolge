@@ -35,10 +35,9 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import sys
-from typing import TYPE_CHECKING
-from typing import cast
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -49,9 +48,7 @@ from scripts.validate import target_profile as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = ROOT / "malbolge.json"
-TARGET_PROFILE_CONTRACT = (
-    ROOT / "docs/technical/specification/target-profile.md"
-)
+TARGET_PROFILE_CONTRACT = ROOT / "docs/technical/specification/target-profile.md"
 CURRENT_PROFILE = "malbolge-2026"
 CURRENT_VERSION = "2026"
 TRANSITION_PROFILE = "malbolge-2026.3"
@@ -92,10 +89,25 @@ def _expect_invalid(text: str) -> None:
 
 def test_validate_document_rejects_foreign_top_level_type() -> None:
     """Foreign direct inputs fail through the canonical validation boundary."""
-    with pytest.raises(
-        validator.ProfileValidationError, match="must be an object"
-    ):
+    with pytest.raises(validator.ProfileValidationError, match="must be an object"):
         validator.validate_document(cast("validator.JsonObject", object()))
+
+
+def test_json_integer_beyond_host_decimal_limit_fails_typed(
+    tmp_path: Path,
+) -> None:
+    """Large integer tokens cannot escape as raw Python parser failures."""
+    digit_limit = sys.get_int_max_str_digits()
+    if digit_limit == 0 or digit_limit > 20_000:
+        pytest.skip("host decimal digit admission is disabled or unusually high")
+    payload = '{"schema_version":' + "9" * (digit_limit + 1) + "}"
+    with pytest.raises(validator.ProfileValidationError, match="invalid JSON"):
+        _ = validator.loads_document(payload)
+
+    source = tmp_path / "profile.json"
+    _ = source.write_text(payload, encoding="utf-8")
+    with pytest.raises(validator.ProfileValidationError, match="invalid JSON"):
+        _ = validator.load_document(source)
 
 
 def test_profile_text_rejects_foreign_input_type() -> None:
@@ -111,22 +123,16 @@ def test_profile_loader_rejects_foreign_path_type() -> None:
     with pytest.raises(
         validator.ProfileValidationError, match="path must use pathlib Path"
     ):
-        _ = validator.load_document(
-            cast("Path", cast("object", "malbolge.json"))
-        )
+        _ = validator.load_document(cast("Path", cast("object", "malbolge.json")))
 
 
 def test_custom_profile_apis_reject_foreign_top_level_type() -> None:
     """Custom-profile APIs admit the document before key inspection."""
     canonical = validator.load_document(PROFILE_PATH)
     foreign = cast("validator.JsonObject", object())
-    with pytest.raises(
-        validator.ProfileValidationError, match="must be an object"
-    ):
+    with pytest.raises(validator.ProfileValidationError, match="must be an object"):
         _ = validator.validate_custom_profile_document(foreign, canonical)
-    with pytest.raises(
-        validator.ProfileValidationError, match="must be an object"
-    ):
+    with pytest.raises(validator.ProfileValidationError, match="must be an object"):
         _ = validator.custom_profile_fingerprint(foreign, canonical)
 
 
@@ -173,22 +179,14 @@ def test_current_profile_identity_is_distinct() -> None:
 
 def test_geometry_views_reject_foreign_direct_inputs() -> None:
     """Validate geometry documents and IDs before lookup operations."""
-    with pytest.raises(
-        validator.ProfileValidationError, match="must be an object"
-    ):
-        _ = validator.current_profile_geometry(
-            cast("validator.JsonObject", object())
-        )
+    with pytest.raises(validator.ProfileValidationError, match="must be an object"):
+        _ = validator.current_profile_geometry(cast("validator.JsonObject", object()))
 
     document = validator.load_document(PROFILE_PATH)
     foreign_id = cast("str", cast("object", []))
-    with pytest.raises(
-        validator.ProfileValidationError, match="profile identity"
-    ):
+    with pytest.raises(validator.ProfileValidationError, match="profile identity"):
         _ = validator.profile_geometry(document, foreign_id)
-    with pytest.raises(
-        validator.ProfileValidationError, match="profile identity"
-    ):
+    with pytest.raises(validator.ProfileValidationError, match="profile identity"):
         _ = validator.profile_fingerprint(document, foreign_id)
 
 
@@ -207,9 +205,9 @@ def test_current_profile_geometry_view_matches_canonical_document() -> None:
 def test_target_profile_contract_tracks_selected_geometry() -> None:
     """The owning human contract cannot lag the selected profile geometry."""
     text = TARGET_PROFILE_CONTRACT.read_text(encoding="utf-8")
-    implementation = text.split(
-        "### Implementation Status", maxsplit=1
-    )[1].split("## Invariants", maxsplit=1)[0]
+    implementation = text.split("### Implementation Status", maxsplit=1)[1].split(
+        "## Invariants", maxsplit=1
+    )[0]
     assert f"N = {CURRENT_TRITS}" in implementation
     assert f"{CURRENT_WORDS:,}" in implementation
     assert f"{CURRENT_EOF:,}" in implementation
@@ -240,9 +238,7 @@ def test_profile_file_rejects_linked_leaf_and_directory(tmp_path: Path) -> None:
     except (NotImplementedError, OSError) as error:
         pytest.skip(f"symlinks unsupported on this platform: {error}")
     for redirected in (leaf, parent / original.name):
-        with pytest.raises(
-            validator.ProfileValidationError, match=r"redirect|regular"
-        ):
+        with pytest.raises(validator.ProfileValidationError, match=r"redirect|regular"):
             _ = validator.load_document(redirected)
 
 
@@ -280,9 +276,7 @@ def test_profile_file_rejects_nonregular_and_oversized_sources(
     with pytest.raises(validator.ProfileValidationError, match="byte limit"):
         _ = validator.load_document(large)
     missing = tmp_path / "missing.json"
-    with pytest.raises(
-        validator.ProfileValidationError, match="failed to read"
-    ):
+    with pytest.raises(validator.ProfileValidationError, match="failed to read"):
         _ = validator.load_document(missing)
 
 
@@ -314,9 +308,7 @@ def test_profile_file_rejects_same_byte_swap_before_open(
         return real_open(path, flags)
 
     monkeypatch.setattr(os, "open", swap_on_open)
-    with pytest.raises(
-        validator.ProfileValidationError, match="changed before read"
-    ):
+    with pytest.raises(validator.ProfileValidationError, match="changed before read"):
         _ = validator.load_document(source)
 
 
@@ -343,9 +335,7 @@ def test_profile_file_rejects_same_byte_swap_after_read(
         return real_lstat(path)
 
     monkeypatch.setattr(Path, "lstat", swap_at_recheck)
-    with pytest.raises(
-        validator.ProfileValidationError, match="changed during read"
-    ):
+    with pytest.raises(validator.ProfileValidationError, match="changed during read"):
         _ = validator.load_document(source)
     assert checks == recheck_index
 
@@ -372,9 +362,7 @@ def test_profile_file_rejects_in_place_update_after_read(
         return real_lstat(path)
 
     monkeypatch.setattr(Path, "lstat", change_at_recheck)
-    with pytest.raises(
-        validator.ProfileValidationError, match="changed during read"
-    ):
+    with pytest.raises(validator.ProfileValidationError, match="changed during read"):
         _ = validator.load_document(source)
     assert checks == recheck_index
 
@@ -506,14 +494,8 @@ def test_interpreter_compatible_transition_remains_versioned() -> None:
     transition_semantics = cast("dict[str, object]", transition["semantics"])
     current_semantics = cast("dict[str, object]", current["semantics"])
     assert {
-        key: value
-        for key, value in transition_semantics.items()
-        if key != EOF_WORD_KEY
-    } == {
-        key: value
-        for key, value in current_semantics.items()
-        if key != EOF_WORD_KEY
-    }
+        key: value for key, value in transition_semantics.items() if key != EOF_WORD_KEY
+    } == {key: value for key, value in current_semantics.items() if key != EOF_WORD_KEY}
     assert transition_semantics[EOF_WORD_KEY] == TRANSITION_EOF
     assert current_semantics[EOF_WORD_KEY] == CURRENT_EOF
     assert validator.profile_fingerprint(
@@ -575,9 +557,7 @@ def test_rust_semantic_width_projection_matches_canonical_model() -> None:
     """Checked-in Rust width constants are a byte-exact JSON projection."""
     document = validator.load_document(PROFILE_PATH)
     expected = validator.render_rust_semantic_width_projection(document)
-    observed = validator.RUST_SEMANTIC_WIDTH_PROJECTION.read_text(
-        encoding="utf-8"
-    )
+    observed = validator.RUST_SEMANTIC_WIDTH_PROJECTION.read_text(encoding="utf-8")
     assert observed == expected
 
 

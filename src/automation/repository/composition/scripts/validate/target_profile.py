@@ -34,15 +34,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 import os
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-import sys
-from typing import Never
-from typing import cast
+from typing import Never, cast
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -52,13 +51,9 @@ from scripts.repository_root import repository_root
 
 ROOT = repository_root(Path(__file__))
 DEFAULT_PROFILE = ROOT / "malbolge.json"
-RUST_PROJECTION = (
-    ROOT / "src/runtime/virtual-machine/domain" / "profile_generated.rs"
-)
+RUST_PROJECTION = ROOT / "src/runtime/virtual-machine/domain" / "profile_generated.rs"
 RUST_SEMANTIC_WIDTH_PROJECTION = (
-    ROOT
-    / "src/runtime/virtual-machine/contract"
-    / "semantic_width_generated.rs"
+    ROOT / "src/runtime/virtual-machine/contract" / "semantic_width_generated.rs"
 )
 FINGERPRINT_MANIFEST = (
     ROOT
@@ -91,47 +86,55 @@ ASCII_TILDE = 0x7E
 BACKSLASH = "\\"
 DOUBLE_QUOTE = '"'
 
-TOP_LEVEL_KEYS = frozenset({
-    "current_profile",
-    "profiles",
-    "schema_version",
-    "semantic_width_model",
-})
+TOP_LEVEL_KEYS = frozenset(
+    {
+        "current_profile",
+        "profiles",
+        "schema_version",
+        "semantic_width_model",
+    }
+)
 PROFILE_KEYS = frozenset({"kind", "memory", "semantics", "version", "word"})
 PROFILE_DEFINITION_KEYS = frozenset({"memory", "semantics", "version", "word"})
-CUSTOM_PROFILE_KEYS = frozenset({
-    "profile",
-    "profile_id",
-    "schema_version",
-    "target_schema_version",
-})
+CUSTOM_PROFILE_KEYS = frozenset(
+    {
+        "profile",
+        "profile_id",
+        "schema_version",
+        "target_schema_version",
+    }
+)
 WORD_KEYS = frozenset({"modulus", "radix", "trits"})
 MEMORY_KEYS = frozenset({"model", "words"})
-SEMANTIC_KEYS = frozenset({
-    "crazy_operation",
-    "deterministic",
-    "eof_word",
-    "guest_order",
-    "input_instruction",
-    "output_instruction",
-    "output_modulus",
-    "post_instruction_encryption",
-    "rotate",
-    "self_modification",
-})
+SEMANTIC_KEYS = frozenset(
+    {
+        "crazy_operation",
+        "deterministic",
+        "eof_word",
+        "guest_order",
+        "input_instruction",
+        "output_instruction",
+        "output_modulus",
+        "post_instruction_encryption",
+        "rotate",
+        "self_modification",
+    }
+)
 SEMANTIC_CORE_KEYS = SEMANTIC_KEYS - {
     "eof_word",
     "input_instruction",
     "output_instruction",
 }
-SEMANTIC_WIDTH_MODEL_KEYS = frozenset({
-    "chunk_trits",
-    "maximum_trits",
-    "minimum_trits",
-    "partial_chunk_padding",
-    "radix",
-    "result_projection",
-})
+SEMANTIC_WIDTH_MODEL_KEYS = frozenset(
+    {
+        "chunk_trits",
+        "maximum_trits",
+        "minimum_trits",
+        "partial_chunk_padding",
+        "radix",
+        "result_projection",
+    }
+)
 ZERO_HIGH_TRITS = "zero-high-trits"
 MOD_SEMANTIC_WIDTH = "mod-semantic-width"
 
@@ -216,12 +219,14 @@ class ProfileFingerprintMismatchError(ProfileValidationError):
 
     def __init__(self, profile_id: str, expected: str, observed: str) -> None:
         """Build one stable mismatch diagnostic."""
-        message = " ".join((
-            "MALBOLGE-PROFILE-ID-001",
-            f"profile={profile_id}",
-            f"expected={expected}",
-            f"observed={observed}",
-        ))
+        message = " ".join(
+            (
+                "MALBOLGE-PROFILE-ID-001",
+                f"profile={profile_id}",
+                f"expected={expected}",
+                f"observed={observed}",
+            )
+        )
         super().__init__(message)
 
 
@@ -288,8 +293,13 @@ def loads_document(text: str) -> JsonObject:
             "object",
             json.loads(text, object_pairs_hook=_reject_duplicate_pairs),
         )
+    except ProfileValidationError:
+        # Preserve the duplicate-key diagnostic raised by our object hook.
+        raise
     except json.JSONDecodeError as error:
         _fail(f"invalid JSON: {error}")
+    except (ValueError, RecursionError):
+        _fail("invalid JSON exceeds host parser capacity")
     return _expect_mapping(parsed, "target profile document")
 
 
@@ -413,9 +423,7 @@ def _validate_semantic_io(semantics: JsonObject, context: str) -> None:
         f"{context}.output_instruction",
     )
     if frozenset((input_instruction, output_instruction)) != IO_INSTRUCTIONS:
-        _fail(
-            f"{context} I/O instructions must assign '<' and '/' exactly once"
-        )
+        _fail(f"{context} I/O instructions must assign '<' and '/' exactly once")
     eof_word = _expect_int(semantics["eof_word"], f"{context}.eof_word")
     if eof_word < 0:
         _fail(f"{context}.eof_word must be non-negative")
@@ -455,10 +463,7 @@ def _validate_width_model_bounds(
         _fail(f"{context}.minimum_trits must be positive")
     if model.chunk_trits <= 0:
         _fail(f"{context}.chunk_trits must be positive")
-    if (
-        model.maximum_trits is not None
-        and model.maximum_trits < model.minimum_trits
-    ):
+    if model.maximum_trits is not None and model.maximum_trits < model.minimum_trits:
         _fail(f"{context}.maximum_trits must be null or >= minimum_trits")
 
 
@@ -477,9 +482,7 @@ def _validate_semantic_width_model(value: JsonValue) -> SemanticWidthModel:
     model = _expect_mapping(value, context)
     _expect_exact_keys(model, SEMANTIC_WIDTH_MODEL_KEYS, context)
     radix = _expect_int(model["radix"], f"{context}.radix")
-    minimum_trits = _expect_int(
-        model["minimum_trits"], f"{context}.minimum_trits"
-    )
+    minimum_trits = _expect_int(model["minimum_trits"], f"{context}.minimum_trits")
     chunk_trits = _expect_int(model["chunk_trits"], f"{context}.chunk_trits")
     maximum_trits = _optional_maximum_trits(model, context)
     padding = _expect_string(
@@ -975,9 +978,7 @@ def canonical_profile_bytes(document: JsonObject, profile_id: str) -> bytes:
     profiles = _expect_mapping(document["profiles"], "profiles")
     if admitted_id not in profiles:
         _fail(f"unknown profile identity: {admitted_id}")
-    profile = _expect_mapping(
-        profiles[admitted_id], f"profiles.{admitted_id}"
-    )
+    profile = _expect_mapping(profiles[admitted_id], f"profiles.{admitted_id}")
     schema_version = _expect_int(document["schema_version"], "schema_version")
     return _canonical_identity_bytes(admitted_id, profile, schema_version)
 
@@ -994,9 +995,7 @@ def profile_fingerprint(document: JsonObject, profile_id: str) -> str:
     profiles = _expect_mapping(document["profiles"], "profiles")
     if admitted_id not in profiles:
         _fail(f"unknown profile identity: {admitted_id}")
-    profile = _expect_mapping(
-        profiles[admitted_id], f"profiles.{admitted_id}"
-    )
+    profile = _expect_mapping(profiles[admitted_id], f"profiles.{admitted_id}")
     schema_version = _expect_int(document["schema_version"], "schema_version")
     return _fingerprint_identity(admitted_id, profile, schema_version)
 
@@ -1096,8 +1095,7 @@ def _profile_projection_lines(
         f"profiles.{profile_id}.version",
     )
     declaration = (
-        f"pub(super) const PROFILE_{index}: ProfileDescriptor = "
-        "ProfileDescriptor {"
+        f"pub(super) const PROFILE_{index}: ProfileDescriptor = ProfileDescriptor {{"
     )
     input_instruction = _rust_byte(
         semantics["input_instruction"],
@@ -1109,16 +1107,16 @@ def _profile_projection_lines(
     )
     return [
         declaration,
-        f"    eof_word: {_rust_integer(semantics["eof_word"], "eof_word")},",
+        f"    eof_word: {_rust_integer(semantics['eof_word'], 'eof_word')},",
         *_rust_fingerprint_lines(fingerprint),
-        f"    id: {_rust_string(profile_id, "profile id")},",
+        f"    id: {_rust_string(profile_id, 'profile id')},",
         f"    input_instruction: {input_instruction},",
         f"    kind: {_rust_profile_kind(kind)},",
-        f"    memory_words: {_rust_integer(memory["words"], "memory.words")},",
+        f"    memory_words: {_rust_integer(memory['words'], 'memory.words')},",
         f"    output_instruction: {output_instruction},",
-        f"    version: {_rust_string(version, "profile version")},",
-        f"    word_modulus: {_rust_integer(word["modulus"], "word.modulus")},",
-        f"    word_trits: {_rust_integer(word["trits"], "word.trits")},",
+        f"    version: {_rust_string(version, 'profile version')},",
+        f"    word_modulus: {_rust_integer(word['modulus'], 'word.modulus')},",
+        f"    word_trits: {_rust_integer(word['trits'], 'word.trits')},",
         "};",
     ]
 
@@ -1182,10 +1180,7 @@ def render_rust_semantic_width_projection(document: JsonObject) -> str:
         "",
         "//! Generated canonical semantic-width constants for Rust.",
         "",
-        (
-            "pub(super) const CHUNK_CARDINALITY: u16 = "
-            f"{cardinality:_};"
-        ),
+        (f"pub(super) const CHUNK_CARDINALITY: u16 = {cardinality:_};"),
         f"pub(super) const CHUNK_TRITS: usize = {model.chunk_trits:_};",
         f"pub(super) const MAXIMUM_TRITS: Option<usize> = {maximum};",
         f"pub(super) const MINIMUM_TRITS: usize = {model.minimum_trits:_};",
@@ -1249,21 +1244,21 @@ def render_rust_projection(document: JsonObject) -> str:
         "use super::{ProfileDescriptor, ProfileKind};",
         "",
     ]
-    lines.extend([
-        (
-            "pub(super) const CURRENT_PROFILE: &ProfileDescriptor = "
-            f"&PROFILE_{current_index};"
-        ),
-        (
-            "pub(super) const HISTORICAL_PROFILE: &ProfileDescriptor = "
-            f"&PROFILE_{historical_index};"
-        ),
-        "",
-    ])
+    lines.extend(
+        [
+            (
+                "pub(super) const CURRENT_PROFILE: &ProfileDescriptor = "
+                f"&PROFILE_{current_index};"
+            ),
+            (
+                "pub(super) const HISTORICAL_PROFILE: &ProfileDescriptor = "
+                f"&PROFILE_{historical_index};"
+            ),
+            "",
+        ]
+    )
     for index, profile_id in enumerate(profile_ids):
-        profile = _expect_mapping(
-            profiles[profile_id], f"profiles.{profile_id}"
-        )
+        profile = _expect_mapping(profiles[profile_id], f"profiles.{profile_id}")
         lines.extend(
             _profile_projection_lines(
                 index,
@@ -1273,18 +1268,18 @@ def render_rust_projection(document: JsonObject) -> str:
             )
         )
         lines.append("")
-    references = ", ".join(
-        f"&PROFILE_{index}" for index in range(len(profile_ids))
-    )
+    references = ", ".join(f"&PROFILE_{index}" for index in range(len(profile_ids)))
     descriptor_type = (
         f"pub(super) const PROFILE_DESCRIPTORS: "
         f"[&ProfileDescriptor; {len(profile_ids)}] ="
     )
-    lines.extend([
-        descriptor_type,
-        f"    [{references}];",
-        "",
-    ])
+    lines.extend(
+        [
+            descriptor_type,
+            f"    [{references}];",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
