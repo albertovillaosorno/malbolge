@@ -22,6 +22,12 @@ Missing/invalid study paths and invalid UTF-8 fail through typed input errors,
 including when the admission functions are called directly. The direct JSON
 parser also requires exact UTF-8-encodable string input bounded to 16 MiB;
 byte-like arguments and oversized decoded text cannot bypass the file limit.
+Direct Python calls to `analyze.admit_document` and `analyze.analyze` apply the
+same complete version-one structural admission as the JSON reader. This
+rejects caller-defined container or string subclasses, foreign dictionary
+keys, duplicate trial identities, contradictory verifier verdicts, and
+reported verified costs beyond declared study budgets before ranking.
+These checks do not independently authenticate the source of those claims.
 Version-one input has one `study` and a nonempty `observations` array:
 
 ```json
@@ -104,6 +110,9 @@ strings or numbers. A supplied challenge-bundle root must be a canonical
 repository-relative string. Both the preflight and direct retained-file
 readers require a native `Path` root rather than a caller-defined subclass;
 malformed settings reject before run-manifest access or optional host replay.
+The direct link-check API also runs the analyzer's schema and trial-admission
+rules before opening any referenced manifest or raw sample. Invalid source
+claims fail as typed evidence errors, without a partial evidence report.
 This protects input admission, not measurement authenticity.
 
 Both arena CLI entrypoints publish completed JSON reports through a
