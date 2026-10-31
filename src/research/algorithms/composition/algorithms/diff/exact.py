@@ -685,6 +685,12 @@ def build_exact_plan(
     instructions = tuple(
         _instruction_for_target(context, record) for record in target.files
     )
+    if snapshot_tree(source_root) != source_full:
+        message = "source tree changed while exact planning"
+        raise ExactTreeError(message)
+    if snapshot_tree(oracle_root) != target_full:
+        message = "oracle tree changed while exact planning"
+        raise ExactTreeError(message)
     return ExactAuthoringPlan(
         source=source,
         target=target,

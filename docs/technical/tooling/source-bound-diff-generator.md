@@ -91,6 +91,9 @@ instructions. Byte-identical target files reuse source files directly. Modified
 same-path files reuse exact source byte spans discovered by a deterministic
 block
 matcher and retain only unmatched oracle bytes as local authoring literals.
+Both full input snapshots are rechecked after instruction construction so a
+persistent source or oracle change during replay cannot return a stale plan.
+These checks cannot make source-tree reads atomic against concurrent writers.
 
 This local plan is verification evidence, not a distributable transform. Raw
 `OracleLiteral` bytes must never cross the public emission boundary. A later

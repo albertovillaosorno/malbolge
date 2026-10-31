@@ -77,6 +77,7 @@ _POSIX_OS_NAME = "posix"
 _MISSING_PLAN_TARGET = "missing"
 _EXTRA_PLAN_TARGET = "extra"
 _CLOSE_FAILURE_NOTE = "descriptor close also failed"
+_TREE_FILE_CONTEXT = "tree file"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -294,6 +295,42 @@ def test_exact_plan_is_deterministic(tmp_path: Path) -> None:
         observed_paths == expected_paths,
         "instructions are not path sorted",
     )
+
+
+@pytest.mark.parametrize("change_source", [True, False])
+def test_exact_authoring_rejects_tree_drift_during_instruction_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    change_source: bool,
+) -> None:
+    """A plan cannot bind stale source or oracle snapshots after replay."""
+    source, oracle = _synthetic_pair(tmp_path)
+    original_read = exact_module.read_exact_regular_file
+    changed = False
+
+    def read_then_mutate(path: Path, context: str) -> bytes:
+        nonlocal changed
+        data = original_read(path, context)
+        if (
+            not changed
+            and path == oracle / "modify.txt"
+            and context == _TREE_FILE_CONTEXT
+        ):
+            changed = True
+            if change_source:
+                _write(source, "keep.txt", b"changed while authoring\n")
+            else:
+                _write(oracle, "new-target-after-snapshot.txt", b"new oracle\n")
+        return data
+
+    monkeypatch.setattr(
+        exact_module, "read_exact_regular_file", read_then_mutate
+    )
+    expected = "source tree" if change_source else "oracle tree"
+    with pytest.raises(ExactTreeError, match=expected):
+        _ = build_exact_plan(source, oracle)
+    _expect(changed, "authoring test did not reach its replay trigger")
 
 
 def test_exact_plan_rejects_static_target_inside_passthrough_root(

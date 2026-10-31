@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from algorithms.diff.model import ExactAuthoringPlan
 
 _BLOCKS = 48
+_EXACT_PLAN_SOURCE_READS = 2
 _STD_MARKER = b"use std::"
 _LITERAL_MARKER = b"target-only"
 
@@ -408,7 +409,9 @@ def test_exact_identity_second_read_failure_stays_in_exact_boundary(
         nonlocal attempts
         if os.fspath(file) == os.fspath(blocked):
             attempts += 1
-            if attempts > 1:
+            # Planning snapshots each source file before and after replay.
+            # Fail the following source-binding identity read, not planning.
+            if attempts > _EXACT_PLAN_SOURCE_READS:
                 message = "blocked exact identity reread"
                 raise PermissionError(message)
         return original_open(file, flags, mode, dir_fd=dir_fd)
