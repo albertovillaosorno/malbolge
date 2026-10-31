@@ -1133,6 +1133,115 @@ def test_reference_artifact_audit_rejects_retained_drift(tamper: str) -> None:
         shutil.rmtree(path)
 
 
+class _UnsafeArtifactEvidenceError(evidence.EvidenceError):
+    def __str__(self) -> str:
+        raise AssertionError("artifact error formatting is untrusted")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        _UnsafeArtifactEvidenceError("foreign evidence"),
+        OSError(_UnsafeWorkspaceCleanupArgument()),
+        evidence.EvidenceError("native evidence read failure"),
+    ],
+    ids=[
+        "foreign-evidence-error",
+        "native-os-error-with-foreign-argument",
+        "native-evidence-message",
+    ],
+)
+def test_direct_artifact_failure_never_formats_foreign_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: evidence.EvidenceError | OSError,
+) -> None:
+    """An evidence read error remains a typed artifact rejection."""
+
+    def reject_read(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise failure
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", reject_read)
+    row = {
+        "experiment_manifest": ".temp/probe/runs/candidate.toml",
+        "metrics": {"artifact_bytes": 1},
+    }
+    entry = {
+        "path": ".temp/probe/candidates/candidate",
+        "sha256": "a" * analyze.SHA256_HEX_LENGTH,
+    }
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="cannot be admitted"
+    ) as caught:
+        reference_study._checked_artifact(row, entry)
+    assert caught.value.__cause__ is failure
+    if type(failure) is evidence.EvidenceError:
+        assert str(caught.value).endswith(": native evidence read failure")
+
+
+class _UnsafeCliStudyError(reference_study.ReferenceStudyError):
+    def __str__(self) -> str:
+        raise AssertionError("CLI study exception formatting is untrusted")
+
+
+class _UnsafeCliReportError(report_output.ReportOutputError):
+    def __str__(self) -> str:
+        raise AssertionError("CLI report exception formatting is untrusted")
+
+
+@pytest.mark.parametrize(
+    ("stage", "failure"),
+    [
+        ("study", _UnsafeCliStudyError("foreign study")),
+        (
+            "study",
+            reference_study.ReferenceStudyError(_UnsafeWorkspaceCleanupArgument()),
+        ),
+        ("study", reference_study.ReferenceStudyError("native study failure")),
+        ("publish", _UnsafeCliReportError("foreign report")),
+        (
+            "publish",
+            report_output.ReportOutputError(_UnsafeWorkspaceCleanupArgument()),
+        ),
+    ],
+    ids=[
+        "foreign-study",
+        "native-study-argument",
+        "native-study-message",
+        "foreign-publish",
+        "native-publish-argument",
+    ],
+)
+def test_reference_cli_never_formats_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stage: str,
+    failure: Exception,
+) -> None:
+    """Both CLI error boundaries exit 2 without running untrusted hooks."""
+
+    def reject(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise failure
+
+    monkeypatch.setattr(sys, "argv", ["reference-study", FAMILY])
+    if stage == "study":
+        monkeypatch.setattr(reference_study, "run_study", reject)
+    else:
+        monkeypatch.setattr(reference_study, "run_study", _fake_study_for_stdout)
+        monkeypatch.setattr(report_output, "publish", reject)
+    with pytest.raises(SystemExit) as caught:
+        reference_study.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "host-C reference study:" in output.err
+    if type(failure) is reference_study.ReferenceStudyError and (
+        type(failure.args[0]) is str
+    ):
+        assert "native study failure" in output.err
+
+
 def _fake_study_for_stdout(
     plan: reference_study.StudyPlan,
 ) -> tuple[Path, dict[str, Any]]:

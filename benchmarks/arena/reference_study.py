@@ -517,6 +517,27 @@ def _check_artifact_metadata(
         _fail("host-C artifact has noncanonical digest")
 
 
+def _native_error_detail(error: Exception) -> str | None:
+    """Return only a directly held native error string, never custom __str__.
+
+    Returns:
+        Plain native diagnostic text or None for untrusted error payloads.
+
+    """
+    if type(error) in (
+        ReferenceStudyError,
+        generate.ChallengeError,
+        analyze.ArenaError,
+        evidence.EvidenceError,
+        OSError,
+        report_output.ReportOutputError,
+    ):
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+    return None
+
+
 def _checked_artifact(
     row: dict[str, Any],
     entry: dict[str, str],
@@ -529,7 +550,9 @@ def _checked_artifact(
             limit=MAX_ARTIFACT_BYTES,
         )
     except (OSError, evidence.EvidenceError) as error:
-        message = f"host-C retained artifact cannot be admitted: {error}"
+        message = "host-C retained artifact cannot be admitted"
+        if (detail := _native_error_detail(error)) is not None:
+            message += f": {detail}"
         raise ReferenceStudyError(message) from error
     if sha256(actual).hexdigest() != entry["sha256"]:
         _fail("host-C retained executable differs from its SHA-256 claim")
@@ -834,7 +857,8 @@ def main() -> int:
         evidence.EvidenceError,
         OSError,
     ) as error:
-        parser.exit(2, f"host-C reference study: {error}\n")
+        detail = _native_error_detail(error) or "error details unavailable"
+        parser.exit(2, f"host-C reference study: {detail}\n")
     try:
         report_output.publish(
             {
@@ -847,7 +871,8 @@ def main() -> int:
             sys.stdout,
         )
     except report_output.ReportOutputError as error:
-        parser.exit(2, f"host-C reference study: {error}\n")
+        detail = _native_error_detail(error) or "error details unavailable"
+        parser.exit(2, f"host-C reference study: {detail}\n")
     return 0
 
 
