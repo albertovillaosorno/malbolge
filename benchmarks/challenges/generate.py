@@ -1370,8 +1370,16 @@ def _published_artifact_paths(
 ) -> tuple[Path, Path, Path] | None:
     if _path_redirects(root) or not root.is_dir():
         return None
-    entries = frozenset(path.name for path in root.iterdir())
-    if entries != _EXPECTED_ARTIFACTS:
+    entries: set[str] = set()
+    inventory_exceeded = False
+    for index, path in enumerate(root.iterdir()):
+        if index >= len(_EXPECTED_ARTIFACTS):
+            # A collision directory may be arbitrarily large. Its first
+            # fourth entry is already sufficient to reject an exact replay.
+            inventory_exceeded = True
+            break
+        entries.add(path.name)
+    if inventory_exceeded or entries != _EXPECTED_ARTIFACTS:
         return None
     artifacts = (
         root / "program.c",

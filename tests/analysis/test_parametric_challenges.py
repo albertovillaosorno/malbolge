@@ -56,6 +56,7 @@ from scripts.validate import target_profile
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from collections.abc import Iterator
 
 _ROOT = Path(__file__).resolve().parents[2]
 _GENERATOR = _ROOT / "benchmarks" / "challenges" / "generate.py"
@@ -1551,6 +1552,35 @@ def test_publication_never_deletes_unrelated_output(tmp_path: Path) -> None:
     assert sentinel.read_text(encoding="utf-8") == _SENTINEL
 
 
+def test_existing_output_inventory_stops_at_first_extra_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Collision rejection cannot traverse a foreign unlimited directory."""
+    output = tmp_path / "challenge"
+    output.mkdir()
+    names = ("program.c", "oracle.bin", "manifest.json", "unexpected")
+    for name in names:
+        _ = (output / name).write_bytes(b"existing")
+    original_iterdir = Path.iterdir
+
+    def capped_listing(directory: Path) -> Iterator[Path]:
+        if directory != output:
+            yield from original_iterdir(directory)
+            return
+        for name in names:
+            yield output / name
+        pytest.fail("replay inventory traversed past the first extra entry")
+
+    monkeypatch.setattr(Path, "iterdir", capped_listing)
+    with pytest.raises(
+        _GENERATOR_MODULE.ChallengeError, match="output path already exists"
+    ):
+        _GENERATOR_MODULE.write_challenge(_identity(), output)
+    assert (output / "unexpected").read_bytes() == b"existing"
+    assert not (tmp_path / ".challenge.staging").exists()
+
+
 @pytest.mark.parametrize(
     "artifact_name", sorted(("manifest.json", "oracle.bin", "program.c"))
 )
@@ -1608,7 +1638,11 @@ def test_raced_existing_artifact_fifo_rejected_without_blocking(
         paths = original_check(root)
         assert paths is not None
         _ = oracle.rename(displaced)
-        fifo = cast("Callable[[Path], None]", getattr(os, "mkfifo"))
+        # Windows-targeted type analysis lacks this guarded POSIX symbol.
+        fifo = cast(
+            "Callable[[Path], None]",
+            getattr(os, "mkfifo"),  # ruff: ignore[get-attr-with-constant]
+        )
         fifo(oracle)
         return paths
 
