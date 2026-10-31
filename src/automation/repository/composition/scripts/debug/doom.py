@@ -40,15 +40,20 @@ from datetime import UTC
 from datetime import datetime
 import os
 from pathlib import Path
+from stat import S_ISDIR
+from stat import S_ISREG
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - local argv
 import sys
+import tempfile
 from typing import Never
 from typing import TYPE_CHECKING
+from typing import cast
 
 from scripts.repository_root import repository_root
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from typing import BinaryIO
 
 ROOT = repository_root(Path(__file__))
 DEFAULT_SOURCE = (
@@ -64,6 +69,7 @@ WINDOWS_OS_NAME = "nt"
 ARGUMENT_SEPARATOR = "--"
 IWAD_ARGUMENT = "-iwad"
 CONFIGURATION_ERROR = 2
+MAX_LOG_ECHO_BYTES = 1024 * 1024
 IWAD_NAMES = (
     "freedoom1.wad",
     "freedoom2.wad",
@@ -279,27 +285,124 @@ def _timestamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _run_direct(configuration: LaunchConfiguration) -> int:
-    log_directory = configuration.executable.parent / "logs"
-    log_directory.mkdir(parents=True, exist_ok=True)
-    log_path = log_directory / f"doom-sanitize-{_timestamp()}.log"
-    _write_standard_output(f"sanitizer log: {log_path}\n")
-    with log_path.open("wb") as log_file:
-        # jig-ignore-next-line: indivisible reviewed identifier
-        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            (str(configuration.executable), *configuration.arguments),
-            cwd=configuration.source.parent,
-            env=configuration.environment,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            check=False,
-            shell=False,
-        )
-    if log_path.stat().st_size:
+def _reject_log_redirects(directory: Path) -> None:
+    """Reject an existing linked directory or ancestor before log creation."""
+    for candidate in (*reversed(directory.parents), directory):
+        if candidate.is_symlink() or candidate.is_junction():
+            _fail(f"sanitizer log directory must not redirect: {candidate}")
+
+
+def _prepare_sanitizer_log_directory(executable: Path) -> Path:
+    """Require a physical log directory beside the guest executable.
+
+    Returns:
+        Accepted directory for the diagnostic output file.
+
+    """
+    log_directory = executable.parent / "logs"
+    _reject_log_redirects(log_directory)
+    try:
+        log_directory.mkdir(parents=True, exist_ok=True)
+        status = log_directory.lstat()
+    except OSError as error:
+        _fail(f"sanitizer log directory unavailable: {error}")
+    _reject_log_redirects(log_directory)
+    if not S_ISDIR(status.st_mode):
+        _fail(f"sanitizer log directory is not physical: {log_directory}")
+    return log_directory
+
+
+def _log_file_identity(
+    status: os.stat_result,
+) -> tuple[int, int, int, int, int]:
+    """Describe the physical log file opened for one debug run.
+
+    Returns:
+        File device, inode, size, modification and change timestamps.
+
+    """
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _verify_sanitizer_log(log_file: BinaryIO) -> None:
+    """Reject a path substituted while subprocess was writing diagnostics."""
+    log_path = Path(log_file.name)
+    _reject_log_redirects(log_path.parent)
+    try:
+        named = log_path.lstat()
+        opened = os.fstat(log_file.fileno())
+    except OSError as error:
+        _fail(f"sanitizer log changed during execution: {error}")
+    if not (
+        S_ISREG(named.st_mode)
+        and S_ISREG(opened.st_mode)
+        and _log_file_identity(named) == _log_file_identity(opened)
+    ):
+        _fail("sanitizer log changed during execution")
+
+
+def _echo_sanitizer_log(log_file: BinaryIO) -> None:
+    """Echo bounded bytes from the original output descriptor, never a path."""
+    _ = log_file.seek(0)
+    excerpt = log_file.read(MAX_LOG_ECHO_BYTES + 1)
+    if excerpt:
         _write_standard_output(
-            log_path.read_text(encoding="utf-8", errors="replace")
+            excerpt[:MAX_LOG_ECHO_BYTES].decode("utf-8", errors="replace")
         )
+    if len(excerpt) > MAX_LOG_ECHO_BYTES:
+        _write_standard_output(
+            "\n[sanitizer log echo truncated; full log saved]\n"
+        )
+
+
+def _run_with_open_sanitizer_log(
+    configuration: LaunchConfiguration,
+    log_file: BinaryIO,
+) -> int:
+    """Preserve the open descriptor while running and echoing the process.
+
+    Returns:
+        The guest debug process status without losing sanitizer diagnostics.
+
+    """
+    _write_standard_output(f"sanitizer log: {log_file.name}\n")
+    # jig-ignore-next-line: indivisible reviewed identifier
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        (str(configuration.executable), *configuration.arguments),
+        cwd=configuration.source.parent,
+        env=configuration.environment,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        check=False,
+        shell=False,
+    )
+    log_file.flush()
+    _verify_sanitizer_log(log_file)
+    _echo_sanitizer_log(log_file)
     return completed.returncode
+
+
+def _run_direct(configuration: LaunchConfiguration) -> int:
+    log_directory = _prepare_sanitizer_log_directory(configuration.executable)
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w+b",
+            prefix=f"doom-sanitize-{_timestamp()}-",
+            suffix=".log",
+            dir=log_directory,
+            delete=False,
+        ) as log_file:
+            return _run_with_open_sanitizer_log(
+                configuration, cast("BinaryIO", cast("object", log_file))
+            )
+    except OSError as error:
+        _fail(f"sanitizer log failure: {error}")
 
 
 def _run_lldb(configuration: LaunchConfiguration) -> int:

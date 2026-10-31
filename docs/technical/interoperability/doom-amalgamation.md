@@ -70,8 +70,18 @@ preserves translation-unit preprocessing, internal linkage isolation,
 declaration ordering, include behavior, and provenance.
 
 The accepted `doom.c` passes strict six-target Clang validation and builds with
-ASan+UBSan plus the Windows adapter. A no-CRT deterministic harness produced
-identical multi-TU and single-TU framebuffer/audio transcripts:
+ASan+UBSan plus the Windows adapter. The optional Windows direct sanitizer-debug
+runner creates a unique physical log in the executable's `logs/` directory for
+each run, refusing linked log directories or parents instead of writing outside
+the selected debug tree. It verifies that the named output still matches its
+open descriptor before echoing at most one MiB to the console. The complete
+sanitizer diagnostic stream remains in the retained log file. Neither the log
+path nor its output bytes may be substituted after process execution; these
+local admission checks do not make arbitrary concurrent parent replacement
+atomic.
+
+A no-CRT deterministic harness produced identical multi-TU and single-TU
+framebuffer/audio transcripts:
 
 ```text
 92ff55046afd3976
