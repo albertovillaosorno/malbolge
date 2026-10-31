@@ -483,6 +483,50 @@ class _ForgedRelative(str):  # ruff: ignore[subclass-builtin]
         return [_ForgedParentSegment(".."), "outside.txt"]
 
 
+class _ForeignLimit(int):
+    """A caller-owned integer subclass cannot supply evidence byte policy."""
+
+
+@pytest.mark.parametrize(
+    "invalid_limit",
+    [None, False, True, 0, -1, float("nan"), float("inf"), 1.5, "8", _ForeignLimit(8)],
+)
+def test_direct_bounded_evidence_reader_rejects_invalid_limits_before_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_limit: object,
+) -> None:
+    """A noninteger or nonpositive cap cannot silently disable byte bounds."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"real evidence exceeds a one-byte limit")
+
+    def forbidden_segments(*args: object, **kwargs: object) -> list[str]:
+        _ = (args, kwargs)
+        message = "malformed byte limit reached filesystem admission"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(evidence, "_segments", forbidden_segments)
+    with pytest.raises(evidence.EvidenceError, match="byte limit"):
+        evidence.read_bounded_regular(
+            tmp_path, "raw.csv", limit=cast("int", invalid_limit)
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_limit", [False, True, 0, -1, float("nan"), float("inf"), 1.5, "8", _ForeignLimit(8)]
+)
+def test_direct_regular_path_rejects_invalid_optional_limits(
+    tmp_path: Path,
+    invalid_limit: object,
+) -> None:
+    """Optional path budget is either absent or an exact positive integer."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"real evidence exceeds a one-byte limit")
+    with pytest.raises(evidence.EvidenceError, match="byte limit"):
+        evidence.regular_path(
+            tmp_path, "raw.csv", limit=cast("int", invalid_limit)
+        )
+    assert evidence.regular_path(tmp_path, "raw.csv") == tmp_path / "raw.csv"
+
+
 @pytest.mark.parametrize("read_bytes", [False, True], ids=["path", "bytes"])
 def test_direct_evidence_path_admission_rejects_forged_str_parts(
     tmp_path: Path,

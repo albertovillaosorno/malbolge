@@ -101,6 +101,11 @@ def _segments(relative: str) -> list[str]:
     return parts
 
 
+def _admit_byte_limit(limit: int) -> None:
+    if type(limit) is not int or limit < 1:
+        _fail("evidence byte limit must be an exact positive integer")
+
+
 def regular_path(
     root: Path,
     relative: str,
@@ -113,6 +118,8 @@ def regular_path(
         A canonical file path entirely inside the caller-supplied root.
 
     """
+    if limit is not None:
+        _admit_byte_limit(limit)
     current = root.resolve(strict=True)
     for segment in _segments(relative):
         current /= segment
@@ -218,6 +225,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
         Source bytes from one matching opened descriptor and retained path.
 
     """
+    _admit_byte_limit(limit)
     path = regular_path(root, relative, limit=limit)
     original = path.lstat()
     primary: Exception | None = None
