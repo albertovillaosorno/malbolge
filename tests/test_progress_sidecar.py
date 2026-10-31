@@ -1356,6 +1356,57 @@ def test_operator_help_flush_failure_returns_nonzero(
     assert failure in stderr.getvalue()
 
 
+@pytest.mark.parametrize(
+    "completion", [False, True, 0, "ok", object()],
+    ids=["false", "true", "zero", "text", "foreign-object"],
+)
+def test_binary_checkpoint_stdout_rejects_noncanonical_flush_completion(
+    monkeypatch: pytest.MonkeyPatch, completion: object
+) -> None:
+    """A non-void flush acknowledgement cannot certify exported state bytes."""
+    payload = b"verified-state"
+
+    class MalformedFlushOutput:
+        @staticmethod
+        def write(data: bytes) -> int:
+            return len(data)
+
+        @staticmethod
+        def flush() -> None:
+            return cast("None", completion)
+
+    writer = cast(
+        "Callable[[bytes], None]", vars(progress)["_write_binary_stdout"]
+    )
+    monkeypatch.setattr(progress, "_binary_stdout", MalformedFlushOutput)
+    with pytest.raises(ERROR, match="noncanonical flush completion"):
+        writer(payload)
+
+
+@pytest.mark.parametrize(
+    "completion", [False, True, 0, "ok", object()],
+    ids=["false", "true", "zero", "text", "foreign-object"],
+)
+def test_operator_help_rejects_noncanonical_flush_completion(
+    monkeypatch: pytest.MonkeyPatch, completion: object
+) -> None:
+    """A malformed stdout flush cannot allow successful help publication."""
+    stderr = StringIO()
+
+    class MalformedHelpFlush(StringIO):
+        @override
+        def flush(self) -> None:
+            return cast("None", completion)
+
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", MalformedHelpFlush())
+        context.setattr(sys, "stderr", stderr)
+        status = progress.main(["--help"])
+    assert status == 1
+    assert HELP_FAILED_PREFIX in stderr.getvalue()
+    assert "noncanonical flush completion" in stderr.getvalue()
+
+
 def test_portable_checkpoint_rejects_identity_position_and_codec_drift(
     tmp_path: Path,
 ) -> None:

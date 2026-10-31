@@ -3281,7 +3281,10 @@ def _write_binary_stdout(payload: bytes) -> None:
         written = stream.write(payload)
         if type(written) is not int or written != len(payload):
             _fail("portable checkpoint extraction wrote incomplete stdout")
-        stream.flush()
+        if stream.flush() is not None:
+            _fail(
+                "portable checkpoint extraction stdout noncanonical flush completion"
+            )
     except ProgressSidecarError:
         raise
     except _OUTPUT_STREAM_ERRORS as error:
@@ -3301,7 +3304,8 @@ def _write_operator_text(text: str) -> None:
         written = sys.stdout.write(text)
         if type(written) is not int or written != len(text):
             _fail("progress operator stdout wrote incomplete text")
-        _ = sys.stdout.flush()
+        if sys.stdout.flush() is not None:
+            _fail("progress operator stdout noncanonical flush completion")
     except ProgressSidecarError:
         raise
     except _OUTPUT_STREAM_ERRORS as error:
