@@ -34,22 +34,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from pathlib import PureWindowsPath
 import re
 import sys
+from dataclasses import dataclass
+from pathlib import Path, PureWindowsPath
+from stat import S_ISDIR, S_ISLNK, S_ISREG
+from typing import Never, cast
+
 import tomllib
-from typing import Never
-from typing import cast
 
 from scripts.repository_root import repository_root
 
 ROOT = repository_root(Path(__file__))
 MANIFEST = (
-    ROOT
-    / "src/specification/formal-model/math/specification"
-    / "correspondence.toml"
+    ROOT / "src/specification/formal-model/math/specification" / "correspondence.toml"
 )
 MATH_ROOT = ROOT / "src/specification/formal-model/math"
 SCHEMA_VERSION = 1
@@ -58,14 +56,16 @@ ALGORITHMS_SEGMENT = "algorithms"
 TESTS_SEGMENT = "tests"
 RESEARCH_TEST_PATH_PARTS = 4
 LABEL_PATTERN = re.compile(r"\\label\{(eq:[^}]+)\}")
-ENTRY_KEYS = frozenset({
-    "domain",
-    "evidence",
-    "id",
-    "label",
-    "mechanism",
-    "tex",
-})
+ENTRY_KEYS = frozenset(
+    {
+        "domain",
+        "evidence",
+        "id",
+        "label",
+        "mechanism",
+        "tex",
+    }
+)
 TOP_LEVEL_KEYS = frozenset({"correspondence", "schema_version"})
 
 
@@ -135,12 +135,73 @@ def _exact_keys(
     observed = frozenset(value)
     if observed == expected:
         return
-    message = " ".join((
-        f"{context} keys differ:",
-        f"missing={sorted(expected - observed)},",
-        f"unknown={sorted(observed - expected)}",
-    ))
+    message = " ".join(
+        (
+            f"{context} keys differ:",
+            f"missing={sorted(expected - observed)},",
+            f"unknown={sorted(observed - expected)}",
+        )
+    )
     _fail(message)
+
+
+def _physical_repository_path(path: Path, context: str, *, directory: bool) -> None:
+    """Reject aliases and special files throughout a repository evidence path."""
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError:
+        _fail(f"{context} must stay inside repository root: {path}")
+    if PARENT_SEGMENT in relative.parts:
+        _fail(f"{context} must not escape repository root: {path}")
+    if not relative.parts:
+        _fail(f"{context} must name a regular repository file: {path}")
+    current = ROOT
+    for index, component in enumerate(relative.parts):
+        current = current / component
+        try:
+            status = current.lstat()
+        except FileNotFoundError:
+            _fail(f"{context} does not exist: {relative.as_posix()}")
+        except OSError as error:
+            _fail(f"{context} status failed: {error}")
+        if S_ISLNK(status.st_mode) or current.is_junction():
+            _fail(f"{context} must not redirect: {relative.as_posix()}")
+        expects_directory = directory if index == len(relative.parts) - 1 else True
+        expected = (
+            S_ISDIR(status.st_mode) if expects_directory else S_ISREG(status.st_mode)
+        )
+        if not expected:
+            _fail(f"{context} must be a physical regular artifact: {path}")
+
+
+def _read_source_text(path: Path, context: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        _fail(f"invalid {context} UTF-8: {error}")
+
+
+def _tex_sources() -> tuple[Path, ...]:
+    _physical_repository_path(MATH_ROOT, "mathematics root", directory=True)
+    sources: list[Path] = []
+
+    def fail_walk(error: OSError) -> None:
+        _fail(f"mathematics evidence scan failed: {error}")
+
+    for parent, directories, filenames in MATH_ROOT.walk(on_error=fail_walk):
+        _physical_repository_path(parent, "mathematics directory", directory=True)
+        for name in directories:
+            _physical_repository_path(
+                parent / name, "mathematics directory", directory=True
+            )
+        for name in filenames:
+            candidate = parent / name
+            if candidate.suffix == ".tex":
+                _physical_repository_path(candidate, "equation source", directory=False)
+                sources.append(candidate)
+            elif candidate.is_symlink() and candidate.is_dir():
+                _fail(f"mathematics directory must not redirect: {candidate}")
+    return tuple(sorted(sources))
 
 
 def _repository_path(raw: str, context: str) -> Path:
@@ -157,8 +218,7 @@ def _repository_path(raw: str, context: str) -> Path:
     if not native_admitted or not windows_admitted:
         _fail(f"{context} must be repository-relative: {raw}")
     resolved = ROOT / relative
-    if not resolved.is_file():
-        _fail(f"{context} does not exist: {raw}")
+    _physical_repository_path(resolved, context, directory=False)
     return resolved
 
 
@@ -227,8 +287,8 @@ def _parse(text: str) -> tuple[Correspondence, ...]:
 
 def _equation_labels() -> frozenset[str]:
     labels: set[str] = set()
-    for source in sorted(MATH_ROOT.rglob("*.tex")):
-        text = source.read_text(encoding="utf-8")
+    for source in _tex_sources():
+        text = _read_source_text(source, "equation source")
         for match in LABEL_PATTERN.finditer(text):
             label = match.group(1)
             if label in labels:
@@ -239,7 +299,7 @@ def _equation_labels() -> frozenset[str]:
 
 def _test_exists(evidence: Evidence) -> bool:
     path = _repository_path(evidence.path, "evidence path")
-    text = path.read_text(encoding="utf-8")
+    text = _read_source_text(path, "evidence path")
     function = re.escape(evidence.test)
     pattern = re.compile(rf"(?:fn|def)\s+{function}\s*\(")
     return pattern.search(text) is not None
@@ -261,13 +321,11 @@ def _validate_entry_references(
         _record_unique(entry.label, labels, "correspondence label")
         source = _repository_path(entry.tex, "equation source")
         marker = rf"\label{{{entry.label}}}"
-        if source.read_text(encoding="utf-8").count(marker) != 1:
+        if _read_source_text(source, "equation source").count(marker) != 1:
             _fail(f"equation label is not unique in source: {entry.label}")
         for evidence in entry.evidence:
             if not _test_exists(evidence):
-                _fail(
-                    f"evidence test not found: {evidence.path}::{evidence.test}"
-                )
+                _fail(f"evidence test not found: {evidence.path}::{evidence.test}")
     return frozenset(labels)
 
 
@@ -275,11 +333,13 @@ def _validate_label_closure(manifest_labels: frozenset[str]) -> None:
     equation_labels = _equation_labels()
     if equation_labels == manifest_labels:
         return
-    message = " ".join((
-        "equation/manifest labels differ:",
-        f"unmapped={sorted(equation_labels - manifest_labels)},",
-        f"unknown={sorted(manifest_labels - equation_labels)}",
-    ))
+    message = " ".join(
+        (
+            "equation/manifest labels differ:",
+            f"unmapped={sorted(equation_labels - manifest_labels)},",
+            f"unknown={sorted(manifest_labels - equation_labels)}",
+        )
+    )
     _fail(message)
 
 
@@ -303,7 +363,8 @@ def validate_repository() -> tuple[Correspondence, ...]:
         Stable correspondence entries after all repository checks succeed.
 
     """
-    return validate_text(MANIFEST.read_text(encoding="utf-8"))
+    _physical_repository_path(MANIFEST, "correspondence manifest", directory=False)
+    return validate_text(_read_source_text(MANIFEST, "correspondence manifest"))
 
 
 def main() -> int:

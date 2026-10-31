@@ -34,7 +34,11 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import pytest
+
 from scripts.validate import math_correspondence as validator
 
 EXPECTED_EQUATIONS = 275
@@ -59,9 +63,7 @@ def test_repository_correspondence_graph_is_closed() -> None:
 def test_drive_relative_equation_path_is_not_repository_relative() -> None:
     """Windows drive-relative syntax cannot escape equation-source authority."""
     text = validator.MANIFEST.read_text(encoding="utf-8")
-    marker = next(
-        line for line in text.splitlines() if line.startswith("tex = ")
-    )
+    marker = next(line for line in text.splitlines() if line.startswith("tex = "))
     changed = text.replace(marker, 'tex = "D:escape"', 1)
     with pytest.raises(
         validator.CorrespondenceError,
@@ -113,3 +115,106 @@ def test_non_test_algorithm_surface_is_rejected() -> None:
     """Research implementation files cannot masquerade as test evidence."""
     path = "algorithms/example-research/state_graph.rs"
     assert not validator.evidence_path_allowed(path)
+
+
+@pytest.mark.parametrize("kind", ["equation", "evidence"])
+@pytest.mark.parametrize("redirected", ["leaf", "parent"])
+def test_correspondence_rejects_redirected_repository_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    redirected: str,
+) -> None:
+    """An external alias cannot count as a real equation or test source."""
+    directory = tmp_path / ("math" if kind == "equation" else "tests")
+    directory.mkdir()
+    source = directory / ("model.tex" if kind == "equation" else "evidence.rs")
+    source.write_text("fn test_example() {}", encoding="utf-8")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    assert (
+        validator._repository_path(source.relative_to(tmp_path).as_posix(), kind)
+        == source
+    )
+    external = tmp_path / "external"
+    external.mkdir()
+    victim = source if redirected == "leaf" else directory
+    outside = external / victim.name
+    victim.rename(outside)
+    victim.symlink_to(outside, target_is_directory=outside.is_dir())
+    with pytest.raises(validator.CorrespondenceError, match="redirect"):
+        _ = validator._repository_path(source.relative_to(tmp_path).as_posix(), kind)
+
+
+def test_correspondence_rejects_redirected_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The source of the traceability graph is itself physical evidence."""
+    outside = tmp_path / "outside.toml"
+    outside.write_text("schema_version = 1", encoding="utf-8")
+    manifest = tmp_path / "correspondence.toml"
+    manifest.symlink_to(outside)
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "MANIFEST", manifest)
+    monkeypatch.setattr(validator, "validate_text", lambda _text: ())
+    with pytest.raises(validator.CorrespondenceError, match="redirect"):
+        _ = validator.validate_repository()
+
+
+@pytest.mark.parametrize("redirected", ["tex-leaf", "tex-parent"])
+def test_correspondence_label_scan_rejects_redirects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    redirected: str,
+) -> None:
+    """Label closure cannot silently adopt or omit redirected TeX trees."""
+    root = tmp_path / "math"
+    source_directory = root / "algorithms"
+    source_directory.mkdir(parents=True)
+    original = source_directory / "paper.tex"
+    original.write_text(r"\label{eq:fixture}", encoding="utf-8")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "MATH_ROOT", root)
+    assert validator._equation_labels() == frozenset({"eq:fixture"})
+    external = tmp_path / "external"
+    external.mkdir()
+    victim = original if redirected == "tex-leaf" else source_directory
+    outside = external / victim.name
+    victim.rename(outside)
+    victim.symlink_to(outside, target_is_directory=outside.is_dir())
+    with pytest.raises(validator.CorrespondenceError, match="redirect"):
+        _ = validator._equation_labels()
+
+
+def test_correspondence_invalid_utf8_is_typed_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A malformed TeX source is a typed traceability failure."""
+    math_root = tmp_path / "math"
+    math_root.mkdir()
+    (math_root / "paper.tex").write_bytes(b"\xff")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "MATH_ROOT", math_root)
+    with pytest.raises(validator.CorrespondenceError, match="UTF-8"):
+        _ = validator._equation_labels()
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO requires POSIX")
+def test_correspondence_rejects_fifo_test_evidence_before_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A named pipe cannot become an executable-equation test witness."""
+    evidence = tmp_path / "tests" / "witness.py"
+    evidence.parent.mkdir()
+    os.mkfifo(evidence)
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    with pytest.raises(validator.CorrespondenceError, match="physical regular"):
+        _ = validator._repository_path("tests/witness.py", "evidence path")
+
+
+def test_correspondence_rejects_repository_root_as_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty relative path is not evidence of an equation."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    with pytest.raises(validator.CorrespondenceError, match="regular repository file"):
+        _ = validator._repository_path(".", "equation source")

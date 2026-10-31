@@ -34,14 +34,19 @@ evidence under
 repository `tests/` or an algorithm mirror's `algorithms/<id>/tests/`, exact
 existence of every referenced `fn`/`def`, and exact set
 equality between all `eq:*` labels under
-`src/specification/formal-model/math/specification/` and the manifest.
+`src/specification/formal-model/math/` and the manifest.
 Renaming/removing an equation or a test therefore breaks correspondence instead
 of silently leaving stale documentation.
+The validator requires physical in-repository regular manifest, equation, and
+evidence files and rejects redirected source ancestors, including symlinked
+math directories. Malformed UTF-8 is reported as a typed correspondence error.
+These are admission checks, not a claim of atomicity against subsequent
+filesystem mutation.
 
 ### Current promoted equations
 
-The accepted graph contains 40 promoted equations: 19 from the
-self-modification state-graph model, 14 from the generic profile model, four
+The accepted graph contains 275 promoted equations: 32 from the
+self-modification state-graph model, 14 from the generic profile model, 226
 from Malbolge-specific optimization mathematics, and three from the classic
 1998 specialization.
 
@@ -89,7 +94,7 @@ extrapolate a proof by convention.
   `property-fuzz-and-exhaustive-testing`.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 - `src/automation/repository/composition/scripts/validate/math_correspondence.py`
-  closes 40 promoted equation labels against concrete test functions.
+  closes 275 promoted equation labels against concrete test functions.
 - `tests/mathematics/test_correspondence_manifest.py` proves orphan labels,
   stale test functions, and duplicate TOML authority fail closed.
 - Semantic evidence is executed by the mapped Rust/Python suites; the manifest
