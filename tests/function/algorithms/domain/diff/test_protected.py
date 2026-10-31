@@ -45,6 +45,7 @@ from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import snapshot_tree
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.model import OracleLiteral
+from algorithms.diff.model import TreeSnapshot
 from algorithms.diff.payload import AuthenticatedPayload
 from algorithms.diff.payload import PayloadCryptoError
 from algorithms.diff.protected import PayloadSlice
@@ -296,6 +297,35 @@ def test_protected_authoring_rejects_foreign_inputs(tmp_path: Path) -> None:
             identity,
             binding_policy=policy,
             context=cast("bytes", cast("object", bytearray(_CONTEXT))),
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid", ["unencodable" + chr(0xD800), "nul\x00path"]
+)
+def test_protected_path_metadata_rejects_unserializable_text(
+    invalid: str,
+) -> None:
+    """Invalid path labels fail typed before UTF-8 AAD serialization."""
+    digest = "0" * 64
+    for data in (
+        {"output_path": invalid, "source_path": "source.bin"},
+        {"output_path": "target.bin", "source_path": invalid},
+    ):
+        with pytest.raises(ProtectedPlanError, match=r"protected.*path"):
+            _ = ProtectedInstruction(
+                output_path=data["output_path"],
+                kind=ProtectedInstructionKind.COPY_SOURCE,
+                expected_sha256=digest,
+                source_path=data["source_path"],
+            )
+    empty = TreeSnapshot(files=())
+    with pytest.raises(ProtectedPlanError, match=r"protected.*root"):
+        _ = ProtectedMetadata(
+            source=empty,
+            target=empty,
+            instructions=(),
+            passthrough_roots=(invalid,),
         )
 
 

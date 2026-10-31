@@ -73,6 +73,7 @@ _SINGLE_MESSAGE_NONCE = bytes(12)
 _FRAME_BYTES = 8
 _SHA256_HEX_LENGTH = 64
 _HEX_DIGITS = frozenset("0123456789abcdef")
+_NUL = "\x00"
 _AAD_MAGIC = b"source-bound-exact-plan-aad-v2\0"
 _KEY_DOMAIN = b"source-bound-exact-plan-source-key-v1\0"
 _BINDING_CONTEXT_DOMAIN = b"source-bound-exact-plan-binding-v1\0"
@@ -88,6 +89,27 @@ class ProtectedInstructionKind(StrEnum):
     COPY_SOURCE = "copy-source"
     PATCH_SOURCE = "patch-source"
     PAYLOAD = "payload"
+
+
+def _require_utf8_path(value: str, context: str) -> None:
+    if _NUL in value:
+        message = f"{context} must not contain NUL"
+        raise ProtectedPlanError(message)
+    try:
+        _ = value.encode("utf-8")
+    except UnicodeError as error:
+        message = f"{context} must use UTF-8-encodable text"
+        raise ProtectedPlanError(message) from error
+
+
+def _require_optional_utf8_path(value: str | None, context: str) -> None:
+    if value is not None:
+        _require_utf8_path(value, context)
+
+
+def _require_utf8_roots(roots: tuple[str, ...]) -> None:
+    for root in roots:
+        _require_utf8_path(root, "protected passthrough root")
 
 
 def _require_sha256_hex(value: object, context: str) -> None:
@@ -162,6 +184,9 @@ class ProtectedInstruction:
         if type(self.output_path) is not str or not self.output_path:
             message = "protected instruction output path must be non-empty"
             raise ProtectedPlanError(message)
+        _require_utf8_path(
+            self.output_path, "protected instruction output path"
+        )
         if type(self.kind) is not ProtectedInstructionKind:
             message = "protected instruction kind must use the exact enum type"
             raise ProtectedPlanError(message)
@@ -175,6 +200,9 @@ class ProtectedInstruction:
                 "protected instruction source path must be non-empty or None"
             )
             raise ProtectedPlanError(message)
+        _require_optional_utf8_path(
+            self.source_path, "protected instruction source path"
+        )
         if (
             self.payload_slice is not None
             and type(self.payload_slice) is not PayloadSlice
@@ -247,6 +275,7 @@ class ProtectedMetadata:
         ):
             message = "protected passthrough roots must be non-empty strings"
             raise ProtectedPlanError(message)
+        _require_utf8_roots(self.passthrough_roots)
 
 
 @dataclass(frozen=True, slots=True)
