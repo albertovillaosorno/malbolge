@@ -300,3 +300,36 @@ def test_publication_rejects_non_directory_staging(
     else:
         assert staging.is_symlink()
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_staging_status_errors_fail_closed_as_os_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Unexpected staging status failures cannot reach a rename primitive."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    destination = tmp_path / "destination"
+    original_lstat = Path.lstat
+    rename_calls: list[tuple[Path, Path]] = []
+
+    def fail_staging_stat(path: Path) -> os.stat_result:
+        if path == staging:
+            message = "blocked directory status"
+            raise failure_type(message)
+        return original_lstat(path)
+
+    def record_rename(source: Path, target: Path) -> None:
+        rename_calls.append((source, target))
+
+    monkeypatch.setattr(Path, "lstat", fail_staging_stat)
+    monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
+    with pytest.raises(
+        OSError, match="staging directory status failed"
+    ) as rejected:
+        publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.EINVAL
+    assert not rename_calls
+    assert not destination.exists()

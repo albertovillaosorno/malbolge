@@ -115,7 +115,15 @@ def _require_staging_directory(staging: Path) -> None:
         OSError: Staging is missing or not a real directory.
 
     """
-    if not stat.S_ISDIR(staging.lstat().st_mode):
+    try:
+        mode = staging.lstat().st_mode
+    except (ValueError, RuntimeError) as error:
+        raise OSError(
+            errno.EINVAL,
+            "staging directory status failed",
+            staging,
+        ) from error
+    if not stat.S_ISDIR(mode):
         raise OSError(
             errno.ENOTDIR,
             "staging must be an existing directory, not a file or symlink",
