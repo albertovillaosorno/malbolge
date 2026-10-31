@@ -877,8 +877,12 @@ these selectors once a product C-to-Malbolge pipeline exists.
   retry first validates the collided bytes through a bounded, stable-inode
   read against the proposed generation. It then rechecks the collided inode,
   link count, timestamps, and alias identity before unlinking that staging
-  entry and rechecking single-link identity. A mismatched, oversized, or
-  concurrently rewritten collision leaves the suspected alias untouched; a
+  entry and rechecking single-link identity. Recovery repeats nonfollowing
+  regular-inode admission immediately before unlink to reject an unrelated
+  replacement inserted after the full alias check, leaving that foreign entry
+  untouched; this remains subject to a final pathname check-to-unlink race.
+  A mismatched, oversized, or concurrently rewritten collision leaves the
+  suspected alias untouched; a
   foreign alias without that narrow recovery path remains rejected. Recovery
   scans escape the destination's literal filename before applying the suffix
   wildcard: `?`, `*`, and `[` in a valid POSIX filename cannot match unrelated

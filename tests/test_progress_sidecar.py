@@ -5777,6 +5777,51 @@ def test_retained_alias_change_after_content_check_preserved(
 
 @pytest.mark.skipif(
     os.name == progress.WINDOWS_PLATFORM,
+    reason="Retained staging aliases require POSIX hard-link semantics",
+)
+def test_retained_alias_swap_after_identity_check_preserves_foreign_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Collision recovery must not unlink a changed staging pathname."""
+    destination = tmp_path / "existing-checkpoint"
+    payload = b"verified-checkpoint"
+    _ = destination.write_bytes(payload)
+    alias = tmp_path / f".{destination.name}.abcdefgh.tmp"
+    os.link(destination, alias)
+    foreign = tmp_path / "unrelated-retained-entry"
+    unrelated_bytes = b"unrelated-file-must-survive"
+    _ = foreign.write_bytes(unrelated_bytes)
+    foreign_inode = foreign.stat().st_ino
+    verify = cast(
+        "Callable[[Path, Path, os.stat_result], None]",
+        vars(progress)["_verify_retained_immutable_alias"],
+    )
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+
+    def swap_after_check(
+        path: Path, staged: Path, previous: os.stat_result
+    ) -> None:
+        verify(path, staged, previous)
+        assert staged == alias
+        staged.unlink()
+        _ = foreign.replace(staged)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress, "_verify_retained_immutable_alias", swap_after_check
+        )
+        with pytest.raises(ERROR, match="recovery cleanup"):
+            _ = writer(destination, payload, platform=os.name)
+
+    assert destination.read_bytes() == payload
+    assert alias.is_file()
+    assert alias.stat().st_ino == foreign_inode
+    assert alias.read_bytes() == unrelated_bytes
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
     reason="POSIX literal wildcard filenames are required",
 )
 @pytest.mark.parametrize(

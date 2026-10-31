@@ -2631,6 +2631,10 @@ def _repair_retained_immutable_stage(destination: Path, payload: bytes) -> None:
         _fail(f"immutable progress payload already differs: {destination}")
     # A different candidate or a changed collision must not lose the alias.
     _verify_retained_immutable_alias(destination, alias, observed)
+    if not _owned_temporary_still_named(
+        alias, (observed.st_dev, observed.st_ino)
+    ):
+        _fail("immutable progress temporary changed before recovery cleanup")
     alias.unlink()
 
 
