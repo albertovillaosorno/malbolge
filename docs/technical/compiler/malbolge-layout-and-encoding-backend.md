@@ -320,14 +320,14 @@ publication remain distinct guarantees.
 ### Genuine Nonzero Byte Constant Artifact Pilot
 
 The explicit `--seeded-byte-literal` mode admits one verified nonzero
-`u8` literal and one to eleven matching outputs via canonical MCTI
+`u8` literal and one to twelve matching outputs via canonical MCTI
 or MCTR file/stdin. The original 14-value current-profile seed table
 remains exclusive to single-output sources. Ten different byte values
 `55, 64, 65, 66, 163, 164, 165, 182, 183, 200` have a separately
-verified two-output seed table. Third- through eleventh-output phases add
-21, 24, 18, 19, 18, 21, 21, 25 and 17
+verified two-output seed table. Third- through twelfth-output phases add
+21, 24, 18, 19, 18, 21, 21, 25, 17 and 20
 independently re-executed distinct byte values, respectively; all 26
-reviewed eleven-output phases halt with equal nonzero bytes. Each additional
+reviewed eleven- and twelve-output phases halt with equal nonzero bytes. Each additional
 `<` changes source position decoding and loader-expanded guest memory,
 so reusing an older single-output seed could
 print the wrong byte. Both the linear layout admission and independent
@@ -338,7 +338,7 @@ no-overwrite semantics. General-runner process tests select the current
 profile through a capsule; raw graphical source carries no profile ID and
 can produce different values under the runner's historical default.
 The guest computes the byte without a host-provided result. Other profiles,
-unknown literals, zero/twelve-or-more outputs, additional effects and arbitrary
+unknown literals, zero/thirteen-or-more outputs, additional effects and arbitrary
 arithmetic reject.
 
 ### Signed/unsigned byte identity-cast artifact publication
