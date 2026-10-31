@@ -823,7 +823,7 @@ def test_study_stream_construction_preserves_primary_when_close_fails(
     assert isinstance(primary, RuntimeError)
     assert str(primary) == "primary fdopen error"
     assert primary.__notes__ == [
-        "arena input descriptor cleanup also failed: secondary descriptor close error"
+        "arena input descriptor cleanup also failed"
     ]
 
 
@@ -878,8 +878,76 @@ def test_study_stream_close_does_not_hide_primary_read_failure(
     with pytest.raises(study_file.StudyFileError, match="primary study read failure") as error:
         study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
     assert error.value.__notes__ == [
-        "arena input stream cleanup also failed: secondary study stream close error"
+        "arena input stream cleanup also failed"
     ]
+
+
+class _UnsafeStudyClose(ValueError):
+    """A foreign cleanup fault whose string conversion must never run."""
+
+    def __str__(self) -> str:
+        raise AssertionError("unsafe descriptor cleanup formatting invoked")
+
+
+def test_study_descriptor_cleanup_avoids_foreign_error_formatters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Descriptor close faults cannot mask the primary stream constructor error."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    real_close = study_file.os.close
+    closed: list[int] = []
+
+    def invalid_stream(*args: object, **kwargs: object) -> BinaryIO:
+        del args, kwargs
+        raise RuntimeError("primary stream constructor failed")
+
+    def hostile_close(descriptor: int) -> None:
+        real_close(descriptor)
+        closed.append(descriptor)
+        raise _UnsafeStudyClose("unsafe close formatter")
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file.os, "fdopen", invalid_stream)
+        context.setattr(study_file.os, "close", hostile_close)
+        with pytest.raises(study_file.StudyFileError, match="stream construction") as caught:
+            study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
+    assert len(closed) == 1
+    with pytest.raises(OSError):
+        study_file.os.fstat(closed[0])
+    primary = caught.value.__cause__
+    assert isinstance(primary, RuntimeError)
+    assert str(primary) == "primary stream constructor failed"
+    assert primary.__notes__ == ["arena input descriptor cleanup also failed"]
+
+
+def test_study_stream_cleanup_avoids_foreign_error_formatters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hostile stream close cannot replace a failed bounded input read."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file._open_study
+
+    @contextmanager
+    def hostile_close(target: Path) -> Iterator[BinaryIO]:
+        try:
+            with original_open(target) as stream:
+                yield stream
+        finally:
+            raise _UnsafeStudyClose("unsafe stream close formatter")
+
+    def broken_read(stream: BinaryIO, *, size: int) -> bytes:
+        del stream, size
+        raise study_file.StudyFileError("primary bounded input read failed")
+
+    monkeypatch.setattr(study_file, "_open_study", hostile_close)
+    monkeypatch.setattr(study_file, "_read_complete", broken_read)
+    with pytest.raises(study_file.StudyFileError, match="primary bounded") as caught:
+        study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
+    assert caught.value.__notes__ == ["arena input stream cleanup also failed"]
 
 
 def test_study_stream_constructor_failure_rejects_both_cli_routes(
