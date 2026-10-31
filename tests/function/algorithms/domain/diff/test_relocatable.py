@@ -65,6 +65,7 @@ _TARGET = b"TARGET-ONLY-CORRECTION"
 _CREATED = b"created-target"
 _FOREIGN_STAGING = b"foreign-writer"
 _FOREIGN_OUTPUT = b"foreign-output"
+_SYMLINK_METHOD = "is_symlink"
 _POSIX = "posix"
 _ROOT_TARGET = b"target"
 
@@ -599,6 +600,47 @@ def test_relocatable_rejects_linked_candidate_directory(
         materialize_relocatable_plan(candidate, plan, output)
     assert not output.exists()
     assert not (tmp_path / ".out.relocatable-staging").exists()
+
+
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("failure", [OSError, ValueError, RuntimeError])
+def test_relocatable_ancestor_inspection_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    method: str,
+    failure: type[Exception],
+) -> None:
+    """Broken host redirect checks must not escape the relocation boundary."""
+    candidate = tmp_path / "candidate"
+    _write(candidate, "nested/file.bin", b"admitted candidate")
+    output = tmp_path / "out"
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            output_path="copy.bin",
+            source_path="nested/file.bin",
+            copy_candidate_file=True,
+        ),
+    ))
+    guarded = candidate / "nested"
+    original = (
+        Path.is_symlink if method == _SYMLINK_METHOD else Path.is_junction
+    )
+
+    def broken_inspection(path: Path) -> bool:
+        if path == guarded:
+            message = "host inspection failed"
+            raise failure(message)
+        return original(path)
+
+    monkeypatch.setattr(Path, method, broken_inspection)
+    with pytest.raises(RelocationError, match="ancestor inspection failed"):
+        materialize_relocatable_plan(candidate, plan, output)
+    _expect(not output.exists(), "failed admission published output")
+    _expect(
+        not (tmp_path / ".out.relocatable-staging").exists(),
+        "failed admission left staging behind",
+    )
 
 
 def test_relocatable_authoring_read_error_fails_closed(
