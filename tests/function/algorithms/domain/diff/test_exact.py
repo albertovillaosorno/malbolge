@@ -115,7 +115,14 @@ def _synthetic_pair(tmp_path: Path) -> tuple[Path, Path]:
 
 @pytest.mark.parametrize(
     "invalid_path",
-    ["../escape", "/absolute", "src//file", "src\\file", "src\x00file"],
+    [
+        "../escape",
+        "/absolute",
+        "src//file",
+        "src\\file",
+        "src\x00file",
+        "src\ud800file",
+    ],
 )
 def test_exact_authoring_metadata_rejects_noncanonical_paths(
     invalid_path: str,

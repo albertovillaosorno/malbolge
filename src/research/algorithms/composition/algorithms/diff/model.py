@@ -77,6 +77,11 @@ def _require_canonical_relative_path(value: object, context: str) -> None:
     if unsafe:
         message = f"{context} must be a canonical relative path"
         raise TreeModelError(message)
+    try:
+        _ = value.encode("utf-8")
+    except UnicodeError as error:
+        message = f"{context} must be a canonical relative path"
+        raise TreeModelError(message) from error
 
 
 @dataclass(frozen=True, slots=True, order=True)
