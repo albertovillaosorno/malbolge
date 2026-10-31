@@ -160,6 +160,9 @@ def _csv_rows(
 
 
 def _decode_raw(raw: bytes, label: str) -> str:
+    # Hash and parse the same actual bytes; subclass decoders can forge rows.
+    if type(raw) is not bytes:
+        _fail(f"{label}: arena raw CSV requires exact bytes")
     if not raw or len(raw) > MAX_RAW_BYTES:
         _fail(f"{label}: missing or oversized arena raw CSV")
     try:

@@ -900,6 +900,8 @@ and exact reported identity and metric values. Missing optional metrics use
 empty cells, distinct from zero. All referenced rows must be present exactly
 once, with no extra rows, even when several trials share one file. Each CSV
 is limited to 16 MiB. The report adds a SHA-256 digest per inspected raw file.
+The direct raw-row checker admits only exact `bytes`, so decoded CSV and hashed
+source cannot diverge through an overridden byte-subclass decoder.
 
 A separate `arena-raw-v2` schema adds the `energy_uj` CSV column in the
 alphabetical metrics sequence (after `artifact_bytes` and before `elapsed_ns`),

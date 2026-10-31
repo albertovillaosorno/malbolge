@@ -44,6 +44,7 @@ from io import StringIO
 import json
 import sys
 from typing import Any
+from typing import cast
 from typing import TYPE_CHECKING
 
 import pytest
@@ -141,6 +142,37 @@ def test_exact_raw_matches_with_durable_content_digests(tmp_path: Path) -> None:
         for row in doc["observations"]
     }
     assert NO_AUTHENTICATION in preflight["scope"]
+
+
+def test_raw_admission_never_hashes_different_bytes_than_decoded_csv(
+    tmp_path: Path,
+) -> None:
+    """A bytes subclass must not substitute rows while retaining a false digest."""
+    observation = sample_study(tmp_path)["observations"][0]
+    authentic_csv = _render([observation]).decode("utf-8")
+
+    class SpoofedRawBytes(bytes):
+        """Return authentic CSV text for unrelated raw bytes."""
+
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            del encoding, errors
+            return authentic_csv
+
+    forged = SpoofedRawBytes(b"not valid arena CSV")
+    with pytest.raises(raw_samples.RawSampleError, match="exact bytes"):
+        raw_samples.check_rows(forged, [observation], ROOT_LABEL)
+
+
+@pytest.mark.parametrize(
+    "foreign",
+    ["header,row", bytearray(b"header,row"), memoryview(b"header,row"), None],
+)
+def test_raw_admission_rejects_foreign_input_as_typed_failure(
+    foreign: object,
+) -> None:
+    """Direct reader cannot leak stream type errors on non-byte evidence."""
+    with pytest.raises(raw_samples.RawSampleError, match="exact bytes"):
+        raw_samples.check_rows(cast("bytes", foreign), [], ROOT_LABEL)
 
 
 def test_strict_raw_sample_rechecked_after_report_assembly(
