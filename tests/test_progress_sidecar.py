@@ -2102,6 +2102,37 @@ def test_read_rejects_foreign_path_type() -> None:
         _ = progress.read(cast("Path", cast("object", "not-a-path-object")))
 
 
+@pytest.mark.parametrize("operation", ["progress", "checkpoint", "partial", "read"])
+def test_public_progress_path_api_rejects_foreign_path_subclasses(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    """Foreign pathlib overrides must not execute during path admission."""
+
+    class HostilePath(type(tmp_path)):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign pathlib string override executed")
+
+        @override
+        def stat(self, *args: object, **kwargs: object) -> os.stat_result:
+            del args, kwargs
+            raise AssertionError("foreign pathlib stat override executed")
+
+    source = HostilePath(tmp_path / "not-published.malbolge")
+    expected = "read path must use pathlib Path" if operation == "read" else "output path"
+    with pytest.raises(ERROR, match=expected):
+        if operation == "progress":
+            _ = progress.progress_path(source)
+        elif operation == "checkpoint":
+            _ = progress.checkpoint_path(source, 1)
+        elif operation == "partial":
+            _ = progress.partial_path(source, 1)
+        else:
+            _ = progress.read(source)
+    assert not tuple(tmp_path.glob("not-published.malbolge*"))
+
+
 def test_read_permits_relocated_snapshot_when_bytes_match(
     tmp_path: Path,
 ) -> None:

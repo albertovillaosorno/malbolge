@@ -71,6 +71,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Generator
 
+_NATIVE_PATH_TYPE: Final = type(Path())
 SCHEMA_ID: Final = "malbolge-progress-v1"
 CHECKPOINT_SCHEMA_ID: Final = "malbolge-checkpoint-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
@@ -766,7 +767,7 @@ def _admit_filesystem_path(text: str, context: str) -> str:
 def _output_path_text(output: object) -> str:
     if type(output) is str:
         text = output
-    elif isinstance(output, Path):
+    elif isinstance(output, Path) and type(output) is _NATIVE_PATH_TYPE:
         text = str(output)
     else:
         _fail("output path must use an exact string or pathlib Path")
@@ -779,7 +780,7 @@ def _output_path_text(output: object) -> str:
 
 
 def _read_path(path: object) -> Path:
-    if not isinstance(path, Path):
+    if not isinstance(path, Path) or type(path) is not _NATIVE_PATH_TYPE:
         _fail("progress sidecar read path must use pathlib Path")
     _ = _admit_filesystem_path(str(path), "progress sidecar read path")
     return path
