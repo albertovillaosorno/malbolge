@@ -72,6 +72,8 @@ from optimizer.enumerative import EnumerationProblem
 from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
 from optimizer.rotate_target import RotateTargetProblem
 from optimizer.rotate_target import build_rotate_target_batch
+import pytest
+
 from scripts import progress_sidecar as progress
 
 if TYPE_CHECKING:
@@ -85,6 +87,12 @@ RESUME_EXECUTION_FIELD = "resume_execution_id"
 ROTATE_ONE = 19_683
 CRAZY_ALL_ONES = 29_524
 CONFIG_SOURCE = "config/search.toml"
+SOURCE_KIND_PROBLEM = "problem"
+BYTE_LIMIT_ERROR = "byte limit"
+REGULAR_SOURCE_ERROR = "regular"
+SOURCE_CHANGED_ERROR = "changed before read"
+SOURCE_CHANGED_DURING_ERROR = "changed during read"
+SOURCE_RECHECK = 2
 BASE_SOURCE = "base.toml"
 UNSUPPORTED_PAIR = "unsupported search algorithm/backend"
 INVALID_CHECKPOINT = "invalid search checkpoint JSON"
@@ -900,3 +908,189 @@ backend_id = "{CUDA_BACKEND}"
     assert status == CONFIGURATION_ERROR
     assert UNSUPPORTED_PAIR in stderr.getvalue()
     assert not stdout.getvalue()
+
+
+def _file_input_cli(
+    config: Path,
+    problem: Path,
+    checkpoint: Path,
+) -> tuple[int, str, str]:
+    """Run a deterministic resume CLI request without process exit.
+
+    Returns:
+        Exit code, standard output, and error diagnostic.
+
+    """
+    stdout = StringIO()
+    stderr = StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        status = main((
+            "--config", str(config), "--problem", str(problem),
+            "--budget", "5", "--resume-checkpoint", str(checkpoint),
+        ))
+    return status, stdout.getvalue(), stderr.getvalue()
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+def test_cli_rejects_oversized_binary_source(
+    tmp_path: Path,
+    source_kind: str,
+) -> None:
+    """Canonical problem and resume payloads are independently bounded."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    with selected.open("wb") as stream:
+        _ = stream.truncate(64 * 1024 * 1024 + 1)
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert BYTE_LIMIT_ERROR in error
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+def test_cli_rejects_directory_binary_source(
+    tmp_path: Path,
+    source_kind: str,
+) -> None:
+    """Directory inputs produce explicit errors before backend work."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    selected.unlink()
+    selected.mkdir()
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert REGULAR_SOURCE_ERROR in error
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+def test_cli_rejects_replaced_binary_source_before_read(  # ruff: ignore[too-many-locals]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+) -> None:
+    """Equal-byte replacement after stat cannot supply search evidence."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    replacement = tmp_path / "replacement.bin"
+    _ = replacement.write_bytes(selected.read_bytes())
+    real_open = os.open
+    swapped = False
+
+    def swap_at_open(path: Path, flags: int) -> int:
+        nonlocal swapped
+        if path == selected:
+            _ = replacement.replace(selected)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_at_open)
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert SOURCE_CHANGED_ERROR in error
+    assert swapped
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+def test_cli_rejects_fifo_binary_source(
+    tmp_path: Path,
+    source_kind: str,
+) -> None:
+    """Writerless FIFO inputs never block CLI execution."""
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFO unavailable on host")
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    selected.unlink()
+    mkfifo(selected)
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert REGULAR_SOURCE_ERROR in error
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+def test_cli_rejects_binary_inode_swap_after_read(  # ruff: ignore[too-many-locals]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+) -> None:
+    """Input source must still match the opened descriptor after reading."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    replacement = tmp_path / "replacement.bin"
+    _ = replacement.write_bytes(selected.read_bytes())
+    real_stat = Path.stat
+    seen = 0
+
+    def swap_on_recheck(
+        path: Path,
+        *,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        nonlocal seen
+        if path == selected:
+            seen += 1
+            if seen == SOURCE_RECHECK:
+                _ = replacement.replace(selected)
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", swap_on_recheck)
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert SOURCE_CHANGED_DURING_ERROR in error
+    assert seen == SOURCE_RECHECK
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+def test_cli_rejects_in_place_binary_edit_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+) -> None:
+    """Equal-length edits under one inode cannot supply CLI evidence."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    real_stat = Path.stat
+    seen = 0
+
+    def edit_on_recheck(
+        path: Path,
+        *,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        nonlocal seen
+        if path == selected:
+            seen += 1
+            if seen == SOURCE_RECHECK:
+                with selected.open("r+b") as stream:
+                    _ = stream.write(b"x")
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", edit_on_recheck)
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert SOURCE_CHANGED_DURING_ERROR in error
+    assert seen == SOURCE_RECHECK
+
+
+def test_cli_allows_explicit_binary_aliases(tmp_path: Path) -> None:
+    """User-selected symlink paths preserve supported CLI input semantics."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    problem_alias = tmp_path / "linked-problem.bin"
+    checkpoint_alias = tmp_path / "linked-checkpoint.bin"
+    try:
+        _ = problem_alias.symlink_to(problem)
+        _ = checkpoint_alias.symlink_to(checkpoint)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    status, output, error = _file_input_cli(
+        config, problem_alias, checkpoint_alias
+    )
+    assert status == 0
+    assert not error
+    assert _json_object(output)["actual_backend_id"] == CPU_BACKEND

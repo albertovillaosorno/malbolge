@@ -106,7 +106,11 @@ same registry externally through `python -m optimizer.cli`. It reads versioned
 TOML configuration plus canonical binary problem bytes, accepts explicit
 algorithm/backend overrides, and emits deterministic JSON with configuration
 source, problem SHA-256, configured and actual backend IDs, device metadata,
-seed/budget, and hex-encoded proposals marked `untrusted`. A supported CUDA
+seed/budget, and hex-encoded proposals marked `untrusted`. Both caller-selected
+binary problem and resume-checkpoint files require regular stable sources,
+within a 64 MiB read limit. Directory/FIFO files, truncated or changing
+source bytes fail before search execution, while explicit source aliases remain
+permitted. A supported CUDA
 route
 that cannot initialize is represented as optional unavailable capacity and falls
 back through the normal CPU reference path while retaining configured CUDA

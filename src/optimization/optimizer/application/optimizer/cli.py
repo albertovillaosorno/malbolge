@@ -39,7 +39,9 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
+from stat import S_ISREG
 import sys
 from typing import Never
 from typing import TYPE_CHECKING
@@ -86,6 +88,7 @@ if TYPE_CHECKING:
 CUDA_BACKEND = "cuda"
 CONFIGURATION_ERROR = 2
 OUTPUT_SCHEMA_VERSION = 1
+MAX_SEARCH_INPUT_BYTES = 64 * 1024 * 1024
 PROPOSAL_TRUST = "untrusted"
 _CUDA_SEARCH_ALGORITHMS = frozenset((
     CRAZY_TARGET_ALGORITHM_ID,
@@ -477,13 +480,113 @@ def _write_error(error: object) -> None:
     _ = sys.stderr.write(f"error: {error}\n")
 
 
+def _cli_source_identity(status: os.stat_result, label: str) -> tuple[int, ...]:
+    """Admit one regular CLI input with stable physical identity.
+
+    Returns:
+        The source device, inode, size and mutation timestamps.
+
+    Raises:
+        SearchCliError: CLI input is not a regular file.
+
+    """
+    if not S_ISREG(status.st_mode):
+        message = f"{label} must be a regular file"
+        raise SearchCliError(message)
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _read_cli_descriptor(
+    path: Path,
+    label: str,
+    descriptor: int,
+    *,
+    expected: tuple[int, ...],
+) -> bytes:
+    """Read bounded binary input from a stable opened regular descriptor.
+
+    Returns:
+        The complete physical input bytes with unchanged path identity.
+
+    Raises:
+        SearchCliError: The selected input changes while being read.
+
+    """
+    with os.fdopen(descriptor, "rb") as stream:
+        if _cli_source_identity(os.fstat(stream.fileno()), label) != expected:
+            message = f"{label} changed before read"
+            raise SearchCliError(message)
+        payload = stream.read(MAX_SEARCH_INPUT_BYTES + 1)
+        if len(payload) != expected[2]:
+            message = f"{label} changed during read or exceeds byte limit"
+            raise SearchCliError(message)
+        if (
+            _cli_source_identity(os.fstat(stream.fileno()), label) != expected
+            or _cli_source_identity(path.stat(), label) != expected
+        ):
+            message = f"{label} changed during read"
+            raise SearchCliError(message)
+        return payload
+
+
+def _read_cli_file(path: Path, label: str) -> bytes:
+    """Open one named bounded regular input for search execution.
+
+    Returns:
+        The complete stable input bytes.
+
+    Raises:
+        SearchCliError: Input is nonregular, oversized, or changed.
+
+    """
+    admitted = path.stat()
+    expected = _cli_source_identity(admitted, label)
+    if admitted.st_size > MAX_SEARCH_INPUT_BYTES:
+        message = f"{label} exceeds byte limit"
+        raise SearchCliError(message)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    return _read_cli_descriptor(
+        path, label, descriptor, expected=expected
+    )
+
+
+def _read_cli_source(path: Path, label: str) -> bytes:
+    """Admit one caller-selected problem/checkpoint file without blocking.
+
+    Returns:
+        Bounded unchanged binary input bytes.
+
+    Raises:
+        SearchCliError: The selected input is invalid, oversized, or missing.
+
+    """
+    try:
+        return _read_cli_file(path, label)
+    except OSError as error:
+        message = f"cannot read {label}: {error}"
+        raise SearchCliError(message) from error
+
+
 def _execute_arguments(arguments: _Arguments) -> str:
     configuration = load_search_configuration(arguments.config)
-    problem = arguments.problem.read_bytes()
+    problem = _read_cli_source(arguments.problem, "search problem")
     resume_checkpoint = (
         None
         if arguments.resume_checkpoint is None
-        else arguments.resume_checkpoint.read_bytes()
+        else _read_cli_source(
+            arguments.resume_checkpoint, "search resume checkpoint"
+        )
     )
     options = SearchRunOptions(
         algorithm_override=arguments.algorithm,
