@@ -495,11 +495,14 @@ def check_retained_artifacts(
         Number of verified native host-C reference binaries checked.
 
     """
-    verified = {
-        row["experiment_manifest"]: row
-        for row in document["observations"]
-        if row["outcome"] == analyze.VERIFIED
-    }
+    verified: dict[str, dict[str, Any]] = {}
+    for row in document["observations"]:
+        if row["outcome"] != analyze.VERIFIED:
+            continue
+        manifest = row["experiment_manifest"]
+        if manifest in verified:
+            _fail("host-C duplicate verified experiment manifest")
+        verified[manifest] = row
     if set(artifacts) != set(verified):
         _fail("host-C artifact map must match exactly the successful trials")
     for manifest, row in sorted(verified.items()):
@@ -523,11 +526,14 @@ def check_retained_failures(
     admitted = {analyze.VERIFIED, FAILED_OUTCOME}
     if any(row["outcome"] not in admitted for row in document["observations"]):
         _fail("host-C reference contains a non-runner outcome")
-    expected = {
-        row["experiment_manifest"]
-        for row in document["observations"]
-        if row["outcome"] == FAILED_OUTCOME
-    }
+    expected: set[str] = set()
+    for row in document["observations"]:
+        if row["outcome"] != FAILED_OUTCOME:
+            continue
+        manifest = row["experiment_manifest"]
+        if manifest in expected:
+            _fail("host-C duplicate failed experiment manifest")
+        expected.add(manifest)
     if set(failures) != expected:
         _fail("host-C failure diagnostics must match failed trial identities")
     if any(

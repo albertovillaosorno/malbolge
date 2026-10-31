@@ -245,6 +245,36 @@ def _tamper(
         _tamper_record(tamper, document, artifacts[name], manifest=name)
 
 
+def test_retained_artifact_check_rejects_duplicate_verified_manifests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A direct map check cannot collapse two successes into one file claim."""
+    manifest = "runs/duplicate.toml"
+    row = {"experiment_manifest": manifest, "outcome": analyze.VERIFIED}
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("duplicate manifest reached artifact filesystem verification")
+
+    monkeypatch.setattr(reference_study, "_checked_artifact", forbidden)
+    with pytest.raises(reference_study.ReferenceStudyError, match="duplicate"):
+        reference_study.check_retained_artifacts(
+            {"observations": [row, row.copy()]},
+            {manifest: {"path": "not-checked", "sha256": "not-checked"}},
+        )
+
+
+def test_retained_failures_reject_duplicate_failure_manifests() -> None:
+    """One diagnostic entry cannot stand in for two reported failed trials."""
+    manifest = "runs/duplicate.toml"
+    row = {"experiment_manifest": manifest, "outcome": FAILED}
+    with pytest.raises(reference_study.ReferenceStudyError, match="duplicate"):
+        reference_study.check_retained_failures(
+            {"observations": [row, row.copy()]},
+            {manifest: "compiler exited without output"},
+        )
+
+
 @pytest.mark.skipif(
     not host_c_oracle._PINNED_CLANG.is_file(),  # ruff: ignore[private-member-access]
     reason="repository pinned native Clang is unavailable",
