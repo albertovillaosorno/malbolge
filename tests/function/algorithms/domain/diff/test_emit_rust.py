@@ -127,6 +127,26 @@ class _BrokenStagedRustWriter:
         self.stream.flush()
 
 
+class _MisreportedStagedRustWriter:
+    def __init__(
+        self,
+        stream: IO[str],
+        reported: object,
+        *,
+        partial: bool,
+    ) -> None:
+        self.stream: IO[str] = stream
+        self.reported: object = reported
+        self.partial: bool = partial
+
+    def write(self, source: str) -> int:
+        written = self.stream.write(source[:5] if self.partial else source)
+        return written if self.partial else cast("int", self.reported)
+
+    def flush(self) -> None:
+        self.stream.flush()
+
+
 def _blocks(label: str) -> bytes:
     return b"".join(
         hashlib.sha256(f"{label}:{index}".encode()).digest()
@@ -864,6 +884,53 @@ def test_writer_cleans_owned_temporary_after_write_failure(
         write_rust_transform(protected, _PROFILE, output)
     assert wrote, "fixture did not write to the owned temporary"
     assert not output.exists(), "failed emission published output"
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
+
+
+@pytest.mark.parametrize(
+    "case",
+    [(True, None), (False, None), (False, True), (False, -1), (False, 10**9)],
+)
+def test_writer_rejects_short_or_invalid_staging_write_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[bool, object],
+) -> None:
+    """A partial or misreported text write cannot publish generated Rust."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    partial, reported = case
+    template_loader = cast(
+        "Callable[[], str]", vars(emit_rust_module)["_runtime_template_text"]
+    )
+    template = template_loader()
+    monkeypatch.setattr(
+        emit_rust_module, "_runtime_template_text", lambda: template
+    )
+    original_open = Path.open
+
+    @contextmanager
+    def misreport_staged_write(
+        path: Path,
+        mode: str = "r",
+        *,
+        encoding: str | None = None,
+        newline: str | None = None,
+    ) -> Generator[IO[str] | _MisreportedStagedRustWriter]:
+        with original_open(
+            path, mode, encoding=encoding, newline=newline
+        ) as stream:
+            if mode == _EXCLUSIVE_CREATE_MODE:
+                yield _MisreportedStagedRustWriter(
+                    cast("IO[str]", stream), reported, partial=partial
+                )
+            else:
+                yield cast("IO[str]", stream)
+
+    monkeypatch.setattr(Path, "open", misreport_staged_write)
+    with pytest.raises(RustEmissionError, match="publication failed"):
+        write_rust_transform(protected, _PROFILE, output)
+    assert not output.exists()
     assert not list(tmp_path.glob(".generated.rs.*.tmp"))
 
 

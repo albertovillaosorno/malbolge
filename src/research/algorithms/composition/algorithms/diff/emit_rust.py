@@ -47,6 +47,8 @@ from algorithms.diff.protected import ProtectedMetadata
 from algorithms.diff.protected import protected_plan_aad
 
 if TYPE_CHECKING:
+    from typing import IO
+
     from algorithms.diff.source_binding import ThresholdBinding
 
 _RUNTIME_TEMPLATE = Path(__file__).with_name("rust_runtime.rs")
@@ -343,12 +345,19 @@ def _cleanup_owned_temporary(path: Path) -> str | None:
     return None
 
 
+def _write_complete_staged_source(stream: IO[str], source: str) -> None:
+    written = stream.write(source)
+    if type(written) is not int or written != len(source):
+        message = "Rust staging write reported a short or invalid count"
+        raise ValueError(message)
+
+
 def _claim_and_write_temporary(path: Path, source: str) -> None:
     owned = False
     try:
         with path.open("x", encoding="utf-8", newline="\n") as stream:
             owned = True
-            _ = stream.write(source)
+            _write_complete_staged_source(stream, source)
             stream.flush()
     except OSError, ValueError, RuntimeError:
         if owned:
