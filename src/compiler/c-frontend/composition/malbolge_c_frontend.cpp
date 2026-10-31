@@ -35,13 +35,22 @@
 
 #include "../port-inbound/frontend.hpp"
 
+#include <algorithm>
+#include <array>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+
+#if defined(__linux__) || defined(__ANDROID__)
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -91,13 +100,107 @@ struct Arguments final {
   return result;
 }
 
+// The frontend owns host-side acquisition, not an unbounded source stream.
+// A 64 MiB ceiling is independent of the guest machine's memory geometry.
+constexpr std::size_t kMaxSourceBytes = 64U * 1024U * 1024U;
+constexpr std::size_t kSourceReadChunk = 64U * 1024U;
+
+#if defined(__linux__) || defined(__ANDROID__)
+[[nodiscard]] bool same_source_inode(const struct stat &first,
+                                     const struct stat &second) {
+  return S_ISREG(first.st_mode) && S_ISREG(second.st_mode) &&
+         first.st_dev == second.st_dev && first.st_ino == second.st_ino &&
+         first.st_size == second.st_size &&
+         first.st_mtim.tv_sec == second.st_mtim.tv_sec &&
+         first.st_mtim.tv_nsec == second.st_mtim.tv_nsec &&
+         first.st_ctim.tv_sec == second.st_ctim.tv_sec &&
+         first.st_ctim.tv_nsec == second.st_ctim.tv_nsec;
+}
+#endif
+
 [[nodiscard]] std::optional<std::string> read_source(const std::string &path) {
+#if defined(__linux__) || defined(__ANDROID__)
+  // Opening nonblocking avoids waiting forever for a FIFO writer, including
+  // when the supplied path is a symlink to a FIFO. Inspect this same handle.
+  const int descriptor =
+      ::open(path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+  if (descriptor < 0) {
+    return std::nullopt;
+  }
+  std::unique_ptr<std::FILE, decltype(&std::fclose)> input(
+      ::fdopen(descriptor, "rb"), &std::fclose);
+  if (!input) {
+    (void)::close(descriptor);
+    return std::nullopt;
+  }
+  struct stat initial{};
+  if (::fstat(::fileno(input.get()), &initial) != 0 ||
+      !S_ISREG(initial.st_mode) || initial.st_size < 0 ||
+      static_cast<std::uintmax_t>(initial.st_size) > kMaxSourceBytes) {
+    return std::nullopt;
+  }
+#else
+  std::error_code error;
+  const auto size = std::filesystem::file_size(path, error);
+  if (error || size > kMaxSourceBytes ||
+      !std::filesystem::is_regular_file(path, error) || error) {
+    return std::nullopt;
+  }
   std::ifstream input(std::filesystem::path(path), std::ios::binary);
   if (!input) {
     return std::nullopt;
   }
-  return std::string(std::istreambuf_iterator<char>(input),
-                     std::istreambuf_iterator<char>());
+#endif
+  std::string bytes;
+#if defined(__linux__) || defined(__ANDROID__)
+  bytes.reserve(static_cast<std::size_t>(initial.st_size));
+#else
+  bytes.reserve(static_cast<std::size_t>(size));
+#endif
+  std::array<char, kSourceReadChunk> chunk{};
+  while (bytes.size() <= kMaxSourceBytes) {
+    const auto remaining = kMaxSourceBytes + 1U - bytes.size();
+    const auto requested = std::min(chunk.size(), remaining);
+#if defined(__linux__) || defined(__ANDROID__)
+    const auto count = std::fread(chunk.data(), 1, requested, input.get());
+    if (count == 0) {
+      if (std::ferror(input.get()) != 0) {
+        return std::nullopt;
+      }
+      break;
+    }
+#else
+    input.read(chunk.data(), static_cast<std::streamsize>(requested));
+    const auto count = static_cast<std::size_t>(input.gcount());
+    if (input.bad() || (count == 0 && !input.eof())) {
+      return std::nullopt;
+    }
+    if (count == 0) {
+      break;
+    }
+#endif
+    bytes.append(chunk.data(), count);
+  }
+#if defined(__linux__) || defined(__ANDROID__)
+  struct stat opened_after{};
+  struct stat named_after{};
+  if (bytes.size() > kMaxSourceBytes ||
+      bytes.size() != static_cast<std::size_t>(initial.st_size) ||
+      ::fstat(::fileno(input.get()), &opened_after) != 0 ||
+      ::stat(path.c_str(), &named_after) != 0 ||
+      !same_source_inode(initial, opened_after) ||
+      !same_source_inode(initial, named_after)) {
+    return std::nullopt;
+  }
+#else
+  const auto final_size = std::filesystem::file_size(path, error);
+  if (bytes.size() > kMaxSourceBytes || bytes.size() != size || error ||
+      final_size != size || !std::filesystem::is_regular_file(path, error) ||
+      error) {
+    return std::nullopt;
+  }
+#endif
+  return bytes;
 }
 
 } // namespace

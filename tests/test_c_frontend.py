@@ -36,16 +36,20 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
+import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-from typing import Final
-from typing import cast
+import sys
+from pathlib import Path
+from typing import Final, cast
 
 import pytest
 from scripts.repository_root import repository_root
-from scripts.validate import c_frontend_build
-from scripts.validate import c_frontend_build_linux
-from scripts.validate import tidy_toolchain
+
+from scripts.validate import (
+    c_frontend_build,
+    c_frontend_build_linux,
+    tidy_toolchain,
+)
 
 ROOT: Final = repository_root(Path(__file__))
 FIXTURES: Final = ROOT / "tests" / "compiler" / "c-frontend"
@@ -244,7 +248,9 @@ def _ensure_native_frontend() -> None:
         c_frontend_build.build()
 
 
-def _run_frontend(source: Path, source_id: str) -> sp.CompletedProcess[str]:
+def _run_frontend(
+    source: Path, source_id: str, *, timeout: int = 30
+) -> sp.CompletedProcess[str]:
     _ensure_native_frontend()
     command = (
         str(c_frontend_build.EXECUTABLE),
@@ -264,7 +270,7 @@ def _run_frontend(source: Path, source_id: str) -> sp.CompletedProcess[str]:
         encoding="utf-8",
         errors="replace",
         shell=False,
-        timeout=30,
+        timeout=timeout,
     )
 
 
@@ -284,6 +290,54 @@ def _named_node(artifact: dict[str, object], name: str) -> dict[str, object]:
 
 def _declaration_projection(node: dict[str, object]) -> dict[str, object]:
     return {field: node[field] for field in DECLARATION_FIELDS if field in node}
+
+
+def test_file_input_rejects_nonregular_and_oversized_sources(
+    tmp_path: Path,
+) -> None:
+    """Source admission rejects directories and sparse files before Clang."""
+    directory = tmp_path / "source-dir"
+    directory.mkdir()
+    oversized = tmp_path / "oversized.c"
+    with oversized.open("wb") as stream:
+        stream.truncate(64 * 1024 * 1024 + 1)
+    for source in (directory, oversized):
+        result = _run_frontend(source, BASIC_SOURCE_ID)
+        assert result.returncode == REQUEST_STATUS
+        assert not result.stdout
+        assert result.stderr == (
+            "MALBOLGE-FRONTEND-003 cannot read selected source\n"
+        )
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux nonblocking open")
+def test_writerless_fifo_and_fifo_symlink_never_stall_frontend(
+    tmp_path: Path,
+) -> None:
+    """An unconnected FIFO cannot block the command before source admission."""
+    pipe = tmp_path / "source.fifo"
+    alias = tmp_path / "alias.c"
+    os.mkfifo(pipe)
+    alias.symlink_to(pipe)
+    for source in (pipe, alias):
+        result = _run_frontend(source, BASIC_SOURCE_ID, timeout=3)
+        assert result.returncode == REQUEST_STATUS
+        assert not result.stdout
+        assert result.stderr == (
+            "MALBOLGE-FRONTEND-003 cannot read selected source\n"
+        )
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux regular-file alias")
+def test_regular_file_symlink_retains_exact_normalized_artifact(
+    tmp_path: Path,
+) -> None:
+    """Ordinary regular-file aliases retain the original stable semantics."""
+    alias = tmp_path / "alias.c"
+    alias.symlink_to(BASIC)
+    result = _run_frontend(alias, BASIC_SOURCE_ID)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == GOLDEN.read_text(encoding="utf-8")
 
 
 def test_frontend_contract_is_closed_and_versioned() -> None:
