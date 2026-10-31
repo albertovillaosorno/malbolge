@@ -478,7 +478,7 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     try:
         resolved_path = path.resolve()
         resolved_root = root.resolve()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = (
             f"relocatable path resolution failed: {relative_path!r}: {error}"
         )
@@ -619,7 +619,7 @@ def _require_external_output_root(
     try:
         candidate = candidate_root.resolve()
         output = output_root.resolve()
-    except (OSError, RuntimeError) as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"relocatable root resolution failed: {error}"
         raise RelocationError(message) from error
     if output.is_relative_to(candidate):

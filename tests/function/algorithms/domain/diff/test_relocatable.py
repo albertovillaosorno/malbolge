@@ -253,6 +253,40 @@ def test_relocatable_materialization_wraps_path_resolution_error(
     _expect(not output.exists(), "resolution failure published output")
 
 
+@pytest.mark.parametrize("error_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize("nested_source", [False, True])
+def test_relocatable_materialization_normalizes_resolution_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+    *,
+    nested_source: bool,
+) -> None:
+    """Filesystem resolution errors stay typed and cannot publish output."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    failing = candidate / "code.bin" if nested_source else candidate
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == failing:
+            raise error_type()
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    output = tmp_path / "out"
+    with pytest.raises(RelocationError, match="resolution failed"):
+        materialize_relocatable_plan(candidate, plan, output)
+    _expect(not output.exists(), "failed resolution published output")
+    _expect(
+        not (tmp_path / ".out.relocatable-staging").exists(),
+        "failed resolution preserved an owned staging tree",
+    )
+
+
 def test_relocatable_publication_collision_preserves_foreign_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
