@@ -69,14 +69,9 @@ def _flush_complete(stream: TextReportStream) -> None:
     """
     try:
         flushed = stream.flush()
-    except (
-        OSError,
-        RuntimeError,
-        ValueError,
-        TypeError,
-        AttributeError,
-    ) as error:
-        message = f"arena report stdout flush failed: {error}"
+    except Exception as error:
+        # A stream can raise any ordinary exception; do not format its hooks.
+        message = "arena report stdout flush failed"
         raise ReportOutputError(message) from error
     if flushed is not None:
         _fail("arena report stdout flush returned noncanonical completion")
@@ -134,14 +129,9 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
         raise ReportOutputError(message) from error
     try:
         written = stream.write(record)
-    except (
-        OSError,
-        RuntimeError,
-        ValueError,
-        TypeError,
-        AttributeError,
-    ) as error:
-        message = f"arena report stdout write failed: {error}"
+    except Exception as error:
+        # Preserve the original exception without invoking its __str__ hook.
+        message = "arena report stdout write failed"
         raise ReportOutputError(message) from error
     if type(written) is not int or written != len(record):
         _fail("arena report stdout write did not accept exact text length")

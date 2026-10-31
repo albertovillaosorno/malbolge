@@ -329,3 +329,51 @@ def test_native_json_tuple_and_scalars_remain_publishable() -> None:
     report_output.publish(report, output)
     assert output.records == [json.dumps(report, sort_keys=True, indent=2) + "\n"]
     assert output.flushed
+
+
+class _UnsafeStreamError(RuntimeError):
+    """A stream exception whose diagnostic formatting executes foreign code."""
+
+    def __str__(self) -> str:
+        message = "caller-owned exception formatting executed"
+        raise AssertionError(message)
+
+
+class _UnexpectedStream(_FakeStream):
+    """One writer/flush implementation that raises a caller-owned exception."""
+
+    def __init__(self, phase: str, fault: Exception) -> None:
+        super().__init__("healthy")
+        self.phase = phase
+        self.fault = fault
+
+    def write(self, record: str, /) -> int:
+        """Raise before publication when configured for the writer phase."""
+        if self.phase == "write":
+            raise self.fault
+        return super().write(record)
+
+    def flush(self) -> None:
+        """Raise after an accepted record when configured for flush."""
+        if self.phase == "flush":
+            raise self.fault
+        super().flush()
+
+
+@pytest.mark.parametrize("phase", ["write", "flush"])
+@pytest.mark.parametrize(
+    "fault", [KeyError("missing sink state"), _UnsafeStreamError()],
+    ids=["unexpected-exception-class", "unsafe-exception-formatting"],
+)
+def test_caller_owned_stream_failure_is_typed_without_formatting(
+    phase: str, fault: Exception,
+) -> None:
+    """Any ordinary stream exception remains the cause of typed failure."""
+    output = _UnexpectedStream(phase, fault)
+    with pytest.raises(
+        report_output.ReportOutputError, match=f"stdout {phase} failed"
+    ) as error:
+        report_output.publish({"status": "reported"}, output)
+    assert error.value.__cause__ is fault
+    assert bool(output.records) is (phase == "flush")
+    assert not output.flushed
