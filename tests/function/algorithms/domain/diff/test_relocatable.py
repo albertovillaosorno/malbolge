@@ -588,6 +588,26 @@ def test_relocatable_plan_rejects_duplicate_output_destinations() -> None:
         _ = relocatable_module.RelocatableAuthoringPlan((first, second))
 
 
+def test_relocatable_plan_rejects_file_directory_overlap() -> None:
+    """File outputs cannot also be ancestors of another output file."""
+    first = RelocatableInstruction(
+        output_path="out/item",
+        source_path=None,
+        copy_candidate_file=False,
+        literal=b"parent",
+    )
+    second = RelocatableInstruction(
+        output_path="out/item/child",
+        source_path=None,
+        copy_candidate_file=False,
+        literal=b"child",
+    )
+    with pytest.raises(RelocationError, match="ancestor"):
+        _ = relocatable_module.RelocatableAuthoringPlan((first, second))
+    with pytest.raises(RelocationError, match="ancestor"):
+        _ = relocatable_module.RelocatableAuthoringPlan((second, first))
+
+
 def test_existing_relocatable_staging_is_preserved(tmp_path: Path) -> None:
     """Never delete a staging tree that may belong to another writer."""
     source, oracle, base = _fixture(tmp_path)

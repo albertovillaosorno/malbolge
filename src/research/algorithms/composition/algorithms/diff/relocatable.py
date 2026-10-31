@@ -245,6 +245,14 @@ class RelocatableAuthoringPlan:
         if len(paths) != len(set(paths)):
             message = "relocatable plan requires unique output paths"
             raise RelocationError(message)
+        known_paths = set(paths)
+        if any(
+            parent.as_posix() in known_paths
+            for path in paths
+            for parent in PurePosixPath(path).parents
+        ):
+            message = "relocatable output files have ancestor path overlap"
+            raise RelocationError(message)
 
 
 def _sha256(data: bytes) -> bytes:
