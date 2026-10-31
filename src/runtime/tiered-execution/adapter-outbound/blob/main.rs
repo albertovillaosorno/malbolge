@@ -36,6 +36,7 @@
 //! Filesystem-backed outbound adapter for one opaque tiered-execution blob.
 
 use std::fs::{self, File, OpenOptions};
+use std::io;
 use std::io::{ErrorKind, Read as _, Write as _};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
@@ -279,27 +280,8 @@ impl NativeContinuationFileBlobStore {
         if !metadata.is_file() {
             return Err(NativeContinuationFileBlobStoreError::NonRegularSource);
         }
-        let mut file = match File::open(&self.destination) {
-            Ok(file) => file,
-            Err(error) if error.kind() == ErrorKind::NotFound => {
-                return Ok(None);
-            },
-            Err(error) => {
-                return Err(NativeContinuationFileBlobStoreError::Open {
-                    kind: error.kind(),
-                });
-            },
-        };
-        // Check the opened descriptor too; do not trust only the pathname.
-        if !file
-            .metadata()
-            .map_err(|error| NativeContinuationFileBlobStoreError::Open {
-                kind: error.kind(),
-            })?
-            .is_file()
-        {
-            return Err(NativeContinuationFileBlobStoreError::NonRegularSource);
-        }
+        let mut file = open_bounded_blob_source(&self.destination, &metadata)
+            .map_err(|error| map_blob_source_error(&error))?;
         let read_limit =
             u64::try_from(maximum_bytes.get()).map_err(|_error| {
                 NativeContinuationFileBlobStoreError::ByteLimitRepresentation {
@@ -321,6 +303,8 @@ impl NativeContinuationFileBlobStore {
             NativeContinuationFileBlobStoreError::Read { kind: error.kind() }
         })?;
         if extra_bytes == 0 {
+            verify_blob_source(&self.destination, &file, &metadata)
+                .map_err(|error| map_blob_source_error(&error))?;
             return Ok(Some(bytes));
         }
         Err(NativeContinuationFileBlobStoreError::LoadByteLimit {
@@ -558,6 +542,103 @@ impl NativeContinuationDurableBlobStore for NativeContinuationFileBlobStore {
             }
         })
     }
+}
+
+fn map_blob_source_error(error: &io::Error) -> NativeContinuationFileBlobStoreError {
+    if error.kind() == ErrorKind::InvalidData {
+        NativeContinuationFileBlobStoreError::NonRegularSource
+    } else {
+        NativeContinuationFileBlobStoreError::Open { kind: error.kind() }
+    }
+}
+
+// The pre-open metadata is not authority: the opened inode must still match
+// the literal pathname. Linux uses nonblocking, nonfollowing opens so a FIFO
+// or symlink substituted after the lstat cannot block or redirect a read.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn open_blob_source(path: &Path) -> io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    const LINUX_O_NONBLOCK: i32 = 1 << 11;
+    const LINUX_O_NOFOLLOW: i32 = 1 << 17;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(LINUX_O_NONBLOCK | LINUX_O_NOFOLLOW)
+        .open(path)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn open_blob_source(path: &Path) -> io::Result<File> {
+    File::open(path)
+}
+
+#[cfg(unix)]
+fn blob_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.dev() == after.dev()
+        && before.ino() == after.ino()
+        && before.len() == after.len()
+        && before.mtime() == after.mtime()
+        && before.mtime_nsec() == after.mtime_nsec()
+        && before.ctime() == after.ctime()
+        && before.ctime_nsec() == after.ctime_nsec()
+}
+
+#[cfg(windows)]
+fn blob_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.volume_serial_number().is_some()
+        && before.volume_serial_number() == after.volume_serial_number()
+        && before.file_index().is_some()
+        && before.file_index() == after.file_index()
+        && before.last_write_time() == after.last_write_time()
+        && before.change_time() == after.change_time()
+}
+
+#[cfg(not(any(unix, windows)))]
+fn blob_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.modified().ok().is_some()
+        && before.modified().ok() == after.modified().ok()
+}
+
+pub(crate) fn verify_blob_source(
+    path: &Path,
+    file: &File,
+    before: &fs::Metadata,
+) -> io::Result<()> {
+    let opened = file.metadata()?;
+    let named = fs::symlink_metadata(path)?;
+    if !blob_metadata_matches(before, &opened) || !blob_metadata_matches(before, &named) {
+        return Err(io::Error::from(ErrorKind::InvalidData));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::fd::AsRawFd as _;
+
+        // A relinked hard-link alias can name the same inode at a different
+        // dentry. Bind the opened path, not only the inode, to the destination.
+        let descriptor = format!("/proc/self/fd/{}", file.as_raw_fd());
+        if fs::read_link(descriptor)? != fs::canonicalize(path)? {
+            return Err(io::Error::from(ErrorKind::InvalidData));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn open_bounded_blob_source(path: &Path, before: &fs::Metadata) -> io::Result<File> {
+    let file = open_blob_source(path)?;
+    verify_blob_source(path, &file, before)?;
+    Ok(file)
 }
 
 const fn map_coordination_error(

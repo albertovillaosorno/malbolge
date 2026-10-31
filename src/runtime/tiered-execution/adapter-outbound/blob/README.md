@@ -32,17 +32,22 @@ codec authority.
 A missing destination loads as absent. Before opening a present destination,
 the adapter requires a regular file from `symlink_metadata`, rejecting symlinks,
 directories, FIFOs and devices with typed `NonRegularSource` evidence. It also
-checks the opened descriptor is regular before reading. This prevents a
-configured FIFO without a writer from blocking the load; a hostile concurrent
-pathname replacement outside cooperating locks is not an atomic snapshot and
-remains outside the coordination contract. Reads probe one byte beyond the
-admitted bound and reject oversized blobs without returning partial bytes.
-Publication
-uses a new same-directory staging file, writes and synchronizes all bytes,
-closes the staging handle, then renames it onto the destination. If staging,
-writing,
-synchronization, or rename fails, the adapter never removes the previously
-published destination and returns exact filesystem error-category evidence.
+checks the opened descriptor, original metadata, and nonfollowing pathname
+identity before and after the bounded read.
+
+On Linux/Android, nonfollowing and nonblocking opens stop a substituted FIFO
+from hanging or a final symlink from redirecting the read. Linux also matches
+`/proc/self/fd` to the resolved source path, rejecting hard-link replacement
+under the same inode. Stable symlink parent directories remain supported.
+These checks reject observed substitutions, not all uncooperative namespace
+mutation. Reads probe one byte beyond the admitted bound and reject oversized
+blobs without returning partial bytes.
+
+Publication uses a new same-directory staging file, writes and synchronizes
+all bytes, closes the staging handle, then renames it onto the destination.
+If staging, writing, synchronization, or rename fails, the adapter never removes
+the previously published destination and returns exact filesystem error-category
+evidence.
 
 Conditional publication uses the same persistent sibling lock for the complete
 bounded read/compare/staged-replace operation. `None` matches only a missing
