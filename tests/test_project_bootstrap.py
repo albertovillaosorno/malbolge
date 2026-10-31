@@ -216,6 +216,83 @@ def test_uv_manifest_pins_exact_windows_artifact(tmp_path: Path) -> None:
     assert executable == (tmp_path / ".dependencies/uv/0.12.20/bin/uv.exe")
 
 
+def _copy_uv_manifest(tmp_path: Path) -> Path:
+    manifest = tmp_path / "uv.json"
+    _ = manifest.write_bytes(python_validation.UV_MANIFEST.read_bytes())
+    return manifest
+
+
+def test_uv_manifest_rejects_linked_leaf(tmp_path: Path) -> None:
+    """Pinned uv authority must be a physical file, never a redirected alias."""
+    manifest = _copy_uv_manifest(tmp_path)
+    real = manifest.with_suffix(".real")
+    _ = manifest.replace(real)
+    _ = manifest.symlink_to(real)
+    with pytest.raises(
+        python_validation.ProvisionError, match=r"redirect|regular"
+    ):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
+def test_uv_manifest_rejects_linked_parent(tmp_path: Path) -> None:
+    """An alias in the uv authority directory is not a trusted root."""
+    real = tmp_path / "real"
+    real.mkdir()
+    _ = _copy_uv_manifest(real)
+    alias = tmp_path / "alias"
+    _ = alias.symlink_to(real, target_is_directory=True)
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, alias / "uv.json")
+
+
+def test_uv_manifest_rejects_oversized_document(tmp_path: Path) -> None:
+    """Uv metadata cannot force an unbounded read before validation."""
+    manifest = tmp_path / "uv.json"
+    with manifest.open("wb") as stream:
+        _ = stream.truncate(python_validation.MAX_UV_MANIFEST_BYTES + 1)
+    with pytest.raises(python_validation.ProvisionError, match="byte limit"):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
+def test_uv_manifest_rejects_invalid_utf8(tmp_path: Path) -> None:
+    """Uv encoding errors remain typed provisioning failures."""
+    manifest = tmp_path / "uv.json"
+    _ = manifest.write_bytes(bytes((0xFF,)))
+    with pytest.raises(python_validation.ProvisionError, match="cannot read"):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
+def test_uv_manifest_rejects_same_byte_inode_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing a validated path before open cannot silently switch inodes."""
+    manifest = _copy_uv_manifest(tmp_path)
+    replacement = tmp_path / "replacement.json"
+    _ = replacement.write_bytes(manifest.read_bytes())
+    real_open = os.open
+
+    def swap_before_open(path: Path, flags: int) -> int:
+        if path == manifest:
+            _ = replacement.replace(manifest)
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_before_open)
+    with pytest.raises(python_validation.ProvisionError, match="changed"):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
+def test_uv_manifest_rejects_fifo_without_blocking(tmp_path: Path) -> None:
+    """An existing pipe is rejected instead of waiting for a writer."""
+    mkfifo = cast("Callable[[Path], None] | None", getattr(os, "mkfifo", None))
+    if mkfifo is None:
+        pytest.skip("FIFO unsupported")
+    manifest = tmp_path / "uv.json"
+    mkfifo(manifest)
+    with pytest.raises(python_validation.ProvisionError, match="regular"):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
 def test_uv_manifest_rejects_unknown_schema(tmp_path: Path) -> None:
     """Uv provisioning rejects manifests from an unknown schema revision."""
     manifest = tmp_path / "uv.json"

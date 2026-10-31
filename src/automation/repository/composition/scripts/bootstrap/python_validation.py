@@ -87,6 +87,7 @@ UV_RELEASE_BASE: Final = (
     "https://github.com/astral-sh/uv/releases/download/"
 )
 UV_SCHEMA_VERSION: Final = 1
+MAX_UV_MANIFEST_BYTES: Final = 1_048_576
 URL_SUFFIX_MARKERS: Final = frozenset(("?", "#"))
 BASEDPYRIGHT_TOOL_ID: Final = "basedpyright"
 PYTEST_TOOL_ID: Final = "pytest"
@@ -196,16 +197,81 @@ def _reject_duplicate_pairs(
     return document
 
 
+def _reject_uv_parent_redirects(path: Path) -> None:
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            _fail("uv toolchain manifest parent path must not redirect")
+
+
+def _uv_manifest_identity(status: os.stat_result) -> tuple[int, ...]:
+    """Admit only a bounded physical uv manifest.
+
+    Returns:
+        File device/inode, length, and modification metadata.
+
+    """
+    if not stat.S_ISREG(status.st_mode):
+        _fail("uv toolchain manifest must be a regular file")
+    if status.st_size > MAX_UV_MANIFEST_BYTES:
+        _fail("uv toolchain manifest exceeds byte limit")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _read_uv_manifest_bytes(path: Path) -> bytes:
+    """Read bounded uv manifest bytes from the admitted, stable file.
+
+    Returns:
+        Exact verified physical manifest contents.
+
+    """
+    _reject_uv_parent_redirects(path)
+    admitted = path.lstat()
+    expected = _uv_manifest_identity(admitted)
+    if path.is_symlink() or path.is_junction():
+        _fail("uv toolchain manifest path must not redirect")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        if _uv_manifest_identity(os.fstat(stream.fileno())) != expected:
+            _fail("uv toolchain manifest changed before read")
+        content = stream.read(MAX_UV_MANIFEST_BYTES + 1)
+        if (
+            len(content) != admitted.st_size
+            or _uv_manifest_identity(os.fstat(stream.fileno())) != expected
+            or _uv_manifest_identity(path.lstat()) != expected
+        ):
+            _fail("uv toolchain manifest changed during read")
+    _reject_uv_parent_redirects(path)
+    return content
+
+
 def _uv_manifest_document(manifest_path: Path) -> dict[str, object]:
     try:
         parsed = cast(
             "object",
             json.loads(
-                manifest_path.read_text(encoding="utf-8"),
+                _read_uv_manifest_bytes(manifest_path).decode("utf-8"),
                 object_pairs_hook=_reject_duplicate_pairs,
             ),
         )
-    except (json.JSONDecodeError, OSError) as error:
+    except (
+        json.JSONDecodeError,
+        OSError,
+        ValueError,
+        UnicodeDecodeError,
+        RecursionError,
+    ) as error:
         _fail(f"cannot read uv toolchain manifest: {error}")
     if not isinstance(parsed, dict):
         _fail("uv toolchain manifest must be an object")
