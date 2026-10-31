@@ -21386,6 +21386,37 @@ fn machine_io_encoder_rejects_forged_realization() -> Result<(), String> {
 }
 
 #[test]
+fn raw_machine_io_rejects_eof_sentinel_overlapping_successful_bytes() -> Result<(), String> {
+    let original = current_profile_io();
+    let decoder = VmProfileInstructionDecoder;
+    for eof_word in [0u32, 1, 127, 255] {
+        let mut projected = original.clone();
+        projected.eof_word = eof_word;
+        for intrinsic in [
+            RuntimeIntrinsicOperation::InputWord,
+            RuntimeIntrinsicOperation::OutputByte,
+        ] {
+            let result = realize_runtime_io(intrinsic, &projected);
+            if result != Err(RuntimeIoRealizationError::InvalidProjection) {
+                return Err(format!(
+                    "overlapping EOF word {eof_word} admitted for {intrinsic:?}: {result:?}"
+                ));
+            }
+            let valid = realize_runtime_io(intrinsic, &original)
+                .map_err(|error| format!("realize canonical I/O: {error:?}"))?;
+            if encode_machine_io(valid, 0, &decoder, &projected)
+                != Err(MachineIoEncodingError::InvalidProfile)
+            {
+                return Err(format!(
+                    "overlapping EOF word {eof_word} reached source-cell encoding"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn current_profile_realizes_runtime_io_from_authority() -> Result<(), String> {
     let profile = current_profile();
     let projection = current_profile_io();

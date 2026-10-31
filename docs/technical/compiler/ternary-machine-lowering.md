@@ -923,7 +923,11 @@ profile ID, input/output instruction bytes, and EOF word. Runtime I/O
 realization uses only that projection, producing profile-bound machine
 operations
 without hardcoded `/` or `<` characters; colliding projected input/output
-instructions or profile drift fail closed.
+instructions or profile drift fail closed. Raw I/O realization now also
+rejects an EOF sentinel in the successful byte range `0..=255`, for both
+input and output intrinsics, matching the previously enforced helper boundary;
+this is a projection-consistency guard, not independent authentication of the
+complete profile descriptor.
 
 For an already-selected code-pointer position, the target-cell encoder first
 re-derives the complete `InputWord`/`OutputByte` machine operation from the

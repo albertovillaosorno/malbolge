@@ -64,7 +64,12 @@ pub fn realize_runtime_io(
     if profile.profile_id != TARGET_PROFILE {
         return Err(RuntimeIoRealizationError::UnsupportedProfile);
     }
-    if profile.input_instruction == profile.output_instruction {
+    // Successful input bytes occupy 0..=255. The raw profile EOF sentinel
+    // must not alias one of them, even when realizing an output-only effect:
+    // downstream machine operations still carry this projected profile.
+    if profile.input_instruction == profile.output_instruction
+        || u8::try_from(profile.eof_word).is_ok()
+    {
         return Err(RuntimeIoRealizationError::InvalidProjection);
     }
     match operation {
