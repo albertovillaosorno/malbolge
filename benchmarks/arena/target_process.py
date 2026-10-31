@@ -34,7 +34,6 @@
 
 from __future__ import annotations
 
-import math
 import os
 import selectors
 import shutil
@@ -87,16 +86,20 @@ def _admit_limits(
 ) -> None:
     if os.name != POSIX_PLATFORM:
         _fail("bounded target process requires POSIX pipe admission")
-    if (
-        type(timeout_seconds) not in {int, float}
-        or not math.isfinite(timeout_seconds)
-        or timeout_seconds <= 0
+    # Comparing against small policy ceilings first also rejects enormous
+    # Python integers without an overflowing int-to-float conversion.
+    if type(timeout_seconds) not in {int, float} or not (
+        0 < timeout_seconds <= DEFAULT_TIMEOUT_SECONDS
     ):
-        _fail("bounded target process requires a positive finite deadline")
-    if type(stdout_limit) is not int or stdout_limit < 0:
-        _fail("bounded target process requires nonnegative stdout limit")
-    if type(stderr_limit) is not int or stderr_limit < 0:
-        _fail("bounded target process requires nonnegative stderr limit")
+        _fail("bounded target process requires a deadline within 15 seconds")
+    if type(stdout_limit) is not int or not (
+        0 <= stdout_limit <= DEFAULT_STDOUT_LIMIT
+    ):
+        _fail("bounded target process requires stdout limit at most 4 KiB")
+    if type(stderr_limit) is not int or not (
+        0 <= stderr_limit <= DEFAULT_STDERR_LIMIT
+    ):
+        _fail("bounded target process requires stderr limit at most 16 KiB")
 
 
 def _system_tool(name: str) -> str | None:

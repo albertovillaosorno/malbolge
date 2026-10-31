@@ -201,6 +201,10 @@ The producer and opt-in replay now run external emitter/VM children through
 `benchmarks/arena/target_process.py`: POSIX-isolated child sessions,
 selector-drained stdout/stderr (4 KiB and 16 KiB separately), and one 15-second
 wall deadline that includes child launch, pipe closure and direct-child exit.
+Caller-supplied overrides may tighten but never extend these 15-second,
+4-KiB/16-KiB ceilings. Oversized or nonfinite numeric values fail before
+spawning, including integers too large for safe floating-point conversion;
+this preserves the fixed resource policy for both producer and replay.
 Any stream overrun or pipe-retaining ordinary descendant past the deadline is
 a typed failure with a direct-child reap and best-effort original process-group
 termination. Regressions inject oversized standard/error streams, deliberately

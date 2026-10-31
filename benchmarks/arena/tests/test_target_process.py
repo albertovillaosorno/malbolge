@@ -36,11 +36,11 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from contextlib import contextmanager
 from time import monotonic, sleep
 from typing import TYPE_CHECKING, cast
 
@@ -407,7 +407,7 @@ def test_output_flood_kills_ordinary_descendants(tmp_path: Path) -> None:
 def test_invalid_deadline_and_limits_reject_before_launch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No child should start with zero or invalid stream budgets."""
+    """Reject malformed, overflowing and over-policy budgets before spawn."""
     launched = False
 
     def forbidden(*args: object, **kwargs: object) -> None:
@@ -423,6 +423,17 @@ def test_invalid_deadline_and_limits_reject_before_launch(
         (1, -1, STDERR_LIMIT),
         (1, STDOUT_LIMIT, -1),
         (float("nan"), STDOUT_LIMIT, STDERR_LIMIT),
+        (float("inf"), STDOUT_LIMIT, STDERR_LIMIT),
+        (float("-inf"), STDOUT_LIMIT, STDERR_LIMIT),
+        (10**400, STDOUT_LIMIT, STDERR_LIMIT),
+        (1e308, STDOUT_LIMIT, STDERR_LIMIT),
+        (
+            target_process.DEFAULT_TIMEOUT_SECONDS + 1,
+            STDOUT_LIMIT,
+            STDERR_LIMIT,
+        ),
+        (1, target_process.DEFAULT_STDOUT_LIMIT + 1, STDERR_LIMIT),
+        (1, STDOUT_LIMIT, target_process.DEFAULT_STDERR_LIMIT + 1),
     ):
         with pytest.raises(target_process.TargetProcessError, match="requires"):
             target_process.invoke(
