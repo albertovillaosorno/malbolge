@@ -577,7 +577,9 @@ def replay_one(
             _write_canonical_source(directory, generated)
             for mode in OPTIMIZATION_MODES:
                 _replay_mode(directory, mode)
-    except OSError as error:
+    except Exception as error:
+        if type(error) is HostOracleError:
+            raise
         message = "host-C oracle workspace creation, I/O, or cleanup failed"
         raise HostOracleError(message) from error
     return source_sha256
@@ -665,7 +667,9 @@ def rebuild_reference(
             _write_canonical_source(directory, generated)
             _replay_mode(directory, mode)
             return _read_reference_executable(directory)
-    except OSError as error:
+    except Exception as error:
+        if type(error) is HostOracleError:
+            raise
         message = "host-C reference workspace creation, I/O, or cleanup failed"
         raise HostOracleError(message) from error
 
@@ -696,7 +700,9 @@ def measure_reference(
             peak_rss = _replay_mode(directory, mode)
             elapsed = time.perf_counter_ns() - started
             artifact = _read_reference_executable(directory)
-    except OSError as error:
+    except Exception as error:
+        if type(error) is HostOracleError:
+            raise
         message = "host-C reference workspace creation, I/O, or cleanup failed"
         raise HostOracleError(message) from error
     return ReferenceMeasurement(

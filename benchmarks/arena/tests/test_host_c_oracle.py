@@ -1604,7 +1604,10 @@ def test_host_c_cleanup_diagnostic_never_formats_foreign_native_arguments(
 @pytest.mark.parametrize(
     ("error", "expected"),
     [
-        (host_c_oracle.HostOracleError("native cleanup denied"), "native cleanup denied"),
+        (
+            host_c_oracle.HostOracleError("native cleanup denied"),
+            "native cleanup denied",
+        ),
         (OSError(13, "permission denied"), "[Errno 13] permission denied"),
         (ValueError("failed stage"), "failed stage"),
     ],
@@ -1808,3 +1811,63 @@ def test_host_c_rss_cleanup_bypasses_hostile_primary_note(
         monkeypatch.setattr(Path, "unlink", original_unlink)
         for artifact in tmp_path.glob("host-c-stage-rss-*"):
             artifact.unlink()
+
+
+@pytest.mark.parametrize("operation", ["replay", "rebuild", "measure"])
+@pytest.mark.parametrize("stage", ["workspace", "source-write", "workspace-cleanup"])
+def test_host_c_direct_workspaces_contain_unexpected_host_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    stage: str,
+) -> None:
+    """Unexpected ordinary storage faults cannot escape public oracle routes."""
+
+    class ForeignWorkspaceFault(LookupError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign workspace exception formatted")
+
+    fault = ForeignWorkspaceFault("untrusted dependency details")
+    original_write = Path.write_bytes
+
+    def fail_workspace(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    def fail_write(path: Path, payload: bytes) -> int:
+        if path.name == "program.c":
+            raise fault
+        return original_write(path, payload)
+
+    class FailingCleanup:
+        def __enter__(self) -> str:
+            return str(tmp_path)
+
+        def __exit__(self, *_args: object) -> None:
+            raise fault
+
+    if stage == "workspace":
+        monkeypatch.setattr(
+            host_c_oracle.tempfile, "TemporaryDirectory", fail_workspace
+        )
+    elif stage == "source-write":
+        monkeypatch.setattr(Path, "write_bytes", fail_write)
+    else:
+        monkeypatch.setattr(
+            host_c_oracle.tempfile,
+            "TemporaryDirectory",
+            lambda **_kwargs: FailingCleanup(),
+        )
+        monkeypatch.setattr(host_c_oracle, "_replay_mode", lambda *_args: 1024)
+        monkeypatch.setattr(
+            host_c_oracle, "_read_reference_executable", lambda _dir: b"checked"
+        )
+    identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    with pytest.raises(host_c_oracle.HostOracleError, match="workspace") as caught:
+        if operation == "replay":
+            host_c_oracle.replay_one(_case(), PROFILE, _digest())
+        elif operation == "rebuild":
+            host_c_oracle.rebuild_reference(identity, "-O0")
+        else:
+            host_c_oracle.measure_reference(identity, "-O0")
+    assert caught.value.__cause__ is fault
