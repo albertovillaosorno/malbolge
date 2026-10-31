@@ -367,11 +367,11 @@ fn verify_fsynced_stage(
     staged: &Path,
     file: &mut fs::File,
     expected: &[u8],
-    admission: (&fs::Metadata, u64),
+    admission: (&fs::Metadata, u64, &Path),
 ) -> Result<(), String> {
-    // Pin the expected link count independently of metadata observed after
-    // user-controlled publication hooks; later aliases must not reset it.
-    let (initial, expected_links) = admission;
+    // Pin link count and resolved pathname independently of metadata observed
+    // after publication hooks, so redirected ancestors cannot reset identity.
+    let (initial, expected_links, resolved_path) = admission;
     let check_identity = |opened: &fs::File| {
         let descriptor = opened
             .metadata()
@@ -382,6 +382,13 @@ fn verify_fsynced_stage(
             || !has_exact_link_count(&named, expected_links)
         {
             return Err(String::from("staged output has an external hard link"));
+        }
+        // Inode checks alone cannot detect renaming the parent directory
+        // and installing a symlink back to that same regular inode.
+        let observed_path = fs::canonicalize(staged)
+            .map_err(|error| format!("cannot resolve staged pathname: {error}"))?;
+        if observed_path != resolved_path {
+            return Err(String::from("staged output resolved pathname changed"));
         }
         if !canonical_wire_metadata_matches(initial, &descriptor)
             || !canonical_wire_metadata_matches(initial, &named)
@@ -444,6 +451,12 @@ fn publish_new_with_hooks(
     // Create only a fresh path; never remove or reuse any collided stage.
     let (staged, mut file) = open_fresh_stage(path, name)?;
     let outcome = (|| {
+        // Capture the originally opened stage location before any externally
+        // observable write or verification hooks. Stable symlinked parents are
+        // allowed; a later symlink rebound to a moved directory is not.
+        let resolved_stage = fs::canonicalize(&staged)
+            .map_err(|error| format!("cannot resolve original stage: {error}"))?;
+        let resolved_target = resolved_stage.with_file_name(name);
         file.write_all(bytes)
             .map_err(|error| format!("stage write failed: {error}"))?;
         file.sync_all()
@@ -452,7 +465,7 @@ fn publish_new_with_hooks(
             .metadata()
             .map_err(|error| format!("cannot inspect synced stage: {error}"))?;
         after_sync(&staged)?;
-        verify_fsynced_stage(&staged, &mut file, bytes, (&initial, 1))?;
+        verify_fsynced_stage(&staged, &mut file, bytes, (&initial, 1, &resolved_stage))?;
         fs::hard_link(&staged, path)
             .map_err(|error| format!("cannot publish new target: {error}"))?;
         after_link(path)?;
@@ -469,7 +482,7 @@ fn publish_new_with_hooks(
         // The hard link exposes a writable inode. Recheck the final path and
         // exact bytes before claiming success; late mutation leaves an already
         // published target but cannot be falsely called a verified artifact.
-        verify_fsynced_stage(path, &mut file, bytes, (&opened, 2))?;
+        verify_fsynced_stage(path, &mut file, bytes, (&opened, 2, &resolved_target))?;
         Ok(())
     })();
     // Retire only our own original staging inode. A stage pathname swapped

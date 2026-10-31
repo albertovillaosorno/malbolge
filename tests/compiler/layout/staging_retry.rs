@@ -312,6 +312,100 @@ fn linked_published_stage_cannot_report_success() -> Result<(), String> {
 
 #[cfg(unix)]
 #[test]
+#[expect(clippy::panic_in_result_fn, reason = "admit unchanged parent alias")]
+fn stable_symlinked_parent_remains_publishable() -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let physical_parent = fixture.0.join("physical-parent");
+    let alias = fixture.0.join("stable-parent-link");
+    fs::create_dir(&physical_parent).map_err(|error| error.to_string())?;
+    symlink(&physical_parent, &alias).map_err(|error| error.to_string())?;
+    let output = alias.join("artifact.malbolge");
+    publish_new(&output, b"ctO")?;
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert_eq!(
+        fs::read_dir(&physical_parent)
+            .map_err(|error| error.to_string())?
+            .count(),
+        1
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "reject redirected stage parent")]
+fn parent_rebound_to_same_inode_after_sync_cannot_publish() -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let parent = fixture.0.join("publication-parent");
+    let moved = fixture.0.join("moved-publication-parent");
+    fs::create_dir(&parent).map_err(|error| error.to_string())?;
+    let output = parent.join("artifact.malbolge");
+    let result = publish_new_with_stage_hook(&output, b"ctO", |_staged| {
+        fs::rename(&parent, &moved).map_err(|error| error.to_string())?;
+        symlink(&moved, &parent).map_err(|error| error.to_string())
+    });
+    fs::remove_file(&parent).map_err(|error| error.to_string())?;
+    fs::rename(&moved, &parent).map_err(|error| error.to_string())?;
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("resolved pathname changed")),
+        "parent symlink redirected stage publication: {result:?}"
+    );
+    assert!(!output.exists(), "target appeared after parent redirect");
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "reject redirected published parent"
+)]
+fn parent_rebound_to_same_inode_after_link_cannot_report_success() -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let parent = fixture.0.join("publication-parent");
+    let moved = fixture.0.join("moved-publication-parent");
+    fs::create_dir(&parent).map_err(|error| error.to_string())?;
+    let output = parent.join("artifact.malbolge");
+    let result = publish_new_with_hooks(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_path| {
+            fs::rename(&parent, &moved).map_err(|error| error.to_string())?;
+            symlink(&moved, &parent).map_err(|error| error.to_string())
+        },
+    );
+    fs::remove_file(&parent).map_err(|error| error.to_string())?;
+    fs::rename(&moved, &parent).map_err(|error| error.to_string())?;
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("resolved pathname changed")),
+        "parent symlink redirected final admission: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
 #[expect(clippy::panic_in_result_fn, reason = "assert bounded stage reread")]
 fn grown_stage_rejects_before_an_unbounded_reread() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;

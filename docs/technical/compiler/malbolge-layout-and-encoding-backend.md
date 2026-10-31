@@ -140,9 +140,14 @@ link blocks target creation; an extra alias observed after publication rejects
 success while retaining the already-visible target. On Unix the link count is
 read from inode metadata; on Windows it uses the native optional link count and
 fails closed if that evidence is unavailable. Independent injected-alias tests
-cover both stages and retain any unrelated hard-link pathname. The final inode
-check detects observed link-stage substitutions but does not establish an atomic
-filesystem snapshot against ongoing writers.
+cover both stages and retain any unrelated hard-link pathname. The stage's
+original resolved pathname is also pinned before publication and rechecked
+before and after both bounded rereads. Renaming a parent and installing a
+symlink back to the *same inode* changes that resolved pathname, so it rejects
+before publication or before declaring an already-published target successful.
+Stable parent symlinks present at initial opening remain permitted. The final
+inode and path checks detect observed substitutions but do not establish an
+atomic filesystem snapshot against ongoing writers.
 The no-overwrite hard link atomically reveals the final `.malbolge` only after
 staged content admission. Existing targets and
 symlinks are never replaced; invalid profiles, operands, paths or layout
