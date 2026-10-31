@@ -99,7 +99,7 @@ is implied.
 ### Verified nonzero byte literal rotation
 
 The separate opt-in `encode_rotated_byte_literal` admits exactly one
-`MaterializeU8(value)`, one to twenty-seven `ByteOutput`s of that SSA
+`MaterializeU8(value)`, one to twenty-eight `ByteOutput`s of that SSA
 identity, and `ReturnVoid`. For one output, it admits only these
 current-profile nonzero bytes: `4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22,
 23, 251, 253`. For exactly two identical outputs, a **different** table
@@ -167,6 +167,10 @@ with 19 distinct bytes: `2, 3, 6, 7, 8, 9, 11, 12, 13, 14, 15, 18,
 For twenty-seven outputs, 23 independently guest-verified phases pass
 (excluding six, seven and eight), yielding 18 distinct bytes: `7, 8, 9,
 11, 21, 22, 23, 25, 41, 42, 137, 138, 164, 165, 252, 253, 254, 255`.
+For twenty-eight outputs, 23 independent VM phases pass (not five,
+six or seven), yielding 22 shortest distinct bytes: `18, 19, 21, 48,
+49, 50, 51, 61, 63, 140, 141, 151, 153, 169, 179, 180, 181, 185,
+191, 194, 195, 196`. Byte 191 repeats at phase four, so phase one wins.
 The bridge keeps each byte's first valid no-op prefix and rechecks it
 under the actual guest VM before returning executable source.
 
@@ -179,7 +183,7 @@ data word into A, and the
 guest outputs emit the unchanged accumulator. The independent layout checker
 proves source/data separation and a fresh normative VM checks every emitted
 byte, exact halt, and zero input consumption before accepting a source.
-Other literals, zero/twenty-eight-or-more outputs, extra effects and foreign
+Other literals, zero/twenty-nine-or-more outputs, extra effects and foreign
 profiles reject.
 This does not implement arbitrary constants or an SSA byte register.
 
@@ -215,7 +219,7 @@ cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_five_output_rotation_witnesses -- --ignored
 ```
 
-Six- through twenty-seven-output witnesses independently repeat the same bounded
+Six- through twenty-eight-output witnesses independently repeat the same bounded
 `0..26` scan, with their own loader-expanded source. All 26 tested phases
 for each count through fourteen emit identical nonzero bytes and terminate
 without input. Fifteen outputs have 25 matching phases; phase 20 does
@@ -240,14 +244,16 @@ Twenty-five outputs also succeed in 25 phases (excluding seven), yielding
 Twenty-six outputs succeed in 24 of 26 phases, excluding six and seven,
 and retain 22 distinct shortest witnesses. Twenty-seven outputs admit 23
 of 26 phases (not six, seven or eight), retaining 18 distinct shortest
-witnesses.
+witnesses. Twenty-eight outputs succeed in 23 phases (not five,
+six or seven), retaining 22 distinct shortest byte witnesses.
 The first successful witness per value yields
 19 shortest prefixes for six outputs, 18 for seven, 21 for eight, 21 for
 nine, 25 for ten, 17 for eleven, 20 for twelve, 19 for thirteen, 22 for
 fourteen, 17 for fifteen, 24 for sixteen, 19 for seventeen, 20 for
 eighteen, 19 for nineteen, 21 for twenty, 20 for twenty-one and
 25 for twenty-two, 21 for twenty-three, 21 for twenty-four and
-19 for twenty-five, 22 for twenty-six and 18 for twenty-seven.
+19 for twenty-five, 22 for twenty-six, 18 for twenty-seven and
+22 for twenty-eight.
 Reproduce the independent optimized scans with:
 
 ```sh
@@ -295,17 +301,20 @@ cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_twenty_six_output_rotation_witnesses -- --ignored
 cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_twenty_seven_output_rotation_witnesses -- --ignored
+cargo test --release --locked --test rotated_byte_constant_bridge \
+  independently_rederive_twenty_eight_output_rotation_witnesses -- --ignored
 ```
 
 Default regressions enumerate all 256 byte values separately for four,
 five, six, seven, eight, nine, ten, eleven, twelve, thirteen, fourteen,
 fifteen, sixteen, seventeen, eighteen, nineteen, twenty, twenty-one,
-twenty-two, twenty-three, twenty-four, twenty-five, twenty-six and
-twenty-seven same-SSA outputs.
+twenty-two, twenty-three, twenty-four, twenty-five, twenty-six,
+twenty-seven and twenty-eight same-SSA outputs.
 They require 24, 18, 19, 18, 21, 21, 25, 17, 20, 19, 22, 17, 24, 19,
-20, 19, 21, 20, 25, 21, 21, 19, 22 and 18 shortest prefixes, respectively. The other
+20, 19, 21, 20, 25, 21, 21, 19, 22, 18 and 22 shortest prefixes,
+respectively. The other
 232, 238, 237, 238, 235, 235, 231, 239, 236, 237, 234, 239, 232,
-237, 236, 237, 235, 236, 231, 235, 235, 237, 234 and 238 values per count reject.
+237, 236, 237, 235, 236, 231, 235, 235, 237, 234, 238 and 234 values reject.
 The canonical typed adapter, CLI publisher and real guest runner verify
 successful and rejected count-specific cases.
 

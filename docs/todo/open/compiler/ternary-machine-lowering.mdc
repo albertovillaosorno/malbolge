@@ -837,7 +837,9 @@ instruction.
   real typed/CLI values 196 and 137. Twenty-seven outputs admit
   23 of 26 independent VM phases (excluding six through eight), yielding
   18 distinct shortest witnesses; typed/CLI output 138 and 41 is
-  verified; twenty-eight or more outputs reject.
+  verified. Twenty-eight outputs pass 23 independent real-VM phases
+  (excluding five, six and seven), yielding 22 shortest distinct bytes;
+  typed/CLI runner confirms 63 and 19; twenty-nine or more outputs reject.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper
