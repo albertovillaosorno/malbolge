@@ -1332,9 +1332,10 @@ display
 versions, invalid host fields, exact runtime-context duplicates, and direct
 capability/runtime mismatch; distinct runtime variants may coexist for one
 capability/workload. Runtime loading reads only the tracked product manifest and
-never opens benchmark evidence. `resolve_cuda_ticket_admission_profile` selects
-at
-most one exact workload/capability/runtime record; invalid or ambiguous requests
+never opens benchmark evidence. It requires bounded, unchanged, nonredirected
+regular JSON and rejects source replacement or mutation during admission.
+`resolve_cuda_ticket_admission_profile` selects at most one exact
+workload/capability/runtime record; invalid or ambiguous requests
 fail closed, while retained wrappers delegate through the stable workload
 identity. At adapter
 startup, `cuda-runtime-toolchain-identity-v1` requires Driver API 13030 or

@@ -37,7 +37,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cache
 import json
+import os
 from pathlib import Path
+from stat import S_ISREG
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -56,6 +58,7 @@ if TYPE_CHECKING:
     from accelerator.ticket_admission import TicketAdmissionReport
 
 PROFILE_SCHEMA_VERSION = 4
+MAX_PROFILE_MANIFEST_BYTES = 1024 * 1024
 PROFILE_MANIFEST_PATH = Path(__file__).with_name(
     "ticket_admission_profiles.json"
 )
@@ -322,6 +325,85 @@ class CudaTicketAdmissionProfile:
         )
 
 
+def _source_identity(status: os.stat_result) -> tuple[int, int, int, int, int]:
+    """Admit one regular source and record mutation-sensitive identity.
+
+    Returns:
+        Device, inode, size, and modification/change timestamps.
+
+    Raises:
+        TicketAdmissionError: The admitted file is not regular.
+
+    """
+    if not S_ISREG(status.st_mode):
+        message = "CUDA ticket admission manifest must be regular"
+        raise TicketAdmissionError(message)
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _check_source_parents(path: Path) -> None:
+    """Reject aliases through any ancestor of the tracked manifest.
+
+    Raises:
+        TicketAdmissionError: An ancestor redirects via symlink or junction.
+
+    """
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            message = "CUDA ticket admission manifest path must not redirect"
+            raise TicketAdmissionError(message)
+
+
+def _read_manifest_bytes(path: Path) -> bytes:
+    """Read a bounded, unchanged regular manifest without path redirects.
+
+    Returns:
+        Exact file bytes admitted from one stable physical source.
+
+    Raises:
+        TicketAdmissionError: File is redirected, oversized, or changing.
+
+    """
+    _check_source_parents(path)
+    admitted = path.lstat()
+    expected = _source_identity(admitted)
+    if admitted.st_size > MAX_PROFILE_MANIFEST_BYTES:
+        message = "CUDA ticket admission manifest exceeds byte limit"
+        raise TicketAdmissionError(message)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        if _source_identity(os.fstat(stream.fileno())) != expected:
+            message = "CUDA ticket admission manifest changed before read"
+            raise TicketAdmissionError(message)
+        payload = stream.read(MAX_PROFILE_MANIFEST_BYTES + 1)
+        if len(payload) != admitted.st_size:
+            message = (
+                "CUDA ticket admission manifest changed during read or "
+                "exceeds byte limit"
+            )
+            raise TicketAdmissionError(message)
+        if (
+            _source_identity(os.fstat(stream.fileno())) != expected
+            or _source_identity(path.lstat()) != expected
+        ):
+            message = "CUDA ticket admission manifest changed during read"
+            raise TicketAdmissionError(message)
+        _check_source_parents(path)
+        return payload
+
+
 @cache
 def load_cuda_ticket_admission_profiles(
     path: Path = PROFILE_MANIFEST_PATH,
@@ -336,8 +418,8 @@ def load_cuda_ticket_admission_profiles(
 
     """
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as error:
+        text = _read_manifest_bytes(path).decode("utf-8")
+    except (OSError, UnicodeDecodeError) as error:
         message = f"cannot read CUDA ticket admission profiles: {error}"
         raise TicketAdmissionError(message) from error
     document = _json_document(text)

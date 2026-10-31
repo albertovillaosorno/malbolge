@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 from typing import cast
 
@@ -65,6 +66,8 @@ THROUGHPUT_SHA256 = (
 )
 RAW_SHA256 = "329716e4f429b7ab65096a61266af732b6630faf2bba2f66a643ea1b41d3214f"
 ROUTE_COUNT = 7
+FILE_REDIRECT = "file"
+SOURCE_RECHECK = 2
 PROFILE_VARIANT_COUNT = 2
 DISPLAY_DRIVER_VERSION = "610.88"
 DRIVER_API_VERSION = 13_030
@@ -312,3 +315,141 @@ def _write_manifest(
         newline="\n",
     )
     return path
+
+
+@pytest.mark.parametrize("redirect", ["file", "directory"])
+def test_profile_loader_rejects_redirected_manifest(
+    tmp_path: Path,
+    redirect: str,
+) -> None:
+    """Matching retained profiles do not authorize filesystem aliases."""
+    real = tmp_path / "real"
+    real.mkdir()
+    source = real / "profiles.json"
+    _ = source.write_text(profile_manifest_text(), encoding="utf-8")
+    if redirect == FILE_REDIRECT:
+        alias = tmp_path / "alias.json"
+    else:
+        alias = tmp_path / "alias"
+    try:
+        if redirect == FILE_REDIRECT:
+            _ = alias.symlink_to(source)
+        else:
+            _ = alias.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    path = alias if redirect == FILE_REDIRECT else alias / source.name
+    with pytest.raises(TicketAdmissionError, match=r"regular|redirect"):
+        _ = load_cuda_ticket_admission_profiles(path)
+
+
+def test_profile_loader_rejects_oversized_json(tmp_path: Path) -> None:
+    """Untrusted profile documents are bounded before JSON parsing."""
+    manifest = tmp_path / "huge.json"
+    with manifest.open("wb") as stream:
+        _ = stream.truncate(1024 * 1024 + 1)
+    with pytest.raises(TicketAdmissionError, match="byte limit"):
+        _ = load_cuda_ticket_admission_profiles(manifest)
+
+
+def test_profile_loader_rejects_invalid_utf8_as_typed_error(
+    tmp_path: Path,
+) -> None:
+    """Invalid input encodings never escape the declared error boundary."""
+    manifest = tmp_path / "invalid.json"
+    _ = manifest.write_bytes(b"\xff")
+    with pytest.raises(TicketAdmissionError, match="cannot read"):
+        _ = load_cuda_ticket_admission_profiles(manifest)
+
+
+def test_profile_loader_rejects_directory_and_fifo_manifest(
+    tmp_path: Path,
+) -> None:
+    """Nonregular sources cannot block the admission path or supply JSON."""
+    source = tmp_path / "source.json"
+    source.mkdir()
+    with pytest.raises(TicketAdmissionError, match="regular"):
+        _ = load_cuda_ticket_admission_profiles(source)
+    source.rmdir()
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFO unavailable on host")
+    mkfifo(source)
+    with pytest.raises(TicketAdmissionError, match="regular"):
+        _ = load_cuda_ticket_admission_profiles(source)
+
+
+def test_profile_loader_rejects_inode_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equal-byte file replacement must invalidate pre-open admission."""
+    source = tmp_path / "source.json"
+    _ = source.write_text(profile_manifest_text(), encoding="utf-8")
+    replacement = tmp_path / "replacement.json"
+    _ = replacement.write_bytes(source.read_bytes())
+    real_open = os.open
+    replaced = False
+
+    def swap_on_open(path: Path, flags: int) -> int:
+        nonlocal replaced
+        if path == source:
+            _ = replacement.replace(source)
+            replaced = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_on_open)
+    with pytest.raises(TicketAdmissionError, match="changed before read"):
+        _ = load_cuda_ticket_admission_profiles(source)
+    assert replaced
+
+
+def test_profile_loader_rejects_inode_swap_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Inode replacement after reading bytes cannot authorize a profile."""
+    source = tmp_path / "source.json"
+    _ = source.write_text(profile_manifest_text(), encoding="utf-8")
+    replacement = tmp_path / "replacement.json"
+    _ = replacement.write_bytes(source.read_bytes())
+    real_lstat = Path.lstat
+    observed = 0
+
+    def swap_at_recheck(path: Path) -> os.stat_result:
+        nonlocal observed
+        if path == source:
+            observed += 1
+            if observed == SOURCE_RECHECK:
+                _ = replacement.replace(source)
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", swap_at_recheck)
+    with pytest.raises(TicketAdmissionError, match="changed during read"):
+        _ = load_cuda_ticket_admission_profiles(source)
+    assert observed == SOURCE_RECHECK
+
+
+def test_profile_loader_rejects_in_place_edit_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-inode, equal-size mutations cannot authorize retained routes."""
+    source = tmp_path / "source.json"
+    _ = source.write_text(profile_manifest_text(), encoding="utf-8")
+    real_lstat = Path.lstat
+    observed = 0
+
+    def mutate_at_recheck(path: Path) -> os.stat_result:
+        nonlocal observed
+        if path == source:
+            observed += 1
+            if observed == SOURCE_RECHECK:
+                with source.open("r+b") as stream:
+                    _ = stream.write(b"x")
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", mutate_at_recheck)
+    with pytest.raises(TicketAdmissionError, match="changed during read"):
+        _ = load_cuda_ticket_admission_profiles(source)
+    assert observed == SOURCE_RECHECK
