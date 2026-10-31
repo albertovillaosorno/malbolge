@@ -195,6 +195,37 @@ def test_rejected_domain_module_is_not_left_registered(tmp_path: Path) -> None:
     )
 
 
+def test_rejected_domain_reload_preserves_previous_registration(
+    tmp_path: Path,
+) -> None:
+    """A failed update cannot discard a previously admitted module."""
+    module = tmp_path / "reload.py"
+    _write(module, _COMPLETE)
+    before = frozenset(sys.modules)
+    _ = load_diff_domain(module)
+    names = frozenset(sys.modules) - before
+    loaded = tuple(
+        name for name in names if name.startswith("_malbolge_diff_domain_")
+    )
+    assert len(loaded) == 1
+    name = loaded[0]
+    accepted_module = sys.modules[name]
+
+    _write(
+        module,
+        _COMPLETE.replace("def build_behavior_programs():", "def other():"),
+    )
+    with pytest.raises(DomainContractError, match="build_behavior_programs"):
+        _ = load_diff_domain(module)
+
+    assert sys.modules.get(name) is accepted_module
+    _write(module, 'raise RuntimeError("rejected replacement")\n')
+    with pytest.raises(DomainContractError, match="module execution failed"):
+        _ = load_diff_domain(module)
+    assert sys.modules.get(name) is accepted_module
+    _ = sys.modules.pop(name, None)
+
+
 def test_missing_required_hook_fails_closed(tmp_path: Path) -> None:
     """Reject partial consumer policy before compatible authoring."""
     module = tmp_path / "domain.py"

@@ -156,7 +156,21 @@ def _regular_module_path(path: Path) -> Path:
         raise DomainContractError(message) from error
 
 
-def _load_module(path: Path) -> ModuleType:
+def _restore_domain_registration(
+    name: str,
+    attempted: ModuleType,
+    previous: ModuleType | None,
+) -> None:
+    """Restore the last accepted module when a replacement load fails."""
+    if sys.modules.get(name) is not attempted:
+        return
+    if previous is None:
+        _ = sys.modules.pop(name, None)
+    else:
+        sys.modules[name] = previous
+
+
+def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
     resolved = _regular_module_path(path)
     name = _module_name(resolved)
     spec = importlib.util.spec_from_file_location(name, resolved)
@@ -164,14 +178,15 @@ def _load_module(path: Path) -> ModuleType:
         message = f"cannot load diff domain module: {resolved}"
         raise DomainContractError(message)
     module = importlib.util.module_from_spec(spec)
+    previous = sys.modules.get(name)
     sys.modules[name] = module
     try:
         spec.loader.exec_module(module)
     except Exception as error:
-        _ = sys.modules.pop(name, None)
+        _restore_domain_registration(name, module, previous)
         message = f"diff domain module execution failed: {resolved}: {error}"
         raise DomainContractError(message) from error
-    return module
+    return module, previous
 
 
 def _callable(module: ModuleType, name: str) -> Callable[..., object]:
@@ -195,12 +210,11 @@ def load_diff_domain(path: object) -> DiffDomain:
     if not isinstance(path, Path):
         message = "diff domain module path must use pathlib Path"
         raise DomainContractError(message)
-    module = _load_module(path)
+    module, previous = _load_module(path)
     try:
         return _validated_domain(module)
     except Exception:
-        if sys.modules.get(module.__name__) is module:
-            _ = sys.modules.pop(module.__name__, None)
+        _restore_domain_registration(module.__name__, module, previous)
         raise
 
 
