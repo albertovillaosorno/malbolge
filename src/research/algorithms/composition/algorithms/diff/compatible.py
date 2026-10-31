@@ -670,9 +670,14 @@ def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
     current = root
     for component in PurePosixPath(relative_path).parts[:-1]:
         current /= component
-        if _path_present(current, "compatible path ancestor") and (
-            current.is_symlink() or current.is_junction()
-        ):
+        if not _path_present(current, "compatible path ancestor"):
+            continue
+        try:
+            linked = current.is_symlink() or current.is_junction()
+        except (OSError, ValueError, RuntimeError) as error:
+            message = f"ancestor inspection failed: {current}: {error}"
+            raise CompatiblePlanError(message) from error
+        if linked:
             message = (
                 f"compatible linked path component is unsupported: {current}"
             )

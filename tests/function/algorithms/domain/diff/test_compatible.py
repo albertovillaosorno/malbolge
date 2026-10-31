@@ -73,6 +73,8 @@ from algorithms.diff.model import ExactInstructionKind
 import pytest
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior import BehaviorEvidence
     from algorithms.diff.compatible import CompatibleAuthoringPlan
@@ -93,6 +95,8 @@ _CANDIDATE_CODE = b"extra ; alpha   = old ; omega tail"
 _EXPECTED_CODE = b"extra ; alpha   = new ; omega tail"
 _FIXED_CANDIDATE_CODE = b"extra ; alpha = new ; omega tail"
 _FOREIGN_OUTPUT = b"foreign-output"
+_SYMLINK_METHOD = "is_symlink"
+_ANCESTOR_PATH_CONTEXT = "compatible path ancestor"
 _FOREIGN_STAGING = b"foreign-writer"
 _EXPECTED_MIXED_EDITS = 2
 _CHANGE_MODIFY = "modify"
@@ -471,6 +475,70 @@ def test_compatible_materialization_rejects_linked_directory_ancestor(
         _ = materialize_compatible_plan(request)
     _expect(replaced, "post-snapshot candidate alias was not created")
     _expect(not request.output_root.exists(), "linked candidate was published")
+
+
+def _break_compatible_ancestor_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+    ancestor: Path,
+    *,
+    method: str,
+    failure: type[Exception],
+) -> None:
+    armed = False
+    original_present = cast(
+        "Callable[[Path, str], bool]",
+        vars(compatible_module)["_path_present"],
+    )
+    original_inspection = (
+        Path.is_symlink if method == _SYMLINK_METHOD else Path.is_junction
+    )
+
+    def arm_after_admission(path: Path, context: str) -> bool:
+        nonlocal armed
+        present = original_present(path, context)
+        if path == ancestor and context == _ANCESTOR_PATH_CONTEXT:
+            armed = True
+        return present
+
+    def fail_after_admission(path: Path) -> bool:
+        if armed and path == ancestor:
+            message = "host inspection failed"
+            raise failure(message)
+        return original_inspection(path)
+
+    monkeypatch.setattr(compatible_module, "_path_present", arm_after_admission)
+    monkeypatch.setattr(Path, method, fail_after_admission)
+
+
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("failure", [OSError, ValueError, RuntimeError])
+def test_compatible_ancestor_inspection_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    method: str,
+    failure: type[Exception],
+) -> None:
+    """Post-admission redirect inspection errors must fail typed and cleanly."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    _write(candidate, "nested/only.cfg", _CANDIDATE_ONLY)
+    output = tmp_path / "out"
+    request = _request(candidate, plan, output)
+    _break_compatible_ancestor_inspection(
+        monkeypatch,
+        candidate / "nested",
+        method=method,
+        failure=failure,
+    )
+
+    with pytest.raises(CompatiblePlanError, match="ancestor inspection failed"):
+        _ = materialize_compatible_plan(request)
+    _expect(not output.exists(), "failed admission published output")
+    _expect(
+        not (tmp_path / ".out.compatible-staging").exists(),
+        "failed admission left owned staging behind",
+    )
 
 
 @pytest.mark.parametrize(
