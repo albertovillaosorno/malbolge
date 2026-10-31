@@ -138,7 +138,8 @@ def _system_tool(name: str) -> str | None:
     """Resolve OS-owned resource tools without trusting a caller's PATH."""
     try:
         resolved = shutil.which(name, path=SYSTEM_TOOL_SEARCH_PATH)
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
+        # Host tool resolvers may raise unexpected ordinary dependency errors.
         message = f"bounded target system tool lookup failed: {name}"
         raise TargetProcessError(message) from error
     if resolved is None:
@@ -158,13 +159,8 @@ def _system_tool(name: str) -> str | None:
     try:
         mode = Path(resolved).lstat().st_mode
         executable = os.access(resolved, os.X_OK)
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-    ) as error:
+    except Exception as error:
+        # Preserve an opaque host inspection fault without formatting it.
         message = f"bounded target system tool path inspection failed: {name}"
         raise TargetProcessError(message) from error
     if not S_ISREG(mode) or not executable:

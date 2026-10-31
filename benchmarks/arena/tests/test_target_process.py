@@ -1657,6 +1657,53 @@ def test_resource_preflight_types_host_tool_resolution_faults(
     assert isinstance(error.value.__cause__, failure_type)
 
 
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetHostFault]
+)
+@pytest.mark.parametrize("site", ["lookup", "lstat", "access"])
+def test_resource_tool_unexpected_dependency_fault_remains_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+    site: str,
+) -> None:
+    """Unexpected tool resolver and metadata errors retain their cause."""
+    fake = tmp_path / "fake-resource-tool"
+    _ = fake.write_bytes(b"test executable")
+    fake.chmod(0o755)
+    fault = fault_class("unexpected system tool failure")
+    real_lstat = type(fake).lstat
+    real_access = target_process.os.access
+
+    def resolve(_name: str, *, path: str | None = None) -> str:
+        del path
+        if site == "lookup":
+            raise fault
+        return str(fake)
+
+    def inspect(path: Path) -> os.stat_result:
+        if site == "lstat" and path == fake:
+            raise fault
+        return real_lstat(path)
+
+    def executable(path: str, mode: int) -> bool:
+        if site == "access" and path == str(fake):
+            raise fault
+        return real_access(path, mode)
+
+    monkeypatch.setattr(target_process.shutil, "which", resolve)
+    monkeypatch.setattr(type(fake), "lstat", inspect)
+    monkeypatch.setattr(target_process.os, "access", executable)
+    expected = "lookup" if site == "lookup" else "inspection"
+    with pytest.raises(
+        target_process.TargetProcessError, match=expected
+    ) as caught:
+        target_process._system_tool(  # ruff: ignore[private-member-access]
+            target_process.LIMITER_NAME
+        )
+    assert caught.value.__cause__ is fault
+
+
 @pytest.mark.skipif(
     sys.platform != LINUX_PLATFORM or not PRLIMIT_AVAILABLE,
     reason="requires Linux with util-linux prlimit",
