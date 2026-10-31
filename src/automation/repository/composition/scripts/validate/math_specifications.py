@@ -83,6 +83,18 @@ def _fail(message: str) -> Never:
     raise MathSpecificationError(message)
 
 
+def _host_error_detail(error: Exception) -> str:
+    """Retain native host diagnostics without invoking foreign formatter hooks.
+
+    Returns:
+        Native exception text, or the foreign exception's type name.
+
+    """
+    if type(error) in (OSError, ValueError, TypeError, RuntimeError):
+        return str(error)
+    return type(error).__name__
+
+
 def _source_relative_path(path: Path) -> Path:
     """Admit a lexical repository-relative source path.
 
@@ -107,12 +119,16 @@ def _physical_math_status(path: Path, *, directory: bool) -> None:
         current /= component
         try:
             status = current.lstat()
-        except (OSError, ValueError, RuntimeError) as error:
-            _fail(f"mathematics source status failed: {error}")
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise MathSpecificationError(
+                f"mathematics source status failed: {_host_error_detail(error)}"
+            ) from error
         try:
             junction = current.is_junction()
-        except (OSError, ValueError, RuntimeError) as error:
-            _fail(f"mathematics source redirect status failed: {error}")
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise MathSpecificationError(
+                f"mathematics source redirect status failed: {_host_error_detail(error)}"
+            ) from error
         if S_ISLNK(status.st_mode) or junction:
             _fail(f"mathematics source must not redirect: {relative.as_posix()}")
         expect_directory = directory if index == len(relative.parts) - 1 else True
@@ -138,7 +154,9 @@ def _discovered_tex_paths() -> tuple[Path, ...]:
     sources: list[Path] = []
 
     def fail_walk(error: OSError) -> None:
-        _fail(f"mathematics source scan failed: {error}")
+        raise MathSpecificationError(
+            f"mathematics source scan failed: {_host_error_detail(error)}"
+        ) from error
 
     try:
         for parent, directories, filenames in MATH_ROOT.walk(on_error=fail_walk):
@@ -149,9 +167,9 @@ def _discovered_tex_paths() -> tuple[Path, ...]:
                 _admit_tex_candidate(parent / name, sources)
     except MathSpecificationError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise MathSpecificationError(
-            f"mathematics source scan failed: {error}"
+            f"mathematics source scan failed: {_host_error_detail(error)}"
         ) from error
     return tuple(sorted(sources, key=lambda path: path.as_posix()))
 
@@ -197,7 +215,7 @@ def _read_open_tex_bytes(
     descriptor = os.open(path, flags)
     try:
         stream = os.fdopen(descriptor, "rb")
-    except (OSError, ValueError, RuntimeError):
+    except (OSError, ValueError, TypeError, RuntimeError):
         try:
             os.close(descriptor)
         except OSError:
@@ -244,9 +262,9 @@ def _read_tex(path: Path) -> str:
         _fail(f"invalid mathematics source UTF-8: {path}: {error}")
     except MathSpecificationError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise MathSpecificationError(
-            f"mathematics source read failed: {path}: {error}"
+            f"mathematics source read failed: {path}: {_host_error_detail(error)}"
         ) from error
 
 
@@ -277,12 +295,16 @@ def _cache_component_is_physical(path: Path, relative: Path) -> bool:
         status = path.lstat()
     except FileNotFoundError:
         return False
-    except (OSError, ValueError, RuntimeError) as error:
-        _fail(f"mathematics cache status failed: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics cache status failed: {_host_error_detail(error)}"
+        ) from error
     try:
         junction = path.is_junction()
-    except (OSError, ValueError, RuntimeError) as error:
-        _fail(f"mathematics cache redirect status failed: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics cache redirect status failed: {_host_error_detail(error)}"
+        ) from error
     if S_ISLNK(status.st_mode) or junction:
         _fail(f"mathematics cache path must not redirect: {relative.as_posix()}")
     if not S_ISDIR(status.st_mode):
@@ -311,8 +333,10 @@ def document_sources() -> tuple[Path, ...]:
         _ = MATH_ROOT.lstat()
     except FileNotFoundError:
         _fail(f"mathematics root not found: {MATH_ROOT}")
-    except (OSError, ValueError, RuntimeError) as error:
-        _fail(f"mathematics root status failed: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics root status failed: {_host_error_detail(error)}"
+        ) from error
     sources = tuple(
         path for path in _discovered_tex_paths() if DOCUMENT_MARKER in _read_tex(path)
     )
@@ -326,8 +350,10 @@ def _validate_notation() -> None:
         _ = NOTATION.lstat()
     except FileNotFoundError:
         _fail("shared mathematical notation file is missing")
-    except (OSError, ValueError, RuntimeError) as error:
-        _fail(f"mathematics notation status failed: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics notation status failed: {_host_error_detail(error)}"
+        ) from error
     _physical_math_status(NOTATION, directory=False)
     notation_text = _read_tex(NOTATION)
     if DOCUMENT_MARKER in notation_text:
@@ -386,9 +412,9 @@ def latex_compiler(
     """
     try:
         compiler = lookup(LATEX_COMPILER)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise MathSpecificationError(
-            f"LaTeX compiler lookup failed: {error}"
+            f"LaTeX compiler lookup failed: {_host_error_detail(error)}"
         ) from error
     if compiler is None:
         _fail(f"LaTeX compiler not found: {LATEX_COMPILER}")
@@ -396,9 +422,9 @@ def latex_compiler(
         _fail("LaTeX compiler resolver must return an absolute executable path")
     try:
         executable = Path(compiler).is_file() and os.access(compiler, os.X_OK)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise MathSpecificationError(
-            f"LaTeX compiler status failed: {error}"
+            f"LaTeX compiler status failed: {_host_error_detail(error)}"
         ) from error
     if not executable:
         _fail(f"LaTeX compiler is not an executable file: {compiler}")
@@ -409,16 +435,20 @@ def _admit_math_build_log(log_path: Path) -> None:
     """Reject a redirected or nonregular existing cache-log destination."""
     try:
         redirected = log_path.is_symlink() or log_path.is_junction()
-    except (OSError, ValueError, RuntimeError) as error:
-        _fail(f"mathematics cache log redirect status failed: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics cache log redirect status failed: {_host_error_detail(error)}"
+        ) from error
     if redirected:
         _fail(f"mathematics cache log must not redirect: {log_path}")
     try:
         observed = log_path.lstat()
     except FileNotFoundError:
         return
-    except (OSError, ValueError, RuntimeError) as error:
-        _fail(f"mathematics cache log status failed: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics cache log status failed: {_host_error_detail(error)}"
+        ) from error
     if not S_ISREG(observed.st_mode):
         _fail(f"mathematics cache log must be a regular file: {log_path}")
 
@@ -431,16 +461,16 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
         descriptor, temporary_name = tempfile.mkstemp(
             dir=log_path.parent, prefix=".build.stdout."
         )
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise MathSpecificationError(
-            f"mathematics build log temporary creation failed: {error}"
+            f"mathematics build log temporary creation failed: {_host_error_detail(error)}"
         ) from error
     temporary = Path(temporary_name)
     try:
         try:
             try:
                 stream = os.fdopen(descriptor, "w", encoding="utf-8", newline="\n")
-            except (OSError, ValueError, RuntimeError):
+            except (OSError, ValueError, TypeError, RuntimeError):
                 try:
                     os.close(descriptor)
                 except OSError:
@@ -453,9 +483,9 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
                 stream.flush()
         except MathSpecificationError:
             raise
-        except (OSError, ValueError, RuntimeError) as error:
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
             raise MathSpecificationError(
-                f"mathematics build log write failed: {log_path}: {error}"
+                f"mathematics build log write failed: {log_path}: {_host_error_detail(error)}"
             ) from error
         _reject_cache_redirects(log_path.parent)
         _admit_math_build_log(log_path)
@@ -493,9 +523,9 @@ def _compile_document(source: Path) -> None:
             shell=False,
             text=True,
         )
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise MathSpecificationError(
-            f"LaTeX compiler execution failed: {error}"
+            f"LaTeX compiler execution failed: {_host_error_detail(error)}"
         ) from error
     if (
         type(completed.returncode) is not int

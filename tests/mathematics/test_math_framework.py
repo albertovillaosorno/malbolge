@@ -1015,3 +1015,156 @@ def test_math_log_failed_atomic_replace_preserves_original(
         _compile_math_source(source)
     assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
     assert tuple(log.parent.iterdir()) == (log,)
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    (
+        "source-status",
+        "source-redirect",
+        "source-read",
+        "source-scan",
+        "source-walk-callback",
+        "root-status",
+        "notation-status",
+        "cache-status",
+        "log-status",
+        "log-create",
+        "latex-lookup",
+        "latex-status",
+        "latex-run",
+    ),
+)
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_math_host_failures_do_not_format_foreign_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+    fault_type: type[Exception],
+) -> None:
+    """Host faults remain typed and causal without calling foreign __str__."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign mathematics exception formatter executed")
+
+    foreign = type("ForeignMathHostFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("host failure")
+    real_latex_compiler = validator.latex_compiler
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+    original_lstat = Path.lstat
+    original_junction = Path.is_junction
+    if boundary in {
+        "source-status",
+        "root-status",
+        "notation-status",
+        "cache-status",
+        "log-status",
+    }:
+        affected = {
+            "source-status": source,
+            "root-status": source.parent,
+            "notation-status": source,
+            "cache-status": log.parent,
+            "log-status": log,
+        }[boundary]
+        if boundary == "log-status":
+            _ = log.write_text("previous", encoding="utf-8")
+        if boundary == "notation-status":
+            monkeypatch.setattr(validator, "NOTATION", source)
+
+        def failing_lstat(path: Path) -> os.stat_result:
+            if path == affected:
+                raise fault
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", failing_lstat)
+    elif boundary == "source-redirect":
+
+        def failing_junction(path: Path) -> bool:
+            if path == source:
+                raise fault
+            return original_junction(path)
+
+        monkeypatch.setattr(Path, "is_junction", failing_junction)
+    elif boundary == "source-read":
+        original_open = os.open
+
+        def failing_open(path: Path, flags: int) -> int:
+            if path == source:
+                raise fault
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", failing_open)
+    elif boundary in {"source-scan", "source-walk-callback"}:
+
+        def failing_walk(
+            path: Path, *, on_error: Callable[[OSError], object] | None = None
+        ) -> object:
+            del path
+            if boundary == "source-walk-callback":
+                assert on_error is not None
+                on_error(cast("OSError", fault))
+                return iter(())
+            raise fault
+
+        monkeypatch.setattr(Path, "walk", failing_walk)
+    elif boundary == "log-create":
+        monkeypatch.setattr(
+            validator.tempfile,
+            "mkstemp",
+            lambda **_kwargs: (_ for _ in ()).throw(fault),
+        )
+    elif boundary == "latex-run":
+        monkeypatch.setattr(
+            sp, "run", lambda *_args, **_kwargs: (_ for _ in ()).throw(fault)
+        )
+    elif boundary == "latex-status":
+        import sys
+
+        def failing_access(_path: str, _mode: int) -> bool:
+            raise fault
+
+        monkeypatch.setattr(os, "access", failing_access)
+        with pytest.raises(validator.MathSpecificationError) as caught:
+            _ = real_latex_compiler(lambda _name: sys.executable)
+        assert caught.value.__cause__ is fault
+        return
+
+    with pytest.raises(validator.MathSpecificationError) as caught:
+        if boundary in {"source-status", "source-redirect", "source-read"}:
+            _ = validator._read_tex(source)
+        elif boundary in {"source-scan", "source-walk-callback"}:
+            _ = validator._discovered_tex_paths()
+        elif boundary == "root-status":
+            _ = validator.document_sources()
+        elif boundary == "notation-status":
+            validator._validate_notation()
+        elif boundary in {"cache-status", "log-status", "log-create"}:
+            validator._write_math_build_log(log, "new data")
+        elif boundary == "latex-run":
+            _compile_math_source(source)
+        else:
+            _ = real_latex_compiler(lambda _name: (_ for _ in ()).throw(fault))
+    assert caught.value.__cause__ is fault
+
+
+def test_math_native_host_error_keeps_detail_and_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ordinary native failures retain useful system diagnostics."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    failure = OSError("read permission denied")
+    original_open = os.open
+
+    def failing_open(path: Path, flags: int) -> int:
+        if path == source:
+            raise failure
+        return original_open(path, flags)
+
+    monkeypatch.setattr(os, "open", failing_open)
+    with pytest.raises(
+        validator.MathSpecificationError, match="read permission denied"
+    ) as caught:
+        _ = validator._read_tex(source)
+    assert caught.value.__cause__ is failure
