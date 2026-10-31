@@ -296,6 +296,112 @@ def test_profile_file_rejects_nonregular_and_oversized_sources(
         _ = validator.load_document(missing)
 
 
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation",
+    (
+        "parent_symlink",
+        "parent_junction",
+        "leaf_lstat",
+        "leaf_symlink",
+        "leaf_junction",
+        "open",
+        "fdopen",
+        "fstat",
+    ),
+)
+def test_target_profile_host_file_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """Untrusted filesystem inspection failures stay within profile errors."""
+    source = tmp_path / "profile.json"
+    _ = source.write_text(_canonical_text(), encoding="utf-8")
+    if operation == "leaf_lstat":
+        original_lstat = Path.lstat
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            if path == source:
+                raise fault_type("injected profile lstat fault")
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    elif operation in {
+        "parent_symlink",
+        "parent_junction",
+        "leaf_symlink",
+        "leaf_junction",
+    }:
+        target = source.parent if operation.startswith("parent_") else source
+        method = Path.is_symlink if operation.endswith("symlink") else Path.is_junction
+
+        def fail_redirect(path: Path) -> bool:
+            if path == target:
+                raise fault_type("injected profile redirect status fault")
+            return method(path)
+
+        monkeypatch.setattr(
+            Path,
+            "is_symlink" if operation.endswith("symlink") else "is_junction",
+            fail_redirect,
+        )
+    elif operation == "open":
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == source:
+                raise fault_type("injected profile open fault")
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    elif operation == "fdopen":
+
+        def fail_fdopen(_descriptor: int, _mode: str) -> object:
+            raise fault_type("injected profile fdopen fault")
+
+        monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    else:
+
+        def fail_fstat(_descriptor: int) -> os.stat_result:
+            raise fault_type("injected profile fstat fault")
+
+        monkeypatch.setattr(os, "fstat", fail_fstat)
+    with pytest.raises(validator.ProfileValidationError, match="failed to read"):
+        _ = validator.load_document(source)
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+def test_target_profile_fdopen_failure_releases_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """An incomplete profile stream releases its owned file descriptor."""
+    source = tmp_path / "profile.json"
+    _ = source.write_text(_canonical_text(), encoding="utf-8")
+    original_open = os.open
+    opened: list[int] = []
+
+    def track_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        if path == source:
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(_descriptor: int, _mode: str) -> object:
+        raise fault_type("injected profile fdopen fault")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    with pytest.raises(validator.ProfileValidationError, match="failed to read"):
+        _ = validator.load_document(source)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
 def test_profile_file_refuses_fifo_without_blocking(tmp_path: Path) -> None:
     """A writerless FIFO cannot hang canonical profile validation."""
     mkfifo = cast("Callable[[Path], None] | None", getattr(os, "mkfifo", None))

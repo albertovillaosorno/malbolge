@@ -355,7 +355,16 @@ def _read_profile_bytes(path: Path) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except BaseException:
+        # Wrapping failure leaves the private descriptor owned by this reader.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+    with stream:
         if _profile_identity(os.fstat(stream.fileno())) != expected:
             _fail("target-profile document changed before read")
         data = stream.read(MAX_DOCUMENT_BYTES + 1)
@@ -379,10 +388,14 @@ def load_document(path: Path) -> JsonObject:
     admitted_path = _validated_profile_path(path)
     try:
         text = _read_profile_bytes(admitted_path).decode("utf-8-sig")
+    except ProfileValidationError:
+        raise
     except UnicodeDecodeError as error:
         _fail(f"invalid target-profile UTF-8: {error}")
-    except OSError as error:
-        _fail(f"failed to read target-profile document {path}: {error}")
+    except (OSError, ValueError, RuntimeError) as error:
+        raise ProfileValidationError(
+            f"failed to read target-profile document {path}: {error}"
+        ) from error
     return loads_document(text)
 
 
