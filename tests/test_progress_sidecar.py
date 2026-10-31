@@ -3312,6 +3312,103 @@ def test_checkpoint_read_reports_unexpected_stream_close_failure(
         _ = os.fstat(closed[0])
 
 
+@pytest.mark.parametrize("member", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("receipt", [False, True, 0, "closed"])
+def test_reader_rejects_noncanonical_stream_close_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+    receipt: object,
+) -> None:
+    """A false read-close receipt cannot authorize pointer or payload bytes."""
+    checkpoint = b"durable-checkpoint-state"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    opened: list[int] = []
+    closed: list[int] = []
+
+    class ForgedCloseStream:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor: int = descriptor
+
+        def read(self, size: int = -1) -> bytes:
+            if size < 0:
+                size = os.fstat(self.descriptor).st_size
+            return os.read(self.descriptor, size)
+
+        def close(self) -> object:
+            os.close(self.descriptor)
+            closed.append(self.descriptor)
+            return receipt
+
+    def forged_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> ForgedCloseStream:
+        assert (mode, closefd) == ("rb", True)
+        opened.append(descriptor)
+        return ForgedCloseStream(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", forged_stream)
+        with pytest.raises(ERROR, match="read stream close receipt"):
+            _ = _read_selected_progress_member(sidecar, member)
+
+    assert len(opened) == 1
+    assert closed == opened
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+    assert progress.read(Path(sidecar.progress_path)) == sidecar
+    assert progress.read_checkpoint_generation(sidecar) == (checkpoint, None)
+
+
+@pytest.mark.parametrize("member", ["pointer", "checkpoint"])
+def test_reader_forged_close_receipt_keeps_original_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+) -> None:
+    """Bogus cleanup completion stays secondary to a failed raw read."""
+    checkpoint = b"durable-checkpoint-state"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    opened: list[int] = []
+
+    class ForgedCloseStream:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor: int = descriptor
+
+        @staticmethod
+        def read(size: int = -1) -> bytes:
+            del size
+            raise OSError("injected primary raw read failure")
+
+        def close(self) -> bool:
+            os.close(self.descriptor)
+            return False
+
+    def forged_stream(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> ForgedCloseStream:
+        assert (mode, closefd) == ("rb", True)
+        opened.append(descriptor)
+        return ForgedCloseStream(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", forged_stream)
+        with pytest.raises(ERROR) as caught:
+            _ = _read_selected_progress_member(sidecar, member)
+
+    primary = caught.value.__context__
+    assert type(primary) is OSError
+    assert str(primary) == "injected primary raw read failure"
+    assert getattr(primary, "__notes__", None) == [
+        "read stream close also failed: read stream close receipt must be None"
+    ]
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
 def _read_selected_progress_member(
     sidecar: progress.ProgressSidecar, member: str
 ) -> object:

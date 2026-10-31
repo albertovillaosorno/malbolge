@@ -1976,7 +1976,8 @@ def _read_stream_preserving_primary(
     finally:
         primary_error = sys.exception()
         try:
-            stream.close()
+            if stream.close() is not None:
+                _fail("read stream close receipt must be None")
         except BaseException as error:
             if primary_error is not None:
                 BaseException.add_note(

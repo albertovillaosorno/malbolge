@@ -581,6 +581,13 @@ The same precedence applies when raw descriptor cleanup raises `ValueError` or
 Read stream setup failures retain their primary error even when raw descriptor
 cleanup fails; the cleanup exception is attached as secondary evidence.
 
+Both pointer and immutable checkpoint readers also require a native `None`
+stream-close receipt before they admit verified bytes. Eight red-first tests
+reject forged boolean, integer, or text completion reports without losing
+raw descriptor ownership. Two additional failure-path tests preserve the
+original read error and attach the malformed close receipt as a secondary
+note. This does not turn a read into an atomic filesystem snapshot.
+
 Temporary payload-stream teardown likewise keeps an
 earlier write, flush, or file-sync failure primary when close also fails.
 
