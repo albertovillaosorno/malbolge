@@ -413,9 +413,25 @@ def _require_unchanged_sidecars(
 
 
 def _require_git_commit(commit: str) -> None:
-    executable = shutil.which("git", path=os.defpath)
+    try:
+        executable = shutil.which("git", path=os.defpath)
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "host-C source commit Git lookup failed"
+        raise ReferenceAuditError(message) from error
     if executable is None:
         _fail("host-C source commit admission requires local Git")
+    if (
+        type(executable) is not str
+        or not executable
+        or "\0" in executable
+        or not Path(executable).is_absolute()
+    ):
+        _fail("host-C source commit admission requires absolute Git executable")
+    try:
+        _ = os.fsencode(executable)
+    except UnicodeError as error:
+        message = "host-C source commit admission requires encodable Git executable"
+        raise ReferenceAuditError(message) from error
     # Foreign GIT_DIR and object alternates cannot satisfy local admission.
     clean_env = {
         name: value for name, value in os.environ.items() if not name.startswith("GIT_")
@@ -431,10 +447,24 @@ def _require_git_commit(commit: str) -> None:
             capture_output=True,
             timeout=5,
         )
-    except (OSError, sp.TimeoutExpired) as error:
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        sp.SubprocessError,
+    ) as error:
         message = "host-C source commit object lookup failed"
         raise ReferenceAuditError(message) from error
-    if completed.returncode != 0 or completed.stdout.strip() != GIT_COMMIT_TYPE:
+    returncode = getattr(completed, "returncode", None)
+    stdout = getattr(completed, "stdout", None)
+    if (
+        type(returncode) is not int
+        or returncode != 0
+        or type(stdout) is not bytes
+        or stdout.strip() != GIT_COMMIT_TYPE
+    ):
         _fail("host-C recorded source commit is not a local Git commit object")
 
 

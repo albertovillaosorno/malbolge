@@ -952,6 +952,112 @@ def test_host_c_audit_rejects_unindexed_trial_file_inventory(
         reference_audit.audit(relative)
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [True, 0, b"/usr/bin/git", "", "git", "../git", "/usr/bin/git\0bad", "\ud800"],
+    ids=[
+        "boolean",
+        "integer",
+        "bytes",
+        "empty",
+        "relative",
+        "parent",
+        "nul",
+        "unicode",
+    ],
+)
+def test_audit_git_resolver_rejects_noncanonical_paths_before_launch(
+    monkeypatch: pytest.MonkeyPatch, invalid: object
+) -> None:
+    """A malformed host Git path cannot attest a recorded commit object."""
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("malformed Git path launched a host tool")
+
+    monkeypatch.setattr(
+        reference_audit.shutil, "which", lambda *_args, **_kwargs: invalid
+    )
+    monkeypatch.setattr(reference_audit.sp, "run", forbidden)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="Git executable"):
+        reference_audit._require_git_commit("0" * 40)
+
+
+@pytest.mark.parametrize(
+    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_audit_git_resolver_fault_is_typed(
+    monkeypatch: pytest.MonkeyPatch, failure_type: type[Exception]
+) -> None:
+    """Host resolver exceptions retain a typed audit error and original cause."""
+
+    def broken(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise failure_type("injected audit Git lookup failure")
+
+    monkeypatch.setattr(reference_audit.shutil, "which", broken)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="Git lookup"
+    ) as error:
+        reference_audit._require_git_commit("0" * 40)
+    assert type(error.value.__cause__) is failure_type
+
+
+@pytest.mark.parametrize(
+    "failure_type",
+    [
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        reference_audit.sp.SubprocessError,
+    ],
+)
+def test_audit_git_runner_fault_is_typed(
+    monkeypatch: pytest.MonkeyPatch, failure_type: type[Exception]
+) -> None:
+    """Unexpected host execution errors cannot leak through optional audit."""
+
+    def broken(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise failure_type("injected audit Git process failure")
+
+    monkeypatch.setattr(reference_audit.sp, "run", broken)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="object lookup"
+    ) as error:
+        reference_audit._require_git_commit("0" * 40)
+    assert type(error.value.__cause__) is failure_type
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout"),
+    [
+        (None, b"commit"),
+        (False, b"commit"),
+        ("0", b"commit"),
+        (0, None),
+        (0, "commit"),
+        (0, object()),
+    ],
+)
+def test_audit_git_rejects_noncanonical_process_receipt(
+    monkeypatch: pytest.MonkeyPatch, returncode: object, stdout: object
+) -> None:
+    """Malformed child return fields cannot impersonate a Git commit receipt."""
+
+    def fake_run(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        return type("FakeCompleted", (), {"returncode": returncode, "stdout": stdout})()
+
+    monkeypatch.setattr(reference_audit.sp, "run", fake_run)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="local Git commit object"
+    ):
+        reference_audit._require_git_commit("0" * 40)
+
+
 def test_opt_in_git_object_check_rejects_missing_recorded_commit(
     live_pilot: tuple[Path, str],
 ) -> None:
@@ -972,9 +1078,7 @@ def test_opt_in_git_object_check_rejects_missing_recorded_commit(
     ):
         reference_audit.audit(
             relative,
-            options=reference_audit.AuditOptions(
-                require_source_commit_object=True
-            ),
+            options=reference_audit.AuditOptions(require_source_commit_object=True),
         )
 
 
