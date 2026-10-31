@@ -1162,7 +1162,7 @@ computation, heap, C ABI or guest libc/EOF realization.
 ### First Verified Nonzero Guest U8 Literal
 
 An opt-in `encode_rotated_byte_literal` bridge admits one exact
-`MaterializeU8` with one to twenty-six same-SSA `ByteOutput`s, followed
+`MaterializeU8` with one to twenty-seven same-SSA `ByteOutput`s, followed
 by `ReturnVoid`.
 For one output, 14 current-profile nonzero bytes are realized:
 `4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253`. A bounded
@@ -1193,9 +1193,9 @@ Independent 256-byte-domain checks reject the 237 and 238 unseeded values
 respectively. Separate eight- and nine-output short-phase scans each confirm 21
 distinct shortest seeds, rejecting the other 235 bytes per count.
 The tenth-output scan confirms 25 shortest seeds and rejects the other
-231 bytes. Independently re-executed eleven- through twenty-six-output
-scans admit 17, 20, 19, 22, 17, 24, 19, 20, 19, 21, 20, 25, 21, 21, 19
-and 22 nonzero byte values, respectively. The seventeen- through
+231 bytes. Independently re-executed eleven- through twenty-seven-output
+scans admit 17, 20, 19, 22, 17, 24, 19, 20, 19, 21, 20, 25, 21, 21,
+19, 22 and 18 nonzero byte values, respectively. The seventeen- through
 twenty-output scans each verify all 26 tested phases. Twenty-one outputs
 admit 25 phases, excluding phase fourteen.
 All counts retain the shortest seed per byte. Eighteen
@@ -1212,11 +1212,14 @@ outputs succeed in 25 phases (not seven), admitting 19 distinct bytes
 with the shortest prefixes; typed MCTI/MCTR and real runner check 18/44.
 Twenty-six outputs have 24 valid phases (not six or seven), 22 distinct
 shortest byte witnesses and real typed/CLI runner bytes 196 and 137.
-Twenty-seven or more outputs, foreign profiles, unknown byte
+Twenty-seven outputs pass 23 of 26 independent real-VM phases
+(excluding six through eight), yielding 18 distinct shortest byte
+witnesses; canonical typed and real CLI runner prove 138 and 41.
+Twenty-eight or more outputs, foreign profiles, unknown byte
 values and mixed SSA effects reject.
 
 `compile_canonical_typed_rotated_byte_literal` projects complete
-canonical MCTI with one `u8 ConstantInteger`, one to twenty-six matching
+canonical MCTI with one `u8 ConstantInteger`, one to twenty-seven matching
 `ByteOutput`s and final void return. Canonical MCTR re-admission and source
 comparison
 retain source/SSA/ABI/target provenance. The standalone CLI adds explicit

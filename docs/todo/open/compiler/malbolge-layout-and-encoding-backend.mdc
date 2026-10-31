@@ -270,13 +270,15 @@ emission.
   19 distinct shortest nonzero byte witnesses with typed capsule/runner
   values 18 and 44. Twenty-six outputs admit 24 of 26 bounded phases
   (excluding six and seven), with 22 distinct byte witnesses and real
-  typed/CLI runner bytes 196 and 137.
+  typed/CLI runner bytes 196 and 137. Twenty-seven outputs
+  pass 23/26 independent phases (not six through eight), yielding 18
+  distinct shortest nonzero bytes; typed/CLI runner verifies 138 and 41.
   All retained counts use shortest valid prefixes, reject unsupported values
   and counts, and verify real MCTI/MCTR file/stdin capsule publication with
   the guest VM.
   The full 256-byte admission domain, real CLI raw/capsule publisher, guest
   runner and zero-consumed-input checks preserve rejection of unsupported
-  values, foreign profiles and twenty-seven or more outputs. This is not general
+  values, foreign profiles and twenty-eight or more outputs. This is not general
   guest integer computation or proof of arbitrary output sequences.
 - The explicit `--identity-byte-trace` MCTI/MCTR file/stdin publisher
   admits latest-input signed/unsigned eight-bit SSA bitcasts through
