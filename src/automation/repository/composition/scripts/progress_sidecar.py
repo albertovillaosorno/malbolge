@@ -2273,7 +2273,9 @@ def _owned_temporary_still_named(
         # that path intact rather than risk deleting a foreign entry.
         return False
     try:
-        current = temporary.stat(follow_symlinks=False)
+        current = _admit_native_stat(
+            temporary.stat(follow_symlinks=False), "progress temporary cleanup"
+        )
     except FileNotFoundError:
         return False
     return stat.S_ISREG(current.st_mode) and (
@@ -2687,7 +2689,9 @@ def _matches_retained_immutable_stage(
     ):
         return False
     try:
-        observed = entry.stat(follow_symlinks=False)
+        observed = _admit_native_stat(
+            entry.stat(follow_symlinks=False), "immutable staging alias"
+        )
     except (OSError, ValueError, RuntimeError):
         return False
     return stat.S_ISREG(observed.st_mode) and (
@@ -2720,7 +2724,9 @@ def _verify_retained_immutable_alias(
     destination: Path, alias: Path, previous: os.stat_result
 ) -> None:
     """Require unchanged collision and alias identity after payload read."""
-    current = destination.stat(follow_symlinks=False)
+    current = _admit_native_stat(
+        destination.stat(follow_symlinks=False), "immutable progress payload"
+    )
     if (
         current.st_dev,
         current.st_ino,
@@ -2736,7 +2742,9 @@ def _verify_retained_immutable_alias(
     ):
         _fail("immutable progress payload collision inode changed")
     _reject_path_redirect(alias, "immutable progress temporary")
-    linked = alias.stat(follow_symlinks=False)
+    linked = _admit_native_stat(
+        alias.stat(follow_symlinks=False), "immutable staging alias"
+    )
     if (linked.st_dev, linked.st_ino) != (previous.st_dev, previous.st_ino):
         _fail("immutable progress temporary changed before recovery cleanup")
 

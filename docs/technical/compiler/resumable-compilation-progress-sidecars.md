@@ -183,8 +183,13 @@ initial collision admission, single-link collision rechecks, and the first
 post-link inode check before durability can be certified. A newly linked
 member with untrusted post-link evidence reports committed-path uncertainty;
 collisions cannot be reused on forged metadata even when their bytes match.
-Retained-alias cleanup still follows its own separately admitted identity and
-content checks.
+Retained-alias recovery also admits exact native directory-entry metadata,
+collision inode rechecks and alias-path receipts before considering a stale
+staging alias for cleanup. Foreign entry receipts do not establish candidates,
+and foreign later receipts abort recovery without unlinking the alias. The
+mutable and immutable staging cleanup paths likewise reject foreign pathname
+metadata, preserving the original write failure and leaving the unproved stage
+untouched.
 
 The mutable progress-pointer reader is not subject to this
 immutable-generation link-count policy. These checks cannot prevent writes

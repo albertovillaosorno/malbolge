@@ -608,6 +608,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   Five red-first regressions cover new committed inode uncertainty and
   collision preflight/reuse rejection while preserving existing bytes.
 
+  Retained immutable staging-alias recovery now requires native directory
+  entry, destination and alias stat receipts; foreign evidence cannot authorize
+  alias cleanup. Mutable and immutable failed-write staging cleanup also rejects
+  untrusted inode receipts without masking the primary write error or unlinking
+  unverified files. Five adversarial cases exercise these boundaries.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact

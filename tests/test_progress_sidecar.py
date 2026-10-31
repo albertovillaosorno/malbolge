@@ -6507,6 +6507,78 @@ def test_retained_alias_swap_after_identity_check_preserves_foreign_entry(
 
 @pytest.mark.skipif(
     os.name == progress.WINDOWS_PLATFORM,
+    reason="Retained immutable aliases require POSIX hard-link semantics",
+)
+@pytest.mark.parametrize("source", ["collision", "alias"])
+def test_retained_alias_recovery_rejects_foreign_path_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+) -> None:
+    """No recovery alias can be unlinked based on forged inode metadata."""
+    destination = tmp_path / "existing-checkpoint"
+    alias = tmp_path / f".{destination.name}.abcdefgh.tmp"
+    payload = b"verified-recovery-checkpoint"
+    _ = destination.write_bytes(payload)
+    os.link(destination, alias)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    original_stat = Path.stat
+    collision_receipts = 0
+    forged = False
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign recovery metadata accessed: {field}")
+
+    def foreign_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal collision_receipts, forged
+        if not follow_symlinks:
+            if path == destination:
+                collision_receipts += 1
+                if source == "collision" and collision_receipts == 4:
+                    forged = True
+                    return cast("os.stat_result", cast("object", ForeignStat()))
+            if path == alias and source == "alias":
+                forged = True
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "stat", foreign_stat)
+        with pytest.raises(ERROR, match="native os.stat_result"):
+            _ = writer(destination, payload, platform=os.name)
+    assert forged
+    assert destination.read_bytes() == alias.read_bytes() == payload
+    assert destination.stat().st_nlink == 2
+
+
+def test_retained_alias_scan_rejects_foreign_entry_stat() -> None:
+    """An untrusted directory entry cannot authenticate a retained stage."""
+    matcher = cast(
+        "Callable[[os.DirEntry[str], str, tuple[int, int]], bool]",
+        vars(progress)["_matches_retained_immutable_stage"],
+    )
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign directory entry accessed: {field}")
+
+    class ForeignEntry:
+        name: str = ".checkpoint.abcdefgh.tmp"
+
+        @staticmethod
+        def stat(*, follow_symlinks: bool = True) -> os.stat_result:
+            assert not follow_symlinks
+            return cast("os.stat_result", cast("object", ForeignStat()))
+
+    foreign = cast("os.DirEntry[str]", cast("object", ForeignEntry()))
+    assert matcher(foreign, ".checkpoint.", (1, 2)) is False
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
     reason="POSIX literal wildcard filenames are required",
 )
 @pytest.mark.parametrize(
@@ -7929,6 +8001,66 @@ def test_writer_rejects_foreign_staging_path_receipts(
     assert len(staged_paths) == 1
     assert staged_receipts >= receipt_number
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+def test_cleanup_keeps_primary_when_staged_stat_receipt_is_foreign(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Foreign cleanup metadata must neither unlink a stage nor mask failure."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    original_mkstemp = tempfile.mkstemp
+    original_stat = Path.stat
+    staged_paths: list[Path] = []
+    forged = False
+    failure = "injected primary staging write failure"
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign cleanup metadata accessed: {field}")
+
+    def track_stage(*, prefix: str, suffix: str, **options: Path) -> tuple[int, str]:
+        descriptor, name = original_mkstemp(
+            dir=options["dir"], prefix=prefix, suffix=suffix
+        )
+        staged_paths.append(Path(name))
+        return descriptor, name
+
+    def forged_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal forged
+        if not follow_symlinks and path in staged_paths:
+            forged = True
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    def fail_write(descriptor: int, payload: bytes) -> None:
+        del payload
+        os.close(descriptor)
+        raise OSError(failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(tempfile, "mkstemp", track_stage)
+        context.setattr(Path, "stat", forged_stat)
+        context.setattr(progress, "_write_payload_descriptor", fail_write)
+        with pytest.raises((ERROR, OSError), match=failure) as captured:
+            _ = _publish_for_temporary_admission_test(kind, sidecar, destination)
+    assert forged
+    assert len(staged_paths) == 1
+    assert staged_paths[0].exists()
+    assert not destination.exists()
+    if kind == TEMP_IMMUTABLE:
+        assert "native os.stat_result" in str(
+            getattr(captured.value, "__notes__", None)
+        )
 
 
 @pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
