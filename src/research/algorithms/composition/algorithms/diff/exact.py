@@ -404,7 +404,7 @@ def _resolved_tree_root(root: Path) -> Path:
         raise ExactTreeError(message)
     try:
         return root.resolve(strict=True)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"tree root resolution failed: {root}: {error}"
         raise ExactTreeError(message) from error
 
@@ -715,7 +715,7 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
     try:
         resolved_path = path.resolve()
         resolved_root = root.resolve()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"tree path resolution failed: {relative_path!r}: {error}"
         raise ExactTreeError(message) from error
     try:
@@ -941,7 +941,7 @@ def _resolved_output_root(output_root: Path) -> Path:
         raise ExactTreeError(message)
     try:
         return output_root.resolve()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"output root resolution failed: {output_root}: {error}"
         raise ExactTreeError(message) from error
 

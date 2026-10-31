@@ -621,8 +621,13 @@ def test_exact_materialization_rejects_linked_source_root_when_supported(
     _expect(not output.exists(), "linked-source rejection published output")
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_exact_materialization_wraps_output_root_resolution_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Keep output-root resolution failures inside the exact-tree boundary."""
     source, oracle = _synthetic_pair(tmp_path)
@@ -633,7 +638,7 @@ def test_exact_materialization_wraps_output_root_resolution_error(
     def fail_resolve(path: Path, *, strict: bool = False) -> Path:
         if path == output:
             message = "blocked exact output"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
@@ -642,8 +647,13 @@ def test_exact_materialization_wraps_output_root_resolution_error(
     _expect(not output.exists(), "output resolution failure published output")
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_exact_materialization_wraps_tree_path_resolution_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Keep source-path resolution failures inside the exact-tree boundary."""
     source, oracle = _synthetic_pair(tmp_path)
@@ -654,7 +664,7 @@ def test_exact_materialization_wraps_tree_path_resolution_error(
     def fail_resolve(path: Path, *, strict: bool = False) -> Path:
         if path == blocked:
             message = "blocked source path"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
@@ -770,6 +780,30 @@ def test_exact_materialization_rejects_existing_output(tmp_path: Path) -> None:
 
     with pytest.raises(ExactTreeError, match="already exists"):
         materialize_exact_plan(source, plan, output)
+
+
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
+def test_exact_tree_root_resolution_failure_stays_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Invalid host root resolution never escapes the exact-tree boundary."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == root:
+            message = "blocked exact root resolution"
+            raise failure_type(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(ExactTreeError, match="tree root resolution failed"):
+        _ = snapshot_tree(root)
 
 
 def test_snapshot_root_status_error_fails_closed(
