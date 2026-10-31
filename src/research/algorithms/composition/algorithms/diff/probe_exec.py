@@ -420,7 +420,7 @@ def _validate_relative_path(relative_path: object) -> None:
 def _resolved_root(path: Path, description: str) -> Path:
     try:
         return path.resolve()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"probe {description} root resolution failed: {path}: {error}"
         raise ProbeExecutionError(message) from error
 
@@ -446,7 +446,7 @@ def _rooted_path(
     candidate = root.joinpath(*PurePosixPath(argument.relative_path).parts)
     try:
         resolved = candidate.resolve()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"probe path resolution failed: {candidate}: {error}"
         raise ProbeExecutionError(message) from error
     try:
@@ -462,7 +462,7 @@ def _rooted_path(
 def _resolved_tool_path(path: Path) -> Path:
     try:
         return path.resolve()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"probe tool resolution failed: {path}: {error}"
         raise ProbeExecutionError(message) from error
 
@@ -1179,7 +1179,7 @@ def _require_repository_argument_disjoint(
     path = _rooted_path(argument, context, original_source)
     try:
         resolved = path.resolve()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"probe repository argument resolution failed: {error}"
         raise ProbeExecutionError(message) from error
     if resolved.is_relative_to(original_source):

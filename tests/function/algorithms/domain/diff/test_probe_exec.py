@@ -76,6 +76,7 @@ _STDERR_NAME = "stderr"
 _POSIX_OS_NAME = "posix"
 _PROBE_WRITER_THREAD_NAME = "probe-stdin-writer"
 _GROUP_CLEANUP_FAILURE = "group cleanup failed"
+_SECOND_RESOLUTION = 2
 _POSIX_WAIT_NOHANG = cast("int", getattr(os, "WNOHANG", 1))
 _LINK_CREATE_CODE = (
     "import pathlib,sys;pathlib.Path(sys.argv[1]).symlink_to(sys.argv[2])"
@@ -217,8 +218,13 @@ def test_scratch_executable_can_be_produced_then_run(tmp_path: Path) -> None:
     _expect(transcript.digested_commands == 1, "scratch executable did not run")
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_repository_root_resolution_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Wrap an inaccessible authorized root in the probe execution boundary."""
     source = tmp_path / "source"
@@ -228,7 +234,7 @@ def test_repository_root_resolution_error_fails_closed(
     def fail_resolve(path: Path, *, strict: bool = False) -> Path:
         if path == tmp_path:
             message = "blocked repository root"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
@@ -249,8 +255,13 @@ def test_repository_root_resolution_error_fails_closed(
         _ = run_probe_program(program, _context(source, tmp_path))
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_rooted_argument_resolution_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Wrap an inaccessible rooted argument before process launch."""
     source = tmp_path / "source"
@@ -261,7 +272,7 @@ def test_rooted_argument_resolution_error_fails_closed(
     def fail_resolve(path: Path, *, strict: bool = False) -> Path:
         if path == candidate:
             message = "blocked rooted argument"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
@@ -282,6 +293,52 @@ def test_rooted_argument_resolution_error_fails_closed(
         ProbeExecutionError, match="probe path resolution failed"
     ):
         _ = run_probe_program(program, _context(source, tmp_path))
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_repository_alias_second_resolution_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Reject a repository path that fails its second preflight resolve."""
+    source = tmp_path / "source"
+    source.mkdir()
+    candidate = tmp_path / "unrelated.txt"
+    _ = candidate.write_text("outside", encoding="utf-8")
+    original_resolve = Path.resolve
+    resolved_paths: list[Path] = []
+
+    def fail_second_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == candidate:
+            resolved_paths.append(path)
+            if len(resolved_paths) == _SECOND_RESOLUTION:
+                message = "repository alias changed during preflight"
+                raise failure_type(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_second_resolve)
+    program = ProbeProgram(
+        "alias-resolution",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    "pass",
+                    PathArgument(ProbeRoot.REPOSITORY, candidate.name),
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(
+        ProbeExecutionError, match="repository argument resolution failed"
+    ):
+        _ = run_probe_program(program, _context(source, tmp_path))
+    _expect(
+        len(resolved_paths) == _SECOND_RESOLUTION,
+        "repository alias preflight did not perform both checks",
+    )
 
 
 def test_missing_tool_executable_fails_closed(tmp_path: Path) -> None:
@@ -321,8 +378,13 @@ def test_tool_executable_status_error_fails_closed(
         _ = run_probe_program(_program("blocked-tool", "pass"), context)
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_tool_resolution_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Wrap tool-path resolution failures in the probe execution boundary."""
     source = tmp_path / "source"
@@ -335,7 +397,7 @@ def test_tool_resolution_error_fails_closed(
     def fail_resolve(path: Path, *, strict: bool = False) -> Path:
         if path == tool:
             message = "blocked tool resolution"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
