@@ -638,6 +638,19 @@ the failure reports the checkpoint as the exact last committed path. After all
 generation members commit, a mutable sidecar prepublication failure likewise
 reports the last committed member until the pointer itself crosses commit.
 
+Unexpected ordinary `IndexError` and `OverflowError` now preserve that same
+member attribution across the remaining checkpoint/partial/pointer boundaries.
+Fourteen red-first cases cover mutable and immutable final identity admission,
+postlink inode inspection, durable immutable staging cleanup, second-member
+payload sync failure, and pointer writer failure after one or both generation
+members commit. The exact member known to have crossed commit is returned in
+`ProgressSidecarCommittedError` with the original dependency fault as cause.
+A failed partial never promotes a pointer; retained same-inode staging aliases
+still use the existing bounded byte-checked recovery before retry. No such
+failure is mistaken for an uncommitted generation or silently discarded.
+These handlers contain ordinary `Exception`, not cancellation signals derived
+from `BaseException`.
+
 During lock unwinding, a later release or close failure is secondary evidence
 when an acquisition, body, or release failure is already active. This
 precedence also applies when an injected cleanup operation raises

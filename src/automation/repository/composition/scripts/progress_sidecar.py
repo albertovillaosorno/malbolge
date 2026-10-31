@@ -2600,7 +2600,7 @@ def _confirm_mutable_postpublication_identity(
         _admit_temporary_path(destination, identity, len(payload))
         if committed != payload:
             _fail("progress sidecar content changed after durable publication")
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         message = (
             "progress sidecar committed durably but final identity "
             f"admission failed: {_host_error_detail(error)}"
@@ -2937,7 +2937,7 @@ def _cleanup_immutable_temporary(
         if not _owned_temporary_still_named(temporary, identity):
             return
         temporary.unlink(missing_ok=True)
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         if primary_error is not None:
             BaseException.add_note(
                 primary_error,
@@ -2968,7 +2968,7 @@ def _confirm_immutable_postcleanup_identity(
         if (observed.st_dev, observed.st_ino) != expected_identity:
             _fail("immutable progress payload inode changed after publication")
         _verify_written_temporary(destination, expected_identity, payload)
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         message = (
             "immutable progress payload committed durably but final "
             f"identity admission failed: {_host_error_detail(error)}"
@@ -3014,7 +3014,7 @@ def _write_immutable(
             )
             if (published.st_dev, published.st_ino) != expected_identity:
                 _fail("immutable progress payload published inode changed")
-        except _OUTPUT_STREAM_ERRORS as error:
+        except Exception as error:
             message = (
                 "immutable progress payload committed but published inode "
                 f"cannot be identified: {_host_error_detail(error)}"
@@ -3195,7 +3195,7 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
             # The staged verifier already attached the original I/O cause and
             # any secondary reader-close notes. Do not rewrap this typed error.
             raise
-        except _OUTPUT_STREAM_ERRORS as error:
+        except Exception as error:
             _fail(f"progress sidecar publication failed: {_host_error_detail(error)}")
 
 
@@ -3283,7 +3283,7 @@ def _publish_generation_payloads(
         checkpoint_committed = True
         if partial is not None and sidecar.partial_path is not None:
             _ = _write_immutable(Path(sidecar.partial_path), partial)
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         _raise_generation_publication_failure(
             error,
             checkpoint_path=checkpoint_path,
@@ -3327,7 +3327,7 @@ def write_checkpoint_generation(
         return write_atomic(validated)
     except ProgressSidecarCommittedError:
         raise
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         message = (
             "generation payload committed durably but progress sidecar "
             f"publication failed: {_host_error_detail(error)}"

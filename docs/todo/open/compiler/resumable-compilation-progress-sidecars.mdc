@@ -248,6 +248,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and non-`OSError` stream-close errors cannot mask earlier write failures,
   and non-`OSError` mutable and immutable temporary unlink errors preserve
   primary prepublication failures or exact committed-generation evidence,
+  fourteen more red-first `IndexError`/`OverflowError` publication cases retain
+  exact durable pointer/checkpoint/partial paths on late identity verification,
+  immutable postlink inode stat, durable stage cleanup, second-member file sync,
+  and sidecar writer faults after a generation commit; each original ordinary
+  dependency exception remains the committed-error cause, and retained-stage
+  retry recovery stays admissible without publishing an unverified pointer,
   writing with raw-descriptor ownership cleanup on stream-open failure and
   primary-error preservation through descriptor close, no mutable
   temp unlink after replacement, and primary-error preservation when mutable

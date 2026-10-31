@@ -14482,3 +14482,204 @@ def test_unexpected_directory_close_fault_preserves_failed_sync(
     assert destination.is_file()
     if publication == "checkpoint":
         assert not Path(sidecar.progress_path).exists()
+
+
+@pytest.mark.parametrize("member", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_unexpected_postcommit_identity_fault_preserves_member_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+    fault_type: type[Exception],
+) -> None:
+    """Unknown final admission failures retain the exact durable artifact."""
+    checkpoint = b"immutable-final-identity-state"
+    sidecar = _sidecar(tmp_path)
+    if member == "checkpoint":
+        sidecar = _checkpointed(sidecar, checkpoint=checkpoint, partial=None)
+    destination = (
+        Path(sidecar.progress_path)
+        if member == "pointer"
+        else Path(sidecar.checkpoint_path or "")
+    )
+    fault = fault_type("injected postcommit identity failure")
+    original_read = cast("Callable[..., bytes]", vars(progress)["_read_regular_bytes"])
+    original_verify = cast(
+        "Callable[[Path, tuple[int, int], bytes], None]",
+        vars(progress)["_verify_written_temporary"],
+    )
+    injected = False
+
+    def failing_committed_read(path: Path, context: str, **kwargs: object) -> bytes:
+        nonlocal injected
+        if path == destination and context == "committed progress sidecar":
+            injected = True
+            raise fault
+        return original_read(path, context, **kwargs)
+
+    def failing_committed_verify(
+        path: Path, identity: tuple[int, int], payload: bytes
+    ) -> None:
+        nonlocal injected
+        if path == destination:
+            injected = True
+            raise fault
+        original_verify(path, identity, payload)
+
+    with monkeypatch.context() as context:
+        if member == "pointer":
+            context.setattr(progress, "_read_regular_bytes", failing_committed_read)
+        else:
+            context.setattr(progress, "_verify_written_temporary", failing_committed_verify)
+        with pytest.raises(progress.ProgressSidecarCommittedError) as captured:
+            if member == "pointer":
+                _ = progress.write_atomic(sidecar)
+            else:
+                _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert injected
+    assert captured.value.published_path == destination
+    assert captured.value.__cause__ is fault
+    assert destination.is_file()
+    if member == "pointer":
+        assert progress.read(destination) == sidecar
+    else:
+        assert destination.read_bytes() == checkpoint
+        assert not Path(sidecar.progress_path).exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_unexpected_immutable_temp_cleanup_retains_committed_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A durable checkpoint is not forgotten when staging unlink misbehaves."""
+    checkpoint = b"committed-checkpoint-before-unlink"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    destination = Path(sidecar.checkpoint_path or "")
+    original_unlink = Path.unlink
+    fault = fault_type("injected immutable staging unlink failure")
+    triggered = False
+
+    def failing_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        nonlocal triggered
+        if path.name.endswith(".tmp"):
+            triggered = True
+            raise fault
+        return original_unlink(path, missing_ok=missing_ok)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "unlink", failing_unlink)
+        with pytest.raises(progress.ProgressSidecarCommittedError) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert triggered
+    assert captured.value.published_path == destination
+    assert captured.value.__cause__ is fault
+    assert destination.read_bytes() == checkpoint
+    assert not Path(sidecar.progress_path).exists()
+    assert progress.write_checkpoint_generation(sidecar, checkpoint) == Path(sidecar.progress_path)
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_unexpected_partial_file_sync_retains_committed_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Second-member writer failures report the first durable generation."""
+    checkpoint = b"first-immutable-generation"
+    partial = b"second-immutable-member"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=partial)
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    partial_path = Path(sidecar.partial_path or "")
+    original_sync = os.fsync
+    regular_syncs = 0
+    fault = fault_type("injected partial file sync failure")
+
+    def failing_partial_sync(descriptor: int) -> None:
+        nonlocal regular_syncs
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            regular_syncs += 1
+            if regular_syncs == 2:
+                raise fault
+        return original_sync(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", failing_partial_sync)
+        with pytest.raises(progress.ProgressSidecarCommittedError) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint, partial)
+    assert regular_syncs == 2
+    assert captured.value.published_path == checkpoint_path
+    assert captured.value.__cause__ is fault
+    assert checkpoint_path.read_bytes() == checkpoint
+    assert not partial_path.exists()
+    assert not Path(sidecar.progress_path).exists()
+
+
+@pytest.mark.parametrize("with_partial", [False, True])
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_unexpected_pointer_writer_after_generations_retains_last_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    with_partial: bool,
+    fault_type: type[Exception],
+) -> None:
+    """A pointer-stage rejection cannot discard previously durable members."""
+    checkpoint = b"first-generation-verified"
+    partial = b"partial-generation-verified" if with_partial else None
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=partial)
+    last_member = Path(
+        (sidecar.partial_path or "")
+        if with_partial
+        else (sidecar.checkpoint_path or "")
+    )
+    fault = fault_type("injected pointer publication failure")
+
+    def reject_pointer(candidate: progress.ProgressSidecar) -> None:
+        assert candidate == sidecar
+        raise fault
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", reject_pointer)
+        with pytest.raises(progress.ProgressSidecarCommittedError) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint, partial)
+    assert captured.value.published_path == last_member
+    assert captured.value.__cause__ is fault
+    assert last_member.read_bytes() == (partial if with_partial else checkpoint)
+    assert not Path(sidecar.progress_path).exists()
+
+
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_unexpected_immutable_postlink_probe_keeps_published_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Unverified postlink inode admission must report a committed member."""
+    checkpoint = b"postlink-immutable-checkpoint"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    destination = Path(sidecar.checkpoint_path or "")
+    original_stat = Path.stat
+    fault = fault_type("injected immediate postlink stat failure")
+    triggered = False
+
+    def failing_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal triggered
+        if path == destination and not follow_symlinks and not triggered:
+            triggered = True
+            raise fault
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "stat", failing_stat)
+        with pytest.raises(progress.ProgressSidecarCommittedError) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert triggered
+    assert captured.value.published_path == destination
+    assert captured.value.__cause__ is fault
+    assert destination.read_bytes() == checkpoint
+    assert not Path(sidecar.progress_path).exists()
