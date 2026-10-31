@@ -1065,6 +1065,7 @@ def test_snapshot_rejects_writerless_fifo_swap_without_blocking(
     environment = os.environ.copy()
     environment["PYTHONPATH"] = os.pathsep.join(sys.path)
     # A previous path-based read blocked forever here with no FIFO writer.
+    # jig-ignore-next-line: preserve the inline checked subprocess rule ID
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - explicit argv and shell=False.
         [sys.executable, "-c", script, str(root)],
         shell=False,
