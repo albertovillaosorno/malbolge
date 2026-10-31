@@ -55,6 +55,8 @@ use malbolge::{
 
 const ANALYSIS_SOURCE: &[u8] = b"b&&;@L";
 const OUTPUT_SOURCE: &[u8] = b"ubO";
+// Three-byte fixture plus one overflow probe through the opened descriptor.
+const SOURCE_PROBE_BYTES: u64 = 4;
 
 type DuplicateCliCase = (&'static [&'static str], &'static str);
 
@@ -157,7 +159,7 @@ fn cli_rejects_same_length_source_inode_substitution_during_read()
         .map_err(|error| error.to_string())?;
     let result =
         cli::read_decompiler_source_with_reader(&source, |opened, bytes| {
-            let read = opened.read_to_end(bytes)?;
+            let read = opened.take(SOURCE_PROBE_BYTES).read_to_end(bytes)?;
             fs::rename(&replacement, &source)?;
             Ok(read)
         });
@@ -181,7 +183,7 @@ fn cli_rejects_same_length_source_rewrite_during_read() -> Result<(), String> {
     fs::write(&source, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
     let result =
         cli::read_decompiler_source_with_reader(&source, |opened, bytes| {
-            let read = opened.read_to_end(bytes)?;
+            let read = opened.take(SOURCE_PROBE_BYTES).read_to_end(bytes)?;
             fs::write(&source, b"ctO")?;
             File::open(&source)?
                 .set_times(fs::FileTimes::new().set_modified(UNIX_EPOCH))?;
@@ -210,8 +212,8 @@ fn cli_rejects_equal_inode_parent_alias_swap_during_read() -> Result<(), String>
     let directory = temporary_cli_inputs()?;
     let original = directory.join("original");
     let alternate = directory.join("alternate");
-    fs::create_dir(&original).map_err(|error| error.to_string())?;
-    fs::create_dir(&alternate).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&original).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&alternate).map_err(|error| error.to_string())?;
     let first = original.join("source.malbolge");
     let second = alternate.join("source.malbolge");
     fs::write(&first, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
@@ -221,7 +223,7 @@ fn cli_rejects_equal_inode_parent_alias_swap_during_read() -> Result<(), String>
     let path = link.join("source.malbolge");
     let result =
         cli::read_decompiler_source_with_reader(&path, |opened, bytes| {
-            let read = opened.read_to_end(bytes)?;
+            let read = opened.take(SOURCE_PROBE_BYTES).read_to_end(bytes)?;
             fs::remove_file(&link)?;
             symlink(&alternate, &link)?;
             Ok(read)
@@ -252,7 +254,7 @@ fn cli_accepts_stable_regular_source_symlink() -> Result<(), String> {
     symlink(&source, &alias).map_err(|error| error.to_string())?;
     let result =
         cli::read_decompiler_source_with_reader(&alias, |opened, bytes| {
-            opened.read_to_end(bytes)
+            opened.take(SOURCE_PROBE_BYTES).read_to_end(bytes)
         });
     fs::remove_dir_all(&directory)
         .map_err(|error| format!("remove source fixture: {error}"))?;
