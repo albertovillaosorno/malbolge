@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -54,6 +55,8 @@ CACHE_ROOT_CASE = "cache-root"
 NOTATION_CASE = "notation"
 MISSING_ROOT_CASE = "root"
 SECOND_OBSERVATION = 2
+OUTSIDE_LOG_TEXT = "external file must survive"
+COMPILED_LOG_TEXT = "built latex stdout"
 
 EXPECTED_DOCUMENTS = (
     # jig-ignore-next-line: indivisible reviewed identifier
@@ -401,3 +404,141 @@ def test_math_source_read_rejects_inplace_mutation(
     monkeypatch.setattr(os, "fstat", mutating_fstat)
     with pytest.raises(validator.MathSpecificationError, match="changed"):
         _ = validator.document_sources()
+
+
+def _math_log_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path]:
+    math_root = tmp_path / "math"
+    math_root.mkdir()
+    source = math_root / "proof.tex"
+    _ = source.write_text(r"\documentclass{article}", encoding="ascii")
+    cache_root = tmp_path / ".cache" / "latex"
+    output = cache_root / "proof"
+    output.mkdir(parents=True)
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "MATH_ROOT", math_root)
+    monkeypatch.setattr(validator, "CACHE_ROOT", cache_root)
+    monkeypatch.setattr(validator, "latex_compiler", lambda: "pdflatex")
+    return source, output / "build.stdout.txt"
+
+
+def _compile_math_source(source: Path) -> None:
+    compilation = cast(
+        "Callable[[Path], None]", vars(validator)["_compile_document"]
+    )
+    compilation(source)
+
+
+def test_math_log_rejects_existing_link_before_compiler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A preexisting linked log cannot redirect compiler diagnostics outside."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+    outside = tmp_path / "outside.txt"
+    _ = outside.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    try:
+        _ = log.symlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+
+    def never_run(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("LaTeX compiler ran despite redirected output")
+
+    monkeypatch.setattr(sp, "run", never_run)
+    with pytest.raises(validator.MathSpecificationError, match="redirect"):
+        _compile_math_source(source)
+    assert outside.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
+def test_math_log_rejects_link_planted_by_compiler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A compiler process cannot substitute a linked stdout-log pathname."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+    outside = tmp_path / "outside.txt"
+    _ = outside.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+
+    def replace_log(
+        *args: object, **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        _ = (args, kwargs)
+        _ = log.symlink_to(outside)
+        return sp.CompletedProcess(
+            args=("pdflatex",),
+            returncode=0,
+            stdout=COMPILED_LOG_TEXT,
+            stderr="",
+        )
+
+    monkeypatch.setattr(sp, "run", replace_log)
+    with pytest.raises(validator.MathSpecificationError, match="redirect"):
+        _compile_math_source(source)
+    assert outside.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
+def test_math_log_replaces_regular_output_atomically(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ordinary consecutive builds replace the retained physical stdout log."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+
+    def fake_latex(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+        _ = (args, kwargs)
+        return sp.CompletedProcess(
+            args=("pdflatex",),
+            returncode=0,
+            stdout=COMPILED_LOG_TEXT,
+            stderr="",
+        )
+
+    monkeypatch.setattr(sp, "run", fake_latex)
+    _compile_math_source(source)
+    assert log.read_text(encoding="utf-8") == COMPILED_LOG_TEXT
+    _compile_math_source(source)
+    assert log.read_text(encoding="utf-8") == COMPILED_LOG_TEXT
+    assert tuple(log.parent.iterdir()) == (log,)
+
+
+def test_math_log_rejects_nonregular_existing_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Existing directories at the captured log leaf fail before execution."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+    log.mkdir()
+    with pytest.raises(validator.MathSpecificationError, match="regular"):
+        _compile_math_source(source)
+    assert log.is_dir()
+
+
+def test_math_log_failed_atomic_replace_preserves_original(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed replace leaves prior diagnostics intact and no private temp."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    original_replace = Path.replace
+
+    def failing_replace(path: Path, target: Path) -> Path:
+        if target == log:
+            message = "replacement refused"
+            raise PermissionError(message)
+        return original_replace(path, target)
+
+    def fake_latex(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+        _ = (args, kwargs)
+        return sp.CompletedProcess(
+            args=("pdflatex",),
+            returncode=0,
+            stdout=COMPILED_LOG_TEXT,
+            stderr="",
+        )
+
+    monkeypatch.setattr(sp, "run", fake_latex)
+    monkeypatch.setattr(Path, "replace", failing_replace)
+    with pytest.raises(PermissionError, match="replacement refused"):
+        _compile_math_source(source)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    assert tuple(log.parent.iterdir()) == (log,)

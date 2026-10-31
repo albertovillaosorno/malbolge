@@ -44,6 +44,7 @@ from stat import S_ISREG
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed TeX argv, never a shell command.
 import sys
+import tempfile
 from typing import Never
 from typing import TYPE_CHECKING
 
@@ -373,12 +374,50 @@ def latex_compiler(
     return compiler
 
 
+def _admit_math_build_log(log_path: Path) -> None:
+    """Reject a redirected or nonregular existing cache-log destination."""
+    if log_path.is_symlink() or log_path.is_junction():
+        _fail(f"mathematics cache log must not redirect: {log_path}")
+    try:
+        observed = log_path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        _fail(f"mathematics cache log status failed: {error}")
+    if not S_ISREG(observed.st_mode):
+        _fail(f"mathematics cache log must be a regular file: {log_path}")
+
+
+def _write_math_build_log(log_path: Path, log: str) -> None:
+    """Atomically replace one physical log without opening a linked leaf."""
+    _reject_cache_redirects(log_path.parent)
+    _admit_math_build_log(log_path)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=log_path.parent, prefix=".build.stdout."
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(
+            descriptor, "w", encoding="utf-8", newline="\n"
+        ) as stream:
+            written = stream.write(log)
+        if written != len(log):
+            _fail(f"incomplete LaTeX build log write: {log_path}")
+        _reject_cache_redirects(log_path.parent)
+        _admit_math_build_log(log_path)
+        _ = temporary.replace(log_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _compile_document(source: Path) -> None:
     _physical_math_status(source, directory=False)
     output = output_directory(source)
     _reject_cache_redirects(output)
     _ = output.mkdir(parents=True, exist_ok=True)
     _reject_cache_redirects(output)
+    log_path = output / "build.stdout.txt"
+    _admit_math_build_log(log_path)
     command = [
         latex_compiler(),
         "-disable-installer",
@@ -400,10 +439,7 @@ def _compile_document(source: Path) -> None:
         text=True,
     )
     log = completed.stdout + completed.stderr
-    log_path = output / "build.stdout.txt"
-    written = log_path.write_text(log, encoding="utf-8", newline="\n")
-    if written != len(log):
-        _fail(f"incomplete LaTeX build log write: {log_path}")
+    _write_math_build_log(log_path, log)
     if completed.returncode != 0:
         relative = source.relative_to(ROOT).as_posix()
         message = (

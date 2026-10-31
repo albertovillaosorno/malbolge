@@ -49,7 +49,12 @@ and TeX shell escape and write only beneath `.cache/latex/`.
 Math source discovery and direct builds reject symlink/junction redirects to
 TeX files or ancestor directories and require physical regular inputs. Direct
 output-cache mapping also rejects parent-traversal source paths. Cache builds
-reject existing redirected output directories before creating anything, and
+reject existing redirected output directories before creating anything.
+The captured `build.stdout.txt` log must also be a physical regular destination;
+linked log leaves are rejected before invoking TeX and rechecked after compiler
+execution. Each log is published by private temporary-file replacement, so
+existing linked leaves are never opened or truncated. The preflight and later
+publication checks do not make concurrent directory replacement atomic.
 TeX validation reads no more than one MiB per physical regular source,
 rejects redirected parent/leaf paths, and requires the pre-read file identity
 (device, inode, size and modification/change times) to match the open descriptor
