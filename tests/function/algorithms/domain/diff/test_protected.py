@@ -329,6 +329,60 @@ def test_protected_path_metadata_rejects_unserializable_text(
         )
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "../escape.bin",
+        "/absolute.bin",
+        "nested/../escape.bin",
+        "nested//data.bin",
+        "./relative.bin",
+        "nested\\windows.bin",
+    ],
+)
+def test_protected_paths_are_canonical_before_serialization(
+    invalid: str,
+) -> None:
+    """Distributable protected paths must already be portable and relative."""
+    digest = "0" * 64
+    for output, source in ((invalid, "source.bin"), ("target.bin", invalid)):
+        with pytest.raises(ProtectedPlanError, match="canonical relative"):
+            _ = ProtectedInstruction(
+                output_path=output,
+                kind=ProtectedInstructionKind.COPY_SOURCE,
+                expected_sha256=digest,
+                source_path=source,
+            )
+    with pytest.raises(ProtectedPlanError, match="canonical relative"):
+        _ = ProtectedMetadata(
+            source=TreeSnapshot(files=()),
+            target=TreeSnapshot(files=()),
+            instructions=(),
+            passthrough_roots=(invalid,),
+        )
+
+
+@pytest.mark.parametrize(
+    "roots",
+    [
+        ("data", "data"),
+        ("zeta", "alpha"),
+        ("data", "data/archive"),
+    ],
+)
+def test_protected_passthrough_roots_reject_duplicates_or_overlaps(
+    roots: tuple[str, ...],
+) -> None:
+    """Ambiguous passthrough root sets must fail before AAD generation."""
+    with pytest.raises(ProtectedPlanError, match="passthrough roots"):
+        _ = ProtectedMetadata(
+            source=TreeSnapshot(files=()),
+            target=TreeSnapshot(files=()),
+            instructions=(),
+            passthrough_roots=roots,
+        )
+
+
 def test_protected_metadata_requires_exact_runtime_records(
     tmp_path: Path,
 ) -> None:

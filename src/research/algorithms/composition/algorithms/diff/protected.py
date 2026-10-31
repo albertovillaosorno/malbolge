@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -74,6 +75,9 @@ _FRAME_BYTES = 8
 _SHA256_HEX_LENGTH = 64
 _HEX_DIGITS = frozenset("0123456789abcdef")
 _NUL = "\x00"
+_BACKSLASH = "\\"
+_DOT = "."
+_PARENT = ".."
 _AAD_MAGIC = b"source-bound-exact-plan-aad-v2\0"
 _KEY_DOMAIN = b"source-bound-exact-plan-source-key-v1\0"
 _BINDING_CONTEXT_DOMAIN = b"source-bound-exact-plan-binding-v1\0"
@@ -100,6 +104,17 @@ def _require_utf8_path(value: str, context: str) -> None:
     except UnicodeError as error:
         message = f"{context} must use UTF-8-encodable text"
         raise ProtectedPlanError(message) from error
+    path = PurePosixPath(value)
+    unsafe = (
+        _BACKSLASH in value
+        or value == _DOT
+        or path.is_absolute()
+        or _PARENT in path.parts
+        or path.as_posix() != value
+    )
+    if unsafe:
+        message = f"{context} must be a canonical relative path"
+        raise ProtectedPlanError(message)
 
 
 def _require_optional_utf8_path(value: str | None, context: str) -> None:
@@ -110,6 +125,14 @@ def _require_optional_utf8_path(value: str | None, context: str) -> None:
 def _require_utf8_roots(roots: tuple[str, ...]) -> None:
     for root in roots:
         _require_utf8_path(root, "protected passthrough root")
+    if roots != tuple(sorted(set(roots))):
+        message = "protected passthrough roots must be unique and sorted"
+        raise ProtectedPlanError(message)
+    for index, root in enumerate(roots):
+        prefix = root + "/"
+        if any(other.startswith(prefix) for other in roots[index + 1 :]):
+            message = "protected passthrough roots must not overlap"
+            raise ProtectedPlanError(message)
 
 
 def _require_sha256_hex(value: object, context: str) -> None:
