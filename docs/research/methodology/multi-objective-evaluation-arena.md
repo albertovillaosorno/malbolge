@@ -238,9 +238,12 @@ close-only faults also refuse a successful run. Binary writes must report an
 exact integer byte count, never a boolean or partial count. These checks
 reject incomplete measurements but do not attest the child or host OS.
 
-The binary-stdin transport now requires the native `None` return from input
-pipe close, rejecting foreign success-looking booleans, integers and text
-receipts. A failed delivery still retains its original typed cause, with a
+The binary-stdin transport now also requires native `None` from the
+nonblocking pipe configuration call before writing any bytes. Red-first
+regressions reject forged setup receipts that previously reached the input
+write without evidence that the pipe could not block beyond the wall deadline.
+It requires the native `None` return from input pipe close, rejecting foreign
+success-looking booleans, integers and text receipts. A failed delivery still retains its original typed cause, with a
 bad close receipt reported only as secondary cleanup evidence. Red-first
 regressions show previously accepted forged close returns for delivered
 bytes; this checks an adapter receipt, not independent OS-level EOF proof.

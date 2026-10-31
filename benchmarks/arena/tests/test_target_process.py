@@ -1023,6 +1023,42 @@ def test_binary_input_close_fault_preserves_delivery_evidence(
         assert type(error.value.__cause__) is RuntimeError
 
 
+@pytest.mark.parametrize("receipt", [False, True, 0, 1, "configured"])
+def test_binary_input_nonblocking_setup_requires_void_host_receipt(
+    monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A forged blocking-state return cannot authorize a potentially stuck write."""
+    events: list[str] = []
+
+    class InputProbe:
+        def fileno(self) -> int:
+            events.append("fileno")
+            return 1
+
+        def close(self) -> None:
+            events.append("close")
+
+    class ChildProbe:
+        stdin = InputProbe()
+
+    def forged_setup(descriptor: int, blocking: bool) -> object:
+        assert descriptor == 1
+        assert blocking is False
+        events.append("configure")
+        return receipt
+
+    def unexpected_write(_descriptor: int, _payload: bytes) -> int:
+        pytest.fail("unverified nonblocking pipe must not receive guest input")
+
+    monkeypatch.setattr(target_process.os, "set_blocking", forged_setup)
+    monkeypatch.setattr(target_process.os, "write", unexpected_write)
+    with pytest.raises(target_process.TargetProcessError, match="nonblocking"):
+        target_process._send_input(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()), b"x"
+        )
+    assert events == ["fileno", "configure", "close"]
+
+
 @pytest.mark.parametrize("receipt", [False, True, 0, 1, "closed"])
 @pytest.mark.parametrize("delivery_fails", [False, True])
 def test_binary_input_close_refuses_forged_success_receipts(

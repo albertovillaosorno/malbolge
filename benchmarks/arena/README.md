@@ -307,7 +307,9 @@ filesystem snapshots or the authenticity of retained performance samples.
 The reusable child transport separately supports **opt-in binary stdin** of at
 most 256 bytes; it checks type and length before process launch, sends raw
 bytes through a nonblocking short pipe, closes it to deliver EOF, and applies
-the same wall deadline and output limits. The `malbolge` CLI now accepts
+the same wall deadline and output limits. Nonblocking configuration must
+return native `None`; a false success-looking return is rejected before any
+input write, preventing a foreign adapter from bypassing the deadline guard. The `malbolge` CLI now accepts
 `--input-stdin` for classic raw and profile capsule input, preserving the
 ordinary no-argument EOF mode. An end-to-end real 256-byte plus EOF CLI test
 verifies exact classic byte values; a separate capsule test verifies current
