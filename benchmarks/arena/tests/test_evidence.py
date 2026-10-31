@@ -1618,6 +1618,49 @@ def test_evidence_stream_constructor_cleanup_cannot_mask_primary_error(
     ]
 
 
+def _foreign_primary_with_hostile_note(fault_type: type[Exception]) -> Exception:
+    """Create a caught host fault that forbids its own add_note override."""
+
+    def reject_note(self: BaseException, note: str) -> None:
+        del self, note
+        raise AssertionError("foreign primary evidence note hook executed")
+
+    foreign = type("ForeignEvidenceHostError", (fault_type,), {"add_note": reject_note})
+    return foreign("primary evidence admission failure")
+
+
+@pytest.mark.parametrize("fault_type", [OSError, RuntimeError, ValueError])
+def test_evidence_descriptor_cleanup_bypasses_foreign_primary_note_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Failed fdopen and close preserve the primary without foreign hooks."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    primary = _foreign_primary_with_hostile_note(fault_type)
+    original_close = evidence.os.close
+
+    def reject_stream(*args: object, **kwargs: object) -> IO[bytes]:
+        del args, kwargs
+        raise primary
+
+    def fail_close(descriptor: int) -> None:
+        original_close(descriptor)
+        raise OSError("secondary descriptor close failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(evidence.os, "fdopen", reject_stream)
+        patch.setattr(evidence.os, "close", fail_close)
+        with pytest.raises(
+            evidence.EvidenceError, match="stream could not open"
+        ) as caught:
+            evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+
+    assert caught.value.__cause__ is primary
+    assert any("descriptor cleanup" in note for note in primary.__notes__)
+
+
 class _UnformattableCleanupError(ValueError):
     def __str__(self) -> str:
         raise AssertionError("cleanup exception formatting is untrusted")
@@ -1842,6 +1885,42 @@ def test_evidence_stream_cleanup_never_formats_foreign_exceptions(
         evidence.read_bounded_regular(tmp_path, relative, limit=1024)
     assert type(failure.value.__cause__) is RuntimeError
     assert failure.value.__notes__ == ["evidence stream cleanup also failed"]
+
+
+@pytest.mark.parametrize("fault_type", [OSError, RuntimeError, ValueError])
+def test_evidence_stream_cleanup_bypasses_foreign_primary_note_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Failed reads and stream close preserve the primary without hooks."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    primary = _foreign_primary_with_hostile_note(fault_type)
+    original_open = evidence._open_evidence
+
+    @contextmanager
+    def fail_close(path: Path) -> Iterator[IO[bytes]]:
+        try:
+            with original_open(path) as stream:
+                yield stream
+        finally:
+            raise ValueError("secondary stream cleanup failure")
+
+    def fail_read(stream: IO[bytes], *, size: int, relative: str) -> bytes:
+        del stream, size, relative
+        raise primary
+
+    with monkeypatch.context() as patch:
+        patch.setattr(evidence, "_open_evidence", fail_close)
+        patch.setattr(evidence, "_read_complete", fail_read)
+        with pytest.raises(
+            evidence.EvidenceError, match="stream access failed"
+        ) as caught:
+            evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+
+    assert caught.value.__cause__ is primary
+    assert any("stream cleanup" in note for note in primary.__notes__)
 
 
 class _InvalidChunkEvidenceReader:

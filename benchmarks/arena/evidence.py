@@ -236,8 +236,9 @@ def _open_evidence(path: Path) -> IO[bytes]:
             TypeError,
             AttributeError,
         ) as close_error:
-            error.add_note(
-                _cleanup_note("evidence descriptor cleanup also failed", close_error)
+            BaseException.add_note(
+                error,
+                _cleanup_note("evidence descriptor cleanup also failed", close_error),
             )
         if isinstance(error, EvidenceError):
             raise error  # ruff: ignore[TRY201]
@@ -308,8 +309,9 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         if primary is not None and error is not primary:
             # The stream's close error must not replace a rejected read.
-            primary.add_note(
-                _cleanup_note("evidence stream cleanup also failed", error)
+            BaseException.add_note(
+                primary,
+                _cleanup_note("evidence stream cleanup also failed", error),
             )
             error = primary
         if isinstance(error, EvidenceError):
