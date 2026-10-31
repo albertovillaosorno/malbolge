@@ -546,7 +546,9 @@ def _checked_artifact(
             entry["path"],
             limit=MAX_ARTIFACT_BYTES,
         )
-    except (OSError, evidence.EvidenceError) as error:
+    except Exception as error:
+        # The bounded evidence reader is a dependency; unexpected ordinary
+        # faults must remain typed and must not format custom exceptions.
         message = "host-C retained artifact cannot be admitted"
         if (detail := _native_error_detail(error)) is not None:
             message += f": {detail}"

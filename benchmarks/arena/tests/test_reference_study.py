@@ -1430,6 +1430,36 @@ def test_direct_artifact_failure_never_formats_foreign_exception(
         assert str(caught.value).endswith(": native evidence read failure")
 
 
+@pytest.mark.parametrize(
+    "fault_type", [ValueError, RuntimeError, TypeError, _UnexpectedHostFault]
+)
+def test_retained_artifact_types_unexpected_reader_dependency_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Unexpected reader faults remain typed without foreign formatting."""
+    fault = fault_type("unanticipated retained artifact read failure")
+
+    def fail_read(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", fail_read)
+    row = {
+        "experiment_manifest": ".temp/probe/runs/candidate.toml",
+        "metrics": {"artifact_bytes": 1},
+    }
+    entry = {
+        "path": ".temp/probe/candidates/candidate",
+        "sha256": "a" * analyze.SHA256_HEX_LENGTH,
+    }
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="cannot be admitted"
+    ) as caught:
+        reference_study._checked_artifact(row, entry)
+    assert caught.value.__cause__ is fault
+
+
 class _UnsafeCliStudyError(reference_study.ReferenceStudyError):
     def __str__(self) -> str:
         raise AssertionError("CLI study exception formatting is untrusted")
