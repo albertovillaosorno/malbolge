@@ -292,8 +292,10 @@ class ProbeProgram:
 
 
 def _validate_path(value: object, context: str) -> None:
-    if not isinstance(value, Path):
-        message = f"{context} must use a pathlib Path value"
+    # Path subclasses can override conversion, resolution or status checks.
+    # The probe execution authority must use an exact native host path.
+    if type(value) is not type(Path()):
+        message = f"{context} must use exact pathlib Path"
         raise ProbeProgramError(message)
     if _NUL in str(value):
         message = f"{context} must not contain NUL bytes"

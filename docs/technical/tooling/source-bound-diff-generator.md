@@ -336,6 +336,10 @@ copying, or launching anything: roots/enums, executable records, argv tuples,
 NUL-free argv and rooted paths/tool identifiers, stdin bytes, exit codes,
 timeout/output limits, digest flags, program batches,
 tool bindings, and source-immutability flags all use exact admitted types.
+The `ProbeRunContext` admission further requires exact host-native `Path`
+values for the source root, repository root, and bound tool executable paths,
+so user-defined string, resolution, or status overrides cannot run at record
+construction. Three red-first regressions cover those independent roles.
 
 Behavior authoring rejects identity and bug programs without at least one
 stdout or exit-code transcript selector when constructing their typed records,

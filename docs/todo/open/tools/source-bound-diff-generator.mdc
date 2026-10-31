@@ -101,6 +101,9 @@ format.
   typed-path source mirror bypass even with immutability checks disabled;
   raw argv and
   executable behavior remain trusted consumer inputs, not a sandbox.
+- Probe run contexts now reject custom `Path` subclasses at source-root,
+  repository-root and executable-tool bindings before any path method executes;
+  three red-first regressions prevent source/execution redirection hooks.
 - Portable process probes now execute without shell interpolation, with
   structured
   roots, bounded time/output, isolated source mirrors, and deterministic

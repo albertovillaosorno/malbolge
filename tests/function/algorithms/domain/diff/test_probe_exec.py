@@ -1787,6 +1787,44 @@ def test_probe_paths_reject_host_unencodable_metadata() -> None:
             _ = build()
 
 
+class _ForeignProbePath(type(Path())):
+    """A subclass could redirect probe path observations or execution."""
+
+    def __str__(self) -> str:
+        message = "foreign probe path conversion was evaluated"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    ("path_context", "build_context"),
+    [
+        (
+            "probe source root",
+            lambda foreign: ProbeRunContext(foreign, Path("repository"), ()),
+        ),
+        (
+            "probe repository root",
+            lambda foreign: ProbeRunContext(Path("source"), foreign, ()),
+        ),
+        (
+            "probe tool path",
+            lambda foreign: ProbeRunContext(
+                Path("source"), Path("repository"), ((_PYTHON_TOOL, foreign),)
+            ),
+        ),
+    ],
+)
+def test_probe_context_rejects_foreign_path_subclasses_before_conversion(
+    path_context: str, build_context: Callable[[Path], ProbeRunContext]
+) -> None:
+    """Reject user-defined path hooks before admitting any execution root."""
+    foreign = _ForeignProbePath("foreign")
+    with pytest.raises(
+        ProbeProgramError, match=f"{path_context} must use exact pathlib Path"
+    ):
+        _ = build_context(foreign)
+
+
 def test_probe_executable_launch_failure_is_wrapped(tmp_path: Path) -> None:
     """Regular but non-executable tool files remain inside probe errors."""
     source = tmp_path / "source"
