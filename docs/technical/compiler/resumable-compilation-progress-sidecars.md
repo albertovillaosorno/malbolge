@@ -1033,6 +1033,9 @@ these selectors once a product C-to-Malbolge pipeline exists.
   The digest and prefix threshold operate on filesystem-encoded basename
   bytes, not Unicode code-point counts. Positive recovery fixtures include
   long multibyte UTF-8 basenames and POSIX `surrogateescape` filenames.
+  A full checkpoint/partial/pointer publication fixture also exercises a
+  long output whose immutable member names remain valid but whose old
+  staged names exceeded POSIX component limits.
 
   Furthermore, recovery accepts only the eight-character
   lowercase/digit/underscore temporary token

@@ -3383,6 +3383,43 @@ def test_long_valid_immutable_basename_publishes_and_reuses_generation(
     assert [path.name for path in tmp_path.iterdir()] == [destination.name]
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX long filenames require byte-level link semantics",
+)
+def test_long_output_round_trips_full_checkpoint_generation(
+    tmp_path: Path,
+) -> None:
+    """Long valid names survive checkpoint, partial, and pointer publication."""
+    output = tmp_path / ("x" * 211 + ".malbolge")
+    source = _checkpointed(_sidecar(tmp_path))
+    candidate = replace(
+        source,
+        output_path=str(output),
+        progress_path=str(progress.progress_path(output)),
+        checkpoint_path=str(progress.checkpoint_path(output, 1)),
+        partial_path=str(progress.partial_path(output, 1)),
+    )
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"partial-malbolge-v1"
+    members = (
+        Path(candidate.checkpoint_path or ""),
+        Path(candidate.partial_path or ""),
+        Path(candidate.progress_path),
+    )
+    for member in members:
+        component_size = len(os.fsencode(member.name))
+        assert component_size <= POSIX_FILENAME_COMPONENT_MAX_BYTES
+    published = progress.write_checkpoint_generation(
+        candidate, checkpoint, partial
+    )
+    assert published == Path(candidate.progress_path)
+    assert progress.read(published) == candidate
+    stored = progress.read_checkpoint_generation(candidate)
+    assert stored == (checkpoint, partial)
+    assert all(not p.name.endswith(".tmp") for p in tmp_path.iterdir())
+
+
 def test_write_atomic_rejects_linked_progress_parent(tmp_path: Path) -> None:
     """Writing a sidecar never follows a redirected parent directory."""
     linked, target = _linked_directory(tmp_path, "linked-write-parent")
