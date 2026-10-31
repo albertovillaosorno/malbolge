@@ -3197,10 +3197,14 @@ def _validate_existing_pointer(
 ) -> None:
     try:
         _ = destination.stat(follow_symlinks=False)
-    except OSError as error:
+    except ProgressSidecarError:
+        raise
+    except _OUTPUT_STREAM_ERRORS as error:
         if type(error) is FileNotFoundError:
             return
-        _fail(f"progress pointer preflight failed: {_host_error_detail(error)}")
+        _fail_with_source(
+            f"progress pointer preflight failed: {_host_error_detail(error)}", error
+        )
     _ = validate_transition(read(destination), sidecar)
 
 
@@ -3316,7 +3320,7 @@ def write_checkpoint_generation(
         return write_atomic(validated)
     except ProgressSidecarCommittedError:
         raise
-    except (ProgressSidecarError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         message = (
             "generation payload committed durably but progress sidecar "
             f"publication failed: {_host_error_detail(error)}"

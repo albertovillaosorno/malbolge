@@ -6811,7 +6811,9 @@ def test_sidecar_file_sync_failure_reports_committed_partial(
     ) == Path(sidecar.progress_path)
 
 
-@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_generation_pointer_preflight_error_retains_last_member(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -10628,10 +10630,14 @@ def test_malformed_temporary_writer_failure_is_typed_prepublication(
         pytest.param(_publish_pointer_checkpoint_generation, id="generation"),
     ],
 )
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_pointer_preflight_oserror_uses_stable_sidecar_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     publish: Callable[[progress.ProgressSidecar], Path],
+    failure_type: type[Exception],
 ) -> None:
     """Metadata errors fail before a mutable pointer or generation write."""
     candidate = _checkpointed(
@@ -10645,7 +10651,7 @@ def test_pointer_preflight_oserror_uses_stable_sidecar_failure(
         path: Path, *, follow_symlinks: bool = True
     ) -> os.stat_result:
         if path == destination:
-            raise PermissionError(denied_message)
+            raise failure_type(denied_message)
         return original_stat(path, follow_symlinks=follow_symlinks)
 
     monkeypatch.setattr(Path, "stat", fail_pointer_probe)

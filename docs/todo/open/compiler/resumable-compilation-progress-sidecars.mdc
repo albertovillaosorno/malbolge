@@ -645,6 +645,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   Two more red-first alias-discovery probes reject native
   `TypeError`/`AttributeError` directory-entry stat failures without
   admitting unverified retained-stage ownership.
+  Three red-first post-generation pointer-preflight cases retain the last
+  durable member and original native `OSError`, `TypeError`, or
+  `AttributeError` cause when final pointer admission cannot finish.
+  Eight more red-first cases type native `ValueError`, `RuntimeError`,
+  `TypeError`, and `AttributeError` from missing/existing pointer metadata
+  probes before standalone pointer or checkpoint-generation publication.
   Writer-lock opening now wraps unexpected native `TypeError`/`AttributeError`
   as typed prepublication errors. POSIX directory open, sync and close handle
   those types after generation publication: uncertain sync retains the

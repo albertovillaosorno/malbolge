@@ -325,6 +325,16 @@ Retained-immutable-stage alias discovery also treats unusual native
 `DirEntry.stat` exceptions as unverified entries. It never infers alias
 ownership from a failed probe; existing hard-link admission still blocks
 uncertain collisions from being reused as immutable payloads.
+After all immutable checkpoint-generation members commit, an unexpected
+`OSError`, `TypeError`, or `AttributeError` from final pointer preflight is
+reported as a committed-generation error. The exact last durable member path
+and native cause remain inspectable; no pointer success is claimed.
+Both standalone pointer and checkpoint-generation preflight also translate
+unexpected native `ValueError`, `RuntimeError`, `TypeError`, or
+`AttributeError` from pathname metadata admission to typed failures before
+any generation or pointer bytes are committed. Only an exact native
+`FileNotFoundError` is permitted to mean a new pointer, not a foreign
+missing-file subclass.
 Deterministic parent and regular-inode substitutions cover both progress-pointer
 and immutable checkpoint reads, including descriptor cleanup. A further
 read-completion regression replaces the progress parent with a linked directory
