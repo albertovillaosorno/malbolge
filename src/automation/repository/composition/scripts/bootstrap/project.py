@@ -626,6 +626,22 @@ def git_import_complete(git_root: Path) -> bool:
     return (git_root / GIT_IMPORT_MARKER).is_file()
 
 
+def _write_import_completion_marker(marker: Path, content: str) -> None:
+    """Reject truncated import readiness metadata and clear partial markers."""
+    written = marker.write_text(
+        content,
+        encoding="ascii",
+        newline="\n",
+    )
+    if type(written) is int and written == len(content):
+        return
+    try:
+        marker.unlink(missing_ok=True)
+    except OSError as error:
+        _fail(f"import marker short or invalid character count; {error}")
+    _fail("import marker short or invalid character count")
+
+
 def import_git_installation(
     git: Path,
     exec_path: Path,
@@ -653,10 +669,9 @@ def import_git_installation(
         copy_function=_link_or_copy,
         symlinks=True,
     )
-    _ = (destination / GIT_IMPORT_MARKER).write_text(
+    _write_import_completion_marker(
+        destination / GIT_IMPORT_MARKER,
         "malbolge-git-import/v1\n",
-        encoding="ascii",
-        newline="\n",
     )
     return alias
 
@@ -914,10 +929,9 @@ def import_rust_toolchain(
         tool_ids,
         windows=windows,
     )
-    _ = (destination / RUST_IMPORT_MARKER).write_text(
+    _write_import_completion_marker(
+        destination / RUST_IMPORT_MARKER,
         "malbolge-rust-toolchain-import/v1\n",
-        encoding="ascii",
-        newline="\n",
     )
     return aliases
 

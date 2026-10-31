@@ -2093,6 +2093,76 @@ def test_git_import_preserves_runtime_tree_and_neutral_alias(
     assert project.git_import_complete(destination)
 
 
+@pytest.mark.parametrize("bad_write_count", [1, None, True, -1, 1_000_000])
+def test_git_import_completion_marker_requires_complete_text_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_write_count: object,
+) -> None:
+    """A partial Git import marker cannot make an incomplete tree ready."""
+    source = tmp_path / "host-git"
+    _ = source.write_bytes(GIT_BYTES)
+    exec_path = tmp_path / "git-exec"
+    exec_path.mkdir()
+    destination = tmp_path / "imported-git"
+    marker = destination / project.GIT_IMPORT_MARKER
+    original_write = type(tmp_path).write_text
+
+    def incomplete_write(
+        path: Path,
+        data: str,
+        *,
+        encoding: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        actual = data[:1] if path == marker else data
+        _ = original_write(path, actual, encoding=encoding, newline=newline)
+        return cast("int", bad_write_count) if path == marker else len(data)
+
+    monkeypatch.setattr(type(tmp_path), "write_text", incomplete_write)
+    with pytest.raises(project.InitializationError, match="short or invalid"):
+        _ = project.import_git_installation(
+            source, exec_path, destination, windows=False
+        )
+    assert not marker.exists()
+    assert not project.git_import_complete(destination)
+
+
+@pytest.mark.parametrize("bad_write_count", [1, None, True, -1, 1_000_000])
+def test_rust_import_completion_marker_requires_complete_text_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_write_count: object,
+) -> None:
+    """A partial Rust import marker cannot make an incomplete tree ready."""
+    source = tmp_path / "host-rust"
+    source_bin = source / "bin"
+    source_bin.mkdir(parents=True)
+    _ = (source_bin / "cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / "imported-rust"
+    marker = destination / project.RUST_IMPORT_MARKER
+    original_write = type(tmp_path).write_text
+
+    def incomplete_write(
+        path: Path,
+        data: str,
+        *,
+        encoding: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        actual = data[:1] if path == marker else data
+        _ = original_write(path, actual, encoding=encoding, newline=newline)
+        return cast("int", bad_write_count) if path == marker else len(data)
+
+    monkeypatch.setattr(type(tmp_path), "write_text", incomplete_write)
+    with pytest.raises(project.InitializationError, match="short or invalid"):
+        _ = project.import_rust_toolchain(
+            source, destination, tool_ids=("cargo",), windows=False
+        )
+    assert not marker.exists()
+    assert not project.rust_toolchain_import_complete(destination)
+
+
 def test_local_directory_initialization_is_idempotent(tmp_path: Path) -> None:
     """Ignored checkout state directories can be initialized repeatedly."""
     first = project.initialize_local_directories(tmp_path)
