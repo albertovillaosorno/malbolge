@@ -49,12 +49,15 @@ Benchmark evidence protocol v1 is validated by
 `src/automation/repository/composition/scripts/validate/benchmark_protocol.py`.
 Protocol files and their linked experiment manifests reject invalid UTF-8
 through the stable benchmark-protocol error boundary before TOML admission.
-The validator admits a regular evidence file before reading and pins the
-opened descriptor to its device, inode, byte length, and modification/change
-timestamps. It rejects post-admission leaf replacement or in-place mutation,
-uses nonblocking/no-follow opens where available, and reads text in at most
-64 KiB chunks under a 1 MiB admission limit. The retained raw CSV is checked
-for regular-file presence and nonzero size, not parsed as performance proof.
+The validator admits only physical regular evidence files whose parent
+components are unlinked directories, before reading and again after. It pins
+the opened descriptor to its device, inode, byte length, and modification/change
+timestamps. It rejects parent redirects, post-admission leaf replacement or
+in-place mutation, uses nonblocking/no-follow opens where available, and reads
+text in at most 64 KiB chunks under a 1 MiB admission limit. Linked run
+manifests and retained raw CSV evidence obey the same physical-parent boundary.
+The retained raw CSV is checked for regular-file presence and nonzero size, not
+parsed as performance proof.
 A performance record must reference an
 Experiment Manifest v1 with `record_kind = "run"`; commit, workload SHA-256,
 toolchain, run outcome, and canonical target-profile fingerprint where

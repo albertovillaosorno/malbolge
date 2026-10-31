@@ -34,14 +34,17 @@
 
 from __future__ import annotations
 
-import os
-import sys
 from dataclasses import dataclass
-from pathlib import Path, PureWindowsPath
-from stat import S_ISLNK, S_ISREG
-from typing import Never, cast
-
+import os
+from pathlib import Path
+from pathlib import PureWindowsPath
+from stat import S_ISDIR
+from stat import S_ISLNK
+from stat import S_ISREG
+import sys
 import tomllib
+from typing import Never
+from typing import cast
 
 from scripts.repository_root import repository_root
 from scripts.validate import experiment_manifest
@@ -451,10 +454,63 @@ def _matching_regular_status(
     )
 
 
+def _check_physical_parents(path: Path, context: str) -> None:
+    """Reject redirected or non-directory source ancestors."""
+    for parent in path.parents:
+        try:
+            status = parent.lstat()
+        except OSError as error:
+            _fail(f"{context} parent status failed: {error}")
+        if S_ISLNK(status.st_mode) or parent.is_junction():
+            _fail(f"{context} parent must not redirect: {parent}")
+        if not S_ISDIR(status.st_mode):
+            _fail(f"{context} parent is not a directory: {parent}")
+
+
+def _read_verified_bytes(
+    descriptor: int,
+    path: Path,
+    context: str,
+    *,
+    admitted: os.stat_result,
+) -> bytes:
+    """Consume and recheck the complete admitted regular-file snapshot.
+
+    Returns:
+        The exact physical source bytes after post-read checks.
+
+    """
+    if not _matching_regular_status(admitted, os.fstat(descriptor)):
+        _fail(f"{context} changed after file admission")
+    remaining = admitted.st_size
+    parts: list[bytes] = []
+    while remaining:
+        chunk = os.read(descriptor, min(FILE_READ_CHUNK_BYTES, remaining))
+        if not chunk or len(chunk) > remaining:
+            _fail(f"{context} changed during file read")
+        parts.append(chunk)
+        remaining -= len(chunk)
+    if (
+        not _matching_regular_status(admitted, os.fstat(descriptor))
+        or not _matching_regular_status(admitted, path.lstat())
+        or path.is_junction()
+    ):
+        _fail(f"{context} changed during file read")
+    _check_physical_parents(path, context)
+    return b"".join(parts)
+
+
 def _read_utf8(path: Path, context: str, admitted: os.stat_result) -> str:
-    """Read a bounded regular evidence file without following a replaced leaf."""
+    """Read one bounded regular input without redirected path components.
+
+    Returns:
+        Exact unchanged UTF-8 source text.
+
+    """
+    _check_physical_parents(path, context)
     if admitted.st_size > MAX_PROTOCOL_BYTES:
-        _fail(f"{context} exceeds the {MAX_PROTOCOL_BYTES}-byte admission limit")
+        limit = MAX_PROTOCOL_BYTES
+        _fail(f"{context} exceeds the {limit}-byte admission limit")
     flags = (
         os.O_RDONLY
         | getattr(os, "O_CLOEXEC", 0)
@@ -463,47 +519,20 @@ def _read_utf8(path: Path, context: str, admitted: os.stat_result) -> str:
     )
     try:
         descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "rb") as stream:
+            raw = _read_verified_bytes(
+                stream.fileno(), path, context, admitted=admitted
+            )
     except OSError as error:
         _fail(f"{context} read failed: {error}")
-
-    read_failed = False
     try:
-        opened = os.fstat(descriptor)
-        if not _matching_regular_status(admitted, opened):
-            _fail(f"{context} changed after file admission")
-        remaining = admitted.st_size
-        parts: list[bytes] = []
-        while remaining:
-            chunk = os.read(descriptor, min(FILE_READ_CHUNK_BYTES, remaining))
-            if not chunk or len(chunk) > remaining:
-                _fail(f"{context} changed during file read")
-            parts.append(chunk)
-            remaining -= len(chunk)
-        if (
-            not _matching_regular_status(admitted, os.fstat(descriptor))
-            or not _matching_regular_status(admitted, path.lstat())
-            or path.is_junction()
-        ):
-            _fail(f"{context} changed during file read")
-    except (OSError, BenchmarkProtocolError) as error:
-        read_failed = True
-        if isinstance(error, OSError):
-            _fail(f"{context} read failed: {error}")
-        raise
-    finally:
-        try:
-            os.close(descriptor)
-        except OSError as error:
-            if not read_failed:
-                _fail(f"{context} read close failed: {error}")
-
-    try:
-        return b"".join(parts).decode("utf-8")
+        return raw.decode("utf-8")
     except UnicodeDecodeError as error:
         _fail(f"invalid {context} UTF-8: {error}")
 
 
 def _regular_file_status(path: Path, context: str) -> os.stat_result | None:
+    _check_physical_parents(path, context)
     try:
         status = path.lstat()
     except FileNotFoundError:
