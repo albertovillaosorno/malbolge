@@ -353,12 +353,17 @@ def test_compatible_materialization_rejects_post_snapshot_linked_candidate(
     _expect(not request.output_root.exists(), "linked candidate was published")
 
 
-def test_compatible_metadata_rejects_nul_paths_before_placement() -> None:
-    """A NUL path cannot escape admission as a raw filesystem ValueError."""
-    nul_path = "code\x00shadow.src"
+@pytest.mark.parametrize(
+    "bad_path",
+    ["code\x00shadow.src", "code\ud800shadow.src"],
+)
+def test_compatible_metadata_rejects_nonportable_paths_before_placement(
+    bad_path: str,
+) -> None:
+    """Invalid path metadata must fail before host filesystem operations."""
     with pytest.raises(CompatiblePlanError, match="unsafe compatible"):
         _ = CompatibleInstruction(
-            output_path=nul_path,
+            output_path=bad_path,
             kind=CompatibleFileKind.CREATE_LITERAL,
             literal=b"target",
         )
@@ -366,10 +371,10 @@ def test_compatible_metadata_rejects_nul_paths_before_placement() -> None:
         _ = CompatibleInstruction(
             output_path="code.src",
             kind=CompatibleFileKind.COPY_CANDIDATE,
-            source_path=nul_path,
+            source_path=bad_path,
         )
     with pytest.raises(CompatiblePlanError, match="unsafe compatible"):
-        _ = CompatibleCorrectionBinding(nul_path, 0, "fix")
+        _ = CompatibleCorrectionBinding(bad_path, 0, "fix")
 
 
 def test_compatible_instruction_rejects_foreign_metadata() -> None:

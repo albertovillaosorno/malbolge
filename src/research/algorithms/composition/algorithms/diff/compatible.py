@@ -622,6 +622,11 @@ def _validate_relative_path(relative_path: str) -> str:
     if unsafe:
         message = f"unsafe compatible tree path: {relative_path!r}"
         raise CompatiblePlanError(message)
+    try:
+        _ = relative_path.encode("utf-8")
+    except UnicodeError as error:
+        message = f"unsafe compatible tree path: {relative_path!r}"
+        raise CompatiblePlanError(message) from error
     return relative_path
 
 
