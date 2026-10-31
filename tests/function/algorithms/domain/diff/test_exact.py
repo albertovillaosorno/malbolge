@@ -397,6 +397,42 @@ def test_exact_rejects_linked_source_path_ancestor_before_read(
     _expect(not output.exists(), "linked source ancestor published output")
 
 
+@pytest.mark.parametrize("unsafe_suffix", ["\x00", "\ud800"])
+def test_exact_rejects_nonfilesystem_root_metadata(
+    tmp_path: Path,
+    unsafe_suffix: str,
+) -> None:
+    """Exact entrypoints cannot leak host path exceptions before staging."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    invalid = tmp_path / f"broken{unsafe_suffix}"
+
+    with pytest.raises(ExactTreeError, match="filesystem path"):
+        _ = snapshot_tree(invalid)
+    with pytest.raises(ExactTreeError, match="filesystem path"):
+        _ = build_exact_plan(invalid, oracle)
+    with pytest.raises(ExactTreeError, match="filesystem path"):
+        materialize_exact_plan(source, plan, invalid)
+    _expect(not invalid.exists(), "malformed root published output")
+
+
+@pytest.mark.skipif(os.name != _POSIX_OS_NAME, reason="POSIX raw path bytes")
+def test_exact_roots_preserve_surrogateescaped_host_names(
+    tmp_path: Path,
+) -> None:
+    """Real non-UTF-8 host filenames remain valid filesystem roots."""
+    source = tmp_path / os.fsdecode(b"source-\xff")
+    oracle = tmp_path / "oracle"
+    output = tmp_path / os.fsdecode(b"output-\xff")
+    _write(source, "file.bin", b"source")
+    _write(oracle, "file.bin", b"target")
+
+    plan = build_exact_plan(source, oracle)
+    materialize_exact_plan(source, plan, output)
+
+    _expect(snapshot_tree(output) == snapshot_tree(oracle), "raw root mismatch")
+
+
 @pytest.mark.parametrize("linked_parent", [False, True])
 def test_exact_materialization_rejects_output_inside_source_tree(
     tmp_path: Path,

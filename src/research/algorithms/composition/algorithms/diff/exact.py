@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import os
+from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
 from stat import S_ISDIR
@@ -57,8 +58,6 @@ from algorithms.diff.model import TreeSnapshot
 from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from algorithms.diff.model import ExactSegment
 
 _BACKSLASH = "\\"
@@ -73,6 +72,7 @@ _FILE_READ_FLAGS = (
     | getattr(os, "O_NONBLOCK", 0)
 )
 _ZERO = 0
+_NUL = "\x00"
 
 
 class ExactTreeError(RuntimeError):
@@ -351,7 +351,22 @@ def _record_file(root: Path, path: Path) -> FileRecord | None:
     return FileRecord(path=relative_path, sha256=_sha256(data), size=len(data))
 
 
+def _require_filesystem_root(value: object, context: str) -> None:
+    if not isinstance(value, Path):
+        message = f"{context} must use a pathlib Path filesystem path"
+        raise ExactTreeError(message)
+    if _NUL in str(value):
+        message = f"{context} must use a representable filesystem path"
+        raise ExactTreeError(message)
+    try:
+        _ = os.fsencode(value)
+    except UnicodeError as error:
+        message = f"{context} must use a representable filesystem path"
+        raise ExactTreeError(message) from error
+
+
 def _resolved_tree_root(root: Path) -> Path:
+    _require_filesystem_root(root, "tree root")
     mode = _entry_mode(root, "tree root")
     if mode is None:
         message = f"tree root is not a directory: {root}"
@@ -888,6 +903,7 @@ def _populate_staging(
 
 
 def _resolved_output_root(output_root: Path) -> Path:
+    _require_filesystem_root(output_root, "output root")
     mode = _entry_mode(output_root, "output root")
     if mode is not None and _is_redirect(output_root, mode):
         message = f"output root must not be linked: {output_root}"
