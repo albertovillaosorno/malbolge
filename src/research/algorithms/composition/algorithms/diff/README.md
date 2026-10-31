@@ -167,7 +167,10 @@ Unrepresentably large timeout integers fail with a typed probe error before
 spawning any process. On POSIX, every completed, failed, or timed-out probe
 terminates its dedicated
 child session's remaining process-group members, including ordinary spawned
-helpers that closed stdio. Windows currently stops only the direct child on
+helpers that closed stdio. If POSIX group signaling fails, the runner still
+attempts direct-child termination and bounded reaping; successful probes reject
+unconfirmed group cleanup, while failed probes retain their primary error and
+attach cleanup diagnostics. Windows currently stops only the direct child on
 failure; POSIX descendants starting detached sessions remain outside
 cleanup. Source trees are validated as regular-file-only before mirroring
 regardless of the optional post-run immutability policy. Mirroring never follows

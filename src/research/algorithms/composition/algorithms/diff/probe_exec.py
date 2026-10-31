@@ -34,7 +34,6 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
 from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import replace
@@ -74,6 +73,7 @@ _TOOL_BINDING_LENGTH = 2
 _NUL = "\x00"
 _READ_CHUNK_BYTES = 16_384
 _POLL_SECONDS = 0.005
+_CHILD_REAP_SECONDS = 2.0
 _POSIX_OS_NAME = "posix"
 _MIN_HARDLINK_COUNT = 2
 
@@ -576,15 +576,79 @@ def _feed_stdin(
         completed.set()
 
 
+def _signal_probe_group(process: subprocess.Popen[bytes]) -> OSError | None:
+    """Report a group signal failure without skipping direct child cleanup.
+
+    Returns:
+        The group-signal error, if any.
+
+    """
+    try:
+        os.kill(-process.pid, int(signal.Signals["SIGKILL"]))
+    except ProcessLookupError:
+        return None
+    except OSError as error:
+        return error
+    return None
+
+
+def _kill_direct_probe_child(
+    process: subprocess.Popen[bytes],
+) -> OSError | None:
+    """Attempt direct termination and preserve any error for later.
+
+    Returns:
+        The direct-child kill error, if any.
+
+    """
+    if process.poll() is not None:
+        return None
+    failure: OSError | None = None
+    try:
+        process.kill()
+    except ProcessLookupError:
+        failure = None
+    except OSError as error:
+        failure = error
+    return failure
+
+
 def _stop_child(process: subprocess.Popen[bytes]) -> None:
-    """Stop the POSIX probe process group or its direct Windows child."""
-    if os.name == _POSIX_OS_NAME:
-        with suppress(ProcessLookupError):
-            os.kill(-process.pid, int(signal.Signals["SIGKILL"]))
-    elif process.poll() is None:
-        with suppress(ProcessLookupError):
-            process.kill()
-    _ = process.wait()
+    """Stop descendants and reap the direct child even if group signal fails.
+
+    Raises:
+        ProbeExecutionError: Group cleanup, direct kill, or reaping failed.
+
+    """
+    group_error = (
+        _signal_probe_group(process) if os.name == _POSIX_OS_NAME else None
+    )
+    direct_error = (
+        _kill_direct_probe_child(process)
+        if os.name != _POSIX_OS_NAME or group_error is not None
+        else None
+    )
+    try:
+        _ = process.wait(timeout=_CHILD_REAP_SECONDS)
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        subprocess.TimeoutExpired,
+    ) as error:
+        message = f"probe direct child reaping failed: {error}"
+        raise ProbeExecutionError(message) from error
+    if direct_error is not None:
+        message = f"probe direct child termination failed: {direct_error}"
+        failure = ProbeExecutionError(message)
+        if group_error is not None:
+            failure.add_note(
+                f"probe process group cleanup failed: {group_error}"
+            )
+        raise failure from direct_error
+    if group_error is not None:
+        message = f"probe process group cleanup failed: {group_error}"
+        raise ProbeExecutionError(message) from group_error
 
 
 def _spawn_probe(
@@ -827,8 +891,11 @@ def _launch_command(
             stdout=b"".join(running.stdout.fragments),
             stderr=b"".join(running.stderr.fragments),
         )
-    except Exception:
-        _stop_child(process)
+    except Exception as error:
+        try:
+            _stop_child(process)
+        except ProbeExecutionError as cleanup_error:
+            error.add_note(f"probe child cleanup also failed: {cleanup_error}")
         raise
     else:
         # A successful leader may have left detached-stdio descendants in its

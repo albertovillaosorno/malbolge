@@ -34,14 +34,17 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import replace
 import hashlib
 import os
 from pathlib import Path
 import shutil
+import signal
 import sys
 import threading
 import time
+from typing import TYPE_CHECKING
 from typing import cast
 
 from algorithms.diff.probe_exec import PathArgument
@@ -57,6 +60,9 @@ from algorithms.diff.probe_exec import run_probe_program
 from algorithms.diff.probe_exec import run_probe_programs
 import pytest
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 _PYTHON_TOOL = "python"
 _WINDOWS_OS_NAME = "nt"
 _ORIGINAL_TEXT = "before"
@@ -67,6 +73,8 @@ _STDOUT_NAME = "stdout"
 _STDERR_NAME = "stderr"
 _POSIX_OS_NAME = "posix"
 _PROBE_WRITER_THREAD_NAME = "probe-stdin-writer"
+_GROUP_CLEANUP_FAILURE = "group cleanup failed"
+_POSIX_WAIT_NOHANG = cast("int", getattr(os, "WNOHANG", 1))
 _LINK_CREATE_CODE = (
     "import pathlib,sys;pathlib.Path(sys.argv[1]).symlink_to(sys.argv[2])"
 )
@@ -527,6 +535,86 @@ def test_successful_probe_reaps_remaining_posix_descendants(
     _expect(started.exists(), "probe did not start its child")
     time.sleep(1.0)
     _expect(not late.exists(), "successful probe left descendant running")
+
+
+def _reject_group_kill_for_test(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[list[int], Callable[[int, int], None]]:
+    real_kill = os.kill
+    blocked_groups: list[int] = []
+
+    def reject_group_kill(pid: int, signum: int) -> None:
+        if pid < 0:
+            blocked_groups.append(-pid)
+            message = "injected denied process-group signal"
+            raise PermissionError(message)
+        real_kill(pid, signum)
+
+    monkeypatch.setattr(os, "kill", reject_group_kill)
+    return blocked_groups, real_kill
+
+
+def _ensure_probe_child_was_reaped(pid: int) -> None:
+    with suppress(ChildProcessError):
+        _ = os.waitpid(pid, _POSIX_WAIT_NOHANG)
+        message = "probe child was not reaped after denied group signal"
+        raise AssertionError(message)
+
+
+def _cleanup_probe_group_test(
+    blocked_groups: list[int], real_kill: Callable[[int, int], None]
+) -> None:
+    for pid in blocked_groups:
+        try:
+            waited, _ = os.waitpid(pid, _POSIX_WAIT_NOHANG)
+        except ChildProcessError:
+            waited = -1
+        if waited == 0:
+            with suppress(ProcessLookupError):
+                real_kill(pid, int(signal.Signals["SIGKILL"]))
+            with suppress(ChildProcessError):
+                _ = os.waitpid(pid, 0)
+
+
+@pytest.mark.parametrize("expires", [False, True])
+def test_failed_group_signal_reaps_probe_and_preserves_primary_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    expires: bool,
+) -> None:
+    """An unpermitted group kill must not mask a timeout or leak its child."""
+    if os.name != _POSIX_OS_NAME:
+        pytest.skip("POSIX process groups unavailable")
+    source = tmp_path / "source"
+    source.mkdir()
+    blocked_groups, real_kill = _reject_group_kill_for_test(monkeypatch)
+    code = "import time;time.sleep(4)" if expires else "print('complete')"
+    command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", code),
+        timeout_ms=60 if expires else 2_000,
+        digest_stdout=True,
+    )
+    try:
+        with pytest.raises(
+            ProbeExecutionError,
+            match="timeout" if expires else _GROUP_CLEANUP_FAILURE,
+        ) as failure:
+            _ = run_probe_program(
+                ProbeProgram("group-kill-denied", (command,)),
+                _context(source, tmp_path),
+            )
+        _expect(bool(blocked_groups), "failed group signal was not exercised")
+        if expires:
+            notes = cast("list[str]", getattr(failure.value, "__notes__", []))
+            _expect(
+                any(_GROUP_CLEANUP_FAILURE in note for note in notes),
+                "the original timeout lost its secondary cleanup diagnostic",
+            )
+        _ensure_probe_child_was_reaped(blocked_groups[0])
+    finally:
+        _cleanup_probe_group_test(blocked_groups, real_kill)
 
 
 def test_probe_deadline_includes_pipe_setup_delay(
