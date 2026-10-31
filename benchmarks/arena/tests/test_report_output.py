@@ -37,14 +37,11 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from benchmarks.arena import analyze
-from benchmarks.arena import evidence
-from benchmarks.arena import report_output
+from benchmarks.arena import analyze, evidence, report_output
 from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
@@ -371,6 +368,66 @@ def test_native_json_tuple_and_scalars_remain_publishable() -> None:
     report_output.publish(report, output)
     assert output.records == [json.dumps(report, sort_keys=True, indent=2) + "\n"]
     assert output.flushed
+
+
+class _HostileEncoderError(TypeError):
+    """A serializer exception with a dangerous diagnostic formatter."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign JSON error formatting executed")
+
+
+class _ForgedJsonText(str):
+    """A foreign encoder string can intercept newline record formation."""
+
+    def __add__(self, _other: object) -> str:
+        raise AssertionError("foreign JSON string concatenation executed")
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        KeyError("missing encoder state"),
+        OSError("encoder backing store failed"),
+        RuntimeError("encoder unavailable"),
+        _HostileEncoderError("unsafe encoder diagnostic"),
+    ],
+    ids=["key-error", "host-io", "runtime", "hostile-formatter"],
+)
+def test_json_encoder_host_failure_is_typed_without_formatting(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: Exception,
+) -> None:
+    """A failed JSON encoder cannot run exception hooks or write stdout."""
+    output = _FakeStream("healthy")
+
+    def fail_encoder(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    monkeypatch.setattr(report_output.json, "dumps", fail_encoder)
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization") as caught:
+        report_output.publish({"status": "ready"}, output)
+    assert caught.value.__cause__ is fault
+    assert not output.records
+    assert not output.flushed
+
+
+@pytest.mark.parametrize(
+    "forged", [None, True, 7, b"{}", _ForgedJsonText("{}")],
+    ids=["none", "boolean", "integer", "bytes", "foreign-string"],
+)
+def test_json_encoder_requires_native_complete_text_before_publication(
+    monkeypatch: pytest.MonkeyPatch,
+    forged: object,
+) -> None:
+    """A fabricated encoder result cannot claim complete JSON publication."""
+    output = _FakeStream("healthy")
+    monkeypatch.setattr(report_output.json, "dumps", lambda *_a, **_kw: forged)
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish({"status": "ready"}, output)
+    assert not output.records
+    assert not output.flushed
 
 
 class _UnsafeStreamError(RuntimeError):

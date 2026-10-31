@@ -35,9 +35,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
-from typing import Never
-from typing import Protocol
+from typing import Any, Never, Protocol
 
 
 class TextReportStream(Protocol):
@@ -128,9 +126,15 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
         # Fully render strict JSON before touching stdout: even nested nonfinite
         # costs must not produce an invalid but apparently successful report.
         _admit_native_json(report)
-        record = json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n"
-    except (TypeError, ValueError, OverflowError, RecursionError) as error:
-        message = f"arena report JSON serialization failed: {error}"
+        serialized = json.dumps(report, sort_keys=True, indent=2, allow_nan=False)
+        if type(serialized) is not str:
+            message = "arena report JSON encoder returned nonnative text"
+            raise TypeError(message)
+        record = serialized + "\n"
+    except Exception as error:
+        # A serializer dependency may fail unexpectedly; never format hooks
+        # on a foreign failure or accept forged text before touching stdout.
+        message = "arena report JSON serialization failed"
         raise ReportOutputError(message) from error
     try:
         written = stream.write(record)
