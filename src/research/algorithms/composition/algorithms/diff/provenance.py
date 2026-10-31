@@ -209,7 +209,12 @@ def _source_mode(path: Path, relative: str) -> int | None:
     except (OSError, ValueError, RuntimeError) as error:
         message = f"pinned source status failed for {relative}: {error}"
         raise SourcePinError(message) from error
-    if S_ISLNK(mode) or path.is_junction():
+    try:
+        is_link = S_ISLNK(mode) or path.is_junction()
+    except (OSError, ValueError, RuntimeError) as error:
+        message = f"pinned source status failed for {relative}: {error}"
+        raise SourcePinError(message) from error
+    if is_link:
         message = f"symlink is not accepted in pinned source: {relative}"
         raise SourcePinError(message)
     return mode
@@ -239,18 +244,23 @@ def _selected_root(root: Path, relative_root: str) -> tuple[Path, int]:
     raise SourcePinError(message)
 
 
-def _raise_source_walk_error(error: OSError) -> None:
+def _raise_source_walk_error(
+    error: OSError | ValueError | RuntimeError,
+) -> None:
     message = f"pinned source traversal failed: {error}"
     raise SourcePinError(message) from error
 
 
 def _directory_paths(selected: Path) -> tuple[Path, ...]:
     paths: list[Path] = []
-    for directory, directories, filenames in selected.walk(
-        on_error=_raise_source_walk_error
-    ):
-        paths.extend(directory / name for name in directories)
-        paths.extend(directory / name for name in filenames)
+    try:
+        for directory, directories, filenames in selected.walk(
+            on_error=_raise_source_walk_error
+        ):
+            paths.extend(directory / name for name in directories)
+            paths.extend(directory / name for name in filenames)
+    except (OSError, ValueError, RuntimeError) as error:
+        _raise_source_walk_error(error)
     return tuple(sorted(paths))
 
 

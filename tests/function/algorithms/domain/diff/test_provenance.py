@@ -49,6 +49,7 @@ import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from collections.abc import Iterator
 
 _COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _EXPECTED_FILE_COUNT = 3
@@ -315,6 +316,54 @@ def test_pinned_snapshot_walk_errors_fail_closed(
         assert on_error is not None
         _ = on_error(PermissionError("blocked pinned source"))
         return iter(())
+
+    monkeypatch.setattr(Path, "walk", fail_walk)
+    with pytest.raises(SourcePinError, match="pinned source traversal failed"):
+        _ = source_snapshot_evidence(tmp_path, ("src",))
+
+
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_pinned_source_junction_status_errors_fail_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A failed host junction query cannot escape the source-pin boundary."""
+    _write(tmp_path, "src/leaf.c", b"int leaf;\n")
+    selected = tmp_path / "src" / "leaf.c"
+    original_is_junction = Path.is_junction
+
+    def fail_junction(path: Path) -> bool:
+        if path == selected:
+            message = "blocked junction query"
+            raise failure_type(message)
+        return original_is_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", fail_junction)
+    with pytest.raises(SourcePinError, match="pinned source status failed"):
+        _ = source_snapshot_evidence(tmp_path, ("src",))
+
+
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_pinned_source_walk_iterator_errors_fail_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Errors from a source walk iterator remain typed pin failures."""
+    _write(tmp_path, "src/leaf.c", b"int leaf;\n")
+
+    def fail_walk(
+        path: Path,
+        *,
+        top_down: bool = True,
+        on_error: Callable[[OSError], object] | None = None,
+        follow_symlinks: bool = False,
+    ) -> Iterator[tuple[Path, list[str], list[str]]]:
+        _ = top_down, on_error, follow_symlinks
+        yield path, [], []
+        message = "blocked pinned traversal"
+        raise failure_type(message)
 
     monkeypatch.setattr(Path, "walk", fail_walk)
     with pytest.raises(SourcePinError, match="pinned source traversal failed"):
