@@ -255,19 +255,30 @@ def _routine_names(
 
 
 def loads_document(text: str) -> JsonObject:
-    """Parse guest libc JSON while rejecting duplicate object keys.
+    """Parse bounded guest libc JSON while rejecting duplicate object keys.
 
     Returns:
         Parsed top-level contract object.
 
     """
+    if type(text) is not str:
+        _fail("C libc JSON requires exact str text")
+    if len(text) > MAX_DOCUMENT_BYTES:
+        _fail("C libc JSON exceeds byte limit")
+    try:
+        if len(text.encode("utf-8")) > MAX_DOCUMENT_BYTES:
+            _fail("C libc JSON exceeds byte limit")
+    except UnicodeEncodeError as error:
+        raise CLibcValidationError("C libc JSON requires strict UTF-8") from error
     try:
         parsed = cast(
             "object",
             json.loads(text, object_pairs_hook=_reject_duplicate_pairs),
         )
-    except json.JSONDecodeError as error:
-        _fail(f"invalid JSON: {error}")
+    except CLibcValidationError:
+        raise
+    except (ValueError, RecursionError) as error:
+        raise CLibcValidationError("invalid C libc JSON") from error
     return _mapping(parsed, "C libc document")
 
 
@@ -300,6 +311,9 @@ def _check_parent_paths(path: Path) -> None:
 
 
 def _read_regular_bytes(path: Path) -> bytes:
+    # A Path subclass can redirect host filesystem methods or __fspath__.
+    if type(path) is not type(Path()):
+        _fail("C libc document requires an exact native Path")
     # Reject redirects and specials before opening. O_NOFOLLOW and O_NONBLOCK
     # also protect the leaf open against symlink races and writerless FIFOs.
     _check_parent_paths(path)
@@ -319,12 +333,27 @@ def _read_regular_bytes(path: Path) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except BaseException:
+        # The raw descriptor belongs to this reader until fdopen succeeds.
+        try:
+            os.close(descriptor)
+        except (OSError, ValueError, RuntimeError, TypeError, AttributeError):
+            pass
+        raise
+    with stream:
         opened = os.fstat(stream.fileno())
         _verify_regular_snapshot(status, opened)
         data = stream.read(MAX_DOCUMENT_BYTES + 1)
         _verify_regular_snapshot(opened, os.fstat(stream.fileno()))
-        if len(data) != opened.st_size or len(data) > MAX_DOCUMENT_BYTES:
+        _check_parent_paths(path)
+        _verify_regular_snapshot(opened, path.lstat())
+        if (
+            type(data) is not bytes
+            or len(data) != opened.st_size
+            or len(data) > MAX_DOCUMENT_BYTES
+        ):
             _fail("C libc document changed during read or exceeds byte limit")
     return data
 
@@ -338,10 +367,13 @@ def load_document(path: Path = DEFAULT_LIBC) -> JsonObject:
     """
     try:
         text = _read_regular_bytes(path).decode("utf-8-sig")
+    except CLibcValidationError:
+        raise
     except UnicodeDecodeError as error:
         _fail(f"invalid C libc UTF-8: {error}")
-    except OSError as error:
-        _fail(f"failed to read C libc document {path}: {error}")
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = f"failed to read C libc document {path}"
+        raise CLibcValidationError(message) from error
     return loads_document(text)
 
 

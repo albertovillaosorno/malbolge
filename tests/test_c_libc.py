@@ -43,6 +43,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 import pytest
 
@@ -247,6 +248,27 @@ def test_duplicate_libc_keys_fail_closed() -> None:
         _ = c_libc.loads_document(text)
 
 
+def test_guest_libc_json_parser_rejects_unbounded_direct_text() -> None:
+    """Direct parser calls cannot bypass the file authority's byte budget."""
+    oversized = '{"a":"' + "x" * c_libc.MAX_DOCUMENT_BYTES + '"}'
+    with pytest.raises(c_libc.CLibcValidationError, match="JSON.*byte limit"):
+        _ = c_libc.loads_document(oversized)
+
+
+def test_guest_libc_json_parser_rejects_non_utf8_text() -> None:
+    """Direct parser text must be strict UTF-8 representable source input."""
+    text = '{"a":"' + chr(0xD800) + '"}'
+    with pytest.raises(c_libc.CLibcValidationError, match="JSON.*UTF-8"):
+        _ = c_libc.loads_document(text)
+
+
+@pytest.mark.parametrize("value", [None, b"{}", ["{}"], 1])
+def test_guest_libc_json_parser_rejects_nontext_input(value: object) -> None:
+    """Direct parser calls must fail through the same typed authority boundary."""
+    with pytest.raises(c_libc.CLibcValidationError, match="JSON.*text"):
+        _ = c_libc.loads_document(cast("str", value))
+
+
 def test_guest_libc_document_reads_regular_copy(tmp_path: Path) -> None:
     """A normal detached JSON fixture is accepted by the authority loader."""
     copy = tmp_path / "libc.json"
@@ -304,6 +326,201 @@ def test_guest_libc_loader_rejects_invalid_utf8(tmp_path: Path) -> None:
         match="invalid C libc UTF-8",
     ):
         _ = c_libc.load_document(path)
+
+
+class _HostileLibcPath(type(Path())):
+    """A foreign Path can redirect or fail within os.fspath hooks."""
+
+    @override
+    def __fspath__(self) -> str:
+        message = "untrusted authority path formatting executed"
+        raise AssertionError(message)
+
+
+def test_guest_libc_loader_rejects_foreign_path_before_host_hooks(
+    tmp_path: Path,
+) -> None:
+    """Only exact native paths may cross the filesystem authority boundary."""
+    foreign = _HostileLibcPath(tmp_path / "libc.json")
+    with pytest.raises(c_libc.CLibcValidationError, match="native Path"):
+        _ = c_libc.load_document(foreign)
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "path-lstat",
+        "post-read-lstat",
+        "parent-junction",
+        "leaf-junction",
+        "open",
+        "fstat",
+        "post-read-fstat",
+    ],
+)
+def test_guest_libc_host_inspection_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+    stage: str,
+) -> None:
+    """Host path, junction and descriptor faults cannot bypass libc errors."""
+    path = tmp_path / "libc.json"
+    _ = path.write_bytes(LIBC_PATH.read_bytes())
+    original_lstat = Path.lstat
+    original_junction = Path.is_junction
+    stat_calls = 0
+
+    def failing_lstat(candidate: Path, *args: object, **kwargs: object) -> object:
+        nonlocal stat_calls
+        if candidate == path:
+            stat_calls += 1
+            if stage != "post-read-lstat" or stat_calls == 2:
+                raise fault("injected libc lstat failure")
+        return original_lstat(candidate, *args, **kwargs)
+
+    def failing_junction(candidate: Path) -> bool:
+        if candidate == (tmp_path if stage == "parent-junction" else path):
+            raise fault("injected libc junction inspection failure")
+        return original_junction(candidate)
+
+    original_fstat = os.fstat
+
+    def failing_open(*args: object, **kwargs: object) -> int:
+        del args, kwargs
+        raise fault("injected libc host open failure")
+
+    def failing_fstat(descriptor: int) -> os.stat_result:
+        nonlocal stat_calls
+        if stage == "post-read-fstat":
+            stat_calls += 1
+            if stat_calls != 2:
+                return original_fstat(descriptor)
+        raise fault("injected libc host descriptor failure")
+
+    if stage in {"path-lstat", "post-read-lstat"}:
+        monkeypatch.setattr(Path, "lstat", failing_lstat)
+    elif stage in {"parent-junction", "leaf-junction"}:
+        monkeypatch.setattr(Path, "is_junction", failing_junction)
+    elif stage == "open":
+        monkeypatch.setattr(os, "open", failing_open)
+    else:
+        monkeypatch.setattr(os, "fstat", failing_fstat)
+    with pytest.raises(c_libc.CLibcValidationError, match="read C libc") as error:
+        _ = c_libc.load_document(path)
+    assert type(error.value.__cause__) is fault
+
+
+@pytest.mark.parametrize("fault", [OSError, ValueError, RuntimeError])
+def test_guest_libc_fdopen_failure_releases_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """No raw descriptor may survive a failed binary stream wrapper."""
+    path = tmp_path / "libc.json"
+    _ = path.write_bytes(LIBC_PATH.read_bytes())
+    original_open = os.open
+    original_fstat = os.fstat
+    captured: list[int] = []
+
+    def capture_open(
+        file: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        descriptor = original_open(file, flags, mode, dir_fd=dir_fd)
+        captured.append(descriptor)
+        return descriptor
+
+    def failing_fdopen(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise fault("injected libc fdopen failure")
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "fdopen", failing_fdopen)
+    try:
+        with pytest.raises(c_libc.CLibcValidationError, match="read C libc"):
+            _ = c_libc.load_document(path)
+    finally:
+        leaked = [
+            descriptor
+            for descriptor in captured
+            if _descriptor_open(descriptor, original_fstat)
+        ]
+        for descriptor in leaked:
+            os.close(descriptor)
+    assert captured
+    assert not leaked
+
+
+def _descriptor_open(descriptor: int, fstat: Callable[[int], os.stat_result]) -> bool:
+    """Inspect an owned descriptor with the unpatched host stat operation."""
+    try:
+        _ = fstat(descriptor)
+    except OSError:
+        return False
+    return True
+
+
+def test_guest_libc_loader_rejects_same_byte_path_swap_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Matching descriptor bytes alone cannot certify the original pathname."""
+    path = tmp_path / "libc.json"
+    replacement = tmp_path / "replacement.json"
+    content = LIBC_PATH.read_bytes()
+    _ = path.write_bytes(content)
+    _ = replacement.write_bytes(content)
+    original_fstat = os.fstat
+    inspections = 0
+
+    def replacing_fstat(descriptor: int) -> os.stat_result:
+        nonlocal inspections
+        inspected = original_fstat(descriptor)
+        inspections += 1
+        if inspections == 2:
+            os.replace(replacement, path)
+        return inspected
+
+    monkeypatch.setattr(os, "fstat", replacing_fstat)
+    with pytest.raises(c_libc.CLibcValidationError, match="stable regular file"):
+        _ = c_libc.load_document(path)
+    assert inspections >= 2
+
+
+def test_guest_libc_loader_rejects_parent_redirection_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-read identity also rejects a newly symlinked parent directory."""
+    parent = tmp_path / "original"
+    parent.mkdir()
+    path = parent / "libc.json"
+    _ = path.write_bytes(LIBC_PATH.read_bytes())
+    moved = tmp_path / "moved"
+    original_fstat = os.fstat
+    inspections = 0
+
+    def redirecting_fstat(descriptor: int) -> os.stat_result:
+        nonlocal inspections
+        inspected = original_fstat(descriptor)
+        inspections += 1
+        if inspections == 2:
+            parent.rename(moved)
+            parent.symlink_to(moved, target_is_directory=True)
+        return inspected
+
+    monkeypatch.setattr(os, "fstat", redirecting_fstat)
+    with pytest.raises(c_libc.CLibcValidationError, match="path must not redirect"):
+        _ = c_libc.load_document(path)
+    assert inspections >= 2
 
 
 def test_unknown_libc_key_fails_closed() -> None:
