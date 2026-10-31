@@ -1144,6 +1144,92 @@ def test_direct_raw_check_rejects_non_native_labels_before_diagnostics(
         raw_samples.check_rows(b"", [], cast("str", foreign_label))
 
 
+@pytest.mark.parametrize(
+    "fault_type", [csv.Error, ValueError, TypeError, RuntimeError, RecursionError]
+)
+def test_raw_csv_parser_faults_preserve_typed_failure_without_foreign_formatting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Unexpected parser failures must not invoke a foreign __str__."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+
+    def hostile_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign CSV parser exception formatter executed")
+
+    hostile_type = type("ForeignCSVFault", (fault_type,), {"__str__": hostile_str})
+    fault = hostile_type("untrusted parser detail")
+
+    def broken_reader(source: StringIO, *, strict: bool) -> Iterator[list[str]]:
+        del source, strict
+        raise fault
+
+    monkeypatch.setattr(raw_samples.csv, "reader", broken_reader)
+    with pytest.raises(raw_samples.RawSampleError, match="arena raw CSV") as caught:
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
+    assert caught.value.__cause__ is fault
+
+
+def test_raw_csv_native_parser_diagnostic_retained(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Native CSV parser failures retain the standard library's reason."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+    fault = csv.Error("unescaped end-of-record")
+
+    def broken_reader(source: StringIO, *, strict: bool) -> Iterator[list[str]]:
+        del source, strict
+        raise fault
+
+    monkeypatch.setattr(raw_samples.csv, "reader", broken_reader)
+    with pytest.raises(
+        raw_samples.RawSampleError, match="unescaped end-of-record"
+    ) as caught:
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("position", ["header", "row"])
+def test_raw_csv_parser_foreign_rows_rejected_before_hostile_methods(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    position: str,
+) -> None:
+    """A substituted CSV parser cannot supply caller-defined row objects."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+    actual_header = list(raw_samples.HEADER)
+    parser = csv.reader(StringIO(raw.decode("utf-8")))
+    _ = next(parser)
+    values = next(parser)
+
+    class ForgedHeader(list[str]):
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign CSV header equality executed")
+
+    class ForgedCell(str):
+        def __hash__(self) -> int:
+            raise AssertionError("foreign CSV cell hash executed")
+
+    header: list[str] = (
+        ForgedHeader(actual_header) if position == "header" else actual_header
+    )
+    row = [ForgedCell(values[0]), *values[1:]] if position == "row" else values
+
+    def substituted_reader(source: StringIO, *, strict: bool) -> Iterator[list[str]]:
+        del source, strict
+        return iter([header, row])
+
+    monkeypatch.setattr(raw_samples.csv, "reader", substituted_reader)
+    with pytest.raises(raw_samples.RawSampleError, match="native CSV"):
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
+
+
 def test_direct_raw_check_types_unrenderable_native_metric(tmp_path: Path) -> None:
     """Decimal conversion limits cannot leak raw ValueError to callers."""
     observation = sample_study(tmp_path)["observations"][0]

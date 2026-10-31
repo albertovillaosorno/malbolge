@@ -109,9 +109,18 @@ def _row_values(
     )
 
 
+def _require_native_csv_row(row: object, label: str) -> None:
+    # The stdlib csv.reader returns native list[str]. Require that identity
+    # before evaluating equality or hashing any parser-provided objects.
+    if type(row) is not list or any(type(field) is not str for field in row):
+        _fail(f"{label}: arena raw CSV parser returned non-native CSV row")
+
+
 def _header_schema(
     header: list[str] | None, label: str
 ) -> tuple[str, tuple[str, ...]]:
+    if header is not None:
+        _require_native_csv_row(header, label)
     if header == list(HEADER):
         return RAW_SCHEMA_VERSION, METRIC_FIELDS
     if header == list(HEADER_2):
@@ -135,6 +144,7 @@ def _limited_rows(
     for row in reader:
         if len(rows) >= expected_rows:
             _fail(f"{label}: raw CSV has more rows than reported trials")
+        _require_native_csv_row(row, label)
         rows.append(tuple(row))
     return rows
 
@@ -153,8 +163,14 @@ def _csv_rows(
         header = next(reader, None)
         version, metrics = _header_schema(header, label)
         rows = _limited_rows(reader, label, expected_rows)
+    except RawSampleError:
+        raise
     except csv.Error as error:
-        message = f"{label}: invalid arena raw CSV quotes: {error}"
+        detail = str(error) if type(error) is csv.Error else type(error).__name__
+        message = f"{label}: invalid arena raw CSV quotes: {detail}"
+        raise RawSampleError(message) from error
+    except (TypeError, ValueError, RuntimeError) as error:
+        message = f"{label}: invalid arena raw CSV parser: {type(error).__name__}"
         raise RawSampleError(message) from error
     return version, metrics, rows
 
