@@ -34,6 +34,9 @@
 #[path = "../src/runtime/tiered-execution/adapter-outbound/fs_coord/main.rs"]
 pub mod file_coordination;
 
+// This standalone source-path test intentionally compiles without the library API.
+use malbolge as _;
+
 use file_coordination::{
     NativeContinuationFileCoordination as Coordination,
     NativeContinuationFileCoordinationError as CoordinationError,

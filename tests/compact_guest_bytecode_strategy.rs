@@ -139,7 +139,6 @@ impl OwnedArtifactFixture {
     }
 }
 
-#[expect(clippy::missing_trait_methods, reason = "owned test fixture cleanup")]
 impl Drop for OwnedArtifactFixture {
     fn drop(&mut self) {
         drop(fs::remove_dir_all(&self.root));

@@ -32,13 +32,16 @@
 
 //! Scoped host thread worker-failure regression evidence.
 
+use std::panic::catch_unwind;
 use std::sync::{Arc, Barrier};
 
 use super::ScopedThreadParallelism;
-use crate::parallel_port::{ParallelExecutionError, ParallelExecutionPort};
+use crate::parallel_port::{ParallelExecutionError, ParallelExecutionPort as _};
 
+#[expect(clippy::panic, reason = "test exercises caught host worker panics")]
 fn both_workers_panic(barrier: Arc<Barrier>) {
     let _arrived = barrier.wait();
+    drop(barrier);
     panic!("controlled scoped worker failure");
 }
 
@@ -46,9 +49,8 @@ fn both_workers_panic(barrier: Arc<Barrier>) {
 fn simultaneous_worker_panics_return_first_typed_error() {
     let barrier = Arc::new(Barrier::new(2));
     let requests = vec![Arc::clone(&barrier), barrier];
-    let observed = std::panic::catch_unwind(|| {
-        ScopedThreadParallelism::execute(requests, 2, both_workers_panic)
-    });
+    let observed =
+        catch_unwind(|| ScopedThreadParallelism::execute(requests, 2, both_workers_panic));
     assert!(matches!(
         observed,
         Ok(Err(ParallelExecutionError::WorkerPanicked { worker: 0 }))
@@ -56,20 +58,14 @@ fn simultaneous_worker_panics_return_first_typed_error() {
 }
 
 fn fail_later_workers(worker: u8) -> u8 {
-    if worker > 0 {
-        panic!("controlled later worker failure");
-    }
+    assert_eq!(worker, 0, "controlled later worker failure");
     worker
 }
 
 #[test]
 fn later_worker_panics_return_earliest_failed_index() {
-    let observed = std::panic::catch_unwind(|| {
-        ScopedThreadParallelism::execute(
-            vec![0u8, 1u8, 2u8],
-            3,
-            fail_later_workers,
-        )
+    let observed = catch_unwind(|| {
+        ScopedThreadParallelism::execute(vec![0u8, 1u8, 2u8], 3, fail_later_workers)
     });
     assert!(matches!(
         observed,
@@ -78,12 +74,11 @@ fn later_worker_panics_return_earliest_failed_index() {
 }
 
 fn double(value: u8) -> u8 {
-    value * 2
+    value.wrapping_mul(2)
 }
 
 #[test]
 fn successful_scoped_workers_keep_input_order() {
-    let result =
-        ScopedThreadParallelism::execute(vec![3u8, 1u8, 4u8, 2u8], 3, double);
+    let result = ScopedThreadParallelism::execute(vec![3u8, 1u8, 4u8, 2u8], 3, double);
     assert_eq!(result, Ok(vec![6u8, 2u8, 8u8, 4u8]));
 }

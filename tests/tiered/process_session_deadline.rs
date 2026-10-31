@@ -40,8 +40,7 @@ fn completed_frames_admit_only_before_the_deadline() -> Result<(), String> {
 
     let budget = Duration::from_millis(10);
     let response = vec![0x13u8, 0x37];
-    if finish_timed_exchange(budget, Duration::ZERO, Ok(response.clone()))
-        != Ok(response.clone())
+    if finish_timed_exchange(budget, Duration::ZERO, Ok(response.clone())) != Ok(response.clone())
         || finish_timed_exchange(
             budget,
             Duration::from_nanos(9_999_999),
@@ -49,11 +48,8 @@ fn completed_frames_admit_only_before_the_deadline() -> Result<(), String> {
         ) != Ok(response.clone())
         || finish_timed_exchange(budget, budget, Ok(response.clone()))
             != Err(NativeProcessSessionError::ExchangeTimeout)
-        || finish_timed_exchange(
-            budget,
-            Duration::from_millis(11),
-            Ok(response),
-        ) != Err(NativeProcessSessionError::ExchangeTimeout)
+        || finish_timed_exchange(budget, Duration::from_millis(11), Ok(response))
+            != Err(NativeProcessSessionError::ExchangeTimeout)
     {
         return Err(String::from("completed frame deadline admission drifted"));
     }
@@ -69,8 +65,7 @@ fn late_transport_failures_cannot_extend_a_deadline() -> Result<(), String> {
 
     let budget = Duration::from_millis(10);
     let error = NativeProcessSessionError::Read(ErrorKind::UnexpectedEof);
-    if finish_timed_exchange(budget, Duration::from_millis(9), Err(error))
-        != Err(error)
+    if finish_timed_exchange(budget, Duration::from_millis(9), Err(error)) != Err(error)
         || finish_timed_exchange(budget, budget, Err(error))
             != Err(NativeProcessSessionError::ExchangeTimeout)
         || finish_timed_exchange(Duration::ZERO, Duration::ZERO, Ok(vec![]))
@@ -135,12 +130,12 @@ fn timed_exchange_worker_capacity_checks_are_atomic() -> Result<(), String> {
     let start = Arc::new(Barrier::new(16));
     let owned = thread::scope(|scope| {
         let mut workers = Vec::new();
-        for _ in 0..16 {
-            let start = Arc::clone(&start);
-            let active = &active;
+        for _ in 0usize..16usize {
+            let worker_start = Arc::clone(&start);
+            let worker_active = &active;
             workers.push(scope.spawn(move || {
-                let _arrived = start.wait();
-                TimedExchangeWorkerPermit::acquire(active, 4)
+                let _arrived = worker_start.wait();
+                TimedExchangeWorkerPermit::acquire(worker_active, 4)
             }));
         }
         workers
@@ -149,25 +144,20 @@ fn timed_exchange_worker_capacity_checks_are_atomic() -> Result<(), String> {
             .collect::<Vec<_>>()
     });
     let mut permits = Vec::new();
-    let mut rejected = 0;
+    let mut rejected: usize = 0;
     for worker in owned {
         match worker.map_err(|_panic| String::from("worker panicked"))? {
             Ok(permit) => permits.push(permit),
             Err(NativeProcessSessionError::WorkerCapacityExceeded) => {
                 rejected += 1;
-            },
+            }
             Err(error) => {
                 return Err(format!("unexpected permit error: {error:?}"));
-            },
+            }
         }
     }
-    if permits.len() != 4
-        || rejected != 12
-        || active.load(Ordering::Acquire) != 4
-    {
-        return Err(String::from(
-            "concurrent permit acquisition overcommitted",
-        ));
+    if permits.len() != 4 || rejected != 12 || active.load(Ordering::Acquire) != 4 {
+        return Err(String::from("concurrent permit acquisition overcommitted"));
     }
     drop(permits);
     if active.load(Ordering::Acquire) != 0 {
