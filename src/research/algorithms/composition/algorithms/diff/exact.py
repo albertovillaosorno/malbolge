@@ -986,6 +986,7 @@ def materialize_exact_plan(
     staging_root = _prepare_staging(resolved_output)
     try:
         _populate_staging(resolved_source, staging_root, plan)
+        _verify_source(resolved_source, plan)
         _publish_exact_output(staging_root, resolved_output)
     except Exception as error:
         cleanup_error = _cleanup_exact_staging(staging_root)

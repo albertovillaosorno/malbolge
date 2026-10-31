@@ -111,6 +111,10 @@ the runtime candidate into staging. Symlinks and special entries still fail
 closed. Recursive snapshot and passthrough enumeration also surfaces filesystem
 
 scan failures instead of treating an inaccessible subtree as absent.
+A second static source snapshot after staging rejects persistent source edits or
+new files before publication, with staging cleanup on rejection. Declared
+passthrough roots remain dynamic. The final check and rename are not atomic;
+external concurrent writers still need coordination.
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.

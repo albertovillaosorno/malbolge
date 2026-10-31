@@ -404,6 +404,67 @@ def test_exact_materialization_rejects_changed_source_before_output(
     _expect(not staging.exists(), "rejected staging tree survived")
 
 
+@pytest.mark.parametrize("rewrite_existing", [True, False])
+def test_exact_rejects_static_source_drift_after_staging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    rewrite_existing: bool,
+) -> None:
+    """Do not publish if source files change while output is being staged."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "result"
+    staging = tmp_path / ".result.staging"
+
+    def snapshot_then_change_source(root: Path) -> TreeSnapshot:
+        measured = snapshot_tree(root)
+        if root == staging:
+            if rewrite_existing:
+                _write(source, "keep.txt", b"changed after staging\n")
+            else:
+                _write(source, "new-after-staging.txt", b"new static file\n")
+        return measured
+
+    monkeypatch.setattr(
+        exact_module, "snapshot_tree", snapshot_then_change_source
+    )
+    with pytest.raises(ExactTreeError, match="source tree"):
+        materialize_exact_plan(source, plan, output)
+    _expect(not output.exists(), "source drift published the exact target")
+    _expect(not staging.exists(), "source drift left the exact staging tree")
+
+
+def test_exact_allows_dynamic_source_changes_after_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A runtime passthrough change does not change exact static admission."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle, passthrough_roots=("assets",))
+    old_data = (source / "assets/blob.bin").read_bytes()
+    staging = tmp_path / ".result.staging"
+
+    def snapshot_then_change_runtime(root: Path) -> TreeSnapshot:
+        measured = snapshot_tree(root)
+        if root == staging:
+            _write(source, "assets/blob.bin", b"new runtime payload")
+        return measured
+
+    monkeypatch.setattr(
+        exact_module, "snapshot_tree", snapshot_then_change_runtime
+    )
+    output = tmp_path / "result"
+    materialize_exact_plan(source, plan, output)
+    _expect(
+        (output / "assets/blob.bin").read_bytes() == old_data,
+        "output did not preserve the staged runtime payload",
+    )
+    _expect(
+        snapshot_tree_excluding(output, ("assets",)) == plan.target,
+        "runtime edit altered exact static target",
+    )
+
+
 def test_exact_rejects_linked_source_path_ancestor_before_read(
     tmp_path: Path,
 ) -> None:
