@@ -34,6 +34,8 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -43,16 +45,17 @@ from accelerator.search_config import SearchConfigurationError
 from accelerator.search_config import load_search_configuration
 from accelerator.search_config import parse_search_configuration
 from accelerator.search_selection import SearchSelection
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 ALGORITHM = "deterministic-corpus-enumeration-v1"
 BACKEND = "cpu-reference"
 GPU_BACKEND = "cuda-search"
 OTHER_ALGORITHM = "other-search-v2"
 SEARCH_CONFIG_SOURCE = "search.toml"
+SOURCE_RECHECK = 2
 
 
 def _config(*, algorithm: str = ALGORITHM, backend: str = BACKEND) -> str:
@@ -210,3 +213,141 @@ def test_direct_configuration_requires_exact_admitted_members() -> None:
             source=SEARCH_CONFIG_SOURCE,
         ).validated(),
     )
+
+
+def test_search_config_rejects_oversized_toml(tmp_path: Path) -> None:
+    """Explicit search TOML remains bounded before decoding and parsing."""
+    path = tmp_path / "huge.toml"
+    with path.open("wb") as stream:
+        _ = stream.truncate(1024 * 1024 + 1)
+    with pytest.raises(SearchConfigurationError, match="byte limit"):
+        _ = load_search_configuration(path)
+
+
+def test_search_config_invalid_utf8_has_typed_error(tmp_path: Path) -> None:
+    """Untrusted configuration encoding failures cannot leak raw decoding."""
+    path = tmp_path / "invalid.toml"
+    _ = path.write_bytes(b"\xff")
+    with pytest.raises(SearchConfigurationError, match="UTF-8"):
+        _ = load_search_configuration(path)
+
+
+def test_search_config_rejects_directory_and_fifo(tmp_path: Path) -> None:
+    """A regular source contract keeps directory/FIFO input nonblocking."""
+    path = tmp_path / "search.toml"
+    path.mkdir()
+    with pytest.raises(SearchConfigurationError, match="regular"):
+        _ = load_search_configuration(path)
+    path.rmdir()
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFO creation unsupported")
+    mkfifo(path)
+    with pytest.raises(SearchConfigurationError, match="regular"):
+        _ = load_search_configuration(path)
+
+
+def test_search_config_explicit_symlink_preserves_alias_identity(
+    tmp_path: Path,
+) -> None:
+    """Caller-selected source aliases remain supported and clearly named."""
+    source = tmp_path / "physical.toml"
+    _ = source.write_text(_config(), encoding="utf-8")
+    alias = tmp_path / "selected.toml"
+    try:
+        _ = alias.symlink_to(source)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unsupported: {error}")
+    config = load_search_configuration(alias)
+    assert config.source == alias.as_posix()
+    assert config.selection.algorithm_id == ALGORITHM
+
+
+def test_search_config_rejects_replaced_inode_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-byte replacement after stat invalidates configuration source."""
+    source = tmp_path / "search.toml"
+    _ = source.write_text(_config(), encoding="utf-8")
+    replacement = tmp_path / "replacement.toml"
+    _ = replacement.write_bytes(source.read_bytes())
+    real_open = os.open
+    swapped = False
+
+    def swap_at_open(path: Path, flags: int) -> int:
+        nonlocal swapped
+        if path == source:
+            _ = replacement.replace(source)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_at_open)
+    with pytest.raises(SearchConfigurationError, match="changed before read"):
+        _ = load_search_configuration(source)
+    assert swapped
+
+
+def test_search_config_rejects_same_byte_inode_swap_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """File replacement after source reading never authorizes TOML identity."""
+    source = tmp_path / "search.toml"
+    _ = source.write_text(_config(), encoding="utf-8")
+    replacement = tmp_path / "replacement.toml"
+    _ = replacement.write_bytes(source.read_bytes())
+    real_stat = Path.stat
+    seen = 0
+
+    def swap_on_recheck(
+        path: Path,
+        *,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        nonlocal seen
+        if path == source:
+            seen += 1
+            if seen == SOURCE_RECHECK:
+                _ = replacement.replace(source)
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", swap_on_recheck)
+    with pytest.raises(SearchConfigurationError, match="changed during read"):
+        _ = load_search_configuration(source)
+    assert seen == SOURCE_RECHECK
+
+
+def test_search_config_rejects_in_place_change_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equal-size edits to an opened TOML source cannot pass unchanged."""
+    source = tmp_path / "search.toml"
+    _ = source.write_text(_config(), encoding="utf-8")
+    real_stat = Path.stat
+    seen = 0
+
+    def edit_on_recheck(
+        path: Path,
+        *,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        nonlocal seen
+        if path == source:
+            seen += 1
+            if seen == SOURCE_RECHECK:
+                with source.open("r+b") as stream:
+                    _ = stream.write(b"x")
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", edit_on_recheck)
+    with pytest.raises(SearchConfigurationError, match="changed during read"):
+        _ = load_search_configuration(source)
+    assert seen == SOURCE_RECHECK
+
+
+def test_search_config_missing_file_is_typed_error(tmp_path: Path) -> None:
+    """Absent caller-configured TOML produces a stable typed failure."""
+    with pytest.raises(SearchConfigurationError, match="cannot read"):
+        _ = load_search_configuration(tmp_path / "missing.toml")

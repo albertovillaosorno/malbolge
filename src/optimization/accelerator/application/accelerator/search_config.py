@@ -35,6 +35,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
+from stat import S_ISREG
 import tomllib
 from typing import TYPE_CHECKING
 from typing import cast
@@ -46,6 +48,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 SEARCH_CONFIGURATION_SCHEMA = 1
+MAX_SEARCH_CONFIGURATION_BYTES = 1024 * 1024
 
 
 class SearchConfigurationError(ValueError):
@@ -116,17 +119,119 @@ class SearchConfiguration:
             raise SearchConfigurationError(str(error)) from error
 
 
+def _config_source_identity(status: os.stat_result) -> tuple[int, ...]:
+    """Admit regular config input and record mutation-sensitive identity.
+
+    Returns:
+        Device, inode, size, and modification/change timestamps.
+
+    Raises:
+        SearchConfigurationError: Config source is not regular.
+
+    """
+    if not S_ISREG(status.st_mode):
+        message = "search configuration must be a regular file"
+        raise SearchConfigurationError(message)
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _read_config_descriptor(
+    path: Path,
+    descriptor: int,
+    expected: tuple[int, ...],
+) -> bytes:
+    """Verify that the opened user-selected file remains unchanged.
+
+    Returns:
+        Exact bounded bytes from the stable opened source.
+
+    Raises:
+        SearchConfigurationError: Config source changes during reading.
+
+    """
+    with os.fdopen(descriptor, "rb") as stream:
+        if _config_source_identity(os.fstat(stream.fileno())) != expected:
+            message = "search configuration changed before read"
+            raise SearchConfigurationError(message)
+        payload = stream.read(MAX_SEARCH_CONFIGURATION_BYTES + 1)
+        if len(payload) != expected[2]:
+            message = (
+                "search configuration changed during read or "
+                "exceeds byte limit"
+            )
+            raise SearchConfigurationError(message)
+        if (
+            _config_source_identity(os.fstat(stream.fileno())) != expected
+            or _config_source_identity(path.stat()) != expected
+        ):
+            message = "search configuration changed during read"
+            raise SearchConfigurationError(message)
+        return payload
+
+
+def _read_config_file(path: Path) -> bytes:
+    """Open one stable regular user-selected configuration file.
+
+    Returns:
+        The complete bounded source bytes.
+
+    Raises:
+        SearchConfigurationError: Source file is invalid or oversized.
+
+    """
+    admitted = path.stat()
+    expected = _config_source_identity(admitted)
+    if admitted.st_size > MAX_SEARCH_CONFIGURATION_BYTES:
+        message = "search configuration exceeds byte limit"
+        raise SearchConfigurationError(message)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    return _read_config_descriptor(path, descriptor, expected)
+
+
+def _read_config_bytes(path: Path) -> bytes:
+    """Admit one bounded user-selected TOML file, including explicit aliases.
+
+    Returns:
+        Source bytes without partial reads or a changing physical file.
+
+    Raises:
+        SearchConfigurationError: File is invalid, oversized or unavailable.
+
+    """
+    try:
+        return _read_config_file(path)
+    except OSError as error:
+        message = f"cannot read search configuration: {error}"
+        raise SearchConfigurationError(message) from error
+
+
 def load_search_configuration(path: Path) -> SearchConfiguration:
     """Load one versioned TOML search configuration from disk.
 
     Returns:
         Validated configuration with repository/caller-visible source identity.
 
+    Raises:
+        SearchConfigurationError: Source, encoding, or TOML is invalid.
+
     """
-    return parse_search_configuration(
-        path.read_text(encoding="utf-8"),
-        source=path.as_posix(),
-    )
+    try:
+        text = _read_config_bytes(path).decode("utf-8")
+    except UnicodeDecodeError as error:
+        message = f"invalid search configuration UTF-8: {error}"
+        raise SearchConfigurationError(message) from error
+    return parse_search_configuration(text, source=path.as_posix())
 
 
 def parse_search_configuration(

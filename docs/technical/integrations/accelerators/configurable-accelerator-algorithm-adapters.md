@@ -72,8 +72,12 @@ backend IDs, so a CPU fallback cannot be mislabeled as accelerated evidence.
 versioned `schema_version = 1` TOML selection
 with independent `algorithm_id`/`backend_id`, fail-closed unknown keys, durable
 configuration-source identity, and explicit caller overrides that never mutate
-the loaded base configuration. Direct runtime selection, binding, override, and
-source identities require exact nonempty strings, matching durable TOML
+the loaded base configuration. User-selected TOML files, including explicit
+symlink aliases, must resolve to stable regular source bytes within a 1 MiB
+limit; directory/FIFO input, changing files and invalid UTF-8 produce typed
+configuration errors before search starts. Direct runtime selection,
+binding, override, and source identities require exact nonempty strings,
+matching durable TOML
 admission rather than accepting truthy foreign values. Direct execution plans
 validate exact selection, mandatory CPU reference, selected preferred route,
 and capability alignment before request or backend work. The first concrete
