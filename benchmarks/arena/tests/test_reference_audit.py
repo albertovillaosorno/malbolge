@@ -1001,7 +1001,8 @@ def test_audit_git_resolver_requires_physical_executable_before_launch(
 
 @pytest.mark.parametrize("operation", ["lstat", "access"])
 @pytest.mark.parametrize(
-    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+    "failure_type",
+    [OSError, ValueError, RuntimeError, TypeError, AttributeError, IndexError, OverflowError, Exception],
 )
 def test_audit_git_executable_inspection_faults_are_typed(
     tmp_path: Path,
@@ -1045,7 +1046,8 @@ def test_audit_git_executable_inspection_faults_are_typed(
 
 
 @pytest.mark.parametrize(
-    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+    "failure_type",
+    [OSError, ValueError, RuntimeError, TypeError, AttributeError, IndexError, OverflowError, Exception],
 )
 def test_audit_git_resolver_fault_is_typed(
     monkeypatch: pytest.MonkeyPatch, failure_type: type[Exception]
@@ -1072,6 +1074,9 @@ def test_audit_git_resolver_fault_is_typed(
         RuntimeError,
         TypeError,
         AttributeError,
+        IndexError,
+        OverflowError,
+        Exception,
         reference_audit.sp.SubprocessError,
     ],
 )
@@ -1090,6 +1095,31 @@ def test_audit_git_runner_fault_is_typed(
     ) as error:
         reference_audit._require_git_commit("0" * 40)
     assert type(error.value.__cause__) is failure_type
+
+
+def test_audit_git_runner_rejects_foreign_result_accessor_fault(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A returned process receipt cannot run a hostile property accessor."""
+
+    class OpaqueFault(Exception):
+        def __str__(self) -> str:
+            raise AssertionError("foreign Git receipt formatter executed")
+
+    fault = OpaqueFault("process response fault")
+
+    class BadCompleted:
+        @property
+        def returncode(self) -> int:
+            raise fault
+
+    monkeypatch.setattr(reference_audit.sp, "run", lambda *_args, **_kwargs: BadCompleted())
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="object lookup",
+    ) as caught:
+        reference_audit._require_git_commit("0" * 40)
+    assert caught.value.__cause__ is fault
 
 
 @pytest.mark.parametrize(

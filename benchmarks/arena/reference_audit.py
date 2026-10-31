@@ -446,7 +446,8 @@ def _require_unchanged_sidecars(
 def _require_git_commit(commit: str) -> None:
     try:
         executable = shutil.which("git", path=os.defpath)
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
+        # Unexpected ordinary resolver faults remain typed provenance errors.
         message = "host-C source commit Git lookup failed"
         raise ReferenceAuditError(message) from error
     if executable is None:
@@ -466,22 +467,17 @@ def _require_git_commit(commit: str) -> None:
     try:
         mode = Path(executable).lstat().st_mode
         is_executable = os.access(executable, os.X_OK)
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-    ) as error:
+    except Exception as error:
+        # Do not allow a substituted host inspector to escape this boundary.
         message = "host-C source commit Git path inspection failed"
         raise ReferenceAuditError(message) from error
     if not stat.S_ISREG(mode) or not is_executable:
         _fail("host-C source commit requires physical executable Git")
     # Foreign GIT_DIR and object alternates cannot satisfy local admission.
-    clean_env = {
-        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
-    }
     try:
+        clean_env = {
+            name: value for name, value in os.environ.items() if not name.startswith("GIT_")
+        }
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [executable, "cat-file", "-t", commit],
             cwd=_ROOT,
@@ -492,18 +488,12 @@ def _require_git_commit(commit: str) -> None:
             capture_output=True,
             timeout=5,
         )
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-        sp.SubprocessError,
-    ) as error:
+        returncode = getattr(completed, "returncode", None)
+        stdout = getattr(completed, "stdout", None)
+    except Exception as error:
+        # Include clean environment capture and foreign receipt accessors.
         message = "host-C source commit object lookup failed"
         raise ReferenceAuditError(message) from error
-    returncode = getattr(completed, "returncode", None)
-    stdout = getattr(completed, "stdout", None)
     if (
         type(returncode) is not int
         or returncode != 0
