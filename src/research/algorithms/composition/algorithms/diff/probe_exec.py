@@ -722,7 +722,7 @@ def _spawn_probe(
             start_new_session=os.name == _POSIX_OS_NAME,
         )
     except OSError as error:
-        message = f"probe command launch failed: {error}"
+        message = "probe command launch failed: " + _safe_probe_error_detail(error)
         raise ProbeExecutionError(message) from error
 
 
@@ -778,8 +778,8 @@ def _start_writer(
     return writer
 
 
-def _safe_probe_cleanup_detail(error: BaseException) -> str:
-    """Describe native cleanup faults without formatting foreign objects.
+def _safe_probe_error_detail(error: BaseException) -> str:
+    """Describe native host faults without formatting foreign objects.
 
     Returns:
         A native single-string reason or an exception class name.
@@ -804,7 +804,7 @@ def _close_unowned_pipe(
         stream.close()
     except (OSError, RuntimeError, ValueError) as error:
         BaseException.add_note(
-            failure, "probe unused pipe close failed: " + _safe_probe_cleanup_detail(error)
+            failure, "probe unused pipe close failed: " + _safe_probe_error_detail(error)
         )
 
 
@@ -941,7 +941,7 @@ def _start_capture_checked(
     try:
         return _start_capture(process, command)
     except (OSError, RuntimeError, ValueError) as error:
-        message = f"probe worker startup failed: {error}"
+        message = "probe worker startup failed: " + _safe_probe_error_detail(error)
         raise ProbeExecutionError(message) from error
 
 
@@ -1002,7 +1002,7 @@ def _launch_command(
             BaseException.add_note(
                 error,
                 "probe child cleanup also failed: "
-                + _safe_probe_cleanup_detail(cleanup_error),
+                + _safe_probe_error_detail(cleanup_error),
             )
         if running is not None:
             _close_failed_running_pipes(running, error)

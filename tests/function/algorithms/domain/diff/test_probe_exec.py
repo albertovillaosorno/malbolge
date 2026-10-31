@@ -68,6 +68,7 @@ import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from subprocess import Popen
     from typing import IO
 
 _PYTHON_TOOL = "python"
@@ -905,6 +906,57 @@ def test_probe_child_cleanup_keeps_foreign_primary(
     _expect(len(notes) == 1 and "child cleanup" in notes[0], "cleanup note missing")
     if cleanup_kind == "native":
         _expect("native child cleanup denied" in notes[0], "native note detail lost")
+
+
+@pytest.mark.parametrize("site", ["launch", "worker"])
+@pytest.mark.parametrize("fault_kind", ["foreign", "hostile-args", "native"])
+def test_probe_host_launch_and_worker_failures_reject_foreign_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+    fault_kind: str,
+) -> None:
+    """Host launch and worker errors reject without untrusted formatting."""
+    fault_class: type[Exception] = OSError if site == "launch" else RuntimeError
+
+    def unsafe_format(self: BaseException) -> str:
+        del self
+        raise AssertionError("foreign probe host formatter executed")
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("foreign probe host argument formatter executed")
+
+    foreign_type = type(
+        "ForeignProbeHostError", (fault_class,), {"__str__": unsafe_format}
+    )
+    fault = {
+        "foreign": foreign_type("foreign host fault"),
+        "hostile-args": fault_class(HostileArgument()),
+        "native": fault_class("native host fault"),
+    }[fault_kind]
+
+    def reject_host(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise fault
+
+    with monkeypatch.context() as patch:
+        if site == "launch":
+            patch.setattr(probe_exec_module.subprocess, "Popen", reject_host)
+            call = lambda: probe_exec_module._spawn_probe(["probe"], tmp_path)
+            label = "command launch failed"
+        else:
+            patch.setattr(probe_exec_module, "_start_capture", reject_host)
+            call = lambda: probe_exec_module._start_capture_checked(
+                cast("Popen[bytes]", object()), ProbeCommand(ToolExecutable(_PYTHON_TOOL))
+            )
+            label = "worker startup failed"
+        with pytest.raises(ProbeExecutionError, match=label) as caught:
+            _ = call()
+
+    _expect(caught.value.__cause__ is fault, "foreign probe host cause was lost")
+    if fault_kind == "native":
+        _expect("native host fault" in str(caught.value), "native reason was lost")
 
 
 @pytest.mark.parametrize("fail_writer", [False, True])
