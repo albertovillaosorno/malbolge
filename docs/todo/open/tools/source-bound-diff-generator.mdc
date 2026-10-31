@@ -244,8 +244,9 @@ format.
   placement, conservative opaque exact gates, target-only conflict checks,
   candidate-only preservation, historical removals, and transactional
   postconditions. Exact-gated output bytes now require the bound target SHA-256,
-  rejecting forged inner exact literals before publication. A second byte-tree
-  check now rejects persistent candidate
+  rejecting forged inner exact literals before publication. Inner exact source
+  paths also require agreement with their compatible outer source labels.
+  A second byte-tree check now rejects persistent candidate
   drift and staged-output edits by postconditions before publication; the
   final check-to-rename race still needs external writer coordination.
   `CompatibleCorrectionBinding` attaches named corrections to
