@@ -237,8 +237,16 @@ The study requires repository-local built executables under
 canonical `malbolge-1998` profile. It rejects zero, duplicate, invalid or
 more than four difficulty levels; each level has between 1 and 64 echo
 pairs, with one to three repetitions. The two arms alternate execution order
-by repetition to reduce (but not eliminate) order bias. Each executable child
-has a 15-second wall timeout. The target process boundary now uses a
+by repetition to reduce (but not eliminate) order bias.
+
+The repository `.temp` root must be a physical, nonlinked directory. Before
+allocating retained evidence, the producer admits its profile, Git commit,
+and executable-byte identities. Workspace creation faults are typed errors;
+failed setup of required subfolders removes the new partial study directory
+when cleanup succeeds. These are static rather than atomic filesystem checks.
+
+Each executable child has a 15-second wall timeout. The target process
+boundary now uses a
 POSIX-isolated child session and concurrent selector-based pipe reads with
 explicit **4-KiB stdout** and **16-KiB stderr** hard limits. It rejects an
 additional byte on either stream, a cumulative wall timeout, and
