@@ -72,6 +72,10 @@ one-to-one assignment of `<` and `/` to versioned input/output roles.
 It rejects impossible giant trit counts using the declared modulus bit length
 before computing a potentially unbounded ternary exponent; matching larger
 geometries remain admitted without an arbitrary trit-width ceiling.
+The public semantic-width view requires a complete validated profile document,
+including the selected schema version, before returning any width geometry.
+Missing keys, partial documents, and schema drift cannot supply a standalone
+model or leak a raw dictionary lookup failure.
 
 Cross-component consumption is not complete. The classic safe Rust `Machine`
 remains deliberately bound to `malbolge-1998` and cannot silently execute a

@@ -517,6 +517,7 @@ def semantic_width_model(
     """
     canonical = load_document(DEFAULT_PROFILE) if document is None else document
     admitted = _expect_mapping(canonical, "target profile document")
+    validate_document(admitted)
     return _validate_semantic_width_model(admitted["semantic_width_model"])
 
 

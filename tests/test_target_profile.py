@@ -152,6 +152,22 @@ def test_semantic_width_model_is_unbounded_five_trit_chunking() -> None:
     assert model.result_projection == WIDTH_MODEL_PROJECTION
 
 
+@pytest.mark.parametrize("mutation", ("empty", "partial", "schema-drift"))
+def test_semantic_width_view_requires_closed_document(mutation: str) -> None:
+    """A partial or schema-drifted profile cannot supply authoritative widths."""
+    document = validator.load_document(PROFILE_PATH)
+    if mutation == "empty":
+        document.clear()
+    elif mutation == "partial":
+        model = document["semantic_width_model"]
+        document.clear()
+        document["semantic_width_model"] = model
+    else:
+        document["schema_version"] = 999
+    with pytest.raises(validator.ProfileValidationError):
+        _ = validator.semantic_width_model(document)
+
+
 def test_semantic_width_model_handles_full_and_partial_chunks() -> None:
     """Any admitted width maps to ceil(N/5) chunks without a hard-coded cap."""
     model = validator.semantic_width_model()
