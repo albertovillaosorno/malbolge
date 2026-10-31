@@ -453,6 +453,8 @@ def _check_artifact_metadata(
     entry: dict[str, str],
 ) -> None:
     manifest = row["experiment_manifest"]
+    if "/runs/" not in manifest:
+        _fail("host-C artifact requires a run manifest path")
     prefix, filename = manifest.rsplit("/runs/", maxsplit=1)
     expected = f"{prefix}/candidates/{filename.removesuffix(".toml")}"
     if entry.get("path") != expected:
@@ -485,6 +487,43 @@ def _checked_artifact(
         _fail("host-C retained executable size differs from study metric")
 
 
+def _retained_trial_rows(document: object) -> list[dict[str, Any]]:
+    """Admit exact row shapes before any retained evidence selection.
+
+    Returns:
+        Trial records with native outcome and manifest identity fields.
+
+    """
+    if type(document) is not dict or any(
+        type(key) is not str for key in document
+    ):
+        _fail("host-C retained checks require a native study map")
+    rows = document.get("observations")
+    if type(rows) is not list:
+        _fail("host-C retained checks require a trial observation list")
+    for row in rows:
+        if type(row) is not dict or any(type(key) is not str for key in row):
+            _fail("host-C retained checks require native trial rows")
+        outcome = row.get("outcome")
+        if type(outcome) is not str or outcome not in {
+            analyze.VERIFIED,
+            FAILED_OUTCOME,
+        }:
+            _fail("host-C reference contains a non-runner outcome")
+        manifest = row.get("experiment_manifest")
+        if type(manifest) is not str or not manifest:
+            _fail("host-C retained checks require a trial manifest identity")
+    return rows
+
+
+def _admit_retained_sidecars(sidecars: object, *, kind: str) -> None:
+    """Reject foreign metadata containers before key-set comparisons."""
+    if type(sidecars) is not dict or any(
+        type(key) is not str for key in sidecars
+    ):
+        _fail(f"host-C retained {kind} requires a native metadata map")
+
+
 def check_retained_artifacts(
     document: dict[str, Any],
     artifacts: dict[str, dict[str, str]],
@@ -495,8 +534,17 @@ def check_retained_artifacts(
         Number of verified native host-C reference binaries checked.
 
     """
+    rows = _retained_trial_rows(document)
+    _admit_retained_sidecars(artifacts, kind="artifacts")
+    if any(
+        type(entry) is not dict
+        or any(type(key) is not str for key in entry)
+        or any(type(value) is not str for value in entry.values())
+        for entry in artifacts.values()
+    ):
+        _fail("host-C retained artifacts require native metadata entries")
     verified: dict[str, dict[str, Any]] = {}
-    for row in document["observations"]:
+    for row in rows:
         if row["outcome"] != analyze.VERIFIED:
             continue
         manifest = row["experiment_manifest"]
@@ -505,6 +553,15 @@ def check_retained_artifacts(
         verified[manifest] = row
     if set(artifacts) != set(verified):
         _fail("host-C artifact map must match exactly the successful trials")
+    for row in verified.values():
+        metrics = row.get("metrics")
+        if (
+            type(metrics) is not dict
+            or any(type(key) is not str for key in metrics)
+            or type(metrics.get("artifact_bytes")) is not int
+            or metrics["artifact_bytes"] < 1
+        ):
+            _fail("host-C verified artifacts require native size metrics")
     for manifest, row in sorted(verified.items()):
         _checked_artifact(row, artifacts[manifest])
     return len(verified)
@@ -523,11 +580,10 @@ def check_retained_failures(
         Number of failed trial diagnostics checked.
 
     """
-    admitted = {analyze.VERIFIED, FAILED_OUTCOME}
-    if any(row["outcome"] not in admitted for row in document["observations"]):
-        _fail("host-C reference contains a non-runner outcome")
+    rows = _retained_trial_rows(document)
+    _admit_retained_sidecars(failures, kind="failures")
     expected: set[str] = set()
-    for row in document["observations"]:
+    for row in rows:
         if row["outcome"] != FAILED_OUTCOME:
             continue
         manifest = row["experiment_manifest"]

@@ -319,6 +319,141 @@ def _tamper(
         _tamper_record(tamper, document, artifacts[name], manifest=name)
 
 
+@pytest.mark.parametrize("check", ["artifacts", "failures"])
+@pytest.mark.parametrize(
+    "document",
+    [
+        None,
+        {},
+        {"observations": [None]},
+        {"observations": [{"outcome": "unexpected", "experiment_manifest": "runs/a.toml"}]},
+        {"observations": [{"outcome": "verified", "experiment_manifest": object()}]},
+    ],
+    ids=[
+        "missing-document",
+        "missing-observations",
+        "foreign-row",
+        "unsupported-outcome",
+        "foreign-manifest",
+    ],
+)
+def test_direct_retained_checks_reject_unadmitted_trial_rows(
+    check: str,
+    document: object,
+) -> None:
+    """Direct checks must reject malformed trial maps as typed failures."""
+    checker = (
+        reference_study.check_retained_artifacts
+        if check == "artifacts"
+        else reference_study.check_retained_failures
+    )
+    with pytest.raises(reference_study.ReferenceStudyError):
+        _ = checker(cast("dict[str, Any]", document), {})
+
+
+class _ForgedTrialKey(str):  # ruff: ignore[subclass-builtin]
+    """Foreign dictionary keys can run attacker-defined equality methods."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        message = "retained trial key equality hook executed"
+        raise AssertionError(message)
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize("check", ["artifacts", "failures"])
+def test_direct_retained_checks_reject_foreign_observation_keys(
+    check: str,
+) -> None:
+    """Reject foreign keys before accessing the observations dictionary."""
+    document: dict[str, Any] = {
+        _ForgedTrialKey("observations"): [],
+    }
+    checker = (
+        reference_study.check_retained_artifacts
+        if check == "artifacts"
+        else reference_study.check_retained_failures
+    )
+    with pytest.raises(reference_study.ReferenceStudyError):
+        _ = checker(document, {})
+
+
+@pytest.mark.parametrize("check", ["artifacts", "failures"])
+def test_direct_retained_checks_reject_foreign_sidecar_container(check: str) -> None:
+    """An empty list cannot substitute for an empty retained metadata map."""
+    checker = (
+        reference_study.check_retained_artifacts
+        if check == "artifacts"
+        else reference_study.check_retained_failures
+    )
+    with pytest.raises(reference_study.ReferenceStudyError):
+        _ = checker({"observations": []}, cast("Any", []))
+
+
+@pytest.mark.parametrize("check", ["artifacts", "failures"])
+def test_direct_retained_checks_reject_sidecar_foreign_keys(check: str) -> None:
+    """Retained sidecars must not execute caller-defined key equality."""
+    manifest = "runs/forged.toml"
+    outcome = analyze.VERIFIED if check == "artifacts" else FAILED
+    document = {"observations": [
+        {"outcome": outcome, "experiment_manifest": manifest},
+    ]}
+    payload: object = {"path": "unused", "sha256": "unused"}
+    if check == "failures":
+        payload = "compiler rejected"
+    sidecar = {_ForgedTrialKey(manifest): payload}
+    checker = (
+        reference_study.check_retained_artifacts
+        if check == "artifacts"
+        else reference_study.check_retained_failures
+    )
+    with pytest.raises(reference_study.ReferenceStudyError):
+        _ = checker(document, cast("Any", sidecar))
+
+
+def test_direct_retained_artifacts_reject_non_mapping_artifact_entry() -> None:
+    """An artifact leaf must be a native metadata map before I/O."""
+    manifest = "runs/missing-metadata.toml"
+    document = {"observations": [{
+        "outcome": analyze.VERIFIED,
+        "experiment_manifest": manifest,
+    }]}
+    with pytest.raises(reference_study.ReferenceStudyError):
+        _ = reference_study.check_retained_artifacts(
+            document, cast("Any", {manifest: []})
+        )
+
+
+@pytest.mark.parametrize(
+    "metrics",
+    [None, {}, {"artifact_bytes": True}, {"artifact_bytes": "1"}],
+    ids=["missing", "no-size", "boolean-size", "text-size"],
+)
+def test_direct_retained_artifacts_preflight_verified_metrics_before_io(
+    monkeypatch: pytest.MonkeyPatch,
+    metrics: object,
+) -> None:
+    """Unadmitted metrics cannot trigger retained artifact filesystem access."""
+    manifest = ".temp/arena-host-c-study-check/runs/one.toml"
+    row: dict[str, Any] = {
+        "experiment_manifest": manifest,
+        "outcome": analyze.VERIFIED,
+        "metrics": metrics,
+    }
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("unadmitted metrics reached artifact byte inspection")
+
+    monkeypatch.setattr(reference_study, "_checked_artifact", forbidden)
+    with pytest.raises(reference_study.ReferenceStudyError, match="metrics"):
+        _ = reference_study.check_retained_artifacts(
+            {"observations": [row]},
+            {manifest: {"path": "unused", "sha256": "unused"}},
+        )
+
+
 def test_retained_artifact_check_rejects_duplicate_verified_manifests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
