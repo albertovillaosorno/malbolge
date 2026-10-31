@@ -885,6 +885,8 @@ def _admit_tool(path: Path) -> Path:
     if not path.is_absolute():
         _fail("target audit requires absolute binary paths")
     details = path.lstat()
+    if type(details) is not os.stat_result:
+        _fail("target audit requires regular native executable metadata")
     if not stat.S_ISREG(details.st_mode) or details.st_size <= 0:
         _fail("target audit requires regular nonempty executable files")
     if details.st_size > producer.MAX_TOOL_BYTES:
@@ -893,6 +895,8 @@ def _admit_tool(path: Path) -> Path:
 
 
 def _tool_file_identity(details: os.stat_result) -> tuple[int, int, int, int, int]:
+    if type(details) is not os.stat_result:
+        _fail("target audit executable identity changed: invalid metadata")
     return (
         details.st_dev,
         details.st_ino,
@@ -909,6 +913,8 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
     for path in (emitter, runner):
         try:
             original = path.lstat()
+            if type(original) is not os.stat_result:
+                _fail("target audit executable identity changed: invalid metadata")
             if not stat.S_ISREG(original.st_mode) or original.st_size <= 0:
                 _fail("target audit executable identity changed")
             if original.st_size > producer.MAX_TOOL_BYTES:
@@ -921,6 +927,8 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             descriptor = os.open(path, flags)
             try:
                 opened = os.fstat(descriptor)
+                if type(opened) is not os.stat_result:
+                    _fail("target audit executable identity changed: invalid metadata")
                 if not stat.S_ISREG(opened.st_mode) or (
                     _tool_file_identity(opened) != _tool_file_identity(original)
                 ):
@@ -963,6 +971,8 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                         + type(cleanup_error).__name__,
                     )
             latest = path.lstat()
+            if type(latest) is not os.stat_result:
+                _fail("target audit executable identity changed: invalid metadata")
             if not stat.S_ISREG(latest.st_mode) or (
                 _tool_file_identity(latest) != _tool_file_identity(original)
             ):

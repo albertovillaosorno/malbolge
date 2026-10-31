@@ -2280,3 +2280,73 @@ def test_target_audit_foreign_native_argument_keeps_status_two(
     output = capsys.readouterr()
     assert not output.out
     assert type(fault).__name__ in output.err
+
+
+class _ForeignAuditStat:
+    """A substituted host stat must not dictate audited executable identity."""
+
+    def __getattribute__(self, name: str) -> object:
+        if name.startswith("st_"):
+            pytest.fail("foreign target audit stat field was accessed")
+        return super().__getattribute__(name)
+
+
+@pytest.mark.parametrize(
+    "phase",
+    [
+        "admit",
+        "identity",
+        "path-before",
+        "path-after",
+        "descriptor-open",
+        "descriptor-close",
+    ],
+)
+def test_target_audit_requires_native_executable_metadata_before_field_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """An audit cannot trust path, descriptor or helper identity forgeries."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"emitter")
+    runner.write_bytes(b"runner")
+    foreign = cast("os.stat_result", cast("object", _ForeignAuditStat()))
+    if phase == "identity":
+        with pytest.raises(audit.TargetEchoAuditError, match="identity"):
+            audit._tool_file_identity(foreign)
+        return
+    real_lstat = Path.lstat
+    real_fstat = audit.os.fstat
+    path_calls = 0
+    descriptor_calls = 0
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        nonlocal path_calls
+        if path == emitter:
+            path_calls += 1
+            if phase == "admit" or (
+                phase == "path-before" and path_calls == 1
+            ) or (phase == "path-after" and path_calls == 2):
+                return foreign
+        return real_lstat(path)
+
+    def forged_fstat(descriptor: int) -> os.stat_result:
+        nonlocal descriptor_calls
+        descriptor_calls += 1
+        if (phase == "descriptor-open" and descriptor_calls == 1) or (
+            phase == "descriptor-close" and descriptor_calls == 2
+        ):
+            return foreign
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(audit.os, "fstat", forged_fstat)
+    with pytest.raises(audit.TargetEchoAuditError, match="identity|regular"):
+        if phase == "admit":
+            audit._admit_tool(emitter)
+        else:
+            audit._tool_identity(emitter, runner)
+    if phase == "path-after":
+        assert path_calls == 2
+    if phase == "descriptor-close":
+        assert descriptor_calls == 2
