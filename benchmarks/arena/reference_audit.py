@@ -317,7 +317,11 @@ def _check_stage(document: dict[str, Any], prefix: str) -> None:
 
 
 def _index_entry(name: object, item: object) -> tuple[str, dict[str, str]]:
-    if type(name) is not str or not isinstance(item, dict):
+    if (
+        type(name) is not str
+        or type(item) is not dict
+        or any(type(key) is not str for key in item)
+    ):
         _fail("host-C artifact index has invalid trial entries")
     if set(item) != {"path", "sha256"}:
         _fail("host-C artifact index requires exact identity fields")
@@ -331,8 +335,8 @@ def _check_artifact_index(
     source: object,
     document: dict[str, Any],
 ) -> dict[str, dict[str, str]]:
-    if not isinstance(source, dict):
-        _fail("host-C artifact index must be a map")
+    if type(source) is not dict or any(type(key) is not str for key in source):
+        _fail("host-C artifact index must be a native JSON map")
     if len(source) > len(document["observations"]):
         _fail("host-C artifact index contains extra entries")
     return dict(starmap(_index_entry, source.items()))

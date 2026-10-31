@@ -444,6 +444,56 @@ def test_audit_rejects_forged_artifact_index(
         reference_audit.audit(relative)
 
 
+class _ForeignIndexKey(str):
+    """A claimed JSON mapping key with hostile string equality."""
+
+    def __eq__(self, _: object) -> bool:
+        raise AssertionError("foreign artifact index key equality executed")
+
+    __hash__ = str.__hash__
+
+
+class _ForeignIndexMap(dict):
+    """A mapping subclass which must not be used as a canonical JSON map."""
+
+    def __len__(self) -> int:
+        raise AssertionError("foreign artifact index map length executed")
+
+    def __iter__(self) -> Any:
+        raise AssertionError("foreign artifact index map iteration executed")
+
+
+@pytest.mark.parametrize("kind", ["root-map", "root-key", "entry-map", "entry-key"])
+def test_direct_artifact_index_rejects_foreign_container_or_keys(
+    kind: str,
+) -> None:
+    """Caller-defined JSON map equality, size and iteration are not authority."""
+    name = "runs/one.toml"
+    entry = {"path": "candidates/one", "sha256": "a" * 64}
+    source: dict[str, Any] = {name: entry}
+    if kind == "root-map":
+        source = _ForeignIndexMap(source)
+    elif kind == "root-key":
+        source = {_ForeignIndexKey(name): entry}
+    elif kind == "entry-map":
+        source = {name: _ForeignIndexMap(entry)}
+    else:
+        value = entry.pop("path")
+        entry[_ForeignIndexKey("path")] = value
+    with pytest.raises(reference_audit.ReferenceAuditError, match="artifact index"):
+        reference_audit._check_artifact_index(source, {"observations": [{}]})
+
+
+def test_direct_artifact_index_accepts_native_record() -> None:
+    """Native identity maps remain usable after exact admission."""
+    source = {"runs/one.toml": {
+        "path": "candidates/one", "sha256": "a" * 64,
+    }}
+    assert reference_audit._check_artifact_index(
+        source, {"observations": [{}]}
+    ) == source
+
+
 @pytest.mark.parametrize(
     "relative",
     [
