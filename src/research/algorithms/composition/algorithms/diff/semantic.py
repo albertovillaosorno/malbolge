@@ -691,18 +691,28 @@ def _locate_edits(
     ordered = tuple(
         sorted(located, key=lambda item: (item.raw_start, item.raw_end))
     )
-    previous_raw_end = _ZERO
-    previous_unit_end = _ZERO
+    _require_nonoverlapping_edits(ordered)
+    return ordered
+
+
+def _require_nonoverlapping_edits(ordered: tuple[_LocatedEdit, ...]) -> None:
+    previous: _LocatedEdit | None = None
+    insertion_boundaries: set[int] = set()
     for item in ordered:
-        if (
-            item.raw_start < previous_raw_end
-            or item.unit_start < previous_unit_end
+        if item.unit_start == item.unit_end:
+            if item.unit_start in insertion_boundaries:
+                message = (
+                    "semantic edits overlap or reorder in candidate source"
+                )
+                raise SemanticPlacementError(message)
+            insertion_boundaries.add(item.unit_start)
+        if previous is not None and (
+            item.raw_start < previous.raw_end
+            or item.unit_start < previous.unit_end
         ):
             message = "semantic edits overlap or reorder in candidate source"
             raise SemanticPlacementError(message)
-        previous_raw_end = item.raw_end
-        previous_unit_end = item.unit_end
-    return ordered
+        previous = item
 
 
 def _apply_raw_edits(raw: bytes, edits: tuple[_LocatedEdit, ...]) -> bytes:

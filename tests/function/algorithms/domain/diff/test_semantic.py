@@ -56,6 +56,7 @@ _REPLACED = b"extra ; alpha   = new ; omega tail"
 _INSERTED = b"alpha   added; omega"
 _DELETED = b"alpha      ; omega"
 _LARGE_REPLACEMENT = b"new"
+_EXPECTED_DISTINCT_INSERTIONS = 2
 
 
 def _expect(condition: object, message: str) -> None:
@@ -116,6 +117,55 @@ def test_semantic_insertion_uses_candidate_boundary_and_preserves_trivia() -> (
     output = apply_semantic_plan(candidate, plan, _map)
 
     _expect(output == _INSERTED, "semantic insertion moved trivia")
+
+
+def test_distinct_semantic_insertions_remain_valid() -> None:
+    """Independent insertion boundaries may coexist in one authoring plan."""
+    source = _map(b"a ; b ; c")
+    target = _map(b"a ; x ; b ; y ; c")
+    plan = build_semantic_plan(source, target, context_units=2)
+    _expect(
+        len(plan.edits) == _EXPECTED_DISTINCT_INSERTIONS,
+        "fixture must author two insertions",
+    )
+    observed = apply_semantic_plan(source, plan, _map)
+    _expect(_map(observed).keys == target.keys, "two insertions changed target")
+
+
+@pytest.mark.parametrize("distinct_locator", [False, True])
+def test_duplicate_insertion_at_one_semantic_boundary_is_rejected(
+    *,
+    distinct_locator: bool,
+) -> None:
+    """Different hashed locators cannot reuse one zero-width coordinate."""
+    source = _map(b"a ; b")
+    target = _map(b"a ; x ; b")
+    plan = build_semantic_plan(source, target, context_units=2)
+    _expect(len(plan.edits) == 1, "fixture must author one insertion")
+    original = plan.edits[0]
+    _expect(
+        not original.locator.source_digests,
+        "fixture insertion must have zero source width",
+    )
+    _expect(
+        _map(apply_semantic_plan(source, plan, _map)).keys == target.keys,
+        "single insertion must remain valid",
+    )
+    second = original
+    if distinct_locator:
+        second = SemanticEdit(
+            locator=SemanticLocator(
+                source_digests=(),
+                before_digests=original.locator.before_digests[-1:],
+                after_digests=(),
+            ),
+            replacement=original.replacement,
+            replacement_digests=original.replacement_digests,
+        )
+        _expect(second != original, "fixture locators must differ")
+    duplicate = SemanticAuthoringPlan((original, second))
+    with pytest.raises(SemanticPlacementError, match="overlap or reorder"):
+        _ = apply_semantic_plan(source, duplicate, _map)
 
 
 def test_semantic_deletion_keeps_surrounding_candidate_whitespace() -> None:
