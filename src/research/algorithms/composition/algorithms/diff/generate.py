@@ -49,6 +49,7 @@ from algorithms.diff.emit_rust import write_rust_transform
 from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import read_exact_regular_file
+from algorithms.diff.exact import snapshot_tree_excluding
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinEvidence
@@ -246,6 +247,12 @@ def _write_exact_algorithm(recipe: DiffRecipe) -> None:
         passthrough_roots=recipe.passthrough_roots,
     )
     identity = _raw_exact_identity(recipe, exact.source)
+    replayed_source = snapshot_tree_excluding(
+        recipe.source_root, recipe.passthrough_roots
+    )
+    if replayed_source != exact.source:
+        message = "exact source tree changed after identity replay"
+        raise ExactTreeError(message)
     policy = SourceBindingPolicy(
         threshold_fraction=recipe.source_binding_threshold,
         maximum_anchors=recipe.source_binding_maximum_anchors,

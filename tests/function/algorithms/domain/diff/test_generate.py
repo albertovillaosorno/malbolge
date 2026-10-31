@@ -351,6 +351,64 @@ def test_exact_generator_rejects_linked_source_identity_after_plan(
     _expect(not recipe.output_algorithm.exists(), "linked source was emitted")
 
 
+def test_exact_generator_rejects_added_static_file_after_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unexpected source path cannot disappear from identity admission."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    original_build = build_exact_plan
+    added = False
+
+    def add_after_plan(
+        source_root: Path,
+        oracle_root: Path,
+        *,
+        passthrough_roots: tuple[str, ...] = (),
+    ) -> ExactAuthoringPlan:
+        nonlocal added
+        plan = original_build(
+            source_root, oracle_root, passthrough_roots=passthrough_roots
+        )
+        _ = (source_root / "extra.bin").write_bytes(b"new unbound content")
+        added = True
+        return plan
+
+    monkeypatch.setattr(generate_module, "build_exact_plan", add_after_plan)
+    with pytest.raises(ExactTreeError, match="source tree changed"):
+        write_algorithm(recipe)
+    _expect(added, "post-plan source addition was not exercised")
+    _expect(not recipe.output_algorithm.exists(), "unbound source was emitted")
+
+
+def test_exact_generator_allows_dynamic_passthrough_addition_after_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """New passthrough files remain outside the static identity boundary."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    _write(recipe.source_root, "external/initial.bin", b"original")
+    _write(recipe.oracle_root, "external/initial.bin", b"original")
+    recipe = replace(recipe, passthrough_roots=("external",))
+    original_build = build_exact_plan
+
+    def add_passthrough_after_plan(
+        source_root: Path,
+        oracle_root: Path,
+        *,
+        passthrough_roots: tuple[str, ...] = (),
+    ) -> ExactAuthoringPlan:
+        plan = original_build(
+            source_root, oracle_root, passthrough_roots=passthrough_roots
+        )
+        _write(source_root, "external/runtime.bin", b"late runtime data")
+        return plan
+
+    monkeypatch.setattr(
+        generate_module, "build_exact_plan", add_passthrough_after_plan
+    )
+    write_algorithm(recipe)
+    _expect(recipe.output_algorithm.exists(), "dynamic addition was rejected")
+
+
 def test_exact_mode_runs_domain_preflight_with_passthrough(
     tmp_path: Path,
 ) -> None:
