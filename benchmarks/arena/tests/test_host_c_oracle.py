@@ -257,9 +257,7 @@ def test_host_c_replay_requires_canonical_bundle_preflight(
         evidence.validate_links(
             admitted,
             tmp_path,
-            policy=evidence.EvidencePolicy(
-                require_host_c_challenge_oracle=True
-            ),
+            policy=evidence.EvidencePolicy(require_host_c_challenge_oracle=True),
         )
 
 
@@ -295,14 +293,13 @@ def test_direct_host_oracle_rejects_spoofed_digest_before_execution(
 
     monkeypatch.setattr(host_c_oracle, "_replay_mode", forbidden)
     with pytest.raises(host_c_oracle.HostOracleError, match="source"):
-        _ = host_c_oracle.replay_one(
-            _case(), PROFILE, _SpoofedDigest("f" * 64)
-        )
+        _ = host_c_oracle.replay_one(_case(), PROFILE, _SpoofedDigest("f" * 64))
 
 
 @pytest.mark.parametrize("method", ["measure_reference", "rebuild_reference"])
 def test_direct_host_oracle_rejects_spoofed_mode_before_execution(
-    monkeypatch: pytest.MonkeyPatch, method: str,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
 ) -> None:
     """Foreign mode equality cannot approve an unregistered Clang option."""
 
@@ -453,7 +450,9 @@ def test_host_oracle_never_executes_after_nonexact_source_write(
     def report_incomplete(path: Path, payload: bytes) -> int:
         written = original_write(path, payload)
         if path.name == filename:
-            return cast("int", len(payload) + 1 if invalid_count == "extra" else invalid_count)
+            return cast(
+                "int", len(payload) + 1 if invalid_count == "extra" else invalid_count
+            )
         return written
 
     def pretend_native(_directory: Path, mode: str) -> int:
@@ -568,9 +567,7 @@ def test_host_c_reference_rejects_invalid_identity_before_native_execution(
         nodes=cast("int", bad_nodes),
     )
     action = (
-        host_c_oracle.rebuild_reference
-        if rebuild
-        else host_c_oracle.measure_reference
+        host_c_oracle.rebuild_reference if rebuild else host_c_oracle.measure_reference
     )
     with pytest.raises(host_c_oracle.HostOracleError, match=r"identity|nodes"):
         _ = action(identity, "-O0")
@@ -939,9 +936,7 @@ def test_host_child_missing_limit_tool_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unbounded native execution cannot silently replace guarded mode."""
-    monkeypatch.setattr(
-        host_c_oracle.shutil, "which", lambda *_args, **_kwargs: None
-    )
+    monkeypatch.setattr(host_c_oracle.shutil, "which", lambda *_args, **_kwargs: None)
     with pytest.raises(host_c_oracle.HostOracleError, match="prlimit"):
         host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "limits")
 
@@ -1089,9 +1084,7 @@ def test_evidence_cli_opt_in_host_oracle_adds_separate_audit_claim(
     )
     assert evidence.main() == 0
     output = json.loads(capsys.readouterr().out)
-    assert (
-        output["evidence_preflight"]["host_c_challenge_oracles_replayed"] == 1
-    )
+    assert output["evidence_preflight"]["host_c_challenge_oracles_replayed"] == 1
     assert output["pareto_frontiers"][0]["algorithms"] == [
         "baseline",
         "candidate",
@@ -1155,9 +1148,7 @@ def test_replay_executes_compiled_oracle_instead_of_only_matching_hash(
         )
 
     monkeypatch.setattr(host_c_oracle, "_harness", wrong_harness)
-    with pytest.raises(
-        host_c_oracle.HostOracleError, match="O0 execute failed"
-    ):
+    with pytest.raises(host_c_oracle.HostOracleError, match="O0 execute failed"):
         host_c_oracle.replay_one(_case(), PROFILE, _digest())
 
 
@@ -1275,9 +1266,7 @@ def _check_grandchild_stopped(pid: int) -> None:
     proc = Path(f"/proc/{pid}/stat")
     for _ in range(25):
         try:
-            state = proc.read_text(encoding="ascii").split(") ", maxsplit=1)[1][
-                0
-            ]
+            state = proc.read_text(encoding="ascii").split(") ", maxsplit=1)[1][0]
         except ProcessLookupError, FileNotFoundError:
             return
         if state == ZOMBIE_STATE:
@@ -1288,9 +1277,7 @@ def _check_grandchild_stopped(pid: int) -> None:
     raise AssertionError(message)
 
 
-@pytest.mark.skipif(
-    sys.platform != LINUX_PLATFORM, reason="Linux proc child state"
-)
+@pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="Linux proc child state")
 @pytest.mark.parametrize("timeout", [False, True])
 def test_host_c_group_termination_reaps_spawned_descendants(
     tmp_path: Path,
@@ -1320,13 +1307,9 @@ def test_host_c_group_termination_reaps_spawned_descendants(
     if timeout:
         monkeypatch.setattr(host_c_oracle, "SUBPROCESS_TIMEOUT_SECONDS", 0.6)
         with pytest.raises(host_c_oracle.HostOracleError, match="timed out"):
-            host_c_oracle._run(
-                [sys.executable, "-c", parent], tmp_path, "descendant"
-            )
+            host_c_oracle._run([sys.executable, "-c", parent], tmp_path, "descendant")
     else:
-        host_c_oracle._run(
-            [sys.executable, "-c", parent], tmp_path, "descendant"
-        )
+        host_c_oracle._run([sys.executable, "-c", parent], tmp_path, "descendant")
     assert marker.exists()
     _check_grandchild_stopped(int(marker.read_text()))
 
@@ -1355,8 +1338,7 @@ def test_host_c_file_size_resource_limit_blocks_oversized_output(
     monkeypatch.setattr(host_c_oracle, "CHILD_FILE_BYTES", max_bytes)
     output = tmp_path / "over-limit.dat"
     script = (
-        f"with open({str(output)!r}, 'wb') as writer:\n"
-        "    writer.write(b'x' * 4096)\n"
+        f"with open({str(output)!r}, 'wb') as writer:\n    writer.write(b'x' * 4096)\n"
     )
     with pytest.raises(host_c_oracle.HostOracleError, match="failed"):
         host_c_oracle._run([sys.executable, "-c", script], tmp_path, "fsize")
@@ -1374,11 +1356,7 @@ def test_host_c_child_rss_is_kernel_observed_not_reported_magic(
         "RSS check",
     )
     minimum_bytes = 16 * 1024 * 1024
-    assert (
-        minimum_bytes
-        <= peak
-        <= host_c_oracle.CHILD_VIRTUAL_MEMORY_MIB * 1024 * 1024
-    )
+    assert minimum_bytes <= peak <= host_c_oracle.CHILD_VIRTUAL_MEMORY_MIB * 1024 * 1024
 
 
 @pytest.mark.parametrize("invalid", [b"", b"0", b"unknown", b"2" * 40])
@@ -1408,9 +1386,7 @@ def test_host_c_rss_rejects_noncanonical_gnu_time_bytes(
         host_c_oracle._read_stage_rss(report)
 
 
-@pytest.mark.parametrize(
-    "fault", [ValueError, RuntimeError, TypeError, AttributeError]
-)
+@pytest.mark.parametrize("fault", [ValueError, RuntimeError, TypeError, AttributeError])
 def test_host_c_rss_read_fault_is_typed_with_original_cause(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1452,9 +1428,7 @@ def test_host_c_rss_temp_cleanup_is_typed_and_preserves_primary_error(
 
         monkeypatch.setattr(host_c_oracle, "_read_stage_rss", reject_rss)
     with pytest.raises(host_c_oracle.HostOracleError) as error:
-        _ = host_c_oracle._run(
-            [sys.executable, "-c", "pass"], tmp_path, "RSS cleanup"
-        )
+        _ = host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "RSS cleanup")
     if primary_fails:
         assert "primary RSS validation failure" in str(error.value)
         assert any("cleanup also failed" in note for note in error.value.__notes__)
@@ -1477,7 +1451,9 @@ def test_host_c_rss_temp_descriptor_close_fault_is_typed(
         raise fault("injected stage descriptor close failure")
 
     monkeypatch.setattr(host_c_oracle.os, "close", close_and_refuse)
-    with pytest.raises(host_c_oracle.HostOracleError, match="descriptor close") as error:
+    with pytest.raises(
+        host_c_oracle.HostOracleError, match="descriptor close"
+    ) as error:
         _ = host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "RSS")
     assert type(error.value.__cause__) is fault
     assert not list(tmp_path.glob("host-c-stage-rss-*"))
@@ -1598,3 +1574,91 @@ def test_hostile_path_cannot_impostor_kernel_limiter_or_rss_meter(
     )
     assert child.read_text(encoding="ascii") == "real"
     assert 0 < peak <= host_c_oracle.CHILD_VIRTUAL_MEMORY_MIB * 1024 * 1024
+
+
+def test_host_c_child_cleanup_note_never_formats_foreign_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hostile child cleanup formatter cannot erase a timeout diagnosis."""
+    import subprocess as sp  # ruff: ignore[import-outside-top-level,suspicious-subprocess-import]
+
+    class ForeignCleanupError(host_c_oracle.HostOracleError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign host-C child cleanup formatter executed")
+
+    cleanup = ForeignCleanupError("cleanup denied")
+
+    class ChildProbe:
+        def communicate(self, *, timeout: int) -> None:
+            raise sp.TimeoutExpired("host-child", timeout)
+
+    def fail_cleanup(_child: object) -> int:
+        raise cleanup
+
+    monkeypatch.setattr(host_c_oracle, "_finish_child", fail_cleanup)
+    with pytest.raises(host_c_oracle.HostOracleError, match="timed out") as caught:
+        host_c_oracle._wait_child(cast("Any", ChildProbe()), "O0 compile")
+    assert isinstance(caught.value.__cause__, sp.TimeoutExpired)
+    assert any("ForeignCleanupError" in note for note in caught.value.__notes__)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_host_c_rss_cleanup_note_never_formats_foreign_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A hostile RSS unlink error cannot mask the primary host-C rejection."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign host-C RSS cleanup formatter executed")
+
+    foreign = type("ForeignHostRssCleanup", (fault_type,), {"__str__": unsafe_str})
+    cleanup = foreign("RSS cleanup refused")
+    primary = host_c_oracle.HostOracleError("primary host-C stage failure")
+    original_unlink = Path.unlink
+
+    def fail_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        if path.name.startswith("host-c-stage-rss-"):
+            raise cleanup
+        original_unlink(path, missing_ok=missing_ok)
+
+    def fail_stage(_child: object, _label: str) -> None:
+        raise primary
+
+    monkeypatch.setattr(host_c_oracle, "_limited_command", lambda command: command)
+    monkeypatch.setattr(host_c_oracle, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(host_c_oracle.sp, "Popen", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(host_c_oracle, "_wait_child", fail_stage)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+    try:
+        with pytest.raises(
+            host_c_oracle.HostOracleError, match="primary host-C"
+        ) as caught:
+            _ = host_c_oracle._bounded_child(["fake"], tmp_path, "RSS")
+        assert caught.value is primary
+        assert any("ForeignHostRssCleanup" in note for note in caught.value.__notes__)
+    finally:
+        monkeypatch.setattr(Path, "unlink", original_unlink)
+        for artifact in tmp_path.glob("host-c-stage-rss-*"):
+            artifact.unlink()
+
+
+def test_host_c_native_child_cleanup_note_retains_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native typed cleanup diagnostics remain useful to the caller."""
+    import subprocess as sp  # ruff: ignore[import-outside-top-level,suspicious-subprocess-import]
+
+    class ChildProbe:
+        def communicate(self, *, timeout: int) -> None:
+            raise sp.TimeoutExpired("host-child", timeout)
+
+    def fail_cleanup(_child: object) -> int:
+        raise host_c_oracle.HostOracleError("native child cleanup denied")
+
+    monkeypatch.setattr(host_c_oracle, "_finish_child", fail_cleanup)
+    with pytest.raises(host_c_oracle.HostOracleError, match="timed out") as caught:
+        host_c_oracle._wait_child(cast("Any", ChildProbe()), "O0 compile")
+    assert any("native child cleanup denied" in note for note in caught.value.__notes__)

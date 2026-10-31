@@ -88,6 +88,26 @@ def _fail(message: str) -> Never:
     raise HostOracleError(message)
 
 
+def _cleanup_error_detail(error: Exception) -> str:
+    """Provide native cleanup detail without executing foreign formatters.
+
+    Returns:
+        Built-in or exact owned error text; otherwise the exception type name.
+
+    """
+    if type(error) in (
+        HostOracleError,
+        OSError,
+        PermissionError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        AttributeError,
+    ):
+        return str(error)
+    return type(error).__name__
+
+
 def _require_local_scratch_root() -> None:
     """Admit a physical .temp directory before creating native workspaces."""
     try:
@@ -333,7 +353,9 @@ def _wait_child(child: sp.Popen[bytes], label: str) -> None:
         except HostOracleError as error:
             if original is None:
                 raise
-            original.add_note(f"host-C cleanup also failed: {error}")
+            original.add_note(
+                f"host-C cleanup also failed: {_cleanup_error_detail(error)}"
+            )
     if type(observed) is not int or reaped is None or observed != reaped:
         _fail(f"host-C challenge oracle {label} inconsistent child exit receipt")
     if reaped != 0:
@@ -388,7 +410,9 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
             Path(output_path).unlink(missing_ok=True)
         except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
             if primary is not None:
-                primary.add_note(f"host-C RSS receipt cleanup also failed: {error}")
+                primary.add_note(
+                    f"host-C RSS receipt cleanup also failed: {_cleanup_error_detail(error)}"
+                )
             else:
                 message = "host-C challenge oracle RSS receipt cleanup failed"
                 raise HostOracleError(message) from error
@@ -485,9 +509,7 @@ def _canonical_payload(
         or any(char not in "0123456789abcdef" for char in source_sha256)
     ):
         _fail("host-C challenge oracle source requires canonical SHA-256")
-    _bounded_nodes(
-        case["difficulty"], limit=MAX_REPLAY_NODES, scope="challenge oracle"
-    )
+    _bounded_nodes(case["difficulty"], limit=MAX_REPLAY_NODES, scope="challenge oracle")
     generated = _generate_canonical(
         generate.ChallengeIdentity(
             family=case["family"],
