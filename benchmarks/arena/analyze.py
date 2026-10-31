@@ -55,6 +55,8 @@ SCHEMA_VERSION = 1
 SHA256_HEX_LENGTH = 64
 SHA256_ALPHABET = frozenset("0123456789abcdef")
 NUL = "\x00"
+FIRST_SURROGATE = "\ud800"
+LAST_SURROGATE = "\udfff"
 BACKSLASH = "\\"
 COLON = ":"
 CURRENT_DIR = "."
@@ -150,6 +152,11 @@ def _text(value: object, where: str) -> str:
         _fail(f"{where}: expected nonempty, unpadded text")
     if NUL in value:
         _fail(f"{where}: NUL not allowed")
+    # JSON can encode lone UTF-16 surrogates as ASCII escapes. Once decoded,
+    # those are not Unicode scalar values and cannot form stable UTF-8-backed
+    # study identities, verifier names, or physical artifact paths.
+    if any(FIRST_SURROGATE <= scalar <= LAST_SURROGATE for scalar in value):
+        _fail(f"{where}: unpaired Unicode surrogate not allowed")
     return value
 
 

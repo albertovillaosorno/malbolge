@@ -511,6 +511,46 @@ def test_direct_json_parser_rejects_unencodable_text() -> None:
     assert isinstance(rejection.value.__cause__, UnicodeEncodeError)
 
 
+@pytest.mark.parametrize(
+    ("path", "invalid_value"),
+    [
+        (("study", "id"), "escaped-\ud800"),
+        (("study", "question"), "escaped-\udfff"),
+        (("observations", 0, "algorithm"), "escaped-\ud800"),
+        (("observations", 0, "verifier"), "escaped-\udfff"),
+        (("observations", 0, "case", "family"), "escaped-\ud800"),
+        (("observations", 0, "raw_sample"), "algorithms/\udfff/raw.csv"),
+    ],
+)
+def test_escaped_unpaired_surrogates_never_enter_arena_identity(
+    path: tuple[str | int, ...],
+    invalid_value: str,
+) -> None:
+    """A JSON escape cannot launder a non-Unicode-scalar identity or path."""
+    document = _document()
+    target: Any = document
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = invalid_value
+    serialized = json.dumps(document)
+    with pytest.raises(analyze.ArenaError, match="surrogate"):
+        _ = analyze.parse_document(serialized)
+    with pytest.raises(analyze.ArenaError, match="surrogate"):
+        _ = analyze.admit_document(document)
+
+
+def test_escaped_valid_astral_unicode_is_not_rejected() -> None:
+    """Paired UTF-16 escapes that decode to one scalar remain ordinary text."""
+    identity = "astral-🌌"
+    raw_path = "algorithms/🌌/raw.csv"
+    document = _document()
+    document["study"]["id"] = identity
+    document["observations"][0]["raw_sample"] = raw_path
+    admitted = analyze.parse_document(json.dumps(document))
+    assert admitted["study"]["id"] == identity
+    assert admitted["observations"][0]["raw_sample"] == raw_path
+
+
 def test_direct_json_parser_admits_exact_utf8_byte_ceiling() -> None:
     """The direct parser accepts the same full-size ordinary-file budget."""
     document = _document()

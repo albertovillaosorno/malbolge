@@ -74,7 +74,10 @@ the same `(seed, workload_sha256, trial)` combinations and the same named
 verifier for each matched case. Duplicate trials,
 unknown metrics, absent declared successful-run costs, mismatched cohorts,
 noncanonical paths, unsupported outcomes, malformed JSON, and an algorithm
-claiming to have verified its own successful output are rejected.
+claiming to have verified its own successful output are rejected. All admitted
+text identities and paths require Unicode scalar values: lone UTF-16
+surrogates hidden in JSON `\u` escapes reject, while valid astral Unicode
+characters remain admissible.
 
 Currently recognized costs are `elapsed_ns`, `artifact_bytes`, `runtime_steps`,
 `peak_rss_bytes`, `peak_vram_bytes`, `verifier_ns`, and optional `energy_uj`.
