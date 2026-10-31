@@ -55,7 +55,8 @@ use ternary_lowering::{
     ByteStreamWrapperPlanningError, ByteStreamWrapperRealizationError,
     ByteStreamWrapperRequest, ByteStreamWrapperReturn, FrameCodecExecutionStep,
     FrameField, FrameFieldLayout, FrameHelperExecutionPlan,
-    FrameHelperLoweringError, FrameHelperOperation, FrameHelperRequest,
+    FrameHelperLoweringError, FrameHelperOperation, FrameHelperRealizationError,
+    FrameHelperRequest,
     FrameValidationArm, FrameValidationCondition, FrameValidationSemantics,
     HeapAllocateSemantics, HeapAllocateStep, HeapAllocateZeroedSemantics,
     HeapAllocateZeroedStep, HeapHelperExecutionPlan, HeapHelperLoweringError,
@@ -20021,7 +20022,7 @@ fn frame_validator_realizes_exact_control_flow() -> Result<(), String> {
             },
         ],
     };
-    if realize_frame_helper(operation) != expected {
+    if realize_frame_helper(operation) != Ok(expected) {
         return Err(String::from("frame validator control flow drifted"));
     }
     Ok(())
@@ -20104,7 +20105,8 @@ fn frame_encode_defers_wire_publication_until_validation() -> Result<(), String>
         runtime_id: String::from("malbolge-guest-runtime-v1"),
     })
     .map_err(|error| format!("lower frame encode: {error:?}"))?;
-    let observed = realize_frame_helper(operation);
+    let observed = realize_frame_helper(operation)
+        .map_err(|error| format!("realize frame encode: {error:?}"))?;
     let mut expected_steps = vec![
         FrameCodecExecutionStep::GuardWirePointerNonNull { failure_status: 1 },
         FrameCodecExecutionStep::GuardWireSizeExact {
@@ -20137,7 +20139,8 @@ fn frame_decode_defers_publication_until_validation() -> Result<(), String> {
         runtime_id: String::from("malbolge-guest-runtime-v1"),
     })
     .map_err(|error| format!("lower frame decode: {error:?}"))?;
-    let observed = realize_frame_helper(operation);
+    let observed = realize_frame_helper(operation)
+        .map_err(|error| format!("realize frame decode: {error:?}"))?;
     let mut expected_steps = vec![
         FrameCodecExecutionStep::GuardWirePointerNonNull { failure_status: 1 },
         FrameCodecExecutionStep::GuardFramePointerNonNull { failure_status: 1 },
@@ -20159,6 +20162,69 @@ fn frame_decode_defers_publication_until_validation() -> Result<(), String> {
     let expected = FrameHelperExecutionPlan::Decode { steps: expected_steps };
     if observed != expected {
         return Err(String::from("frame decode execution plan drifted"));
+    }
+    Ok(())
+}
+
+fn canonical_frame_helper(identity: &str) -> Result<FrameHelperOperation, String> {
+    lower_frame_helper(&FrameHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from(identity),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|error| format!("lower frame helper: {error:?}"))
+}
+
+#[test]
+fn frame_realizer_rejects_forged_validation_semantics() -> Result<(), String> {
+    let FrameHelperOperation::Validate(canonical) =
+        canonical_frame_helper("malbolge_guest_frame_validate")?
+    else {
+        return Err(String::from("frame validator identity changed"));
+    };
+    for mutate in [
+        |value: &mut FrameValidationSemantics| value.alignment = 8,
+        |value: &mut FrameValidationSemantics| value.header_bytes = 16,
+        |value: &mut FrameValidationSemantics| value.invalid_argument_status = 0,
+        |value: &mut FrameValidationSemantics| value.invalid_frame_status = 1,
+        |value: &mut FrameValidationSemantics| value.required_flags = 1,
+        |value: &mut FrameValidationSemantics| value.valid_status = 1,
+    ] {
+        let mut forged = canonical;
+        mutate(&mut forged);
+        if realize_frame_helper(FrameHelperOperation::Validate(forged))
+            != Err(FrameHelperRealizationError::InvalidPlan)
+        {
+            return Err(String::from("forged frame validator was realized"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn frame_realizer_rejects_forged_codec_layouts() -> Result<(), String> {
+    for identity in ["malbolge_guest_frame_encode", "malbolge_guest_frame_decode"] {
+        let canonical = canonical_frame_helper(identity)?;
+        let semantics = match canonical {
+            FrameHelperOperation::Encode(value) | FrameHelperOperation::Decode(value) => value,
+            FrameHelperOperation::Validate(_) => return Err(String::from("codec identity changed")),
+        };
+        let mut altered = semantics;
+        altered.fields[1].offset = 0;
+        let mut bad_status = semantics;
+        bad_status.invalid_argument_status = 5;
+        let mut bad_nested = semantics;
+        bad_nested.validation.required_flags = 1;
+        for forged in [altered, bad_status, bad_nested] {
+            let operation = if identity.ends_with("encode") {
+                FrameHelperOperation::Encode(forged)
+            } else {
+                FrameHelperOperation::Decode(forged)
+            };
+            if realize_frame_helper(operation) != Err(FrameHelperRealizationError::InvalidPlan) {
+                return Err(format!("forged {identity} codec layout was realized"));
+            }
+        }
     }
     Ok(())
 }

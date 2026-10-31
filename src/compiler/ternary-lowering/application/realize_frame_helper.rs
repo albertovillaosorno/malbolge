@@ -32,35 +32,55 @@
 
 //! Pre-layout execution realization for canonical guest call-frame helpers.
 
+use super::frame_helper_input::FrameHelperRequest;
+use super::lower_frame_helper::lower_frame_helper;
 use super::model::{
-    FrameCodecExecutionStep, FrameCodecSemantics, FrameHelperExecutionPlan,
-    FrameHelperOperation, FrameValidationArm, FrameValidationCondition,
-    FrameValidationSemantics,
+    FrameCodecExecutionStep, FrameCodecSemantics, FrameHelperExecutionPlan, FrameHelperOperation,
+    FrameValidationArm, FrameValidationCondition, FrameValidationSemantics,
 };
 
-/// Expands one admitted frame helper into explicit pre-layout control flow.
-#[must_use]
-pub fn realize_frame_helper(
-    operation: FrameHelperOperation,
-) -> FrameHelperExecutionPlan {
-    match operation {
-        FrameHelperOperation::Decode(semantics) => {
-            FrameHelperExecutionPlan::Decode {
-                steps: decode_steps(semantics),
-            }
-        },
-        FrameHelperOperation::Encode(semantics) => {
-            FrameHelperExecutionPlan::Encode {
-                steps: encode_steps(semantics),
-            }
-        },
-        FrameHelperOperation::Validate(semantics) => validate_plan(semantics),
-    }
+/// Stable failures for independent frame-helper realization admission.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FrameHelperRealizationError {
+    /// Supplied frame semantics differ from canonical ABI/runtime authority.
+    InvalidPlan,
 }
 
-fn decode_steps(
-    semantics: FrameCodecSemantics,
-) -> Vec<FrameCodecExecutionStep> {
+/// Expands only canonical frame helpers into explicit pre-layout control flow.
+///
+/// # Errors
+///
+/// Rejects forged frame fields, validation rules, or status values before
+/// publishing an execution plan.
+pub fn realize_frame_helper(
+    operation: FrameHelperOperation,
+) -> Result<FrameHelperExecutionPlan, FrameHelperRealizationError> {
+    let identity = match operation {
+        FrameHelperOperation::Decode(_) => "malbolge_guest_frame_decode",
+        FrameHelperOperation::Encode(_) => "malbolge_guest_frame_encode",
+        FrameHelperOperation::Validate(_) => "malbolge_guest_frame_validate",
+    };
+    let expected = lower_frame_helper(&FrameHelperRequest {
+        abi_id: String::from("malbolge-c32-v1"),
+        identity: String::from(identity),
+        runtime_id: String::from("malbolge-guest-runtime-v1"),
+    })
+    .map_err(|_error| FrameHelperRealizationError::InvalidPlan)?;
+    if operation != expected {
+        return Err(FrameHelperRealizationError::InvalidPlan);
+    }
+    Ok(match operation {
+        FrameHelperOperation::Decode(semantics) => FrameHelperExecutionPlan::Decode {
+            steps: decode_steps(semantics),
+        },
+        FrameHelperOperation::Encode(semantics) => FrameHelperExecutionPlan::Encode {
+            steps: encode_steps(semantics),
+        },
+        FrameHelperOperation::Validate(semantics) => validate_plan(semantics),
+    })
+}
+
+fn decode_steps(semantics: FrameCodecSemantics) -> Vec<FrameCodecExecutionStep> {
     let mut steps = vec![
         FrameCodecExecutionStep::GuardWirePointerNonNull {
             failure_status: semantics.invalid_argument_status,
@@ -89,9 +109,7 @@ fn decode_steps(
     steps
 }
 
-fn encode_steps(
-    semantics: FrameCodecSemantics,
-) -> Vec<FrameCodecExecutionStep> {
+fn encode_steps(semantics: FrameCodecSemantics) -> Vec<FrameCodecExecutionStep> {
     let mut steps = vec![
         FrameCodecExecutionStep::GuardWirePointerNonNull {
             failure_status: semantics.invalid_argument_status,
@@ -100,9 +118,9 @@ fn encode_steps(
             bytes: semantics.header_bytes,
             failure_status: semantics.invalid_argument_status,
         },
-        FrameCodecExecutionStep::ValidateFrameOrReturn(Box::new(
-            validate_plan(semantics.validation),
-        )),
+        FrameCodecExecutionStep::ValidateFrameOrReturn(Box::new(validate_plan(
+            semantics.validation,
+        ))),
     ];
     steps.extend(
         semantics
@@ -117,9 +135,7 @@ fn encode_steps(
     steps
 }
 
-fn validate_plan(
-    semantics: FrameValidationSemantics,
-) -> FrameHelperExecutionPlan {
+fn validate_plan(semantics: FrameValidationSemantics) -> FrameHelperExecutionPlan {
     FrameHelperExecutionPlan::Validate {
         exits: vec![
             FrameValidationArm {
@@ -127,15 +143,11 @@ fn validate_plan(
                 status: semantics.invalid_argument_status,
             },
             FrameValidationArm {
-                condition: FrameValidationCondition::FrameExtentBelow(
-                    semantics.header_bytes,
-                ),
+                condition: FrameValidationCondition::FrameExtentBelow(semantics.header_bytes),
                 status: semantics.invalid_frame_status,
             },
             FrameValidationArm {
-                condition: FrameValidationCondition::FrameExtentMisaligned(
-                    semantics.alignment,
-                ),
+                condition: FrameValidationCondition::FrameExtentMisaligned(semantics.alignment),
                 status: semantics.invalid_frame_status,
             },
             FrameValidationArm {
@@ -143,9 +155,7 @@ fn validate_plan(
                 status: semantics.invalid_frame_status,
             },
             FrameValidationArm {
-                condition: FrameValidationCondition::FlagsNotEqual(
-                    semantics.required_flags,
-                ),
+                condition: FrameValidationCondition::FlagsNotEqual(semantics.required_flags),
                 status: semantics.invalid_frame_status,
             },
             FrameValidationArm {

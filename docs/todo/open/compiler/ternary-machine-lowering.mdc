@@ -114,6 +114,10 @@ instruction.
   encode/decode use scratch state and defer caller-visible wire/frame
   publication
   until validation succeeds. ABI/runtime/helper drift fails closed.
+  Independent frame-helper realization now recomputes the exact canonical
+  version-one recipe before exposing an execution plan; altered field offsets,
+  statuses, flags, size/alignment, or nested validation fail closed for all
+  three frame helper identities.
 - A heap-helper family now admits exact heap init/allocation/zeroed-allocation
   identities. Init binds 16-byte alignment, 32-byte minimum, guarded state
   publication, and exact arena zeroing. Allocation publishes null result before

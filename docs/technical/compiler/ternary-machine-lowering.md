@@ -816,8 +816,13 @@ the final branch returns `VALID`.
 
 Frame encode/decode realization binds the eight ABI `u32` fields at byte offsets
 `0,4,8,12,16,20,24,28` in checked-in C order and marks each transfer
-little-endian. Encode checks the output wire pointer/size, validates the source
-frame, builds a scratch wire image, then publishes all 32 bytes atomically.
+little-endian. Before either codec or validation execution is realized,
+the public frame-helper realizer independently reconstructs its exact
+ABI/runtime-specific recipe. Forged alignment, flags, status codes, header
+size, field order/offset, or nested validation semantics reject without an
+execution plan. Encode checks the output wire pointer/size, validates the
+source frame, builds a scratch wire image, then publishes all 32 bytes
+atomically.
 Decode checks both pointers/size, reads all fields into scratch state, validates
 that scratch frame, and only then publishes the decoded frame.
 

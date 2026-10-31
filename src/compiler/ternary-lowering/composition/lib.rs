@@ -127,7 +127,7 @@ pub use realize_byte_stream_control_flow::{
 pub use realize_byte_stream_wrapper::{
     ByteStreamWrapperRealizationError, realize_byte_stream_wrapper,
 };
-pub use realize_frame_helper::realize_frame_helper;
+pub use realize_frame_helper::{FrameHelperRealizationError, realize_frame_helper};
 pub use realize_heap_helper::realize_heap_helper;
 pub use realize_runtime_helper::{
     RuntimeHelperRealizationError, realize_runtime_helper,
