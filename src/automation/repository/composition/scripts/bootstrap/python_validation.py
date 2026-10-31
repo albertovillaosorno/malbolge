@@ -605,31 +605,22 @@ def write_launchers(
     *,
     windows: bool = WINDOWS,
 ) -> None:
-    """Write platform-native Python and pytest launchers."""
-    if windows:
-        _ = layout.python_launcher.write_text(
-            _windows_launcher_text(pytest=False),
-            encoding="ascii",
-            newline="",
-        )
-        _ = layout.pytest_launcher.write_text(
-            _windows_launcher_text(pytest=True),
-            encoding="ascii",
-            newline="",
-        )
-        return
-    _ = layout.python_launcher.write_text(
-        _posix_launcher_text(pytest=False),
-        encoding="ascii",
-        newline="\n",
+    """Publish physical Python and pytest launchers without following links."""
+    scripts = layout.scripts
+    _check_jig_alias_path(scripts, directory=True, required=True)
+    launchers = (layout.python_launcher, layout.pytest_launcher)
+    for target in launchers:
+        _check_jig_alias_path(target, directory=False, required=False)
+    texts = (
+        _windows_launcher_text(pytest=False)
+        if windows
+        else _posix_launcher_text(pytest=False),
+        _windows_launcher_text(pytest=True)
+        if windows
+        else _posix_launcher_text(pytest=True),
     )
-    _ = layout.pytest_launcher.write_text(
-        _posix_launcher_text(pytest=True),
-        encoding="ascii",
-        newline="\n",
-    )
-    _make_executable(layout.python_launcher)
-    _make_executable(layout.pytest_launcher)
+    for target, source in zip(launchers, texts, strict=True):
+        _publish_jig_tool_alias(target, source.encode("ascii"), windows=windows)
 
 
 def _expected_jig_tool_version_line(

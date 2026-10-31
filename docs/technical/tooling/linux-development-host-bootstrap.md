@@ -46,8 +46,11 @@ neutral targets with no linked parent/leaf, checks source regular-file metadata
 and a 256-MiB copy limit, and verifies that copied native bytes came from one
 stable descriptor snapshot. Existing alias destinations are replaced through
 private temporary files rather than followed or truncated; preflight rejects
-redirected targets before publishing any of the three aliases. Preflight alone
-does not guarantee atomicity against arbitrary concurrent ancestor swaps.
+redirected targets before publishing any of the three aliases. Native Windows
+CMD and POSIX Python/pytest launcher scripts use the same physical preflight
+and private atomic replacement, checking both launcher destinations before
+writing either script and preserving platform-specific newlines/modes. Preflight
+alone does not guarantee atomicity against arbitrary concurrent ancestor swaps.
 
 Matching Git and already-installed Rustup channels are imported below
 repository-local versioned roots. Missing Rustup channels are observations only;

@@ -72,6 +72,9 @@ RUST_RUSTC_BYTES = b"rustc-1.98.1"
 RUST_STD_BYTES = b"rust-std"
 RUFF_BYTES = b"ruff"
 OUTSIDE_JIG_ALIAS_BYTES = b"retain outside"
+PYTHON_LAUNCHER_NAME = "python"
+PYTEST_LAUNCHER_NAME = "pytest"
+STALE_LAUNCHER_BYTES = b"stale"
 GIT_VERSION = "2.55.0"
 GIT_BYTES = b"git-2.55.0"
 GIT_HELPER_BYTES = b"git-helper"
@@ -2156,3 +2159,80 @@ def test_jig_alias_writer_preserves_existing_binary_on_publish_error(
         _ = python_validation.write_jig_tool_aliases(layout, windows=True)
     assert target.read_bytes() == OUTSIDE_JIG_ALIAS_BYTES
     assert tuple(alias_root.iterdir()) == (target,)
+
+
+@pytest.mark.parametrize("windows", [False, True])
+@pytest.mark.parametrize(
+    "launcher", [PYTHON_LAUNCHER_NAME, PYTEST_LAUNCHER_NAME]
+)
+def test_python_jig_launcher_rejects_redirected_leaf(
+    tmp_path: Path, *, windows: bool, launcher: str
+) -> None:
+    """Native launchers never overwrite an external file via a linked leaf."""
+    layout = python_validation.validation_layout(tmp_path, windows=windows)
+    layout.scripts.mkdir(parents=True)
+    target = (
+        layout.python_launcher
+        if launcher == PYTHON_LAUNCHER_NAME
+        else layout.pytest_launcher
+    )
+    outside = tmp_path / "keep.txt"
+    _ = outside.write_bytes(OUTSIDE_JIG_ALIAS_BYTES)
+    try:
+        _ = target.symlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        python_validation.write_launchers(layout, windows=windows)
+    assert outside.read_bytes() == OUTSIDE_JIG_ALIAS_BYTES
+    if launcher == PYTEST_LAUNCHER_NAME:
+        assert not layout.python_launcher.exists()
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_python_jig_launcher_rejects_linked_scripts_parent(
+    tmp_path: Path, *, windows: bool
+) -> None:
+    """Native scripts cannot be published through redirected bin/Scripts."""
+    layout = python_validation.validation_layout(tmp_path, windows=windows)
+    layout.environment.mkdir(parents=True)
+    redirected = tmp_path / "elsewhere"
+    redirected.mkdir()
+    try:
+        _ = layout.scripts.symlink_to(redirected, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        python_validation.write_launchers(layout, windows=windows)
+    assert tuple(redirected.iterdir()) == ()
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_python_jig_launcher_publish_replaces_regular_files(
+    tmp_path: Path, *, windows: bool
+) -> None:
+    """Repeat writes preserve both launcher scripts and native conventions."""
+    layout = python_validation.validation_layout(tmp_path, windows=windows)
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python_launcher.write_text("stale", encoding="ascii")
+    _ = layout.pytest_launcher.write_text("stale", encoding="ascii")
+    python_validation.write_launchers(layout, windows=windows)
+    first = (
+        layout.python_launcher.read_bytes(),
+        layout.pytest_launcher.read_bytes(),
+    )
+    python_validation.write_launchers(layout, windows=windows)
+    second = (
+        layout.python_launcher.read_bytes(),
+        layout.pytest_launcher.read_bytes(),
+    )
+    assert first == second
+    assert STALE_LAUNCHER_BYTES not in first
+    if windows:
+        assert all(payload.startswith(b"@echo off\r\n") for payload in first)
+    else:
+        assert all(payload.startswith(b"#!/bin/sh\n") for payload in first)
+        assert all(
+            target.stat().st_mode & stat.S_IXUSR
+            for target in (layout.python_launcher, layout.pytest_launcher)
+        )
