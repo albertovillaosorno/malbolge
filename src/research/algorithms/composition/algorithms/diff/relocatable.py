@@ -112,6 +112,18 @@ class RangeLocator:
         ):
             message = "relocatable end digest must be exact SHA-256 bytes"
             raise RelocationError(message)
+        _validate_range_end_shape(self)
+
+
+def _validate_range_end_shape(locator: RangeLocator) -> None:
+    if (locator.end_digest is None) != (
+        locator.source_length == locator.window_bytes
+    ):
+        message = (
+            "relocatable end boundary digest must exist exactly when "
+            "the source range exceeds its boundary window"
+        )
+        raise RelocationError(message)
 
 
 @dataclass(frozen=True, slots=True)

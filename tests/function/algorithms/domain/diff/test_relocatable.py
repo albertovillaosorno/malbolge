@@ -412,6 +412,20 @@ def test_exact_model_rejects_boolean_and_foreign_segment_metadata() -> None:
         _ = OracleLiteral(cast("bytes", cast("object", bytearray(b"x"))))
 
 
+def test_relocatable_locator_requires_exact_boundary_shape() -> None:
+    """Incomplete or redundant end boundaries cannot admit source ranges."""
+    digest = hashlib.sha256(b"x").digest()
+    with pytest.raises(RelocationError, match="end boundary digest"):
+        _ = RangeLocator(source_length=2, window_bytes=1, start_digest=digest)
+    with pytest.raises(RelocationError, match="end boundary digest"):
+        _ = RangeLocator(
+            source_length=1,
+            window_bytes=1,
+            start_digest=digest,
+            end_digest=digest,
+        )
+
+
 def test_relocatable_metadata_rejects_boolean_and_foreign_records() -> None:
     """Range locators and instructions cannot rely on Python coercions."""
     digest = b"x" * 32
