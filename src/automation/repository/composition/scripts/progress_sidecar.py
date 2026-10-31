@@ -2240,6 +2240,8 @@ def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
         raise
     except (OSError, ValueError, RuntimeError) as error:
         _fail(f"progress writer lock identity cannot be verified: {_host_error_detail(error)}")
+    if not stat.S_ISREG(opened.st_mode):
+        _fail("progress writer lock opened descriptor must be a regular file")
     if (
         not stat.S_ISREG(current.st_mode)
         or opened.st_dev != current.st_dev

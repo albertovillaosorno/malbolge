@@ -614,7 +614,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   native nonnegative descriptor receipts before lock acquisition and at the
   post-lock inode recheck, plus committed-path retention for a forged release
   callback completion. Positive native flock locking remains covered by the
-  existing cross-process contention and process-death tests.
+  existing cross-process contention and process-death tests. Two further
+  red-first fixtures prove a matching native metadata receipt with a forged
+  opened-directory or opened-FIFO type cannot authorize lock admission.
 
   Regular payload-file and POSIX parent-directory synchronization now also
   requires the native `None` `fsync` completion receipt. Eight red-first cases

@@ -12191,3 +12191,45 @@ def test_writer_lock_rejects_forged_release_callback_completion_after_commit(
             _ = progress.write_atomic(candidate)
     assert caught.value.published_path == destination
     assert progress.read(destination) == candidate
+
+
+@pytest.mark.parametrize("kind", [stat.S_IFDIR, stat.S_IFIFO], ids=["directory", "fifo"])
+def test_writer_lock_rejects_nonregular_opened_native_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: int,
+) -> None:
+    """A forged native stat mode cannot certify a lock on a special inode."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    actual_acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+    actual_fstat = os.fstat
+    lock_descriptor: int | None = None
+    forged_count = 0
+
+    def acquire_and_mark(stream: object) -> Callable[[], None]:
+        nonlocal lock_descriptor
+        release = actual_acquire(stream)
+        lock_descriptor = cast("int", stream.fileno())
+        return release
+
+    def forge_opened_type(descriptor: int) -> os.stat_result:
+        nonlocal forged_count
+        actual = actual_fstat(descriptor)
+        if descriptor != lock_descriptor:
+            return actual
+        forged_count += 1
+        fields = list(actual)
+        fields[stat.ST_MODE] = kind | stat.S_IMODE(actual.st_mode)
+        return os.stat_result(fields)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_acquire_writer_lock", acquire_and_mark)
+        context.setattr(os, "fstat", forge_opened_type)
+        with pytest.raises(ERROR, match="progress writer lock.*regular file"):
+            _ = progress.write_atomic(candidate)
+    assert forged_count > 0
+    assert not destination.exists()

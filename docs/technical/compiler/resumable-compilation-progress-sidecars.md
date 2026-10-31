@@ -99,6 +99,9 @@ must not reach an OS lock or stat primitive. A forged release callback return
 cannot certify successful teardown without the native `None` receipt, and a
 late failure retains committed-path evidence. These checks cannot prove that a
 forged valid integer describes the same file across separate observations.
+The post-lock inode receipt must also still describe a regular descriptor,
+independently of the regular path, even if a forged native `stat_result`
+claims identical device and inode values for a directory or special file.
 
 Progress writers also require native `os.stat_result` for the initially
 created staging descriptor and each staged pathname/descriptor size and inode
