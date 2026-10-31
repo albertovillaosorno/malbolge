@@ -38,14 +38,20 @@ import argparse
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 from pathlib import PureWindowsPath
 import platform
+from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from typing import Final
 from typing import Never
+from typing import TYPE_CHECKING
 from typing import cast
+
+if TYPE_CHECKING:
+    from typing import BinaryIO
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -63,6 +69,8 @@ MANIFEST: Final = (
     / "llvm-clang-tidy-toolchain.json"
 )
 SCHEMA_VERSION: Final = 2
+MAX_MANIFEST_BYTES: Final = 1024 * 1024
+ARCHIVE_HASH_CHUNK_BYTES: Final = 1024 * 1024
 LLVM_VERSION: Final = "22.1.8"
 RELEASE_TAG: Final = f"llvmorg-{LLVM_VERSION}"
 WINDOWS_SYSTEM: Final = "windows"
@@ -216,18 +224,120 @@ def _mapping(value: object, label: str) -> dict[str, object]:
     return cast("dict[str, object]", value)
 
 
-def _document(path: Path) -> dict[str, object]:
+def _regular_source_identity(
+    status: os.stat_result,
+    label: str,
+) -> tuple[int, int, int, int, int]:
+    """Admit regular source evidence and capture file mutation identity.
+
+    Returns:
+        Device, inode, size, mtime and ctime of the regular file.
+
+    """
+    if not S_ISREG(status.st_mode):
+        _fail(f"{label} must be a regular file")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _check_source_parents(path: Path, label: str) -> None:
+    """Reject alias directories rather than borrowing external evidence."""
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            _fail(f"{label} path must not redirect")
+
+
+def _open_regular_source(
+    path: Path,
+    label: str,
+) -> tuple[BinaryIO, os.stat_result]:
+    """Admit one physical source and open the exact no-follow descriptor.
+
+    Returns:
+        Open binary stream and admission metadata, owned by the caller.
+
+    Raises:
+        ToolchainError: Nonregular, redirected, or changed source evidence.
+        OSError: The source cannot be opened or inspected.
+
+    """
+    _check_source_parents(path, label)
+    admitted = path.lstat()
+    expected = _regular_source_identity(admitted, label)
+    if path.is_symlink() or path.is_junction():
+        _fail(f"{label} path must not redirect")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    stream = os.fdopen(descriptor, "rb")
     try:
+        opened = _regular_source_identity(os.fstat(stream.fileno()), label)
+        if opened != expected:
+            _fail(f"{label} changed before read")
+    except OSError, ToolchainError:
+        stream.close()
+        raise
+    return stream, admitted
+
+
+def _check_source_after_read(
+    stream: BinaryIO,
+    path: Path,
+    admitted: os.stat_result,
+    *,
+    label: str,
+) -> None:
+    """Reject replacement, mutation, or path redirect before admission."""
+    expected = _regular_source_identity(admitted, label)
+    opened = _regular_source_identity(os.fstat(stream.fileno()), label)
+    named = _regular_source_identity(path.lstat(), label)
+    if expected != opened or expected != named:
+        _fail(f"{label} changed during read")
+    _check_source_parents(path, label)
+
+
+def _read_manifest_bytes(path: Path) -> bytes:
+    """Read only bounded regular toolchain JSON with stable source identity.
+
+    Returns:
+        Complete UTF-8-compatible bytes.
+
+    """
+    label = "clang-tidy toolchain manifest"
+    stream, admitted = _open_regular_source(path, label)
+    with stream:
+        if admitted.st_size > MAX_MANIFEST_BYTES:
+            _fail(f"{label} exceeds byte limit")
+        raw = stream.read(MAX_MANIFEST_BYTES + 1)
+        if len(raw) != admitted.st_size:
+            _fail(f"{label} changed during read or exceeds byte limit")
+        _check_source_after_read(stream, path, admitted, label=label)
+    return raw
+
+
+def _document(path: Path) -> dict[str, object]:
+    label = "clang-tidy toolchain manifest"
+    try:
+        raw = _read_manifest_bytes(path)
         parsed = cast(
             "object",
             json.loads(
-                path.read_text(encoding="utf-8"),
+                raw.decode("utf-8"),
                 object_pairs_hook=_reject_duplicate_pairs,
             ),
         )
-    except (json.JSONDecodeError, OSError) as error:
-        _fail(f"cannot read clang-tidy toolchain manifest: {error}")
-    return _mapping(parsed, "clang-tidy toolchain manifest")
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as error:
+        _fail(f"cannot read {label}: {error}")
+    return _mapping(parsed, label)
 
 
 def _exact_keys(
@@ -567,21 +677,42 @@ def validate_installation(
         _fail(f"clang-tidy must report LLVM version {identity.llvm_version}")
 
 
-def verify_archive(path: Path, identity: ToolchainIdentity) -> None:
-    """Verify one downloaded development archive against tracked identity."""
-    if not path.is_file():
-        _fail(f"LLVM development archive not found: {path}")
-    size = path.stat().st_size
-    if size != identity.asset_size_bytes:
-        prefix = "LLVM development archive size mismatch: expected "
-        _fail(f"{prefix}{identity.asset_size_bytes}; observed {size}")
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
+def _hash_archive(path: Path, required_size: int) -> str:
+    """Compute a stable archive digest without retaining all archive bytes.
+
+    Returns:
+        Complete SHA-256 digest of an unchanged file.
+
+    """
+    label = "LLVM development archive"
+    stream, admitted = _open_regular_source(path, label)
+    with stream:
+        size = admitted.st_size
+        if size != required_size:
+            prefix = f"{label} size mismatch: expected "
+            _fail(f"{prefix}{required_size}; observed {size}")
+        digest = hashlib.sha256()
+        consumed = 0
+        while chunk := stream.read(ARCHIVE_HASH_CHUNK_BYTES):
+            consumed += len(chunk)
+            if consumed > size:
+                _fail(f"{label} changed during read")
             digest.update(chunk)
-    observed = digest.hexdigest()
+        if consumed != size:
+            _fail(f"{label} changed during read")
+        _check_source_after_read(stream, path, admitted, label=label)
+    return digest.hexdigest()
+
+
+def verify_archive(path: Path, identity: ToolchainIdentity) -> None:
+    """Hash only an unchanged, physically admitted development archive."""
+    label = "LLVM development archive"
+    try:
+        observed = _hash_archive(path, identity.asset_size_bytes)
+    except OSError as error:
+        _fail(f"cannot read {label}: {error}")
     if observed != identity.asset_sha256:
-        prefix = "LLVM development archive SHA-256 mismatch: expected "
+        prefix = f"{label} SHA-256 mismatch: expected "
         _fail(f"{prefix}{identity.asset_sha256}; observed {observed}")
 
 

@@ -49,7 +49,13 @@ Neither path is inferred from an ambient host LLVM installation.
 
 `tidy_toolchain.py` closes the manifest schema, rejects escaping paths, verifies
 required runtime/development files, checks the exact Clang and clang-tidy
-versions, and can hash an explicitly supplied development archive.
+versions, and can hash an explicitly supplied development archive. Manifest
+loading requires a bounded, non-redirected regular file; the descriptor and
+pathname must retain inode, extent, and timestamps throughout the read before
+JSON parsing. Archive verification similarly hashes through a regular-file
+descriptor (no-follow opening where supported) and rejects source replacement
+or modification during streaming. Neither check accepts linked evidence paths
+or treats a matching hash as permission to replace inputs.
 
 ### Windows plugin host
 

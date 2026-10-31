@@ -37,15 +37,18 @@ from __future__ import annotations
 from dataclasses import replace
 import hashlib
 import json
+import os
+from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from typing import TYPE_CHECKING
 from typing import cast
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
 
 import pytest
+
 from scripts.validate import main as validate_main
 from scripts.validate import tidy_build
 from scripts.validate import tidy_build_linux
@@ -287,6 +290,257 @@ def test_manifest_rejects_drifted_llvm_version(tmp_path: Path) -> None:
         match=r"llvm_version must be 22\.1\.8",
     ):
         _ = tidy_toolchain.load_identity(manifest, root=tmp_path)
+
+
+def test_manifest_rejects_symlinked_leaf_and_parent(tmp_path: Path) -> None:
+    """Manifest evidence cannot originate through redirected authority paths."""
+    source = _write_manifest(tmp_path, _canonical_document())
+    alias = tmp_path / "alias.json"
+    parent = tmp_path / "alias-directory"
+    try:
+        alias.symlink_to(source)
+        parent.symlink_to(tmp_path, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    for path in (alias, parent / source.name):
+        with pytest.raises(
+            tidy_toolchain.ToolchainError, match=r"redirect|regular"
+        ):
+            _ = tidy_toolchain.load_identity(path, root=tmp_path)
+
+
+def test_archive_verification_rejects_symlinked_leaf_and_parent(
+    tmp_path: Path,
+) -> None:
+    """Matching archive digests cannot legitimate redirected source paths."""
+    payload = b"reviewed LLVM development archive"
+    archive = tmp_path / "llvm.tar.xz"
+    _ = archive.write_bytes(payload)
+    identity = replace(
+        tidy_toolchain.load_identity(root=tmp_path),
+        asset_sha256=hashlib.sha256(payload).hexdigest(),
+        asset_size_bytes=len(payload),
+    )
+    alias = tmp_path / "linked.tar.xz"
+    parent = tmp_path / "linked-directory"
+    try:
+        alias.symlink_to(archive)
+        parent.symlink_to(tmp_path, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    for path in (alias, parent / archive.name):
+        with pytest.raises(
+            tidy_toolchain.ToolchainError, match=r"redirect|regular"
+        ):
+            tidy_toolchain.verify_archive(path, identity)
+
+
+def test_manifest_rejects_special_and_oversized_file(tmp_path: Path) -> None:
+    """Malformed manifest path cannot hang or exhaust JSON admission."""
+    with pytest.raises(tidy_toolchain.ToolchainError, match="regular"):
+        _ = tidy_toolchain.load_identity(tmp_path, root=tmp_path)
+    oversized = tmp_path / "oversized.json"
+    with oversized.open("wb") as stream:
+        _ = stream.truncate(tidy_toolchain.MAX_MANIFEST_BYTES + 1)
+    with pytest.raises(tidy_toolchain.ToolchainError, match="byte limit"):
+        _ = tidy_toolchain.load_identity(oversized, root=tmp_path)
+    with pytest.raises(tidy_toolchain.ToolchainError, match="cannot read"):
+        _ = tidy_toolchain.load_identity(
+            tmp_path / "absent.json", root=tmp_path
+        )
+
+
+def test_manifest_rejects_invalid_utf8_as_toolchain_error(
+    tmp_path: Path,
+) -> None:
+    """Invalid UTF-8 is a closed toolchain error, not an uncaught decoder."""
+    manifest = tmp_path / "llvm.json"
+    _ = manifest.write_bytes(b"{\xff}")
+    with pytest.raises(tidy_toolchain.ToolchainError, match="cannot read"):
+        _ = tidy_toolchain.load_identity(manifest, root=tmp_path)
+
+
+def test_manifest_rejects_fifo_without_waiting_for_writer(
+    tmp_path: Path,
+) -> None:
+    """A manifest FIFO cannot block a verifier awaiting an external writer."""
+    mkfifo = cast("Callable[[Path], None] | None", getattr(os, "mkfifo", None))
+    if mkfifo is None:
+        pytest.skip("FIFO not supported on this host")
+    fifo = tmp_path / "llvm.json"
+    mkfifo(fifo)
+    with pytest.raises(tidy_toolchain.ToolchainError, match="regular"):
+        _ = tidy_toolchain.load_identity(fifo, root=tmp_path)
+
+
+def test_manifest_rejects_same_byte_inode_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-byte manifest replacement between lstat and open is rejected."""
+    source = _write_manifest(tmp_path, _canonical_document())
+    replacement = tmp_path / "replacement.json"
+    _ = replacement.write_bytes(source.read_bytes())
+    real_open = os.open
+    swapped = False
+
+    def swap_on_open(path: Path, flags: int) -> int:
+        nonlocal swapped
+        if path == source:
+            _ = replacement.replace(source)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_on_open)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="changed before read"
+    ):
+        _ = tidy_toolchain.load_identity(source, root=tmp_path)
+    assert swapped
+
+
+def test_manifest_rejects_same_byte_swap_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An identically valid replacement invalidates the read manifest."""
+    source = _write_manifest(tmp_path, _canonical_document())
+    replacement = tmp_path / "replacement.json"
+    _ = replacement.write_bytes(source.read_bytes())
+    real_open = os.open
+    real_lstat = Path.lstat
+    opened = swapped = False
+
+    def track_open(path: Path, flags: int) -> int:
+        nonlocal opened
+        descriptor = real_open(path, flags)
+        if path == source:
+            opened = True
+        return descriptor
+
+    def swap_at_recheck(path: Path) -> os.stat_result:
+        nonlocal swapped
+        if path == source and opened and not swapped:
+            _ = replacement.replace(source)
+            swapped = True
+        return real_lstat(path)
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(Path, "lstat", swap_at_recheck)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="changed during read"
+    ):
+        _ = tidy_toolchain.load_identity(source, root=tmp_path)
+    assert swapped
+
+
+def test_archive_rejects_fifo_without_waiting_for_writer(
+    tmp_path: Path,
+) -> None:
+    """The archive digest reader refuses pipes before streaming a hash."""
+    mkfifo = cast("Callable[[Path], None] | None", getattr(os, "mkfifo", None))
+    if mkfifo is None:
+        pytest.skip("FIFO not supported on this host")
+    fifo = tmp_path / "archive.tar.xz"
+    mkfifo(fifo)
+    identity = tidy_toolchain.load_identity(root=tmp_path)
+    with pytest.raises(tidy_toolchain.ToolchainError, match="regular"):
+        tidy_toolchain.verify_archive(fifo, identity)
+
+
+def test_archive_rejects_same_byte_swap_after_hash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Digest equality alone cannot admit a replaced archive inode."""
+    payload = b"reviewed LLVM development archive"
+    source = tmp_path / "archive.tar.xz"
+    _ = source.write_bytes(payload)
+    replacement = tmp_path / "replacement.tar.xz"
+    _ = replacement.write_bytes(payload)
+    identity = replace(
+        tidy_toolchain.load_identity(root=tmp_path),
+        asset_sha256=hashlib.sha256(payload).hexdigest(),
+        asset_size_bytes=len(payload),
+    )
+    real_open = os.open
+    real_lstat = Path.lstat
+    opened = swapped = False
+
+    def track_open(path: Path, flags: int) -> int:
+        nonlocal opened
+        descriptor = real_open(path, flags)
+        if path == source:
+            opened = True
+        return descriptor
+
+    def swap_at_recheck(path: Path) -> os.stat_result:
+        nonlocal swapped
+        if path == source and opened and not swapped:
+            _ = replacement.replace(source)
+            swapped = True
+        return real_lstat(path)
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(Path, "lstat", swap_at_recheck)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="changed during read"
+    ):
+        tidy_toolchain.verify_archive(source, identity)
+    assert swapped
+
+
+def test_archive_rejects_in_place_mutation_after_hash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even a same-size in-place edit invalidates the stream digest."""
+    payload = b"reviewed LLVM development archive"
+    source = tmp_path / "archive.tar.xz"
+    _ = source.write_bytes(payload)
+    identity = replace(
+        tidy_toolchain.load_identity(root=tmp_path),
+        asset_sha256=hashlib.sha256(payload).hexdigest(),
+        asset_size_bytes=len(payload),
+    )
+    real_open = os.open
+    real_lstat = Path.lstat
+    opened = False
+    modified = False
+
+    def track_open(path: Path, flags: int) -> int:
+        nonlocal opened
+        descriptor = real_open(path, flags)
+        if path == source:
+            opened = True
+        return descriptor
+
+    def modify_at_recheck(path: Path) -> os.stat_result:
+        nonlocal modified
+        if path == source and opened and not modified:
+            with source.open("r+b") as stream:
+                _ = stream.write(b"x")
+            modified = True
+        return real_lstat(path)
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(Path, "lstat", modify_at_recheck)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="changed during read"
+    ):
+        tidy_toolchain.verify_archive(source, identity)
+    assert modified
+
+
+def test_archive_rejects_missing_and_size_mismatch(tmp_path: Path) -> None:
+    """Archive verifier reports path I/O and size failures as typed errors."""
+    identity = tidy_toolchain.load_identity(root=tmp_path)
+    with pytest.raises(tidy_toolchain.ToolchainError, match="cannot read"):
+        tidy_toolchain.verify_archive(tmp_path / "missing.tar.xz", identity)
+    archive = tmp_path / "wrong-size.tar.xz"
+    _ = archive.write_bytes(b"tiny")
+    with pytest.raises(tidy_toolchain.ToolchainError, match="size mismatch"):
+        tidy_toolchain.verify_archive(archive, identity)
 
 
 def test_archive_verification_accepts_exact_bytes(tmp_path: Path) -> None:
