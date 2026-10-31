@@ -46,8 +46,10 @@ import sys
 from typing import Protocol
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 import pytest
+
 from scripts.validate import c_abi_source
 from scripts.validate import c_frontend_build
 from scripts.validate import c_frontend_build_linux
@@ -104,6 +106,8 @@ _WINDOWS_OS_NAME = "nt"
 _WINDOWS_PLATFORM = "windows-x86_64"
 _LINUX_PLATFORM = "linux-x86_64"
 _ARITHMETIC_DAG_FAMILY = "arithmetic-dag"
+_IDENTITY_FAMILY_FIELD = "family"
+_IDENTITY_VERSION_FIELD = "version"
 _BRANCH_MIX_FAMILY = "branch-mix"
 _BINARY_TREE_FAMILY = "binary-tree"
 _CALL_CHAIN_FAMILY = "call-chain"
@@ -1430,20 +1434,26 @@ def test_public_writer_rejects_redirected_output_subclass_before_generation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A foreign Path cannot redirect source publication outside its named root."""
+    """A foreign Path cannot redirect source publication.
+
+    The named output root must remain authoritative.
+
+    """
 
     class ForgedOutput(type(tmp_path)):
+        @override
         def __fspath__(self) -> str:
             return str(tmp_path / "substituted-output")
 
         @property
+        @override
         def parent(self) -> Path:
             message = "forged path parent reached filesystem admission"
             raise AssertionError(message)
 
     output = ForgedOutput(tmp_path / "claimed-output")
     assert str(output) == str(tmp_path / "claimed-output")
-    assert output.__fspath__() != str(output)
+    assert os.fspath(output) != str(output)
 
     def forbidden_generation(*args: object, **kwargs: object) -> None:
         _ = (args, kwargs)
@@ -1461,31 +1471,36 @@ def test_public_writer_rejects_redirected_output_subclass_before_generation(
 
 
 class _ExplosiveIdentityField:
-    """Foreign identity fields must not execute custom formatting callbacks."""
+    """Foreign identity fields must not execute formatting callbacks."""
 
+    @override
     def __str__(self) -> str:
         message = "foreign challenge identity formatting executed"
         raise AssertionError(message)
 
 
-@pytest.mark.parametrize("field", ["family", "version"])
-def test_generator_rejects_foreign_identity_before_formatting(field: str) -> None:
+@pytest.mark.parametrize(
+    "field", [_IDENTITY_FAMILY_FIELD, _IDENTITY_VERSION_FIELD]
+)
+def test_generator_rejects_foreign_identity_before_formatting(
+    field: str,
+) -> None:
     """Type rejection must happen before interpolating an invalid field."""
-    identity = _GENERATOR_MODULE.ChallengeIdentity(
-        family=(
-            cast("str", _ExplosiveIdentityField())
-            if field == "family"
-            else "arithmetic-dag"
-        ),
-        version=(
-            cast("int", _ExplosiveIdentityField())
-            if field == "version"
-            else 1
-        ),
-        seed=7,
-        profile=_REPLAY_PROFILE,
-        nodes=4,
+    constructor = cast(
+        "Callable[[str, int, int, str, int], _ChallengeIdentity]",
+        vars(_GENERATOR_MODULE)["ChallengeIdentity"],
     )
+    family = (
+        cast("str", cast("object", _ExplosiveIdentityField()))
+        if field == _IDENTITY_FAMILY_FIELD
+        else "arithmetic-dag"
+    )
+    version = (
+        cast("int", cast("object", _ExplosiveIdentityField()))
+        if field == _IDENTITY_VERSION_FIELD
+        else 1
+    )
+    identity = constructor(family, version, 7, _REPLAY_PROFILE, 4)
     with pytest.raises(_GENERATOR_MODULE.ChallengeError, match="unsupported"):
         _ = _GENERATOR_MODULE.generate(identity)
 
@@ -1496,7 +1511,7 @@ def test_generator_rejects_foreign_identity_before_formatting(field: str) -> Non
 def test_extreme_native_generator_version_uses_typed_diagnostic(
     huge_version: int,
 ) -> None:
-    """Malformed enormous versions must not trigger decimal formatting errors."""
+    """Malformed enormous versions must use bounded error diagnostics."""
     identity = _GENERATOR_MODULE.ChallengeIdentity(
         "arithmetic-dag", huge_version, 7, _REPLAY_PROFILE, 4
     )
@@ -1560,8 +1575,9 @@ def test_existing_output_inventory_stops_at_first_extra_entry(
     output = tmp_path / "challenge"
     output.mkdir()
     names = ("program.c", "oracle.bin", "manifest.json", "unexpected")
+    sentinel = b"existing"
     for name in names:
-        _ = (output / name).write_bytes(b"existing")
+        _ = (output / name).write_bytes(sentinel)
     original_iterdir = Path.iterdir
 
     def capped_listing(directory: Path) -> Iterator[Path]:
@@ -1577,7 +1593,7 @@ def test_existing_output_inventory_stops_at_first_extra_entry(
         _GENERATOR_MODULE.ChallengeError, match="output path already exists"
     ):
         _GENERATOR_MODULE.write_challenge(_identity(), output)
-    assert (output / "unexpected").read_bytes() == b"existing"
+    assert (output / "unexpected").read_bytes() == sentinel
     assert not (tmp_path / ".challenge.staging").exists()
 
 

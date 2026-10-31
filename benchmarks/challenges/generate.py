@@ -1379,7 +1379,7 @@ def _published_artifact_paths(
             inventory_exceeded = True
             break
         entries.add(path.name)
-    if inventory_exceeded or entries != _EXPECTED_ARTIFACTS:
+    if inventory_exceeded or frozenset(entries) != _EXPECTED_ARTIFACTS:
         return None
     artifacts = (
         root / "program.c",
