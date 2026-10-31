@@ -2182,8 +2182,10 @@ def _owned_temporary_still_named(
 
     """
     if identity is None:
-        # Initial descriptor admission failed before an inode could be recorded.
-        return True
+        # Descriptor admission failed before ownership could be proved. A
+        # replaced staging path may name an unrelated inode or symlink; leave
+        # that path intact rather than risk deleting a foreign entry.
+        return False
     try:
         current = temporary.stat(follow_symlinks=False)
     except FileNotFoundError:

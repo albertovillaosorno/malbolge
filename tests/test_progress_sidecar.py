@@ -7091,6 +7091,51 @@ def _inject_temporary_descriptor_admission_failure(
     context.setattr(os, "fstat", fail_staged_fstat)
 
 
+def _substituting_temporary_creator(
+    original: Callable[..., tuple[int, str]],
+    staged_paths: list[Path],
+    *,
+    foreign: Path,
+    replacement: str,
+) -> Callable[..., tuple[int, str]]:
+    """Create a real staging fd, then replace only its pathname.
+
+    Returns:
+        A deterministic foreign-path-injection creator for mkstemp.
+
+    """
+
+    def create(*, prefix: str, suffix: str, **options: Path) -> tuple[int, str]:
+        descriptor, name = original(
+            dir=options["dir"], prefix=prefix, suffix=suffix
+        )
+        staged = Path(name)
+        staged_paths.append(staged)
+        staged.unlink()
+        if replacement == TEMP_REGULAR:
+            _ = foreign.replace(staged)
+        else:
+            staged.symlink_to(foreign)
+        return descriptor, name
+
+    return create
+
+
+def _publish_for_temporary_admission_test(
+    kind: str, sidecar: progress.ProgressSidecar, destination: Path
+) -> Path:
+    """Invoke either publisher with the test fixture destination.
+
+    Returns:
+        Published pointer or immutable generation path.
+
+    """
+    if kind == TEMP_MUTABLE:
+        return progress.write_atomic(sidecar)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    return writer(destination, b"expected-checkpoint", platform=os.name)
+
+
 @pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
 def test_temporary_descriptor_admission_failure_closes_raw_fd(
     tmp_path: Path,
@@ -7108,23 +7153,73 @@ def test_temporary_descriptor_admission_failure_closes_raw_fd(
         else tmp_path / "checkpoint.bin"
     )
 
-    def publish() -> Path:
-        if kind == TEMP_MUTABLE:
-            return progress.write_atomic(sidecar)
-        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
-        return writer(destination, b"expected-checkpoint", platform=os.name)
-
     with monkeypatch.context() as context:
         _inject_temporary_descriptor_admission_failure(
             context, staged_descriptors, message
         )
         with pytest.raises(ERROR, match=message):
-            _ = publish()
+            _ = _publish_for_temporary_admission_test(
+                kind, sidecar, destination
+            )
     assert len(staged_descriptors) == 1
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(staged_descriptors[0])
     assert not destination.exists()
-    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+    # No staging inode was admitted, so the path cannot be safely unlinked.
+    retained = tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+    assert len(retained) == 1
+    assert retained[0].read_bytes() == EMPTY_PAYLOAD
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+@pytest.mark.parametrize("replacement", [TEMP_REGULAR, TEMP_SYMLINK])
+def test_failed_temporary_descriptor_admission_preserves_foreign_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    kind: str,
+    replacement: str,
+) -> None:
+    """Unadmitted staging paths must not unlink unrelated inode owners."""
+    if replacement == TEMP_SYMLINK and os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("temporary symlink substitution needs POSIX semantics")
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    foreign = tmp_path / "unrelated-original"
+    _ = foreign.write_bytes(POSIX_PAYLOAD)
+    staged_path: list[Path] = []
+    staged_descriptors: list[int] = []
+    failure = "injected initial staging fstat failure"
+
+    with monkeypatch.context() as context:
+        _inject_temporary_descriptor_admission_failure(
+            context, staged_descriptors, failure
+        )
+        creator = _substituting_temporary_creator(
+            tempfile.mkstemp,
+            staged_path,
+            foreign=foreign,
+            replacement=replacement,
+        )
+        context.setattr(tempfile, "mkstemp", creator)
+        with pytest.raises(ERROR, match=failure):
+            _ = _publish_for_temporary_admission_test(
+                kind, sidecar, destination
+            )
+
+    assert len(staged_path) == 1
+    assert not destination.exists()
+    assert staged_path[0].exists()
+    if replacement == TEMP_REGULAR:
+        assert staged_path[0].read_bytes() == POSIX_PAYLOAD
+    else:
+        assert staged_path[0].is_symlink()
+        assert staged_path[0].resolve() == foreign
+        assert foreign.read_bytes() == POSIX_PAYLOAD
 
 
 def test_checkpoint_generation_rejects_linked_immutable_path(

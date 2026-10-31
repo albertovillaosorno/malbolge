@@ -207,11 +207,14 @@ staging inode once its identity has been admitted. If another regular file or
 symlink replaces the staging pathname, the foreign entry survives rather than
 being unlinked by a failed publication.
 
-A failed initial descriptor admission
-still uses best-effort pathname cleanup because no verified inode was captured;
-like all path-based cleanup, the identity recheck and unlink are not one atomic
-filesystem operation. Neither publication path claims protection from a
-substitution precisely between its final cleanup identity check and unlink.
+A failed initial descriptor admission closes the raw descriptor but does not
+unlink the unadmitted pathname: no verified inode has been captured, so the
+path might now refer to an unrelated regular file or symlink. The unverified
+staging entry may therefore remain for explicit operator review. Once inode
+identity is admitted, cleanup still uses a pathname identity recheck and unlink,
+which are not one atomic filesystem operation. Neither publication path claims
+protection from a substitution precisely between its final cleanup identity
+check and unlink.
 
 Regular-inode and single-hard-link admission is repeated before reopening,
 after hashing on the open descriptor, and after reader closure. Deterministic
