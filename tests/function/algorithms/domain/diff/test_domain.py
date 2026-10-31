@@ -99,6 +99,22 @@ def test_domain_loader_rejects_foreign_path_before_filesystem() -> None:
         _ = load_diff_domain(cast("Path", cast("object", "domain.py")))
 
 
+class _ForeignDomainModulePath(type(Path())):
+    """A module path override cannot establish domain execution authority."""
+
+    def __str__(self) -> str:
+        message = "foreign domain module path conversion executed"
+        raise AssertionError(message)
+
+
+def test_domain_loader_rejects_foreign_path_subclass_before_methods() -> None:
+    """Reject module overrides before module status or import registration."""
+    with pytest.raises(
+        DomainContractError, match="must use exact pathlib Path"
+    ):
+        _ = load_diff_domain(_ForeignDomainModulePath("unsafe-domain.py"))
+
+
 @pytest.mark.parametrize("name", ["domain\x00.py", "domain\ud800.py"])
 def test_domain_loader_rejects_unrepresentable_module_path(name: str) -> None:
     """Malformed module names cannot leak host path/encoding exceptions."""

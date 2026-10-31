@@ -101,6 +101,35 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, bytes]:
     return source, oracle, base
 
 
+class _ForeignRelocatableRoot(type(Path())):
+    """Overridable root paths cannot authorize relocatable placement."""
+
+    def __str__(self) -> str:
+        message = "foreign relocatable root path conversion executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("role", ["source", "candidate", "output"])
+def test_relocatable_roots_reject_foreign_path_subclasses_before_methods(
+    tmp_path: Path, role: str
+) -> None:
+    """Reject authoring, candidate, and output hooks before filesystem work."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    plan = build_relocatable_plan(source, exact)
+    foreign = _ForeignRelocatableRoot(tmp_path / "untrusted")
+    actions = {
+        "source": lambda: build_relocatable_plan(foreign, exact),
+        "candidate": lambda: materialize_relocatable_plan(
+            foreign, plan, tmp_path / "out"
+        ),
+        "output": lambda: materialize_relocatable_plan(source, plan, foreign),
+    }
+    with pytest.raises(RelocationError, match="must use exact pathlib Path"):
+        _ = actions[role]()
+    assert not (tmp_path / "untrusted").exists()
+
+
 @pytest.mark.parametrize("linked_output", [False, True])
 def test_relocatable_rejects_output_inside_candidate_source(
     tmp_path: Path,

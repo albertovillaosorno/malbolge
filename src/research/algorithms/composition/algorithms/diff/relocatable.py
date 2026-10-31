@@ -373,8 +373,9 @@ def _make_relocatable_directory(
 
 
 def _validate_path(value: object, context: str) -> None:
-    if not isinstance(value, Path):
-        message = f"{context} must use a pathlib Path value"
+    # A foreign Path subclass can redirect byte reads or output staging.
+    if type(value) is not type(Path()):
+        message = f"{context} must use exact pathlib Path"
         raise RelocationError(message)
     text = str(value)
     if _NUL in text:

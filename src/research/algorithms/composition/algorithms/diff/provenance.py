@@ -304,8 +304,9 @@ def _pinned_files(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...]:
 
 
 def _validate_root_path(root: object) -> None:
-    if not isinstance(root, Path):
-        message = "pinned source root must use a pathlib Path value"
+    # A foreign Path subclass can override source pin status and byte reads.
+    if type(root) is not type(Path()):
+        message = "pinned source root must use exact pathlib Path"
         raise SourcePinError(message)
     raw = str(root)
     if _NUL in raw:

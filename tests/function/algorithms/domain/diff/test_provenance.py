@@ -78,6 +78,29 @@ def _pin(root: Path) -> SourcePin:
     )
 
 
+class _ForeignPinnedRoot(type(Path())):
+    """Source-pin identity must never invoke untrusted path methods."""
+
+    def __str__(self) -> str:
+        message = "foreign source pin root path conversion executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+def test_source_pin_rejects_foreign_path_subclasses_before_methods(
+    tmp_path: Path, operation: str
+) -> None:
+    """Both source pin public APIs reject overridden root paths early."""
+    foreign = _ForeignPinnedRoot(tmp_path / "untrusted")
+    pin = SourcePin("repository", _COMMIT, ("src",), 1, "0" * 64)
+    actions = {
+        "snapshot": lambda: source_snapshot_evidence(foreign, ("src",)),
+        "require": lambda: require_source_pin(foreign, pin),
+    }
+    with pytest.raises(SourcePinError, match="must use exact pathlib Path"):
+        _ = actions[operation]()
+
+
 def test_source_pin_rejects_non_utf8_root_metadata(tmp_path: Path) -> None:
     """Selected roots must be UTF-8 encodable before source inspection."""
     bad_root = "src\ud800"

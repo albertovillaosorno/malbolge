@@ -238,6 +238,10 @@ format.
   placement milestone rather than pretending byte relocation solves
   reformatting.
 
+- Source pin snapshot/verification, relocatable tree authoring/materialization
+  and domain module loading now admit only exact native `Path` types before
+  filesystem or import methods execute; six red-first tests cover each public
+  boundary without weakening their typed failure contracts.
 - Exact tree snapshot, planning, and materialization and compatible plan build
   and materialization envelopes now require exact native host `Path` roots;
   eight red-first cases cover snapshot/source/oracle/candidate/output roles

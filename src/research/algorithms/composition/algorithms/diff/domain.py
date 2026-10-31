@@ -228,8 +228,9 @@ def load_diff_domain(path: object) -> DiffDomain:
         DomainContractError: Module path or execution is invalid.
 
     """
-    if not isinstance(path, Path):
-        message = "diff domain module path must use pathlib Path"
+    # Loading a module executes code; never admit overridable Path methods.
+    if type(path) is not type(Path()):
+        message = "diff domain module path must use exact pathlib Path"
         raise DomainContractError(message)
     module, previous = _load_module(path)
     try:

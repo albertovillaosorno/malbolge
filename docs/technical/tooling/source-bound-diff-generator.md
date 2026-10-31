@@ -124,6 +124,10 @@ passthrough roots remain dynamic. The final check and rename are not atomic;
 external concurrent writers still need coordination. The no-replace
 directory publisher also rejects host selectors that disagree with the actual
 runtime OS, preventing a caller from selecting an overwrite-capable rename.
+Source-pin snapshot and revision verification, relocatable tree planning and
+placement, and executable local domain module loading also reject foreign `Path`
+subclasses before source checks, output creation, or import hooks. Six red-first
+regressions cover the three independent public boundaries.
 Exact tree snapshot, authoring and materialization root admission and compatible
 build/materialize request admission independently require exact host-native
 `Path` objects. Foreign path subclasses cannot redirect source/oracle reads,
