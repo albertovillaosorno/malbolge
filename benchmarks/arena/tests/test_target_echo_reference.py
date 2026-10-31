@@ -124,6 +124,56 @@ def test_failed_preflight_does_not_create_retained_target_study(
     assert not list(temp_root.glob("arena-target-echo-*"))
 
 
+WORKSPACE_CREATE_STAGE = "create"
+WORKSPACE_SUBDIR_STAGE = "subdirectory"
+WORKSPACE_ERROR = "study workspace"
+
+
+@pytest.mark.parametrize("stage", [WORKSPACE_CREATE_STAGE, WORKSPACE_SUBDIR_STAGE])
+def test_failed_workspace_setup_is_typed_and_removes_partial_study(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """An unusable output folder cannot escape as raw OS failure or orphan."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"emitter")
+    _ = runner.write_bytes(b"runner")
+    profile = target_echo_reference._ROOT / "malbolge.json"
+    _ = (tmp_path / "malbolge.json").write_bytes(profile.read_bytes())
+    temp_root = tmp_path / ".temp"
+    temp_root.mkdir()
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_echo_reference, "_TEMP", temp_root)
+    monkeypatch.setattr(target_echo_reference, "_commit", lambda: "a" * 40)
+
+    if stage == WORKSPACE_CREATE_STAGE:
+        def failed_creation(*args: object, **kwargs: object) -> str:
+            _ = (args, kwargs)
+            message = "injected workspace creation failure"
+            raise PermissionError(message)
+
+        monkeypatch.setattr(target_echo_reference.tempfile, "mkdtemp", failed_creation)
+    else:
+        original_mkdir = type(tmp_path).mkdir
+
+        def failed_subdirectory(path: Path, *args: Any, **kwargs: Any) -> None:
+            if path.name == "raw" and path.parent.name.startswith("arena-target-echo-"):
+                message = "injected workspace subdirectory failure"
+                raise PermissionError(message)
+            original_mkdir(path, *args, **kwargs)
+
+        monkeypatch.setattr(type(tmp_path), "mkdir", failed_subdirectory)
+
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match=WORKSPACE_ERROR
+    ) as failure:
+        _ = target_echo_reference._prepare_context(emitter, runner)
+    assert isinstance(failure.value.__cause__, PermissionError)
+    assert not list(temp_root.glob("arena-target-echo-*"))
+
+
 @pytest.mark.skipif(
     not hasattr(os, "mkfifo") or not getattr(os, "O_NONBLOCK", 0),
     reason="FIFO test needs POSIX nonblocking descriptor opens",

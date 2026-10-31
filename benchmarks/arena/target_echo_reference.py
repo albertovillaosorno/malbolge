@@ -815,9 +815,23 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
     commit = _commit()
     host = platform.platform()
     toolchain = _tool_identity(emitter, runner)
-    directory = Path(tempfile.mkdtemp(prefix="arena-target-echo-", dir=_TEMP))
-    for name in ("runs", "raw", "candidates"):
-        (directory / name).mkdir()
+    try:
+        directory = Path(tempfile.mkdtemp(prefix="arena-target-echo-", dir=_TEMP))
+    except OSError as error:
+        message = "target echo study workspace creation failed"
+        raise TargetEchoStudyError(message) from error
+    try:
+        for name in ("runs", "raw", "candidates"):
+            (directory / name).mkdir()
+    except OSError as error:
+        # Only remove the unique study directory created by this call.
+        # A cleanup failure must not erase the original setup failure.
+        try:
+            shutil.rmtree(directory)
+        except OSError as cleanup_error:
+            error.add_note(f"target echo workspace cleanup failed: {cleanup_error}")
+        message = "target echo study workspace initialization failed"
+        raise TargetEchoStudyError(message) from error
     return _Context(
         directory=directory,
         prefix=directory.relative_to(_ROOT).as_posix(),
