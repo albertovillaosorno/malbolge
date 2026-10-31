@@ -524,7 +524,11 @@ differences
 for source-copy instructions. Missing, duplicate, reversed, or contracted
 placement
 
-evidence rejects transactionally.
+evidence rejects transactionally. Before staging, the relocatable materializer
+also resolves candidate and output roots and rejects output paths inside the
+candidate tree, including linked-parent aliases. This prevents ordinary output
+publication from mutating its source. Concurrent filesystem writers can still
+race a non-atomic input snapshot or path check and require coordination.
 
 This is deliberately a placement primitive, not compatible admission. Synthetic
 tests

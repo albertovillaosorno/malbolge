@@ -217,7 +217,9 @@ format.
 
 - Hash-only relocatable byte-range placement now preserves insertions inside
   stable
-  source ranges and rejects missing/ambiguous boundaries before output. A
+  source ranges and rejects missing/ambiguous boundaries before output. Output
+  roots resolving inside the candidate source, including linked ancestors, now
+  reject before staging; concurrent external writers remain uncoordinated. A
   synthetic
   boundary-change test deliberately still fails, defining the next mapped-token
   C
