@@ -651,10 +651,11 @@ still required before H1 can be evaluated.
 The pilot has no **reusable** guest interpreter or complete bytecode
 loader, no guest-side authenticity check, and no measured generic decoder
 cost. The original v0/v1 hypothetical byte-density assumptions are not
-physical guest encodings. Later v6/v7 sources do execute one or two
-fixed graphical opcodes with real guest I/O but do not expand, decode or
-execute a complete general CEB2 program inside Malbolge. These bounded
-successful byte I/O cases do not prove status errors, arbitrary arithmetic,
+physical guest encodings. Later v6–v10 sources execute up to four fixed
+native guest echo paths selected by physical source operands, but do not
+expand, decode or execute a general CEB2 program inside Malbolge. These
+bounded successful byte I/O cases do not prove status errors, arbitrary
+arithmetic,
 general control flow, or whole-program C ABI support.
 The tested current-profile word width and deterministic synthetic trace family
 cannot be generalized to classic or later profiles. Compiler time, guest
@@ -669,11 +670,12 @@ resource budgets, reporting negative results and any bound limitations.
 
 This pilot establishes a versioned structural echo descriptor, a
 source-bound and loader-placed CEB2 encoding, and **bounded real guest
-execution** of one and two fixed graphical operations. The equivalent
-one- and two-pair costs are decisively worse than direct execution. A
-reusable guest interpreter, repeat loop, general decoding and additional
-cost dimensions remain unverified. H1 remains unresolved and there is no
-basis to adopt guest bytecode as a compiler strategy.
+execution** of four distinct unrolled echo workloads through one shared
+code layout. All four equivalent small-program costs are decisively worse
+than direct execution. A reusable guest interpreter, repeat loop, general
+decoding and additional cost dimensions remain unverified. H1 remains
+unresolved and there is no basis to adopt guest bytecode as a compiler
+strategy.
 
 ## References
 
