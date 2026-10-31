@@ -48,6 +48,7 @@ import stat
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed repository-local argv.
 import sys
 import tarfile
+import tempfile
 from typing import BinaryIO
 from typing import Final
 from typing import Never
@@ -86,6 +87,8 @@ PATH_SEPARATORS: Final = frozenset(("/", "\\"))
 UV_RELEASE_BASE: Final = "https://github.com/astral-sh/uv/releases/download/"
 UV_SCHEMA_VERSION: Final = 1
 MAX_UV_MANIFEST_BYTES: Final = 1_048_576
+MAX_JIG_TOOL_BINARY_BYTES: Final = 256 * 1024 * 1024
+JIG_BINARY_MODE: Final = 0o755
 URL_SUFFIX_MARKERS: Final = frozenset(("?", "#"))
 BASEDPYRIGHT_TOOL_ID: Final = "basedpyright"
 PYTEST_TOOL_ID: Final = "pytest"
@@ -643,31 +646,184 @@ def _expected_jig_tool_version_line(
     return matches[0]
 
 
+def _check_jig_alias_parents(path: Path) -> None:
+    """Reject a redirected ancestor before reading or publishing aliases."""
+    for parent in reversed(path.parents):
+        if parent.is_symlink() or parent.is_junction():
+            _fail(f"Jig alias path must not redirect: {parent}")
+
+
+def _check_jig_alias_path(
+    path: Path,
+    *,
+    directory: bool,
+    required: bool,
+) -> None:
+    """Reject redirects and nonphysical artifacts along a Jig tool path."""
+    _check_jig_alias_parents(path)
+    if path.is_symlink() or path.is_junction():
+        _fail(f"Jig alias path must not redirect: {path}")
+    try:
+        observed = path.lstat()
+    except FileNotFoundError:
+        if required:
+            _fail(f"missing provisioned tool for Jig alias: {path}")
+        return
+    expected_type = stat.S_ISDIR if directory else stat.S_ISREG
+    if not expected_type(observed.st_mode):
+        _fail(f"Jig alias path must be a physical regular artifact: {path}")
+
+
+def _jig_source_identity(source: Path) -> tuple[int, int, int, int, int]:
+    """Require one bounded physical source and return its stable identity.
+
+    Returns:
+        Device, inode, size and modification/change times.
+
+    """
+    _check_jig_alias_path(source, directory=False, required=True)
+    status = source.lstat()
+    if status.st_size > MAX_JIG_TOOL_BINARY_BYTES:
+        _fail(f"Jig alias source exceeds byte limit: {source}")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _jig_file_identity(
+    status: os.stat_result,
+) -> tuple[int, int, int, int, int]:
+    """Return descriptor identity for a source already checked as regular.
+
+    Returns:
+        Device, inode, size and mutation timestamps.
+
+    """
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _read_open_jig_binary(
+    source: Path,
+    expected: tuple[int, int, int, int, int],
+) -> bytes:
+    """Read a bounded source descriptor while requiring stable metadata.
+
+    Returns:
+        Exact physical tool binary bytes.
+
+    """
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(source, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        observed = os.fstat(stream.fileno())
+        if not stat.S_ISREG(observed.st_mode):
+            _fail("Jig alias source must be a regular file")
+        if _jig_file_identity(observed) != expected:
+            _fail("Jig alias source changed before read")
+        data = stream.read(MAX_JIG_TOOL_BINARY_BYTES + 1)
+        if (
+            len(data) != expected[2]
+            or _jig_file_identity(os.fstat(stream.fileno())) != expected
+        ):
+            _fail("Jig alias source changed during read")
+    return data
+
+
+def _read_jig_binary_source(source: Path) -> bytes:
+    """Copy only exact bounded native executable bytes.
+
+    Returns:
+        Stable physical source snapshot, excluding replacement and mutation.
+
+    """
+    expected = _jig_source_identity(source)
+    try:
+        data = _read_open_jig_binary(source, expected)
+    except OSError as error:
+        _fail(f"Jig alias source read failed: {source}: {error}")
+    if _jig_source_identity(source) != expected:
+        _fail("Jig alias source changed during read")
+    return data
+
+
+def _publish_jig_tool_alias(
+    target: Path,
+    payload: bytes,
+    *,
+    windows: bool,
+) -> None:
+    """Atomically replace an admitted alias instead of following its leaf."""
+    alias_root = target.parent
+    _check_jig_alias_path(alias_root, directory=True, required=True)
+    _check_jig_alias_path(target, directory=False, required=False)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.", dir=alias_root
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            _ = stream.write(payload)
+            if not windows:
+                os.fchmod(stream.fileno(), JIG_BINARY_MODE)
+        _check_jig_alias_path(alias_root, directory=True, required=True)
+        _check_jig_alias_path(target, directory=False, required=False)
+        _ = temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _jig_alias_source_and_target(
+    layout: ValidationEnvironmentLayout,
+    tool_id: str,
+    *,
+    windows: bool,
+) -> tuple[Path, Path]:
+    """Map one selected native tool to its neutral Jig alias.
+
+    Returns:
+        Native executable and repository-local neutral alias paths.
+
+    """
+    suffix = ".exe" if windows else ""
+    return (
+        layout.scripts / f"{tool_id}{suffix}",
+        layout.environment / "jig-bin" / f"{tool_id}.bin",
+    )
+
+
 def _write_jig_tool_alias(
     layout: ValidationEnvironmentLayout,
     tool_id: str,
     *,
     windows: bool,
 ) -> Path:
-    alias_root = layout.environment / "jig-bin"
-    alias_root.mkdir(parents=True, exist_ok=True)
-    executable_suffix = ".exe" if windows else ""
-    executable = f"{tool_id}{executable_suffix}"
-    source = layout.scripts / executable
-    if not source.is_file():
-        _fail(f"missing provisioned tool for Jig alias: {source}")
-    target = alias_root / f"{tool_id}.bin"
+    source, target = _jig_alias_source_and_target(
+        layout, tool_id, windows=windows
+    )
     if windows or tool_id not in JIG_FAST_VERSION_TOOL_IDS:
-        _ = target.write_bytes(source.read_bytes())
+        payload = _read_jig_binary_source(source)
     else:
-        version_line = _expected_jig_tool_version_line(layout, executable)
-        _ = target.write_text(
-            _posix_jig_tool_alias_text(tool_id, version_line),
-            encoding="ascii",
-            newline="\n",
+        version_line = _expected_jig_tool_version_line(layout, tool_id)
+        _ = _jig_source_identity(source)
+        payload = _posix_jig_tool_alias_text(tool_id, version_line).encode(
+            "ascii"
         )
-    if not windows:
-        _make_executable(target)
+    _publish_jig_tool_alias(target, payload, windows=windows)
     return target
 
 
@@ -676,14 +832,25 @@ def write_jig_tool_aliases(
     *,
     windows: bool = WINDOWS,
 ) -> tuple[tuple[str, Path], ...]:
-    """Copy native validation tools to platform-neutral Jig executable paths.
+    """Publish physical, stable, neutral Jig executable aliases.
 
     Returns:
         Stable tool-ID and repository-local alias pairs.
 
     """
+    tool_ids = ("basedpyright", "pytest", "ruff")
+    alias_root = layout.environment / "jig-bin"
+    _check_jig_alias_path(alias_root, directory=True, required=False)
+    for tool_id in tool_ids:
+        source, target = _jig_alias_source_and_target(
+            layout, tool_id, windows=windows
+        )
+        _ = _jig_source_identity(source)
+        _check_jig_alias_path(target, directory=False, required=False)
+    alias_root.mkdir(parents=True, exist_ok=True)
+    _check_jig_alias_path(alias_root, directory=True, required=True)
     aliases: list[tuple[str, Path]] = []
-    for tool_id in ("basedpyright", "pytest", "ruff"):
+    for tool_id in tool_ids:
         target = _write_jig_tool_alias(layout, tool_id, windows=windows)
         aliases.append((tool_id, target))
     return tuple(aliases)

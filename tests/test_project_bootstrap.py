@@ -71,6 +71,7 @@ RUST_CARGO_BYTES = b"cargo-1.98.1"
 RUST_RUSTC_BYTES = b"rustc-1.98.1"
 RUST_STD_BYTES = b"rust-std"
 RUFF_BYTES = b"ruff"
+OUTSIDE_JIG_ALIAS_BYTES = b"retain outside"
 GIT_VERSION = "2.55.0"
 GIT_BYTES = b"git-2.55.0"
 GIT_HELPER_BYTES = b"git-helper"
@@ -1955,3 +1956,203 @@ def test_repository_validation_fails_closed_for_wrong_root(
     """Bootstrap refuses a directory without the repository authority files."""
     with pytest.raises(project.InitializationError, match="repository root"):
         project.validate_repository(tmp_path)
+
+
+def _jig_alias_fixture(
+    tmp_path: Path, *, windows: bool
+) -> python_validation.ValidationEnvironmentLayout:
+    layout = python_validation.validation_layout(tmp_path, windows=windows)
+    layout.scripts.mkdir(parents=True)
+    suffix = ".exe" if windows else ""
+    for tool_id in ("basedpyright", "pytest", "ruff"):
+        source = layout.scripts / f"{tool_id}{suffix}"
+        _ = source.write_bytes(f"{tool_id}-native".encode("ascii"))
+    return layout
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_jig_alias_writer_rejects_redirected_destination(
+    tmp_path: Path, *, windows: bool
+) -> None:
+    """Alias publication must not overwrite the destination of a file link."""
+    layout = _jig_alias_fixture(tmp_path, windows=windows)
+    alias_root = layout.environment / "jig-bin"
+    alias_root.mkdir()
+    outside = tmp_path / "outside.txt"
+    _ = outside.write_bytes(OUTSIDE_JIG_ALIAS_BYTES)
+    try:
+        _ = (alias_root / "basedpyright.bin").symlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        _ = python_validation.write_jig_tool_aliases(layout, windows=windows)
+    assert outside.read_bytes() == OUTSIDE_JIG_ALIAS_BYTES
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_jig_alias_writer_rejects_redirected_output_parent(
+    tmp_path: Path, *, windows: bool
+) -> None:
+    """A redirected jig-bin must not publish executable bytes externally."""
+    layout = _jig_alias_fixture(tmp_path, windows=windows)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    try:
+        _ = (layout.environment / "jig-bin").symlink_to(
+            outside, target_is_directory=True
+        )
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        _ = python_validation.write_jig_tool_aliases(layout, windows=windows)
+    assert tuple(outside.iterdir()) == ()
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_jig_alias_writer_rejects_redirected_native_source(
+    tmp_path: Path, *, windows: bool
+) -> None:
+    """Provisioned executables cannot be supplied through linked leaves."""
+    layout = _jig_alias_fixture(tmp_path, windows=windows)
+    source = layout.scripts / ("ruff.exe" if windows else "ruff")
+    original = tmp_path / "real-ruff"
+    _ = source.rename(original)
+    try:
+        _ = source.symlink_to(original)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        _ = python_validation.write_jig_tool_aliases(layout, windows=windows)
+
+
+def test_jig_alias_writer_rejects_same_byte_source_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Copying a source inode different from the admitted one is forbidden."""
+    layout = _jig_alias_fixture(tmp_path, windows=True)
+    source = layout.scripts / "basedpyright.exe"
+    replacement = tmp_path / "replacement.exe"
+    _ = replacement.write_bytes(source.read_bytes())
+    original_open = os.open
+
+    def swap_on_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        if os.fspath(path) == os.fspath(source):
+            _ = replacement.replace(source)
+        return original_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", swap_on_open)
+    with pytest.raises(python_validation.ProvisionError, match="changed"):
+        _ = python_validation.write_jig_tool_aliases(layout, windows=True)
+
+
+def test_jig_alias_writer_rejects_later_redirect_without_partial_output(
+    tmp_path: Path,
+) -> None:
+    """All native aliases must pass admission before publishing the first."""
+    layout = _jig_alias_fixture(tmp_path, windows=True)
+    alias_root = layout.environment / "jig-bin"
+    alias_root.mkdir()
+    outside = tmp_path / "outside.bin"
+    _ = outside.write_bytes(OUTSIDE_JIG_ALIAS_BYTES)
+    _ = (alias_root / "ruff.bin").symlink_to(outside)
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        _ = python_validation.write_jig_tool_aliases(layout, windows=True)
+    assert outside.read_bytes() == OUTSIDE_JIG_ALIAS_BYTES
+    assert not (alias_root / "basedpyright.bin").exists()
+    assert not (alias_root / "pytest.bin").exists()
+
+
+def test_jig_alias_writer_rejects_oversized_native_binary(
+    tmp_path: Path,
+) -> None:
+    """Large native tool inputs fail before an unbounded read or alias write."""
+    layout = _jig_alias_fixture(tmp_path, windows=True)
+    source = layout.scripts / "basedpyright.exe"
+    with source.open("wb") as stream:
+        _ = stream.truncate(python_validation.MAX_JIG_TOOL_BINARY_BYTES + 1)
+    with pytest.raises(python_validation.ProvisionError, match="byte limit"):
+        _ = python_validation.write_jig_tool_aliases(layout, windows=True)
+    assert not (layout.environment / "jig-bin").exists()
+
+
+def test_jig_alias_writer_rejects_same_byte_swap_after_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pathname replacement after descriptor read is never accepted."""
+    layout = _jig_alias_fixture(tmp_path, windows=True)
+    source = layout.scripts / "basedpyright.exe"
+    replacement = tmp_path / "replacement.exe"
+    _ = replacement.write_bytes(source.read_bytes())
+    original_open = os.open
+    original_lstat = source.__class__.lstat
+    opened = False
+    swapped = False
+
+    def observe_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        nonlocal opened
+        descriptor = original_open(path, flags, mode)
+        if os.fspath(path) == os.fspath(source):
+            opened = True
+        return descriptor
+
+    def swap_after_read(path: Path) -> os.stat_result:
+        nonlocal swapped
+        if path == source and opened and not swapped:
+            swapped = True
+            _ = replacement.replace(source)
+        return original_lstat(path)
+
+    monkeypatch.setattr(os, "open", observe_open)
+    monkeypatch.setattr(source.__class__, "lstat", swap_after_read)
+    with pytest.raises(python_validation.ProvisionError, match="changed"):
+        _ = python_validation.write_jig_tool_aliases(layout, windows=True)
+
+
+def test_jig_alias_writer_rejects_mutation_during_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An in-place edit changes source identity and invalidates copying."""
+    layout = _jig_alias_fixture(tmp_path, windows=True)
+    source = layout.scripts / "basedpyright.exe"
+    original_fstat = os.fstat
+    observations = 0
+    second_fstat = 2
+
+    def mutate_source(fd: int) -> os.stat_result:
+        nonlocal observations
+        observations += 1
+        if observations == second_fstat:
+            _ = source.write_bytes(b"modified")
+        return original_fstat(fd)
+
+    monkeypatch.setattr(os, "fstat", mutate_source)
+    with pytest.raises(python_validation.ProvisionError, match="changed"):
+        _ = python_validation.write_jig_tool_aliases(layout, windows=True)
+
+
+def test_jig_alias_writer_preserves_existing_binary_on_publish_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed replacement keeps the old alias and removes the private temp."""
+    layout = _jig_alias_fixture(tmp_path, windows=True)
+    alias_root = layout.environment / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "basedpyright.bin"
+    _ = target.write_bytes(OUTSIDE_JIG_ALIAS_BYTES)
+    original_replace = target.__class__.replace
+
+    def failing_replace(path: Path, destination: Path) -> Path:
+        if destination == target:
+            message = "failed atomic alias publication"
+            raise PermissionError(message)
+        return original_replace(path, destination)
+
+    monkeypatch.setattr(target.__class__, "replace", failing_replace)
+    with pytest.raises(PermissionError, match="atomic alias publication"):
+        _ = python_validation.write_jig_tool_aliases(layout, windows=True)
+    assert target.read_bytes() == OUTSIDE_JIG_ALIAS_BYTES
+    assert tuple(alias_root.iterdir()) == (target,)

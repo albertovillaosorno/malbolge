@@ -41,7 +41,13 @@ native launcher.
 
 The pytest delegation also binds `PYTHONPYCACHEPREFIX` below `.cache`. Ruff
 remains a byte-identical alias, and Windows retains native binary aliases for
-all three tools.
+all three tools. Alias publication now admits only physical tool sources and
+neutral targets with no linked parent/leaf, checks source regular-file metadata
+and a 256-MiB copy limit, and verifies that copied native bytes came from one
+stable descriptor snapshot. Existing alias destinations are replaced through
+private temporary files rather than followed or truncated; preflight rejects
+redirected targets before publishing any of the three aliases. Preflight alone
+does not guarantee atomicity against arbitrary concurrent ancestor swaps.
 
 Matching Git and already-installed Rustup channels are imported below
 repository-local versioned roots. Missing Rustup channels are observations only;
