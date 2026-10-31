@@ -12283,3 +12283,60 @@ def test_noncanonical_payload_flush_receipt_rejects_publication(
                 _ = progress.write_checkpoint_generation(checkpointed, checkpoint)
     assert not destination.exists()
     assert not tuple(tmp_path.glob("*.checkpoint.*"))
+
+
+@pytest.mark.parametrize("member", ["pointer", "checkpoint"])
+def test_payload_stream_rejects_sync_on_unrelated_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+) -> None:
+    """Fsyncing a different file never proves the staged payload is durable."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    checkpoint = b"checkpoint-for-descriptor-binding"
+    outsider = tmp_path / "unrelated-output.bin"
+    _ = outsider.write_bytes(b"unrelated")
+    outsider_fd = os.open(outsider, os.O_RDWR)
+    real_fdopen = os.fdopen
+
+    class MisboundOutputStream:
+        def __init__(self, real_stream: BinaryIO) -> None:
+            self.real_stream = real_stream
+
+        def write(self, payload: bytes) -> int:
+            return self.real_stream.write(payload)
+
+        def flush(self) -> None:
+            self.real_stream.flush()
+
+        @staticmethod
+        def fileno() -> int:
+            return outsider_fd
+
+        def close(self) -> None:
+            self.real_stream.close()
+
+    def misbind(descriptor: int, mode: str) -> MisboundOutputStream:
+        assert mode == "wb"
+        return MisboundOutputStream(cast("BinaryIO", real_fdopen(descriptor, mode)))
+
+    try:
+        with monkeypatch.context() as context:
+            context.setattr(os, "fdopen", misbind)
+            with pytest.raises(ERROR, match="payload stream descriptor changed"):
+                if member == "pointer":
+                    _ = progress.write_atomic(candidate)
+                else:
+                    checkpointed = _checkpointed(
+                        candidate, checkpoint=checkpoint, partial=None
+                    )
+                    _ = progress.write_checkpoint_generation(
+                        checkpointed, checkpoint
+                    )
+    finally:
+        os.close(outsider_fd)
+
+    assert outsider.read_bytes() == b"unrelated"
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob("*.checkpoint.*"))

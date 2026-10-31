@@ -2674,7 +2674,10 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
         _require_complete_payload_write(written, len(payload))
         if stream.flush() is not None:
             _fail("progress file flush returned noncanonical completion receipt")
-        _require_native_sync_receipt(os.fsync(stream.fileno()), "progress file")
+        sync_descriptor = stream.fileno()
+        if type(sync_descriptor) is not int or sync_descriptor != descriptor:
+            _fail("progress payload stream descriptor changed before file sync")
+        _require_native_sync_receipt(os.fsync(sync_descriptor), "progress file")
     finally:
         primary_error = sys.exception()
         try:

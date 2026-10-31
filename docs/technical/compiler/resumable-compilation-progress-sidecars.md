@@ -62,6 +62,9 @@ receipts, this check does not authenticate a deliberately forged `None`.
 Staged payload streams must likewise return the native `None` flush completion
 before any file synchronization. A boolean or integer flush receipt rejects
 prepublication for either mutable progress JSON or immutable checkpoint bytes.
+The staged stream must also expose the exact native integer descriptor created
+for that stage at file sync; synchronizing an unrelated, valid regular-file
+descriptor cannot certify the staged pointer or checkpoint payload as durable.
 Malformed non-integer write results are rejected before diagnostic formatting,
 so an unexpected result object cannot invoke foreign string methods or mask the
 typed prepublication failure. Mutable pointer updates are serialized across

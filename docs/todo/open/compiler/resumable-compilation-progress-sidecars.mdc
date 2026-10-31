@@ -628,6 +628,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   crash and process-restart fixtures continue to cover native sync behavior.
   Six red-first pointer/checkpoint cases reject forged staged payload flush
   completion receipts before immutable or mutable publication.
+  Two red-first forged-stream fixtures additionally prove that syncing an
+  unrelated, valid regular-file descriptor cannot authorize checkpoint or
+  pointer publication, even if all staged bytes and metadata match.
 
   Immutable checkpoint collision and initial post-link publication checks
   now validate native stat metadata before reading inode, type or link count.
