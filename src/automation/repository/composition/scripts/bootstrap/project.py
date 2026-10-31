@@ -778,6 +778,19 @@ def _admit_rust_adapter_write_target(path: Path) -> None:
         _fail(f"Rust adapter write target must be regular: {path}")
 
 
+def _write_verified_rust_adapter_marker(marker: Path) -> None:
+    """Reject incomplete Linux Rust adapter readiness metadata."""
+    written = marker.write_bytes(RUST_LINUX_ADAPTER_CONTENT)
+    if type(written) is int and written == len(RUST_LINUX_ADAPTER_CONTENT):
+        return
+    try:
+        marker.unlink(missing_ok=True)
+    except OSError as error:
+        message = f"Rust adapter marker short or invalid byte count; {error}"
+        _fail(message)
+    _fail("Rust adapter marker short or invalid byte count")
+
+
 def _write_rust_toolchain_linker_adapters(
     toolchain_root: Path,
     linker_path: str,
@@ -803,7 +816,7 @@ def _write_rust_toolchain_linker_adapters(
             tool_id,
             linker_environment,
         )
-    _ = marker.write_bytes(RUST_LINUX_ADAPTER_CONTENT)
+    _write_verified_rust_adapter_marker(marker)
     return adapter
 
 

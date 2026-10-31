@@ -1421,6 +1421,32 @@ def test_rust_adapter_writer_rejects_linked_cc_target(tmp_path: Path) -> None:
     assert not (root / project.RUST_LINUX_ADAPTER_MARKER).exists()
 
 
+@pytest.mark.parametrize("bad_write_count", [1, None, True, -1, 1_000_000])
+def test_rust_adapter_marker_requires_complete_staging_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_write_count: object,
+) -> None:
+    """Do not report linker adapter success after an incomplete marker."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    marker = root / project.RUST_LINUX_ADAPTER_MARKER
+    original_write = type(tmp_path).write_bytes
+
+    def incomplete_write(path: Path, data: bytes) -> int:
+        assert path == marker
+        _ = original_write(path, data[:1])
+        return cast("int", bad_write_count)
+
+    monkeypatch.setattr(type(tmp_path), "write_bytes", incomplete_write)
+    with pytest.raises(
+        project.InitializationError, match="short or invalid byte count"
+    ):
+        _ = project.write_rust_linker_adapters(
+            (root,), LINUX_PLATFORM, linker=linker
+        )
+    assert not marker.exists()
+
+
 def test_rust_adapter_writer_rejects_linked_marker_target(
     tmp_path: Path,
 ) -> None:
