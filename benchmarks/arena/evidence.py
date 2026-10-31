@@ -127,10 +127,17 @@ def _admit_root(root: Path) -> None:
         _fail("evidence root requires an exact native Path")
 
 
+def _native_stat(details: os.stat_result) -> os.stat_result:
+    """Require native metadata before consulting identity or size fields."""
+    if type(details) is not os.stat_result:
+        _fail("evidence returned invalid filesystem metadata")
+    return details
+
+
 def _path_lstat(path: Path, relative: str) -> os.stat_result:
     """Return a physical path receipt through the evidence error boundary."""
     try:
-        return path.lstat()
+        details = path.lstat()
     except FileNotFoundError as error:
         # Historical importers rely on the native missing-file signal, not
         # subclasses from an untrusted host dependency.
@@ -141,6 +148,7 @@ def _path_lstat(path: Path, relative: str) -> os.stat_result:
     except Exception as error:
         message = f"evidence path inspection failed: {relative}"
         raise EvidenceError(message) from error
+    return _native_stat(details)
 
 
 def regular_path(
@@ -184,6 +192,7 @@ def regular_path(
 
 
 def _file_identity(details: os.stat_result) -> tuple[int, int, int, int, int]:
+    details = _native_stat(details)
     return (
         details.st_dev,
         details.st_ino,
@@ -289,7 +298,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     try:
         with _open_evidence(path) as stream:
             try:
-                opened = os.fstat(stream.fileno())
+                opened = _native_stat(os.fstat(stream.fileno()))
                 if not stat.S_ISREG(opened.st_mode) or (
                     _file_identity(original) != _file_identity(opened)
                 ):
@@ -297,7 +306,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
                         f"evidence opened file changed after path admission: {relative}"
                     )
                 data = _read_complete(stream, size=opened.st_size, relative=relative)
-                completed = os.fstat(stream.fileno())
+                completed = _native_stat(os.fstat(stream.fileno()))
                 if _file_identity(completed) != _file_identity(opened):
                     _fail(f"evidence file changed during read: {relative}")
             except Exception as error:

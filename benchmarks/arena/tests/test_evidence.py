@@ -2683,3 +2683,63 @@ def test_budget_links_reject_foreign_toml_keys_before_mapping_access(
     monkeypatch.setattr(budget_links.tomllib, "loads", lambda _: document)
     with pytest.raises(budget_links.BudgetLinkError, match="native string keys"):
         budget_links.parse_run_budgets(BUDGET_MANIFEST)
+
+
+class _ForeignEvidenceStat:
+    """A substituted host receipt must not supply filesystem identity fields."""
+
+    def __getattribute__(self, name: str) -> object:
+        if name.startswith("st_"):
+            raise AssertionError("foreign evidence stat field was accessed")
+        return super().__getattribute__(name)
+
+
+@pytest.mark.parametrize("lstat_call", [1, 2, 3, 4, 5, 6])
+def test_evidence_rejects_foreign_path_metadata_before_field_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lstat_call: int,
+) -> None:
+    """Both path preflights and the final identity check require native stat."""
+    target = tmp_path / "raw.csv"
+    target.write_bytes(b"retained evidence")
+    original_lstat = Path.lstat
+    calls = 0
+
+    def injected_lstat(path: Path, *args: Any, **kwargs: Any) -> stat_result:
+        nonlocal calls
+        if path == target:
+            calls += 1
+            if calls == lstat_call:
+                return cast("stat_result", _ForeignEvidenceStat())
+        return original_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", injected_lstat)
+    with pytest.raises(evidence.EvidenceError, match="invalid filesystem metadata"):
+        evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+    assert calls == lstat_call
+
+
+@pytest.mark.parametrize("fstat_call", [1, 2])
+def test_evidence_rejects_foreign_descriptor_metadata_before_field_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fstat_call: int,
+) -> None:
+    """A substituted opened or completed descriptor cannot claim stable bytes."""
+    target = tmp_path / "raw.csv"
+    target.write_bytes(b"retained evidence")
+    original_fstat = evidence.os.fstat
+    calls = 0
+
+    def injected_fstat(descriptor: int) -> stat_result:
+        nonlocal calls
+        calls += 1
+        if calls == fstat_call:
+            return cast("stat_result", _ForeignEvidenceStat())
+        return original_fstat(descriptor)
+
+    monkeypatch.setattr(evidence.os, "fstat", injected_fstat)
+    with pytest.raises(evidence.EvidenceError, match="invalid filesystem metadata"):
+        evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+    assert calls == fstat_call
