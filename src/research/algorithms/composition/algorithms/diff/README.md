@@ -515,6 +515,13 @@ support.
 
 ## Exact and Compatible Modes
 
+The public recipe validates source, oracle, module, and output paths for
+NUL and host encodability, and requires a NUL-free UTF-8 profile identifier
+before domain preflight. Generated Rust output must resolve outside both the
+source and oracle roots, including symlinked aliases, so publication cannot
+modify an input tree. This preflight is not atomic against concurrent path
+replacement by an external writer.
+
 `DiffRecipe` now requires an explicit `TransformMode`. `EXACT_BASELINE` is a
 complete public generation path: `write_algorithm()` authors, protects, and
 writes

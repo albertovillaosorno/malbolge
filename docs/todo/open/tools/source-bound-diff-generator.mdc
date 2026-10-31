@@ -33,6 +33,10 @@ format.
 
 **Current implementation.**
 
+- Generator recipe preflight rejects NUL-bearing and host-unencodable
+  filesystem paths, NUL-bearing or non-UTF-8 profile identifiers, and output
+  destinations resolving inside the source or oracle tree, including linked
+  aliases. Input immutability still requires external writer coordination.
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode
