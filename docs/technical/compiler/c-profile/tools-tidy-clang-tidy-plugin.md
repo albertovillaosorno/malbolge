@@ -54,6 +54,12 @@ resource directory. The marker is compared using a bounded nonblocking
 regular-file snapshot with inode and timestamp stability checks. Symlinks,
 missing binaries, forged markers, and stale imports cannot count as ready or
 be silently reused; an incomplete preexisting root fails closed.
+The Linux importer also rejects linked host tool binaries and symlink/junction
+members within the Clang resource tree, checking resource membership both
+before and after staging. Windows neutral alias publication requires a physical
+bundle and alias directory; existing aliases are checked against the exact
+native PE bytes before any missing aliases or completion marker are written.
+Linked and drifted aliases fail closed, while unchanged aliases remain reusable.
 
 `tidy_toolchain.py` closes the manifest schema, rejects escaping paths, verifies
 required runtime/development files, checks the exact Clang and clang-tidy

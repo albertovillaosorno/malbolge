@@ -36,6 +36,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import filecmp
 import os
 from pathlib import Path
 import shutil
@@ -203,13 +204,24 @@ def _copy_file(source: Path, destination: Path) -> None:
     _ = _link_or_copy(str(source), str(destination))
 
 
+def _require_physical_resources(root: Path) -> None:
+    if not _physical_directory(root):
+        _fail("host LLVM resource directory must not redirect")
+    for member in root.rglob("*"):
+        if member.is_symlink() or member.is_junction():
+            _fail(f"host LLVM resource member must not redirect: {member}")
+
+
 def _copy_resource_tree(source: Path, destination: Path) -> None:
+    _require_physical_resources(source)
     _ = shutil.copytree(
         source,
         destination,
         copy_function=_link_or_copy,
         symlinks=True,
     )
+    # Reject links introduced while copytree was traversing the host source.
+    _require_physical_resources(destination)
 
 
 def _linux_wrapper(tool: str) -> str:
@@ -253,10 +265,9 @@ def _validate_observation(observation: LlvmHostObservation) -> None:
         observation.clang_cpp,
         observation.llvm,
     )
-    if not all(path.is_file() for path in files):
-        _fail("host LLVM observation contains a missing required file")
-    if not observation.resource_dir.is_dir():
-        _fail("host LLVM resource directory is unavailable")
+    if not all(_physical_file(path) for path in files):
+        _fail("host LLVM observation has a missing or redirected tool")
+    _require_physical_resources(observation.resource_dir)
 
 
 def _stage_linux_llvm(
@@ -313,6 +324,44 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     return destination
 
 
+def _require_matching_windows_alias(source: Path, alias: Path) -> None:
+    if not _physical_file(alias):
+        _fail(f"Windows LLVM alias must not redirect: {alias}")
+    try:
+        matching = filecmp.cmp(source, alias, shallow=False)
+    except OSError as error:
+        _fail(f"Windows LLVM alias cannot be read: {error}")
+    if not matching:
+        _fail(f"Windows LLVM alias mismatch: {alias}")
+
+
+def _admit_windows_alias(source: Path, alias: Path) -> None:
+    if not _physical_file(source):
+        _fail(f"Windows LLVM source tool must be physical: {source}")
+    if alias.exists() or alias.is_symlink() or alias.is_junction():
+        _require_matching_windows_alias(source, alias)
+
+
+def _windows_alias_directory(root: Path) -> Path:
+    """Verify Windows root and alias directory without following redirects.
+
+    Returns:
+        Physical or truly absent directory intended for neutral aliases.
+
+    """
+    if not _physical_directory(root):
+        _fail("Windows LLVM bundle root must be physical")
+    alias_root = root / "jig-bin"
+    present = (
+        alias_root.exists()
+        or alias_root.is_symlink()
+        or alias_root.is_junction()
+    )
+    if present and not _physical_directory(alias_root):
+        _fail("Windows LLVM alias directory must not redirect")
+    return alias_root
+
+
 def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
     """Create neutral aliases from an existing exact Windows LLVM bundle.
 
@@ -320,19 +369,23 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
         Neutral aliases containing the exact existing Windows PE bytes.
 
     """
-    aliases: list[Path] = []
-    alias_root = root / "jig-bin"
+    alias_root = _windows_alias_directory(root)
+    pairs = tuple(
+        (
+            root / "bin" / f"{tool}.exe",
+            alias_root / f"{tool}.bin",
+        )
+        for tool in _TOOL_NAMES
+    )
+    # Check every member before creating an alias or publishing the marker.
+    for source, alias in pairs:
+        _admit_windows_alias(source, alias)
     alias_root.mkdir(parents=True, exist_ok=True)
-    for tool in _TOOL_NAMES:
-        source = root / "bin" / f"{tool}.exe"
-        if not source.is_file():
-            _fail(f"Windows LLVM tool is absent: {source}")
-        alias = alias_root / f"{tool}.bin"
+    for source, alias in pairs:
         if not alias.exists():
             _copy_file(source, alias)
-        aliases.append(alias)
     _ = (root / LLVM_IMPORT_MARKER).write_bytes(_marker_bytes(WINDOWS_PLATFORM))
-    return tuple(aliases)
+    return tuple(alias for _, alias in pairs)
 
 
 def inspect_llvm(root: Path, platform_id: str) -> LlvmReadiness:
