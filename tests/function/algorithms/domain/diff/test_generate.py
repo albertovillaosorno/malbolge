@@ -566,6 +566,37 @@ def test_exact_mode_runs_domain_preflight_with_passthrough(
     )
 
 
+@pytest.mark.parametrize(
+    "invalid_roots",
+    [
+        ("../escape",),
+        ("/absolute",),
+        ("src//file",),
+        ("src\\file",),
+        ("src\x00file",),
+        ("src\ud800file",),
+        ("z", "a"),
+        ("assets", "assets"),
+        ("assets", "assets/nested"),
+    ],
+)
+def test_generator_rejects_unsafe_passthrough_roots_before_domain(
+    tmp_path: Path,
+    invalid_roots: tuple[str, ...],
+) -> None:
+    """Unsafe dynamic-root labels cannot reach consumer callbacks."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    _write(recipe.source_root, "reject-source", b"")
+    recipe = replace(
+        recipe,
+        domain_module=_domain_module(tmp_path),
+        passthrough_roots=invalid_roots,
+    )
+    with pytest.raises(ValueError, match=r"passthrough_roots.*canonical"):
+        write_algorithm(recipe)
+    _expect(not recipe.output_algorithm.exists(), "bad roots wrote output")
+
+
 def test_generator_rejects_foreign_recipe_fields_before_output(
     tmp_path: Path,
 ) -> None:

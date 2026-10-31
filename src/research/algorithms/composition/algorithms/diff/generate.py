@@ -40,6 +40,7 @@ import hashlib
 import math
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -58,6 +59,9 @@ from algorithms.diff.source_binding import SourceBindingPolicy
 
 _MAX_SHARES = 255
 _NUL = "\x00"
+_BACKSLASH = "\\"
+_PARENT = ".."
+_DOT = "."
 
 if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityTree
@@ -222,6 +226,35 @@ def _validate_recipe_identity(recipe: DiffRecipe) -> None:
         raise TypeError(message)
 
 
+def _canonical_passthrough_root(root: str) -> bool:
+    candidate = PurePosixPath(root)
+    unsafe_text = root == _DOT or any(
+        char in root for char in (_BACKSLASH, _NUL)
+    )
+    unsafe_shape = (
+        candidate.is_absolute()
+        or _PARENT in candidate.parts
+        or candidate.as_posix() != root
+    )
+    if unsafe_text or unsafe_shape:
+        return False
+    try:
+        _ = root.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _validate_passthrough_topology(roots: tuple[str, ...]) -> None:
+    if roots != tuple(sorted(set(roots))):
+        message = "passthrough_roots must be canonical, sorted and disjoint"
+        raise ValueError(message)
+    for index, root in enumerate(roots):
+        if any(other.startswith(root + "/") for other in roots[index + 1 :]):
+            message = "passthrough_roots must be canonical, sorted and disjoint"
+            raise ValueError(message)
+
+
 def _validate_passthrough_roots(value: object) -> None:
     if type(value) is not tuple:
         message = "passthrough_roots must use the exact immutable tuple type"
@@ -234,6 +267,10 @@ def _validate_passthrough_roots(value: object) -> None:
     if any(not root for root in roots):
         message = "passthrough_roots entries must be non-empty"
         raise ValueError(message)
+    if any(not _canonical_passthrough_root(root) for root in roots):
+        message = "passthrough_roots must be canonical, sorted and disjoint"
+        raise ValueError(message)
+    _validate_passthrough_topology(roots)
 
 
 def _validate_identity_flags(recipe: DiffRecipe) -> None:
