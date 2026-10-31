@@ -829,6 +829,26 @@ def _require_recovery_distribution(
         raise SourceBindingError(message)
 
 
+def _select_distributed_quorum(
+    binding: ThresholdBinding,
+    available: tuple[_RecoveredShare, ...],
+) -> tuple[_RecoveredShare, ...]:
+    """Select a threshold including material from required distinct files.
+
+    Returns:
+        Deterministic quorum with the minimum file diversity represented.
+
+    """
+    first_by_file: dict[str, _RecoveredShare] = {}
+    for share in available:
+        if share.source_path not in first_by_file:
+            first_by_file[share.source_path] = share
+    distributed = tuple(first_by_file.values())[: binding.minimum_anchor_files]
+    chosen_x = {share.x for share in distributed}
+    remaining = tuple(share for share in available if share.x not in chosen_x)
+    return (*distributed, *remaining[: binding.threshold - len(distributed)])
+
+
 def recover_secret(
     binding: ThresholdBinding,
     candidate: IdentityTree,
@@ -858,7 +878,8 @@ def recover_secret(
         raise SourceBindingError(message)
     _require_recovery_distribution(admitted, available)
     raw_shares = tuple(
-        (share.x, share.value) for share in available[: admitted.threshold]
+        (share.x, share.value)
+        for share in _select_distributed_quorum(admitted, available)
     )
     secret = _recover_shares(raw_shares)
     if (

@@ -260,6 +260,54 @@ def test_binding_is_deterministic_and_distributed() -> None:
     )
 
 
+def test_recovery_reconstructs_from_distributed_threshold_shares() -> None:
+    """Do not count a distinct source file without using its share."""
+    reference = _reference()
+    policy = SourceBindingPolicy(
+        threshold_fraction=0.20,
+        maximum_anchors=15,
+        minimum_anchor_files=2,
+        anchor_policy=AnchorPolicy(window_bytes=16, selection_modulus=1),
+    )
+    binding = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    dominant_path = binding.shares[0].source_path
+    dominant = tuple(
+        share for share in binding.shares if share.source_path == dominant_path
+    )
+    minority = next(
+        share for share in binding.shares if share.source_path != dominant_path
+    )
+    other = tuple(
+        share
+        for share in binding.shares
+        if share.source_path != dominant_path and share != minority
+    )
+    _expect(
+        len(dominant) >= binding.threshold,
+        "synthetic test does not concentrate the threshold",
+    )
+    _expect(
+        recover_secret(
+            replace(binding, shares=(*dominant, minority, *other)),
+            reference,
+        )
+        == _SECRET,
+        "reordered genuine distributed binding did not recover",
+    )
+
+    malformed_share = replace(
+        minority,
+        masked_share=bytes([minority.masked_share[0] ^ 1])
+        + minority.masked_share[1:],
+    )
+    forged = replace(
+        binding,
+        shares=(*dominant, malformed_share, *other),
+    )
+    with pytest.raises(SourceBindingError, match="failed commitment"):
+        _ = recover_secret(forged, reference)
+
+
 def test_tampered_masked_share_fails_secret_commitment() -> None:
     """Reject malformed transform metadata rather than returning a wrong key."""
     reference = _reference()
