@@ -643,3 +643,115 @@ def test_profile_independent_scope_is_valid_without_fingerprint() -> None:
 
     assert manifest.target_profile == PROFILE_INDEPENDENT
     assert manifest.target_profile_fingerprint is None
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [validator.tomllib.TOMLDecodeError, ValueError, TypeError, RuntimeError],
+)
+def test_direct_manifest_parser_never_formats_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch, fault_type: type[Exception]
+) -> None:
+    """TOML host faults remain typed without running exception __str__ hooks."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("untrusted parser exception formatter invoked")
+
+    hostile = type("ForeignTOMLFault", (fault_type,), {"__str__": unsafe_str})
+    fault = (
+        hostile("malformed decoder state", "[invalid", 1)
+        if fault_type is validator.tomllib.TOMLDecodeError
+        else hostile("malformed decoder state")
+    )
+
+    def broken_loader(_text: str) -> None:
+        raise fault
+
+    monkeypatch.setattr(validator.tomllib, "loads", broken_loader)
+    with pytest.raises(
+        validator.ExperimentManifestError, match="invalid TOML"
+    ) as caught:
+        validator.parse_manifest(_run_manifest())
+    assert caught.value.__cause__ is fault
+
+
+def test_native_toml_syntax_error_retains_original_decoder_detail() -> None:
+    """Ordinary malformed TOML remains useful for diagnosing file positions."""
+    with pytest.raises(
+        validator.ExperimentManifestError, match="invalid TOML"
+    ) as caught:
+        validator.parse_manifest("[bad\n")
+    assert type(caught.value.__cause__) is validator.tomllib.TOMLDecodeError
+    assert "line" in str(caught.value)
+
+
+@pytest.mark.parametrize("nesting", ["root", "nested", "key"])
+def test_toml_parser_cannot_return_foreign_mapping_or_key(
+    monkeypatch: pytest.MonkeyPatch, nesting: str
+) -> None:
+    """Forged parser result containers never run mapping or key hooks."""
+
+    class ForeignMap(dict[str, object]):
+        def items(self):  # type: ignore[override]
+            raise AssertionError("foreign TOML map iteration invoked")
+
+    class ForeignKey(str):
+        __hash__ = str.__hash__
+
+        def __str__(self) -> str:
+            raise AssertionError("foreign TOML key formatting invoked")
+
+    native = validator.tomllib.loads(_run_manifest())
+    if nesting == "root":
+        forged: object = ForeignMap(native)
+    elif nesting == "nested":
+        forged = {**native, "experiment": ForeignMap(native["experiment"])}
+    else:
+        forged = {**native, ForeignKey("foreign"): 1}
+    monkeypatch.setattr(validator.tomllib, "loads", lambda _text: forged)
+    with pytest.raises(validator.ExperimentManifestError, match="manifest"):
+        validator.parse_manifest(_run_manifest())
+
+
+@pytest.mark.parametrize("operation", ["inspect", "read"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_manifest_host_failures_do_not_format_foreign_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    fault_type: type[Exception],
+) -> None:
+    """Native typed manifest errors survive untrusted host fault formatters."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("untrusted filesystem exception formatter invoked")
+
+    foreign_type = type("ForeignHostFault", (fault_type,), {"__str__": unsafe_str})
+    source = _repository_manifest_fixture(tmp_path, monkeypatch)
+    fault = foreign_type("unsafe host detail")
+    if operation == "inspect":
+        original_is_file = Path.is_file
+
+        def fail_is_file(path: Path) -> bool:
+            if path == source:
+                raise fault
+            return original_is_file(path)
+
+        monkeypatch.setattr(Path, "is_file", fail_is_file)
+    else:
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == source:
+                raise fault
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    with pytest.raises(
+        validator.ExperimentManifestError,
+        match=f"experiment manifest cannot be {'inspected' if operation == 'inspect' else 'read'}",
+    ) as caught:
+        validator.validate_repository_manifest(source)
+    assert caught.value.__cause__ is fault

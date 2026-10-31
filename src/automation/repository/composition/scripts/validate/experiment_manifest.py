@@ -164,13 +164,13 @@ def _fail(message: str) -> Never:
 
 
 def _mapping(value: object, context: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        _fail(f"{context} must be a table")
+    if type(value) is not dict:
+        _fail(f"{context} must be an exact native table")
     raw = cast("dict[object, object]", value)
     result: dict[str, object] = {}
     for key, item in raw.items():
-        if not isinstance(key, str):
-            _fail(f"{context} contains a non-string key")
+        if type(key) is not str:
+            _fail(f"{context} contains a non-native string key")
         result[key] = item
     return result
 
@@ -255,9 +255,19 @@ def _parse_document(text: str) -> dict[str, object]:
     try:
         parsed = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:
-        _fail(f"invalid TOML: {error}")
-    except (ValueError, RecursionError):
-        _fail("invalid TOML exceeds host parser capacity")
+        # Only the native parser error has a trusted diagnostic formatter.
+        detail = (
+            str(error)
+            if type(error) is tomllib.TOMLDecodeError
+            else type(error).__name__
+        )
+        raise ExperimentManifestError(f"invalid TOML: {detail}") from error
+    except (ValueError, RecursionError) as error:
+        message = "invalid TOML exceeds host parser capacity"
+        raise ExperimentManifestError(message) from error
+    except (TypeError, RuntimeError) as error:
+        message = "invalid TOML host parser failure"
+        raise ExperimentManifestError(message) from error
     document = _mapping(parsed, "manifest")
     version = document.get("schema_version")
     if type(version) is not int or version != SCHEMA_VERSION:
@@ -570,9 +580,15 @@ def _read_utf8(path: Path) -> str:
         raw = _read_manifest_bytes(path)
     except ExperimentManifestError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        # Do not dispatch an untrusted host exception's __str__ method.
+        detail = (
+            str(error)
+            if type(error) in (OSError, ValueError, TypeError, RuntimeError)
+            else type(error).__name__
+        )
         raise ExperimentManifestError(
-            f"experiment manifest cannot be read: {error}"
+            f"experiment manifest cannot be read: {detail}"
         ) from error
     try:
         return raw.decode("utf-8")
@@ -591,9 +607,15 @@ def validate_repository_manifest(path: Path) -> ExperimentManifest:
     canonical_path = ROOT / relative
     try:
         exists = canonical_path.is_file()
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        # Exact built-in failures retain detail; subclasses cannot run hooks.
+        detail = (
+            str(error)
+            if type(error) in (OSError, ValueError, TypeError, RuntimeError)
+            else type(error).__name__
+        )
         raise ExperimentManifestError(
-            f"experiment manifest cannot be inspected: {error}"
+            f"experiment manifest cannot be inspected: {detail}"
         ) from error
     if not exists:
         _fail(f"experiment manifest not found: {relative.as_posix()}")
