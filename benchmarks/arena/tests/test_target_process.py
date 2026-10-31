@@ -71,6 +71,7 @@ STDERR_LIMIT = 512
 SMALL_TIMEOUT_SECONDS = 0.2
 LARGE_TIMEOUT_SECONDS = 3
 REPEAT_COUNT = 99
+MEASURED_BINARY_INPUT_MODE = "bytes"
 
 
 def _child(source: str) -> list[str]:
@@ -488,6 +489,58 @@ def test_invalid_child_command_rejects_before_launch(
             cast("list[str]", command), timeout_seconds=LARGE_TIMEOUT_SECONDS
         )
     assert not launched
+
+
+@pytest.mark.parametrize(
+    ("launcher", "input_mode"),
+    [
+        (target_process.invoke_limited_measured, "null"),
+        (target_process.invoke_limited_measured_raw, "null"),
+        (
+            target_process.invoke_with_input_limited_measured,
+            MEASURED_BINARY_INPUT_MODE,
+        ),
+        (
+            target_process.invoke_with_input_limited_measured_raw,
+            MEASURED_BINARY_INPUT_MODE,
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "command",
+    [
+        [],
+        None,
+        "echo",
+        [""],
+        [sys.executable, None],
+        [sys.executable, "NUL\x00arg"],
+    ],
+)
+def test_measured_child_rejects_malformed_original_command_before_tools(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    launcher: Callable[..., object],
+    input_mode: str,
+    command: object,
+) -> None:
+    """Measured wrappers must validate original argv before host probes."""
+    tools_called = False
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        nonlocal tools_called
+        _ = (args, kwargs)
+        tools_called = True
+        message = "invalid measured command queried host tools"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(
+        target_process, "require_child_rss_measurement", forbidden
+    )
+    input_args = (b"input",) if input_mode == MEASURED_BINARY_INPUT_MODE else ()
+    with pytest.raises(target_process.TargetProcessError, match="command"):
+        launcher(cast("list[str]", command), *input_args)
+    assert not tools_called
 
 
 def test_real_child_launch_errors_are_typed_and_preserve_cause(

@@ -486,6 +486,9 @@ to bytes.
 
 Each measurement file is short-lived and is deleted; it is not a
 retained or independently authenticated original measurement receipt. Exact
+RSS-measured subprocess variants also validate the caller's original
+nonempty string command vector before consulting host measurement utilities;
+foreign arguments and embedded NUL reject without a child launch. Exact
 one-line positive RSS observations are required; zero, malformed, missing,
 failed process, unbounded tool, or missing third-stage receipts cannot earn a
 verified fifth cost. Complete `arena-raw-v1` CSV, trial TOML and JSON costs

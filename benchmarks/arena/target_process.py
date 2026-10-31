@@ -474,6 +474,7 @@ def _measured_limited(
     input_bytes: bytes | None,
     timeout_seconds: float,
 ) -> tuple[sp.CompletedProcess[bytes], int, bytes]:
+    _admit_command(command)
     require_child_rss_measurement()
     time_executable = _system_tool(RSS_TOOL)
     if time_executable is None:
