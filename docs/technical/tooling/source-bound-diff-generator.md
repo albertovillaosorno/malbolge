@@ -408,7 +408,14 @@ share coordinate, and transform context. A SHA-256 commitment rejects incorrect
 reconstruction. Recovery independently enforces the configured minimum number of
 distinct source files, so many surviving anchors from one large file cannot
 satisfy
-the distributed-evidence requirement by themselves.
+the distributed-evidence requirement by themselves. Authoring now rejects a
+Shamir threshold below the minimum distinct-file requirement; both Python
+recovery and the generated Rust runtime reject a contradictory envelope before
+recovering a secret. This is a necessary policy consistency condition, not a
+cryptographic proof of distinct-file dependence: multiple shares may belong to
+one file, so an offline holder of enough shares from fewer files could recover
+the key outside the runtime distribution gate. Stronger cryptographic
+file-distribution guarantees remain a separate design problem.
 
 The anchor sample is deliberately content-ranked rather than offset-ranked. In a
 local read-only DOOM calibration with 127 bound shares and the provisional 0.66

@@ -338,6 +338,7 @@ fn parse_binding(data: &[u8]) -> Result<Binding, String> {
         || threshold > shares.len()
         || minimum_anchor_files == 0
         || minimum_anchor_files > shares.len()
+        || minimum_anchor_files > threshold
         || secret_length == 0
         || window_bytes == 0
         || selection_modulus == 0

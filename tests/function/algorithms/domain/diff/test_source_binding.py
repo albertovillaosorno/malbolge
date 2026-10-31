@@ -275,6 +275,30 @@ def test_tampered_masked_share_fails_secret_commitment() -> None:
         _ = recover_secret(tampered, reference)
 
 
+def test_binding_rejects_threshold_below_required_file_count() -> None:
+    """A source-distribution gate cannot exceed cryptographic quorum size."""
+    policy = SourceBindingPolicy(
+        threshold_fraction=0.20,
+        maximum_anchors=_FILE_COUNT,
+        minimum_anchor_files=3,
+        anchor_policy=AnchorPolicy(window_bytes=16, selection_modulus=1),
+    )
+    with pytest.raises(SourceBindingPolicyError, match=r"threshold.*minimum"):
+        _ = bind_secret(_reference(), _SECRET, policy=policy, context=_CONTEXT)
+
+
+def test_recovery_rejects_file_requirement_above_share_threshold() -> None:
+    """A forged envelope cannot declare more required files than shares."""
+    valid = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    malformed = replace(valid, threshold=valid.minimum_anchor_files - 1)
+    with pytest.raises(SourceBindingError, match=r"threshold.*minimum"):
+        _ = validate_threshold_binding(malformed)
+    with pytest.raises(SourceBindingError, match=r"threshold.*minimum"):
+        _ = recover_secret(malformed, cast("IdentityTree", object()))
+
+
 def test_stricter_fraction_changes_threshold_fail_closed() -> None:
     """Round the configured threshold fraction up deterministically."""
     reference = _reference()

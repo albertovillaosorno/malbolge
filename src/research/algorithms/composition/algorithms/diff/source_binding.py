@@ -556,6 +556,10 @@ def bind_secret(
     Returns:
         Deterministic threshold source-binding metadata.
 
+    Raises:
+        SourceBindingPolicyError: The selected Shamir threshold cannot satisfy
+            the required minimum number of source files.
+
     """
     _validate_bind_inputs(reference, secret, policy=policy, context=context)
     materials = _select_anchor_materials(reference, policy)
@@ -563,6 +567,9 @@ def bind_secret(
         _ONE,
         math.ceil(len(materials) * policy.threshold_fraction),
     )
+    if threshold < policy.minimum_anchor_files:
+        message = "source-binding threshold must reach minimum anchor files"
+        raise SourceBindingPolicyError(message)
     raw_shares = _split_secret(
         secret,
         context,
@@ -661,6 +668,9 @@ def _validate_binding_counts(binding: ThresholdBinding) -> None:
         message = (
             "source-binding minimum anchor files must be a positive integer"
         )
+        raise SourceBindingError(message)
+    if binding.threshold < binding.minimum_anchor_files:
+        message = "source-binding threshold must reach minimum anchor files"
         raise SourceBindingError(message)
 
 

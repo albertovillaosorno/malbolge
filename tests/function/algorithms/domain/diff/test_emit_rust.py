@@ -94,6 +94,7 @@ _LATE_OUTPUT_RECHECK = 2
 _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
 )
+_INVALID_BINDING_MARKER = b"invalid generated binding"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -361,6 +362,57 @@ def test_emitted_rust_compiles_and_materializes_exact_tree(
     _expect(
         snapshot_tree(output) == snapshot_tree(oracle), "Rust output changed"
     )
+
+
+def _lower_embedded_binding_threshold(
+    generated: str,
+    context: bytes,
+) -> str:
+    marker = "const BINDING_HEX: &str = concat!("
+    begin = generated.index(marker)
+    end = generated.index(");", begin) + 2
+    declaration = generated[begin:end]
+    binding_bytes = bytearray.fromhex(
+        "".join(line.split('"')[1] for line in declaration.splitlines()[1:-1])
+    )
+    offset = 8 + len(context)
+    binding_bytes[offset : offset + 8] = (1).to_bytes(8, byteorder="big")
+    encoded = binding_bytes.hex()
+    replacement = "\n".join((
+        marker,
+        *(f'    "{encoded[i : i + 64]}",' for i in range(0, len(encoded), 64)),
+        ");",
+    ))
+    return generated.replace(declaration, replacement, 1)
+
+
+def test_emitted_rust_rejects_binding_threshold_under_file_minimum(
+    tmp_path: Path,
+) -> None:
+    """Malformed embedded binding metadata fails before key reconstruction."""
+    source, _, _, protected = _fixture(tmp_path)
+    generated = emit_rust_transform(protected, _PROFILE)
+    rust_source = tmp_path / "invalid-binding.rs"
+    executable = tmp_path / "invalid-binding"
+    output = tmp_path / "out"
+    _ = rust_source.write_text(
+        _lower_embedded_binding_threshold(generated, protected.binding.context),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(
+        compiled.returncode == 0,
+        "malformed binding fixture failed to compile: "
+        + compiled.stderr.decode(errors="replace"),
+    )
+    completed = _run(executable, source, output)
+    _expect(completed.returncode != 0, "malformed binding was accepted")
+    _expect(
+        _INVALID_BINDING_MARKER in completed.stderr,
+        "runtime did not reject invalid binding header",
+    )
+    _expect(not output.exists(), "invalid binding published output")
 
 
 def test_emitter_wraps_runtime_template_read_failure(
