@@ -267,6 +267,8 @@ def _read_stage_rss(path: Path) -> int:
     except Exception as error:
         message = "host-C child RSS observation missing or unsafe"
         raise HostOracleError(message) from error
+    if type(raw) is not bytes or len(raw) > RSS_REPORT_MAX_BYTES:
+        _fail("host-C child RSS observation returned invalid bytes")
     if not raw.endswith(b"\n") or not _ascii_digits(raw[:-1]):
         _fail("host-C child RSS observation missing or malformed")
     peak_kib = int(raw[:-1])
@@ -617,12 +619,15 @@ def _read_reference_executable(directory: Path) -> bytes:
     from benchmarks.arena import evidence  # ruff: ignore[import-outside-top-level]
 
     try:
-        return evidence.read_bounded_regular(
+        raw = evidence.read_bounded_regular(
             directory, "oracle-check", limit=CHILD_FILE_BYTES
         )
     except Exception as error:
         message = "host-C reference executable missing or unsafe"
         raise HostOracleError(message) from error
+    if type(raw) is not bytes or not raw or len(raw) > CHILD_FILE_BYTES:
+        _fail("host-C reference executable returned invalid bytes")
+    return raw
 
 
 def rebuild_reference(

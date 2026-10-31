@@ -150,6 +150,78 @@ def test_host_c_reference_executable_rejects_unsafe_artifact(
             _ = host_c_oracle.measure_reference(identity, "-O0")
 
 
+class _HostileEvidenceBytes(bytes):  # ruff: ignore[subclass-builtin]
+    """A forged reader payload may override native byte admission methods."""
+
+    def endswith(self, *_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("untrusted evidence endswith executed")
+
+    def __eq__(self, _other: object) -> bool:
+        raise AssertionError("untrusted evidence equality executed")
+
+
+@pytest.mark.parametrize("route", ["rss", "executable"])
+@pytest.mark.parametrize(
+    "receipt",
+    [None, "1\n", bytearray(b"1\n"), True, _HostileEvidenceBytes(b"1\n")],
+    ids=["missing", "text", "bytearray", "boolean", "bytes-subclass"],
+)
+def test_host_c_reference_reader_requires_native_bytes_before_use(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    receipt: object,
+) -> None:
+    """A substituted reader must not turn forged raw content into evidence."""
+
+    def substituted_reader(_root: Path, _relative: str, *, limit: int) -> bytes:
+        assert limit in (
+            host_c_oracle.RSS_REPORT_MAX_BYTES,
+            host_c_oracle.CHILD_FILE_BYTES,
+        )
+        return cast("bytes", receipt)
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", substituted_reader)
+    with pytest.raises(host_c_oracle.HostOracleError, match="(RSS|executable)"):
+        if route == "rss":
+            _ = host_c_oracle._read_stage_rss(tmp_path / "rss.txt")
+        else:
+            _ = host_c_oracle._read_reference_executable(tmp_path)
+
+
+@pytest.mark.parametrize("route", ["rss", "executable"])
+def test_host_c_reference_reader_rechecks_substituted_byte_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+) -> None:
+    """An oversized dependency receipt cannot bypass read admission limits."""
+    limit = (
+        host_c_oracle.RSS_REPORT_MAX_BYTES
+        if route == "rss"
+        else host_c_oracle.CHILD_FILE_BYTES
+    )
+    forged = b"1" * (limit + 1)
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: forged
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="(RSS|executable)"):
+        if route == "rss":
+            _ = host_c_oracle._read_stage_rss(tmp_path / "rss.txt")
+        else:
+            _ = host_c_oracle._read_reference_executable(tmp_path)
+
+
+def test_host_c_reference_reader_requires_nonempty_binary_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fake zero-byte executable is not a compiled artifact."""
+    monkeypatch.setattr(evidence, "read_bounded_regular", lambda *_args, **_kwargs: b"")
+    with pytest.raises(host_c_oracle.HostOracleError, match="executable"):
+        _ = host_c_oracle._read_reference_executable(tmp_path)
+
+
 def test_host_c_reference_executable_returns_exact_bounded_bytes(
     tmp_path: Path,
 ) -> None:
