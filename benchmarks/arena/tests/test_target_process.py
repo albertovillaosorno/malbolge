@@ -126,6 +126,66 @@ def test_group_cleanup_signal_error_is_typed_after_child_exit(
     assert isinstance(error.value.__cause__, PermissionError)
 
 
+@pytest.mark.parametrize("invalid", [False, True, "exited", 0.0])
+def test_foreign_child_poll_receipt_cannot_skip_direct_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """Boolean and foreign poll results must not prove child termination."""
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> object:
+            events.append("poll")
+            return invalid
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self) -> int:
+            events.append("wait")
+            return 0
+
+    monkeypatch.setattr(target_process.os, "kill", lambda *_args: None)
+    with pytest.raises(target_process.TargetProcessError, match="poll"):
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert events == ["poll", "kill", "wait"]
+
+
+@pytest.mark.parametrize("invalid", [None, False, "0", 0.0])
+def test_foreign_child_wait_receipt_cannot_claim_reaped_child(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """A non-native wait receipt cannot prove that cleanup completed."""
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> int:
+            events.append("poll")
+            return 0
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self) -> object:
+            events.append("wait")
+            return invalid
+
+    monkeypatch.setattr(target_process.os, "kill", lambda *_args: None)
+    with pytest.raises(target_process.TargetProcessError, match="wait"):
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert events == ["poll", "wait"]
+
+
 class _ForeignMissingProcessGroup(ProcessLookupError):
     """Caller-owned absence subclasses cannot assert OS process-group state."""
 

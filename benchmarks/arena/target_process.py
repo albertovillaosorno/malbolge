@@ -208,8 +208,13 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
 
     # A refused group signal must not skip direct-child termination and reap.
     direct_error: Exception | None = None
+    invalid_poll = False
     try:
-        if child.poll() is None:
+        polled = child.poll()
+        invalid_poll = polled is not None and type(polled) is not int
+        # A forged non-integer poll must not skip the direct kill fallback.
+        # Reap the child even when the poll receipt itself must be rejected.
+        if polled is None or invalid_poll:
             try:
                 child.kill()
             except ProcessLookupError as error:
@@ -219,9 +224,17 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
         direct_error = error
     if direct_error is None:
         try:
-            _ = child.wait()
+            reaped = child.wait()
+            if type(reaped) is not int:
+                direct_error = TargetProcessError(
+                    "bounded target child cleanup has invalid wait receipt"
+                )
         except Exception as error:
             direct_error = error
+    if invalid_poll and direct_error is None:
+        direct_error = TargetProcessError(
+            "bounded target child cleanup has invalid poll receipt"
+        )
     if group_error is not None:
         if direct_error is not None:
             BaseException.add_note(
