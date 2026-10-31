@@ -88,6 +88,7 @@ SUCCESS_ATTEMPTS = 10
 SUCCESS_INTERVAL_POLICY_KEY = "verification_success_interval_policy"
 SUCCESS_INTERVAL_KEY = "verification_success_probability_interval_95"
 UTF8_QUESTION = "évidence"
+SURROGATE_DIAGNOSTIC = "surrogate"
 
 
 def _observation(
@@ -561,6 +562,33 @@ def test_direct_json_parser_admits_exact_utf8_byte_ceiling() -> None:
         + " " * (analyze.MAX_INPUT_BYTES - len(original.encode("utf-8")))
     )
     assert admitted["study"]["question"] == UTF8_QUESTION
+
+
+def test_cli_rejects_escaped_surrogates_without_partial_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Escaped invalid scalar values cannot publish an arena JSON report."""
+    cases: list[tuple[tuple[str | int, ...], str]] = [
+        (("study", "id"), "unpaired-\ud800"),
+        (("observations", 0, "raw_sample"), "algorithms/\udfff/raw.csv"),
+    ]
+    path = tmp_path / "invalid-escaped-study.json"
+    monkeypatch.setattr(sys, "argv", ["arena", str(path)])
+    for field_path, invalid_value in cases:
+        document = _document()
+        target: Any = document
+        for segment in field_path[:-1]:
+            target = target[segment]
+        target[field_path[-1]] = invalid_value
+        _ = path.write_text(json.dumps(document), encoding="utf-8")
+        with pytest.raises(SystemExit, match="2"):
+            analyze.main()
+        output = capsys.readouterr()
+        assert not output.out
+        assert output.err.startswith("arena:")
+        assert SURROGATE_DIAGNOSTIC in output.err
 
 
 def test_cli_prints_json_and_rejects_invalid_input(
