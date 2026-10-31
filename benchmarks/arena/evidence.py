@@ -178,6 +178,11 @@ def regular_path(
     except Exception as error:
         message = f"evidence path inspection failed: {relative}"
         raise EvidenceError(message) from error
+    # A native input Path is not sufficient when an injected resolver
+    # returns a subclass with foreign join or filesystem behavior.
+    # Reject its receipt before following any segment outside the root.
+    if type(current) is not type(Path()):
+        _fail("evidence resolved path requires an exact native Path")
     for segment in segments:
         current /= segment
         mode = _path_lstat(current, relative).st_mode
@@ -239,7 +244,9 @@ def _open_evidence(path: Path) -> IO[bytes]:
         # the outside target is a hard link to the admitted inode.
         if sys.platform == "linux":
             actual_path = os.readlink(f"/proc/self/fd/{descriptor}")
-            if actual_path != os.fspath(path):
+            # A foreign str subclass can forge inequality against the
+            # admitted path. Require the kernel's native text receipt.
+            if type(actual_path) is not str or actual_path != os.fspath(path):
                 _fail(f"evidence opened path changed: {path}")
         return os.fdopen(descriptor, "rb")
     except Exception as error:

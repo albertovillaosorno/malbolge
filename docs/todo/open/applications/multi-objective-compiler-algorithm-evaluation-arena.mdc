@@ -408,6 +408,13 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   provenance with versioned energy CSV, raw hashes, individual trial runs,
   exact budget agreement and matched accelerator labels. It proves admission
   consistency, not source execution or independent verification.
+- Arena evidence root resolution now rejects foreign `Path` subclasses
+  returned by `resolve()` before joining segments or opening linked files.
+  Red-first regular-path and bounded-reader regressions demonstrate that
+  injected resolution previously escaped the admitted root. Linux procfs
+  opened-descriptor checks also require a native string to reject subclass
+  equality forgeries. These check dependency receipts, not root trust or
+  filesystem snapshot atomicity.
 - Manifest, retained raw, challenge bundle and historical evidence readers
   now check path/descriptor identity and read-completion size/timestamps against
   observed inode drift, with synthetic substitution/rewrite regressions and

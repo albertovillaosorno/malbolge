@@ -744,6 +744,39 @@ def test_direct_evidence_rejects_foreign_root_before_resolution(
             evidence.validate_links({"study": {}, "observations": [{}]}, root)
 
 
+class _ForgedResolvedEvidencePath(type(Path())):
+    """A resolver-supplied subclass can point outside the admitted root."""
+
+    __slots__ = ()
+
+
+@pytest.mark.parametrize("reader", ["regular", "bounded"])
+def test_evidence_rejects_foreign_resolved_path_before_directory_join(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reader: str,
+) -> None:
+    """An untrusted resolve receipt must not redirect evidence file reads."""
+    root = tmp_path / "admitted"
+    escaped = tmp_path / "escaped"
+    root.mkdir()
+    escaped.mkdir()
+    _ = (escaped / "raw.csv").write_bytes(b"foreign evidence")
+    original_resolve = Path.resolve
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == root:
+            return _ForgedResolvedEvidencePath(str(escaped))
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    with pytest.raises(evidence.EvidenceError, match="resolved path"):
+        if reader == "regular":
+            evidence.regular_path(root, "raw.csv")
+        else:
+            evidence.read_bounded_regular(root, "raw.csv", limit=128)
+
+
 def test_direct_link_api_rejects_parent_traversal(tmp_path: Path) -> None:
     """Even a caller bypassing schema admission cannot read a parent path."""
     document = sample_study(tmp_path)
@@ -1515,6 +1548,36 @@ def test_bounded_reader_rejects_transient_symlink_parent_to_equal_inode(
         evidence.read_bounded_regular(root, relative, limit=1024)
     assert swapped
     assert path.read_bytes() == (outside / path.name).read_bytes()
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux opened-descriptor path provenance is required",
+)
+def test_bounded_reader_rejects_forged_procfs_path_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign string comparison cannot certify an opened descriptor path."""
+    doc = sample_study(tmp_path)
+    relative = doc["observations"][0]["raw_sample"]
+    original_readlink = evidence.os.readlink
+
+    class FalseEqualityPath(str):  # ruff: ignore[subclass-builtin]
+        """Pretend an unrelated procfs link resolves to the admitted path."""
+
+        def __ne__(self, other: object) -> bool:
+            del other
+            return False
+
+    def forged_readlink(path: str) -> str:
+        if path.startswith("/proc/self/fd/"):
+            return FalseEqualityPath("/outside/forged-file.csv")
+        return original_readlink(path)
+
+    monkeypatch.setattr(evidence.os, "readlink", forged_readlink)
+    with pytest.raises(evidence.EvidenceError, match="opened path changed"):
+        evidence.read_bounded_regular(tmp_path, relative, limit=1024)
 
 
 @pytest.mark.skipif(

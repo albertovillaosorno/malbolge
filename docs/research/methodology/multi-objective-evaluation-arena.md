@@ -772,9 +772,16 @@ flags where available prevent a replaced FIFO or linked leaf from becoming an
 indefinite blocking read. Deterministic replacement, in-place rewrite, and
 POSIX FIFO substitution regressions prove rejection of observed file drift.
 Linux additionally checks the opened descriptor's path through `/proc/self/fd`
-before transferring ownership to the reader. An injected transient parent
-symlink redirect to an outside-root hard link of the same inode now rejects even
-if the source pathname is restored before final recheck. Unavailable Linux
+before transferring ownership to the reader. A native root that receives
+a forged nonnative `Path.resolve()` result is now rejected before joining
+relative segments, preventing a substituted resolver from redirecting an
+otherwise canonical evidence filename outside the admitted root. Linux
+procfs descriptor provenance likewise requires native string results, not
+subclass comparisons that could forge path equality. Red-first regressions
+cover both root resolution and descriptor receipt substitutions.
+An injected transient parent symlink redirect to an outside-root hard link of
+the same inode also rejects even if the source pathname is restored before
+final recheck. Unavailable Linux
 procfs identity evidence fails closed; non-Linux systems retain only their
 existing descriptor/path checks. This is not an atomic snapshot guarantee
 against an adversarial filesystem scheduler.
