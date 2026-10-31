@@ -347,8 +347,13 @@ def test_relocatable_cleanup_failure_preserves_primary_error(
         materialize_relocatable_plan(candidate, plan, output)
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_relocatable_staging_status_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """An inaccessible staging path cannot masquerade as absent."""
     source, oracle, _ = _fixture(tmp_path)
@@ -363,7 +368,7 @@ def test_relocatable_staging_status_error_fails_closed(
     def fail_lstat(path: Path) -> object:
         if path == staging:
             message = "blocked relocatable staging status"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_lstat(path)
 
     monkeypatch.setattr(Path, "lstat", fail_lstat)
@@ -372,8 +377,13 @@ def test_relocatable_staging_status_error_fails_closed(
     _expect(not output.exists(), "status failure published relocatable output")
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_relocatable_output_write_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """A staging write failure remains inside RelocationError."""
     source, oracle, base = _fixture(tmp_path)
@@ -388,7 +398,7 @@ def test_relocatable_output_write_error_fails_closed(
     def fail_write(path: Path, data: bytes) -> int:
         if path == blocked:
             message = "blocked relocatable output write"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_write(path, data)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
