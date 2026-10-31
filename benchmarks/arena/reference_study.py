@@ -108,14 +108,14 @@ def _commit() -> str:
         _fail("host-C reference study requires absolute Git executable")
     try:
         _ = os.fsencode(executable)
-        mode = Path(executable).lstat().st_mode
+        metadata = Path(executable).lstat()
         executable_access = os.access(executable, os.X_OK)
     except Exception as error:
         message = "host-C reference study Git executable unavailable"
         raise ReferenceStudyError(message) from error
     if (
-        type(mode) is not int
-        or not stat.S_ISREG(mode)
+        type(metadata) is not os.stat_result
+        or not stat.S_ISREG(metadata.st_mode)
         or executable_access is not True
     ):
         _fail("host-C reference study Git executable is not an ordinary file")
@@ -133,9 +133,10 @@ def _commit() -> str:
     except Exception as error:
         message = "host-C reference study Git environment unavailable"
         raise ReferenceStudyError(message) from error
+    command = [executable, "rev-parse", "HEAD"]
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [executable, "rev-parse", "HEAD"],
+            command,
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             env=clean_env,
@@ -154,13 +155,24 @@ def _commit() -> str:
         or completed.returncode != 0
     ):
         _fail("host reference study has invalid source commit exit status")
+    if (
+        type(completed.args) is not list
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != command
+        or type(completed.stderr) is not str
+        or completed.stderr != ""
+    ):
+        _fail("host reference study has invalid Git completion receipt")
     output = completed.stdout
     if type(output) is not str:
         _fail("host reference study has invalid source commit output")
-    commit = output.strip()
-    if len(commit) != GIT_HASH_WIDTH or not set(commit) <= analyze.SHA256_ALPHABET:
+    if (
+        len(output) != GIT_HASH_WIDTH + 1
+        or not output.endswith("\n")
+        or not set(output[:-1]) <= analyze.SHA256_ALPHABET
+    ):
         _fail("host reference study has invalid source commit")
-    return commit
+    return output[:-1]
 
 
 def _raw_csv(observation: dict[str, Any]) -> bytes:

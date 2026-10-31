@@ -582,8 +582,8 @@ def test_reference_git_requires_native_positive_executable_access(
         monkeypatch.setattr(
             reference_study.sp,
             "run",
-            lambda *_args, **_kw: reference_study.sp.CompletedProcess(
-                ["git"], 0, stdout="a" * 40 + "\n"
+            lambda command, **_kw: reference_study.sp.CompletedProcess(
+                command, 0, stdout="a" * 40 + "\n", stderr=""
             ),
         )
         assert reference_study._commit() == "a" * 40  # ruff: ignore[private-member-access]
@@ -722,11 +722,10 @@ def test_reference_git_environment_sanitizer_preserves_native_values(
         def items(self) -> Any:
             return [("GIT_DIR", "/malicious-redirect"), ("PATH", "/usr/bin")]
 
-    def fake_git(*args: object, **kwargs: object) -> object:
-        del args
+    def fake_git(command: list[str], **kwargs: object) -> object:
         assert kwargs["env"] == {"PATH": "/usr/bin"}
         return reference_study.sp.CompletedProcess(
-            ["git", "rev-parse", "HEAD"], 0, stdout="a" * 40 + "\n"
+            command, 0, stdout="a" * 40 + "\n", stderr=""
         )
 
     monkeypatch.setattr(reference_study.shutil, "which", lambda *_a, **_k: str(executable))
@@ -778,16 +777,120 @@ def test_reference_git_accepts_exact_zero_exit_and_revision(
     """Valid subprocess completion still records the exact source commit."""
     expected = "a" * 40
 
-    def fake_run(*args: object, **kwargs: object) -> object:
-        del args
+    def fake_run(command: list[str], **kwargs: object) -> object:
         assert kwargs["check"] is True
         assert kwargs["shell"] is False
         return reference_study.sp.CompletedProcess(
-            ["git", "rev-parse", "HEAD"], 0, stdout=expected + "\n"
+            command, 0, stdout=expected + "\n", stderr=""
         )
 
     monkeypatch.setattr(reference_study.sp, "run", fake_run)
     assert reference_study._commit() == expected  # ruff: ignore[private-member-access]
+
+
+class _HostileGitArgumentList(list[str]):
+    """Foreign command collection cannot supply its own equality semantics."""
+
+    def __eq__(self, other: object) -> bool:
+        raise AssertionError("foreign Git command equality hook executed")
+
+
+class _HostileGitStderr(str):
+    """A foreign stderr string must be rejected before equality hooks."""
+
+    def __eq__(self, other: object) -> bool:
+        raise AssertionError("foreign Git stderr comparison executed")
+
+
+@pytest.mark.parametrize(
+    ("args_kind", "stderr_receipt"),
+    [
+        ("correct", "Git warning\n"),
+        ("correct", b""),
+        ("correct", None),
+        ("correct", _HostileGitStderr("")),
+        ("foreign", ""),
+        ("tuple", ""),
+        ("subclass", ""),
+    ],
+    ids=[
+        "warning-stderr",
+        "binary-stderr",
+        "missing-stderr",
+        "hostile-stderr",
+        "foreign-command",
+        "tuple-command",
+        "hostile-command",
+    ],
+)
+def test_reference_git_rejects_forged_process_completion(
+    monkeypatch: pytest.MonkeyPatch, args_kind: str, stderr_receipt: object
+) -> None:
+    """Only the launched native Git process with empty native stderr can bind HEAD."""
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        recorded: object = (
+            ["not-the-invoked-git", "rev-parse", "HEAD"]
+            if args_kind == "foreign"
+            else tuple(command)
+            if args_kind == "tuple"
+            else _HostileGitArgumentList(command)
+            if args_kind == "subclass"
+            else command
+        )
+        return reference_study.sp.CompletedProcess(
+            recorded, 0, stdout="a" * 40 + "\n", stderr=stderr_receipt
+        )
+
+    monkeypatch.setattr(reference_study.sp, "run", forged)
+    with pytest.raises(reference_study.ReferenceStudyError, match="Git completion"):
+        reference_study._commit()  # ruff: ignore[private-member-access]
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [" " + "a" * 40 + "\n", "a" * 40 + "\n\n", "a" * 40],
+    ids=["leading-whitespace", "extra-newline", "missing-newline"],
+)
+def test_reference_git_rejects_noncanonical_revision_line(
+    monkeypatch: pytest.MonkeyPatch, stdout: str
+) -> None:
+    """A merely strip-equivalent revision is not an exact Git stdout receipt."""
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        return reference_study.sp.CompletedProcess(
+            command, 0, stdout=stdout, stderr=""
+        )
+
+    monkeypatch.setattr(reference_study.sp, "run", forged)
+    with pytest.raises(reference_study.ReferenceStudyError, match="source commit"):
+        reference_study._commit()  # ruff: ignore[private-member-access]
+
+
+def test_reference_git_rejects_foreign_file_metadata_before_field_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A returned foreign object must not manufacture native Git file metadata."""
+    path = tmp_path / "git"
+    path.write_bytes(b"native Git executable")
+    path.chmod(0o700)
+    monkeypatch.setattr(reference_study.shutil, "which", lambda *_a, **_kw: str(path))
+    native_lstat = type(path).lstat
+
+    class ForeignStat:
+        @property
+        def st_mode(self) -> int:
+            pytest.fail("foreign metadata field hook executed")
+            return 0
+
+    def forged(candidate: Path) -> object:
+        if candidate == path:
+            return ForeignStat()
+        return native_lstat(candidate)
+
+    monkeypatch.setattr(type(path), "lstat", forged)
+    with pytest.raises(reference_study.ReferenceStudyError, match="Git executable"):
+        reference_study._commit()  # ruff: ignore[private-member-access]
 
 
 @pytest.mark.parametrize(
