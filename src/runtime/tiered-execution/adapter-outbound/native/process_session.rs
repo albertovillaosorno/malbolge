@@ -39,11 +39,43 @@ use std::ffi::{OsStr, OsString};
 use std::io::{ErrorKind, Read as _, Write as _};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const FRAME_LENGTH_BYTES: usize = size_of::<u64>();
+// Timed-out sessions can leave blocked readers when an escaped descendant
+// retains a pipe. Bound their aggregate thread/descriptor ownership rather
+// than allowing repeated hostile sessions to create unbounded workers.
+const MAX_TIMED_EXCHANGE_WORKERS: usize = 64;
+static TIMED_EXCHANGE_WORKERS: AtomicUsize = AtomicUsize::new(0);
+
+struct TimedExchangeWorkerPermit<'counter> {
+    counter: &'counter AtomicUsize,
+}
+
+impl<'counter> TimedExchangeWorkerPermit<'counter> {
+    fn acquire(
+        counter: &'counter AtomicUsize,
+        limit: usize,
+    ) -> Result<Self, NativeProcessSessionError> {
+        let _previous = counter
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+                active.checked_add(1).filter(|next| *next <= limit)
+            })
+            .map_err(|_active| {
+                NativeProcessSessionError::WorkerCapacityExceeded
+            })?;
+        Ok(Self { counter })
+    }
+}
+
+impl Drop for TimedExchangeWorkerPermit<'_> {
+    fn drop(&mut self) {
+        let _prior = self.counter.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 /// Stable transport failure for one persistent native child session.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -72,6 +104,8 @@ pub enum NativeProcessSessionError {
     ResponseTooLarge,
     /// Failed to launch the configured child process.
     Spawn(ErrorKind),
+    /// Too many timed-exchange workers still own process pipes.
+    WorkerCapacityExceeded,
     /// Failed to launch the owned timed-exchange transport thread.
     WorkerSpawn(ErrorKind),
     /// Failed while writing the request frame.
@@ -271,6 +305,13 @@ impl NativeProcessSession {
         // Include the request clone and thread creation in the caller's
         // budget, not just the time spent waiting for transport completion.
         let started = Instant::now();
+        // Acquire capacity before copying the request or consuming the pipes.
+        // An orphaned worker retains its permit until the inherited handles
+        // close, including after the caller times out and drops its handle.
+        let permit = TimedExchangeWorkerPermit::acquire(
+            &TIMED_EXCHANGE_WORKERS,
+            MAX_TIMED_EXCHANGE_WORKERS,
+        )?;
         // The worker owns the pipe handles. A descendant may inherit stdout,
         // so joining a blocked read thread after killing the direct child
         // would allow that descendant to defeat the exchange deadline.
@@ -288,8 +329,11 @@ impl NativeProcessSession {
             .map_err(|_error| NativeProcessSessionError::RequestAllocation)?;
         owned_request.extend_from_slice(request);
         let (sender, receiver) = mpsc::sync_channel(1);
+        let _remaining =
+            remaining_exchange_timeout(timeout, started.elapsed())?;
         let _worker = thread::Builder::new()
             .spawn(move || {
+                let _permit = permit;
                 let result = exchange_framed_bytes(
                     &mut stdin,
                     &mut stdout,

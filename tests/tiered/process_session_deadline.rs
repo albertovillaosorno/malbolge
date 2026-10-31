@@ -80,3 +80,98 @@ fn late_transport_failures_cannot_extend_a_deadline() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn timed_worker_capacity_recycles_slots() -> Result<(), String> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::{NativeProcessSessionError, TimedExchangeWorkerPermit};
+
+    let active = AtomicUsize::new(0);
+    let first = TimedExchangeWorkerPermit::acquire(&active, 2)
+        .map_err(|error| format!("first permit: {error:?}"))?;
+    let second = TimedExchangeWorkerPermit::acquire(&active, 2)
+        .map_err(|error| format!("second permit: {error:?}"))?;
+    if !matches!(
+        TimedExchangeWorkerPermit::acquire(&active, 2),
+        Err(NativeProcessSessionError::WorkerCapacityExceeded)
+    ) || active.load(Ordering::Acquire) != 2
+    {
+        return Err(String::from("timed worker ownership exceeded its cap"));
+    }
+    drop(first);
+    let replacement = TimedExchangeWorkerPermit::acquire(&active, 2)
+        .map_err(|error| format!("reused permit: {error:?}"))?;
+    if active.load(Ordering::Acquire) != 2 {
+        return Err(String::from("timed worker permit was not recycled"));
+    }
+    drop(second);
+    drop(replacement);
+    if active.load(Ordering::Acquire) != 0 {
+        return Err(String::from("timed worker permits leaked after release"));
+    }
+    for (count, limit) in [(0, 0), (usize::MAX, usize::MAX)] {
+        let full = AtomicUsize::new(count);
+        if !matches!(
+            TimedExchangeWorkerPermit::acquire(&full, limit),
+            Err(NativeProcessSessionError::WorkerCapacityExceeded)
+        ) || full.load(Ordering::Acquire) != count
+        {
+            return Err(String::from("zero/overflow permit capacity admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn timed_exchange_worker_capacity_checks_are_atomic() -> Result<(), String> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    use super::{NativeProcessSessionError, TimedExchangeWorkerPermit};
+
+    let active = AtomicUsize::new(0);
+    let start = Arc::new(Barrier::new(16));
+    let owned = thread::scope(|scope| {
+        let mut workers = Vec::new();
+        for _ in 0..16 {
+            let start = Arc::clone(&start);
+            let active = &active;
+            workers.push(scope.spawn(move || {
+                let _arrived = start.wait();
+                TimedExchangeWorkerPermit::acquire(active, 4)
+            }));
+        }
+        workers
+            .into_iter()
+            .map(thread::ScopedJoinHandle::join)
+            .collect::<Vec<_>>()
+    });
+    let mut permits = Vec::new();
+    let mut rejected = 0;
+    for worker in owned {
+        match worker.map_err(|_panic| String::from("worker panicked"))? {
+            Ok(permit) => permits.push(permit),
+            Err(NativeProcessSessionError::WorkerCapacityExceeded) => {
+                rejected += 1;
+            },
+            Err(error) => {
+                return Err(format!("unexpected permit error: {error:?}"));
+            },
+        }
+    }
+    if permits.len() != 4
+        || rejected != 12
+        || active.load(Ordering::Acquire) != 4
+    {
+        return Err(String::from(
+            "concurrent permit acquisition overcommitted",
+        ));
+    }
+    drop(permits);
+    if active.load(Ordering::Acquire) != 0 {
+        return Err(String::from("concurrent permits remained retained"));
+    }
+    Ok(())
+}

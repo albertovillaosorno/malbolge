@@ -93,6 +93,13 @@ single-owner path. Exchanges use an outer little-endian `u64` length frame,
 check the announced response length against the caller bound before allocation,
 and poison/terminate the child after any transport or framing failure. The
 session intentionally does not interpret MBNPC1 or executable-memory commands.
+Timed exchanges reserve one process-wide worker permit before copying request
+bytes or transferring pipe ownership. At most 64 timed workers may own pipes;
+exhaustion fails closed with `WorkerCapacityExceeded` and poisons the session.
+The permit is returned when its worker exits. A descendant that escapes the
+child process group and retains a pipe can keep a timed-out worker alive, but
+repeated timeouts cannot accumulate unbounded blocked threads or pipe handles.
+This cap does not claim to forcibly terminate escaped descendants.
 
 Worker executables must be absolute or directory-qualified; ambient PATH lookup
 is forbidden. With a child working-directory override, an absolute executable
