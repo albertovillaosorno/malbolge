@@ -271,3 +271,61 @@ def test_both_clis_return_nonzero_when_report_publisher_fails(
         result = capsys.readouterr()
         assert not result.out
         assert INJECTED_OUTPUT_ERROR in result.err
+
+
+class _HostileList(list[object]):
+    """A JSON list subclass can replace serialization iteration with code."""
+
+    def __iter__(self):  # type: ignore[override]
+        message = "caller-owned list iterator ran"
+        raise AssertionError(message)
+
+
+class _HostileDict(dict[str, object]):
+    """A JSON mapping subclass can replace serialization item iteration."""
+
+    def items(self):  # type: ignore[override]
+        message = "caller-owned mapping items ran"
+        raise AssertionError(message)
+
+
+class _HostileKey(str):
+    """A string subclass can run a comparison when JSON keys are sorted."""
+
+    def __lt__(self, other: object) -> bool:
+        message = "caller-owned string comparison ran"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        _HostileDict({"status": "ready"}),
+        {"values": _HostileList([1, 2])},
+        {_HostileKey("first"): 1, _HostileKey("second"): 2},
+        {"values": (_HostileKey("value"),)},
+        {"values": [{"field": _HostileList([1])}]},
+    ],
+    ids=["mapping-subclass", "list-subclass", "key-subclass", "nested-text", "nested-list"],
+)
+def test_foreign_json_subclasses_fail_before_serialization_or_stdout(
+    report: dict[str, object],
+) -> None:
+    """Direct publication cannot execute caller-owned container methods."""
+    output = _FakeStream("healthy")
+    with pytest.raises(
+        report_output.ReportOutputError, match="JSON serialization"
+    ) as error:
+        report_output.publish(report, output)
+    assert isinstance(error.value.__cause__, TypeError)
+    assert not output.records
+    assert not output.flushed
+
+
+def test_native_json_tuple_and_scalars_remain_publishable() -> None:
+    """Existing standard JSON-compatible records retain their wire bytes."""
+    output = _FakeStream("healthy")
+    report = {"values": (True, None, 2, 1.5, "okay", [0])}
+    report_output.publish(report, output)
+    assert output.records == [json.dumps(report, sort_keys=True, indent=2) + "\n"]
+    assert output.flushed

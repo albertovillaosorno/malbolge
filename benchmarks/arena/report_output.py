@@ -82,6 +82,41 @@ def _flush_complete(stream: TextReportStream) -> None:
         _fail("arena report stdout flush returned noncanonical completion")
 
 
+def _admit_native_json(report: object) -> None:
+    """Reject caller-owned JSON subclasses before invoking encoder hooks.
+
+    Exact native containers avoid user-overridden iteration and comparison.
+    Already visited objects are skipped to terminate cyclic-graph preflight;
+    json.dumps still detects and rejects actual cycles.
+
+    Raises:
+        TypeError: A value or mapping key is not an exact JSON-native type.
+
+    """
+    pending: list[object] = [report]
+    seen: set[int] = set()
+    while pending:
+        value = pending.pop()
+        if type(value) in (dict, list, tuple):
+            identity = id(value)
+            if identity in seen:
+                continue
+            seen.add(identity)
+        if type(value) is dict:
+            for key, child in value.items():
+                if type(key) is not str:
+                    message = "arena report requires native string JSON keys"
+                    raise TypeError(message)
+                pending.append(child)
+        elif type(value) is list or type(value) is tuple:
+            pending.extend(value)
+        elif value is None or type(value) in (str, int, float, bool):
+            continue
+        else:
+            message = "arena report requires native JSON values and containers"
+            raise TypeError(message)
+
+
 def publish(report: dict[str, Any], stream: TextReportStream) -> None:
     """Write one complete JSON record with strict stream admission.
 
@@ -92,6 +127,7 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
     try:
         # Fully render strict JSON before touching stdout: even nested nonfinite
         # costs must not produce an invalid but apparently successful report.
+        _admit_native_json(report)
         record = json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n"
     except (TypeError, ValueError, OverflowError, RecursionError) as error:
         message = f"arena report JSON serialization failed: {error}"
