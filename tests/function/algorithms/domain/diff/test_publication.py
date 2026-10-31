@@ -39,6 +39,7 @@ import errno
 import os
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 from typing import cast
 
 from algorithms.diff import publication
@@ -164,6 +165,12 @@ def test_windows_route_uses_path_rename(
         return target
 
     monkeypatch.setattr(Path, "rename", record_rename)
+    monkeypatch.setattr(
+        publication,
+        "os",
+        SimpleNamespace(name=_WINDOWS_OS_NAME, fsencode=os.fsencode),
+    )
+    monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="win32"))
     publication.publish_directory_no_replace(
         staging, destination, os_name=_WINDOWS_OS_NAME, platform="win32"
     )
@@ -183,16 +190,32 @@ def test_linux_route_uses_renameat2(
         calls.append((source, target))
 
     monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
+    monkeypatch.setattr(
+        publication,
+        "os",
+        SimpleNamespace(name="posix", fsencode=os.fsencode),
+    )
+    monkeypatch.setattr(
+        publication, "sys", SimpleNamespace(platform=_LINUX_PLATFORM)
+    )
     publication.publish_directory_no_replace(
         staging, destination, os_name="posix", platform=_LINUX_PLATFORM
     )
     assert calls == [(staging, destination)]
 
 
-def test_unsupported_host_fails_closed(tmp_path: Path) -> None:
+def test_unsupported_host_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Do not emulate atomic no-replace semantics on an unsupported host."""
     staging = tmp_path / "staging"
     staging.mkdir()
+    monkeypatch.setattr(
+        publication, "os", SimpleNamespace(name="posix", fsencode=os.fsencode)
+    )
+    monkeypatch.setattr(
+        publication, "sys", SimpleNamespace(platform="unsupported")
+    )
     with pytest.raises(OSError, match="unsupported") as caught:
         publication.publish_directory_no_replace(
             staging,
@@ -201,6 +224,33 @@ def test_unsupported_host_fails_closed(tmp_path: Path) -> None:
             platform="unsupported",
         )
     assert caught.value.errno == errno.ENOTSUP
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="POSIX rename may replace an existing empty directory",
+)
+def test_publication_cannot_force_unsafe_foreign_host_rename(
+    tmp_path: Path,
+) -> None:
+    """A caller cannot override the host and replace an existing directory."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    destination.mkdir()
+    _ = (staging / "ours.txt").write_bytes(_OURS)
+
+    with pytest.raises(OSError, match="host selectors") as rejected:
+        publication.publish_directory_no_replace(
+            staging,
+            destination,
+            os_name=_WINDOWS_OS_NAME,
+            platform="win32",
+        )
+    assert rejected.value.errno == errno.EINVAL
+    assert (staging / "ours.txt").read_bytes() == _OURS
+    assert destination.is_dir()
+    assert not (destination / "ours.txt").exists()
 
 
 def test_host_collision_preserves_both_directories(tmp_path: Path) -> None:

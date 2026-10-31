@@ -123,6 +123,15 @@ def _require_staging_directory(staging: Path) -> None:
         )
 
 
+def _require_host_match(os_name: str, platform: str, destination: Path) -> None:
+    if os_name != os.name or platform != sys.platform:
+        raise OSError(
+            errno.EINVAL,
+            "directory publication host selectors must match the running host",
+            destination,
+        )
+
+
 def _validate_publication_inputs(
     staging: object,
     destination: object,
@@ -148,6 +157,7 @@ def _validate_publication_inputs(
             errno.EINVAL,
             "directory publication host selectors must use exact strings",
         )
+    _require_host_match(os_name, platform, destination)
     if staging == destination:
         raise OSError(
             errno.EINVAL,

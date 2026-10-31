@@ -117,7 +117,9 @@ scan failures instead of treating an inaccessible subtree as absent.
 A second static source snapshot after staging rejects persistent source edits or
 new files before publication, with staging cleanup on rejection. Declared
 passthrough roots remain dynamic. The final check and rename are not atomic;
-external concurrent writers still need coordination.
+external concurrent writers still need coordination. The no-replace
+directory publisher also rejects host selectors that disagree with the actual
+runtime OS, preventing a caller from selecting an overwrite-capable rename.
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.
