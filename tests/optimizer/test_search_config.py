@@ -34,10 +34,14 @@
 
 from __future__ import annotations
 
+import contextlib
+
 import os
 from pathlib import Path
+from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 from accelerator.search_config import SEARCH_CONFIGURATION_SCHEMA
 from accelerator.search_config import SearchConfiguration
@@ -351,3 +355,201 @@ def test_search_config_missing_file_is_typed_error(tmp_path: Path) -> None:
     """Absent caller-configured TOML produces a stable typed failure."""
     with pytest.raises(SearchConfigurationError, match="cannot read"):
         _ = load_search_configuration(tmp_path / "missing.toml")
+
+
+@pytest.mark.parametrize(
+    "opened",
+    [False, True, -1, "5", 2**80, type("ForeignFd", (int,), {})(7)],
+    ids=["false", "true", "negative", "text", "overlarge", "subclass"],
+)
+def test_search_config_rejects_non_native_open_receipt_before_fdopen(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    opened: object,
+) -> None:
+    """A forged config descriptor never aliases an unrelated process stream."""
+    path = tmp_path / SEARCH_CONFIG_SOURCE
+    _ = path.write_text(_config(), encoding="utf-8")
+    reached = False
+
+    def fake_open(selected: Path, flags: int) -> int:
+        del flags
+        nonlocal reached
+        assert selected == path
+        reached = True
+        return cast("int", opened)
+
+    def forbidden_fdopen(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        raise AssertionError("foreign configuration descriptor reached fdopen")
+
+    monkeypatch.setattr(os, "open", fake_open)
+    monkeypatch.setattr(os, "fdopen", forbidden_fdopen)
+    with pytest.raises(SearchConfigurationError, match="descriptor"):
+        _ = load_search_configuration(path)
+    assert reached
+
+
+def test_search_config_releases_fd_on_stream_transfer_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed TOML stream ownership transfer must not leave an open FD."""
+    path = tmp_path / SEARCH_CONFIG_SOURCE
+    _ = path.write_text(_config(), encoding="utf-8")
+    real_open = os.open
+    descriptor: int | None = None
+
+    def fake_open(selected: Path, flags: int) -> int:
+        nonlocal descriptor
+        result = real_open(selected, flags)
+        assert selected == path
+        descriptor = result
+        return result
+
+    def failing_fdopen(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        raise ValueError("synthetic config stream failure")
+
+    monkeypatch.setattr(os, "open", fake_open)
+    monkeypatch.setattr(os, "fdopen", failing_fdopen)
+    try:
+        with pytest.raises(SearchConfigurationError, match="stream"):
+            _ = load_search_configuration(path)
+        assert descriptor is not None
+        with pytest.raises(OSError):
+            _ = os.fstat(descriptor)
+    finally:
+        if descriptor is not None:
+            with contextlib.suppress(OSError):
+                os.close(descriptor)
+
+
+@pytest.mark.parametrize("probe", ["preflight", "opened"])
+def test_search_config_rejects_foreign_metadata_before_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+) -> None:
+    """Non-native stat receipts cannot supply TOML configuration identity."""
+    path = tmp_path / SEARCH_CONFIG_SOURCE
+    _ = path.write_text(_config(), encoding="utf-8")
+    real_stat = Path.stat
+    real_open = os.open
+    real_fstat = os.fstat
+    opened_fd: int | None = None
+    reached = False
+
+    class ForeignStat:
+        @override
+        def __getattribute__(self, name: str) -> object:
+            del name
+            raise AssertionError("foreign stat fields accessed")
+
+    def fake_stat(selected: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        nonlocal reached
+        if selected == path and probe == "preflight":
+            reached = True
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return real_stat(selected, follow_symlinks=follow_symlinks)
+
+    def fake_open(selected: Path, flags: int) -> int:
+        nonlocal opened_fd
+        result = real_open(selected, flags)
+        if selected == path:
+            opened_fd = result
+        return result
+
+    def fake_fstat(descriptor: int) -> os.stat_result:
+        nonlocal reached
+        if descriptor == opened_fd and probe == "opened":
+            reached = True
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    monkeypatch.setattr(os, "open", fake_open)
+    monkeypatch.setattr(os, "fstat", fake_fstat)
+    with pytest.raises(SearchConfigurationError, match="metadata"):
+        _ = load_search_configuration(path)
+    assert reached
+
+
+@pytest.mark.parametrize("cleanup_type", [OSError, ValueError, IndexError, OverflowError])
+def test_search_config_stream_failure_preserves_primary_over_close_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_type: type[Exception],
+) -> None:
+    """A secondary failed close never becomes the primary config rejection."""
+    path = tmp_path / SEARCH_CONFIG_SOURCE
+    _ = path.write_text(_config(), encoding="utf-8")
+    real_open = os.open
+    real_close = os.close
+    descriptor: int | None = None
+
+    def fake_open(selected: Path, flags: int) -> int:
+        nonlocal descriptor
+        descriptor = real_open(selected, flags)
+        return descriptor
+
+    def failed_fdopen(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        raise ValueError("primary stream constructor fault")
+
+    def failed_close(target: int) -> None:
+        if target == descriptor:
+            raise cleanup_type("secondary close fault")
+        real_close(target)
+
+    monkeypatch.setattr(os, "open", fake_open)
+    monkeypatch.setattr(os, "fdopen", failed_fdopen)
+    monkeypatch.setattr(os, "close", failed_close)
+    try:
+        with pytest.raises(SearchConfigurationError, match="stream transfer") as caught:
+            _ = load_search_configuration(path)
+        source = caught.value.__cause__
+        assert type(source) is ValueError
+        assert "primary stream constructor fault" in str(source)
+        assert any(
+            cleanup_type.__name__ in note for note in getattr(source, "__notes__", ())
+        )
+    finally:
+        if descriptor is not None:
+            with contextlib.suppress(OSError):
+                real_close(descriptor)
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit])
+def test_search_config_stream_interruption_closes_descriptor_before_reraising(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt: type[BaseException],
+) -> None:
+    """Process-control signals retain their identity while closing raw FDs."""
+    path = tmp_path / SEARCH_CONFIG_SOURCE
+    _ = path.write_text(_config(), encoding="utf-8")
+    real_open = os.open
+    descriptor: int | None = None
+
+    def fake_open(selected: Path, flags: int) -> int:
+        nonlocal descriptor
+        descriptor = real_open(selected, flags)
+        return descriptor
+
+    def interrupted_fdopen(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        raise interrupt("synthetic interrupted stream transfer")
+
+    monkeypatch.setattr(os, "open", fake_open)
+    monkeypatch.setattr(os, "fdopen", interrupted_fdopen)
+    try:
+        with pytest.raises(interrupt):
+            _ = load_search_configuration(path)
+        assert descriptor is not None
+        with pytest.raises(OSError):
+            _ = os.fstat(descriptor)
+    finally:
+        if descriptor is not None:
+            with contextlib.suppress(OSError):
+                os.close(descriptor)

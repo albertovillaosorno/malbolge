@@ -857,6 +857,13 @@ open.
 
 Canonical typed-IR durable state is already backend-identity neutral.
 
+The optimizer's upstream TOML search-configuration loader applies the same
+native-descriptor and native-`stat_result` admission before reading regular
+source fields or transferring stream ownership. A failed TOML stream transfer
+closes its raw descriptor, preserves the primary failure over any secondary
+close fault, and exposes an exact configuration error (without changing the
+existing explicit symlink-alias behavior).
+
 The external optimizer runner additionally admits exact native nonnegative
 C-int file descriptors for both binary problem inputs and resume checkpoint
 files before any `fdopen` ownership transfer. Boolean, negative, text, foreign

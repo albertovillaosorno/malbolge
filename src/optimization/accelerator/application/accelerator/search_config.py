@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from stat import S_ISREG
+from struct import calcsize
 import tomllib
 from typing import TYPE_CHECKING
 from typing import cast
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
 
 SEARCH_CONFIGURATION_SCHEMA = 1
 MAX_SEARCH_CONFIGURATION_BYTES = 1024 * 1024
+_MAX_NATIVE_DESCRIPTOR = (1 << (8 * calcsize("@i") - 1)) - 1
 
 
 class SearchConfigurationError(ValueError):
@@ -129,6 +131,9 @@ def _config_source_identity(status: os.stat_result) -> tuple[int, ...]:
         SearchConfigurationError: Config source is not regular.
 
     """
+    if type(status) is not os.stat_result:
+        message = "search configuration returned non-native file metadata"
+        raise SearchConfigurationError(message)
     if not S_ISREG(status.st_mode):
         message = "search configuration must be a regular file"
         raise SearchConfigurationError(message)
@@ -155,7 +160,23 @@ def _read_config_descriptor(
         SearchConfigurationError: Config source changes during reading.
 
     """
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        owned_stream = os.fdopen(descriptor, "rb")
+    except BaseException as failure:
+        # Ownership remains with the caller until fdopen succeeds. Preserve
+        # the primary failure even if descriptor cleanup also fails.
+        try:
+            os.close(descriptor)
+        except Exception as cleanup_error:  # noqa: BLE001 - cleanup is secondary
+            BaseException.add_note(
+                failure,
+                f"configuration descriptor close also failed: {type(cleanup_error).__name__}",
+            )
+        if isinstance(failure, Exception):
+            message = f"search configuration stream transfer failed: {type(failure).__name__}"
+            raise SearchConfigurationError(message) from failure
+        raise
+    with owned_stream as stream:
         if _config_source_identity(os.fstat(stream.fileno())) != expected:
             message = "search configuration changed before read"
             raise SearchConfigurationError(message)
@@ -196,6 +217,13 @@ def _read_config_file(path: Path) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
+    if (
+        type(descriptor) is not int
+        or descriptor < 0
+        or descriptor > _MAX_NATIVE_DESCRIPTOR
+    ):
+        message = "search configuration opened an invalid native descriptor"
+        raise SearchConfigurationError(message)
     return _read_config_descriptor(path, descriptor, expected)
 
 
