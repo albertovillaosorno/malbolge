@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 import tomllib
 
-from benchmarks.arena import analyze, evidence, target_process
+from benchmarks.arena import analyze, evidence, report_output, target_process
 from benchmarks.arena import target_echo_audit as audit
 from benchmarks.arena import target_echo_reference as producer
 
@@ -86,9 +86,7 @@ NOT_AUTHENTICATED = "not authenticated"
 AUDIT_MESSAGE = "target audit"
 RSS_RUN_RELATIVE = "run.toml"
 BAD_PROFILE_PROVENANCE = 'implementation = "forged/fake_compiler.py"'
-REAL_PROFILE_PROVENANCE = (
-    'implementation = "benchmarks/arena/target_echo_reference.py"'
-)
+REAL_PROFILE_PROVENANCE = 'implementation = "benchmarks/arena/target_echo_reference.py"'
 
 
 def test_oversized_sparse_tool_rejects_before_auditor_hashing(
@@ -130,8 +128,10 @@ def test_target_audit_inventory_rejects_foreign_entry_before_traversing_rest(
     directory.mkdir(parents=True)
     monkeypatch.setattr(audit, "_ROOT", tmp_path)
     stem = "registered-trial"
-    registered = f"{stem}.malbolge" if folder == "candidates" else (
-        f"{stem}.toml" if folder == "runs" else f"{stem}.csv"
+    registered = (
+        f"{stem}.malbolge"
+        if folder == "candidates"
+        else (f"{stem}.toml" if folder == "runs" else f"{stem}.csv")
     )
     original_iterdir = type(tmp_path).iterdir
 
@@ -514,7 +514,9 @@ def test_tool_fingerprint_rejects_fifo_substitution_without_blocking(
     mkfifo = getattr(os, "mkfifo", None)
     assert callable(mkfifo)
     mkfifo(emitter)
-    with pytest.raises(audit.TargetEchoAuditError, match="target audit executable identity changed"):
+    with pytest.raises(
+        audit.TargetEchoAuditError, match="target audit executable identity changed"
+    ):
         audit._tool_identity(emitter, runner)
 
 
@@ -557,7 +559,9 @@ def test_tool_fingerprint_close_error_does_not_hide_read_failure(
 
 
 @pytest.mark.parametrize("site", ["lstat", "open", "fstat", "read", "close"])
-@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError, TypeError, AttributeError])
+@pytest.mark.parametrize(
+    "failure_type", [ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_tool_fingerprint_types_non_oserror_host_faults(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -589,7 +593,9 @@ def test_tool_fingerprint_types_non_oserror_host_faults(
             patch.setattr(type(emitter), "lstat", bad_lstat)
         else:
             patch.setattr(audit.os, site, bad_host)
-        with pytest.raises(audit.TargetEchoAuditError, match="executable identity") as caught:
+        with pytest.raises(
+            audit.TargetEchoAuditError, match="executable identity"
+        ) as caught:
             _ = audit._tool_identity(emitter, runner)
     assert caught.value.__cause__ is fault
 
@@ -598,7 +604,19 @@ class _ForgedToolBytes(bytes):
     """A bytes subtype is not a native os.read result."""
 
 
-@pytest.mark.parametrize("kind", ["none", "bool", "integer", "text", "bytearray", "memoryview", "subtype", "overlong"])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "none",
+        "bool",
+        "integer",
+        "text",
+        "bytearray",
+        "memoryview",
+        "subtype",
+        "overlong",
+    ],
+)
 def test_tool_fingerprint_rejects_noncanonical_host_read_chunks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -631,7 +649,9 @@ def test_tool_fingerprint_rejects_noncanonical_host_read_chunks(
             _ = audit._tool_identity(emitter, runner)
 
 
-@pytest.mark.parametrize("trailer", [None, True, b"x", bytearray(), _ForgedToolBytes(b"")])
+@pytest.mark.parametrize(
+    "trailer", [None, True, b"x", bytearray(), _ForgedToolBytes(b"")]
+)
 def test_tool_fingerprint_rejects_foreign_trailing_read_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -681,7 +701,9 @@ def test_tool_fingerprint_secondary_non_oserror_close_preserves_primary(
     with monkeypatch.context() as patch:
         patch.setattr(audit.os, "read", bad_read)
         patch.setattr(audit.os, "close", bad_close)
-        with pytest.raises(audit.TargetEchoAuditError, match="executable identity") as caught:
+        with pytest.raises(
+            audit.TargetEchoAuditError, match="executable identity"
+        ) as caught:
             _ = audit._tool_identity(emitter, runner)
     assert caught.value.__cause__ is primary
     assert any("cleanup" in note for note in primary.__notes__)
@@ -743,7 +765,9 @@ def test_tool_fingerprint_rejects_symlink_substitution_after_admission(
     assert audit._admit_tool(emitter) == emitter
     emitter.unlink()
     emitter.symlink_to(foreign)
-    with pytest.raises(audit.TargetEchoAuditError, match="target audit executable identity changed"):
+    with pytest.raises(
+        audit.TargetEchoAuditError, match="target audit executable identity changed"
+    ):
         audit._tool_identity(emitter, runner)
 
 
@@ -757,10 +781,7 @@ def retained(
         Local output root, recorded study and canonical relative path.
 
     """
-    if (
-        not producer.DEFAULT_EMITTER.is_file()
-        or not producer.DEFAULT_RUNNER.is_file()
-    ):
+    if not producer.DEFAULT_EMITTER.is_file() or not producer.DEFAULT_RUNNER.is_file():
         pytest.skip("repository Malbolge binaries are not built")
     with tempfile.TemporaryDirectory(
         dir=producer._TEMP,
@@ -796,10 +817,7 @@ def patterned(
         Local output root, recorded study and canonical relative path.
 
     """
-    if (
-        not producer.DEFAULT_EMITTER.is_file()
-        or not producer.DEFAULT_RUNNER.is_file()
-    ):
+    if not producer.DEFAULT_EMITTER.is_file() or not producer.DEFAULT_RUNNER.is_file():
         pytest.skip("repository Malbolge binaries are not built")
     with tempfile.TemporaryDirectory(
         dir=producer._TEMP,
@@ -834,10 +852,7 @@ def counted_study(
         The source root, counted study, and canonical relative path.
 
     """
-    if (
-        not producer.DEFAULT_EMITTER.is_file()
-        or not producer.DEFAULT_RUNNER.is_file()
-    ):
+    if not producer.DEFAULT_EMITTER.is_file() or not producer.DEFAULT_RUNNER.is_file():
         pytest.skip("built emitter and normative VM required")
     mode = str(request.param)
     with tempfile.TemporaryDirectory(
@@ -871,10 +886,7 @@ def forward_skip(
         Local study directory, retained document, canonical study path.
 
     """
-    if (
-        not producer.DEFAULT_EMITTER.is_file()
-        or not producer.DEFAULT_RUNNER.is_file()
-    ):
+    if not producer.DEFAULT_EMITTER.is_file() or not producer.DEFAULT_RUNNER.is_file():
         pytest.skip("repository Malbolge emitter and VM are not available")
     with tempfile.TemporaryDirectory(
         dir=producer._TEMP, prefix="arena-forward-test-tools-"
@@ -913,10 +925,7 @@ def timed_forward(
         Retained study directory, canonical document, relative study path.
 
     """
-    if (
-        not producer.DEFAULT_EMITTER.is_file()
-        or not producer.DEFAULT_RUNNER.is_file()
-    ):
+    if not producer.DEFAULT_EMITTER.is_file() or not producer.DEFAULT_RUNNER.is_file():
         pytest.skip("built layout emitter and VM are required")
     with tempfile.TemporaryDirectory(
         dir=producer._TEMP, prefix="arena-verifier-test-tools-"
@@ -956,10 +965,7 @@ def replay_forward(
         Retained study directory, document and canonical relative location.
 
     """
-    if (
-        not producer.DEFAULT_EMITTER.is_file()
-        or not producer.DEFAULT_RUNNER.is_file()
-    ):
+    if not producer.DEFAULT_EMITTER.is_file() or not producer.DEFAULT_RUNNER.is_file():
         pytest.skip("built Malbolge emitter and VM required")
     with tempfile.TemporaryDirectory(
         dir=producer._TEMP, prefix="arena-replay-cost-tools-"
@@ -1000,7 +1006,7 @@ def _save(directory: Path, document: dict[str, Any]) -> None:
 def _first_source(directory: Path, document: dict[str, Any]) -> Path:
     row = document["observations"][0]
     case, trial = row["case"], row["trial"]
-    stem = f"{row["algorithm"]}-pairs-{case["difficulty"]}-trial-{trial}"
+    stem = f"{row['algorithm']}-pairs-{case['difficulty']}-trial-{trial}"
     return directory / "candidates" / f"{stem}.malbolge"
 
 
@@ -1032,9 +1038,7 @@ def test_replay_verifier_measures_second_normative_vm_with_true_work_savings(
     assert len(document["observations"]) == ROWS
     for row in document["observations"]:
         assert row["outcome"] == analyze.VERIFIED
-        assert (
-            0 < row["metrics"][VERIFIER_COST_METRIC] <= row["metrics"][ELAPSED]
-        )
+        assert 0 < row["metrics"][VERIFIER_COST_METRIC] <= row["metrics"][ELAPSED]
     for level in (1, 4, 16, 64):
         rows = {
             row["algorithm"]: row
@@ -1042,10 +1046,7 @@ def test_replay_verifier_measures_second_normative_vm_with_true_work_savings(
             if row["case"]["difficulty"] == level
         }
         walked, skipped = rows[producer.WALK], rows[producer.SKIP]
-        assert (
-            walked["metrics"][ARTIFACT_BYTES]
-            == skipped["metrics"][ARTIFACT_BYTES]
-        )
+        assert walked["metrics"][ARTIFACT_BYTES] == skipped["metrics"][ARTIFACT_BYTES]
         assert (
             walked["metrics"][RUNTIME_STEPS] - skipped["metrics"][RUNTIME_STEPS]
             == EXPECTED_GUEST_SAVINGS
@@ -1142,9 +1143,7 @@ def test_static_audit_rejects_missing_forged_or_unmeasured_verifier_cost(
         with pytest.raises(audit.TargetEchoAuditError, match="verifier timing"):
             audit._check_verifier_cost_claims(forged)
     _save(directory, forged)
-    with pytest.raises(
-        audit.TargetEchoAuditError, match=r"verifier|objective|metric"
-    ):
+    with pytest.raises(audit.TargetEchoAuditError, match=r"verifier|objective|metric"):
         audit.audit(relative)
 
 
@@ -1170,14 +1169,8 @@ def test_forward_jump_and_walk_have_equal_code_size_but_distinct_work(
         walked, skipped = level[producer.WALK], level[producer.SKIP]
         assert walked["outcome"] == analyze.VERIFIED
         assert skipped["outcome"] == analyze.VERIFIED
-        assert (
-            walked["metrics"][ARTIFACT_BYTES]
-            == skipped["metrics"][ARTIFACT_BYTES]
-        )
-        assert (
-            walked["metrics"]["runtime_steps"]
-            == walked["metrics"][ARTIFACT_BYTES]
-        )
+        assert walked["metrics"][ARTIFACT_BYTES] == skipped["metrics"][ARTIFACT_BYTES]
+        assert walked["metrics"]["runtime_steps"] == walked["metrics"][ARTIFACT_BYTES]
         assert (
             skipped["metrics"]["runtime_steps"] + producer.SKIPPED_NOOPS
             == (walked["metrics"]["runtime_steps"])
@@ -1271,9 +1264,7 @@ def test_forward_skipped_source_tampering_fails_after_valid_raw_links(
     """A same-length graphical source forgery cannot pass source admission."""
     directory, document, relative = forward_skip
     skip_row = next(
-        row
-        for row in document["observations"]
-        if row["algorithm"] == producer.SKIP
+        row for row in document["observations"] if row["algorithm"] == producer.SKIP
     )
     source = _first_source(directory, {"observations": [skip_row]})
     forged = bytearray(source.read_bytes())
@@ -1286,9 +1277,7 @@ def test_forward_skipped_source_tampering_fails_after_valid_raw_links(
             else producer.SKIPPED_NOOPS + 1
         )
         forged[index] = (
-            INVALID_SOURCE
-            if forged[index] != INVALID_SOURCE
-            else SECOND_INVALID_SOURCE
+            INVALID_SOURCE if forged[index] != INVALID_SOURCE else SECOND_INVALID_SOURCE
         )
     source.write_bytes(forged)
     _recheck_generic(document)
@@ -1306,9 +1295,7 @@ def test_forward_jump_forged_step_savings_rejected_by_static_oracle(
     directory, document, relative = forward_skip
     altered = copy.deepcopy(document)
     jump_row = next(
-        row
-        for row in altered["observations"]
-        if row["algorithm"] == producer.SKIP
+        row for row in altered["observations"] if row["algorithm"] == producer.SKIP
     )
     jump_row["metrics"]["runtime_steps"] -= 1
     _save(directory, altered)
@@ -1330,9 +1317,7 @@ def test_counted_vm_study_has_three_actual_costs_and_replay(
         ARTIFACT_BYTES,
         "runtime_steps",
     ]
-    assert all(
-        row["outcome"] == analyze.VERIFIED for row in document["observations"]
-    )
+    assert all(row["outcome"] == analyze.VERIFIED for row in document["observations"])
     assert all(
         row["metrics"]["runtime_steps"] == row["metrics"][ARTIFACT_BYTES]
         for row in document["observations"]
@@ -1388,9 +1373,7 @@ def test_replay_rejects_changed_vm_receipt_with_correct_guest_stdout(
 
     monkeypatch.setattr(audit, "_replay_execution", altered)
     with pytest.raises(audit.TargetEchoAuditError, match="step receipt"):
-        audit.audit(
-            relative, options=audit.AuditOptions(replay_candidates=True)
-        )
+        audit.audit(relative, options=audit.AuditOptions(replay_candidates=True))
 
 
 def test_patterned_source_audit_replays_real_input_and_eof(
@@ -1448,9 +1431,10 @@ def test_real_retained_target_study_passes_offline_and_replay(
     """Static independent instruction decode precedes a real VM rerun."""
     directory, study, relative = retained
     checked = audit.audit(relative)
-    assert checked["retained_study_sha256"] == sha256(
-        (directory / "study.json").read_bytes()
-    ).hexdigest()
+    assert (
+        checked["retained_study_sha256"]
+        == sha256((directory / "study.json").read_bytes()).hexdigest()
+    )
     assert checked["verified_target_sources_checked"] == ROWS
     assert checked["target_sources_replayed"] == 0
     assert len(checked["source_sha256"]) == ROWS
@@ -1458,9 +1442,7 @@ def test_real_retained_target_study_passes_offline_and_replay(
     assert checked["evidence_preflight"]["raw_rows_matched"] == ROWS
     assert checked["reported_failed_trials_not_replayed"] == 0
     assert NOT_AUTHENTICATED in checked["scope"]
-    replay = audit.audit(
-        relative, options=audit.AuditOptions(replay_candidates=True)
-    )
+    replay = audit.audit(relative, options=audit.AuditOptions(replay_candidates=True))
     assert replay["target_sources_replayed"] == REPLAYED
     assert replay["source_sha256"] == checked["source_sha256"]
     assert replay["capacity_curve"] == checked["capacity_curve"]
@@ -1468,8 +1450,7 @@ def test_real_retained_target_study_passes_offline_and_replay(
 
 
 @pytest.mark.skipif(
-    not producer.DEFAULT_EMITTER.is_file()
-    or not producer.DEFAULT_RUNNER.is_file(),
+    not producer.DEFAULT_EMITTER.is_file() or not producer.DEFAULT_RUNNER.is_file(),
     reason="repository Malbolge binaries are not built",
 )
 def test_real_64_pair_echo_crosses_two_classic_decode_phases() -> None:
@@ -1497,9 +1478,7 @@ def test_real_64_pair_echo_crosses_two_classic_decode_phases() -> None:
                     runner=runner,
                 ),
             )
-            assert (
-                checked["verified_target_sources_checked"] == MAX_PHASE_TRIALS
-            )
+            assert checked["verified_target_sources_checked"] == MAX_PHASE_TRIALS
             assert checked["target_sources_replayed"] == MAX_PHASE_TRIALS
             assert {
                 row["algorithm"]: row["metrics"][ARTIFACT_BYTES]
@@ -1516,9 +1495,7 @@ def test_same_length_source_rewrite_passes_generic_but_fails_target_decode(
     directory, document, relative = retained
     path = _first_source(directory, document)
     source = bytearray(path.read_bytes())
-    source[0] = (
-        INVALID_SOURCE if source[0] != INVALID_SOURCE else INVALID_SOURCE + 1
-    )
+    source[0] = INVALID_SOURCE if source[0] != INVALID_SOURCE else INVALID_SOURCE + 1
     path.write_bytes(source)
     _recheck_generic(document)
     with pytest.raises(audit.TargetEchoAuditError, match="source instruction"):
@@ -1531,9 +1508,7 @@ def test_missing_verified_source_is_rejected(
     """A reported verified trial must retain its actual guest source."""
     directory, document, relative = retained
     _first_source(directory, document).unlink()
-    with pytest.raises(
-        audit.TargetEchoAuditError, match=r"must be|No such file"
-    ):
+    with pytest.raises(audit.TargetEchoAuditError, match=r"must be|No such file"):
         audit.audit(relative)
 
 
@@ -1551,9 +1526,7 @@ def test_extra_or_linked_candidate_is_rejected(
         )
     else:
         other = next(
-            path
-            for path in (directory / "candidates").iterdir()
-            if path != existing
+            path for path in (directory / "candidates").iterdir() if path != existing
         )
         existing.unlink()
         existing.symlink_to(other)
@@ -1639,13 +1612,12 @@ def test_real_study_profile_binary_digest_required_for_vm_replay(
     _recheck_generic(modified)
     assert audit.audit(relative)["verified_target_sources_checked"] == ROWS
     with pytest.raises(audit.TargetEchoAuditError, match="toolchain differs"):
-        audit.audit(
-            relative, options=audit.AuditOptions(replay_candidates=True)
-        )
+        audit.audit(relative, options=audit.AuditOptions(replay_candidates=True))
 
 
 @pytest.mark.parametrize(
-    "receipt", ["", "relative/git", "bad\0path", b"/usr/bin/git", False, 7],
+    "receipt",
+    ["", "relative/git", "bad\0path", b"/usr/bin/git", False, 7],
     ids=["empty", "relative", "nul", "bytes", "boolean", "integer"],
 )
 def test_target_audit_git_object_rejects_malformed_resolver_receipts(
@@ -1701,6 +1673,7 @@ def test_target_audit_git_object_types_resolver_failures(
     failure: type[Exception],
 ) -> None:
     """Resolver faults are typed audit failures with the original cause."""
+
     def broken(*_args: object, **_kwargs: object) -> None:
         raise failure("host Git resolver unavailable")
 
@@ -1710,12 +1683,15 @@ def test_target_audit_git_object_types_resolver_failures(
     assert isinstance(caught.value.__cause__, failure)
 
 
-@pytest.mark.parametrize("failure", [ValueError, RuntimeError, TypeError, AttributeError])
+@pytest.mark.parametrize(
+    "failure", [ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_target_audit_git_object_types_transport_failures(
     monkeypatch: pytest.MonkeyPatch,
     failure: type[Exception],
 ) -> None:
     """Subprocess transport faults cannot leak native host exceptions."""
+
     def broken(*_args: object, **_kwargs: object) -> None:
         raise failure("Git execution unavailable")
 
@@ -1829,17 +1805,13 @@ def test_mutated_retained_source_during_report_is_rejected(
     def mutate_after_decode(study: dict[str, Any]) -> dict[str, Any]:
         contents = bytearray(target.read_bytes())
         contents[0] = (
-            INVALID_SOURCE
-            if contents[0] != INVALID_SOURCE
-            else INVALID_SOURCE + 1
+            INVALID_SOURCE if contents[0] != INVALID_SOURCE else INVALID_SOURCE + 1
         )
         target.write_bytes(contents)
         return actual_analyze(study)
 
     monkeypatch.setattr(audit.analyze, "analyze", mutate_after_decode)
-    with pytest.raises(
-        audit.TargetEchoAuditError, match="changed before report"
-    ):
+    with pytest.raises(audit.TargetEchoAuditError, match="changed before report"):
         audit.audit(relative)
 
 
@@ -1865,9 +1837,7 @@ def test_retained_evidence_changed_after_preflight_is_rejected(
         return real_analyze(study)
 
     monkeypatch.setattr(audit.analyze, "analyze", mutate_after_preflight)
-    with pytest.raises(
-        audit.TargetEchoAuditError, match="changed before report"
-    ):
+    with pytest.raises(audit.TargetEchoAuditError, match="changed before report"):
         audit.audit(relative)
 
 
@@ -1910,9 +1880,7 @@ def test_replay_runner_output_overflow_is_typed_failure(
 ) -> None:
     """VM replay cannot buffer an unbounded successful-output impostor."""
     fake_runner = tmp_path / "flooding-vm"
-    fake_runner.write_text(
-        f"#!{sys.executable}\nimport os\nos.write(1,b'Z'*8192)\n"
-    )
+    fake_runner.write_text(f"#!{sys.executable}\nimport os\nos.write(1,b'Z'*8192)\n")
     fake_runner.chmod(0o700)
     with pytest.raises(target_process.TargetProcessError, match="stdout"):
         audit._invoke_runner(fake_runner, tmp_path / "source.malbolge")
@@ -1934,9 +1902,7 @@ def test_injected_mismatched_vm_replay_fails_closed(
 
     monkeypatch.setattr(audit, "_invoke_runner", wrong_output)
     with pytest.raises(audit.TargetEchoAuditError, match="VM replay rejected"):
-        audit.audit(
-            relative, options=audit.AuditOptions(replay_candidates=True)
-        )
+        audit.audit(relative, options=audit.AuditOptions(replay_candidates=True))
 
 
 @pytest.mark.parametrize(
@@ -1967,3 +1933,89 @@ def test_audit_cli_rejects_bad_path_without_stdout(
     output = capsys.readouterr()
     assert not output.out
     assert AUDIT_MESSAGE in output.err
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [
+        analyze.ArenaError,
+        evidence.EvidenceError,
+        producer.TargetEchoStudyError,
+        OSError,
+        UnicodeError,
+        sp.SubprocessError,
+    ],
+)
+def test_target_audit_never_formats_foreign_dependency_errors(
+    monkeypatch: pytest.MonkeyPatch, fault_type: type[Exception]
+) -> None:
+    """A foreign study-admission error cannot invoke its own formatter."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign target audit dependency formatter executed")
+
+    foreign = type("ForeignTargetAuditFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe target dependency fault")
+
+    def fail_study(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(audit, "_admit_study", fail_study)
+    with pytest.raises(
+        audit.TargetEchoAuditError, match="target echo retained study audit failed"
+    ) as caught:
+        audit.audit(".temp/arena-target-echo-foreign/study.json")
+    assert caught.value.__cause__ is fault
+    assert "ForeignTargetAuditFault" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "fault_type", [audit.TargetEchoAuditError, report_output.ReportOutputError]
+)
+def test_target_audit_cli_never_formats_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """The operator receives exit two even when a typed error has unsafe text."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign target audit CLI formatter executed")
+
+    foreign = type("ForeignTargetAuditCliFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe target CLI fault")
+
+    def fail_audit(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(audit, "audit", fail_audit)
+    monkeypatch.setattr(
+        audit.sys,
+        "argv",
+        ["target-audit", ".temp/arena-target-echo-foreign/study.json"],
+    )
+    with pytest.raises(SystemExit) as caught:
+        audit.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert "ForeignTargetAuditCliFault" in output.err
+
+
+def test_target_audit_native_error_keeps_detail_and_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exact native admission failures retain actionable diagnostics."""
+    fault = evidence.EvidenceError("retained target fingerprint changed")
+
+    def fail_study(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(audit, "_admit_study", fail_study)
+    with pytest.raises(
+        audit.TargetEchoAuditError, match="retained target fingerprint changed"
+    ) as caught:
+        audit.audit(".temp/arena-target-echo-native/study.json")
+    assert caught.value.__cause__ is fault
