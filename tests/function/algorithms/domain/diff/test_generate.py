@@ -573,6 +573,8 @@ def test_exact_mode_runs_domain_preflight_with_passthrough(
         ("/absolute",),
         ("src//file",),
         ("src\\file",),
+        ("C:/drive",),
+        ("C:relative",),
         ("src\x00file",),
         ("src\ud800file",),
         ("z", "a"),

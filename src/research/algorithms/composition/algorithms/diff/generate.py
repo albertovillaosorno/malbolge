@@ -41,6 +41,7 @@ import math
 import os
 from pathlib import Path
 from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -233,6 +234,7 @@ def _canonical_passthrough_root(root: str) -> bool:
     )
     unsafe_shape = (
         candidate.is_absolute()
+        or PureWindowsPath(root).drive
         or _PARENT in candidate.parts
         or candidate.as_posix() != root
     )
