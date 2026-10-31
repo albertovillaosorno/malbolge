@@ -462,6 +462,45 @@ fn publish_new_with_hooks(
     after_sync: impl FnOnce(&Path) -> Result<(), String>,
     after_link: impl FnOnce(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
+    publish_new_with_directory_sync_hook(
+        path,
+        bytes,
+        after_sync,
+        after_link,
+        sync_published_directory,
+    )
+}
+
+// Syncing the inode alone does not make a newly linked directory entry durable.
+// Windows does not support opening directories through std::fs::File; retain
+// the previous best-effort boundary there rather than rejecting valid output.
+fn sync_published_directory(directory: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let opened = fs::File::open(directory)
+            .map_err(|error| format!("cannot open publication directory: {error}"))?;
+        opened
+            .sync_all()
+            .map_err(|error| format!("cannot sync publication directory: {error}"))
+    }
+    #[cfg(not(unix))]
+    {
+        let _directory = directory;
+        Ok(())
+    }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "separate stage, link and directory-sync failure injection hooks"
+)]
+fn publish_new_with_directory_sync_hook(
+    path: &Path,
+    bytes: &[u8],
+    after_sync: impl FnOnce(&Path) -> Result<(), String>,
+    after_link: impl FnOnce(&Path) -> Result<(), String>,
+    sync_directory: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
     if path.extension() != Some(OsStr::new(MALBOLGE_EXTENSION)) {
         return Err(String::from("output must have a .malbolge extension"));
     }
@@ -505,6 +544,13 @@ fn publish_new_with_hooks(
         // exact bytes before claiming success; late mutation leaves an already
         // published target but cannot be falsely called a verified artifact.
         verify_fsynced_stage(path, &mut file, bytes, (&opened, 2, &resolved_target))?;
+        // The final no-clobber hard link must survive a host crash before
+        // reporting success. Sync the originally resolved parent, never a
+        // newly redirected symlinked parent of the requested output path.
+        let parent = resolved_target
+            .parent()
+            .ok_or("cannot identify publication directory")?;
+        sync_directory(parent)?;
         Ok(())
     })();
     // Retire only our own original staging inode. A stage pathname swapped

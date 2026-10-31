@@ -149,10 +149,17 @@ Stable parent symlinks present at initial opening remain permitted. The final
 inode and path checks detect observed substitutions but do not establish an
 atomic filesystem snapshot against ongoing writers.
 The no-overwrite hard link atomically reveals the final `.malbolge` only after
-staged content admission. Existing targets and
-symlinks are never replaced; invalid profiles, operands, paths or layout
-shapes fail closed. Process-level integration tests execute the built binary,
-reopen emitted files under historical/current canonical profiles with real
+staged content admission. On Unix, the publisher now also opens and syncs the
+original resolved parent directory *after* independently verifying the linked
+final bytes and inode, so successful publication includes a directory-entry
+durability barrier. A failed parent sync returns an error and retains the
+already-visible linked target; the stage is removed only if still owned.
+An injected sync failure and an altered final byte separately verify these
+ordering gates. Windows retains file-sync and no-overwrite guarantees but does
+not claim parent-directory crash durability through portable `std::fs`.
+Existing targets and symlinks are never replaced; invalid profiles, operands,
+paths or layout shapes fail closed. Process-level integration tests execute
+the built binary, reopen emitted files under historical/current canonical profiles with real
 byte input, test forward jumps and relocated arithmetic, compare exact output
 bytes across independent runs, reject unsupported input and symlinks, and
 exercise concurrent writers to one target. A separate three-jump external

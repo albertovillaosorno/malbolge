@@ -518,3 +518,75 @@ fn published_same_inode_content_rewrite_cannot_report_success()
     assert!(!stage(&output, None).exists());
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "publication-directory sync failure must not report success"
+)]
+fn publication_directory_sync_failure_preserves_linked_output() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let result = super::publish_new_with_directory_sync_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        |directory| {
+            assert_eq!(
+                directory,
+                fs::canonicalize(&fixture.0).map_err(|error| error.to_string())?
+            );
+            assert_eq!(
+                fs::read(&output).map_err(|error| error.to_string())?,
+                b"ctO"
+            );
+            Err(String::from("injected parent directory sync failure"))
+        },
+    );
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("parent directory sync failure")),
+        "unsynced published target reported success: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "sync may only run after final integrity admission"
+)]
+fn publication_directory_sync_runs_only_after_final_admission() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let sync_called = std::cell::Cell::new(false);
+    let result = super::publish_new_with_directory_sync_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |published| fs::write(published, b"ctX").map_err(|error| error.to_string()),
+        |_directory| {
+            sync_called.set(true);
+            Ok(())
+        },
+    );
+    assert!(result.is_err(), "mutated final artifact was admitted");
+    assert!(
+        !sync_called.get(),
+        "unverified target reached durability sync"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctX"
+    );
+    Ok(())
+}
