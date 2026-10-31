@@ -34,11 +34,13 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 from pathlib import Path
-from typing import Never
-from typing import cast
+from typing import Never, cast
 
 import pytest
+
 from scripts.validate import benchmark_protocol as validator
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -142,6 +144,100 @@ def test_redirected_protocol_fails_closed(
         match="benchmark protocol example must not redirect",
     ):
         _ = validator.validate_example(STOCHASTIC)
+
+
+@pytest.mark.parametrize("swapped", ["protocol", "run"])
+@pytest.mark.parametrize("replacement", ["symlink", "regular", "fifo"])
+def test_benchmark_rejects_file_swapped_after_admission(
+    swapped: str,
+    replacement: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-status replacement cannot substitute checked benchmark input."""
+    if replacement == "fifo" and not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO regression requires os.mkfifo")
+    fixture_dir = tmp_path / "benchmarks/research/protocol/examples"
+    fixture_dir.mkdir(parents=True)
+    for name in (
+        "deterministic.benchmark.toml",
+        "deterministic.experiment.toml",
+        "deterministic-raw.csv",
+    ):
+        shutil.copyfile(DETERMINISTIC.parent / name, fixture_dir / name)
+    protocol = fixture_dir / "deterministic.benchmark.toml"
+    run = fixture_dir / "deterministic.experiment.toml"
+    victim = protocol if swapped == "protocol" else run
+    shadow = fixture_dir / "shadow.toml"
+    shutil.copyfile(victim, shadow)
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+
+    original_status = validator._regular_file_status
+    changed = False
+
+    def redirect_after_status(path: Path, context: str) -> os.stat_result | None:
+        nonlocal changed
+        size = original_status(path, context)
+        if path == victim and size is not None and not changed:
+            victim.unlink()
+            if replacement == "symlink":
+                victim.symlink_to(shadow)
+            elif replacement == "regular":
+                shadow.replace(victim)
+            else:
+                os.mkfifo(victim)
+            changed = True
+        return size
+
+    monkeypatch.setattr(validator, "_regular_file_status", redirect_after_status)
+    with pytest.raises(
+        validator.BenchmarkProtocolError, match="read failed|redirect|changed"
+    ):
+        _ = validator.validate_example(protocol)
+    assert changed
+
+
+def test_benchmark_reader_rejects_in_place_change_during_read(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The exact admitted contents must survive all read chunks."""
+    path = tmp_path / "protocol.toml"
+    source = b"#" + b"x" * (validator.FILE_READ_CHUNK_BYTES + 3)
+    path.write_bytes(source)
+    admitted = validator._regular_file_status(path, "benchmark test input")
+    assert admitted is not None
+    original_read = os.read
+    changed = False
+
+    def mutate_after_first_chunk(fd: int, length: int) -> bytes:
+        nonlocal changed
+        chunk = original_read(fd, length)
+        if not changed:
+            path.write_bytes(b"#" + b"y" * (len(source) - 1))
+            changed = True
+        return chunk
+
+    monkeypatch.setattr(validator.os, "read", mutate_after_first_chunk)
+    with pytest.raises(validator.BenchmarkProtocolError, match="changed"):
+        _ = validator._read_utf8(path, "benchmark test input", admitted)
+    assert changed
+
+
+def test_benchmark_reader_bounds_text_and_reads_in_chunks(tmp_path: Path) -> None:
+    """Large text inputs fail before read; valid multi-chunk text completes."""
+    path = tmp_path / "protocol.toml"
+    contents = "#" + "x" * (validator.FILE_READ_CHUNK_BYTES + 17)
+    path.write_text(contents, encoding="utf-8")
+    admitted = validator._regular_file_status(path, "benchmark test input")
+    assert admitted is not None
+    assert validator._read_utf8(path, "benchmark test input", admitted) == contents
+
+    path.write_bytes(b"x" * (validator.MAX_PROTOCOL_BYTES + 1))
+    admitted = validator._regular_file_status(path, "benchmark test input")
+    assert admitted is not None
+    with pytest.raises(validator.BenchmarkProtocolError, match="admission limit"):
+        _ = validator._read_utf8(path, "benchmark test input", admitted)
 
 
 def test_repository_protocol_examples_are_valid_and_retain_raw_data() -> None:

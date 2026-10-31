@@ -34,15 +34,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from pathlib import PureWindowsPath
-from stat import S_ISLNK
-from stat import S_ISREG
+import os
 import sys
+from dataclasses import dataclass
+from pathlib import Path, PureWindowsPath
+from stat import S_ISLNK, S_ISREG
+from typing import Never, cast
+
 import tomllib
-from typing import Never
-from typing import cast
 
 from scripts.repository_root import repository_root
 from scripts.validate import experiment_manifest
@@ -52,6 +51,8 @@ EXAMPLES_ROOT = ROOT / "benchmarks" / "research" / "protocol" / "examples"
 SCHEMA_VERSION = 1
 PARENT_SEGMENT = ".."
 MIN_REPETITIONS = 3
+MAX_PROTOCOL_BYTES = 1_048_576
+FILE_READ_CHUNK_BYTES = 65_536
 DETERMINISTIC_KIND = "deterministic"
 STOCHASTIC_KIND = "stochastic"
 STUDY_KINDS = frozenset({DETERMINISTIC_KIND, STOCHASTIC_KIND})
@@ -434,14 +435,75 @@ def parse_protocol(text: str) -> BenchmarkProtocolRecord:
     )
 
 
-def _read_utf8(path: Path, context: str) -> str:
+def _matching_regular_status(
+    expected: os.stat_result, observed: os.stat_result
+) -> bool:
+    return S_ISREG(observed.st_mode) and all(
+        getattr(expected, field) == getattr(observed, field)
+        for field in (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+    )
+
+
+def _read_utf8(path: Path, context: str, admitted: os.stat_result) -> str:
+    """Read a bounded regular evidence file without following a replaced leaf."""
+    if admitted.st_size > MAX_PROTOCOL_BYTES:
+        _fail(f"{context} exceeds the {MAX_PROTOCOL_BYTES}-byte admission limit")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
     try:
-        return path.read_text(encoding="utf-8")
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        _fail(f"{context} read failed: {error}")
+
+    read_failed = False
+    try:
+        opened = os.fstat(descriptor)
+        if not _matching_regular_status(admitted, opened):
+            _fail(f"{context} changed after file admission")
+        remaining = admitted.st_size
+        parts: list[bytes] = []
+        while remaining:
+            chunk = os.read(descriptor, min(FILE_READ_CHUNK_BYTES, remaining))
+            if not chunk or len(chunk) > remaining:
+                _fail(f"{context} changed during file read")
+            parts.append(chunk)
+            remaining -= len(chunk)
+        if (
+            not _matching_regular_status(admitted, os.fstat(descriptor))
+            or not _matching_regular_status(admitted, path.lstat())
+            or path.is_junction()
+        ):
+            _fail(f"{context} changed during file read")
+    except (OSError, BenchmarkProtocolError) as error:
+        read_failed = True
+        if isinstance(error, OSError):
+            _fail(f"{context} read failed: {error}")
+        raise
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError as error:
+            if not read_failed:
+                _fail(f"{context} read close failed: {error}")
+
+    try:
+        return b"".join(parts).decode("utf-8")
     except UnicodeDecodeError as error:
         _fail(f"invalid {context} UTF-8: {error}")
 
 
-def _regular_file_size(path: Path, context: str) -> int | None:
+def _regular_file_status(path: Path, context: str) -> os.stat_result | None:
     try:
         status = path.lstat()
     except FileNotFoundError:
@@ -452,7 +514,7 @@ def _regular_file_size(path: Path, context: str) -> int | None:
         _fail(f"{context} must not redirect")
     if not S_ISREG(status.st_mode):
         return None
-    return status.st_size
+    return status
 
 
 def validate_example(path: Path) -> BenchmarkProtocolRecord:
@@ -462,14 +524,15 @@ def validate_example(path: Path) -> BenchmarkProtocolRecord:
         Parsed protocol after run-identity and raw-output checks.
 
     """
-    if _regular_file_size(path, "benchmark protocol example") is None:
+    admitted = _regular_file_status(path, "benchmark protocol example")
+    if admitted is None:
         _fail(f"benchmark protocol example not found: {path}")
-    record = parse_protocol(_read_utf8(path, "benchmark protocol"))
+    record = parse_protocol(_read_utf8(path, "benchmark protocol", admitted))
     run = _linked_run(record)
     _validate_linked_identity(record, run)
     raw_path = ROOT / record.raw_path
-    raw_size = _regular_file_size(raw_path, "benchmark raw samples")
-    if raw_size is None or raw_size == 0:
+    raw_status = _regular_file_status(raw_path, "benchmark raw samples")
+    if raw_status is None or raw_status.st_size == 0:
         _fail(f"benchmark raw samples not retained: {record.raw_path}")
     return record
 
@@ -478,12 +541,13 @@ def _linked_run(
     record: BenchmarkProtocolRecord,
 ) -> experiment_manifest.RunIdentity:
     path = ROOT / record.experiment_manifest
-    if _regular_file_size(path, "benchmark experiment run") is None:
+    admitted = _regular_file_status(path, "benchmark experiment run")
+    if admitted is None:
         _fail(
             f"benchmark experiment run not found: {record.experiment_manifest}"
         )
     manifest = experiment_manifest.parse_manifest(
-        _read_utf8(path, "benchmark experiment manifest")
+        _read_utf8(path, "benchmark experiment manifest", admitted)
     )
     if manifest.record_kind != experiment_manifest.RUN_RECORD_KIND:
         _fail("benchmark protocol must reference record_kind = run")
