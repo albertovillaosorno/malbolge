@@ -502,6 +502,26 @@ def test_direct_bundle_rejects_malformed_generator_result(
         challenge_bundles.verify_bundle(case, PROFILE, files)
 
 
+@pytest.mark.parametrize("missing", ["source", "oracle", "manifest"])
+def test_direct_bundle_types_incomplete_canonical_generator_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    missing: str,
+) -> None:
+    """Uninitialized native result slots cannot bypass typed replay rejection."""
+    case, files = _direct_bundle()
+    original = _generated()
+    partial = object.__new__(generate.GeneratedChallenge)
+    for field in ("source", "oracle", "manifest"):
+        if field != missing:
+            object.__setattr__(partial, field, getattr(original, field))
+    monkeypatch.setattr(generate, "generate", lambda _identity: partial)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="canonical.*payload"
+    ) as caught:
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+    assert type(caught.value.__cause__) is AttributeError
+
+
 def test_canonical_challenge_bundle_regenerates_without_execution(
     tmp_path: Path,
 ) -> None:

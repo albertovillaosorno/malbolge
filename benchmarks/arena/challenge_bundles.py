@@ -110,10 +110,16 @@ def _regenerate(
         raise ChallengeBundleError(message) from error
     # Only exact native generator output can serve as comparison evidence.
     # A foreign bytes subclass could override equality to admit forged data.
-    if type(produced) is not generate.GeneratedChallenge or any(
-        type(payload) is not bytes
-        for payload in (produced.source, produced.oracle, produced.manifest)
-    ):
+    if type(produced) is not generate.GeneratedChallenge:
+        _fail("canonical challenge regeneration produced invalid payload")
+    try:
+        payloads = (produced.source, produced.oracle, produced.manifest)
+    except Exception as error:
+        # A malformed native result may have unset slots. Do not expose the
+        # dependency's raw attribute fault through the replay boundary.
+        message = "canonical challenge regeneration produced invalid payload"
+        raise ChallengeBundleError(message) from error
+    if any(type(payload) is not bytes for payload in payloads):
         _fail("canonical challenge regeneration produced invalid payload")
     return produced
 
