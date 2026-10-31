@@ -1833,6 +1833,106 @@ class _ShortEvidenceReader:
         self.stream.close()
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux opened-descriptor path provenance is required",
+)
+def test_bounded_reader_accepts_stable_root_directory_alias(tmp_path: Path) -> None:
+    """A stable symlinked root is valid when its resolved source stays fixed."""
+    directory = tmp_path / "original"
+    directory.mkdir()
+    data = b"trial,elapsed_ns\n0,1\n"
+    _ = (directory / "raw.csv").write_bytes(data)
+    root = tmp_path / "root"
+    root.symlink_to(directory, target_is_directory=True)
+    assert evidence.read_bounded_regular(root, "raw.csv", limit=1024) == data
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux opened-descriptor path provenance is required",
+)
+def test_bounded_reader_rejects_late_root_alias_rebind_to_same_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late root symlink rebind cannot substitute a hardlink alias."""
+    admitted = tmp_path / "admitted"
+    foreign = tmp_path / "foreign"
+    admitted.mkdir()
+    foreign.mkdir()
+    source = admitted / "raw.csv"
+    original_bytes = b"trial,elapsed_ns\n0,1\n"
+    _ = source.write_bytes(original_bytes)
+    evidence.os.link(source, foreign / "raw.csv")
+    root = tmp_path / "root"
+    root.symlink_to(admitted, target_is_directory=True)
+    original_read = evidence._read_complete
+    rebound = False
+
+    def rebind_after_read(stream: IO[bytes], *, size: int, relative: str) -> bytes:
+        nonlocal rebound
+        data = original_read(stream, size=size, relative=relative)
+        root.unlink()
+        root.symlink_to(foreign, target_is_directory=True)
+        rebound = True
+        return data
+
+    monkeypatch.setattr(evidence, "_read_complete", rebind_after_read)
+    try:
+        with pytest.raises(evidence.EvidenceError, match="path changed"):
+            evidence.read_bounded_regular(root, "raw.csv", limit=1024)
+    finally:
+        if rebound:
+            root.unlink()
+            root.symlink_to(admitted, target_is_directory=True)
+    assert rebound
+    assert source.read_bytes() == original_bytes
+    assert (foreign / "raw.csv").read_bytes() == original_bytes
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux root parent-identity admission is required",
+)
+def test_bounded_reader_rejects_late_directory_swap_with_same_inode_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced parent directory cannot impersonate the original root."""
+    admitted = tmp_path / "admitted"
+    foreign = tmp_path / "foreign"
+    admitted.mkdir()
+    foreign.mkdir()
+    source = admitted / "raw.csv"
+    original_bytes = b"trial,elapsed_ns\n0,1\n"
+    _ = source.write_bytes(original_bytes)
+    evidence.os.link(source, foreign / "raw.csv")
+    parked = tmp_path / "parked"
+    original_read = evidence._read_complete
+    swapped = False
+
+    def swap_after_read(stream: IO[bytes], *, size: int, relative: str) -> bytes:
+        nonlocal swapped
+        data = original_read(stream, size=size, relative=relative)
+        admitted.rename(parked)
+        foreign.rename(admitted)
+        swapped = True
+        return data
+
+    monkeypatch.setattr(evidence, "_read_complete", swap_after_read)
+    try:
+        with pytest.raises(evidence.EvidenceError, match="parent directory changed"):
+            evidence.read_bounded_regular(admitted, "raw.csv", limit=1024)
+    finally:
+        if swapped:
+            admitted.rename(foreign)
+            parked.rename(admitted)
+    assert swapped
+    assert source.read_bytes() == original_bytes
+    assert (foreign / "raw.csv").read_bytes() == original_bytes
+
+
 @pytest.mark.parametrize("premature_eof", [False, True])
 def test_bounded_reader_requires_complete_bytes_across_short_reads(
     tmp_path: Path,

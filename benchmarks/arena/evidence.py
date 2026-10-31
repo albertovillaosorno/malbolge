@@ -208,6 +208,18 @@ def _file_identity(details: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
+def _parent_identity(path: Path, relative: str) -> tuple[int, int]:
+    """Bind the actual source directory, not just a hardlinked child inode."""
+    message = f"evidence parent directory changed during read: {relative}"
+    try:
+        parent = _native_stat(path.parent.stat())
+    except Exception as error:
+        raise EvidenceError(message) from error
+    if not stat.S_ISDIR(parent.st_mode):
+        _fail(message)
+    return parent.st_dev, parent.st_ino
+
+
 def _cleanup_note(prefix: str, error: Exception) -> str:
     """Render only native string arguments from exact host error classes.
 
@@ -302,6 +314,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     _admit_byte_limit(limit)
     path = regular_path(root, relative, limit=limit)
     original = _path_lstat(path, relative)
+    original_parent = _parent_identity(path, relative)
     primary: Exception | None = None
     try:
         with _open_evidence(path) as stream:
@@ -346,6 +359,12 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
         message = f"evidence stream access failed: {relative}"
         raise EvidenceError(message) from error
     final_path = regular_path(root, relative, limit=limit)
+    # A rebound root alias can resolve to a distinct hard link of the same
+    # inode. File metadata alone cannot certify the original source path.
+    if final_path != path:
+        _fail(f"evidence canonical path changed during read: {relative}")
+    if _parent_identity(final_path, relative) != original_parent:
+        _fail(f"evidence parent directory changed during read: {relative}")
     if _file_identity(_path_lstat(final_path, relative)) != _file_identity(opened):
         _fail(f"evidence path changed during read: {relative}")
     if len(data) > limit:
