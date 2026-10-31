@@ -506,3 +506,45 @@ def test_search_checkpoint_rejects_foreign_parsed_mapping_before_traversal(
     monkeypatch.setattr(json, "loads", injected_parser)
     with pytest.raises(SearchCheckpointError, match="must be an object"):
         _ = decode_search_checkpoint(encoded, request, batch)
+
+
+class _ForeignCheckpointDecodeError(ValueError):
+    """Foreign parser exceptions must not render through overridden methods."""
+
+    @override
+    def __str__(self) -> Never:
+        raise AssertionError
+
+
+def test_search_checkpoint_rejects_foreign_json_parser_error_safely(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """JSON parser failure must stay a typed checkpoint diagnostic."""
+    encoded = encode_search_checkpoint(_request(), _batch(), _evidence())
+
+    def fail_parser(_text: str, *, object_pairs_hook: object) -> Never:
+        del _text, object_pairs_hook
+        raise _ForeignCheckpointDecodeError
+
+    monkeypatch.setattr(json, "loads", fail_parser)
+    with pytest.raises(
+        SearchCheckpointError, match="invalid search checkpoint JSON"
+    ):
+        _ = decode_search_checkpoint(encoded, _request(), _batch())
+
+
+def test_search_checkpoint_rejects_foreign_base64_parser_error_safely(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Base64 dependency errors cannot escape through foreign formatters."""
+    encoded = encode_search_checkpoint(_request(), _batch(), _evidence())
+
+    def fail_base64(_payload: str, *, validate: bool) -> Never:
+        del _payload, validate
+        raise _ForeignCheckpointDecodeError
+
+    monkeypatch.setattr(checkpoint_module, "b64decode", fail_base64)
+    with pytest.raises(
+        SearchCheckpointError, match="payload_base64 is invalid"
+    ):
+        _ = decode_search_checkpoint(encoded, _request(), _batch())

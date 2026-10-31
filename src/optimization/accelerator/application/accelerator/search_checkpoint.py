@@ -85,6 +85,29 @@ def _fail(message: str) -> Never:
     raise SearchCheckpointError(message)
 
 
+def _decode_error_detail(error: Exception) -> str:
+    """Describe native parser errors without calling foreign error hooks.
+
+    Returns:
+        Safe native diagnostic details, or just the foreign exception type.
+
+    """
+    if type(error) in {BinasciiError, ValueError, RecursionError} and all(
+        type(argument) in {str, int, bytes, type(None)}
+        for argument in error.args
+    ):
+        return str(error)
+    if type(error) is json.JSONDecodeError:
+        attributes = (
+            error.msg, error.doc, error.pos, error.lineno, error.colno
+        )
+        if tuple(type(item) for item in attributes) == (
+            str, str, int, int, int
+        ):
+            return str(error)
+    return type(error).__name__
+
+
 def _batch_fingerprint(batch: CandidateEvaluationBatch) -> str:
     validated = batch.validated()
     digest = sha256(_BATCH_FINGERPRINT_PREFIX)
@@ -303,7 +326,8 @@ def _decode_payload(encoded: str) -> bytes:
     try:
         payload = b64decode(encoded, validate=True)
     except (BinasciiError, ValueError) as error:
-        _fail(f"search checkpoint payload_base64 is invalid: {error}")
+        detail = _decode_error_detail(error)
+        _fail(f"search checkpoint payload_base64 is invalid: {detail}")
     if b64encode(payload).decode("ascii") != encoded:
         _fail("search checkpoint payload_base64 is not canonical")
     return payload
@@ -339,7 +363,7 @@ def _decode_document(payload: bytes) -> JsonObject:
     except SearchCheckpointError:
         raise
     except (ValueError, RecursionError) as error:
-        _fail(f"invalid search checkpoint JSON: {error}")
+        _fail(f"invalid search checkpoint JSON: {_decode_error_detail(error)}")
     document = _mapping(parsed, "search checkpoint")
     _exact_keys(document, _TOP_LEVEL_KEYS)
     return document
