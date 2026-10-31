@@ -697,7 +697,13 @@ def _rebuild_reference_binaries(
                 nodes=case["difficulty"],
                 profile=reference_study.PROFILE,
             )
-            built[key] = host_c_oracle.rebuild_reference(identity, mode)
+            rebuilt = host_c_oracle.rebuild_reference(identity, mode)
+            if (
+                type(rebuilt) is not bytes
+                or not 0 < len(rebuilt) <= reference_study.MAX_ARTIFACT_BYTES
+            ):
+                _fail("host-C rebuilt executable requires exact bounded bytes")
+            built[key] = rebuilt
         retained = _read_bounded_evidence(
             artifacts[row["experiment_manifest"]]["path"],
             limit=reference_study.MAX_ARTIFACT_BYTES,

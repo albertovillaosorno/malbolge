@@ -1979,3 +1979,57 @@ def test_host_c_study_final_reread_rejects_foreign_bytes_receipt(
     monkeypatch.setattr(evidence, "read_bounded_regular", fake_last_study_read)
     with pytest.raises(reference_audit.ReferenceAuditError, match="bounded bytes"):
         reference_audit.audit(relative)
+
+
+@pytest.mark.parametrize("receipt_type", ["forged-equality", "oversized", "nonnative"])
+def test_host_c_rebuild_rejects_forged_or_unbounded_compiler_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_type: str,
+) -> None:
+    """An optional second compiler cannot self-certify with equality hooks."""
+    row = {
+        "algorithm": reference_study.BASELINE,
+        "outcome": analyze.VERIFIED,
+        "experiment_manifest": "recorded.toml",
+        "case": {"family": FAMILY, "version": 1, "seed": 7, "difficulty": 4},
+    }
+    monkeypatch.setattr(reference_study, "MAX_ARTIFACT_BYTES", 4)
+    retained = b"real"
+    returned: object = {
+        "forged-equality": _ForeignRetainedBytes(b"fake"),
+        "oversized": b"oversized",
+        "nonnative": "real",
+    }[receipt_type]
+    monkeypatch.setattr(host_c_oracle, "rebuild_reference", lambda *_args: returned)
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: retained
+    )
+    with pytest.raises(reference_audit.ReferenceAuditError, match="rebuilt.*bounded bytes"):
+        reference_audit._rebuild_reference_binaries(
+            {"observations": [row]},
+            {"recorded.toml": {"path": "fake-bin", "sha256": "ignored"}},
+        )
+
+
+def test_host_c_rebuild_preserves_native_bounded_compiler_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exactly matching independent native rebuilt result still admits."""
+    row = {
+        "algorithm": reference_study.BASELINE,
+        "outcome": analyze.VERIFIED,
+        "experiment_manifest": "recorded.toml",
+        "case": {"family": FAMILY, "version": 1, "seed": 7, "difficulty": 4},
+    }
+    monkeypatch.setattr(reference_study, "MAX_ARTIFACT_BYTES", 4)
+    monkeypatch.setattr(host_c_oracle, "rebuild_reference", lambda *_args: b"real")
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: b"real"
+    )
+    assert (
+        reference_audit._rebuild_reference_binaries(
+            {"observations": [row]},
+            {"recorded.toml": {"path": "fake-bin", "sha256": "ignored"}},
+        )
+        == 1
+    )
