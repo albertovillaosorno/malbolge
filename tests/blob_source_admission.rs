@@ -38,8 +38,6 @@ pub mod file_blob_store;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/fs_coord/main.rs"]
 pub mod file_coordination;
 
-use std::fs;
-use std::io;
 use std::num::NonZeroUsize;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
@@ -48,6 +46,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::process::id;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{fs, io};
 
 use blob_store::NativeContinuationBlobStore as _;
 use file_blob_store::NativeContinuationFileBlobStore;
@@ -80,7 +79,10 @@ impl Drop for Fixture {
 }
 
 #[test]
-#[expect(clippy::panic_in_result_fn, reason = "test asserts source admission")]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test asserts source admission"
+)]
 fn stable_regular_source_loads_bounded_bytes() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;
     let path = fixture.path("blob.bin");
@@ -93,12 +95,16 @@ fn stable_regular_source_loads_bounded_bytes() -> Result<(), String> {
 
 #[cfg(target_os = "linux")]
 #[test]
-#[expect(clippy::panic_in_result_fn, reason = "test asserts source admission")]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test asserts source admission"
+)]
 fn swapped_fifo_cannot_block_after_regular_preflight() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;
     let path = fixture.path("blob.bin");
     fs::write(&path, b"initial").map_err(|error| error.to_string())?;
-    let before = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+    let before =
+        fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
     fs::remove_file(&path).map_err(|error| error.to_string())?;
     let status = Command::new("mkfifo")
         .arg(&path)
@@ -111,12 +117,17 @@ fn swapped_fifo_cannot_block_after_regular_preflight() -> Result<(), String> {
 
 #[cfg(unix)]
 #[test]
-#[expect(clippy::panic_in_result_fn, reason = "test asserts source admission")]
-fn swapped_symlink_cannot_redirect_after_regular_preflight() -> Result<(), String> {
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test asserts source admission"
+)]
+fn swapped_symlink_cannot_redirect_after_regular_preflight()
+-> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;
     let path = fixture.path("blob.bin");
     fs::write(&path, b"initial").map_err(|error| error.to_string())?;
-    let before = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+    let before =
+        fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
     let foreign = fixture.path("foreign.bin");
     fs::rename(&path, &foreign).map_err(|error| error.to_string())?;
     symlink(&foreign, &path).map_err(|error| error.to_string())?;
@@ -126,33 +137,47 @@ fn swapped_symlink_cannot_redirect_after_regular_preflight() -> Result<(), Strin
 
 #[cfg(target_os = "linux")]
 #[test]
-#[expect(clippy::panic_in_result_fn, reason = "test asserts source admission")]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test asserts source admission"
+)]
 fn same_inode_relinked_path_is_not_the_opened_dentry() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;
     let path = fixture.path("blob.bin");
     fs::write(&path, b"state").map_err(|error| error.to_string())?;
-    let before = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+    let before =
+        fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
     let file = file_blob_store::open_bounded_blob_source(&path, &before)
         .map_err(|error| error.to_string())?;
     let alternate = fixture.path("alias.bin");
     fs::hard_link(&path, &alternate).map_err(|error| error.to_string())?;
-    fs::rename(&path, fixture.path("parked.bin")).map_err(|error| error.to_string())?;
+    fs::rename(&path, fixture.path("parked.bin"))
+        .map_err(|error| error.to_string())?;
     fs::rename(&alternate, &path).map_err(|error| error.to_string())?;
-    assert!(file_blob_store::verify_blob_source(&path, &file, &before).is_err());
+    assert!(
+        file_blob_store::verify_blob_source(&path, &file, &before).is_err()
+    );
     Ok(())
 }
 
 #[test]
-#[expect(clippy::panic_in_result_fn, reason = "test asserts source admission")]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test asserts source admission"
+)]
 fn changed_source_metadata_invalidates_opened_file() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;
     let path = fixture.path("blob.bin");
     fs::write(&path, b"state").map_err(|error| error.to_string())?;
-    let before = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+    let before =
+        fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
     let file = file_blob_store::open_bounded_blob_source(&path, &before)
         .map_err(|error| error.to_string())?;
-    fs::write(&path, b"modified longer source").map_err(|error| error.to_string())?;
-    assert!(file_blob_store::verify_blob_source(&path, &file, &before).is_err());
+    fs::write(&path, b"modified longer source")
+        .map_err(|error| error.to_string())?;
+    assert!(
+        file_blob_store::verify_blob_source(&path, &file, &before).is_err()
+    );
     Ok(())
 }
 
@@ -167,7 +192,8 @@ fn stable_symlink_parent_remains_valid() -> Result<(), String> {
     symlink(&target_dir, &parent_alias).map_err(|error| error.to_string())?;
     let path = parent_alias.join("blob.bin");
     fs::write(&path, b"allowed").map_err(|error| error.to_string())?;
-    let before = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+    let before =
+        fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
     let file = file_blob_store::open_bounded_blob_source(&path, &before)
         .map_err(|error| error.to_string())?;
     file_blob_store::verify_blob_source(&path, &file, &before)
@@ -176,22 +202,30 @@ fn stable_symlink_parent_remains_valid() -> Result<(), String> {
 }
 
 #[test]
-#[expect(clippy::panic_in_result_fn, reason = "test asserts source admission")]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test asserts source admission"
+)]
 fn missing_destination_remains_an_empty_load() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;
-    let mut store = NativeContinuationFileBlobStore::new(fixture.path("missing.bin"));
+    let mut store =
+        NativeContinuationFileBlobStore::new(fixture.path("missing.bin"));
     let bound = NonZeroUsize::new(3).ok_or("missing bound")?;
     assert_eq!(store.load(bound), Ok(None));
     Ok(())
 }
 
 #[test]
-#[expect(clippy::panic_in_result_fn, reason = "test asserts source admission")]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test asserts source admission"
+)]
 fn replaced_inode_cannot_pass_preopen_metadata() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;
     let path = fixture.path("blob.bin");
     fs::write(&path, b"original").map_err(|error| error.to_string())?;
-    let before = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+    let before =
+        fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
     let replacement = fixture.path("replacement.bin");
     fs::write(&replacement, b"original").map_err(|error| error.to_string())?;
     fs::rename(&replacement, &path).map_err(|error| error.to_string())?;
