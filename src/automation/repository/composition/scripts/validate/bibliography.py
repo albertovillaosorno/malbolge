@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
 from stat import S_ISDIR
@@ -48,6 +49,7 @@ from urllib.parse import urlunsplit
 
 if TYPE_CHECKING:
     from os import stat_result
+    from typing import BinaryIO
 
 from scripts.repository_root import repository_root
 
@@ -183,6 +185,7 @@ UNRESOLVED_HEADING = "### Unresolved"
 BASELINE_COVERAGE_HEADING = "### Baseline Coverage"
 SPECIAL_FILES = frozenset({"README.md", "disclaimer.md", "template.md"})
 SOURCE_RECORD_SUFFIX = ".md"
+MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
 
 
 class BibliographyValidationError(ValueError):
@@ -228,6 +231,115 @@ def _path_status(path: Path) -> stat_result | None:
 def _is_regular_file(path: Path) -> bool:
     status = _path_status(path)
     return status is not None and S_ISREG(status.st_mode)
+
+
+def _same_regular_status(first: stat_result, second: stat_result) -> bool:
+    return (
+        S_ISREG(first.st_mode)
+        and S_ISREG(second.st_mode)
+        and (
+            first.st_dev,
+            first.st_ino,
+            first.st_size,
+            first.st_mtime_ns,
+            first.st_ctime_ns,
+        )
+        == (
+            second.st_dev,
+            second.st_ino,
+            second.st_size,
+            second.st_mtime_ns,
+            second.st_ctime_ns,
+        )
+    )
+
+
+def _verify_evidence_finish(
+    stream: BinaryIO,
+    opened: stat_result,
+    path: Path,
+    *,
+    content: bytes,
+) -> None:
+    """Reject a changed descriptor, pathname, or byte extent."""
+    after = os.fstat(stream.fileno())
+    visible = _path_status(path)
+    _require_unlinked_path(path)
+    if not _same_regular_status(opened, after):
+        _fail(f"bibliography evidence changed: {path}")
+    if visible is None or not _same_regular_status(opened, visible):
+        _fail(f"bibliography evidence changed: {path}")
+    if len(content) != opened.st_size:
+        _fail(f"bibliography evidence changed: {path}")
+
+
+def _read_open_evidence(
+    stream: BinaryIO,
+    admitted: stat_result,
+    path: Path,
+) -> bytes:
+    """Verify and consume one stable regular-file descriptor.
+
+    Returns:
+        Evidence bytes from the admitted inode.
+
+    """
+    opened = os.fstat(stream.fileno())
+    if not _same_regular_status(admitted, opened):
+        _fail(f"bibliography evidence changed: {path}")
+    if opened.st_size > MAX_EVIDENCE_BYTES:
+        _fail(f"bibliography evidence exceeds size limit: {path}")
+    content = stream.read(MAX_EVIDENCE_BYTES + 1)
+    _verify_evidence_finish(stream, opened, path, content=content)
+    return content
+
+
+def _require_unlinked_path(path: Path) -> None:
+    """Reject evidence path components redirected through directory links."""
+    try:
+        physical = path.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        _fail(f"bibliography evidence resolution failed: {path}: {error}")
+    if physical != path:
+        _fail(f"bibliography evidence path redirects: {path}")
+
+
+def _read_regular_bytes(path: Path) -> bytes:
+    """Read a stable bounded bibliography evidence descriptor.
+
+    Returns:
+        File content without following a redirected leaf.
+
+    """
+    _require_unlinked_path(path)
+    admitted = _path_status(path)
+    if admitted is None or not S_ISREG(admitted.st_mode):
+        _fail(f"bibliography evidence must be regular: {path}")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "rb") as stream:
+            return _read_open_evidence(stream, admitted, path)
+    except OSError as error:
+        _fail(f"bibliography evidence read failed: {path}: {error}")
+
+
+def _read_regular_text(path: Path) -> str:
+    """Decode stable bibliography evidence as UTF-8.
+
+    Returns:
+        Strictly decoded evidence text.
+
+    """
+    content = _read_regular_bytes(path)
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError as error:
+        _fail(f"bibliography evidence invalid UTF-8: {path}: {error}")
 
 
 def _is_directory(path: Path) -> bool:
@@ -392,7 +504,7 @@ def _validate_records() -> int:
     if not paths:
         _fail("bibliography contains no source records")
     records = tuple(
-        (_relative(path), path.read_text(encoding="utf-8")) for path in paths
+        (_relative(path), _read_regular_text(path)) for path in paths
     )
     for label, text in records:
         validate_source_text(text, label)
@@ -410,7 +522,7 @@ def _validate_baseline() -> None:
         / "repository"
         / "repository-source-verification.md"
     )
-    text = ledger.read_text(encoding="utf-8")
+    text = _read_regular_text(ledger)
     if BASELINE_COVERAGE_HEADING not in text:
         _fail("repository source ledger lacks baseline coverage report")
 
@@ -438,7 +550,7 @@ def _validation_requirement_pin(requirement: str) -> str:
 
 
 def _validate_validation_requirements() -> None:
-    requirements_text = VALIDATION_REQUIREMENTS_FILE.read_text(encoding="utf-8")
+    requirements_text = _read_regular_text(VALIDATION_REQUIREMENTS_FILE)
     validate_validation_requirements_text(requirements_text)
     for requirement, relative in VALIDATION_REQUIREMENT_RECORDS:
         path = BIBLIOGRAPHY_ROOT / relative
@@ -449,7 +561,7 @@ def _validate_validation_requirements() -> None:
                     f"{requirement} -> {relative}",
                 ))
             )
-        record = path.read_text(encoding="utf-8")
+        record = _read_regular_text(path)
         pin = _validation_requirement_pin(requirement)
         if f"`{pin}`" not in record:
             _fail(
@@ -546,14 +658,14 @@ def _durable_reference_paths() -> tuple[Path, ...]:
 def _durable_external_references() -> tuple[str, ...]:
     references: set[str] = set()
     for path in _durable_reference_paths():
-        references.update(_urls_from_text(path.read_text(encoding="utf-8")))
+        references.update(_urls_from_text(_read_regular_text(path)))
     return tuple(sorted(references))
 
 
 def _bibliography_source_urls() -> tuple[str, ...]:
     urls: set[str] = set()
     for path in _source_record_paths():
-        urls.update(_urls_from_text(path.read_text(encoding="utf-8")))
+        urls.update(_urls_from_text(_read_regular_text(path)))
     return tuple(sorted(urls))
 
 

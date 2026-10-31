@@ -26,3 +26,12 @@ Repository policy, legal conclusions, or research conclusions.
 - `tooling/`
 - `disclaimer.md`
 - `provenance-and-methodology/template.md`
+
+## Validation boundary
+
+Bibliography source records, validation dependency evidence, and durable
+references are decoded from bounded regular-file descriptors (at most 16 MiB
+per file). The validator checks file identity and timestamps before and after
+reads, rejects redirected source leaves and inspected directory aliases, and
+requires valid UTF-8. A filesystem mutation during validation fails closed
+rather than accepting a replacement source record or outside URL.

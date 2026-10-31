@@ -36,8 +36,10 @@ from __future__ import annotations
 
 from os import stat_result
 from pathlib import Path
-from stat import S_IFDIR, S_IFLNK
-from typing import TYPE_CHECKING, cast
+from stat import S_IFDIR
+from stat import S_IFLNK
+from typing import TYPE_CHECKING
+from typing import cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -277,3 +279,91 @@ def test_duplicate_stable_source_identity_fails_closed() -> None:
             ("first", text),
             ("second", text),
         ))
+
+
+def test_source_record_rejects_link_after_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-discovery linked leaf cannot replace bibliography source bytes."""
+    records = tmp_path / "records"
+    records.mkdir()
+    source = records / "c.md"
+    original = _c_record()
+    _ = source.write_text(original, encoding="utf-8")
+    outside = tmp_path / "outside.md"
+    _ = outside.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(validator, "BIBLIOGRAPHY_ROOT", records)
+
+    def replaced_source_records() -> tuple[Path, ...]:
+        assert source.is_file()
+        source.unlink()
+        source.symlink_to(outside)
+        return (source,)
+
+    monkeypatch.setattr(
+        validator, "_source_record_paths", replaced_source_records
+    )
+    validate_records = cast(
+        "Callable[[], int]", vars(validator)["_validate_records"]
+    )
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match=r"bibliography (paths must not redirect|evidence)",
+    ):
+        _ = validate_records()
+
+
+def test_durable_reference_rejects_link_to_outside_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Outside symlink targets cannot contribute durable reference URLs."""
+    outside = tmp_path / "outside.md"
+    _ = outside.write_text("https://foreign.example.invalid/reference")
+    link = tmp_path / "reference.md"
+    link.symlink_to(outside)
+    monkeypatch.setattr(validator, "_durable_reference_paths", lambda: (link,))
+    scan = cast(
+        "Callable[[], tuple[str, ...]]",
+        vars(validator)["_durable_external_references"],
+    )
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match=r"bibliography (paths must not redirect|evidence)",
+    ):
+        _ = scan()
+
+
+def test_source_record_rejects_linked_parent_after_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A redirected directory cannot supply source evidence after a scan."""
+    category = tmp_path / "bibliography" / "languages"
+    category.mkdir(parents=True)
+    source = category / "c.md"
+    _ = source.write_text(_c_record(), encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "c.md").write_text(_c_record(), encoding="utf-8")
+    monkeypatch.setattr(validator, "BIBLIOGRAPHY_ROOT", category.parent)
+
+    def swapped_parent_records() -> tuple[Path, ...]:
+        assert source.is_file()
+        source.unlink()
+        category.rmdir()
+        category.symlink_to(outside, target_is_directory=True)
+        return (source,)
+
+    monkeypatch.setattr(
+        validator, "_source_record_paths", swapped_parent_records
+    )
+    validate_records = cast(
+        "Callable[[], int]", vars(validator)["_validate_records"]
+    )
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match=r"bibliography (paths must not redirect|evidence)",
+    ):
+        _ = validate_records()
