@@ -71,6 +71,10 @@ impl Fixture {
     }
 }
 
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
+)]
 impl Drop for Fixture {
     fn drop(&mut self) {
         drop(fs::remove_dir_all(&self.0));

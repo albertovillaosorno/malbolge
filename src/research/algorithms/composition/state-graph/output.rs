@@ -136,6 +136,10 @@ impl PersistentOutput {
     }
 }
 
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
+)]
 impl Drop for PersistentOutput {
     fn drop(&mut self) {
         let mut current = self.tail.take();

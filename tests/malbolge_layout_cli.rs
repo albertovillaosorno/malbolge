@@ -71,6 +71,10 @@ impl OwnedFixture {
     }
 }
 
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
+)]
 impl Drop for OwnedFixture {
     fn drop(&mut self) {
         drop(fs::remove_dir_all(&self.root));
