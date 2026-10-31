@@ -95,6 +95,18 @@ def test_source_snapshot_rejects_nonportable_root_path(
         _ = source_snapshot_evidence(tmp_path / invalid, ("src",))
 
 
+@pytest.mark.parametrize("path", ["C:/absolute.c", "D:relative.c"])
+def test_source_pin_rejects_windows_drive_roots_before_traversal(
+    tmp_path: Path,
+    path: str,
+) -> None:
+    """Pinned root labels cannot change path authority across host OSes."""
+    with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+        _ = SourcePin("repo", _COMMIT, (path,), 1, "0" * 64)
+    with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+        _ = source_snapshot_evidence(tmp_path, (path,))
+
+
 @pytest.mark.parametrize("invalid", ["nul\x00repo", "unpaired\ud800repo"])
 def test_source_pin_rejects_nonportable_repository_label(
     invalid: str,
