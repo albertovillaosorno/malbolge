@@ -104,6 +104,37 @@ def test_measured_rss_reader_close_fault_is_typed(
     assert type(evidence_failure.__cause__) is fault
 
 
+class _HostileRssReadFault(Exception):
+    """Dependency failure must not leak through its untrusted format hook."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign RSS reader fault formatter executed")
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [IndexError, KeyError, OverflowError, LookupError, _HostileRssReadFault],
+)
+def test_rss_reader_wraps_unexpected_dependency_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fault_type: type[Exception],
+) -> None:
+    """Every ordinary retained-evidence failure becomes a typed tool failure."""
+    fault = fault_type("injected RSS source reader fault")
+
+    def fail_read(_root: Path, _path: str, *, limit: int) -> None:
+        assert limit == target_process.RSS_REPORT_LIMIT
+        raise fault
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", fail_read)
+    with pytest.raises(
+        target_process.TargetProcessError, match="RSS report missing or unsafe"
+    ) as caught:
+        target_process._rss_report_bytes(tmp_path / "rss.txt")
+    assert caught.value.__cause__ is fault
+
+
 def test_group_cleanup_signal_error_is_typed_after_child_exit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

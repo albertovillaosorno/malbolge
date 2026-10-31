@@ -576,7 +576,10 @@ nonempty string command vector before consulting host measurement utilities;
 foreign arguments and embedded NUL reject without a child launch. Exact
 one-line positive RSS observations are required; zero, malformed, missing,
 failed process, unbounded tool, or missing third-stage receipts cannot earn a
-verified fifth cost. Complete `arena-raw-v1` CSV, trial TOML and JSON costs
+verified fifth cost. The direct GNU-time report reader converts any ordinary
+retained-evidence dependency failure to a typed target error with its cause
+preserved, never invoking foreign exception formatting hooks. Complete
+`arena-raw-v1` CSV, trial TOML and JSON costs
 are cross-checked by the independent target auditor, which rejects RSS in
 older or failed studies and refuses impossible values above the 1 GiB budget.
 

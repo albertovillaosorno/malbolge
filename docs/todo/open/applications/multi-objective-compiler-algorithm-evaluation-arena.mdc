@@ -233,6 +233,9 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   in bytes as a fifth Pareto cost `peak_rss_bytes` beside actual
   elapsed/source-size/guest-step/verifier costs. Missing or malformed
   receipts and failed processes do not earn a verified resource cost.
+  The direct retained GNU-time RSS reader also wraps unexpected ordinary
+  evidence-dependency faults as typed tool failures without formatting
+  foreign exception hooks. Five red-first fault cases retain the cause.
   A separate `classic-patterned-forward-skip-limited-rss-v5` study ID
   and `classic-forward-jump-limited-rss-second-vm-v1` verifier bind the
   fixed protocol; v1-v4 retain their unchanged objective lists.
