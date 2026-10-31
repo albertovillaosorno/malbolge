@@ -142,6 +142,13 @@ combines source-lineage and behavior evidence conjunctively, so neither family
 can
 offset failure in the other. Source binding remains a later independent gate.
 
+`TreeAdmissionEvidence` retains its immutable `AdmissionPolicy`, allowing direct
+record construction to verify the threshold-specific failure reasons, eligible
+anchor files, and satisfied distribution counts. A caller cannot erase rejection
+reasons or change the count of qualifying files while retaining that policy.
+These in-memory records are not cryptographic attestations; the consumer must
+still establish its intended admission policy and source provenance.
+
 ## Implemented Behavior Semantics
 
 `behavior.py` models deterministic behavior profiles and candidate observations.

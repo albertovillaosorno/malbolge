@@ -32,6 +32,7 @@
 
 """Tests for tree-level structural and distributed-anchor admission."""
 
+from dataclasses import replace
 import hashlib
 import math
 from typing import cast
@@ -108,17 +109,64 @@ def test_admission_evidence_rejects_incoherent_direct_construction() -> None:
 
     file = FileAdmissionEvidence("a.c", 1.0, 1.0, 1, 1)
     with pytest.raises(AdmissionPolicyError, match="source similarity"):
-        _ = TreeAdmissionEvidence(0.5, 1.0, 1, 1, (file,), ())
+        _ = TreeAdmissionEvidence(0.5, 1.0, 1, 1, (file,), (), _policy())
     with pytest.raises(
         AdmissionPolicyError, match="eligible anchor file count"
     ):
-        _ = TreeAdmissionEvidence(1.0, 1.0, 0, 0, (file,), ())
+        _ = TreeAdmissionEvidence(1.0, 1.0, 0, 0, (file,), (), _policy())
 
     unmatched = FileAdmissionEvidence("a.c", 1.0, 0.0, 1, 0)
     with pytest.raises(
         AdmissionPolicyError, match="satisfied anchor file count"
     ):
-        _ = TreeAdmissionEvidence(1.0, 0.0, 1, 1, (unmatched,), ())
+        _ = TreeAdmissionEvidence(1.0, 0.0, 1, 1, (unmatched,), (), _policy())
+
+
+def test_direct_admission_evidence_cannot_erase_policy_failures() -> None:
+    """Direct evidence must not turn a rejected source into an admitted one."""
+    reference = identity_tree(_reference_files())
+    rejected = evaluate_admission(reference, identity_tree({}), _policy())
+    assert not rejected.admitted
+    with pytest.raises(AdmissionPolicyError, match="reasons do not match"):
+        _ = replace(rejected, reasons=())
+
+
+def test_direct_admission_evidence_cannot_forge_distribution_count() -> None:
+    """The accepted anchor-file count must come from policy and file scores."""
+    reference = identity_tree(_reference_files())
+    admitted = evaluate_admission(reference, reference, _policy())
+    assert admitted.satisfied_anchor_files == _FILE_COUNT
+    with pytest.raises(
+        AdmissionPolicyError, match="satisfied anchor file count"
+    ):
+        _ = replace(admitted, satisfied_anchor_files=_FILE_COUNT - 1)
+
+
+def test_direct_admission_evidence_rejects_policy_swap() -> None:
+    """Reported decisions cannot inherit a different threshold policy."""
+    reference = identity_tree(_reference_files())
+    rejected = evaluate_admission(reference, identity_tree({}), _policy())
+    with pytest.raises(AdmissionPolicyError, match="reasons do not match"):
+        _ = replace(rejected, policy=_policy(source_similarity=0.0))
+
+
+def test_direct_admission_evidence_binds_anchor_eligibility() -> None:
+    """Only files eligible under policy may report a coverage score."""
+    reference = identity_tree(_reference_files())
+    evidence = evaluate_admission(reference, reference, _policy())
+    with pytest.raises(AdmissionPolicyError, match="eligibility"):
+        _ = replace(
+            evidence,
+            policy=replace(evidence.policy, minimum_anchors_per_file=10**9),
+        )
+
+
+def test_direct_admission_evidence_requires_exact_policy() -> None:
+    """Foreign policy objects cannot impersonate a source-lineage decision."""
+    reference = identity_tree(_reference_files())
+    evidence = evaluate_admission(reference, reference, _policy())
+    with pytest.raises(AdmissionPolicyError, match="exact AdmissionPolicy"):
+        _ = replace(evidence, policy=cast("AdmissionPolicy", object()))
 
 
 def test_identity_tree_rejects_file_ancestor_overlap() -> None:
@@ -137,7 +185,7 @@ def test_identity_tree_rejects_file_ancestor_overlap() -> None:
     child_evidence = FileAdmissionEvidence(child.path, 1.0, 1.0, 1, 1)
     with pytest.raises(AdmissionPolicyError, match="ancestor"):
         _ = TreeAdmissionEvidence(
-            1.0, 1.0, 2, 2, (ancestor_evidence, child_evidence), ()
+            1.0, 1.0, 2, 2, (ancestor_evidence, child_evidence), (), _policy()
         )
 
 

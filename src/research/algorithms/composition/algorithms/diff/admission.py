@@ -363,7 +363,44 @@ def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
     if satisfied > matched_eligible:
         message = "satisfied anchor file count exceeds matched eligible files"
         raise AdmissionPolicyError(message)
-    _ = _require_reason_tuple(evidence.reasons)
+    _validate_policy_bound_evidence(evidence, files, aggregates)
+
+
+def _validate_policy_bound_evidence(
+    evidence: TreeAdmissionEvidence,
+    files: tuple[FileAdmissionEvidence, ...],
+    aggregates: tuple[float, float, int],
+) -> None:
+    reasons = _require_reason_tuple(evidence.reasons)
+    if type(evidence.policy) is not AdmissionPolicy:
+        message = "tree admission evidence requires exact AdmissionPolicy"
+        raise AdmissionPolicyError(message)
+    policy = evidence.policy
+    if any(
+        (item.anchor_coverage is not None)
+        != (item.reference_anchor_count >= policy.minimum_anchors_per_file)
+        for item in files
+    ):
+        message = "file anchor eligibility does not match admission policy"
+        raise AdmissionPolicyError(message)
+    expected_satisfied = sum(
+        item.matched_anchor_count > _ZERO
+        and item.anchor_coverage is not None
+        and item.anchor_coverage >= policy.minimum_anchor_coverage
+        for item in files
+    )
+    if evidence.satisfied_anchor_files != expected_satisfied:
+        message = "satisfied anchor file count does not match admission policy"
+        raise AdmissionPolicyError(message)
+    aggregate = _AggregateEvidence(
+        source_similarity=aggregates[0],
+        anchor_average=aggregates[1],
+        eligible_files=aggregates[2],
+        satisfied_files=expected_satisfied,
+    )
+    if reasons != _reason_tuple(aggregate, policy):
+        message = "tree admission reasons do not match admission policy"
+        raise AdmissionPolicyError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -391,9 +428,10 @@ class TreeAdmissionEvidence:
     satisfied_anchor_files: int
     files: tuple[FileAdmissionEvidence, ...]
     reasons: tuple[str, ...]
+    policy: AdmissionPolicy
 
     def __post_init__(self) -> None:
-        """Require aggregate evidence consistent with per-file records."""
+        """Require aggregate evidence and a policy-consistent decision."""
         _validate_tree_admission_evidence(self)
 
     @property
@@ -595,6 +633,7 @@ def evaluate_admission(
         satisfied_anchor_files=satisfied,
         files=files,
         reasons=reasons,
+        policy=policy,
     )
 
 
