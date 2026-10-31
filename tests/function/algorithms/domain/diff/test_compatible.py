@@ -1043,8 +1043,13 @@ def test_opaque_candidate_change_fails_exact_gate(tmp_path: Path) -> None:
     _expect(not output.exists(), "opaque-rejected output was published")
 
 
+@pytest.mark.parametrize(
+    "error_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_compatible_materialization_wraps_path_resolution_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
 ) -> None:
     """Keep path resolution failures inside compatible materialization."""
     plan = _plan(tmp_path)
@@ -1054,8 +1059,7 @@ def test_compatible_materialization_wraps_path_resolution_error(
 
     def fail_resolve(path: Path, *, strict: bool = False) -> Path:
         if path == blocked:
-            message = "blocked compatible path"
-            raise PermissionError(message)
+            raise error_type()
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
@@ -1063,6 +1067,10 @@ def test_compatible_materialization_wraps_path_resolution_error(
     with pytest.raises(CompatiblePlanError, match="path resolution failed"):
         _ = materialize_compatible_plan(_request(candidate, plan, output))
     _expect(not output.exists(), "resolution failure published output")
+    _expect(
+        not (tmp_path / ".out.compatible-staging").exists(),
+        "resolution failure left owned compatible staging",
+    )
 
 
 def test_compatible_cleanup_failure_preserves_primary_error(

@@ -685,7 +685,7 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     try:
         resolved_path = path.resolve()
         resolved_root = root.resolve()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = (
             f"compatible path resolution failed: {relative_path!r}: {error}"
         )
