@@ -793,8 +793,12 @@ pre-layout exits: null result pointer publishes `INVALID_ARGUMENT` without a
 write, byte input publishes the raw word as `i32` plus `VALID`, exact EOF
 publishes `-1` plus `VALID`, and the final unmatched branch preserves result
 storage while publishing `INVALID_INPUT_WORD`. Output-helper realization keeps
-the exact low-byte mask. No branch addresses or host evaluation enter this
-representation.
+the exact low-byte mask. The public realizer independently re-derives the
+canonical helper identity against the supplied target profile before producing
+these steps, rejecting fabricated byte bounds, EOF bits/sentinel, status codes,
+or output masks without partial publication. Foreign profiles and overlapping
+EOF/byte projections also fail closed. No branch addresses or host evaluation
+enter this representation.
 
 A separate call-frame helper port admits exactly
 `malbolge_guest_frame_validate`, `malbolge_guest_frame_encode`, and

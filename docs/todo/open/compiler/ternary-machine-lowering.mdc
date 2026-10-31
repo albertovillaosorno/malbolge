@@ -102,6 +102,11 @@ instruction.
   realization
   retains the exact low-byte mask, and realized stdio wrapper plans carry the
   helper execution plan beside profile-bound machine I/O.
+- The public helper realizer now independently re-derives the canonical
+  input/output helper recipe from the selected profile before publishing the
+  execution steps. Forged input byte bounds, EOF bits/word, statuses, output
+  mask, and invalid/overlapping profile projections reject explicitly; the
+  stdio wrapper realizer propagates those failures without partial plans.
 - A separate frame-helper family now admits exact validate/encode/decode helper
   identities under ABI/runtime authority. It binds the 32-byte header, 16-byte
   alignment, statuses `0/1/5`, and all eight little-endian field offsets. The

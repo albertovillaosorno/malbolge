@@ -67,7 +67,8 @@ use ternary_lowering::{
     InputWordDecodeControlFlow, InputWordDecodeSemantics,
     MachineIoEncodingError, MachineIoKind, MachineIoOperation,
     ProfileInstructionDecoder, RuntimeHelperExecutionPlan,
-    RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRequest,
+    RuntimeHelperLoweringError, RuntimeHelperOperation, RuntimeHelperRealizationError,
+    RuntimeHelperRequest,
     RuntimeIntrinsicLoweringError, RuntimeIntrinsicOperation,
     RuntimeIntrinsicRequest, RuntimeIoRealizationError, StartupAction,
     StartupPlanningError, StartupRequest, TERNARY_PROGRAM_CODEC_ID,
@@ -20658,7 +20659,8 @@ fn input_helper_control_flow_publishes_exact_exits() -> Result<(), String> {
         &profile,
     )
     .map_err(|error| format!("lower input helper: {error:?}"))?;
-    let observed = realize_runtime_helper(&operation);
+    let observed = realize_runtime_helper(&operation, &profile)
+        .map_err(|error| format!("realize input helper: {error:?}"))?;
     let expected = RuntimeHelperExecutionPlan::DecodeInputWord(Box::new(
         InputWordDecodeControlFlow {
             exits: vec![
@@ -20703,10 +20705,96 @@ fn output_helper_execution_preserves_low_byte_mask() -> Result<(), String> {
         &current_profile_io(),
     )
     .map_err(|error| format!("lower output helper: {error:?}"))?;
-    if realize_runtime_helper(&operation)
-        != (RuntimeHelperExecutionPlan::OutputByte { mask: 255 })
+    if realize_runtime_helper(&operation, &current_profile_io())
+        != Ok(RuntimeHelperExecutionPlan::OutputByte { mask: 255 })
     {
         return Err(String::from("output-helper execution mask drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn runtime_helper_realization_rejects_forged_semantics() -> Result<(), String> {
+    let profile = current_profile_io();
+    let canonical = lower_runtime_helper(
+        &RuntimeHelperRequest {
+            identity: String::from("malbolge_guest_decode_input_word"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("lower runtime helper: {error:?}"))?;
+    let RuntimeHelperOperation::DecodeInputWord(semantics) = canonical else {
+        return Err(String::from("input helper identity changed"));
+    };
+    for mutate in [
+        |value: &mut InputWordDecodeSemantics| value.byte_max = 256,
+        |value: &mut InputWordDecodeSemantics| value.eof_value_bits = 0,
+        |value: &mut InputWordDecodeSemantics| value.eof_word = 255,
+        |value: &mut InputWordDecodeSemantics| value.invalid_argument_status = 0,
+        |value: &mut InputWordDecodeSemantics| value.invalid_input_status = 1,
+        |value: &mut InputWordDecodeSemantics| value.valid_status = 4,
+    ] {
+        let mut forged = *semantics;
+        mutate(&mut forged);
+        if realize_runtime_helper(
+            &RuntimeHelperOperation::DecodeInputWord(Box::new(forged)),
+            &profile,
+        ) != Err(RuntimeHelperRealizationError::InvalidPlan)
+        {
+            return Err(String::from("forged input helper was realized"));
+        }
+    }
+    if realize_runtime_helper(
+        &RuntimeHelperOperation::OutputByte { mask: 256 },
+        &profile,
+    ) != Err(RuntimeHelperRealizationError::InvalidPlan)
+    {
+        return Err(String::from("forged output byte mask was realized"));
+    }
+    Ok(())
+}
+
+#[test]
+fn runtime_helper_realization_rejects_profile_drift() -> Result<(), String> {
+    let profile = current_profile_io();
+    let canonical = lower_runtime_helper(
+        &RuntimeHelperRequest {
+            identity: String::from("malbolge_guest_decode_input_word"),
+            target_profile: String::from("malbolge-2026"),
+        },
+        &profile,
+    )
+    .map_err(|error| format!("lower runtime helper: {error:?}"))?;
+    let RuntimeHelperOperation::DecodeInputWord(semantics) = canonical else {
+        return Err(String::from("input helper identity changed"));
+    };
+    let mut forged_profile = profile.clone();
+    forged_profile.profile_id = String::from("malbolge-1998");
+    if realize_runtime_helper(
+        &RuntimeHelperOperation::OutputByte { mask: 255 },
+        &forged_profile,
+    ) != Err(RuntimeHelperRealizationError::InvalidProfile)
+    {
+        return Err(String::from("foreign-profile helper was realized"));
+    }
+    let mut drifted_eof = profile.clone();
+    drifted_eof.eof_word = profile.eof_word + 1;
+    if realize_runtime_helper(
+        &RuntimeHelperOperation::DecodeInputWord(semantics.clone()),
+        &drifted_eof,
+    ) != Err(RuntimeHelperRealizationError::InvalidPlan)
+    {
+        return Err(String::from("changed profile EOF was realized"));
+    }
+    let mut colliding_eof = profile;
+    colliding_eof.eof_word = 255;
+    if realize_runtime_helper(
+        &RuntimeHelperOperation::DecodeInputWord(semantics),
+        &colliding_eof,
+    ) != Err(RuntimeHelperRealizationError::InvalidProfile)
+    {
+        return Err(String::from("ambiguous-EOF helper was realized"));
     }
     Ok(())
 }
@@ -20880,7 +20968,8 @@ fn byte_stream_wrapper_machine_io_uses_current_profile() -> Result<(), String> {
         .map_err(|error| format!("realize getchar: {error:?}"))?;
     if realized_getchar.helper != getchar.helper
         || realized_getchar.helper_execution
-            != realize_runtime_helper(&getchar.helper)
+            != realize_runtime_helper(&getchar.helper, &profile)
+                .map_err(|error| format!("realize getchar helper: {error:?}"))?
         || realized_getchar.identity != getchar.identity
         || realized_getchar.order != getchar.order
         || realized_getchar.return_kind != getchar.return_kind
@@ -20905,7 +20994,8 @@ fn byte_stream_wrapper_machine_io_uses_current_profile() -> Result<(), String> {
         .map_err(|error| format!("realize putchar: {error:?}"))?;
     if realized_putchar.helper != putchar.helper
         || realized_putchar.helper_execution
-            != realize_runtime_helper(&putchar.helper)
+            != realize_runtime_helper(&putchar.helper, &profile)
+                .map_err(|error| format!("realize putchar helper: {error:?}"))?
         || realized_putchar.identity != putchar.identity
         || realized_putchar.order != putchar.order
         || realized_putchar.return_kind != putchar.return_kind

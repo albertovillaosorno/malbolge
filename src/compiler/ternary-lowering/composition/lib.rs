@@ -129,7 +129,9 @@ pub use realize_byte_stream_wrapper::{
 };
 pub use realize_frame_helper::realize_frame_helper;
 pub use realize_heap_helper::realize_heap_helper;
-pub use realize_runtime_helper::realize_runtime_helper;
+pub use realize_runtime_helper::{
+    RuntimeHelperRealizationError, realize_runtime_helper,
+};
 pub use realize_runtime_io::{RuntimeIoRealizationError, realize_runtime_io};
 pub use runtime_helper_input::RuntimeHelperRequest;
 pub use runtime_intrinsic_input::RuntimeIntrinsicRequest;
