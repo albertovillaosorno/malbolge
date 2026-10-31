@@ -887,8 +887,12 @@ receipt is now checked for native count identity and reduced binary-rational
 probability in the supported range before it can enter a report or Holm
 adjustment; missing eligible and fabricated ineligible tests reject with a
 typed analyzer error. The report owns a copy of the accepted p-value rather
-than a mutable helper-owned list. These are structural checks and do not
-independently certify the exact binomial-tail mathematics.
+than a mutable helper-owned list. An independent exact arithmetic check now
+reconstructs the required two-sided probability using Python's integer
+binomial coefficient and a descending coefficient recurrence. Canonical but
+mathematically false helper p-values reject before reporting or Holm
+correction. This verifies conditional-binomial arithmetic, not the unproven
+sampling independence, symmetric-sign null, or reported measurements.
 
 A further explicit `--adjust-paired-tests` option requires the paired test
 view, then applies exact step-down Holm-Bonferroni correction across the

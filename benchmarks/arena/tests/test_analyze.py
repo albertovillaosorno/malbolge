@@ -2857,3 +2857,90 @@ def test_median_interval_cli_rejects_mutated_helper_sample_evidence(
     captured = capsys.readouterr()
     assert not captured.out
     assert "median interval receipt" in captured.err
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "false_probability"),
+    [
+        (12, 0, [1, 1]),
+        (5, 7, [1, 2]),
+        (2048, 2048, [1, 2]),
+        (4096, 0, [1, 1]),
+    ],
+)
+def test_paired_receipt_rejects_mathematically_false_native_probability(
+    monkeypatch: pytest.MonkeyPatch,
+    left: int,
+    right: int,
+    false_probability: list[int],
+) -> None:
+    """Native and reduced binary rationals alone do not certify a null tail."""
+    forged = {
+        "discordant_pairs": left + right,
+        "p_two_sided": false_probability,
+    }
+    monkeypatch.setattr(
+        analyze.paired_exact_tests,
+        "two_sided_sign_test",
+        lambda *_: forged,
+    )
+    with pytest.raises(analyze.ArenaError, match="paired exact receipt"):
+        analyze._paired_sign_receipt(left, right)
+
+
+@pytest.mark.parametrize("cli", ["standalone", "linked-evidence"])
+def test_paired_exact_clis_reject_forged_in_range_probability(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cli: str,
+) -> None:
+    """A plausible but false p-value cannot publish either CLI JSON report."""
+    from benchmarks.arena import evidence
+    from benchmarks.arena.tests.test_evidence import sample_study
+
+    original = analyze.paired_exact_tests.two_sided_sign_test
+
+    def forged(left: int, right: int) -> analyze.paired_exact_tests.PairedExactTest | None:
+        count = left + right
+        if count:
+            return {"discordant_pairs": count, "p_two_sided": [1, 2]}
+        return original(left, right)
+
+    monkeypatch.setattr(analyze.paired_exact_tests, "two_sided_sign_test", forged)
+    if cli == "standalone":
+        doc = _repeated_success_study(12)
+    else:
+        doc = sample_study(tmp_path)
+        # Make one comparison a genuine non-tied paired cost difference.
+        doc["observations"][1]["metrics"]["elapsed_ns"] = 9
+    path = tmp_path / "false-p-value.json"
+    _ = path.write_text(json.dumps(doc), encoding="utf-8")
+    if cli == "standalone":
+        args = ["arena", str(path), "--paired-exact-tests", "--adjust-paired-tests"]
+        entry = analyze.main
+    else:
+        args = [
+            "arena-evidence", str(path), "--root", str(tmp_path),
+            "--paired-exact-tests", "--adjust-paired-tests",
+        ]
+        entry = evidence.main
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit, match="2"):
+        entry()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "paired exact receipt" in output.err
+
+
+def test_paired_reference_matches_independent_small_exact_binomial_grid() -> None:
+    """Descending recurrence matches direct integer binomial tails and ties."""
+    from fractions import Fraction
+    from math import comb
+
+    for count in range(1, 25):
+        for left in range(count + 1):
+            smaller = min(left, count - left)
+            tail = sum(comb(count, rank) for rank in range(smaller + 1))
+            reference = min(Fraction(1), Fraction(2 * tail, 1 << count))
+            assert analyze._paired_sign_reference(left, count - left) == reference

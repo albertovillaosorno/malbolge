@@ -505,7 +505,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   both cost-sign and outcome-asymmetry reporting and optional Holm correction.
   Forty-two forged-return site cases, missing/ineligible controls, a hostile
   helper failure, an aliased-receipt mutation and both CLI no-JSON regressions
-  fail closed. The statistical calculation is not independently certified.
+  fail closed. A separate exact `math.comb`-anchored descending binomial
+  recurrence now checks eligible returned p-values against original counts,
+  rejecting in-range but numerically false probabilities before Holm and either
+  CLI report. This validates arithmetic, not sampling assumptions.
   Median interval helper inputs now use isolated copies of observed costs,
   preventing hostile helper-side mutation from rewriting the admitted source
   ordering or fabricating a confidence interval; red-first direct and CLI

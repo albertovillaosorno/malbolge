@@ -39,6 +39,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from fractions import Fraction
 import json
+from math import comb
 from pathlib import Path
 import sys
 from typing import Any
@@ -564,6 +565,25 @@ def _median_interval_receipt(values: list[int]) -> dict[str, Any] | None:
     }
 
 
+def _paired_sign_reference(left: int, right: int) -> Fraction:
+    """Independently reconstruct a two-sided exact null probability.
+
+    Anchor at Python's integer binomial coefficient for the smaller side,
+    then sum downward using the inverse ratio. The candidate helper instead
+    builds upward from the zero-discordance coefficient, so this is an
+    independent integer-arithmetic receipt check, not a statistical claim.
+    """
+    count = left + right
+    smaller = min(left, right)
+    coefficient = comb(count, smaller)
+    tail = 0
+    for rank in range(smaller, -1, -1):
+        tail += coefficient
+        if rank:
+            coefficient = coefficient * rank // (count - rank + 1)
+    return min(Fraction(1), Fraction(2 * tail, 1 << count))
+
+
 def _paired_sign_receipt(left: int, right: int) -> dict[str, Any] | None:
     """Admit and own bounded exact paired-sign helper metadata.
 
@@ -607,6 +627,8 @@ def _paired_sign_receipt(left: int, right: int) -> dict[str, Any] | None:
     rational = Fraction(numerator, denominator)
     if [rational.numerator, rational.denominator] != pair:
         _fail("paired exact receipt has noncanonical rational probability")
+    if rational != _paired_sign_reference(left, right):
+        _fail("paired exact receipt differs from exact binomial probability")
     # A dependency's retained list must not be able to rewrite published p.
     return {
         "discordant_pairs": count,
