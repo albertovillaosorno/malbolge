@@ -51,6 +51,7 @@ from benchmarks.arena import (
     host_c_oracle,
     reference_audit,
     reference_study,
+    report_output,
 )
 from benchmarks.challenges import generate
 
@@ -104,9 +105,7 @@ def _file_hashes(directory: Path) -> dict[str, str]:
 
     """
     return {
-        path.relative_to(directory).as_posix(): sha256(
-            path.read_bytes()
-        ).hexdigest()
+        path.relative_to(directory).as_posix(): sha256(path.read_bytes()).hexdigest()
         for path in directory.rglob("*")
         if path.is_file()
     }
@@ -183,12 +182,9 @@ def test_audit_reopens_real_study_without_timing_or_file_mutations(
     assert observed["study"] == relative
     assert observed["host_c_binaries_checked"] == OBSERVED_PAIRS * 2
     assert not observed["host_c_oracle_replayed"]
+    assert observed["evidence_preflight"]["raw_rows_matched"] == OBSERVED_PAIRS * 2
     assert (
-        observed["evidence_preflight"]["raw_rows_matched"] == OBSERVED_PAIRS * 2
-    )
-    assert (
-        observed["evidence_preflight"]["regenerated_challenge_bundles"]
-        == LEVEL_COUNT
+        observed["evidence_preflight"]["regenerated_challenge_bundles"] == LEVEL_COUNT
     )
     assert len(observed["capacity_curve"]) == OBSERVED_PAIRS
     assert observed["scope"].endswith("budget attestation.")
@@ -224,9 +220,7 @@ def test_strict_host_c_audit_replays_diverse_challenge_families(
     )
     try:
         relative = (
-            (directory / "study.json")
-            .relative_to(reference_audit._ROOT)
-            .as_posix()
+            (directory / "study.json").relative_to(reference_audit._ROOT).as_posix()
         )
         before = _file_hashes(directory)
         report = reference_audit.audit(
@@ -239,7 +233,9 @@ def test_strict_host_c_audit_replays_diverse_challenge_families(
             ),
         )
         assert len(document["observations"]) == 2
-        assert all(row["outcome"] == analyze.VERIFIED for row in document["observations"])
+        assert all(
+            row["outcome"] == analyze.VERIFIED for row in document["observations"]
+        )
         assert report["evidence_preflight"]["raw_rows_matched"] == 2
         assert report["evidence_preflight"]["host_c_challenge_oracles_replayed"] == 1
         assert report["host_c_binaries_checked"] == 2
@@ -306,10 +302,7 @@ def test_audit_rejects_uneven_repetitions_between_difficulties(
     document["observations"] = [
         row
         for row in document["observations"]
-        if not (
-            row["case"]["difficulty"] == 8
-            and row["trial"] == missing_trial
-        )
+        if not (row["case"]["difficulty"] == 8 and row["trial"] == missing_trial)
     ]
     # The generic arena legitimately accepts different sample sizes per level.
     # The host-C producer cannot create this plan: every level uses 2 trials.
@@ -332,9 +325,7 @@ def test_host_c_audit_rejects_rekeyed_native_trial_artifacts(
     row = study["observations"][0]
     original_manifest = row["experiment_manifest"]
     original_raw = row["raw_sample"]
-    old_stem = original_manifest.rsplit("/", maxsplit=1)[1].removesuffix(
-        ".toml"
-    )
+    old_stem = original_manifest.rsplit("/", maxsplit=1)[1].removesuffix(".toml")
     new_stem = f"forged-{old_stem}"
     new_manifest = original_manifest.replace(old_stem, new_stem)
     new_raw = original_raw.replace(old_stem, new_stem)
@@ -345,9 +336,7 @@ def test_host_c_audit_rejects_rekeyed_native_trial_artifacts(
     _ = (reference_audit._ROOT / new_manifest).write_text(
         manifest_source.replace(original_raw, new_raw), encoding="utf-8"
     )
-    _ = (reference_audit._ROOT / original_raw).rename(
-        reference_audit._ROOT / new_raw
-    )
+    _ = (reference_audit._ROOT / original_raw).rename(reference_audit._ROOT / new_raw)
     artifacts_path = directory / "artifacts.json"
     artifacts = json.loads(artifacts_path.read_text(encoding="utf-8"))
     artifact = artifacts.pop(original_manifest)
@@ -383,9 +372,7 @@ def test_host_c_audit_rejects_rekeyed_native_trial_artifacts(
         reference_audit.audit(relative)
 
 
-@pytest.mark.parametrize(
-    "field", ["question", "hypothesis", "rejection_observation"]
-)
+@pytest.mark.parametrize("field", ["question", "hypothesis", "rejection_observation"])
 def test_host_c_reference_rejects_forged_fixed_research_claim(
     live_pilot: tuple[Path, str],
     field: str,
@@ -434,9 +421,7 @@ def test_audit_rejects_retained_file_tampering(
         reference_audit.audit(relative)
 
 
-@pytest.mark.parametrize(
-    "mutation", ["extra", "missing", "bad-type", "bad-shape"]
-)
+@pytest.mark.parametrize("mutation", ["extra", "missing", "bad-type", "bad-shape"])
 def test_audit_rejects_forged_artifact_index(
     live_pilot: tuple[Path, str],
     mutation: str,
@@ -594,9 +579,7 @@ def test_native_rebuild_refuses_unsupported_compiler_mode(mode: str) -> None:
         reference_study.PROFILE,
         4,
     )
-    with pytest.raises(
-        host_c_oracle.HostOracleError, match="optimization mode"
-    ):
+    with pytest.raises(host_c_oracle.HostOracleError, match="optimization mode"):
         _ = host_c_oracle.rebuild_reference(identity, mode)
 
 
@@ -651,10 +634,14 @@ def test_all_reported_trials_share_one_source_commit(
 @pytest.mark.parametrize(
     ("old", "new"),
     [
-        ('implementation = "benchmarks/arena/reference_study.py"',
-         'implementation = "benchmarks/arena/foreign_study.py"'),
-        ('configuration = "benchmarks/arena/README.md"',
-         'configuration = "benchmarks/arena/foreign.md"'),
+        (
+            'implementation = "benchmarks/arena/reference_study.py"',
+            'implementation = "benchmarks/arena/foreign_study.py"',
+        ),
+        (
+            'configuration = "benchmarks/arena/README.md"',
+            'configuration = "benchmarks/arena/foreign.md"',
+        ),
         ('method_class = "benchmarking"', 'method_class = "engineering"'),
         ('accelerator = "none"', 'accelerator = "cuda"'),
     ],
@@ -786,7 +773,9 @@ def test_host_c_audit_rejects_study_json_rewrite_during_audit(
 
         monkeypatch.setattr(analyze, "analyze", mutate_after_analysis)
 
-    with pytest.raises(reference_audit.ReferenceAuditError, match="study JSON.*changed"):
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="study JSON.*changed"
+    ):
         reference_audit.audit(relative)
 
 
@@ -983,9 +972,7 @@ def test_audit_git_resolver_rejects_noncanonical_paths_before_launch(
         reference_audit._require_git_commit("0" * 40)
 
 
-@pytest.mark.parametrize(
-    "kind", ["symlink", "directory", "missing", "non-executable"]
-)
+@pytest.mark.parametrize("kind", ["symlink", "directory", "missing", "non-executable"])
 def test_audit_git_resolver_requires_physical_executable_before_launch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1050,7 +1037,9 @@ def test_audit_git_executable_inspection_faults_are_typed(
         monkeypatch.setattr(type(fake), "lstat", broken_lstat)
     else:
         monkeypatch.setattr(reference_audit.os, "access", broken_access)
-    with pytest.raises(reference_audit.ReferenceAuditError, match="path inspection") as caught:
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="path inspection"
+    ) as caught:
         reference_audit._require_git_commit("0" * 40)
     assert caught.value.__cause__ is fault
 
@@ -1173,18 +1162,14 @@ def test_source_commit_object_check_requires_installed_git(
 ) -> None:
     """Unavailable Git cannot impersonate successful source-object review."""
     _, relative = live_pilot
-    monkeypatch.setattr(
-        reference_audit.shutil, "which", lambda *_args, **_kwargs: None
-    )
+    monkeypatch.setattr(reference_audit.shutil, "which", lambda *_args, **_kwargs: None)
     with pytest.raises(
         reference_audit.ReferenceAuditError,
         match="requires local Git",
     ):
         reference_audit.audit(
             relative,
-            options=reference_audit.AuditOptions(
-                require_source_commit_object=True
-            ),
+            options=reference_audit.AuditOptions(require_source_commit_object=True),
         )
 
 
@@ -1299,10 +1284,7 @@ def test_old_successful_study_without_failure_sidecar_is_admitted(
     """Complete healthy legacy studies predate this optional new file."""
     directory, relative = live_pilot
     (directory / "failures.json").unlink()
-    assert (
-        reference_audit.audit(relative)["host_c_failure_diagnostics_checked"]
-        == 0
-    )
+    assert reference_audit.audit(relative)["host_c_failure_diagnostics_checked"] == 0
 
 
 def test_failure_diagnostic_drift_fails_cli_without_reporting_pareto(
@@ -1379,8 +1361,8 @@ def test_host_c_sidecars_reject_duplicate_json_fields(
         recorded = json.loads(path.read_text(encoding="utf-8"))
         key, entry = next(iter(recorded.items()))
         if sidecar == "artifacts":
-            payload = f"{{{json.dumps(key)}:{json.dumps(entry)}," + (
-                json.dumps(recorded)[1:]
+            payload = (
+                f"{{{json.dumps(key)}:{json.dumps(entry)}," + (json.dumps(recorded)[1:])
             )
         else:
             raw = path.read_text(encoding="utf-8")
@@ -1493,9 +1475,7 @@ def test_cli_requires_child_resource_controls_when_requested(
         ],
     )
     assert reference_audit.main() == 0
-    assert json.loads(capsys.readouterr().out)[
-        "resource_controls_record_checked"
-    ]
+    assert json.loads(capsys.readouterr().out)["resource_controls_record_checked"]
     (directory / "resource-controls.json").unlink()
     with pytest.raises(SystemExit, match="2"):
         reference_audit.main()
@@ -1540,3 +1520,90 @@ def test_rss_claim_requires_v2_recorded_linux_measurement_policy(
         match="peak-RSS study requires v2",
     ):
         reference_audit.audit(relative)
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [
+        analyze.ArenaError,
+        evidence.EvidenceError,
+        reference_study.ReferenceStudyError,
+        host_c_oracle.HostOracleError,
+        OSError,
+        UnicodeError,
+    ],
+)
+def test_host_c_audit_never_formats_foreign_dependency_errors(
+    monkeypatch: pytest.MonkeyPatch, fault_type: type[Exception]
+) -> None:
+    """Auditing dependency failures cannot execute untrusted formatters."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign host-C audit dependency formatter executed")
+
+    foreign = type("ForeignHostAuditFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe dependency fault")
+
+    def fail_admit(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(reference_audit, "_admit_data", fail_admit)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="host-C reference evidence audit failed",
+    ) as caught:
+        reference_audit.audit(".temp/arena-host-c-study-foreign/study.json")
+    assert caught.value.__cause__ is fault
+    assert "ForeignHostAuditFault" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "fault_type", [reference_audit.ReferenceAuditError, report_output.ReportOutputError]
+)
+def test_host_c_audit_cli_rejects_foreign_formatter_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """CLI typed failures remain exit status two without exception hook calls."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign host-C CLI formatter executed")
+
+    foreign = type("ForeignHostAuditCliFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe CLI fault")
+
+    def fail_audit(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(reference_audit, "audit", fail_audit)
+    monkeypatch.setattr(
+        reference_audit.sys,
+        "argv",
+        ["reference-audit", ".temp/arena-host-c-study-foreign/study.json"],
+    )
+    with pytest.raises(SystemExit) as caught:
+        reference_audit.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert "ForeignHostAuditCliFault" in output.err
+
+
+def test_host_c_audit_native_failure_retains_causal_details(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Safe exact project errors retain actionable diagnostics and causes."""
+    fault = evidence.EvidenceError("raw evidence fingerprint changed")
+
+    def fail_admit(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(reference_audit, "_admit_data", fail_admit)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="raw evidence fingerprint changed"
+    ) as caught:
+        reference_audit.audit(".temp/arena-host-c-study-native/study.json")
+    assert caught.value.__cause__ is fault

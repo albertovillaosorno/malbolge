@@ -84,10 +84,12 @@ PRODUCER_RESEARCH_CLAIMS = {
 REQUIRED_OBJECTIVES = ["elapsed_ns", "artifact_bytes"]
 CURRENT_OBJECTIVES = [*REQUIRED_OBJECTIVES, "peak_rss_bytes"]
 RSS_RESOURCE_POLICY_VERSION = 2
-REQUIRED_ALGORITHMS = frozenset({
-    reference_study.BASELINE,
-    reference_study.CANDIDATE,
-})
+REQUIRED_ALGORITHMS = frozenset(
+    {
+        reference_study.BASELINE,
+        reference_study.CANDIDATE,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +128,33 @@ def _fail(message: str) -> Never:
     raise ReferenceAuditError(message)
 
 
+def _safe_error_detail(error: Exception) -> str:
+    """Keep exact project/native errors readable without foreign formatter hooks.
+
+    Returns:
+        Trusted diagnostic text, otherwise the foreign exception type name.
+
+    """
+    if type(error) in (
+        ReferenceAuditError,
+        report_output.ReportOutputError,
+        analyze.ArenaError,
+        evidence.EvidenceError,
+        reference_study.ReferenceStudyError,
+        host_c_oracle.HostOracleError,
+        experiment_manifest.ExperimentManifestError,
+        OSError,
+        PermissionError,
+        FileNotFoundError,
+        ValueError,
+        TypeError,
+        UnicodeError,
+        UnicodeDecodeError,
+    ):
+        return str(error)
+    return type(error).__name__
+
+
 def _admit_options(options: AuditOptions) -> None:
     """Require precise opt-ins before any input reads or native child work."""
     if type(options) is not AuditOptions or any(
@@ -144,11 +173,7 @@ def _prefix(relative: str) -> str:
     if type(relative) is not str:
         _fail("host-C audit requires a canonical ignored study path")
     parts = relative.split("/")
-    if (
-        len(parts) != PART_COUNT
-        or parts[0] != ROOT_PART
-        or parts[2] != STUDY_LEAF
-    ):
+    if len(parts) != PART_COUNT or parts[0] != ROOT_PART or parts[2] != STUDY_LEAF:
         _fail("host-C audit requires .temp/arena-host-c-study-*/study.json")
     directory = parts[1]
     suffix = directory.removeprefix(RUN_PREFIX)
@@ -213,9 +238,7 @@ def _check_trials(
         if row["verifier"] != reference_study.VERIFIER:
             _fail("host-C reference audit requires native C entry oracle")
         case = row["case"]
-        name = (
-            f"{row['algorithm']}-nodes-{case['difficulty']}-trial-{row['trial']}"
-        )
+        name = f"{row['algorithm']}-nodes-{case['difficulty']}-trial-{row['trial']}"
         if (
             row["experiment_manifest"] != f"{prefix}/runs/{name}.toml"
             or row["raw_sample"] != f"{prefix}/raw/{name}.csv"
@@ -259,14 +282,10 @@ def _check_case_plan(document: dict[str, Any]) -> None:
 
 def _check_stage(document: dict[str, Any], prefix: str) -> None:
     study = document["study"]
-    if (
-        study["stage"] != STAGE
-        or study["target_profile"] != reference_study.PROFILE
-    ):
+    if study["stage"] != STAGE or study["target_profile"] != reference_study.PROFILE:
         _fail("host-C reference audit stage or target profile differs")
     if any(
-        study[field] != expected
-        for field, expected in PRODUCER_RESEARCH_CLAIMS.items()
+        study[field] != expected for field, expected in PRODUCER_RESEARCH_CLAIMS.items()
     ):
         _fail("host-C reference producer research claims differ")
     if (
@@ -323,8 +342,7 @@ def _check_trial_file_inventory(
             for row in document["observations"]
         },
         "candidates": {
-            value["path"].rsplit("/", maxsplit=1)[1]
-            for value in artifacts.values()
+            value["path"].rsplit("/", maxsplit=1)[1] for value in artifacts.values()
         },
     }
     for folder, names in expected.items():
@@ -717,9 +735,7 @@ def audit(
         # oracle replay. The preflight may have admitted bytes that are no
         # longer present when this report is returned.
         if (
-            reference_study.check_retained_artifacts(
-                data.document, data.artifacts
-            )
+            reference_study.check_retained_artifacts(data.document, data.artifacts)
             != data.verified_binaries
         ):
             _fail("host-C retained artifact count changed during audit")
@@ -733,7 +749,7 @@ def audit(
         OSError,
         UnicodeError,
     ) as error:
-        message = f"host-C reference evidence audit failed: {error}"
+        message = f"host-C reference evidence audit failed: {_safe_error_detail(error)}"
         raise ReferenceAuditError(message) from error
     return {
         "schema_version": 1,
@@ -769,9 +785,7 @@ def main() -> int:
     parser.add_argument("--replay-oracles", action="store_true")
     parser.add_argument("--rebuild-binaries", action="store_true")
     parser.add_argument("--require-source-commit-object", action="store_true")
-    parser.add_argument(
-        "--require-resource-controls-record", action="store_true"
-    )
+    parser.add_argument("--require-resource-controls-record", action="store_true")
     args = parser.parse_args()
     try:
         report = audit(
@@ -785,7 +799,7 @@ def main() -> int:
         )
         report_output.publish(report, sys.stdout)
     except (ReferenceAuditError, report_output.ReportOutputError) as error:
-        parser.exit(2, f"host-C reference audit: {error}\n")
+        parser.exit(2, f"host-C reference audit: {_safe_error_detail(error)}\n")
     return 0
 
 
