@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Never
 
 MAX_STUDY_BYTES = 16 * 1024 * 1024
+MAX_NATIVE_DESCRIPTOR = 2**31 - 1
 
 if TYPE_CHECKING:
     from typing import BinaryIO
@@ -79,6 +80,15 @@ def _identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
 
 def _fail(message: str) -> Never:
     raise StudyFileError(message)
+
+
+def _admit_descriptor(receipt: object, *, source: str) -> int:
+    # A forged os.open/fileno return must not become a procfs lookup, fstat,
+    # fdopen, or os.close on an unrelated handle (notably bool 0/1).
+    # OS file descriptors use native signed C ints on the supported hosts.
+    if type(receipt) is not int or not 0 <= receipt <= MAX_NATIVE_DESCRIPTOR:
+        _fail(f"arena input {source} descriptor is not a native OS integer")
+    return receipt
 
 
 def _admit_limit(limit: int) -> None:
@@ -123,7 +133,7 @@ def _open_study(path: Path) -> BinaryIO:
         if sys.platform == "linux"
         else None
     )
-    descriptor = os.open(path, flags)
+    descriptor = _admit_descriptor(os.open(path, flags), source="raw")
     try:
         if expected_path is not None:
             opened_path = os.readlink(f"/proc/self/fd/{descriptor}")
@@ -182,7 +192,8 @@ def _read_descriptor(
     try:
         with _open_study(path) as stream:
             try:
-                opened = _native_stat(os.fstat(stream.fileno()))
+                opened_fd = _admit_descriptor(stream.fileno(), source="stream")
+                opened = _native_stat(os.fstat(opened_fd))
                 if not stat.S_ISREG(opened.st_mode) or (
                     _identity(opened) != _identity(before)
                 ):
@@ -190,7 +201,10 @@ def _read_descriptor(
                 if opened.st_size > limit:
                     _fail("arena input exceeds 16 MiB limit")
                 data = _read_complete(stream, size=opened.st_size)
-                completed = _native_stat(os.fstat(stream.fileno()))
+                completed_fd = _admit_descriptor(stream.fileno(), source="stream")
+                if completed_fd != opened_fd:
+                    _fail("arena input stream descriptor changed during read")
+                completed = _native_stat(os.fstat(completed_fd))
                 if _identity(completed) != _identity(opened):
                     _fail("arena input changed during read")
                 # The context manager can raise on close, but cannot expose a

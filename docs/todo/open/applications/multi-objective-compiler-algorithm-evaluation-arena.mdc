@@ -498,6 +498,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   chunks, accepting legitimate partial reads and rejecting premature EOF,
   nonbinary/overlong chunks, and five injected I/O fault types with preserved
   typed error causes before either CLI can publish a comparison.
+  The JSON study reader now also rejects forged raw `os.open` and stream
+  `fileno()` descriptor receipts unless they are native nonnegative signed
+  C-int values, before procfs lookup, descriptor stat, stream conversion, or
+  raw close; it pins the stream descriptor number across the bounded read.
+  Dependency-forgery tests cover booleans, negatives, foreign types and large
+  integers without acting on unrelated OS descriptors.
   Linked evidence now also consumes the complete admitted inode size across
   bounded short chunks; truncated streams fail rather than authenticating a
   valid-looking CSV/manifest prefix under otherwise stable file metadata.

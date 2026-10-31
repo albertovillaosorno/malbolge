@@ -757,6 +757,133 @@ def test_standalone_and_evidence_cli_reject_raced_file_without_stdout(
         assert CHANGED_OPEN in output.err
 
 
+class _ForeignStudyDescriptor(int):
+    """An integer subclass is not a native OS descriptor receipt."""
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [False, True, -1, -17, 1 << 80, 2.0, "3", None, _ForeignStudyDescriptor(3)],
+)
+def test_raw_study_descriptor_requires_native_nonnegative_os_integer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Forged os.open receipts cannot reach procfs or close a foreign fd."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    attempted: list[str] = []
+    native_readlink = study_file.os.readlink
+
+    def return_forged_fd(_path: Path, _flags: int) -> int:
+        return cast("int", receipt)
+
+    def guarded_readlink(target: str) -> str:
+        if target.startswith("/proc/self/fd/"):
+            attempted.append("readlink")
+            raise AssertionError("foreign raw fd reached procfs")
+        return native_readlink(target)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        attempted.append("descriptor operation")
+        raise AssertionError("foreign raw fd reached an OS operation")
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file.os, "open", return_forged_fd)
+        context.setattr(study_file.os, "readlink", guarded_readlink)
+        context.setattr(study_file.os, "fdopen", forbidden)
+        context.setattr(study_file.os, "close", forbidden)
+        with pytest.raises(study_file.StudyFileError, match="raw descriptor"):
+            study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
+    assert not attempted
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [False, True, -1, -17, 1 << 80, 2.0, "3", None, _ForeignStudyDescriptor(3)],
+)
+def test_study_stream_fileno_requires_native_nonnegative_os_integer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Forged fileno receipts cannot make fstat target a foreign descriptor."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file._open_study
+    native_fstat = study_file.os.fstat
+    attempted: list[object] = []
+
+    @contextmanager
+    def forged_open(target: Path) -> Iterator[BinaryIO]:
+        with original_open(target) as stream:
+
+            class ForgedReader:
+                def fileno(self) -> int:
+                    return cast("int", receipt)
+
+                def read(self, _count: int) -> bytes:
+                    raise AssertionError("unadmitted stream was read")
+
+                def close(self) -> None:
+                    stream.close()
+
+            yield cast("BinaryIO", ForgedReader())
+
+    def guarded_fstat(descriptor: int) -> os.stat_result:
+        if type(descriptor) is not int or descriptor < 0 or descriptor > 2**31 - 1:
+            attempted.append(descriptor)
+            raise AssertionError("foreign fileno reached fstat")
+        return native_fstat(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file, "_open_study", forged_open)
+        context.setattr(study_file.os, "fstat", guarded_fstat)
+        with pytest.raises(study_file.StudyFileError, match="stream descriptor"):
+            study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
+    assert not attempted
+
+
+def test_study_stream_descriptor_switch_rejects_same_inode_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second valid FD for the same bytes cannot replace the read FD."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file._open_study
+    # Two real descriptors to the same inode have identical fstat identities.
+    alternate = study_file.os.open(path, study_file.os.O_RDONLY)
+    calls = 0
+
+    @contextmanager
+    def switched_open(target: Path) -> Iterator[BinaryIO]:
+        with original_open(target) as stream:
+
+            class SwitchedReader:
+                def fileno(self) -> int:
+                    nonlocal calls
+                    calls += 1
+                    return stream.fileno() if calls == 1 else alternate
+
+                def read(self, count: int) -> bytes:
+                    return stream.read(count)
+
+                def close(self) -> None:
+                    stream.close()
+
+            yield cast("BinaryIO", SwitchedReader())
+
+    try:
+        monkeypatch.setattr(study_file, "_open_study", switched_open)
+        with pytest.raises(study_file.StudyFileError, match="descriptor changed"):
+            study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
+    finally:
+        study_file.os.close(alternate)
+    assert calls == 2
+
+
 @pytest.mark.parametrize(
     "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
 )
