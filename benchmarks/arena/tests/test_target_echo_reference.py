@@ -1475,6 +1475,85 @@ def test_retained_study_rejects_oversized_reader_before_sha256(
         target_echo_reference._audit_retained_study(tmp_path / "study.json")
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [None, "digest", {"retained_study_sha256": None}, {"retained_study_sha256": "a" * 63}],
+    ids=["missing", "text", "missing-digest", "short-digest"],
+)
+def test_retained_study_rejects_invalid_audit_receipt_before_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid: object
+) -> None:
+    """A forged audit result must not authorize a new source read."""
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_audit,
+        "audit",
+        lambda _relative: cast("dict[str, object]", invalid),
+    )
+
+    def forbidden_reader(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("invalid audit receipt reached retained source reader")
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", forbidden_reader)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="exact native retained SHA-256",
+    ):
+        target_echo_reference._audit_retained_study(tmp_path / "study.json")
+
+
+def test_retained_study_rejects_foreign_audit_mapping_before_item_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dependency-owned mapping methods cannot impersonate source agreement."""
+
+    class ForeignAudit(dict[str, str]):
+        def __getitem__(self, key: str) -> str:
+            del key
+            pytest.fail("foreign auditor mapping hook executed")
+
+    raw = b'{}'
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_audit,
+        "audit",
+        lambda _relative: ForeignAudit({"retained_study_sha256": sha256(raw).hexdigest()}),
+    )
+    monkeypatch.setattr(evidence, "read_bounded_regular", lambda *_a, **_k: raw)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="exact native retained SHA-256",
+    ):
+        target_echo_reference._audit_retained_study(tmp_path / "study.json")
+
+
+def test_retained_study_rejects_foreign_audit_digest_before_equality(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A str-subclass digest cannot forge agreement via equality dispatch."""
+
+    class ForeignDigest(str):
+        def __eq__(self, other: object) -> bool:
+            del other
+            pytest.fail("foreign retained digest comparison executed")
+
+        __hash__ = str.__hash__
+
+    raw = b'{}'
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_audit,
+        "audit",
+        lambda _relative: {"retained_study_sha256": ForeignDigest(sha256(raw).hexdigest())},
+    )
+    monkeypatch.setattr(evidence, "read_bounded_regular", lambda *_a, **_k: raw)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="exact native retained SHA-256",
+    ):
+        target_echo_reference._audit_retained_study(tmp_path / "study.json")
+
+
 @pytest.mark.parametrize("tamper_after_audit", [False, True])
 def test_publisher_uses_exact_audited_study_bytes(
     tmp_path: Path,

@@ -1193,8 +1193,19 @@ def _audit_retained_study(path: Path) -> dict[str, Any]:
             f"{_safe_error_detail(error, trusted=target_echo_audit.TargetEchoAuditError)}"
         )
         raise TargetEchoStudyError(message) from error
+    # The auditor's returned report is a dependency receipt. Do not trust a
+    # foreign mapping/digest or allow it to dispatch overridden item methods.
+    if type(checked) is not dict:
+        _fail("target echo audit requires exact native retained SHA-256")
+    reported_digest = checked.get("retained_study_sha256")
+    if (
+        type(reported_digest) is not str
+        or len(reported_digest) != analyze.SHA256_HEX_LENGTH
+        or not set(reported_digest) <= analyze.SHA256_ALPHABET
+    ):
+        _fail("target echo audit requires exact native retained SHA-256")
     raw = _read_source_bytes(relative, limit=target_echo_audit.MAX_STUDY_BYTES)
-    if sha256(raw).hexdigest() != checked["retained_study_sha256"]:
+    if sha256(raw).hexdigest() != reported_digest:
         _fail("target echo retained study changed after independent audit")
     return analyze.parse_document(raw.decode("utf-8"))
 
