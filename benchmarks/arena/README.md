@@ -98,6 +98,14 @@ against the arena record. Only bounded regular manifest files and existing,
 nonempty raw samples under the supplied root are admitted; symlink hops,
 missing artifacts, and identity drift fail closed.
 
+The direct `evidence.validate_links` API admits only an exact `EvidencePolicy`:
+all five optional verification switches must be actual booleans, not truthy
+strings or numbers. A supplied challenge-bundle root must be a canonical
+repository-relative string. Both the preflight and direct retained-file
+readers require a native `Path` root rather than a caller-defined subclass;
+malformed settings reject before run-manifest access or optional host replay.
+This protects input admission, not measurement authenticity.
+
 Both arena CLI entrypoints publish completed JSON reports through a
 single-record checked text writer. A valid `write()` must return the exact
 character count, not a boolean, absent value, short count or overstated count,
@@ -723,6 +731,12 @@ single-record text publisher as the arena analyzer: a complete write count
 and a successful stdout flush are mandatory before it returns code zero.
 A failed stream returns code two even if validated ignored study files have
 already been retained; emitted stdout fragments cannot be rolled back.
+
+Direct `reference_study.run_study` calls require an exact `StudyPlan` with one
+to four distinct difficulty levels in an integer tuple and one to five trials.
+Malformed plans, challenge families, seeds, profiles or node counts reject
+before native resource probes or output-directory creation. This does not
+certify that a valid host measurement is independent or reproducible.
 
 The tool runs repository-pinned Clang 22.1.8 at `-O0` and `-O2` for each
 matched case/replicate, compiling the canonical regenerated C, linking the
