@@ -2816,13 +2816,15 @@ class _PayloadReference:
 def _validate_payload_integrity(
     payload: bytes, reference: _PayloadReference
 ) -> None:
-    if _sha256_digest(payload) != reference.sha256:
-        _fail(f"{reference.context} bytes do not match sidecar hash")
+    # A declared partial length is cheap to verify. Reject it before hashing
+    # potentially huge caller-owned bytes that cannot satisfy the sidecar.
     if (
         reference.byte_count is not None
         and len(payload) != reference.byte_count
     ):
         _fail(f"{reference.context} byte count does not match sidecar")
+    if _sha256_digest(payload) != reference.sha256:
+        _fail(f"{reference.context} bytes do not match sidecar hash")
 
 
 def _validate_payload(

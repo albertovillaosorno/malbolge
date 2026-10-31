@@ -369,10 +369,13 @@ mutable pointer backward. A caller therefore cannot publish a syntactically
 valid sidecar that points at absent or corrupted generation bytes.
 
 Partial-output reads admit at most the sidecar-declared byte count before
-checking the complete payload hash and length. Immutable-generation collision
-checks similarly read at most the proposed immutable payload length, preventing
-oversized pre-existing files from forcing unbounded reads. Opaque checkpoint
-bytes retain their existing unrestricted payload contract.
+checking the complete payload hash and length. Direct generation publication
+also rejects a mismatched declared partial length before hashing caller-owned
+bytes; a malformed large partial cannot consume its full digest cost.
+Immutable-generation collisions similarly read at most the proposed
+immutable payload length, preventing oversized pre-existing files from forcing
+unbounded reads. Opaque checkpoint bytes retain their existing unrestricted
+payload contract.
 
 Bounded reads also use the opened inode's observed size to keep untrusted
 arbitrarily large declared counters from overflowing the host read-size API.

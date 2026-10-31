@@ -4478,7 +4478,8 @@ def test_write_atomic_rejects_unavailable_or_corrupt_generation(
 
     _ = checkpoint_path.write_bytes(checkpoint)
     partial_path = Path(sidecar.partial_path or "")
-    _ = partial_path.write_bytes(b"corrupt-partial")
+    # Corrupt the digest while preserving length; size drift is checked first.
+    _ = partial_path.write_bytes(b"x" * len(partial))
     with pytest.raises(ERROR, match="partial bytes do not match"):
         _ = progress.write_atomic(sidecar)
     assert not destination.exists()
@@ -5586,6 +5587,39 @@ def test_checkpoint_generation_publishes_payloads_before_pointer(
     )
     assert Path(sidecar.checkpoint_path or "").read_bytes() == checkpoint
     assert Path(sidecar.partial_path or "").read_bytes() == partial
+
+
+def test_generation_rejects_wrong_partial_length_before_hashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A malformed direct partial cannot force a large unnecessary digest."""
+    checkpoint = b"checkpoint-state-v1"
+    partial = b"known-partial"
+    oversized = b"x" * (8 * 1024 * 1024)
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=partial
+    )
+    digested: list[int] = []
+
+    def guard_digest(payload: bytes) -> str:
+        digested.append(len(payload))
+        if len(payload) == len(oversized):
+            raise AssertionError(
+                "invalid partial was hashed before size admission"
+            )
+        return _digest(payload)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_sha256_digest", guard_digest)
+        with pytest.raises(ERROR, match="partial byte count does not match"):
+            _ = progress.write_checkpoint_generation(
+                sidecar, checkpoint, oversized
+            )
+    assert digested == [len(checkpoint)]
+    assert sidecar.checkpoint_path is not None
+    assert not Path(sidecar.checkpoint_path).exists()
+    assert not Path(sidecar.progress_path).exists()
 
 
 def test_partial_restoration_bounds_read_to_declared_byte_count(
