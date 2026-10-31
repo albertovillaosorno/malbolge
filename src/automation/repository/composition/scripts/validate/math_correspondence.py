@@ -395,11 +395,35 @@ def _entry(value: object, index: int) -> Correspondence:
     )
 
 
+def _admit_source_text(text: str) -> None:
+    """Require bounded exact UTF-8 text before parsing correspondences.
+
+    Raises:
+        CorrespondenceError: The direct source is noncanonical or over budget.
+
+    """
+    if type(text) is not str:
+        _fail("correspondence TOML requires exact str text")
+    limit = MAX_CORRESPONDENCE_SOURCE_BYTES
+    if len(text) > limit:
+        _fail("correspondence TOML exceeds byte limit")
+    try:
+        encoded_size = len(text.encode("utf-8"))
+    except UnicodeEncodeError as error:
+        message = "correspondence TOML requires strict UTF-8 text"
+        raise CorrespondenceError(message) from error
+    if encoded_size > limit:
+        _fail("correspondence TOML exceeds byte limit")
+
+
 def _parse(text: str) -> tuple[Correspondence, ...]:
+    _admit_source_text(text)
     try:
         parsed = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:
         _fail(f"invalid TOML: {error}")
+    except (ValueError, RecursionError):
+        _fail("invalid TOML exceeds host parser capacity")
     document = _mapping(parsed, "manifest")
     _exact_keys(document, TOP_LEVEL_KEYS, "manifest")
     version = _integer(document["schema_version"], "manifest.schema_version")

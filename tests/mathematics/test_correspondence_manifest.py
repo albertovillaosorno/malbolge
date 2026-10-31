@@ -61,6 +61,47 @@ def _expect_invalid(text: str) -> None:
     raise AssertionError(message)
 
 
+def test_direct_correspondence_toml_rejects_noncanonical_wire_text() -> None:
+    """Direct TOML parsing enforces the same physical source byte ceiling."""
+
+    class _ForgedText(str):  # ruff: ignore[subclass-builtin]
+        """Caller-owned string subclass with potentially forged behavior."""
+
+        __slots__: tuple[str, ...] = ()
+
+    base = "schema_version = 1\ncorrespondence = []\n"
+    limit = validator.MAX_CORRESPONDENCE_SOURCE_BYTES
+    exact = base + "#" + "x" * (limit - len(base) - 1)
+    with pytest.raises(
+        validator.CorrespondenceError, match="must not be empty"
+    ):
+        _ = validator._parse(exact)
+    with pytest.raises(validator.CorrespondenceError, match="byte limit"):
+        _ = validator._parse(exact + "x")
+    with pytest.raises(validator.CorrespondenceError, match="byte limit"):
+        _ = validator._parse(base + "#" + "é" * (limit // 2))
+    with pytest.raises(validator.CorrespondenceError, match="UTF-8"):
+        _ = validator._parse(base + "#\ud800")
+    with pytest.raises(validator.CorrespondenceError, match="exact str"):
+        _ = validator._parse(_ForgedText(base))
+
+
+@pytest.mark.parametrize(
+    "capacity_token",
+    ["[" * 1000 + "1" + "]" * 1000, "9" * 5000],
+    ids=["nested-array", "integer-digits"],
+)
+def test_correspondence_toml_host_parser_capacity_is_typed(
+    capacity_token: str,
+) -> None:
+    """Host TOML parser exhaustion cannot leak a raw parser exception."""
+    text = "schema_version = 1\ncorrespondence = []\nprobe = " + capacity_token
+    with pytest.raises(
+        validator.CorrespondenceError, match="host parser capacity"
+    ):
+        _ = validator._parse(text)
+
+
 def test_repository_correspondence_graph_is_closed() -> None:
     """Every normative equation label maps to existing executable evidence."""
     entries = validator.validate_repository()
