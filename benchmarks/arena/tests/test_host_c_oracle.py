@@ -1662,3 +1662,72 @@ def test_host_c_native_child_cleanup_note_retains_message(
     with pytest.raises(host_c_oracle.HostOracleError, match="timed out") as caught:
         host_c_oracle._wait_child(cast("Any", ChildProbe()), "O0 compile")
     assert any("native child cleanup denied" in note for note in caught.value.__notes__)
+
+
+def test_host_c_child_cleanup_bypasses_hostile_primary_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign primary BaseException cannot hijack cleanup annotation."""
+
+    class HostilePrimary(BaseException):
+        def add_note(self, note: str) -> None:
+            del note
+            raise AssertionError("foreign host-C primary note hook invoked")
+
+    primary = HostilePrimary("primary child fault")
+    cleanup = host_c_oracle.HostOracleError("cleanup failed")
+
+    class ChildProbe:
+        def communicate(self, *, timeout: int) -> None:
+            del timeout
+            raise primary
+
+    def fail_cleanup(_child: object) -> int:
+        raise cleanup
+
+    monkeypatch.setattr(host_c_oracle, "_finish_child", fail_cleanup)
+    with pytest.raises(HostilePrimary) as caught:
+        host_c_oracle._wait_child(cast("Any", ChildProbe()), "O0 compile")
+    assert caught.value is primary
+    assert any("cleanup also failed" in note for note in primary.__notes__)
+
+
+@pytest.mark.parametrize("kind", [OSError, ValueError, RuntimeError])
+def test_host_c_rss_cleanup_bypasses_hostile_primary_note(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: type[Exception],
+) -> None:
+    """Foreign primary hooks cannot erase a failed RSS measurement."""
+
+    class HostilePrimary(kind):
+        def add_note(self, note: str) -> None:
+            del note
+            raise AssertionError("foreign host-C RSS primary note hook invoked")
+
+    primary = HostilePrimary("primary stage fault")
+    cleanup = PermissionError("secondary receipt cleanup failed")
+    original_unlink = Path.unlink
+
+    def fail_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        if path.name.startswith("host-c-stage-rss-"):
+            raise cleanup
+        original_unlink(path, missing_ok=missing_ok)
+
+    def fail_stage(_child: object, _label: str) -> None:
+        raise primary
+
+    monkeypatch.setattr(host_c_oracle, "_limited_command", lambda command: command)
+    monkeypatch.setattr(host_c_oracle, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(host_c_oracle.sp, "Popen", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(host_c_oracle, "_wait_child", fail_stage)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+    try:
+        with pytest.raises(HostilePrimary) as caught:
+            host_c_oracle._bounded_child(["fake"], tmp_path, "RSS")
+        assert caught.value is primary
+        assert any("cleanup also failed" in note for note in primary.__notes__)
+    finally:
+        monkeypatch.setattr(Path, "unlink", original_unlink)
+        for artifact in tmp_path.glob("host-c-stage-rss-*"):
+            artifact.unlink()

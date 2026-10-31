@@ -353,8 +353,10 @@ def _wait_child(child: sp.Popen[bytes], label: str) -> None:
         except HostOracleError as error:
             if original is None:
                 raise
-            original.add_note(
-                f"host-C cleanup also failed: {_cleanup_error_detail(error)}"
+            # Keep the original exception even if it overrides add_note.
+            BaseException.add_note(
+                original,
+                f"host-C cleanup also failed: {_cleanup_error_detail(error)}",
             )
     if type(observed) is not int or reaped is None or observed != reaped:
         _fail(f"host-C challenge oracle {label} inconsistent child exit receipt")
@@ -410,8 +412,10 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
             Path(output_path).unlink(missing_ok=True)
         except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
             if primary is not None:
-                primary.add_note(
-                    f"host-C RSS receipt cleanup also failed: {_cleanup_error_detail(error)}"
+                # Cleanup cannot dispatch a foreign primary note method.
+                BaseException.add_note(
+                    primary,
+                    f"host-C RSS receipt cleanup also failed: {_cleanup_error_detail(error)}",
                 )
             else:
                 message = "host-C challenge oracle RSS receipt cleanup failed"
