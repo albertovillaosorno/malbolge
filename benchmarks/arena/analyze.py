@@ -562,6 +562,56 @@ def _median_interval_receipt(values: list[int]) -> dict[str, Any] | None:
     }
 
 
+def _paired_sign_receipt(left: int, right: int) -> dict[str, Any] | None:
+    """Admit and own bounded exact paired-sign helper metadata.
+
+    Returns:
+        Canonical native probability or unavailable for no eligible pairs.
+
+    """
+    try:
+        receipt: object = paired_exact_tests.two_sided_sign_test(left, right)
+    except Exception as error:
+        message = "paired exact computation failed"
+        raise ArenaError(message) from error
+    count = left + right
+    if count == 0 or count > paired_exact_tests.MAX_DISCORDANT_PAIRS:
+        if receipt is not None:
+            _fail("paired exact receipt fabricates ineligible discordance")
+        return None
+    if (
+        type(receipt) is not dict
+        or any(type(key) is not str for key in receipt)
+        or set(receipt) != {"discordant_pairs", "p_two_sided"}
+        or type(receipt["discordant_pairs"]) is not int
+        or receipt["discordant_pairs"] != count
+    ):
+        _fail("paired exact receipt has invalid source count identity")
+    pair = receipt["p_two_sided"]
+    if (
+        type(pair) is not list
+        or len(pair) != 2
+        or any(type(value) is not int for value in pair)
+    ):
+        _fail("paired exact receipt requires native rational probability")
+    numerator, denominator = pair
+    if (
+        denominator < 1
+        or denominator > (1 << count)
+        or denominator & (denominator - 1) != 0
+        or not 1 <= numerator <= denominator
+    ):
+        _fail("paired exact receipt has invalid rational probability")
+    rational = Fraction(numerator, denominator)
+    if [rational.numerator, rational.denominator] != pair:
+        _fail("paired exact receipt has noncanonical rational probability")
+    # A dependency's retained list must not be able to rewrite published p.
+    return {
+        "discordant_pairs": count,
+        "p_two_sided": [rational.numerator, rational.denominator],
+    }
+
+
 def _paired_cost(
     pairs: list[tuple[dict[str, Any], dict[str, Any]]],
     name: str,
@@ -587,7 +637,7 @@ def _paired_cost(
             _median_interval_receipt(differences)
         )
     if paired_exact_tests_enabled:
-        result["paired_sign_test"] = paired_exact_tests.two_sided_sign_test(
+        result["paired_sign_test"] = _paired_sign_receipt(
             result["candidate_lower"],
             result["candidate_higher"],
         )
@@ -641,7 +691,7 @@ def _paired_per_cohort(
         }
         if policy.paired_exact_tests:
             paired_report["verification_asymmetry_test"] = (
-                paired_exact_tests.two_sided_sign_test(
+                _paired_sign_receipt(
                     outcomes["baseline_only_verified"],
                     outcomes["candidate_only_verified"],
                 )

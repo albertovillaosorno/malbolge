@@ -500,6 +500,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   retain null on zero or over-limit discordant samples; test hypotheses rely
   on independent pairs and remain unadjusted across multiple comparisons.
   Neither verifier authority nor automatic significance is inferred.
+  The analyzer now checks native two-sided p-value receipts against the exact
+  admitted discordant count and a reduced binary-rational probability before
+  both cost-sign and outcome-asymmetry reporting and optional Holm correction.
+  Forty-two forged-return site cases, missing/ineligible controls, a hostile
+  helper failure, an aliased-receipt mutation and both CLI no-JSON regressions
+  fail closed. The statistical calculation is not independently certified.
 - Explicit study-wide Holm-Bonferroni correction now adjusts nonnull paired
   asymmetry and non-tied cost-sign probabilities across all comparisons and
   difficulties in exact rational arithmetic, preserving raw p-values. The

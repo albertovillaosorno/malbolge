@@ -2403,3 +2403,215 @@ def test_median_inference_requires_null_beyond_supported_sample_sizes(
     )
     with pytest.raises(analyze.ArenaError, match="median interval receipt"):
         analyze._median_interval_receipt(values)
+
+
+class _ForeignPairedReceipt(dict[str, object]):
+    """A source-reported sign test cannot run custom mapping iteration."""
+
+    def __iter__(self):  # type: ignore[override]
+        raise AssertionError("foreign paired receipt iterator executed")
+
+
+@pytest.mark.parametrize("call_index", [1, 2, 3], ids=["cost", "tied-cost", "outcome"])
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        True,
+        "ready",
+        {"discordant_pairs": 12},
+        {"discordant_pairs": -1, "p_two_sided": [1, 4]},
+        {"discordant_pairs": 12, "p_two_sided": [1, 0]},
+        {"discordant_pairs": 12, "p_two_sided": [0, 1]},
+        {"discordant_pairs": 12, "p_two_sided": [2, 1]},
+        {"discordant_pairs": 12, "p_two_sided": [1, 3]},
+        {"discordant_pairs": 12, "p_two_sided": [2, 4]},
+        {"discordant_pairs": 12, "p_two_sided": [True, 1]},
+        {"discordant_pairs": True, "p_two_sided": [1, 1]},
+        {"discordant_pairs": 12, "p_two_sided": (1, 1)},
+        {"discordant_pairs": 12, "p_two_sided": [1, 1], "extra": 1},
+        _ForeignPairedReceipt({"discordant_pairs": 12, "p_two_sided": [1, 1]}),
+    ],
+    ids=[
+        "boolean",
+        "text",
+        "missing-fields",
+        "wrong-count",
+        "zero-denominator",
+        "zero-probability",
+        "above-one",
+        "nonbinary",
+        "unreduced",
+        "boolean-numerator",
+        "boolean-count",
+        "tuple-probability",
+        "extra-field",
+        "foreign-mapping",
+    ],
+)
+def test_paired_receipt_rejects_forged_statistics_at_all_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    call_index: int,
+    receipt: object,
+) -> None:
+    """All paired-result identities fail closed before report publication."""
+    original = analyze.paired_exact_tests.two_sided_sign_test
+    calls = 0
+
+    def substituted(left: int, right: int) -> object:
+        nonlocal calls
+        calls += 1
+        return receipt if calls == call_index else original(left, right)
+
+    monkeypatch.setattr(analyze.paired_exact_tests, "two_sided_sign_test", substituted)
+    doc = analyze.parse_document(json.dumps(_repeated_success_study(12)))
+    with pytest.raises(analyze.ArenaError, match="paired exact receipt"):
+        analyze.analyze(doc, paired_exact_tests_enabled=True)
+    assert calls == call_index
+
+
+def test_paired_receipt_rejects_missing_eligible_result_before_holm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No manufactured null p-value can conceal twelve discordant pairs."""
+    monkeypatch.setattr(
+        analyze.paired_exact_tests, "two_sided_sign_test", lambda *_: None
+    )
+    doc = analyze.parse_document(json.dumps(_repeated_success_study(12)))
+    with pytest.raises(analyze.ArenaError, match="paired exact receipt"):
+        analyze.analyze(doc, paired_exact_tests_enabled=True, adjust_paired_tests=True)
+
+
+def test_paired_receipt_prevents_zero_denominator_holm_escape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invalid dependency return is typed before Fraction construction."""
+    monkeypatch.setattr(
+        analyze.paired_exact_tests,
+        "two_sided_sign_test",
+        lambda *_: {"discordant_pairs": -5, "p_two_sided": [1, 0]},
+    )
+    doc = analyze.parse_document(json.dumps(_repeated_success_study(12)))
+    with pytest.raises(analyze.ArenaError, match="paired exact receipt"):
+        analyze.analyze(doc, paired_exact_tests_enabled=True, adjust_paired_tests=True)
+
+
+def test_paired_receipt_types_unanticipated_helper_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign exception cannot format itself while escaping analysis."""
+
+    class HostilePairedError(RuntimeError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign paired error formatted")
+
+    injected = HostilePairedError("untrusted")
+
+    def fail(_left: int, _right: int) -> Never:
+        raise injected
+
+    monkeypatch.setattr(analyze.paired_exact_tests, "two_sided_sign_test", fail)
+    doc = analyze.parse_document(json.dumps(_repeated_success_study(12)))
+    with pytest.raises(
+        analyze.ArenaError, match="paired exact computation failed"
+    ) as caught:
+        analyze.analyze(doc, paired_exact_tests_enabled=True)
+    assert caught.value.__cause__ is injected
+
+
+def test_paired_receipt_is_owned_after_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing helper-owned mutable p-values cannot rewrite the report."""
+    original = analyze.paired_exact_tests.two_sided_sign_test
+    retained: list[analyze.paired_exact_tests.PairedExactTest] = []
+
+    def borrowed(
+        left: int, right: int
+    ) -> analyze.paired_exact_tests.PairedExactTest | None:
+        result = original(left, right)
+        if result is not None:
+            retained.append(result)
+        return result
+
+    monkeypatch.setattr(analyze.paired_exact_tests, "two_sided_sign_test", borrowed)
+    doc = analyze.parse_document(json.dumps(_repeated_success_study(12)))
+    report = analyze.analyze(doc, paired_exact_tests_enabled=True)
+    first = report["paired_baseline_comparisons"][0]["cost_differences"]["elapsed_ns"][
+        "paired_sign_test"
+    ]
+    expected = copy.deepcopy(first)
+    assert retained
+    retained[0]["p_two_sided"][1] = 0
+    retained[0]["discordant_pairs"] = -5
+    assert first == expected
+
+
+@pytest.mark.parametrize(
+    "discordant", [0, analyze.paired_exact_tests.MAX_DISCORDANT_PAIRS + 1]
+)
+def test_paired_receipt_rejects_ineligible_fabricated_p_values(
+    monkeypatch: pytest.MonkeyPatch,
+    discordant: int,
+) -> None:
+    """Null remains mandatory for absent or over-limit discordance."""
+    assert analyze._paired_sign_receipt(discordant, 0) is None
+    monkeypatch.setattr(
+        analyze.paired_exact_tests,
+        "two_sided_sign_test",
+        lambda *_: {"discordant_pairs": discordant, "p_two_sided": [1, 1]},
+    )
+    with pytest.raises(analyze.ArenaError, match="paired exact receipt"):
+        analyze._paired_sign_receipt(discordant, 0)
+
+
+@pytest.mark.parametrize("cli", ["standalone", "linked-evidence"])
+def test_paired_receipt_both_clis_reject_forged_p_value_before_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cli: str,
+) -> None:
+    """Neither operator can print a forged p-value or traceback as success."""
+    from benchmarks.arena import evidence
+    from benchmarks.arena.tests.test_evidence import sample_study
+
+    doc = _repeated_success_study(12) if cli == "standalone" else sample_study(tmp_path)
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(doc), encoding="utf-8")
+    monkeypatch.setattr(
+        analyze.paired_exact_tests,
+        "two_sided_sign_test",
+        lambda *_: {"discordant_pairs": -5, "p_two_sided": [1, 0]},
+    )
+    if cli == "standalone":
+        args = ["arena", str(path), "--paired-exact-tests", "--adjust-paired-tests"]
+        entry = analyze.main
+    else:
+        args = [
+            "arena-evidence",
+            str(path),
+            "--root",
+            str(tmp_path),
+            "--paired-exact-tests",
+            "--adjust-paired-tests",
+        ]
+        entry = evidence.main
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit, match="2"):
+        entry()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "paired exact receipt" in output.err
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [(1, 0), (3, 7), (4096, 0), (2048, 2048)],
+)
+def test_paired_receipt_preserves_exact_valid_probability_at_boundaries(
+    left: int, right: int,
+) -> None:
+    """An admitted real helper result retains exact rational wire values."""
+    expected = analyze.paired_exact_tests.two_sided_sign_test(left, right)
+    assert expected is not None
+    assert analyze._paired_sign_receipt(left, right) == expected
