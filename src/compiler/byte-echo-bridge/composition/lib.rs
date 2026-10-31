@@ -237,6 +237,32 @@ const ROTATED_OCTUPLE_BYTE_SEEDS: &[(u8, usize)] = &[
     (197, 24),
 ];
 
+/// Nine outputs require a new positional layout and loader-resident word.
+/// Each entry is the first verified phase for its byte in a 26-phase scan.
+const ROTATED_NONUPLE_BYTE_SEEDS: &[(u8, usize)] = &[
+    (1, 23),
+    (2, 20),
+    (3, 17),
+    (4, 14),
+    (5, 11),
+    (6, 8),
+    (7, 5),
+    (9, 2),
+    (10, 24),
+    (11, 18),
+    (18, 16),
+    (19, 13),
+    (20, 10),
+    (21, 7),
+    (22, 1),
+    (23, 19),
+    (142, 6),
+    (143, 3),
+    (144, 0),
+    (251, 15),
+    (252, 9),
+];
+
 /// A failed pre-layout admission, semantic bridge, or final target admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ByteEchoBridgeError {
@@ -249,6 +275,26 @@ pub enum ByteEchoBridgeError {
     /// The function is not a nonempty sequence of adjacent echo pairs with
     /// one final value-free return, or multiple functions are supplied.
     UnsupportedEffectTrace,
+}
+
+type RotatedByteSeedTable = &'static [(u8, usize)];
+
+// Each output count has a distinct positional decode and loader-expanded
+// memory witness. The closed selector prevents a seed from leaking across
+// source lengths before independent guest execution verifies the candidate.
+const fn rotated_byte_seeds(outputs: usize) -> Option<RotatedByteSeedTable> {
+    match outputs {
+        1 => Some(ROTATED_BYTE_SEEDS),
+        2 => Some(ROTATED_DOUBLE_BYTE_SEEDS),
+        3 => Some(ROTATED_TRIPLE_BYTE_SEEDS),
+        4 => Some(ROTATED_QUADRUPLE_BYTE_SEEDS),
+        5 => Some(ROTATED_QUINTUPLE_BYTE_SEEDS),
+        6 => Some(ROTATED_SEXTUPLE_BYTE_SEEDS),
+        7 => Some(ROTATED_SEPTUPLE_BYTE_SEEDS),
+        8 => Some(ROTATED_OCTUPLE_BYTE_SEEDS),
+        9 => Some(ROTATED_NONUPLE_BYTE_SEEDS),
+        _ => None,
+    }
 }
 
 /// Emits one bounded, source-validated successful-byte-echo trace.
@@ -555,9 +601,9 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
     Some((*result, *value))
 }
 
-/// Emits a nonzero `u8` one to eight times using guest data rotation.
+/// Emits a nonzero `u8` one to nine times using guest data rotation.
 ///
-/// Accepts one `MaterializeU8` with one to eight same-SSA `ByteOutput`s and
+/// Accepts one `MaterializeU8` with one to nine same-SSA `ByteOutput`s and
 /// `ReturnVoid` for the current profile. A bounded source-address-specific
 /// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
 /// memory word; the guest `*` changes its own accumulator, not the host.
@@ -598,16 +644,8 @@ pub fn encode_rotated_byte_literal(
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
-    let seeds = match outputs.len() {
-        1 => ROTATED_BYTE_SEEDS,
-        2 => ROTATED_DOUBLE_BYTE_SEEDS,
-        3 => ROTATED_TRIPLE_BYTE_SEEDS,
-        4 => ROTATED_QUADRUPLE_BYTE_SEEDS,
-        5 => ROTATED_QUINTUPLE_BYTE_SEEDS,
-        6 => ROTATED_SEXTUPLE_BYTE_SEEDS,
-        7 => ROTATED_SEPTUPLE_BYTE_SEEDS,
-        8 => ROTATED_OCTUPLE_BYTE_SEEDS,
-        _ => return Err(ByteEchoBridgeError::UnsupportedEffectTrace),
+    let Some(seeds) = rotated_byte_seeds(outputs.len()) else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
     let Some((byte, padding)) = seeds
         .iter()

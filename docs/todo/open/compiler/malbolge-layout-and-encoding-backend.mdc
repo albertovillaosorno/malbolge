@@ -219,13 +219,14 @@ emission.
   normative two-byte oracle. This was the initial two-output milestone;
   unknown seeds and foreign profiles still reject. Old zero/latest/identity
   modes remain strict; this is not a general constant or C backend.
-- The separately verified seeded-literal publisher now admits one to eight
+- The separately verified seeded-literal publisher now admits one to nine
   same-SSA byte outputs through exact per-count guest rotation witnesses.
-  Independent 26-phase eight-output VM scans produce 21 distinct nonzero
-  bytes; only shortest valid prefixes are accepted. The 256-byte admission
-  domain, real CLI MCTI/MCTR raw/capsule publisher, guest runner and
+  Independent 26-phase eight- and nine-output VM scans each produce 21
+  distinct nonzero bytes; only shortest valid prefixes are accepted. The
+  256-byte admission domain, real CLI MCTI/MCTR raw/capsule publisher,
+  guest runner and
   zero-consumed-input checks preserve rejection of unsupported values,
-  foreign profiles and nine or more outputs. This is not general guest
+  foreign profiles and ten or more outputs. This is not general guest
   integer computation or proof of arbitrary output sequences.
 - The explicit `--identity-byte-trace` MCTI/MCTR file/stdin publisher
   admits latest-input signed/unsigned eight-bit SSA bitcasts through
