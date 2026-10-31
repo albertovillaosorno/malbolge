@@ -705,3 +705,158 @@ def test_transition_and_historical_fingerprints_are_distinct() -> None:
     historical = validator.profile_fingerprint(document, "malbolge-1998")
     transition = validator.profile_fingerprint(document, "malbolge-2026.1")
     assert historical != transition
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [validator.json.JSONDecodeError, ValueError, TypeError, RuntimeError],
+)
+def test_profile_json_parser_never_formats_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch, fault_type: type[Exception]
+) -> None:
+    """A hostile JSON decoder error remains typed without formatter hooks."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign profile JSON exception formatter executed")
+
+    foreign = type("ForeignProfileJsonFault", (fault_type,), {"__str__": unsafe_str})
+    fault = (
+        foreign("decoder fault", '{"invalid', 1)
+        if fault_type is validator.json.JSONDecodeError
+        else foreign("decoder fault")
+    )
+
+    def fail_json(_text: str, *, object_pairs_hook: object) -> None:
+        del object_pairs_hook
+        raise fault
+
+    monkeypatch.setattr(validator.json, "loads", fail_json)
+    with pytest.raises(
+        validator.ProfileValidationError, match="invalid JSON"
+    ) as caught:
+        validator.loads_document(_canonical_text())
+    assert caught.value.__cause__ is fault
+
+
+def test_native_profile_json_syntax_diagnostic_keeps_position_and_cause() -> None:
+    """Native JSON syntax errors preserve actionable source coordinates."""
+    with pytest.raises(
+        validator.ProfileValidationError, match="invalid JSON"
+    ) as caught:
+        validator.loads_document('{"broken":')
+    assert type(caught.value.__cause__) is validator.json.JSONDecodeError
+    assert "line" in str(caught.value)
+
+
+@pytest.mark.parametrize("position", ["root", "nested", "key"])
+def test_profile_json_parser_refuses_foreign_mapping_receipts(
+    monkeypatch: pytest.MonkeyPatch, position: str
+) -> None:
+    """JSON map and key subclasses are rejected before inherited hooks run."""
+
+    class ForeignMap(dict[str, object]):
+        def items(self):  # type: ignore[override]
+            raise AssertionError("foreign profile map iteration executed")
+
+    class ForeignKey(str):
+        __hash__ = str.__hash__
+
+        def __str__(self) -> str:
+            raise AssertionError("foreign profile key formatter executed")
+
+    native = validator.json.loads(_canonical_text())
+    if position == "root":
+        forged: object = ForeignMap(native)
+    elif position == "nested":
+        forged = {**native, "profiles": ForeignMap(native["profiles"])}
+    else:
+        forged = {**native, ForeignKey("untrusted"): "value"}
+    monkeypatch.setattr(validator.json, "loads", lambda _text, **_kwargs: forged)
+    expected = "non-native string key" if position == "key" else "must be an object"
+    with pytest.raises(validator.ProfileValidationError, match=expected):
+        validator.validate_text(_canonical_text())
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_profile_file_host_faults_never_format_foreign_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Host status error subclasses cannot escape trusted failure handling."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign target-profile host formatter executed")
+
+    foreign = type("ForeignProfileHostFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe filesystem detail")
+    path = tmp_path / "profile.json"
+    _ = path.write_text(_canonical_text(), encoding="utf-8")
+    original_lstat = Path.lstat
+
+    def fail_lstat(candidate: Path) -> os.stat_result:
+        if candidate == path:
+            raise fault
+        return original_lstat(candidate)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(
+        validator.ProfileValidationError, match="failed to read"
+    ) as caught:
+        validator.load_document(path)
+    assert caught.value.__cause__ is fault
+
+
+def test_profile_native_host_errors_keep_original_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exact built-in host errors remain diagnosable after wrapping."""
+    path = tmp_path / "profile.json"
+    _ = path.write_text(_canonical_text(), encoding="utf-8")
+    fault = OSError("native profile read blocked")
+    original_open = os.open
+
+    def fail_open(candidate: Path, flags: int) -> int:
+        if candidate == path:
+            raise fault
+        return original_open(candidate, flags)
+
+    monkeypatch.setattr(os, "open", fail_open)
+    with pytest.raises(
+        validator.ProfileValidationError, match="native profile read blocked"
+    ) as caught:
+        validator.load_document(path)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("position", ["pairs", "pair", "key"])
+def test_profile_duplicate_key_hook_refuses_foreign_containers(
+    position: str,
+) -> None:
+    """The JSON object-pairs callback never executes foreign list/key hooks."""
+
+    class ForeignPairs(list[tuple[str, object]]):
+        def __iter__(self):  # type: ignore[override]
+            raise AssertionError("foreign JSON pairs iteration executed")
+
+    class ForeignPair(tuple[str, object]):
+        def __iter__(self):  # type: ignore[override]
+            raise AssertionError("foreign JSON pair iteration executed")
+
+    class ForeignKey(str):
+        def __hash__(self) -> int:
+            raise AssertionError("foreign JSON key hashing executed")
+
+    if position == "pairs":
+        pairs = ForeignPairs([("trusted", 1)])
+    elif position == "pair":
+        pairs = [ForeignPair(("trusted", 1))]
+    else:
+        pairs = [(ForeignKey("trusted"), 1)]
+    with pytest.raises(validator.ProfileValidationError, match="JSON"):
+        validator._reject_duplicate_pairs(  # pyright: ignore[reportPrivateUsage]
+            cast("list[tuple[str, object]]", pairs)
+        )

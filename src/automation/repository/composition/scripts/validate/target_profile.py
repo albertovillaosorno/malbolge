@@ -253,13 +253,13 @@ def _expect_int(value: JsonValue, context: str) -> int:
 
 
 def _expect_mapping(value: object, context: str) -> JsonObject:
-    if not isinstance(value, dict):
-        _fail(f"{context} must be an object")
+    if type(value) is not dict:
+        _fail(f"{context} must be an object (exact native dict required)")
     raw = cast("dict[object, object]", value)
     result: JsonObject = {}
     for key, item in raw.items():
-        if not isinstance(key, str):
-            _fail(f"{context} contains a non-string key")
+        if type(key) is not str:
+            _fail(f"{context} contains a non-native string key")
         result[key] = cast("JsonValue", item)
     return result
 
@@ -271,8 +271,15 @@ def _expect_string(value: JsonValue, context: str) -> str:
 
 
 def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> JsonObject:
+    if type(pairs) is not list:
+        _fail("JSON object pairs must be a native list")
     result: JsonObject = {}
-    for key, value in pairs:
+    for pair in pairs:
+        if type(pair) is not tuple or len(pair) != 2:
+            _fail("JSON object entry must be a native key-value pair")
+        key, value = pair
+        if type(key) is not str:
+            _fail("JSON object key must be a native string")
         if key in result:
             _fail(f"duplicate JSON key: {key}")
         result[key] = cast("JsonValue", value)
@@ -297,9 +304,16 @@ def loads_document(text: str) -> JsonObject:
         # Preserve the duplicate-key diagnostic raised by our object hook.
         raise
     except json.JSONDecodeError as error:
-        _fail(f"invalid JSON: {error}")
-    except (ValueError, RecursionError):
-        _fail("invalid JSON exceeds host parser capacity")
+        detail = (
+            str(error) if type(error) is json.JSONDecodeError else type(error).__name__
+        )
+        raise ProfileValidationError(f"invalid JSON: {detail}") from error
+    except (ValueError, RecursionError) as error:
+        message = "invalid JSON exceeds host parser capacity"
+        raise ProfileValidationError(message) from error
+    except (TypeError, RuntimeError) as error:
+        message = "invalid JSON host parser failure"
+        raise ProfileValidationError(message) from error
     return _expect_mapping(parsed, "target profile document")
 
 
@@ -392,9 +406,15 @@ def load_document(path: Path) -> JsonObject:
         raise
     except UnicodeDecodeError as error:
         _fail(f"invalid target-profile UTF-8: {error}")
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        # Only exact native exceptions can supply trusted diagnostic text.
+        detail = (
+            str(error)
+            if type(error) in (OSError, ValueError, TypeError, RuntimeError)
+            else type(error).__name__
+        )
         raise ProfileValidationError(
-            f"failed to read target-profile document {path}: {error}"
+            f"failed to read target-profile document {path}: {detail}"
         ) from error
     return loads_document(text)
 
