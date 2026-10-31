@@ -720,6 +720,14 @@ prevent diagnostic delivery but cannot convert a rejected inspection,
 extraction, follow, help, or usage operation into an uncaught stream exception
 or successful exit. The original error status remains authoritative.
 
+All operator modes now contain even unexpected ordinary dependency and stream
+exceptions at the outer CLI boundary. A failed inspection, checkpoint metadata
+read, binary extraction, follow, or help request returns status 1 with a
+sanitized diagnostic rather than escaping a traceback or claiming success.
+Unexpected stderr write/flush exceptions also retain the original nonzero
+status. This boundary does not intercept process-control exceptions such as
+`KeyboardInterrupt` or confer validity on partial stdout.
+
 Diagnostics are flushed on the best-effort path; errors during the flush
 also preserve the original failure status. Absent standard streams and
 noncallable output methods follow the same rule,

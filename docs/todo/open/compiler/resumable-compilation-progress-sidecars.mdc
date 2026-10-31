@@ -655,6 +655,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   untrusted inode receipts without masking the primary write error or unlinking
   unverified files. Five adversarial cases exercise these boundaries.
 
+  The progress operator CLI now contains unexpected ordinary dependency and
+  stdout faults on inspection, metadata, extraction, follow and help, with
+  sanitized diagnostics and status 1; failed stderr write or flush never
+  masks status 1/2. Red-first injected LookupError/AssertionError cases cover
+  all five command modes and both diagnostic failure phases, without claiming
+  that an interrupted binary stdout stream is a verified checkpoint.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact

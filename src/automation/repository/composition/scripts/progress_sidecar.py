@@ -78,6 +78,8 @@ CHECKPOINT_SCHEMA_ID: Final = "malbolge-checkpoint-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
 TERMINAL_STATUSES: Final = frozenset({"cancelled", "completed", "failed"})
 _CALLBACK_ERRORS: Final = (Exception,)
+# The public CLI contains ordinary dependency faults without swallowing exits.
+_OPERATOR_ERRORS: Final = (Exception,)
 _OUTPUT_STREAM_ERRORS: Final = (
     OSError,
     ValueError,
@@ -3506,7 +3508,7 @@ def _write_error_diagnostic(message: str) -> None:
     try:
         _ = sys.stderr.write(message)
         _ = sys.stderr.flush()
-    except _OUTPUT_STREAM_ERRORS:
+    except _OPERATOR_ERRORS:
         # The caller already rejected the operation. The status must remain
         # nonzero even when the diagnostic sink is unavailable.
         return
@@ -3543,7 +3545,7 @@ def _checkpoint_info_path(path: Path) -> int:
             _read_canonical_pointer(path)
         )
         _write_operator_text(render_checkpoint_metadata(metadata))
-    except (OSError, ProgressSidecarError) as error:
+    except _OPERATOR_ERRORS as error:
         message = f"portable checkpoint inspection failed: {_host_error_detail(error)}\n"
         _write_error_diagnostic(message)
         return 1
@@ -3554,7 +3556,7 @@ def _extract_checkpoint_path(path: Path, state_codec: str) -> int:
     try:
         payload = _portable_payload_from_path(path, state_codec)
         _write_binary_stdout(payload)
-    except (OSError, ProgressSidecarError) as error:
+    except _OPERATOR_ERRORS as error:
         message = f"portable checkpoint extraction failed: {_host_error_detail(error)}\n"
         _write_error_diagnostic(message)
         return 1
@@ -3565,7 +3567,7 @@ def _inspect_path(path: Path) -> int:
     try:
         sidecar = _read_canonical_pointer(path)
         _write_operator_text(render_summary(sidecar))
-    except (OSError, ProgressSidecarError) as error:
+    except _OPERATOR_ERRORS as error:
         message = f"progress sidecar inspection failed: {_host_error_detail(error)}\n"
         _write_error_diagnostic(message)
         return 1
@@ -3614,7 +3616,7 @@ def _follow_path(
 ) -> int:
     try:
         return _follow_validated_path(path, wait)
-    except (OSError, ProgressSidecarError) as error:
+    except _OPERATOR_ERRORS as error:
         message = f"progress sidecar follow failed: {_host_error_detail(error)}\n"
         _write_error_diagnostic(message)
         return 1
@@ -3662,7 +3664,7 @@ def main(argv: list[str] | None = None) -> int:
     if arguments in (["-h"], ["--help"]):
         try:
             _write_operator_text(usage)
-        except ProgressSidecarError as error:
+        except _OPERATOR_ERRORS as error:
             _write_error_diagnostic(f"progress sidecar help failed: {_host_error_detail(error)}\n")
             return 1
         return 0

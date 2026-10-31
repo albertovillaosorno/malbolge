@@ -1315,6 +1315,93 @@ def test_progress_cli_help_advertises_checkpoint_inspection_and_extraction(
     assert not captured.err
 
 
+@pytest.mark.parametrize("failure_type", [LookupError, AssertionError])
+@pytest.mark.parametrize(
+    "mode", ["inspect", "checkpoint-info", "extract", "follow", "help"]
+)
+def test_operator_contains_unexpected_dependency_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failure_type: type[Exception],
+    mode: str,
+) -> None:
+    """Ordinary unknown producer/stream failures cannot escape the CLI."""
+    completed = _sidecar(tmp_path, status=progress.ProgressStatus.COMPLETED)
+    destination = progress.write_atomic(completed)
+    invocations = {
+        "inspect": [str(destination)],
+        "checkpoint-info": ["--checkpoint-info", str(destination)],
+        "extract": ["--extract-checkpoint", "codec-v1", str(destination)],
+        "follow": ["--follow", str(destination)],
+        "help": ["--help"],
+    }
+    producers = {
+        "inspect": "_read_canonical_pointer",
+        "checkpoint-info": "read_portable_checkpoint_metadata",
+        "extract": "_portable_payload_from_path",
+        "follow": "_follow_validated_path",
+    }
+    prefixes = {
+        "inspect": INSPECTION_FAILED_PREFIX,
+        "checkpoint-info": CHECKPOINT_INSPECTION_FAILED_PREFIX,
+        "extract": CHECKPOINT_EXTRACTION_FAILED_PREFIX,
+        "follow": FOLLOW_FAILED_PREFIX,
+        "help": "progress sidecar help failed:",
+    }
+
+    def fail_dependency(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise failure_type("unexpected producer fault")
+
+    class BrokenHelpOutput(StringIO):
+        @override
+        def write(self, data: str) -> int:
+            del data
+            raise failure_type("unexpected help output fault")
+
+    output = BrokenHelpOutput() if mode == "help" else StringIO()
+    error = StringIO()
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", output)
+        context.setattr(sys, "stderr", error)
+        if mode in producers:
+            context.setattr(progress, producers[mode], fail_dependency)
+        assert progress.main(invocations[mode]) == 1
+    assert output.getvalue() == ""
+    assert prefixes[mode] in error.getvalue()
+    assert failure_type.__name__ in error.getvalue()
+
+
+@pytest.mark.parametrize("mode", ["usage", "inspect"])
+@pytest.mark.parametrize("failed_phase", ["write", "flush"])
+def test_operator_unexpected_diagnostic_sink_fault_keeps_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    failed_phase: str,
+) -> None:
+    """A foreign stderr failure never converts a rejection to a traceback."""
+    class BrokenDiagnosticStream(StringIO):
+        @override
+        def write(self, data: str) -> int:
+            if failed_phase == "write":
+                raise LookupError("unexpected diagnostic write fault")
+            return super().write(data)
+
+        @override
+        def flush(self) -> None:
+            if failed_phase == "flush":
+                raise LookupError("unexpected diagnostic flush fault")
+            super().flush()
+
+    missing = str(tmp_path / "unavailable.progress.json")
+    arguments = ["--invalid", missing] if mode == "usage" else [missing]
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stderr", BrokenDiagnosticStream())
+        assert progress.main(arguments) == (2 if mode == "usage" else 1)
+
+
 @pytest.mark.parametrize("reported", [None, True, 0, 5, 2**20])
 def test_operator_help_rejects_incomplete_text_output(
     monkeypatch: pytest.MonkeyPatch,
