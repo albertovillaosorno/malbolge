@@ -355,6 +355,42 @@ def test_host_c_reference_rejects_hostile_identity_fields_before_generation(
 
 
 @pytest.mark.parametrize("operation", ["replay", "rebuild", "measure"])
+@pytest.mark.parametrize("root_kind", ["symlink", "missing", "regular-file"])
+def test_host_c_oracle_refuses_nonphysical_scratch_root_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    operation: str,
+    root_kind: str,
+) -> None:
+    """Native oracle work requires an existing nonredirected local .temp."""
+    outside = tmp_path / "external"
+    outside.mkdir()
+    linked = tmp_path / "invalid-root"
+    if root_kind == "symlink":
+        linked.symlink_to(outside, target_is_directory=True)
+    elif root_kind == "regular-file":
+        linked.write_bytes(b"not a directory")
+
+    def forbidden_workspace(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("redirected host-C scratch root reached child setup")
+
+    monkeypatch.setattr(host_c_oracle, "_TEMP", linked)
+    monkeypatch.setattr(
+        host_c_oracle.tempfile, "TemporaryDirectory", forbidden_workspace
+    )
+    identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    with pytest.raises(host_c_oracle.HostOracleError, match="physical"):
+        if operation == "replay":
+            _ = host_c_oracle.replay_one(_case(), PROFILE, _digest())
+        elif operation == "rebuild":
+            _ = host_c_oracle.rebuild_reference(identity, "-O0")
+        else:
+            _ = host_c_oracle.measure_reference(identity, "-O0")
+    assert list(outside.iterdir()) == []
+
+
+@pytest.mark.parametrize("operation", ["replay", "rebuild", "measure"])
 @pytest.mark.parametrize("fault", ["setup", "source-write"])
 def test_direct_host_oracle_workspace_faults_are_typed(
     monkeypatch: pytest.MonkeyPatch,

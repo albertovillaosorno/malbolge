@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
@@ -85,6 +86,20 @@ class HostOracleError(ValueError):
 
 def _fail(message: str) -> Never:
     raise HostOracleError(message)
+
+
+def _require_local_scratch_root() -> None:
+    """Admit a physical .temp directory before creating native workspaces."""
+    if not _PINNED_CLANG.is_file():
+        _fail("pinned host-C compiler or local temporary directory unavailable")
+    try:
+        mode = _TEMP.lstat().st_mode
+    except OSError as error:
+        message = "host-C physical temporary directory unavailable"
+        raise HostOracleError(message) from error
+    # This is a static check, not a cross-process filesystem race guarantee.
+    if not stat.S_ISDIR(mode):
+        _fail("host-C physical temporary directory required")
 
 
 def _harness(oracle: bytes) -> bytes:
@@ -400,8 +415,7 @@ def replay_one(
         Canonical source hash checked by both native optimization modes.
 
     """
-    if not _PINNED_CLANG.is_file() or not _TEMP.is_dir():
-        _fail("pinned host-C compiler or local temporary directory unavailable")
+    _require_local_scratch_root()
     generated = _canonical_payload(case, profile, source_sha256)
     try:
         with tempfile.TemporaryDirectory(
@@ -437,8 +451,7 @@ def _reference_source(
     ):
         _fail("host-C reference identity requires native challenge fields")
     _bounded_nodes(identity.nodes, limit=MAX_REPLAY_NODES, scope="reference")
-    if not _PINNED_CLANG.is_file() or not _TEMP.is_dir():
-        _fail("pinned host-C compiler or local temporary directory unavailable")
+    _require_local_scratch_root()
     try:
         return generate.generate(identity)
     except generate.ChallengeError as error:
