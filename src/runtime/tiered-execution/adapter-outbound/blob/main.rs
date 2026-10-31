@@ -91,8 +91,6 @@ pub enum NativeContinuationFileBlobStoreError {
     CoordinationMismatch,
     /// Configured destination does not name one file entry.
     InvalidDestination,
-    /// Existing destination is a symlink, directory, FIFO, or other non-file.
-    NonRegularSource,
     /// A loaded file contained more bytes than the caller admitted.
     LoadByteLimit {
         /// Exact positive bound supplied by application orchestration.
@@ -108,6 +106,8 @@ pub enum NativeContinuationFileBlobStoreError {
         /// Host filesystem error category.
         kind: ErrorKind,
     },
+    /// Existing destination is a symlink, directory, FIFO, or other non-file.
+    NonRegularSource,
     /// Opening an existing destination failed for a reason other than absence.
     Open {
         /// Host filesystem error category.
@@ -267,7 +267,9 @@ impl NativeContinuationFileBlobStore {
         // when no writer has joined. Do not follow a symlink to foreign state.
         let metadata = match fs::symlink_metadata(&self.destination) {
             Ok(metadata) => metadata,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                return Ok(None);
+            },
             Err(error) => {
                 return Err(NativeContinuationFileBlobStoreError::Open {
                     kind: error.kind(),
@@ -319,12 +321,11 @@ impl NativeContinuationFileBlobStore {
             NativeContinuationFileBlobStoreError::Read { kind: error.kind() }
         })?;
         if extra_bytes == 0 {
-            Ok(Some(bytes))
-        } else {
-            Err(NativeContinuationFileBlobStoreError::LoadByteLimit {
-                maximum_bytes,
-            })
+            return Ok(Some(bytes));
         }
+        Err(NativeContinuationFileBlobStoreError::LoadByteLimit {
+            maximum_bytes,
+        })
     }
 
     fn lock_path(

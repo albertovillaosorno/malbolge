@@ -47031,6 +47031,42 @@ fn bootstrap_compiler_deadline_covers_inherited_pipe_holders()
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test]
+fn bootstrap_compiler_deadline_bounds_escaped_group_pipe_holders()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let directory = root
+        .join(".temp/native-bootstrap-escaped-group-deadline")
+        .join(process_id().to_string());
+    // setsid moves the inherited stdout/stderr writer outside the compiler's
+    // process group. Killing only that group must not leave scoped readers
+    // able to extend the caller's deadline until this descendant exits.
+    let compiler = create_fake_bootstrap_clang(
+        &directory,
+        "escaped-pipe-holder",
+        "/usr/bin/setsid /usr/bin/sleep 2 & exit 0",
+    )?;
+    let start = Instant::now();
+    let result = check_bootstrap_deadline_case(
+        &compiler,
+        &native_program(),
+        HostIsa::X86_64,
+        Duration::from_millis(100),
+    );
+    let elapsed = start.elapsed();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove escaped group fixture: {error}"));
+    result?;
+    cleanup?;
+    if elapsed >= Duration::from_secs(1) {
+        return Err(format!(
+            "escaped descendant held compiler deadline open: {elapsed:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
 fn bootstrap_compiler_success_cannot_leave_detached_stdio_descendant()
 -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -121473,7 +121509,8 @@ fn cached_retry_file_blob_store_rejects_oversized_load() -> Result<(), String> {
 
 #[cfg(unix)]
 #[test]
-fn cached_retry_file_blob_store_does_not_follow_symlink_on_load() -> Result<(), String> {
+fn cached_retry_file_blob_store_does_not_follow_symlink_on_load()
+-> Result<(), String> {
     use std::os::unix::fs::symlink;
 
     let fixture = file_blob_store_fixture("symlink-load")?;
@@ -121486,19 +121523,27 @@ fn cached_retry_file_blob_store_does_not_follow_symlink_on_load() -> Result<(), 
         NativeContinuationFileBlobStore::new(fixture.destination.clone());
     let maximum_bytes = nonzero_test_limit(64, "symlink blob limit")?;
     let restored = blob_persistence::restore_blob(&mut store, maximum_bytes);
-    if !matches!(restored, Err(BlobPersistenceError::Store(
-        NativeContinuationFileBlobStoreError::NonRegularSource
-    ))) {
-        return Err(format!("blob restore accepted foreign symlink: {restored:?}"));
+    if !matches!(
+        restored,
+        Err(BlobPersistenceError::Store(
+            NativeContinuationFileBlobStoreError::NonRegularSource
+        ))
+    ) {
+        return Err(format!(
+            "blob restore accepted foreign symlink: {restored:?}"
+        ));
     }
     fs::remove_file(&fixture.destination)
         .map_err(|error| format!("remove link fixture: {error}"))?;
     fs::create_dir(&fixture.destination)
         .map_err(|error| format!("create directory source: {error}"))?;
     let restored = blob_persistence::restore_blob(&mut store, maximum_bytes);
-    if !matches!(restored, Err(BlobPersistenceError::Store(
-        NativeContinuationFileBlobStoreError::NonRegularSource
-    ))) {
+    if !matches!(
+        restored,
+        Err(BlobPersistenceError::Store(
+            NativeContinuationFileBlobStoreError::NonRegularSource
+        ))
+    ) {
         return Err(format!("blob restore accepted directory: {restored:?}"));
     }
     remove_file_blob_store_fixture(&fixture.directory)
@@ -121506,7 +121551,8 @@ fn cached_retry_file_blob_store_does_not_follow_symlink_on_load() -> Result<(), 
 
 #[cfg(unix)]
 #[test]
-fn cached_retry_file_blob_store_rejects_fifo_before_opening() -> Result<(), String> {
+fn cached_retry_file_blob_store_rejects_fifo_before_opening()
+-> Result<(), String> {
     let fixture = file_blob_store_fixture("fifo-load")?;
     let status = Command::new("mkfifo")
         .arg(&fixture.destination)
@@ -121519,9 +121565,12 @@ fn cached_retry_file_blob_store_rejects_fifo_before_opening() -> Result<(), Stri
         NativeContinuationFileBlobStore::new(fixture.destination.clone());
     let maximum_bytes = nonzero_test_limit(64, "FIFO blob limit")?;
     let restored = blob_persistence::restore_blob(&mut store, maximum_bytes);
-    if !matches!(restored, Err(BlobPersistenceError::Store(
-        NativeContinuationFileBlobStoreError::NonRegularSource
-    ))) {
+    if !matches!(
+        restored,
+        Err(BlobPersistenceError::Store(
+            NativeContinuationFileBlobStoreError::NonRegularSource
+        ))
+    ) {
         return Err(format!("blob restore accepted FIFO: {restored:?}"));
     }
     remove_file_blob_store_fixture(&fixture.directory)

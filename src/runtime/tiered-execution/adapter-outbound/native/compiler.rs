@@ -40,6 +40,7 @@ use std::process::{
     Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Output,
     Stdio,
 };
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -157,7 +158,23 @@ struct CompilerPipes {
     output: ChildStdout,
 }
 
-#[derive(Default)]
+#[derive(Debug)]
+struct CompilerWorkers {
+    diagnostics: thread::JoinHandle<IoResult<Vec<u8>>>,
+    input: thread::JoinHandle<IoResult<()>>,
+    output: thread::JoinHandle<IoResult<Vec<u8>>>,
+    state: Arc<CompilerPipeState>,
+}
+
+impl CompilerWorkers {
+    fn all_finished(&self) -> bool {
+        self.input.is_finished()
+            && self.output.is_finished()
+            && self.diagnostics.is_finished()
+    }
+}
+
+#[derive(Debug, Default)]
 struct CompilerPipeState {
     diagnostics_done: AtomicBool,
     diagnostics_exceeded: AtomicBool,
@@ -264,7 +281,7 @@ fn wait_for_bounded_child(
 }
 
 fn read_joined_pipe(
-    task: thread::ScopedJoinHandle<'_, IoResult<Vec<u8>>>,
+    task: thread::JoinHandle<IoResult<Vec<u8>>>,
 ) -> Result<Vec<u8>, BootstrapCompilerError<'static>> {
     task.join()
         .map_err(|_panic| {
@@ -325,75 +342,138 @@ fn collect_compiler_output<'requirement>(
             BootstrapCompilerError::Wait("compiler stdout pipe absent".into())
         })?,
     };
-    collect_compiler_scoped(&mut child, pipes, source, budget)
+    collect_compiler_owned(&mut child, pipes, source, budget)
 }
 
-fn collect_compiler_scoped<'requirement>(
+fn spawn_compiler_task<T>(
+    child: &mut Child,
+    task: impl FnOnce() -> T + Send + 'static,
+) -> Result<thread::JoinHandle<T>, BootstrapCompilerError<'static>>
+where
+    T: Send + 'static,
+{
+    thread::Builder::new().spawn(task).map_err(|error| {
+        terminate_bootstrap_group(child);
+        let _reaped = child.wait();
+        BootstrapCompilerError::Wait(
+            format!("native compiler pipe worker could not start: {error}")
+                .into_boxed_str(),
+        )
+    })
+}
+
+fn spawn_compiler_workers(
     child: &mut Child,
     pipes: CompilerPipes,
     source: &str,
-    budget: Duration,
-) -> Result<Output, BootstrapCompilerError<'requirement>> {
+) -> Result<CompilerWorkers, BootstrapCompilerError<'static>> {
     let CompilerPipes {
         diagnostics,
         mut input,
         output,
     } = pipes;
-    let state = CompilerPipeState::default();
+    let state = Arc::new(CompilerPipeState::default());
+    let owned_source = source.as_bytes().to_vec();
+    let input_state = Arc::clone(&state);
+    let input_task = spawn_compiler_task(child, move || {
+        let result = input.write_all(&owned_source);
+        drop(input);
+        input_state.input_done.store(true, Ordering::Release);
+        result
+    })?;
+    let output_state = Arc::clone(&state);
+    let output_task = spawn_compiler_task(child, move || {
+        let bytes = collect_bounded_pipe(
+            output,
+            MAX_BOOTSTRAP_OBJECT_BYTES,
+            &output_state.output_exceeded,
+        );
+        output_state.output_done.store(true, Ordering::Release);
+        bytes
+    })?;
+    let diagnostic_state = Arc::clone(&state);
+    let diagnostic_task = spawn_compiler_task(child, move || {
+        let bytes = collect_bounded_pipe(
+            diagnostics,
+            MAX_BOOTSTRAP_DIAGNOSTIC_BYTES,
+            &diagnostic_state.diagnostics_exceeded,
+        );
+        diagnostic_state
+            .diagnostics_done
+            .store(true, Ordering::Release);
+        bytes
+    })?;
+    Ok(CompilerWorkers {
+        diagnostics: diagnostic_task,
+        input: input_task,
+        output: output_task,
+        state,
+    })
+}
+
+fn await_compiler_workers(
+    workers: &CompilerWorkers,
+    deadline: &CompilerDeadline,
+) -> Result<(), BootstrapCompilerError<'static>> {
+    // Escaped descendants may inherit pipe handles after group termination.
+    // Do not join detached readers past the caller's single wall-clock budget.
+    while !workers.all_finished() {
+        let Some(remaining) =
+            deadline.budget.checked_sub(deadline.started.elapsed())
+        else {
+            break;
+        };
+        if remaining.is_zero() {
+            break;
+        }
+        thread::sleep(remaining.min(Duration::from_millis(5)));
+    }
+    enforce_compiler_pipe_limits(
+        &workers.state.output_exceeded,
+        &workers.state.diagnostics_exceeded,
+    )?;
+    // A response completed exactly at/after the deadline is not on time,
+    // even when a ready worker result races the final poll.
+    if !workers.all_finished() || deadline.started.elapsed() >= deadline.budget
+    {
+        return Err(BootstrapCompilerError::DeadlineExceeded {
+            maximum_ms: u64::try_from(deadline.budget.as_millis())
+                .unwrap_or(MAX_BOOTSTRAP_COMPILER_MILLIS),
+        });
+    }
+    Ok(())
+}
+
+fn collect_compiler_owned<'requirement>(
+    child: &mut Child,
+    pipes: CompilerPipes,
+    source: &str,
+    budget: Duration,
+) -> Result<Output, BootstrapCompilerError<'requirement>> {
     let deadline = CompilerDeadline {
         budget,
         started: Instant::now(),
     };
-    thread::scope(|scope| {
-        let writer = scope.spawn(|| {
-            let result = input.write_all(source.as_bytes());
-            drop(input);
-            state.input_done.store(true, Ordering::Release);
-            result
-        });
-        let out = scope.spawn(|| {
-            let bytes = collect_bounded_pipe(
-                output,
-                MAX_BOOTSTRAP_OBJECT_BYTES,
-                &state.output_exceeded,
-            );
-            state.output_done.store(true, Ordering::Release);
-            bytes
-        });
-        let err = scope.spawn(|| {
-            let bytes = collect_bounded_pipe(
-                diagnostics,
-                MAX_BOOTSTRAP_DIAGNOSTIC_BYTES,
-                &state.diagnostics_exceeded,
-            );
-            state.diagnostics_done.store(true, Ordering::Release);
-            bytes
-        });
-        let status = wait_for_bounded_child(child, &state, &deadline);
-        let write_result = writer.join().map_err(|_panic| {
-            BootstrapCompilerError::Wait(
-                "compiler source writer panicked".into(),
-            )
+    let workers = spawn_compiler_workers(child, pipes, source)?;
+    let status = wait_for_bounded_child(child, &workers.state, &deadline);
+    await_compiler_workers(&workers, &deadline)?;
+    let write_result = workers.input.join().map_err(|_panic| {
+        BootstrapCompilerError::Wait("compiler source writer panicked".into())
+    })?;
+    let stdout = read_joined_pipe(workers.output)?;
+    let stderr = read_joined_pipe(workers.diagnostics)?;
+    let exit_status = checked_compiler_status(status, budget)?;
+    // An early compiler failure may close stdin before the writer ends.
+    // Keep its exit code and diagnostic instead of masking it with EPIPE.
+    if exit_status.success() {
+        write_result.map_err(|error| {
+            BootstrapCompilerError::SourceWrite(error.to_string().into())
         })?;
-        let stdout = read_joined_pipe(out)?;
-        let stderr = read_joined_pipe(err)?;
-        enforce_compiler_pipe_limits(
-            &state.output_exceeded,
-            &state.diagnostics_exceeded,
-        )?;
-        let exit_status = checked_compiler_status(status, budget)?;
-        // An early compiler failure may close stdin before the writer ends.
-        // Keep its exit code and diagnostic instead of masking it with EPIPE.
-        if exit_status.success() {
-            write_result.map_err(|error| {
-                BootstrapCompilerError::SourceWrite(error.to_string().into())
-            })?;
-        }
-        Ok(Output {
-            status: exit_status,
-            stdout,
-            stderr,
-        })
+    }
+    Ok(Output {
+        status: exit_status,
+        stdout,
+        stderr,
     })
 }
 

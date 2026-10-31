@@ -234,6 +234,17 @@ Those local checks are defense in depth, not verifier authority.
 by `VerifiedExactRegion::accepts_dependency_entry`; the host must cross that
 verifier-owned guard before any future native runner can invoke this artifact.
 
+The Clang bootstrap's wall-clock budget includes bounded pipe exchange and
+child cleanup. Compiler subprocesses share an owned Linux process group, but a
+hostile child can escape that group while inheriting stderr/stdout descriptors.
+
+On deadline exhaustion, the parent reports `DeadlineExceeded` without joining
+blocked pipe readers; those detached workers retain owned descriptors and
+bounded response buffers until the inherited handles close. The input writer
+also owns the supplied source. This is a caller-latency guarantee, not an
+OS-level promise to kill independently reparented descendants or terminate
+workers whose peer never closes its handles.
+
 Both source and compiler-output wrappers are named `Untrusted*`. Attaching bytes
 to the correct cache key does not prove that those bytes implement the IR.
 `NativeArtifactKey` construction nevertheless rejects
