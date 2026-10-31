@@ -278,6 +278,12 @@ def _admit_executable(path: Path) -> Path:
     except Exception as error:
         message = "target echo executable is missing"
         raise TargetEchoStudyError(message) from error
+    if (
+        type(details) is not os.stat_result
+        or type(regular) is not bool
+        or type(redirected) is not bool
+    ):
+        _fail("target echo executable returned invalid filesystem receipts")
     if not regular or redirected or details.st_size <= 0:
         _fail("target echo executables must be ordinary nonempty files")
     if details.st_size > MAX_TOOL_BYTES:
@@ -388,8 +394,15 @@ def _commit() -> str:
         _fail("target echo source revision has invalid Git executable path")
     try:
         _ = os.fsencode(git)
-        mode = Path(git).lstat().st_mode
+        details = Path(git).lstat()
+        if type(details) is not os.stat_result:
+            _fail("target echo source revision Git executable invalid metadata")
+        mode = details.st_mode
         executable = os.access(git, os.X_OK)
+        if type(executable) is not bool:
+            _fail("target echo source revision Git executable invalid access")
+    except TargetEchoStudyError:
+        raise
     except Exception as error:
         message = "target echo source revision Git executable unavailable"
         raise TargetEchoStudyError(message) from error
@@ -942,6 +955,8 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
     except Exception as error:
         message = "target echo reference requires repository .temp directory"
         raise TargetEchoStudyError(message) from error
+    if type(workspace) is not os.stat_result:
+        _fail("target echo reference repository .temp returned invalid metadata")
     if not stat.S_ISDIR(workspace.st_mode):
         _fail("target echo reference requires repository .temp directory")
     # Validate identity before retaining any study output.

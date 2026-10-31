@@ -2768,3 +2768,97 @@ def test_target_echo_safe_error_detail_does_not_format_hostile_native_argument(
         fault, trusted=target_echo_audit.TargetEchoAuditError
     )
     assert detail == kind.__name__
+
+
+class _ForeignEchoStat:
+    """Foreign path metadata cannot certify a target executable or workspace."""
+
+    def __getattribute__(self, name: str) -> object:
+        if name.startswith("st_"):
+            pytest.fail("foreign target echo stat field was accessed")
+        return super().__getattribute__(name)
+
+
+@pytest.mark.parametrize("phase", ["lstat", "is_file", "is_symlink"])
+def test_target_producer_executable_admission_requires_native_path_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Tool probes cannot endorse foreign filesystem and boolean receipts."""
+    executable = tmp_path / "emitter"
+    executable.write_bytes(b"real-emitter")
+    original_lstat = Path.lstat
+    original_is_file = Path.is_file
+    original_is_symlink = Path.is_symlink
+
+    def forged_stat(path: Path) -> os.stat_result:
+        if phase == "lstat" and path == executable:
+            return cast("os.stat_result", cast("object", _ForeignEchoStat()))
+        return original_lstat(path)
+
+    def forged_file(path: Path) -> bool:
+        if phase == "is_file" and path == executable:
+            return cast("bool", cast("object", 1))
+        return original_is_file(path)
+
+    def forged_link(path: Path) -> bool:
+        if phase == "is_symlink" and path == executable:
+            return cast("bool", cast("object", 0))
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_stat)
+    monkeypatch.setattr(Path, "is_file", forged_file)
+    monkeypatch.setattr(Path, "is_symlink", forged_link)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="executable"):
+        target_echo_reference._admit_executable(executable)
+
+
+@pytest.mark.parametrize("phase", ["tool-stat", "access"])
+def test_target_producer_git_tool_requires_native_host_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Forged Git tool metadata cannot reach source revision subprocesses."""
+    git = tmp_path / "git"
+    git.write_bytes(b"test git")
+    git.chmod(0o755)
+    original_lstat = Path.lstat
+    original_access = target_echo_reference.os.access
+
+    def forged_stat(path: Path) -> os.stat_result:
+        if phase == "tool-stat" and path == git:
+            return cast("os.stat_result", cast("object", _ForeignEchoStat()))
+        return original_lstat(path)
+
+    def forged_access(path: str, mode: int) -> bool:
+        if phase == "access" and path == str(git):
+            return cast("bool", cast("object", 1))
+        return original_access(path, mode)
+
+    def forbidden_git(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("untrusted Git receipt spawned a child")
+
+    monkeypatch.setattr(target_echo_reference.shutil, "which", lambda *_args, **_kwargs: str(git))
+    monkeypatch.setattr(Path, "lstat", forged_stat)
+    monkeypatch.setattr(target_echo_reference.os, "access", forged_access)
+    monkeypatch.setattr(target_echo_reference.sp, "run", forbidden_git)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="Git executable"):
+        target_echo_reference._commit()
+
+
+def test_target_producer_workspace_requires_native_directory_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A substituted .temp stat may not launch profile or benchmark work."""
+    workspace = tmp_path / ".temp"
+    workspace.mkdir()
+    original_lstat = Path.lstat
+
+    def forged_stat(path: Path) -> os.stat_result:
+        if path == workspace:
+            return cast("os.stat_result", cast("object", _ForeignEchoStat()))
+        return original_lstat(path)
+
+    monkeypatch.setattr(target_echo_reference, "_TEMP", workspace)
+    monkeypatch.setattr(target_echo_reference, "_admit_executable", lambda path: path)
+    monkeypatch.setattr(Path, "lstat", forged_stat)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match=r"\.temp"):
+        target_echo_reference._prepare_context(tmp_path / "emitter", tmp_path / "runner")
