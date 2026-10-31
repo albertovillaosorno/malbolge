@@ -241,6 +241,10 @@ class RelocatableAuthoringPlan:
         ):
             message = "relocatable plan contains a foreign instruction record"
             raise RelocationError(message)
+        paths = tuple(item.output_path for item in self.instructions)
+        if len(paths) != len(set(paths)):
+            message = "relocatable plan requires unique output paths"
+            raise RelocationError(message)
 
 
 def _sha256(data: bytes) -> bytes:
