@@ -90,11 +90,16 @@ def _fail(message: str) -> Never:
 
 def _require_local_scratch_root() -> None:
     """Admit a physical .temp directory before creating native workspaces."""
-    if not _PINNED_CLANG.is_file():
+    try:
+        compiler_available = _PINNED_CLANG.is_file()
+    except (OSError, ValueError, RuntimeError) as error:
+        message = "pinned host-C compiler unavailable"
+        raise HostOracleError(message) from error
+    if not compiler_available:
         _fail("pinned host-C compiler or local temporary directory unavailable")
     try:
         mode = _TEMP.lstat().st_mode
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = "host-C physical temporary directory unavailable"
         raise HostOracleError(message) from error
     # This is a static check, not a cross-process filesystem race guarantee.

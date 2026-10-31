@@ -391,6 +391,53 @@ def test_host_c_oracle_refuses_nonphysical_scratch_root_before_execution(
 
 
 @pytest.mark.parametrize("operation", ["replay", "rebuild", "measure"])
+@pytest.mark.parametrize("source", ["compiler", "scratch"])
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_host_oracle_host_preflight_faults_are_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    source: str,
+    failure_type: type[Exception],
+) -> None:
+    """Host stat failures cannot launch a native oracle before preflight."""
+    compiler = host_c_oracle._PINNED_CLANG
+    scratch = host_c_oracle._TEMP
+    original_is_file = Path.is_file
+    original_lstat = Path.lstat
+
+    def fail_compiler(path: Path) -> bool:
+        if path == compiler:
+            raise failure_type("injected compiler inspection failure")
+        return original_is_file(path)
+
+    def fail_scratch(path: Path) -> os.stat_result:
+        if path == scratch:
+            raise failure_type("injected workspace inspection failure")
+        return original_lstat(path)
+
+    def forbidden_workspace(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("host oracle reached native workspace after failed preflight")
+
+    if source == "compiler":
+        monkeypatch.setattr(Path, "is_file", fail_compiler)
+    else:
+        monkeypatch.setattr(Path, "lstat", fail_scratch)
+    monkeypatch.setattr(
+        host_c_oracle.tempfile, "TemporaryDirectory", forbidden_workspace
+    )
+    identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    with pytest.raises(host_c_oracle.HostOracleError, match="unavailable") as caught:
+        if operation == "replay":
+            _ = host_c_oracle.replay_one(_case(), PROFILE, _digest())
+        elif operation == "rebuild":
+            _ = host_c_oracle.rebuild_reference(identity, "-O0")
+        else:
+            _ = host_c_oracle.measure_reference(identity, "-O0")
+    assert isinstance(caught.value.__cause__, failure_type)
+
+
+@pytest.mark.parametrize("operation", ["replay", "rebuild", "measure"])
 @pytest.mark.parametrize("fault", ["setup", "source-write"])
 def test_direct_host_oracle_workspace_faults_are_typed(
     monkeypatch: pytest.MonkeyPatch,
