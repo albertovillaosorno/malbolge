@@ -231,7 +231,7 @@ emission.
   normative two-byte oracle. This was the initial two-output milestone;
   unknown seeds and foreign profiles still reject. Old zero/latest/identity
   modes remain strict; this is not a general constant or C backend.
-- The separately verified seeded-literal publisher now admits one to sixteen
+- The separately verified seeded-literal publisher now admits one to seventeen
   same-SSA byte outputs through exact per-count guest rotation witnesses.
   Independent 26-phase eight- and nine-output VM scans each produce 21
   distinct nonzero bytes; the tenth-output scan produces 25 distinct
@@ -242,13 +242,14 @@ emission.
   VM phases. A fourteen-output scan adds 22 distinct bytes from 26
   independently checked VM phases. A fifteen-output scan admits 17 distinct
   nonzero bytes from 25 matching phases; phase 20 is excluded. A new
-  sixteen-output 26-phase oracle verifies 24 distinct nonzero byte values,
-  keeps only shortest valid prefixes, rejects unsupported values and counts,
-  and checks real MCTI/MCTR file/stdin capsule publication with the guest VM.
-  The 256-byte
-  admission domain, real CLI MCTI/MCTR raw/capsule publisher, guest runner
-  and zero-consumed-input checks preserve rejection of unsupported values,
-  foreign profiles and seventeen or more outputs. This is not general guest
+  sixteen-output 26-phase oracle verifies 24 distinct nonzero byte values;
+  a separate seventeen-output 26-phase oracle verifies 19 distinct nonzero
+  bytes, including real guest MCTI/MCTR fixture publication for 6 and 133.
+  Both retain shortest valid prefixes, reject unsupported values and counts,
+  and verify real MCTI/MCTR file/stdin capsule publication with the guest VM.
+  The full 256-byte admission domain, real CLI raw/capsule publisher, guest
+  runner and zero-consumed-input checks preserve rejection of unsupported
+  values, foreign profiles and eighteen or more outputs. This is not general guest
   integer computation or proof of arbitrary output sequences.
 - The explicit `--identity-byte-trace` MCTI/MCTR file/stdin publisher
   admits latest-input signed/unsigned eight-bit SSA bitcasts through

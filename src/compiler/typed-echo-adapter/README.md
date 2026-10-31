@@ -88,10 +88,10 @@ bitcast back; old zero-only, adjacent-echo and latest-read modes do not
 admit casts. No host callback, EOF, arithmetic, byte register file,
 branching or guest return ABI is implemented by this slice.
 
-### Canonical one- to fifteen-output nonzero literal
+### Canonical one- to seventeen-output nonzero literal
 
 The separate `compile_canonical_typed_rotated_byte_literal` accepts a
-canonical MCTI `u8 ConstantInteger`, one to fifteen same-SSA `ByteOutput`s,
+canonical MCTI `u8 ConstantInteger`, one to seventeen same-SSA `ByteOutput`s,
 and `ReturnVoid` in a single no-argument void function. It preserves
 source, SSA, ABI, profile and span identity through canonical MCTR and a
 verified position-sensitive graphical source. The guest computes its `u8`
@@ -112,8 +112,10 @@ from the same independently replayed 26 phases. Thirteen outputs yield 19
 distinct bytes from another 26 independently re-executed phases. Fourteen
 outputs yield 22 distinct bytes from 26 independently verified phases.
 Fifteen outputs yield 17 distinct bytes from 25 admissible phases in the
-26-phase scan; phase 20 is excluded. Only the shortest prefix per byte
-is admitted.
+26-phase scan; phase 20 is excluded. Sixteen outputs realize 24
+nonzero bytes from 26 verified phases; seventeen outputs realize 19
+distinct bytes from another 26 separately VM-executed phases. The
+shortest verified prefix for each byte is the only admitted seed.
 Each added `<` changes the full loader-expanded memory, so seeds cannot be
 reused across output counts.
 Each candidate is re-executed before admission. Other values and output

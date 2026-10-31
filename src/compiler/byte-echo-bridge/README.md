@@ -99,7 +99,7 @@ is implied.
 ### Verified nonzero byte literal rotation
 
 The separate opt-in `encode_rotated_byte_literal` admits exactly one
-`MaterializeU8(value)`, one to sixteen `ByteOutput`s of that SSA
+`MaterializeU8(value)`, one to seventeen `ByteOutput`s of that SSA
 identity, and `ReturnVoid`. For one output, it admits only these
 current-profile nonzero bytes: `4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22,
 23, 251, 253`. For exactly two identical outputs, a **different** table
@@ -136,6 +136,9 @@ distinct witnessed values are `1, 2, 3, 4, 6, 8, 10, 11, 18, 21, 22,
 24 distinct VM-verified bytes are `41, 49, 51, 55, 56, 57, 64, 65, 66,
 176, 177, 178, 179, 181, 182, 183, 184, 186, 193, 194, 195, 196,
 200, 201`.
+For exactly seventeen outputs, the independent 26-phase VM scan yields
+19 distinct nonzero bytes: `4, 5, 6, 7, 9, 12, 19, 20, 22, 24, 25,
+133, 134, 135, 136, 137, 138, 251, 253`.
 
 A profile-specific *proposed* no-op prefix precedes `j`, `*`, the actual
 `<` outputs, and `v`. The canonical loader expands the complete graphical
@@ -146,7 +149,7 @@ data word into A, and the
 guest outputs emit the unchanged accumulator. The independent layout checker
 proves source/data separation and a fresh normative VM checks every emitted
 byte, exact halt, and zero input consumption before accepting a source.
-Other literals, zero/seventeen-or-more outputs, extra effects and foreign
+Other literals, zero/eighteen-or-more outputs, extra effects and foreign
 profiles reject.
 This does not implement arbitrary constants or an SSA byte register.
 
@@ -182,16 +185,18 @@ cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_five_output_rotation_witnesses -- --ignored
 ```
 
-Six- through sixteen-output witnesses independently repeat the same bounded
+Six- through seventeen-output witnesses independently repeat the same bounded
 `0..26` scan, with their own loader-expanded source. All 26 tested phases
 for each count through fourteen emit identical nonzero bytes and terminate
 without input. Fifteen outputs have 25 matching phases; phase 20 does
 not yield an admissible witness. All 26 sixteen-output phases match,
 with 24 distinct nonzero byte values independently checked by the VM.
-The first successful witness per value yields 19 shortest prefixes for six
-outputs, 18 for seven, 21 for eight, 21 for nine, 25 for ten, 17 for
-eleven, 20 for twelve, 19 for thirteen, 22 for fourteen, 17 for fifteen,
-and 24 for sixteen. Reproduce the independent optimized scans with:
+All 26 seventeen-output phases also halt with matching nonzero bytes,
+producing 19 distinct values. The first successful witness per value yields
+19 shortest prefixes for six outputs, 18 for seven, 21 for eight, 21 for
+nine, 25 for ten, 17 for eleven, 20 for twelve, 19 for thirteen, 22 for
+fourteen, 17 for fifteen, 24 for sixteen, and 19 for seventeen. Reproduce
+the independent optimized scans with:
 
 ```sh
 cargo test --release --locked --test rotated_byte_constant_bridge \
@@ -216,15 +221,17 @@ cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_fifteen_output_rotation_witnesses -- --ignored
 cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_sixteen_output_rotation_witnesses -- --ignored
+cargo test --release --locked --test rotated_byte_constant_bridge \
+  independently_rederive_seventeen_output_rotation_witnesses -- --ignored
 ```
 
 Default regressions enumerate all 256 byte values separately for four,
 five, six, seven, eight, nine, ten, eleven, twelve, thirteen, fourteen,
-fifteen and sixteen same-SSA outputs. They require 24, 18, 19, 18, 21,
-21, 25, 17, 20, 19, 22, 17 and 24 shortest prefixes respectively,
-rejecting 232, 238, 237, 238, 235, 235, 231, 239, 236, 237, 234, 239
-and 232 other byte values per count. The canonical typed adapter, CLI
-publisher and real guest runner verify
+fifteen, sixteen and seventeen same-SSA outputs. They require 24, 18, 19,
+18, 21, 21, 25, 17, 20, 19, 22, 17, 24 and 19 shortest prefixes,
+respectively. The other 232, 238, 237, 238, 235, 235, 231, 239, 236,
+237, 234, 239, 232 and 237 values per count are explicitly rejected.
+The canonical typed adapter, CLI publisher and real guest runner verify
 successful and rejected count-specific cases.
 
 ## Limits

@@ -369,12 +369,13 @@ failed I/O, memory, arbitrary C, or guest ABI is realized.
 ### Guest-computed finite nonzero byte literals
 
 An explicit `--seeded-byte-literal` canonical MCTI or MCTR file/stdin mode
-admits one source `u8` constant followed by one to fifteen same-SSA outputs.
+admits one source `u8` constant followed by one to seventeen same-SSA outputs.
 The exact output counts have independent current-profile witness tables:
 14 distinct bytes with one output, 10 with two, 21 with three, 24 with four,
 18 with five, 19 with six, 18 with seven, 21 with eight, 21 with nine
-and 25 with ten, plus 17 with eleven, 20 with twelve, 19 with thirteen, 22 with fourteen and 17 with fifteen.
-Each separately bounded source-prefix scan for counts three through fifteen
+and 25 with ten, plus 17 with eleven, 20 with twelve, 19 with thirteen,
+22 with fourteen, 17 with fifteen, 24 with sixteen and 19 with seventeen.
+Each separately bounded source-prefix scan for counts three through seventeen
 confirms all
 25 or 26 tested phases emit identical nonzero bytes and retains the shortest
 valid prefix for each distinct value. Every extra `<` changes
@@ -395,8 +396,8 @@ cargo run --bin malbolge_layout -- \
 ```
 
 This mode is separate from strict echo, identity-bitcast, latest-read,
-initial-zero and zero-prefixed traces. Other constants, thirteen or more writes,
-input consumption, guest heap, EOF and general C arithmetic still reject.
+initial-zero and zero-prefixed traces. Unknown constants, eighteen or more
+writes, input consumption, guest heap, EOF and general C arithmetic still reject.
 
 ### Bounded canonical wire streaming on standard input
 
