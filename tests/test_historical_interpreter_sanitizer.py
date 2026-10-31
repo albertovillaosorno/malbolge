@@ -37,6 +37,8 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 import os
+from pathlib import Path
+import subprocess  # ruff: ignore[suspicious-subprocess-import]
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -46,9 +48,10 @@ from scripts.validate import historical_interpreter_sanitizer as harness
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 CASE_AUTHORITY = "CASES"
+HISTORICAL_SOURCE_NAME = "main.c"
+ALTERED_SOURCE = b"modified after verification"
 EXPECTED_CASES = (
     "clean-interpreter-roundtrip",
     "empty-source-overread",
@@ -351,6 +354,67 @@ def test_sanitizer_rejects_redirected_historical_source(
         harness.SanitizerHarnessError, match=r"regular|redirect"
     ):
         _ = harness.run_harness()
+
+
+def _simulated_execute_case(
+    executable: Path,
+    work: Path,
+    case: harness.SanitizerCase,
+) -> dict[str, object]:
+    assert executable.is_file()
+    assert work.is_dir()
+    return {"id": case.identifier}
+
+
+def test_sanitizer_compiles_only_verified_historical_source_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source rewrite after hashing must not change the compiler input."""
+    trusted = b"historical interpreter source snapshot"
+    original = tmp_path / HISTORICAL_SOURCE_NAME
+    _ = original.write_bytes(trusted)
+    runtime = tmp_path / "asan-runtime.dll"
+    _ = runtime.write_bytes(b"runtime fixture")
+    (tmp_path / "fixtures").mkdir()
+    manifest = tmp_path / "cases.json"
+    _ = manifest.write_text(
+        json.dumps({
+            "schema_version": harness.SCHEMA_VERSION,
+            "source_root": "fixtures",
+            "cases": [{"id": "snapshot", "source_hex": "44", "input_hex": ""}],
+        }),
+        encoding="utf-8",
+    )
+    for name, value in {
+        "ROOT": tmp_path,
+        "SOURCE": original,
+        "CASES": manifest,
+        "ASAN_RUNTIME": runtime,
+        "SOURCE_SHA256": sha256(trusted).hexdigest(),
+        "is_supported": lambda: True,
+        "_compiler_identity": lambda: None,
+    }.items():
+        monkeypatch.setattr(harness, name, value)
+
+    def fake_compile(
+        command: tuple[str, ...], *, cwd: Path
+    ) -> subprocess.CompletedProcess[bytes]:
+        assert cwd == tmp_path
+        assert str(original) not in command
+        staged = Path(command[-4])
+        assert staged.name == HISTORICAL_SOURCE_NAME
+        assert staged.parent != tmp_path
+        assert staged.read_bytes() == trusted
+        _ = original.write_bytes(ALTERED_SOURCE)
+        _ = Path(command[-1]).write_bytes(b"simulated executable")
+        return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(harness, "_run", fake_compile)
+    monkeypatch.setattr(harness, "_execute_case", _simulated_execute_case)
+    result = harness.run_harness()
+    assert result["cases"] == [{"id": "snapshot"}]
+    assert original.read_bytes() == ALTERED_SOURCE
 
 
 def test_sanitizer_harness_reproduces_reviewed_findings() -> None:

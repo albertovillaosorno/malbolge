@@ -405,7 +405,13 @@ def _compiler_identity() -> None:
         _fail(f"unexpected compiler: {first_line[0]}")
 
 
-def _verify_source() -> None:
+def _verify_source() -> bytes:
+    """Validate and return the exact bytes of the historical interpreter.
+
+    Returns:
+        Hash-verified C source bytes for the isolated compiler input.
+
+    """
     try:
         source = _read_regular(SOURCE, limit=MAX_FIXTURE_BYTES)
     except OSError as error:
@@ -413,9 +419,14 @@ def _verify_source() -> None:
     observed = sha256(source).hexdigest()
     if observed != SOURCE_SHA256:
         _fail(f"historical source hash mismatch: {observed}")
+    return source
 
 
-def _build(work: Path) -> Path:
+def _build(work: Path, *, source_bytes: bytes) -> Path:
+    source = work / "main.c"
+    _ = source.write_bytes(source_bytes)
+    if _read_regular(source, limit=MAX_FIXTURE_BYTES) != source_bytes:
+        _fail("staged historical source differs from verified source")
     header = work / "halloc_compat.h"
     shim = work / "halloc_compat.c"
     executable = work / "malbolge-sanitized.exe"
@@ -435,7 +446,7 @@ def _build(work: Path) -> Path:
         "-Wextra",
         "-Werror",
         "-Wno-unused-variable",
-        str(SOURCE),
+        str(source),
         str(shim),
         "-o",
         str(executable),
@@ -518,7 +529,7 @@ def run_harness() -> JsonObject:
     if not is_supported():
         _fail("pinned Windows Clang sanitizer toolchain is unavailable")
     _compiler_identity()
-    _verify_source()
+    source_bytes = _verify_source()
     temporary_root = ROOT / ".temp"
     temporary_root.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(
@@ -526,7 +537,7 @@ def run_harness() -> JsonObject:
         dir=temporary_root,
     ) as directory:
         work = Path(directory)
-        executable = _build(work)
+        executable = _build(work, source_bytes=source_bytes)
         results = [
             _execute_case(executable, work, case) for case in load_cases()
         ]

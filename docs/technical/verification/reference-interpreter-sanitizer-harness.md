@@ -48,6 +48,10 @@ with a one-MiB input bound and opened-inode identity checked before and after
 reads. In-root source fixtures and the pinned historical source obey the same
 regular-file and stable-snapshot rules, each with a one-MiB limit; fixture
 locations cannot traverse outside the repository or follow linked directories.
+The pinned source hash is verified before a byte-exact copy is staged in the
+private temporary build directory; Clang compiles that verified snapshot, never
+reopening the original pathname after verification. The original `main.c`
+remains untouched and temporary source copies are deleted with the build.
 FIFO and symlink substitutions fail without waiting for external input.
 Case identifiers must be portable ASCII filename stems (at most 128 characters),
 excluding path
