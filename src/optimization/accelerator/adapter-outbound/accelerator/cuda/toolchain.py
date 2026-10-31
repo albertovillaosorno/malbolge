@@ -34,12 +34,15 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import os
-from dataclasses import dataclass
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
+from pathlib import PureWindowsPath
 from stat import S_ISREG
-from typing import Final, Never, cast
+from typing import Final
+from typing import Never
+from typing import cast
 
 CUDA_TOOLCHAIN_INDEX: Final = (
     Path("src")
@@ -97,7 +100,12 @@ def _mapping(value: object, label: str) -> dict[str, object]:
 
 
 def _source_identity(status: os.stat_result, label: str) -> tuple[int, ...]:
-    """Record physical regular-file identity and mutation-sensitive timestamps."""
+    """Record regular-file identity and mutation-sensitive timestamps.
+
+    Returns:
+        Device, inode, size and mutation-sensitive timestamps.
+
+    """
     if not S_ISREG(status.st_mode):
         _fail(f"{label} must be a regular file")
     return (

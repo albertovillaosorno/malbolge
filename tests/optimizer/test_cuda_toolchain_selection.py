@@ -38,8 +38,8 @@ import json
 import os
 from pathlib import Path
 
-import pytest
 from accelerator.cuda import toolchain
+import pytest
 
 WINDOWS_PLATFORM = "windows-x86_64"
 LINUX_PLATFORM = "linux-x86_64"
@@ -52,6 +52,8 @@ WINDOWS_MANIFEST = "toolchain.json"
 LINUX_MANIFEST = "toolchain-linux-x86_64.json"
 LINUX_BUILTINS = "lib/libnvrtc-builtins.so.13.3"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+INDEX_AUTHORITY = "index"
+SOURCE_RECHECK = 2
 
 
 def _manifest_root(root: Path) -> Path:
@@ -225,7 +227,7 @@ def test_toolchain_rejects_linked_json_authority(
     _write_complete_fixture(tmp_path)
     selected = (
         tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
-        if authority == "index"
+        if authority == INDEX_AUTHORITY
         else _manifest_root(tmp_path) / LINUX_MANIFEST
     )
     actual = selected.with_name("actual.json")
@@ -236,7 +238,7 @@ def test_toolchain_rejects_linked_json_authority(
     except (OSError, NotImplementedError) as error:
         pytest.skip(f"symlinks unavailable: {error}")
     with pytest.raises(
-        toolchain.CudaToolchainSelectionError, match="redirect|regular"
+        toolchain.CudaToolchainSelectionError, match=r"redirect|regular"
     ):
         _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
 
@@ -263,12 +265,14 @@ def test_toolchain_rejects_oversized_json(
     _write_complete_fixture(tmp_path)
     selected = (
         tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
-        if authority == "index"
+        if authority == INDEX_AUTHORITY
         else _manifest_root(tmp_path) / LINUX_MANIFEST
     )
     with selected.open("wb") as stream:
         _ = stream.truncate(1024 * 1024 + 1)
-    with pytest.raises(toolchain.CudaToolchainSelectionError, match="byte limit"):
+    with pytest.raises(
+        toolchain.CudaToolchainSelectionError, match="byte limit"
+    ):
         _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
 
 
@@ -276,7 +280,9 @@ def test_toolchain_invalid_utf8_is_typed_error(tmp_path: Path) -> None:
     """Corrupt encoded metadata fails closed through the public error type."""
     _write_complete_fixture(tmp_path)
     _ = (tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX).write_bytes(b"\xff")
-    with pytest.raises(toolchain.CudaToolchainSelectionError, match="cannot read"):
+    with pytest.raises(
+        toolchain.CudaToolchainSelectionError, match="cannot read"
+    ):
         _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
 
 
@@ -289,7 +295,7 @@ def test_toolchain_rejects_directory_and_fifo_source(
     _write_complete_fixture(tmp_path)
     selected = (
         tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
-        if authority == "index"
+        if authority == INDEX_AUTHORITY
         else _manifest_root(tmp_path) / LINUX_MANIFEST
     )
     selected.unlink()
@@ -315,7 +321,7 @@ def test_toolchain_rejects_inode_swap_between_stat_and_open(
     _write_complete_fixture(tmp_path)
     selected = (
         tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
-        if authority == "index"
+        if authority == INDEX_AUTHORITY
         else _manifest_root(tmp_path) / LINUX_MANIFEST
     )
     replacement = selected.with_name("replacement.json")
@@ -348,7 +354,7 @@ def test_toolchain_rejects_same_byte_inode_swap_after_read(
     _write_complete_fixture(tmp_path)
     selected = (
         tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
-        if authority == "index"
+        if authority == INDEX_AUTHORITY
         else _manifest_root(tmp_path) / LINUX_MANIFEST
     )
     replacement = selected.with_name("replacement.json")
@@ -360,7 +366,7 @@ def test_toolchain_rejects_same_byte_inode_swap_after_read(
         nonlocal observed
         if path == selected:
             observed += 1
-            if observed == 2:
+            if observed == SOURCE_RECHECK:
                 _ = replacement.replace(selected)
         return real_lstat(path)
 
@@ -369,7 +375,7 @@ def test_toolchain_rejects_same_byte_inode_swap_after_read(
         toolchain.CudaToolchainSelectionError, match="changed during read"
     ):
         _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
-    assert observed == 2
+    assert observed == SOURCE_RECHECK
 
 
 def test_toolchain_rejects_manifest_in_place_mutation_after_read(
@@ -386,7 +392,7 @@ def test_toolchain_rejects_manifest_in_place_mutation_after_read(
         nonlocal observed
         if path == selected:
             observed += 1
-            if observed == 2:
+            if observed == SOURCE_RECHECK:
                 with selected.open("r+b") as stream:
                     _ = stream.write(b"x")
         return real_lstat(path)
@@ -396,4 +402,4 @@ def test_toolchain_rejects_manifest_in_place_mutation_after_read(
         toolchain.CudaToolchainSelectionError, match="changed during read"
     ):
         _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
-    assert observed == 2
+    assert observed == SOURCE_RECHECK
