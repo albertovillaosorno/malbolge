@@ -650,6 +650,89 @@ def test_target_echo_workspace_unknown_host_faults_do_not_format_foreign_errors(
     assert any("ForeignHostError" in note for note in primary.__notes__)
 
 
+def _prepare_target_host_identity_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep all non-host preflight dependencies inert and forbid output."""
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_echo_reference, "_TEMP", tmp_path)
+    monkeypatch.setattr(target_echo_reference, "_admit_executable", lambda path: path)
+    monkeypatch.setattr(
+        target_echo_reference.target_profile, "load_document", lambda *_: {}
+    )
+    monkeypatch.setattr(
+        target_echo_reference.target_profile,
+        "profile_fingerprint",
+        lambda *_: "f" * 64,
+    )
+    monkeypatch.setattr(target_echo_reference, "_commit", lambda: "a" * 40)
+    monkeypatch.setattr(target_echo_reference, "_tool_identity", lambda *_: "test-tool")
+
+    def forbidden_workspace(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("invalid host identity reached workspace creation")
+
+    monkeypatch.setattr(target_echo_reference.tempfile, "mkdtemp", forbidden_workspace)
+
+
+@pytest.mark.parametrize("kind", [IndexError, OverflowError, LookupError])
+def test_target_echo_platform_host_lookup_failure_is_typed_before_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: type[Exception]
+) -> None:
+    """An unanticipated host identity lookup never escapes producer preflight."""
+    _prepare_target_host_identity_test(tmp_path, monkeypatch)
+
+    class ForeignPlatformFailure(kind):
+        def __str__(self) -> str:
+            raise AssertionError("foreign host platform error formatter invoked")
+
+    error = ForeignPlatformFailure("untrusted host lookup failure")
+
+    def fail_platform() -> str:
+        raise error
+
+    monkeypatch.setattr(target_echo_reference.platform, "platform", fail_platform)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="host identity lookup"
+    ) as caught:
+        _ = target_echo_reference._prepare_context(tmp_path, tmp_path)
+    assert caught.value.__cause__ is error
+
+
+@pytest.mark.parametrize(
+    "bad_host", [None, 0, True, b"host", "", " ", "host\nlabel", "h" * 257]
+)
+def test_target_echo_platform_host_rejects_noncanonical_labels_before_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_host: object
+) -> None:
+    """Only bounded native printable labels may enter retained provenance."""
+    _prepare_target_host_identity_test(tmp_path, monkeypatch)
+    monkeypatch.setattr(target_echo_reference.platform, "platform", lambda: bad_host)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="host identity requires"
+    ):
+        _ = target_echo_reference._prepare_context(tmp_path, tmp_path)
+
+
+def test_target_echo_platform_host_never_calls_foreign_string_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A string subclass cannot execute its hooks during provenance admission."""
+    _prepare_target_host_identity_test(tmp_path, monkeypatch)
+
+    class ForeignHostLabel(str):
+        def strip(self, chars: str | None = None) -> str:
+            del chars
+            raise AssertionError("foreign host identity string hook invoked")
+
+    monkeypatch.setattr(
+        target_echo_reference.platform, "platform", lambda: ForeignHostLabel("host")
+    )
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="host identity requires"
+    ):
+        _ = target_echo_reference._prepare_context(tmp_path, tmp_path)
+
+
 def test_optional_rss_workspace_failure_is_typed_and_cleans_partial_study(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

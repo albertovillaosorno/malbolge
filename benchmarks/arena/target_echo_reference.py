@@ -76,6 +76,7 @@ MAX_LEVELS = 4
 MAX_TRIALS = 3
 MAX_TARGET_BYTES = 256
 MAX_TOOL_BYTES = 128 * 1024 * 1024
+MAX_HOST_LABEL_CHARS = 256
 COMMIT_HEX_WIDTH = 40
 GRAPHICAL_LOW = 33
 GRAPHICAL_HIGH = 126
@@ -933,7 +934,18 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
     profile = target_profile.load_document(_ROOT / "malbolge.json")
     fingerprint = target_profile.profile_fingerprint(profile, PROFILE)
     commit = _commit()
-    host = platform.platform()
+    try:
+        host = platform.platform()
+    except Exception as error:
+        message = "target echo host identity lookup failed"
+        raise TargetEchoStudyError(message) from error
+    if (
+        type(host) is not str
+        or not 1 <= len(host) <= MAX_HOST_LABEL_CHARS
+        or host.strip() != host
+        or any(not " " <= char <= "~" for char in host)
+    ):
+        _fail("target echo host identity requires bounded printable native text")
     toolchain = _tool_identity(emitter, runner)
     try:
         directory = Path(tempfile.mkdtemp(prefix="arena-target-echo-", dir=_TEMP))
