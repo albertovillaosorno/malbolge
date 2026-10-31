@@ -955,7 +955,11 @@ The original study records remain the result authority.
   `RLIMIT_CPU`, and `RLIMIT_FSIZE` under util-linux `prlimit`, with separate
   process-group wall-timeout cleanup. Refused group signals no longer skip
   direct-child termination or stream cleanup: a cleanup-only fault is a typed
-  rejection, while an earlier output-budget or deadline failure stays primary
+  rejection. A nonnative poll result after a group-signal failure also cannot
+  suppress the direct-child kill fallback; red-first forged-poll regressions
+  cover boolean, float, text and byte receipts while native exited statuses
+  still avoid redundant termination. An earlier output-budget or deadline
+  failure stays primary
   with secondary cleanup diagnostics. Real subprocess tests exercise limits,
   successful and timed-out descendants, and unavailable resource tools;
   these controls do not cover aggregate system resource consumption.

@@ -302,8 +302,14 @@ def _finish_child(child: sp.Popen[bytes]) -> int:
     except Exception as error:
         failures.append(error)
         # A group-signal failure must not skip the direct-child fallback.
+        # A foreign poll result cannot establish that the child has exited.
         try:
-            if child.poll() is None:
+            polled = child.poll()
+            if polled is not None and type(polled) is not int:
+                failures.append(
+                    HostOracleError("host-C challenge oracle child poll was nonnative")
+                )
+            if polled is None or type(polled) is not int:
                 direct_receipt = child.kill()
                 if direct_receipt is not None:
                     _fail("host-C challenge oracle direct kill returned nonnative receipt")

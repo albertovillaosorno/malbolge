@@ -937,6 +937,74 @@ def test_host_group_lookup_subclass_cannot_claim_absent_group(
     assert events == ["signal", "poll", "kill", "wait"]
 
 
+@pytest.mark.parametrize("poll_receipt", [False, True, 0.0, "exited", b"exited"])
+def test_host_group_signal_failure_rejects_forged_poll_before_direct_kill(
+    monkeypatch: pytest.MonkeyPatch,
+    poll_receipt: object,
+) -> None:
+    """Invalid poll receipts must not suppress the best-effort direct kill."""
+    events: list[str] = []
+    fault = PermissionError("simulated group kill refusal")
+
+    def failed_group_signal(_child: object) -> None:
+        events.append("group")
+        raise fault
+
+    class ChildProbe:
+        returncode = 0
+
+        def poll(self) -> object:
+            events.append("poll")
+            return poll_receipt
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            events.append("wait")
+            return 0
+
+    monkeypatch.setattr(host_c_oracle, "_kill_child_group", failed_group_signal)
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as caught:
+        host_c_oracle._finish_child(cast("Any", ChildProbe()))
+    assert caught.value.__cause__ is fault
+    assert events == ["group", "poll", "kill", "wait"]
+
+
+def test_host_group_signal_failure_respects_native_exited_poll(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real exited status does not trigger a redundant direct-child kill."""
+    events: list[str] = []
+    fault = PermissionError("simulated group kill refusal")
+
+    def refused_group_signal(_child: object) -> None:
+        events.append("group")
+        raise fault
+
+    class ChildProbe:
+        returncode = 0
+
+        def poll(self) -> int:
+            events.append("poll")
+            return 0
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            events.append("wait")
+            return 0
+
+    monkeypatch.setattr(host_c_oracle, "_kill_child_group", refused_group_signal)
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as caught:
+        host_c_oracle._finish_child(cast("Any", ChildProbe()))
+    assert caught.value.__cause__ is fault
+    assert events == ["group", "poll", "wait"]
+
+
 @pytest.mark.parametrize("receipt", [False, True, 0, 1, "killed", object()])
 def test_host_group_signal_requires_native_void_completion(
     monkeypatch: pytest.MonkeyPatch,

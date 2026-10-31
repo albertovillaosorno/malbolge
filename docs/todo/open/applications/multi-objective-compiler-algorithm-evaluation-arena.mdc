@@ -383,6 +383,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   post-run audit checks exact metadata and provides an opt-in flag rejecting
   legacy runs lacking a receipt. A new RSS objective requires a v2 receipt.
   Sidecar consistency is not independently authenticated OS enforcement.
+- Failed host-C child-group cleanup no longer treats forged `poll()`
+  receipts as proof that the direct child has already exited. Red-first
+  adversarial child probes require direct kill and reap for nonnative statuses,
+  while exact native exit codes avoid needless kills. Cleanup-only faults
+  remain errors; this does not add process-tree aggregate containment.
 - Linux host-C reference compile/link/oracle children now require
   util-linux `prlimit`, inherit kernel per-process limits on virtual address
   space, CPU seconds, and output-file size, and execute in separate sessions
