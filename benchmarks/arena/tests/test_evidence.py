@@ -2145,3 +2145,180 @@ def test_bounded_evidence_reader_types_late_path_stat_faults(
         evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
     assert lookups == target_call
     assert type(failure.value.__cause__) is fault
+
+
+@pytest.mark.parametrize(
+    ("boundary", "kind"),
+    [
+        ("document", analyze.ArenaError),
+        ("links", evidence.EvidenceError),
+        ("links", OSError),
+        ("links", UnicodeError),
+        ("links", RuntimeError),
+        ("links", evidence.experiment_manifest.ExperimentManifestError),
+    ],
+)
+def test_validate_links_does_not_format_foreign_dependency_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+    kind: type[Exception],
+) -> None:
+    """Foreign verifier/preflight errors cannot mask linked evidence rejection."""
+
+    class HostileDependencyError(kind):
+        def __str__(self) -> str:
+            raise AssertionError("foreign evidence formatter invoked")
+
+    failure = HostileDependencyError("untrusted diagnostic")
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    document = sample_study(tmp_path)
+    if boundary == "document":
+        monkeypatch.setattr(analyze, "admit_document", fail)
+    else:
+        monkeypatch.setattr(evidence, "_admit_observation", fail)
+    with pytest.raises(evidence.EvidenceError, match=LINKED_ERROR) as caught:
+        _ = evidence.validate_links(document, tmp_path)
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize(
+    "kind", [analyze.ArenaError, evidence.EvidenceError, OSError, UnicodeError]
+)
+def test_evidence_cli_does_not_format_foreign_input_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    kind: type[Exception],
+) -> None:
+    """The operator exits with status two even for hostile exception hooks."""
+
+    class HostileInputError(kind):
+        def __str__(self) -> str:
+            raise AssertionError("foreign evidence CLI formatter invoked")
+
+    failure = HostileInputError("untrusted operator diagnostic")
+
+    def fail_read(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(analyze, "read_input", fail_read)
+    monkeypatch.setattr(sys, "argv", ["evidence", str(tmp_path / "study.json")])
+    with pytest.raises(SystemExit) as caught:
+        evidence.main()
+    assert caught.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.err.startswith("arena evidence:")
+    assert not captured.out
+
+
+def test_evidence_cli_output_does_not_format_foreign_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Output diagnostics preserve the exit status without calling __str__."""
+    import argparse
+
+    class HostileReportError(evidence.report_output.ReportOutputError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign report error formatter invoked")
+
+    failure = HostileReportError("untrusted report diagnostic")
+
+    def fail_publish(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(evidence.report_output, "publish", fail_publish)
+    with pytest.raises(SystemExit) as caught:
+        evidence._publish_cli_report({}, argparse.ArgumentParser())
+    assert caught.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.err.startswith("arena evidence:")
+    assert not captured.out
+
+
+def test_evidence_direct_and_operator_retain_exact_native_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Exact project exception types still retain useful rejection details."""
+    document = sample_study(tmp_path)
+
+    def fail_admit(_document: object) -> None:
+        raise analyze.ArenaError("exact native study diagnostic")
+
+    with monkeypatch.context() as context:
+        context.setattr(analyze, "admit_document", fail_admit)
+        with pytest.raises(
+            evidence.EvidenceError, match="exact native study diagnostic"
+        ):
+            _ = evidence.validate_links(document, tmp_path)
+
+    def fail_read(*_args: object) -> None:
+        raise analyze.ArenaError("exact native operator diagnostic")
+
+    monkeypatch.setattr(analyze, "read_input", fail_read)
+    monkeypatch.setattr(sys, "argv", ["evidence", str(tmp_path / "study.json")])
+    with pytest.raises(SystemExit, match="2"):
+        evidence.main()
+    assert "exact native operator diagnostic" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("boundary", "kind"),
+    [
+        ("document", analyze.ArenaError),
+        ("links", evidence.EvidenceError),
+        ("links", OSError),
+        ("operator", analyze.ArenaError),
+        ("report", evidence.report_output.ReportOutputError),
+    ],
+)
+def test_exact_native_exception_with_foreign_argument_never_formats_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    boundary: str,
+    kind: type[Exception],
+) -> None:
+    """An exact native class cannot launder a caller-owned diagnostic value."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("foreign exception argument formatter invoked")
+
+    failure = kind(HostileArgument())
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    if boundary in {"document", "links"}:
+        document = sample_study(tmp_path)
+        if boundary == "document":
+            monkeypatch.setattr(analyze, "admit_document", fail)
+        else:
+            monkeypatch.setattr(evidence, "_admit_observation", fail)
+        with pytest.raises(evidence.EvidenceError, match=LINKED_ERROR) as caught:
+            _ = evidence.validate_links(document, tmp_path)
+        assert caught.value.__cause__ is failure
+        return
+
+    if boundary == "operator":
+        monkeypatch.setattr(analyze, "read_input", fail)
+        monkeypatch.setattr(sys, "argv", ["evidence", str(tmp_path / "study.json")])
+        with pytest.raises(SystemExit) as caught:
+            evidence.main()
+    else:
+        import argparse
+
+        monkeypatch.setattr(evidence.report_output, "publish", fail)
+        with pytest.raises(SystemExit) as caught:
+            evidence._publish_cli_report({}, argparse.ArgumentParser())
+    assert caught.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.err.startswith("arena evidence:")
+    assert not captured.out

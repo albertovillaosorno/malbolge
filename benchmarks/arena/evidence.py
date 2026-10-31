@@ -82,6 +82,22 @@ def _fail(message: str) -> Never:
     raise EvidenceError(message)
 
 
+def _native_error_detail(error: Exception, *trusted: type[Exception]) -> str:
+    """Use only exact native exception types with one literal text argument."""
+    if type(error) in trusted:
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+        if (
+            type(error) in (OSError, FileNotFoundError, PermissionError)
+            and len(arguments) == 2
+            and type(arguments[0]) is int
+            and type(arguments[1]) is str
+        ):
+            return f"{type(error).__name__}: [Errno {arguments[0]}] {arguments[1]}"
+    return type(error).__name__
+
+
 def _segments(relative: str) -> list[str]:
     if type(relative) is not str or not relative:
         _fail("evidence requires a canonical relative path")
@@ -853,7 +869,8 @@ def validate_links(
     try:
         document = analyze.admit_document(document)
     except analyze.ArenaError as error:
-        message = f"linked arena evidence invalid: {error}"
+        detail = _native_error_detail(error, analyze.ArenaError)
+        message = f"linked arena evidence invalid: {detail}"
         raise EvidenceError(message) from error
     context = _EvidenceContext(
         root,
@@ -904,7 +921,24 @@ def validate_links(
         challenge_bundles.ChallengeBundleError,
         host_c_oracle.HostOracleError,
     ) as error:
-        message = f"linked arena evidence invalid: {error}"
+        detail = _native_error_detail(
+            error,
+            EvidenceError,
+            OSError,
+            FileNotFoundError,
+            PermissionError,
+            UnicodeError,
+            UnicodeDecodeError,
+            UnicodeEncodeError,
+            RuntimeError,
+            experiment_manifest.ExperimentManifestError,
+            raw_samples.RawSampleError,
+            trial_runs.TrialRunError,
+            budget_links.BudgetLinkError,
+            challenge_bundles.ChallengeBundleError,
+            host_c_oracle.HostOracleError,
+        )
+        message = f"linked arena evidence invalid: {detail}"
         raise EvidenceError(message) from error
     if _snapshot_out is not None:
         _snapshot_out.append(snapshot)
@@ -918,7 +952,8 @@ def _publish_cli_report(
     try:
         report_output.publish(report, sys.stdout)
     except report_output.ReportOutputError as error:
-        parser.exit(2, f"arena evidence: {error}\n")
+        detail = _native_error_detail(error, report_output.ReportOutputError)
+        parser.exit(2, f"arena evidence: {detail}\n")
 
 
 def main() -> int:
@@ -976,7 +1011,20 @@ def main() -> int:
             _fail("evidence preflight did not retain an input snapshot")
         recheck_evidence_snapshot(snapshots[0])
     except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:
-        parser.exit(2, f"arena evidence: {error}\n")
+        detail = _native_error_detail(
+            error,
+            analyze.ArenaError,
+            EvidenceError,
+            OSError,
+            FileNotFoundError,
+            PermissionError,
+            IsADirectoryError,
+            NotADirectoryError,
+            UnicodeError,
+            UnicodeDecodeError,
+            UnicodeEncodeError,
+        )
+        parser.exit(2, f"arena evidence: {detail}\n")
     report["evidence_preflight"] = checked
     _publish_cli_report(report, parser)
     return 0
