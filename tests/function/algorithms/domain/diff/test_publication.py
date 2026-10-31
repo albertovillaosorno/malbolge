@@ -35,12 +35,14 @@
 
 from __future__ import annotations
 
+import ctypes
 import errno
 import os
 from pathlib import Path
 import sys
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import Mock
 
 from algorithms.diff import publication
 import pytest
@@ -332,4 +334,92 @@ def test_staging_status_errors_fail_closed_as_os_error(
         publication.publish_directory_no_replace(staging, destination)
     assert rejected.value.errno == errno.EINVAL
     assert not rename_calls
+    assert not destination.exists()
+
+
+def _fake_linux_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        publication, "os", SimpleNamespace(name="posix", fsencode=os.fsencode)
+    )
+    monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="linux"))
+
+
+@pytest.mark.parametrize("status", [False, None, "no rename"])
+def test_linux_publication_rejects_foreign_native_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: object
+) -> None:
+    """A native ABI mismatch must not be treated as a successful rename."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    native = Mock(return_value=status)
+
+    def fake_cdll(_name: object, **_options: bool) -> SimpleNamespace:
+        _ = (_name, _options)
+        return SimpleNamespace(renameat2=native)
+
+    monkeypatch.setattr(ctypes, "CDLL", fake_cdll)
+    _fake_linux_host(monkeypatch)
+    with pytest.raises(OSError, match="invalid status") as rejected:
+        publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.EINVAL
+    assert native.call_count == 1
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_linux_publication_contains_native_loader_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A broken native loader is an unavailable no-replace primitive."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+
+    def fail_cdll(_name: object, **_options: bool) -> object:
+        _ = (_name, _options)
+        message = "broken native loader"
+        raise failure_type(message)
+
+    monkeypatch.setattr(ctypes, "CDLL", fail_cdll)
+    _fake_linux_host(monkeypatch)
+    with pytest.raises(OSError, match="unavailable") as rejected:
+        publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.ENOTSUP
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError, TypeError])
+def test_linux_publication_contains_native_call_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Native invocation exceptions must not escape as host language errors."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+
+    def fail_call(*_args: object) -> int:
+        _ = _args
+        message = "broken native call"
+        raise failure_type(message)
+
+    native = Mock(side_effect=fail_call)
+
+    def fake_cdll(_name: object, **_options: bool) -> SimpleNamespace:
+        _ = (_name, _options)
+        return SimpleNamespace(renameat2=native)
+
+    monkeypatch.setattr(ctypes, "CDLL", fake_cdll)
+    _fake_linux_host(monkeypatch)
+    with pytest.raises(OSError, match="invocation failed") as rejected:
+        publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.EINVAL
+    assert native.call_count == 1
+    assert staging.is_dir()
     assert not destination.exists()

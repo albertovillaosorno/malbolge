@@ -75,19 +75,38 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
             ctypes.c_uint,
         )
         renameat2.restype = ctypes.c_int
-    except (AttributeError, OSError) as error:
+    except (
+        AttributeError,
+        OSError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+    ) as error:
         raise OSError(
             errno.ENOTSUP,
             "Linux renameat2(RENAME_NOREPLACE) is unavailable",
             destination,
         ) from error
-    result = renameat2(
-        _AT_FDCWD,
-        os.fsencode(source),
-        _AT_FDCWD,
-        os.fsencode(destination),
-        _RENAME_NOREPLACE,
-    )
+    try:
+        result = renameat2(
+            _AT_FDCWD,
+            os.fsencode(source),
+            _AT_FDCWD,
+            os.fsencode(destination),
+            _RENAME_NOREPLACE,
+        )
+    except (TypeError, ValueError, RuntimeError) as error:
+        raise OSError(
+            errno.EINVAL,
+            "Linux renameat2 invocation failed",
+            destination,
+        ) from error
+    if type(result) is not int:
+        raise OSError(
+            errno.EINVAL,
+            "Linux renameat2 returned an invalid status",
+            destination,
+        )
     if result != 0:
         error_number = ctypes.get_errno()
         raise OSError(
