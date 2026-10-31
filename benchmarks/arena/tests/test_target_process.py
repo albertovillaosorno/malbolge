@@ -109,9 +109,12 @@ def test_group_cleanup_signal_error_is_typed_after_child_exit(
 ) -> None:
     """Failure to signal descendants cannot be misreported as success."""
 
+    original_kill = os.kill
+
     def refuse_group_signal(group: int, signal: int) -> None:
-        del group, signal
-        raise PermissionError("injected group signal refusal")
+        if group < 0:
+            raise PermissionError("injected group signal refusal")
+        original_kill(group, signal)
 
     monkeypatch.setattr(target_process.os, "kill", refuse_group_signal)
     with pytest.raises(target_process.TargetProcessError, match="cleanup") as error:
@@ -127,9 +130,12 @@ def test_group_cleanup_failure_preserves_primary_output_rejection(
 ) -> None:
     """Cleanup exceptions must not erase the observed output-budget breach."""
 
+    original_kill = os.kill
+
     def refuse_group_signal(group: int, signal: int) -> None:
-        del group, signal
-        raise PermissionError("injected group signal refusal")
+        if group < 0:
+            raise PermissionError("injected group signal refusal")
+        original_kill(group, signal)
 
     monkeypatch.setattr(target_process.os, "kill", refuse_group_signal)
     with pytest.raises(target_process.TargetProcessError, match="stdout") as error:
@@ -673,6 +679,35 @@ def test_measured_rss_workspace_refuses_redirected_or_non_directory_root(
     )
     with pytest.raises(target_process.TargetProcessError, match="RSS workspace"):
         target_process.invoke_limited_measured(_child("pass"))
+
+
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_measured_rss_workspace_host_inspection_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A broken host stat must not leak outside bounded RSS admission."""
+    workspace = tmp_path / ".temp"
+    original_lstat = type(tmp_path).lstat
+
+    def fail_workspace(path: Path) -> os.stat_result:
+        if path == workspace:
+            raise failure_type("injected workspace inspection failure")
+        return original_lstat(path)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("RSS workspace inspection failure still launched tools")
+
+    monkeypatch.setattr(target_process, "_ROOT", tmp_path)
+    monkeypatch.setattr(type(tmp_path), "lstat", fail_workspace)
+    monkeypatch.setattr(target_process, "require_child_rss_measurement", forbidden)
+    with pytest.raises(
+        target_process.TargetProcessError, match="RSS workspace cannot be inspected"
+    ) as rejected:
+        target_process.invoke_limited_measured(_child("pass"))
+    assert isinstance(rejected.value.__cause__, failure_type)
 
 
 @pytest.mark.parametrize("phase", ["constructor", "enter", "exit"])

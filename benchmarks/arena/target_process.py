@@ -497,7 +497,7 @@ def _rss_workspace() -> Path:
     workspace = _ROOT / ".temp"
     try:
         details = workspace.lstat()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = "bounded target RSS workspace cannot be inspected"
         raise TargetProcessError(message) from error
     if not S_ISDIR(details.st_mode):
