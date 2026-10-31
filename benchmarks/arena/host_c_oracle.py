@@ -167,7 +167,14 @@ def _read_stage_rss(path: Path) -> int:
         raw = evidence.read_bounded_regular(
             path.parent, path.name, limit=RSS_REPORT_MAX_BYTES
         )
-    except (OSError, evidence.EvidenceError) as error:
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        evidence.EvidenceError,
+    ) as error:
         message = "host-C child RSS observation missing or unsafe"
         raise HostOracleError(message) from error
     if not raw.endswith(b"\n") or not _ascii_digits(raw[:-1]):
@@ -237,13 +244,21 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
     time_tool = _system_tool(RSS_MEASUREMENT_TOOL)
     if time_tool is None:
         _fail("host-C child RSS measurement requires GNU time")
-    fd, output_path = tempfile.mkstemp(
-        dir=cwd,
-        prefix="host-c-stage-rss-",
-        suffix=".txt",
-    )
-    os.close(fd)
     try:
+        fd, output_path = tempfile.mkstemp(
+            dir=cwd,
+            prefix="host-c-stage-rss-",
+            suffix=".txt",
+        )
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "host-C challenge oracle RSS temporary receipt unavailable"
+        raise HostOracleError(message) from error
+    try:
+        try:
+            os.close(fd)
+        except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+            message = "host-C challenge oracle RSS descriptor close failed"
+            raise HostOracleError(message) from error
         try:
             child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
                 [
@@ -267,7 +282,15 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
         _wait_child(child, label)
         return _read_stage_rss(Path(output_path))
     finally:
-        Path(output_path).unlink(missing_ok=True)
+        primary = sys.exception()
+        try:
+            Path(output_path).unlink(missing_ok=True)
+        except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+            if primary is not None:
+                primary.add_note(f"host-C RSS receipt cleanup also failed: {error}")
+            else:
+                message = "host-C challenge oracle RSS receipt cleanup failed"
+                raise HostOracleError(message) from error
 
 
 def _run(command: list[str], cwd: Path, label: str) -> int:

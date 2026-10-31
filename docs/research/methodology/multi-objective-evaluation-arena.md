@@ -893,6 +893,11 @@ The original study records remain the result authority.
   bytes. Symlinks, FIFOs, oversized, missing, or inode-swapped file paths fail
   closed before reference artifact publication, without claiming immutable
   filesystem snapshots or authenticating the host compiler.
+  RSS receipt creation, descriptor close, and post-stage cleanup failures are
+  also typed host-C failures. A failed temporary receipt unlink cannot mask
+  the earlier compiler, oracle, or RSS-validation failure; the cleanup error
+  stays in the original exception's diagnostics. Unexpected RSS reader method
+  errors likewise preserve their original causes across the typed boundary.
 - `benchmarks/arena/challenge_bundles.py` optionally replays the original
   generator's exact source/oracle/manifest bytes against a bounded retained
   challenge bundle, binding workload digests to reproducible C source. Synthetic

@@ -816,6 +816,99 @@ def test_host_c_rss_rejects_noncanonical_gnu_time_bytes(
         host_c_oracle._read_stage_rss(report)
 
 
+@pytest.mark.parametrize(
+    "fault", [ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_host_c_rss_read_fault_is_typed_with_original_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Malformed evidence-reader methods cannot escape the host-C boundary."""
+
+    def refuse_read(root: Path, relative: str, *, limit: int) -> bytes:
+        del root, relative, limit
+        raise fault("injected RSS evidence reader fault")
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", refuse_read)
+    with pytest.raises(host_c_oracle.HostOracleError, match="RSS observation") as error:
+        _ = host_c_oracle._read_stage_rss(tmp_path / "rss.txt")
+    assert type(error.value.__cause__) is fault
+
+
+@pytest.mark.parametrize("primary_fails", [False, True])
+def test_host_c_rss_temp_cleanup_is_typed_and_preserves_primary_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    primary_fails: bool,
+) -> None:
+    """A refused temporary RSS unlink must not erase an earlier stage error."""
+    original_unlink = Path.unlink
+
+    def refuse_rss_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        if path.name.startswith("host-c-stage-rss-"):
+            raise PermissionError("injected RSS temp cleanup failure")
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", refuse_rss_unlink)
+    if primary_fails:
+
+        def reject_rss(path: Path) -> int:
+            del path
+            raise host_c_oracle.HostOracleError("primary RSS validation failure")
+
+        monkeypatch.setattr(host_c_oracle, "_read_stage_rss", reject_rss)
+    with pytest.raises(host_c_oracle.HostOracleError) as error:
+        _ = host_c_oracle._run(
+            [sys.executable, "-c", "pass"], tmp_path, "RSS cleanup"
+        )
+    if primary_fails:
+        assert "primary RSS validation failure" in str(error.value)
+        assert any("cleanup also failed" in note for note in error.value.__notes__)
+    else:
+        assert "RSS receipt cleanup" in str(error.value)
+        assert isinstance(error.value.__cause__, PermissionError)
+
+
+@pytest.mark.parametrize("fault", [OSError, ValueError, RuntimeError])
+def test_host_c_rss_temp_descriptor_close_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Even unexpected descriptor cleanup faults cannot start a false run."""
+    original_close = host_c_oracle.os.close
+
+    def close_and_refuse(descriptor: int) -> None:
+        original_close(descriptor)
+        raise fault("injected stage descriptor close failure")
+
+    monkeypatch.setattr(host_c_oracle.os, "close", close_and_refuse)
+    with pytest.raises(host_c_oracle.HostOracleError, match="descriptor close") as error:
+        _ = host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "RSS")
+    assert type(error.value.__cause__) is fault
+    assert not list(tmp_path.glob("host-c-stage-rss-*"))
+
+
+@pytest.mark.parametrize("fault", [OSError, ValueError, RuntimeError])
+def test_host_c_rss_temp_creation_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Stage receipt initialization failures never bypass the typed CLI."""
+
+    def refuse_temp(*args: Any, **kwargs: Any) -> tuple[int, str]:
+        del args, kwargs
+        raise fault("injected RSS temp creation failure")
+
+    monkeypatch.setattr(host_c_oracle.tempfile, "mkstemp", refuse_temp)
+    with pytest.raises(host_c_oracle.HostOracleError, match="temporary") as error:
+        _ = host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "RSS")
+    assert type(error.value.__cause__) is fault
+
+
 def test_host_c_rss_rejects_impossible_peak_above_address_space_limit(
     tmp_path: Path,
 ) -> None:
