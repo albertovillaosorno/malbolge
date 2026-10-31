@@ -55,6 +55,235 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
+TARGET_RAW = "raw"
+TARGET_RUNS = "runs"
+TARGET_RSS = "rss"
+TARGET_STUDY = "study"
+
+
+class _FaultyTargetWriter:
+    """Inject one host short write at a selected retained evidence site."""
+
+    def __init__(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        root: Path,
+        *,
+        site: str,
+        bad_count: object,
+    ) -> None:
+        self.site = site
+        self.bad_count = bad_count
+        self.faults = 0
+        self.original_bytes = type(root).write_bytes
+        self.original_text = type(root).write_text
+
+        def injected_bytes(path: Path, data: bytes) -> int:
+            return self.write_bytes(path, data)
+
+        def injected_text(
+            path: Path, data: str, encoding: str | None = None
+        ) -> int:
+            return self.write_text(path, data, encoding=encoding)
+
+        monkeypatch.setattr(type(root), "write_bytes", injected_bytes)
+        monkeypatch.setattr(type(root), "write_text", injected_text)
+
+    def selected(self, path: Path) -> bool:
+        """Match only the retained sidecar under investigation.
+
+        Returns:
+            Whether the path belongs to this injected failure site.
+
+        """
+        return path.parent.name == self.site or (
+            self.site == TARGET_STUDY and path.name == STUDY_LEAF
+        )
+
+    def write_bytes(self, path: Path, data: bytes) -> int:
+        """Report a malformed byte count after writing one byte.
+
+        Returns:
+            Incomplete or forged acknowledgement for selected files.
+
+        """
+        if self.selected(path):
+            self.faults += 1
+            _ = self.original_bytes(path, data[:1])
+            return cast("int", self.bad_count)
+        return self.original_bytes(path, data)
+
+    def write_text(
+        self,
+        path: Path,
+        data: str,
+        encoding: str | None = None,
+    ) -> int:
+        """Report a malformed text count after writing one character.
+
+        Returns:
+            Incomplete or forged acknowledgement for selected files.
+
+        """
+        if self.selected(path):
+            self.faults += 1
+            _ = self.original_text(path, data[:1], encoding=encoding)
+            return cast("int", self.bad_count)
+        return self.original_text(path, data, encoding=encoding)
+
+
+def _synthetic_target_context(
+    tmp_path: Path, *, site: str
+) -> target_echo_reference._Context:
+    """Create local directories without running an external compiler or VM.
+
+    Returns:
+        Synthetic context with test-owned output directories.
+
+    """
+    for name in (TARGET_RAW, TARGET_RUNS, TARGET_RSS, "candidates"):
+        (tmp_path / name).mkdir()
+    return target_echo_reference._Context(
+        tmp_path,
+        ".temp/synthetic-target",
+        "f" * 64,
+        "a" * 40,
+        "test-host",
+        "test-toolchain",
+        tmp_path / "emitter",
+        tmp_path / "runner",
+        retain_rss_stages=site == TARGET_RSS,
+    )
+
+
+def _invoke_target_rss(context: target_echo_reference._Context) -> object:
+    """Write a single synthetic verified RSS receipt.
+
+    Returns:
+        Published receipt digest on complete write.
+
+    """
+    trial = {
+        "algorithm": "direct",
+        "outcome": analyze.VERIFIED,
+        "case": {"difficulty": 1, "workload_sha256": "f" * 64},
+        "trial": 0,
+    }
+    return target_echo_reference._write_rss_stages(
+        context, trial, values=[1024, 2048, 4096]
+    )
+
+
+def _invoke_target_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    context: target_echo_reference._Context,
+) -> object:
+    """Write one synthetic pair of target raw and TOML evidence.
+
+    Returns:
+        Reported trial row on complete writes.
+
+    """
+    def fake_measure(
+        *args: object, **kwargs: object
+    ) -> tuple[str, dict[str, int]]:
+        _ = (args, kwargs)
+        return analyze.VERIFIED, {"elapsed_ns": 1}
+
+    monkeypatch.setattr(target_echo_reference, "_measure", fake_measure)
+    monkeypatch.setattr(
+        target_echo_reference, "_raw_csv", lambda *_: b"test-raw"
+    )
+
+    def fake_manifest(*args: object, **kwargs: object) -> str:
+        _ = (args, kwargs)
+        return "test-manifest"
+
+    monkeypatch.setattr(target_echo_reference, "_manifest", fake_manifest)
+    return target_echo_reference._write_attempt(
+        context, 1, 0, algorithm="direct"
+    )
+
+
+def _invoke_target_study(
+    monkeypatch: pytest.MonkeyPatch,
+    context: target_echo_reference._Context,
+) -> object:
+    """Attempt study publication without using any external target process.
+
+    Returns:
+        Admitted report only if the output write and audit succeed.
+
+    """
+    monkeypatch.setattr(
+        target_echo_reference, "_prepare_context", lambda *_: context
+    )
+
+    def fake_attempt(*args: object, **kwargs: object) -> dict[str, Any]:
+        _ = (args, kwargs)
+        return {}
+
+    monkeypatch.setattr(target_echo_reference, "_write_attempt", fake_attempt)
+    monkeypatch.setattr(
+        target_echo_reference,
+        "_make_document",
+        lambda *_: {"schema_version": 1},
+    )
+
+    def forbidden(path: Path) -> None:
+        _ = path
+        pytest.fail("invalid write reached independent source audit")
+
+    monkeypatch.setattr(
+        target_echo_reference, "_audit_retained_study", forbidden
+    )
+    return target_echo_reference.run_study(
+        target_echo_reference.StudyPlan((1,), 1)
+    )
+
+
+def _invoke_target_retained_site(
+    monkeypatch: pytest.MonkeyPatch,
+    context: target_echo_reference._Context,
+    *,
+    site: str,
+) -> object:
+    """Select the synthetic retained write under test.
+
+    Returns:
+        The successful writer result when publication is complete.
+
+    """
+    if site == TARGET_RSS:
+        return _invoke_target_rss(context)
+    if site == TARGET_STUDY:
+        return _invoke_target_study(monkeypatch, context)
+    return _invoke_target_attempt(monkeypatch, context)
+
+
+@pytest.mark.parametrize(
+    "site", [TARGET_RAW, TARGET_RUNS, TARGET_RSS, TARGET_STUDY]
+)
+@pytest.mark.parametrize("bad_count", [None, True, -1, 1, 1_000_000])
+def test_target_retained_output_rejects_invalid_write_acknowledgements(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    site: str,
+    bad_count: object,
+) -> None:
+    """A short or foreign host write never certifies target trial evidence."""
+    context = _synthetic_target_context(tmp_path, site=site)
+    faulty = _FaultyTargetWriter(
+        monkeypatch, tmp_path, site=site, bad_count=bad_count
+    )
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="write count"
+    ):
+        _ = _invoke_target_retained_site(monkeypatch, context, site=site)
+    assert faulty.faults == 1
+
+
 RAW_TAMPER = "raw"
 STUDY_LEAF = "study.json"
 ORIGINAL_TRIAL = "trial = 0"

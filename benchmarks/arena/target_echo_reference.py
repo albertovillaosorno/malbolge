@@ -867,6 +867,20 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
     )
 
 
+def _write_retained_bytes(path: Path, content: bytes) -> None:
+    """Require a complete host byte-write acknowledgement before publication."""
+    written = path.write_bytes(content)
+    if type(written) is not int or written != len(content):
+        _fail(f"target echo retained {path.name} has invalid write count")
+
+
+def _write_retained_text(path: Path, content: str) -> None:
+    """Require a complete host text-write acknowledgement before publication."""
+    written = path.write_text(content, encoding="utf-8")
+    if type(written) is not int or written != len(content):
+        _fail(f"target echo retained {path.name} has invalid write count")
+
+
 def _write_rss_stages(
     context: _Context,
     row: dict[str, Any],
@@ -910,7 +924,7 @@ def _write_rss_stages(
     ).encode("utf-8")
     stem = f"{row["algorithm"]}-pairs-{case["difficulty"]}-trial-{row["trial"]}"
     path = context.directory / "rss" / f"{stem}.json"
-    path.write_bytes(content)
+    _write_retained_bytes(path, content)
     return sha256(content).hexdigest()
 
 
@@ -968,7 +982,7 @@ def _write_attempt(
         "metrics": metrics,
     }
     raw = _raw_csv(row)
-    (context.directory / "raw" / f"{stem}.csv").write_bytes(raw)
+    _write_retained_bytes(context.directory / "raw" / f"{stem}.csv", raw)
     receipt_hash = _write_rss_stages(
         observed_context,
         row,
@@ -977,10 +991,7 @@ def _write_attempt(
     receipt = _manifest(
         row, context, sha256(raw).hexdigest(), rss_hash=receipt_hash
     )
-    (context.directory / "runs" / f"{stem}.toml").write_text(
-        receipt,
-        encoding="utf-8",
-    )
+    _write_retained_text(context.directory / "runs" / f"{stem}.toml", receipt)
     return row
 
 
@@ -1208,7 +1219,9 @@ def run_study(
     ]
     document = _make_document(context, observations)
     path = context.directory / "study.json"
-    path.write_text(json.dumps(document, sort_keys=True, indent=2) + "\n")
+    _write_retained_text(
+        path, json.dumps(document, sort_keys=True, indent=2) + "\n"
+    )
     admitted = _audit_retained_study(path)
     if _tool_identity(context.emitter, context.runner) != context.toolchain:
         _fail("target echo executables changed during the measured study")
