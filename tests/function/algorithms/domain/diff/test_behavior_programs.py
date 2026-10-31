@@ -38,6 +38,7 @@ import math
 from pathlib import Path
 import shutil
 import sys
+import tempfile
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -647,6 +648,56 @@ def test_observation_rejects_copy_time_mirror_drift(
         (source / "identity.txt").read_bytes() == _STABLE_IDENTITY_BYTES,
         "authoring source changed during mirror rejection",
     )
+
+
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
+def test_observation_mirror_creation_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Host mirror-copy failures cannot leak outside the probe boundary."""
+    authored, source, _ = _authored(tmp_path)
+
+    def denied_copy(
+        source_root: Path, destination: Path, *, symlinks: bool = False
+    ) -> Path:
+        del source_root, destination, symlinks
+        message = "copytree host failure"
+        raise failure_type(message)
+
+    monkeypatch.setattr(shutil, "copytree", denied_copy)
+    with pytest.raises(ProbeExecutionError, match="candidate mirror failed"):
+        _ = observe_behavior_programs(authored, _context(source, tmp_path))
+    _expect(
+        (source / "identity.txt").read_bytes() == _STABLE_IDENTITY_BYTES,
+        "mirror rejection changed the source",
+    )
+
+
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
+def test_observation_temporary_root_creation_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Probe observation cannot leak temp-root initialization errors."""
+    authored, source, _ = _authored(tmp_path)
+
+    def denied_temporary_root(
+        *, prefix: str
+    ) -> tempfile.TemporaryDirectory[str]:
+        del prefix
+        message = "temporary root host failure"
+        raise failure_type(message)
+
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", denied_temporary_root)
+    with pytest.raises(ProbeExecutionError, match="temporary root failed"):
+        _ = observe_behavior_programs(authored, _context(source, tmp_path))
 
 
 def test_failed_compatibility_program_rejects_candidate(tmp_path: Path) -> None:

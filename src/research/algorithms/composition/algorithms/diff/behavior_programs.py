@@ -635,7 +635,7 @@ def _admit_observation_mirror(
     """
     try:
         _ = shutil.copytree(context.source_root, mirror, symlinks=True)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"behavior candidate mirror failed: {error}"
         raise ProbeExecutionError(message) from error
     if _snapshot_observed_source(mirror) != admitted:
@@ -651,6 +651,14 @@ def _require_observation_sources_unchanged(
     """Verify both original and observation mirror after one probe class."""
     _require_observed_source_unchanged(source, admitted)
     _require_observed_source_unchanged(mirror, admitted)
+
+
+def _temporary_observation_root() -> tempfile.TemporaryDirectory[str]:
+    try:
+        return tempfile.TemporaryDirectory(prefix="diff-behavior-source-")
+    except (OSError, ValueError, RuntimeError) as error:
+        message = f"behavior observation temporary root failed: {error}"
+        raise ProbeExecutionError(message) from error
 
 
 def observe_behavior_programs(
@@ -671,9 +679,7 @@ def observe_behavior_programs(
         raise BehaviorProgramError(message)
     context = _require_run_context(context, "behavior observation context")
     admitted = _snapshot_observed_source(context.source_root)
-    with tempfile.TemporaryDirectory(
-        prefix="diff-behavior-source-"
-    ) as temporary:
+    with _temporary_observation_root() as temporary:
         mirror = Path(temporary) / "source"
         mirrored = _admit_observation_mirror(context, mirror, admitted)
         identity = _observe_identity(authored.identity, mirrored)
