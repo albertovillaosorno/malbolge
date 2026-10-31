@@ -1541,6 +1541,70 @@ def test_success_annotation_rejects_invalid_counts_atomically(
     assert SUCCESS_INTERVAL_POLICY_KEY not in report
 
 
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("success_fraction", [0, 2]),
+        ("success_fraction", [2, 3]),
+        ("success_fraction", [2, True]),
+        ("success_fraction", (2, 2)),
+        ("success_fraction", [2]),
+        ("outcomes", {"verified": 1}),
+        ("outcomes", {kind: 0 for kind in analyze.OUTCOMES}),
+        (
+            "outcomes",
+            {
+                **{kind: 0 for kind in analyze.OUTCOMES},
+                "verified": 2,
+                "tool_failed": 1,
+            },
+        ),
+        (
+            "outcomes",
+            {
+                **{kind: 0 for kind in analyze.OUTCOMES},
+                "verified": True,
+                "tool_failed": 1,
+            },
+        ),
+    ],
+)
+def test_success_annotation_rejects_contradictory_evidence_atomically(
+    field: str,
+    invalid: object,
+) -> None:
+    """Confidence intervals cannot certify mutually inconsistent counts."""
+    report = _run(_document())
+    first, second = report["capacity_curve"][:2]
+    second[field] = invalid
+    with pytest.raises(analyze.ArenaError, match="success interval"):
+        analyze.annotate_success_intervals(report)
+    assert SUCCESS_INTERVAL_KEY not in first
+    assert SUCCESS_INTERVAL_KEY not in second
+    assert SUCCESS_INTERVAL_POLICY_KEY not in report
+
+
+def test_success_interval_cli_rejects_forged_outcome_totals_before_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A contradictory analyzer receipt cannot become a success-rate report."""
+    source = tmp_path / "study.json"
+    source.write_text(json.dumps(_document()), encoding="utf-8")
+    forged = _run(_document())
+    forged["capacity_curve"][1]["outcomes"]["tool_failed"] = 1
+    monkeypatch.setattr(analyze, "analyze", lambda *_args, **_kwargs: forged)
+    monkeypatch.setattr(
+        sys, "argv", ["arena", str(source), "--success-intervals-95"]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        analyze.main()
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "success interval" in captured.err
+
+
 def test_success_annotation_rejects_missing_counts_before_mutation() -> None:
     """Missing success counts fail through the typed analyzer boundary."""
     report = _run(_document())

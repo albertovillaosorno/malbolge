@@ -902,6 +902,24 @@ def annotate_success_intervals(report: dict[str, Any]) -> None:
             or not 0 <= verified <= attempts
         ):
             _fail("success interval annotation requires consistent integer counts")
+        fraction = point.get("success_fraction")
+        outcomes = point.get("outcomes")
+        if (
+            type(fraction) is not list
+            or len(fraction) != 2
+            or any(type(value) is not int for value in fraction)
+            or fraction != [verified, attempts]
+            or type(outcomes) is not dict
+            or any(type(name) is not str for name in outcomes)
+            or set(outcomes) != OUTCOMES
+            or any(
+                type(value) is not int or value < 0
+                for value in outcomes.values()
+            )
+            or outcomes[VERIFIED] != verified
+            or sum(outcomes.values()) != attempts
+        ):
+            _fail("success interval annotation requires consistent outcome totals")
         counts.append((verified, attempts))
     intervals = [
         success_intervals.success_interval_95(verified, attempts)

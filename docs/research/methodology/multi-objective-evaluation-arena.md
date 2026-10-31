@@ -107,7 +107,10 @@ and the reported verifier labels do **not** themselves establish. Sample sizes
 above 512 yield null rather than unbounded computation; zero successes yield a
 nonzero possible upper success rate. The view is descriptive if the sampling
 and verifier assumptions are not externally checked, and does not alter
-nominal Pareto rankings or the default JSON schema.
+nominal Pareto rankings or the default JSON schema. Direct annotation of
+in-memory reports also requires exact native success fractions and a complete
+nonnegative outcome tally equal to the reported attempts and verified count;
+a contradictory late point rejects without partially attaching intervals.
 
 The Pareto relation
 minimizes declared costs and maximizes verified trial count inside each matched

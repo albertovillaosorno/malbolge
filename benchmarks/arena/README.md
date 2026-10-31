@@ -1108,6 +1108,10 @@ Under independent, identically distributed Bernoulli trials, those bounds
 retain at least 95% nominal two-sided coverage. Counts above 512 or empty
 cohorts produce `null`, not extrapolated results. In particular, zero reported
 successes does **not** mean the true success probability is known to be zero.
+Direct interval annotation first reconciles `verified`, `attempts`, the exact
+`success_fraction` pair, and all five nonnegative outcome totals across every
+capacity point. Contradictory or nonnative counts reject before any interval
+or policy field is attached, even when a later point is malformed.
 
 The `verification_success_interval_policy` records the grid, maximum samples,
 nominal confidence, and the critical unverified **iid sampling assumption**.
