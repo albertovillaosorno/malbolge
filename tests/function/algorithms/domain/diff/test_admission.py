@@ -268,6 +268,28 @@ def test_admission_policy_rejects_boolean_numeric_fields() -> None:
         )
 
 
+def test_admission_policy_accepts_integral_unit_fractions() -> None:
+    """Zero and one remain valid native-integer threshold endpoints."""
+    for fraction in (0, 1):
+        policy = _policy(
+            source_similarity=fraction,
+            anchor_coverage=fraction,
+        )
+        assert policy.minimum_source_similarity == fraction
+        assert policy.minimum_anchor_coverage == fraction
+
+
+def test_admission_policy_rejects_huge_integer_fractions() -> None:
+    """Invalid large integers stay inside the typed fraction policy boundary."""
+    magnitudes: tuple[int, int] = (10**400, 10**5000)
+    for magnitude in magnitudes:
+        for invalid in (magnitude, -magnitude):
+            with pytest.raises(AdmissionPolicyError, match="finite fraction"):
+                _ = _policy(source_similarity=invalid)
+            with pytest.raises(AdmissionPolicyError, match="finite fraction"):
+                _ = _policy(anchor_coverage=invalid)
+
+
 def test_identity_records_reject_foreign_runtime_types() -> None:
     """Identity construction accepts canonical strings and bytes only."""
     with pytest.raises(AdmissionPolicyError, match="exact string"):

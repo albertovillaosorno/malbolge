@@ -405,15 +405,18 @@ def identity_tree(files: dict[str, bytes]) -> IdentityTree:
 
 def _validate_fraction(name: str, value: object) -> None:
     if type(value) is int:
-        number = float(value)
+        # Only zero and one can be integer fractions in the admitted range.
+        # Never coerce arbitrary-sized integers to float or diagnostic text.
+        if _ZERO <= value <= _ONE:
+            return
     elif type(value) is float:
-        number = value
+        if math.isfinite(value) and _ZERO <= value <= _ONE:
+            return
     else:
         message = f"{name} must be a finite numeric fraction in [0, 1]"
         raise AdmissionPolicyError(message)
-    if not math.isfinite(number) or number < _ZERO or number > _ONE:
-        message = f"{name} must be a finite fraction in [0, 1], got {value}"
-        raise AdmissionPolicyError(message)
+    message = f"{name} must be a finite fraction in [0, 1]"
+    raise AdmissionPolicyError(message)
 
 
 def _digest_set(anchors: tuple[StableAnchor, ...]) -> frozenset[bytes]:
