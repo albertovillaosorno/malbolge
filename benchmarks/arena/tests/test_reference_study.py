@@ -379,6 +379,100 @@ def test_reference_git_resolver_rejects_invalid_executable_before_launch(
         reference_study._commit()  # ruff: ignore[private-member-access]
 
 
+@pytest.mark.parametrize("kind", ["symlink", "directory", "non-executable", "missing"])
+def test_reference_git_rejects_nonphysical_executable_before_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Source provenance must not execute a linked or nonregular Git tool."""
+    path = tmp_path / "git"
+    if kind == "symlink":
+        target = tmp_path / "genuine-git"
+        _ = target.write_bytes(b"bin")
+        target.chmod(0o700)
+        path.symlink_to(target)
+    elif kind == "directory":
+        path.mkdir()
+    elif kind == "non-executable":
+        _ = path.write_bytes(b"bin")
+        path.chmod(0o600)
+
+    def forbidden(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        pytest.fail("untrusted physical Git executable reached child launch")
+
+    monkeypatch.setattr(reference_study.shutil, "which", lambda *_args, **_kw: str(path))
+    monkeypatch.setattr(reference_study.sp, "run", forbidden)
+    with pytest.raises(reference_study.ReferenceStudyError, match="Git executable") as error:
+        reference_study._commit()  # ruff: ignore[private-member-access]
+    if kind == "missing":
+        assert isinstance(error.value.__cause__, FileNotFoundError)
+
+
+@pytest.mark.parametrize("access_result", [False, None, True, 1, "yes", object()])
+def test_reference_git_requires_native_positive_executable_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, access_result: object
+) -> None:
+    """Only a literal successful OS executable-access receipt permits Git."""
+    path = tmp_path / "git"
+    _ = path.write_bytes(b"bin")
+    path.chmod(0o700)
+    monkeypatch.setattr(reference_study.shutil, "which", lambda *_args, **_kw: str(path))
+    monkeypatch.setattr(reference_study.os, "access", lambda *_args: access_result)
+    if access_result is True:
+        monkeypatch.setattr(
+            reference_study.sp,
+            "run",
+            lambda *_args, **_kw: reference_study.sp.CompletedProcess(
+                ["git"], 0, stdout="a" * 40 + "\n"
+            ),
+        )
+        assert reference_study._commit() == "a" * 40  # ruff: ignore[private-member-access]
+    else:
+        def forbidden(*args: object, **kwargs: object) -> object:
+            del args, kwargs
+            pytest.fail("invalid Git execute receipt reached child launch")
+
+        monkeypatch.setattr(reference_study.sp, "run", forbidden)
+        with pytest.raises(reference_study.ReferenceStudyError, match="Git executable"):
+            reference_study._commit()  # ruff: ignore[private-member-access]
+
+
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+@pytest.mark.parametrize("site", ["status", "access"])
+def test_reference_git_physical_preflight_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    site: str,
+) -> None:
+    """Host executable inspection faults preserve the original typed cause."""
+    path = tmp_path / "git"
+    _ = path.write_bytes(b"bin")
+    path.chmod(0o700)
+    monkeypatch.setattr(reference_study.shutil, "which", lambda *_args, **_kw: str(path))
+
+    def broken(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise fault_type("injected host Git inspection fault")
+
+    if site == "status":
+        original_lstat = type(path).lstat
+
+        def injected_lstat(candidate: Path) -> object:
+            if candidate == path:
+                return broken()
+            return original_lstat(candidate)
+
+        monkeypatch.setattr(type(path), "lstat", injected_lstat)
+    else:
+        monkeypatch.setattr(reference_study.os, "access", broken)
+    with pytest.raises(reference_study.ReferenceStudyError, match="Git executable") as caught:
+        reference_study._commit()  # ruff: ignore[private-member-access]
+    assert type(caught.value.__cause__) is fault_type
+
+
 @pytest.mark.parametrize(
     "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
 )

@@ -107,9 +107,24 @@ def _commit() -> str:
         _fail("host-C reference study requires absolute Git executable")
     try:
         _ = os.fsencode(executable)
-    except UnicodeError as error:
-        message = "host-C reference study requires encodable Git executable"
+        mode = Path(executable).lstat().st_mode
+        executable_access = os.access(executable, os.X_OK)
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        UnicodeError,
+    ) as error:
+        message = "host-C reference study Git executable unavailable"
         raise ReferenceStudyError(message) from error
+    if (
+        type(mode) is not int
+        or not stat.S_ISREG(mode)
+        or executable_access is not True
+    ):
+        _fail("host-C reference study Git executable is not an ordinary file")
     # Caller Git selectors cannot redirect a source provenance lookup.
     clean_env = {
         name: value for name, value in os.environ.items() if not name.startswith("GIT_")
