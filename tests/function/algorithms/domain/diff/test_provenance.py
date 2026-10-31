@@ -293,6 +293,28 @@ def test_source_pin_rejects_foreign_runtime_metadata() -> None:
         _ = SourcePin("repo", _COMMIT, ("src",), 1, cast("str", object()))
 
 
+def test_source_pin_rejects_nul_root_before_filesystem_access(
+    tmp_path: Path,
+) -> None:
+    """Path metadata cannot defer embedded NUL failure to host path APIs."""
+    nul_root = "src\x00hidden"
+    with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+        _ = SourcePin("repo", _COMMIT, (nul_root,), 1, "0" * 64)
+    with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+        _ = source_snapshot_evidence(tmp_path, (nul_root,))
+
+
+def test_source_pin_rejects_overlapping_roots_before_tree_walk(
+    tmp_path: Path,
+) -> None:
+    """Disjoint pin roots must be admitted without traversing duplicates."""
+    roots = ("src", "src/nested")
+    with pytest.raises(SourcePinError, match="must not overlap"):
+        _ = SourcePin("repo", _COMMIT, roots, 1, "0" * 64)
+    with pytest.raises(SourcePinError, match="must not overlap"):
+        _ = source_snapshot_evidence(tmp_path, roots)
+
+
 def test_snapshot_and_pin_public_inputs_fail_typed(tmp_path: Path) -> None:
     """Snapshot APIs validate roots and pins before filesystem dereference."""
     _write(tmp_path, "src/a.c", b"int a;" + bytes((10,)))

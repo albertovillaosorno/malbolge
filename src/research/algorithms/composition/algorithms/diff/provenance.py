@@ -53,6 +53,7 @@ _DOMAIN = b"malbolge-pinned-source-v1\0"
 _PARENT = ".."
 _DOT = "."
 _BACKSLASH = "\\"
+_NUL = "\x00"
 _COMMIT_HEX_LENGTH = 40
 _SHA256_HEX_LENGTH = 64
 _LOWER_HEX = frozenset("0123456789abcdef")
@@ -125,8 +126,18 @@ def _validate_roots(roots: object) -> None:
     if not string_roots or string_roots != tuple(sorted(set(string_roots))):
         message = "source pin roots must be unique and sorted"
         raise SourcePinError(message)
-    for root in string_roots:
+    _require_disjoint_roots(string_roots)
+
+
+def _require_disjoint_roots(roots: tuple[str, ...]) -> None:
+    selected: set[str] = set()
+    for root in roots:
         _ = _validate_relative_path(root)
+        parents = PurePosixPath(root).parents
+        if any(parent.as_posix() in selected for parent in parents):
+            message = "source pin roots must not overlap"
+            raise SourcePinError(message)
+        selected.add(root)
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +169,7 @@ def _validate_relative_path(relative_path: object) -> str:
     unsafe = (
         not relative_path
         or _BACKSLASH in relative_path
+        or _NUL in relative_path
         or relative_path == _DOT
         or candidate.is_absolute()
         or _PARENT in candidate.parts
