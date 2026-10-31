@@ -39,6 +39,7 @@ from __future__ import annotations
 import json
 import sys
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from typing import override
 
@@ -51,7 +52,6 @@ if TYPE_CHECKING:
     import os
 
     from collections.abc import Iterator
-    from pathlib import Path
     from typing import BinaryIO
 
 
@@ -1290,3 +1290,77 @@ def test_study_reader_rejects_foreign_filesystem_metadata_before_field_access(
             study_file.StudyFileError, match="invalid file metadata"
         ):
             study_file.read_study_bytes(path, limit=1024 * 1024)
+
+
+class _ForeignResolvedStudyPath(type(Path())):
+    """Filesystem dependency response must never supply its own path methods."""
+
+    @override
+    def __fspath__(self) -> str:
+        raise AssertionError("foreign resolved study path __fspath__ executed")
+
+    @override
+    def __ne__(self, _other: object) -> bool:
+        raise AssertionError("foreign resolved study path __ne__ executed")
+
+
+class _ForeignOpenedStudyPath(str):  # ruff: ignore[subclass-builtin]
+    """An injected proc-fd link cannot forge provenance with comparison hooks."""
+
+    @override
+    def __ne__(self, _other: object) -> bool:
+        raise AssertionError("foreign opened study path __ne__ executed")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="proc-fd path check is Linux only")
+@pytest.mark.parametrize("phase", ["original", "opened", "completed"])
+def test_study_reader_rejects_foreign_resolved_path_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """No substituted resolve() return may control path equality or conversion."""
+    path = tmp_path / STABLE_INPUT
+    _ = _study(path)
+    actual_resolve = type(path).resolve
+    target_call = {"original": 1, "opened": 2, "completed": 3}[phase]
+    calls = 0
+
+    def injected_resolve(target: Path, strict: bool = False) -> Path:
+        nonlocal calls
+        if target == path:
+            calls += 1
+            if calls == target_call:
+                return _ForeignResolvedStudyPath("forged-study-source")
+        return actual_resolve(target, strict=strict)
+
+    with monkeypatch.context() as context:
+        context.setattr(type(path), "resolve", injected_resolve)
+        with pytest.raises(study_file.StudyFileError, match="invalid resolved path"):
+            study_file.read_study_bytes(path, limit=1024 * 1024)
+    assert calls >= target_call
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="proc-fd path check is Linux only")
+def test_study_reader_rejects_foreign_opened_path_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An injected readlink result cannot decide an opened-path comparison."""
+    path = tmp_path / STABLE_INPUT
+    _ = _study(path)
+    actual_readlink = study_file.os.readlink
+    injected = False
+
+    def forged_readlink(target: str) -> str:
+        nonlocal injected
+        if target.startswith("/proc/self/fd/"):
+            injected = True
+            return _ForeignOpenedStudyPath("/forged/study/source")
+        return actual_readlink(target)
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file.os, "readlink", forged_readlink)
+        with pytest.raises(study_file.StudyFileError, match="invalid opened path"):
+            study_file.read_study_bytes(path, limit=1024 * 1024)
+    assert injected

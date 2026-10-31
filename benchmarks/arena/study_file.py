@@ -58,6 +58,14 @@ def _native_stat(info: os.stat_result) -> os.stat_result:
     return info
 
 
+def _native_resolved_path(resolved: Path) -> Path:
+    # Only the platform's native Path may supply an opened-file provenance
+    # claim. Reject foreign resolve() results before fspath or comparison.
+    if type(resolved) is not type(Path()):
+        _fail("arena input returned invalid resolved path")
+    return resolved
+
+
 def _identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
     info = _native_stat(info)
     return (
@@ -111,12 +119,16 @@ def _open_study(path: Path) -> BinaryIO:
     # real opened descriptor pathname before accepting any bytes. Stable
     # symlinked parents remain valid, but transient redirection rejects.
     expected_path = (
-        os.fspath(path.resolve(strict=True)) if sys.platform == "linux" else None
+        os.fspath(_native_resolved_path(path.resolve(strict=True)))
+        if sys.platform == "linux"
+        else None
     )
     descriptor = os.open(path, flags)
     try:
         if expected_path is not None:
             opened_path = os.readlink(f"/proc/self/fd/{descriptor}")
+            if type(opened_path) is not str:
+                _fail("arena input returned invalid opened path")
             if opened_path != expected_path:
                 _fail("arena input opened path changed")
         return os.fdopen(descriptor, "rb")
@@ -218,12 +230,18 @@ def _read_admitted_study(path: Path, *, limit: int) -> bytes:
     # Even if a different parent resolves to a hard link of the same inode,
     # the source's canonical location must remain the originally admitted one.
     # The descriptor check in _open_study independently binds the open itself.
-    original_target = path.resolve(strict=True) if sys.platform == "linux" else None
+    original_target = (
+        _native_resolved_path(path.resolve(strict=True))
+        if sys.platform == "linux"
+        else None
+    )
     data, opened = _read_descriptor(path, before, limit=limit)
     _admit_completion(path, opened, data, limit=limit)
     if original_target is not None:
         try:
-            current_target = path.resolve(strict=True)
+            current_target = _native_resolved_path(path.resolve(strict=True))
+        except StudyFileError:
+            raise
         except Exception as error:
             message = "arena input parent path changed during read"
             raise StudyFileError(message) from error
