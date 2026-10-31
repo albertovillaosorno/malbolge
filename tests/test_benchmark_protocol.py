@@ -387,6 +387,115 @@ def test_benchmark_reader_bounds_text_and_reads_in_chunks(
         _ = validator.validate_example(protocol)
 
 
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation",
+    (
+        "parent_lstat",
+        "parent_junction",
+        "leaf_lstat",
+        "leaf_junction",
+        "open",
+        "fdopen",
+        "fstat",
+        "read",
+    ),
+)
+def test_benchmark_host_filesystem_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """Untrusted host path and descriptor faults remain protocol failures."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    if operation in {"parent_lstat", "leaf_lstat"}:
+        target = protocol.parent if operation == "parent_lstat" else protocol
+        original_lstat = Path.lstat
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            if path == target:
+                raise fault_type(f"injected {operation} fault")
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    elif operation in {"parent_junction", "leaf_junction"}:
+        target = protocol.parent if operation == "parent_junction" else protocol
+        original_junction = Path.is_junction
+
+        def fail_junction(path: Path) -> bool:
+            if path == target:
+                raise fault_type(f"injected {operation} fault")
+            return original_junction(path)
+
+        monkeypatch.setattr(Path, "is_junction", fail_junction)
+    elif operation == "open":
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == protocol:
+                raise fault_type("injected open fault")
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    elif operation == "fdopen":
+
+        def fail_fdopen(_descriptor: int, _mode: str) -> object:
+            raise fault_type("injected fdopen fault")
+
+        monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    elif operation == "fstat":
+
+        def fail_fstat(_descriptor: int) -> os.stat_result:
+            raise fault_type("injected fstat fault")
+
+        monkeypatch.setattr(os, "fstat", fail_fstat)
+    else:
+
+        def fail_read(_descriptor: int, _length: int) -> bytes:
+            raise fault_type("injected read fault")
+
+        monkeypatch.setattr(os, "read", fail_read)
+    expected = (
+        "parent status failed"
+        if operation.startswith("parent_")
+        else "status failed"
+        if operation.startswith("leaf_")
+        else "read failed"
+    )
+    with pytest.raises(validator.BenchmarkProtocolError, match=expected):
+        _ = validator.validate_example(protocol)
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+def test_benchmark_fdopen_failure_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A failed benchmark stream wrapper releases its private descriptor."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    real_open = os.open
+    opened: list[int] = []
+
+    def track_open(path: Path, flags: int) -> int:
+        descriptor = real_open(path, flags)
+        if path == protocol:
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(_descriptor: int, _mode: str) -> object:
+        raise fault_type("injected fdopen fault")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    with pytest.raises(validator.BenchmarkProtocolError, match="read failed"):
+        _ = validator.validate_example(protocol)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
 def test_repository_protocol_examples_are_valid_and_retain_raw_data() -> None:
     """Deterministic and stochastic fixtures satisfy the complete protocol."""
     records = validator.validate_repository_examples()

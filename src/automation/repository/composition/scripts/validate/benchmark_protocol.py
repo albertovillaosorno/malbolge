@@ -483,9 +483,12 @@ def _check_physical_parents(path: Path, context: str) -> None:
     for parent in path.parents:
         try:
             status = parent.lstat()
-        except OSError as error:
-            _fail(f"{context} parent status failed: {error}")
-        if S_ISLNK(status.st_mode) or parent.is_junction():
+            redirected = S_ISLNK(status.st_mode) or parent.is_junction()
+        except (OSError, ValueError, RuntimeError) as error:
+            raise BenchmarkProtocolError(
+                f"{context} parent status failed: {error}"
+            ) from error
+        if redirected:
             _fail(f"{context} parent must not redirect: {parent}")
         if not S_ISDIR(status.st_mode):
             _fail(f"{context} parent is not a directory: {parent}")
@@ -543,12 +546,23 @@ def _read_utf8(path: Path, context: str, admitted: os.stat_result) -> str:
     )
     try:
         descriptor = os.open(path, flags)
-        with os.fdopen(descriptor, "rb") as stream:
+        try:
+            stream = os.fdopen(descriptor, "rb")
+        except BaseException:
+            # The descriptor remains ours if stream construction fails.
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            raise
+        with stream:
             raw = _read_verified_bytes(
                 stream.fileno(), path, context, admitted=admitted
             )
-    except OSError as error:
-        _fail(f"{context} read failed: {error}")
+    except BenchmarkProtocolError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise BenchmarkProtocolError(f"{context} read failed: {error}") from error
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -561,9 +575,13 @@ def _regular_file_status(path: Path, context: str) -> os.stat_result | None:
         status = path.lstat()
     except FileNotFoundError:
         return None
-    except OSError as error:
-        _fail(f"{context} status failed: {error}")
-    if S_ISLNK(status.st_mode) or path.is_junction():
+    except (OSError, ValueError, RuntimeError) as error:
+        raise BenchmarkProtocolError(f"{context} status failed: {error}") from error
+    try:
+        redirected = S_ISLNK(status.st_mode) or path.is_junction()
+    except (OSError, ValueError, RuntimeError) as error:
+        raise BenchmarkProtocolError(f"{context} status failed: {error}") from error
+    if redirected:
         _fail(f"{context} must not redirect")
     if not S_ISREG(status.st_mode):
         return None
