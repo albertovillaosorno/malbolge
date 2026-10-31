@@ -224,6 +224,20 @@ def test_emitter_rejects_foreign_public_inputs(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.parametrize("filename", ["bad\x00.rs", "bad\ud800.rs"])
+def test_emitter_rejects_unrepresentable_output_path(
+    tmp_path: Path,
+    filename: str,
+) -> None:
+    """Host-unrepresentable paths fail before rendering or publication."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / filename
+    with pytest.raises(RustEmissionError, match="Rust transform output path"):
+        _ = emit_rust_transform(protected, _PROFILE, output)
+    with pytest.raises(RustEmissionError, match="Rust transform output path"):
+        write_rust_transform(protected, _PROFILE, output)
+
+
 def test_emitted_rust_accepts_unicode_and_control_profile(
     tmp_path: Path,
 ) -> None:

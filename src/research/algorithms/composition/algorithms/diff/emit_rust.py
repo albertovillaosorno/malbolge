@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from secrets import token_hex
 from stat import S_ISDIR
@@ -53,6 +54,7 @@ _DEFAULT_OUTPUT_PATH = Path("generated/main.rs")
 _BEGIN = "// BEGIN GENERATED CONSTANTS"
 _END = "// END GENERATED CONSTANTS"
 _HEX_CHUNK = 64
+_NUL = "\x00"
 _SURROGATE_START = 0xD800
 _SURROGATE_END = 0xDFFF
 _PRINTABLE_ASCII_START = 0x20
@@ -212,9 +214,21 @@ def _validate_emission_inputs(
     if type(profile) is not str or not profile:
         message = "Rust transform profile must use a non-empty exact string"
         raise RustEmissionError(message)
+    _validate_output_path(output_path)
+
+
+def _validate_output_path(output_path: object) -> None:
     if not isinstance(output_path, Path):
         message = "Rust transform output path must use pathlib Path"
         raise RustEmissionError(message)
+    if _NUL in str(output_path):
+        message = "Rust transform output path must not contain NUL"
+        raise RustEmissionError(message)
+    try:
+        _ = os.fsencode(output_path)
+    except (UnicodeError, ValueError) as error:
+        message = "Rust transform output path is not filesystem-encodable"
+        raise RustEmissionError(message) from error
 
 
 def emit_rust_transform(
