@@ -239,9 +239,16 @@ def check_rows(
         len(row) != len(IDENTITY_FIELDS) + len(metrics) for row in actual_rows
     ):
         _fail(f"{label}: malformed arena raw CSV row")
-    expected = Counter(
-        _row_values(item, version, metrics) for item in observations
-    )
+    try:
+        expected = Counter(
+            _row_values(item, version, metrics) for item in observations
+        )
+    except RawSampleError:
+        raise
+    except ValueError as error:
+        # Python may refuse an immense native integer's decimal conversion.
+        message = f"{label}: raw CSV integer conversion failed"
+        raise RawSampleError(message) from error
     if Counter(actual_rows) != expected:
         _fail(f"{label}: raw CSV trial/metric rows differ from arena report")
     return sha256(raw).hexdigest()

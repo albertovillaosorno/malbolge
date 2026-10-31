@@ -1122,3 +1122,20 @@ def test_direct_raw_check_rejects_non_native_labels_before_diagnostics(
     """Caller-controlled label formatting cannot escape typed raw errors."""
     with pytest.raises(raw_samples.RawSampleError, match="exact string label"):
         raw_samples.check_rows(b"", [], cast("str", foreign_label))
+
+
+def test_direct_raw_check_types_unrenderable_native_metric(tmp_path: Path) -> None:
+    """Decimal conversion limits cannot leak raw ValueError to callers."""
+    observation = sample_study(tmp_path)["observations"][0]
+    raw = _render([observation])
+    observation["metrics"]["artifact_bytes"] = 1 << 50000
+    previous_limit = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(4300)
+        with pytest.raises(
+            raw_samples.RawSampleError, match="integer conversion"
+        ) as failure:
+            raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+    finally:
+        sys.set_int_max_str_digits(previous_limit)
+    assert isinstance(failure.value.__cause__, ValueError)
