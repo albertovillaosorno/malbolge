@@ -67,6 +67,7 @@ _ONE = 1
 _DEFAULT_TIMEOUT_MS = 10_000
 _DEFAULT_OUTPUT_LIMIT = 1_048_576
 _FRAME_LENGTH_BYTES = 8
+_SHA256_BYTES = hashlib.sha256().digest_size
 _BACKSLASH = "\\"
 _PARENT = ".."
 _TOOL_BINDING_LENGTH = 2
@@ -345,6 +346,26 @@ class ProbeTranscript:
     probe_id: str
     digest: bytes
     digested_commands: int
+
+    def __post_init__(self) -> None:
+        """Require exact immutable and coherent transcript metadata.
+
+        Raises:
+            ProbeProgramError: A transcript field has invalid runtime metadata.
+
+        """
+        if type(self.probe_id) is not str or not self.probe_id:
+            message = "probe transcript identifier must be a non-empty string"
+            raise ProbeProgramError(message)
+        if type(self.digest) is not bytes or len(self.digest) != _SHA256_BYTES:
+            message = "probe transcript digest must be exactly 32 bytes"
+            raise ProbeProgramError(message)
+        if (
+            type(self.digested_commands) is not int
+            or self.digested_commands < _ZERO
+        ):
+            message = "probe transcript selected count must be non-negative int"
+            raise ProbeProgramError(message)
 
 
 @dataclass(frozen=True, slots=True)

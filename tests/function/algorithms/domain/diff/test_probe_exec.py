@@ -55,6 +55,7 @@ from algorithms.diff.probe_exec import ProbeProgram
 from algorithms.diff.probe_exec import ProbeProgramError
 from algorithms.diff.probe_exec import ProbeRoot
 from algorithms.diff.probe_exec import ProbeRunContext
+from algorithms.diff.probe_exec import ProbeTranscript
 from algorithms.diff.probe_exec import RootedExecutable
 from algorithms.diff.probe_exec import ToolExecutable
 from algorithms.diff.probe_exec import run_probe_program
@@ -1196,6 +1197,26 @@ def test_probe_records_reject_foreign_runtime_metadata() -> None:
         _ = ToolExecutable(cast("str", object()))
     with pytest.raises(ProbeProgramError, match="exact ProbeRoot"):
         _ = RootedExecutable(cast("ProbeRoot", object()), "tool.exe")
+
+
+def test_probe_transcript_rejects_malformed_direct_evidence() -> None:
+    """Transcript records must preserve exact digest and selection metadata."""
+    digest = hashlib.sha256(b"observed").digest()
+    baseline = ProbeTranscript("probe", digest, 0)
+    assert baseline.digest == digest
+    malformed = (
+        lambda: replace(baseline, probe_id=cast("str", object())),
+        lambda: replace(baseline, probe_id=""),
+        lambda: replace(
+            baseline, digest=cast("bytes", cast("object", bytearray(digest)))
+        ),
+        lambda: replace(baseline, digest=b"short"),
+        lambda: replace(baseline, digested_commands=True),
+        lambda: replace(baseline, digested_commands=-1),
+    )
+    for build in malformed:
+        with pytest.raises(ProbeProgramError, match="transcript"):
+            _ = build()
 
 
 def test_probe_command_rejects_boolean_aliases_and_mutable_inputs() -> None:
