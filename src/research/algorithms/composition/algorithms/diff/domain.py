@@ -181,15 +181,24 @@ def _restore_domain_registration(
 def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
     resolved = _regular_module_path(path)
     name = _module_name(resolved)
-    spec = importlib.util.spec_from_file_location(name, resolved)
-    if spec is None or spec.loader is None:
+    try:
+        spec = importlib.util.spec_from_file_location(name, resolved)
+        loader = spec.loader if spec is not None else None
+    except Exception as error:
+        message = f"diff domain import preparation failed: {resolved}"
+        raise DomainContractError(message) from error
+    if spec is None or loader is None:
         message = f"cannot load diff domain module: {resolved}"
         raise DomainContractError(message)
-    module = importlib.util.module_from_spec(spec)
+    try:
+        module = importlib.util.module_from_spec(spec)
+    except Exception as error:
+        message = f"diff domain import preparation failed: {resolved}"
+        raise DomainContractError(message) from error
     previous = sys.modules.get(name)
     sys.modules[name] = module
     try:
-        spec.loader.exec_module(module)
+        loader.exec_module(module)
     except Exception as error:
         _restore_domain_registration(name, module, previous)
         message = f"diff domain module execution failed: {resolved}: {error}"

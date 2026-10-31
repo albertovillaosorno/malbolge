@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import importlib.util
 import os
 from pathlib import Path
 import sys
@@ -114,6 +115,39 @@ def test_domain_module_execution_failure_uses_contract_error(
 
     with pytest.raises(DomainContractError, match="module execution failed"):
         _ = load_diff_domain(module)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (stage, failure_type)
+        for stage in ("spec_from_file_location", "module_from_spec")
+        for failure_type in (OSError, ValueError, RuntimeError)
+    ],
+)
+def test_domain_import_preparation_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, type[Exception]],
+) -> None:
+    """Loader errors before execution must stay in the domain boundary."""
+    stage, failure_type = case
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    before = frozenset(sys.modules)
+
+    def blocked_import(*args: object, **kwargs: object) -> None:
+        _ = args, kwargs
+        message = "injected import preparation failure"
+        raise failure_type(message)
+
+    monkeypatch.setattr(importlib.util, stage, blocked_import)
+    with pytest.raises(DomainContractError, match="import preparation failed"):
+        _ = load_diff_domain(module)
+    registered = frozenset(sys.modules) - before
+    assert not any(
+        name.startswith("_malbolge_diff_domain_") for name in registered
+    )
 
 
 def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
