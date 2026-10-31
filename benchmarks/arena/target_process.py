@@ -156,8 +156,15 @@ def _system_tool(name: str) -> str | None:
         message = f"bounded target system tool has unencodable path: {name}"
         raise TargetProcessError(message) from error
     try:
-        mode = Path(resolved).lstat().st_mode
+        metadata = Path(resolved).lstat()
+        if type(metadata) is not os.stat_result:
+            _fail(f"bounded target system tool path inspection invalid: {name}")
+        mode = metadata.st_mode
         executable = os.access(resolved, os.X_OK)
+        if type(executable) is not bool:
+            _fail(f"bounded target system tool access inspection invalid: {name}")
+    except TargetProcessError:
+        raise
     except Exception as error:
         # Preserve an opaque host inspection fault without formatting it.
         message = f"bounded target system tool path inspection failed: {name}"
@@ -592,12 +599,15 @@ def _rss_report_bytes(path: Path) -> bytes:
     ) as error:
         message = "bounded target GNU time RSS report missing or unsafe"
         raise TargetProcessError(message) from error
+    if type(raw) is not bytes or not 1 <= len(raw) <= RSS_REPORT_LIMIT:
+        _fail("bounded target GNU time RSS report returned invalid bytes")
     return raw
 
 
 def _parse_rss_report(raw: bytes) -> int:
     if (
-        not 1 <= len(raw) <= RSS_REPORT_LIMIT
+        type(raw) is not bytes
+        or not 1 <= len(raw) <= RSS_REPORT_LIMIT
         or not raw.endswith(b"\n")
         or not raw[:-1].isdigit()
     ):
@@ -624,6 +634,8 @@ def _rss_workspace() -> Path:
         # An unexpected host stat fault must not escape resource admission.
         message = "bounded target RSS workspace cannot be inspected"
         raise TargetProcessError(message) from error
+    if type(details) is not os.stat_result:
+        _fail("bounded target RSS workspace returned invalid metadata")
     if not S_ISDIR(details.st_mode):
         _fail("bounded target RSS workspace must be a physical directory")
     return workspace

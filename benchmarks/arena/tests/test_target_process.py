@@ -2656,3 +2656,91 @@ def test_target_group_cleanup_bypasses_hostile_primary_and_direct_formatters(
     assert failure.__notes__ == [
         "direct child cleanup also failed: HostileDirectError"
     ]
+
+
+class _ForeignTargetStat:
+    """A fake stat record must not control resource or executable admission."""
+
+    def __getattribute__(self, name: str) -> object:
+        if name.startswith("st_"):
+            pytest.fail("foreign target stat field was accessed")
+        return super().__getattribute__(name)
+
+
+class _ForeignRssBytes(bytes):
+    """A foreign report may override data length or parsing behavior."""
+
+    def __len__(self) -> int:
+        pytest.fail("foreign GNU-time byte length was accessed")
+
+
+@pytest.mark.parametrize("kind", ["foreign", "oversized"])
+def test_rss_report_reader_rejects_invalid_dependency_bytes_before_use(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A substituted report reader cannot assert an admitted GNU time receipt."""
+    report = tmp_path / "rss.txt"
+    report.write_bytes(b"10\n")
+    forged = (
+        cast("bytes", _ForeignRssBytes(b"10\n"))
+        if kind == "foreign"
+        else b"10\n" + b"0" * target_process.RSS_REPORT_LIMIT
+    )
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: forged
+    )
+    with pytest.raises(target_process.TargetProcessError, match="invalid bytes"):
+        target_process._rss_report_bytes(report)
+
+
+def test_rss_parser_rejects_foreign_bytes_before_using_parse_hooks() -> None:
+    """Direct RSS parser callers cannot substitute their own byte semantics."""
+    with pytest.raises(target_process.TargetProcessError, match="malformed"):
+        target_process._parse_rss_report(cast("bytes", _ForeignRssBytes(b"10\n")))
+
+
+def test_rss_workspace_rejects_foreign_stat_before_directory_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The report directory cannot be admitted from forged filesystem fields."""
+    workspace = tmp_path / ".temp"
+    workspace.mkdir()
+    original_lstat = type(workspace).lstat
+
+    def injected_lstat(path: Path) -> os.stat_result:
+        if path == workspace:
+            return cast("os.stat_result", _ForeignTargetStat())
+        return original_lstat(path)
+
+    monkeypatch.setattr(target_process, "_ROOT", tmp_path)
+    monkeypatch.setattr(type(workspace), "lstat", injected_lstat)
+    with pytest.raises(target_process.TargetProcessError, match="workspace"):
+        target_process._rss_workspace()
+
+
+@pytest.mark.parametrize("phase", ["metadata", "access"])
+def test_resource_tool_preflight_rejects_foreign_host_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Host executable admission requires native metadata and bool access."""
+    tool = tmp_path / "system-tool"
+    tool.write_bytes(b"test executable")
+    tool.chmod(0o755)
+    real_lstat = type(tool).lstat
+    real_access = target_process.os.access
+
+    def injected_lstat(path: Path) -> os.stat_result:
+        if phase == "metadata" and path == tool:
+            return cast("os.stat_result", _ForeignTargetStat())
+        return real_lstat(path)
+
+    def injected_access(path: str, mode: int) -> bool:
+        if phase == "access" and path == str(tool):
+            return cast("bool", 1)
+        return real_access(path, mode)
+
+    monkeypatch.setattr(target_process.shutil, "which", lambda *_args, **_kwargs: str(tool))
+    monkeypatch.setattr(type(tool), "lstat", injected_lstat)
+    monkeypatch.setattr(target_process.os, "access", injected_access)
+    with pytest.raises(target_process.TargetProcessError, match="inspection|physical"):
+        target_process._system_tool(target_process.RSS_TOOL)
