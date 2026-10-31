@@ -227,6 +227,11 @@ capture allocations; it is not an OS memory quota, process sandbox, complete
 descendant containment (detached sessions remain outside the group), or a
 physically enforced study-wide budget. The pilot requires POSIX for this
 subprocess boundary and makes no Windows process-supervision claim.
+The cleanup signal path now requires one exact positive native child PID
+before any group kill, poll or direct-child kill call. Boolean, zero, negative,
+foreign and failing PID receipts reject without sending a signal. With an
+untrustworthy PID, safe direct reaping cannot be assumed; ordinary valid-PID
+children retain the existing group-cleanup and direct-reap policy.
 
 Pipe-reader, selector, and binary-stdin delivery faults now reject through
 one typed target-process boundary, preserving the originating I/O exception.

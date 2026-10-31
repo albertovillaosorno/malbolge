@@ -200,10 +200,19 @@ def require_child_resource_controls() -> None:
 
 
 def _terminate_group(child: sp.Popen[bytes]) -> None:
-    # Never signal an unrelated process: each child owns a fresh session.
+    # A foreign Popen PID could be zero (our own process group), negative
+    # (an unrelated process), or a bool. Do not invoke ANY signal or poll
+    # hook before admitting its native positive process identity.
+    try:
+        pid = child.pid
+    except Exception as error:
+        message = "bounded target cleanup requires a positive native PID"
+        raise TargetProcessError(message) from error
+    if type(pid) is not int or pid <= 0:
+        _fail("bounded target cleanup requires a positive native PID")
     group_error: Exception | None = None
     try:
-        signal_receipt: object = os.kill(-child.pid, GROUP_KILL_SIGNAL)
+        signal_receipt: object = os.kill(-pid, GROUP_KILL_SIGNAL)
         if signal_receipt is not None:
             group_error = TargetProcessError(
                 "bounded target cleanup has invalid group signal receipt"

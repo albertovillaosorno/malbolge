@@ -268,8 +268,11 @@ additional byte on either stream, a cumulative wall timeout, and
 ordinary pipe-retaining descendants. Cleanup signals the original isolated
 process group and reaps the direct child; detached descendants and any
 physical memory or CPU budget enforcement remain outside this claim.
-Cleanup treats only an exact native `ProcessLookupError` as a genuinely
-absent process or group. POSIX signal and direct-child kill acknowledgements
+Before signaling or polling, cleanup requires an exact native positive child
+PID. Invalid PID receipts (including zero or negative values) fail closed
+without attempting a group or direct-child signal, since a safe target cannot
+be established in that case. Cleanup treats only an exact native
+`ProcessLookupError` as a genuinely absent process or group. POSIX signal and direct-child kill acknowledgements
 must be `None`; direct-child `poll()` must return `None` or an exact integer,
 and `wait()` must return an exact integer (not a boolean). Any foreign
 exception subclass, malformed status, or forged acknowledgement rejects the

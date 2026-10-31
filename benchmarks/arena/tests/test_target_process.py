@@ -125,6 +125,61 @@ def test_group_cleanup_signal_error_is_typed_after_child_exit(
     assert isinstance(error.value.__cause__, PermissionError)
 
 
+@pytest.mark.parametrize("pid", [None, False, True, 0, -1, -2, 1.5, "42"])
+@pytest.mark.parametrize("active", [False, True])
+def test_invalid_child_pid_never_signals_unrelated_process_group(
+    monkeypatch: pytest.MonkeyPatch, pid: object, active: bool
+) -> None:
+    """Malformed process identity cannot reach ANY process hook or signal."""
+    events: list[str] = []
+
+    class ChildProbe:
+        def __init__(self) -> None:
+            self.pid = pid
+
+        def poll(self) -> int | None:
+            events.append("poll")
+            return None if active else 0
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self) -> int:
+            events.append("wait")
+            return 0
+
+    def observe_signal(_group: int, _signal: int) -> None:
+        events.append("dangerous-signal")
+
+    monkeypatch.setattr(target_process.os, "kill", observe_signal)
+    with pytest.raises(target_process.TargetProcessError, match="PID"):
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert events == []
+
+
+@pytest.mark.parametrize("fault", [OSError, IndexError])
+def test_child_pid_lookup_fault_cannot_reach_process_signal(
+    monkeypatch: pytest.MonkeyPatch, fault: type[Exception]
+) -> None:
+    """A failing process identity read leaves signal/kill methods untouched."""
+    class ChildProbe:
+        @property
+        def pid(self) -> int:
+            raise fault("foreign child identity lookup failed")
+
+    def unexpected_signal(*_args: object) -> None:
+        pytest.fail("unverified child identity reached process signal")
+
+    monkeypatch.setattr(target_process.os, "kill", unexpected_signal)
+    with pytest.raises(target_process.TargetProcessError, match="native PID") as error:
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert type(error.value.__cause__) is fault
+
+
 @pytest.mark.parametrize("invalid", [False, True, 0, b"sent"])
 def test_foreign_group_signal_acknowledgement_cannot_claim_cleanup(
     monkeypatch: pytest.MonkeyPatch,
