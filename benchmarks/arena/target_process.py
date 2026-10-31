@@ -705,15 +705,17 @@ def _measured_limited(
         ) as folder:
             try:
                 report = Path(folder) / "rss.txt"
+                measured_command = [
+                    time_executable,
+                    "--format=%M",
+                    "--output",
+                    str(report),
+                    "--",
+                    *_limited_command(command, enforce=True),
+                ]
+                expected_command = tuple(measured_command)
                 result = _run(
-                    [
-                        time_executable,
-                        "--format=%M",
-                        "--output",
-                        str(report),
-                        "--",
-                        *_limited_command(command, enforce=True),
-                    ],
+                    measured_command,
                     limits=_ProcessLimits(
                         timeout_seconds,
                         DEFAULT_STDOUT_LIMIT,
@@ -726,6 +728,15 @@ def _measured_limited(
                 # only after exact integer admission (bool is not an exit code).
                 if (
                     type(result) is not sp.CompletedProcess
+                    or type(result.args) is not list
+                    or result.args is not measured_command
+                    or len(result.args) != len(expected_command)
+                    or any(
+                        type(argument) is not str or argument != expected
+                        for argument, expected in zip(
+                            result.args, expected_command, strict=True
+                        )
+                    )
                     or type(result.returncode) is not int
                     or type(result.stdout) is not bytes
                     or type(result.stderr) is not bytes

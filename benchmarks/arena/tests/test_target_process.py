@@ -1397,10 +1397,10 @@ def test_measured_rss_unexpected_directory_fault_is_typed(
                 raise fault
 
     def completed(
-        *args: object, **kwargs: object
+        command: list[str], **kwargs: object
     ) -> sp.CompletedProcess[bytes]:
-        del args, kwargs
-        return sp.CompletedProcess([sys.executable], 0, b"", b"")
+        del kwargs
+        return sp.CompletedProcess(command, 0, b"", b"")
 
     monkeypatch.setattr(
         target_process.tempfile, "TemporaryDirectory", BrokenDirectory
@@ -1531,9 +1531,11 @@ def test_measured_rss_directory_fault_is_typed(
             if phase == "exit":
                 raise OSError("injected RSS directory cleanup failure")
 
-    def completed(*args: object, **kwargs: object) -> sp.CompletedProcess[bytes]:
-        _ = (args, kwargs)
-        return sp.CompletedProcess([sys.executable], 0, b"", b"")
+    def completed(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[bytes]:
+        del kwargs
+        return sp.CompletedProcess(command, 0, b"", b"")
 
     monkeypatch.setattr(target_process.tempfile, "TemporaryDirectory", BrokenDirectory)
     monkeypatch.setattr(target_process, "require_child_rss_measurement", lambda: None)
@@ -2914,6 +2916,46 @@ class _ForgedExitStatus(int):
 
 
 @pytest.mark.parametrize(
+    "forgery", ["wrong-command", "copied-command", "mutated-command"]
+)
+def test_measured_rss_refuses_substituted_completed_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """A successful RSS receipt must bind to the exact launched command."""
+    (tmp_path / ".temp").mkdir()
+    monkeypatch.setattr(target_process, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_process, "require_child_rss_measurement", lambda: None
+    )
+    monkeypatch.setattr(
+        target_process, "_system_tool", lambda _name: "/usr/bin/time"
+    )
+    monkeypatch.setattr(
+        target_process, "_rss_report_bytes", lambda _path: b"10\n"
+    )
+
+    def forged_run(
+        command: list[str], **_options: object
+    ) -> sp.CompletedProcess[bytes]:
+        if forgery == "wrong-command":
+            receipt = ["/unrelated/executable"]
+        elif forgery == "copied-command":
+            receipt = command.copy()
+        else:
+            command[0] = "/unrelated/executable"
+            receipt = command
+        return sp.CompletedProcess(receipt, 0, b"", b"")
+
+    monkeypatch.setattr(target_process, "_run", forged_run)
+    with pytest.raises(
+        target_process.TargetProcessError, match="child completion"
+    ):
+        target_process.invoke_limited_measured(_child("print('never')"))
+
+
+@pytest.mark.parametrize(
     "kind",
     [
         "foreign-completion",
@@ -2934,10 +2976,11 @@ def test_measured_rss_requires_exact_bounded_native_child_completion(
     monkeypatch.setattr(target_process, "require_child_rss_measurement", lambda: None)
     monkeypatch.setattr(target_process, "_system_tool", lambda _name: "/usr/bin/time")
     monkeypatch.setattr(target_process, "_rss_report_bytes", lambda _path: b"10\n")
-    fake: sp.CompletedProcess[bytes]
-    if kind == "foreign-completion":
-        fake = _ForeignMeasuredCompletion([sys.executable], 0, b"", b"")
-    else:
+    def forged_run(
+        command: list[str], **_options: object
+    ) -> sp.CompletedProcess[bytes]:
+        if kind == "foreign-completion":
+            return _ForeignMeasuredCompletion(command, 0, b"", b"")
         status = (
             cast("int", False)
             if kind == "bool-status"
@@ -2959,8 +3002,9 @@ def test_measured_rss_requires_exact_bounded_native_child_completion(
             if kind == "oversized-stderr"
             else b""
         )
-        fake = sp.CompletedProcess([sys.executable], status, stdout, stderr)
-    monkeypatch.setattr(target_process, "_run", lambda *_args, **_kwargs: fake)
+        return sp.CompletedProcess(command, status, stdout, stderr)
+
+    monkeypatch.setattr(target_process, "_run", forged_run)
     with pytest.raises(
         target_process.TargetProcessError, match="invalid child completion"
     ):

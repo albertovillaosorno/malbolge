@@ -410,6 +410,14 @@ concurrent processes. Every accepted candidate must have three complete,
 positive, bounded measurements; failed stages or missing/malformed reports
 are tool failures with no successful fifth cost.
 
+The GNU-time wrapper also requires a native child completion whose command
+argument list is the identical registered launch list, with every exact native
+string unchanged from the pre-execution snapshot. Synthetic valid-looking
+completions with an unrelated command, copied list, or mutated launch arguments
+previously earned RSS credit and are now rejected before parsing its receipt.
+This is producer-side accounting consistency, not independent proof that the
+meter or operating system executed the declared workload.
+
 The independent post-run
 source auditor checks v5 study/oracle identity, exact five-objective
 policy and the report's 1 GiB ceiling/KiB granularity. Existing arena

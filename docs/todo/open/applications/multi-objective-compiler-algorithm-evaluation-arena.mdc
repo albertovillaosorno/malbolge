@@ -233,6 +233,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   authenticated historic measurement, a system energy/VRAM sample, or
   an implementation of general Malbolge compilation. Aggregate memory
   containment and independently attested sampling remain outstanding.
+- The v5 GNU-time child completion additionally binds the original launch
+  argument-list identity and exact native strings before granting peak RSS
+  credit. Three red-first regressions reject unrelated, copied, and mutated
+  native command receipts; this does not authenticate the historic run.
 - A distinct opt-in v6 resource-receipt classic target mode adds
   `--retain-rss-stages` only to the already limited and measured v5
   experiment. The original five Pareto costs remain, but each verified
