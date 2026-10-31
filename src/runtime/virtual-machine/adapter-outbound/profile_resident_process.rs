@@ -70,6 +70,10 @@ impl<'counter> ResidentExchangePermit<'counter> {
     }
 }
 
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
+)]
 impl Drop for ResidentExchangePermit<'_> {
     fn drop(&mut self) {
         let _prior = self.counter.fetch_sub(1, Ordering::AcqRel);
