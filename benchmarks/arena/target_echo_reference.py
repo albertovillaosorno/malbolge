@@ -345,7 +345,8 @@ def _commit() -> str:
     """
     try:
         git = shutil.which("git", path=os.defpath)
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
+        # A host resolver is not allowed to leak arbitrary ordinary faults.
         message = "target echo source revision Git lookup failed"
         raise TargetEchoStudyError(message) from error
     if git is None:
@@ -356,14 +357,7 @@ def _commit() -> str:
         _ = os.fsencode(git)
         mode = Path(git).lstat().st_mode
         executable = os.access(git, os.X_OK)
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-        UnicodeError,
-    ) as error:
+    except Exception as error:
         message = "target echo source revision Git executable unavailable"
         raise TargetEchoStudyError(message) from error
     if not stat.S_ISREG(mode) or not executable:
@@ -383,14 +377,7 @@ def _commit() -> str:
             timeout=5,
             text=True,
         )
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-        sp.SubprocessError,
-    ) as error:
+    except Exception as error:
         message = "target echo reference cannot bind source revision"
         raise TargetEchoStudyError(message) from error
     if (

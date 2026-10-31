@@ -403,8 +403,16 @@ def test_target_echo_commit_rejects_unsafe_git_file(
         target_echo_reference._commit()
 
 
+class _UnexpectedHostFault(Exception):
+    """Unclassified host dependency fault with an unsafe string hook."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign target host exception formatter executed")
+
+
 @pytest.mark.parametrize(
-    "failure", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+    "failure",
+    [OSError, ValueError, RuntimeError, TypeError, AttributeError, IndexError, _UnexpectedHostFault],
 )
 def test_target_echo_commit_types_git_resolver_errors(
     monkeypatch: pytest.MonkeyPatch,
@@ -424,7 +432,7 @@ def test_target_echo_commit_types_git_resolver_errors(
 
 
 @pytest.mark.parametrize(
-    "failure", [ValueError, RuntimeError, TypeError, AttributeError]
+    "failure", [ValueError, RuntimeError, TypeError, AttributeError, IndexError, _UnexpectedHostFault]
 )
 def test_target_echo_commit_types_git_transport_errors(
     monkeypatch: pytest.MonkeyPatch,
@@ -441,6 +449,47 @@ def test_target_echo_commit_types_git_transport_errors(
     ) as caught:
         target_echo_reference._commit()
     assert isinstance(caught.value.__cause__, failure)
+
+
+@pytest.mark.parametrize("site", ["stat", "access"])
+@pytest.mark.parametrize("failure", [IndexError, _UnexpectedHostFault])
+def test_target_echo_commit_types_unanticipated_git_file_inspection_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+    failure: type[Exception],
+) -> None:
+    """Git tool path metadata failures cannot escape revision preflight."""
+    git = tmp_path / "git"
+    _ = git.write_bytes(b"#!/bin/sh\nexit 0\n")
+    git.chmod(0o700)
+    fault = failure("unanticipated Git metadata failure")
+    monkeypatch.setattr(
+        target_echo_reference.shutil, "which", lambda *_args, **_kwargs: str(git)
+    )
+    if site == "stat":
+        original_lstat = Path.lstat
+
+        def bad_lstat(path: Path) -> os.stat_result:
+            if path == git:
+                raise fault
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", bad_lstat)
+    else:
+        original_access = os.access
+
+        def bad_access(path: str | bytes | os.PathLike[str] | os.PathLike[bytes], mode: int) -> bool:
+            if path == str(git):
+                raise fault
+            return original_access(path, mode)
+
+        monkeypatch.setattr(target_echo_reference.os, "access", bad_access)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="Git executable"
+    ) as caught:
+        target_echo_reference._commit()
+    assert caught.value.__cause__ is fault
 
 
 @pytest.mark.parametrize(
@@ -1017,13 +1066,6 @@ def test_tool_fingerprint_close_error_does_not_hide_read_failure(
         assert any("cleanup" in note for note in read_error.__notes__)
     else:
         assert observed.value.__cause__ is close_error
-
-
-class _UnexpectedHostFault(Exception):
-    """Unclassified host dependency fault with an unsafe string hook."""
-
-    def __str__(self) -> str:
-        raise AssertionError("foreign target host exception formatter executed")
 
 
 @pytest.mark.parametrize("site", ["lstat", "open", "fstat", "read", "close"])
