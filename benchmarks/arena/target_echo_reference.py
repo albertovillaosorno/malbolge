@@ -260,7 +260,15 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 ):
                     _fail("target echo executable identity changed")
             finally:
-                os.close(descriptor)
+                primary = sys.exception()
+                try:
+                    os.close(descriptor)
+                except OSError as cleanup_error:
+                    if primary is None:
+                        raise
+                    primary.add_note(
+                        f"target echo executable descriptor cleanup failed: {cleanup_error}"
+                    )
             latest = path.lstat()
             if not stat.S_ISREG(latest.st_mode) or (
                 _tool_file_identity(latest) != _tool_file_identity(original)

@@ -518,6 +518,44 @@ def test_tool_fingerprint_rejects_fifo_substitution_without_blocking(
         audit._tool_identity(emitter, runner)
 
 
+@pytest.mark.parametrize("read_fails", [True, False])
+def test_tool_fingerprint_close_error_does_not_hide_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    read_fails: bool,
+) -> None:
+    """Descriptor cleanup must not replace the original hashing failure."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"trusted-emitter")
+    _ = runner.write_bytes(b"trusted-runner")
+    read_error = OSError("injected original descriptor read failure")
+    close_error = OSError("injected secondary descriptor close failure")
+    original_read = audit.os.read
+    original_close = audit.os.close
+
+    def broken_read(fd: int, size: int) -> bytes:
+        if read_fails:
+            raise read_error
+        return original_read(fd, size)
+
+    def broken_close(fd: int) -> None:
+        original_close(fd)
+        raise close_error
+
+    with monkeypatch.context() as patch:
+        patch.setattr(audit.os, "read", broken_read)
+        patch.setattr(audit.os, "close", broken_close)
+        with pytest.raises(audit.TargetEchoAuditError) as observed:
+            _ = audit._tool_identity(emitter, runner)
+    if read_fails:
+        assert observed.value.__cause__ is read_error
+        assert any("cleanup" in note for note in read_error.__notes__)
+    else:
+        assert observed.value.__cause__ is close_error
+
+
 def test_tool_fingerprint_preserves_stable_byte_identity(tmp_path: Path) -> None:
     """Descriptor hashing preserves existing size-prefixed toolchain digests."""
     emitter = tmp_path / "emitter"
