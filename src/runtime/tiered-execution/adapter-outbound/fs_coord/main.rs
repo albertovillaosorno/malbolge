@@ -37,6 +37,10 @@
 
 //! Shared filesystem coordination for cooperating tiered-execution adapters.
 
+#[cfg(all(test, unix))]
+#[path = "../../../../../tests/tiered/file_coordination_links.rs"]
+mod link_admission_tests;
+
 use std::fs::{self, File, OpenOptions};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -233,6 +237,11 @@ fn same_lock_file(opened: &fs::Metadata, named: &fs::Metadata) -> bool {
 
     opened.is_file()
         && named.is_file()
+        // A hard link at the configured pathname can be an alias to a lock
+        // owned outside this coordination domain. Require one link both at
+        // initial open and whenever an existing guard is re-admitted.
+        && opened.nlink() == 1
+        && named.nlink() == 1
         && opened.dev() == named.dev()
         && opened.ino() == named.ino()
 }

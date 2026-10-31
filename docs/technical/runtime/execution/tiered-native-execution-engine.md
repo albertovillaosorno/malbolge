@@ -3224,8 +3224,13 @@ asynchronous/product scheduling remain open. Filesystem package lease
 acquire/release now shares the cleanup coordinator and reuses its held guard for
 bounded journal load/CAS; cleanup holds the same guard across current-package
 reverification, lease-snapshot capture, and reclamation. Foreign coordination
-fails before lease mutation. Temporal retention scheduling and non-filesystem
-coordination remain separate.
+fails before lease mutation. The Unix filesystem lock coordinator now
+requires exactly one hard link on both the opened and named regular-file inode
+before admitting either shared or exclusive guards. A red-first regression
+rejects foreign linked-inode lock acquisition and late hard-link additions to
+already-held guards; this is local pathname/inode admission, not distributed
+coordination or proof against mutation after the final identity check.
+Temporal retention scheduling and non-filesystem coordination remain separate.
 
 Concrete same-process native memory/runner integration and broader end-to-end
 performance policy also remain open.

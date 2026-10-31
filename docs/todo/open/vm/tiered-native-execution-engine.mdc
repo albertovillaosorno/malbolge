@@ -1619,6 +1619,11 @@ behavior.
   advisory lock for bounded journal load/CAS instead of recursively acquiring
   it, while cleanup holds that lock across current-package reverification,
   lease-snapshot capture, and generation reclamation. Foreign coordination
-  fails before lease mutation. Temporal retention scheduling, non-filesystem
-  coordination, broader platform execution evidence, and broader end-to-end tier
-  performance policy remain open.
+  fails before lease mutation. Unix lock identity admission now rejects a
+  regular lock inode with multiple hard links, both during acquisition and
+  when a held shared/exclusive guard is rechecked. Two red-first fixtures
+  prove failure for preexisting foreign aliases and late link additions;
+  Windows and adversarial races after the identity check remain outside this
+  Unix evidence. Temporal retention scheduling, non-filesystem coordination,
+  broader platform execution evidence, and broader end-to-end tier performance
+  policy remain open.
