@@ -674,16 +674,35 @@ def check_retained_failures(
     return len(failures)
 
 
+def _retained_write_failure(path: Path, error: Exception) -> Never:
+    """Preserve failed host writes without foreign exception formatting."""
+    message = f"host-C retained {path.name} write failed"
+    if (detail := _native_error_detail(error)) is not None:
+        safe = "".join(
+            char if ASCII_LOW <= char <= ASCII_HIGH else "?"
+            for char in detail[:MAX_FAILURE_DIAGNOSTIC_BYTES]
+        )
+        if safe:
+            message += f": {safe}"
+    raise ReferenceStudyError(message) from error
+
+
 def _write_retained_bytes(path: Path, content: bytes) -> None:
     """Reject short or foreign byte acknowledgements for retained evidence."""
-    written = path.write_bytes(content)
+    try:
+        written = path.write_bytes(content)
+    except Exception as error:
+        _retained_write_failure(path, error)
     if type(written) is not int or written != len(content):
         _fail(f"host-C retained {path.name} has invalid write count")
 
 
 def _write_retained_text(path: Path, content: str) -> None:
     """Require complete text writes before admitting a retained study."""
-    written = path.write_text(content, encoding="utf-8")
+    try:
+        written = path.write_text(content, encoding="utf-8")
+    except Exception as error:
+        _retained_write_failure(path, error)
     if type(written) is not int or written != len(content):
         _fail(f"host-C retained {path.name} has invalid write count")
 

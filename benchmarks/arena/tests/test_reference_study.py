@@ -175,6 +175,77 @@ def test_reference_retained_sidecars_reject_incomplete_write_acknowledgement(
         )
 
 
+class _HostileHostWriteArgument:
+    def __str__(self) -> str:
+        raise AssertionError("foreign native-error argument was formatted")
+
+
+@pytest.mark.parametrize("kind", ["binary", "text"])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        OSError("native host write denied"),
+        OSError(_HostileHostWriteArgument()),
+        _UnexpectedHostFault("foreign host write"),
+    ],
+    ids=["native-os", "hostile-os-argument", "unexpected-foreign"],
+)
+def test_retained_host_c_writer_errors_are_typed_and_preserve_causes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    fault: Exception,
+) -> None:
+    """Writer faults cannot leave direct callers with untyped foreign errors."""
+    path = tmp_path / "retained"
+
+    def fail_write(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    if kind == "binary":
+        monkeypatch.setattr(reference_study.Path, "write_bytes", fail_write)
+    else:
+        monkeypatch.setattr(reference_study.Path, "write_text", fail_write)
+    with pytest.raises(reference_study.ReferenceStudyError, match="write failed") as caught:
+        if kind == "binary":
+            reference_study._write_retained_bytes(  # ruff: ignore[private-member-access]
+                path, b"binary evidence"
+            )
+        else:
+            reference_study._write_retained_text(  # ruff: ignore[private-member-access]
+                path, "text evidence"
+            )
+    assert caught.value.__cause__ is fault
+    if type(fault) is OSError and type(fault.args[0]) is str:
+        assert "native host write denied" in str(caught.value)
+    else:
+        assert str(caught.value) == "host-C retained retained write failed"
+
+
+def test_retained_host_c_writer_bounds_native_diagnostic_text(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Native error detail remains printable and bounded on a failed write."""
+    path = tmp_path / "retained"
+    fault = OSError("disk\n" + "x" * 1000)
+
+    def fail_write(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    monkeypatch.setattr(reference_study.Path, "write_bytes", fail_write)
+    with pytest.raises(reference_study.ReferenceStudyError) as caught:
+        reference_study._write_retained_bytes(  # ruff: ignore[private-member-access]
+            path, b"bounded evidence"
+        )
+    message = str(caught.value)
+    assert caught.value.__cause__ is fault
+    assert message.startswith("host-C retained retained write failed: disk?xxx")
+    assert "\n" not in message
+    assert len(message) <= len("host-C retained retained write failed: ") + 256
+
+
 @pytest.mark.parametrize(
     "filename",
     [
