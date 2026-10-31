@@ -256,6 +256,70 @@ def _request(
     )
 
 
+def test_compatible_authoring_rejects_source_rewrite_after_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mapped source bytes must still match the original plan snapshot."""
+    source, oracle = _roots(tmp_path)
+    original_build = build_exact_plan
+    changed = False
+
+    def rewrite_source_after_plan(
+        source_root: Path, oracle_root: Path
+    ) -> ExactAuthoringPlan:
+        nonlocal changed
+        plan = original_build(source_root, oracle_root)
+        _ = (source_root / "code.src").write_bytes(b"alpha = bad ; omega")
+        changed = True
+        return plan
+
+    monkeypatch.setattr(
+        compatible_module, "build_exact_plan", rewrite_source_after_plan
+    )
+    request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    with pytest.raises(CompatiblePlanError, match="source tree changed"):
+        _ = build_compatible_plan(request)
+    _expect(changed, "source rewrite was not exercised")
+
+
+def test_compatible_authoring_rejects_added_target_after_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mapped target path inventory cannot grow after exact planning."""
+    source, oracle = _roots(tmp_path)
+    original_build = build_exact_plan
+    changed = False
+
+    def add_target_after_plan(
+        source_root: Path, oracle_root: Path
+    ) -> ExactAuthoringPlan:
+        nonlocal changed
+        plan = original_build(source_root, oracle_root)
+        _write(oracle_root, "late.bin", b"late target bytes")
+        changed = True
+        return plan
+
+    monkeypatch.setattr(
+        compatible_module, "build_exact_plan", add_target_after_plan
+    )
+    request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    with pytest.raises(CompatiblePlanError, match="target tree changed"):
+        _ = build_compatible_plan(request)
+    _expect(changed, "target addition was not exercised")
+
+
 def test_compatible_materialization_rejects_post_snapshot_linked_candidate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

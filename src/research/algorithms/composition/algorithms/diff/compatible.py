@@ -845,6 +845,12 @@ def build_compatible_plan(
         _compatible_instruction(context, instruction)
         for instruction in exact.instructions
     )
+    _require_tree_unchanged(
+        request.source_root, exact.source, "source", phase="authoring"
+    )
+    _require_tree_unchanged(
+        request.oracle_root, exact.target, "target", phase="authoring"
+    )
     return CompatibleAuthoringPlan(
         source=exact.source,
         target=exact.target,
@@ -1166,9 +1172,13 @@ def _snapshot_compatible_tree(root: Path, context: str) -> TreeSnapshot:
 
 
 def _require_tree_unchanged(
-    root: Path, baseline: TreeSnapshot, context: str
+    root: Path,
+    baseline: TreeSnapshot,
+    context: str,
+    *,
+    phase: str = "staging",
 ) -> None:
-    """Reject observable source or staging changes before publication.
+    """Reject observable tree changes during authoring or publication.
 
     Raises:
         CompatiblePlanError: The file tree changed or became invalid.
@@ -1177,10 +1187,10 @@ def _require_tree_unchanged(
     try:
         current = snapshot_tree(root)
     except ExactTreeError as error:
-        message = f"compatible {context} tree changed during staging: {error}"
+        message = f"compatible {context} tree changed during {phase}: {error}"
         raise CompatiblePlanError(message) from error
     if current != baseline:
-        message = f"compatible {context} tree changed during staging"
+        message = f"compatible {context} tree changed during {phase}"
         raise CompatiblePlanError(message)
 
 
