@@ -46,6 +46,13 @@ discovers every standalone `.tex`
 document under `math/`, requires the shared notation include, and compiles each
 document independently with `pdflatex`. Builds disable package auto-installation
 and TeX shell escape and write only beneath `.cache/latex/`.
+Math source discovery and direct builds reject symlink/junction redirects to
+TeX files or ancestor directories and require physical regular inputs. Direct
+output-cache mapping also rejects parent-traversal source paths. Cache builds
+reject existing redirected output directories before creating anything, and
+TeX input decoding errors are surfaced as math validation errors. These are
+admission checks, not an atomic protection against filesystem races during a
+subsequent TeX compiler invocation.
 
 The current repository has nine standalone mathematical documents. All nine
 compile through the validator. `tests/mathematics/test_math_framework.py` locks

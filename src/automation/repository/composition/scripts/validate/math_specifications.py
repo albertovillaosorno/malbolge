@@ -34,14 +34,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import shutil
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed TeX argv, never a shell command.
 import sys
-from typing import Never
-from typing import TYPE_CHECKING
+from pathlib import Path
+from stat import S_ISDIR, S_ISLNK, S_ISREG
+from typing import TYPE_CHECKING, Never
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -78,6 +78,82 @@ def _fail(message: str) -> Never:
     raise MathSpecificationError(message)
 
 
+def _physical_math_status(path: Path, *, directory: bool) -> None:
+    """Require physical in-root TeX artifacts, without filesystem redirects."""
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError:
+        _fail(f"mathematics source must stay inside repository root: {path}")
+    if ".." in relative.parts:
+        _fail(f"mathematics source must not escape repository root: {path}")
+    current = ROOT
+    for index, component in enumerate(relative.parts):
+        current = current / component
+        try:
+            status = current.lstat()
+        except OSError as error:
+            _fail(f"mathematics source status failed: {error}")
+        if S_ISLNK(status.st_mode) or current.is_junction():
+            _fail(f"mathematics source must not redirect: {relative.as_posix()}")
+        expect_directory = directory if index == len(relative.parts) - 1 else True
+        is_expected = (
+            S_ISDIR(status.st_mode) if expect_directory else S_ISREG(status.st_mode)
+        )
+        if not is_expected:
+            _fail(f"mathematics source must be a physical regular artifact: {path}")
+
+
+def _discovered_tex_paths() -> tuple[Path, ...]:
+    _physical_math_status(MATH_ROOT, directory=True)
+    sources: list[Path] = []
+
+    def fail_walk(error: OSError) -> None:
+        _fail(f"mathematics source scan failed: {error}")
+
+    for parent, directories, filenames in MATH_ROOT.walk(on_error=fail_walk):
+        _physical_math_status(parent, directory=True)
+        for name in directories:
+            _physical_math_status(parent / name, directory=True)
+        for name in filenames:
+            candidate = parent / name
+            if candidate.suffix == ".tex":
+                _physical_math_status(candidate, directory=False)
+                sources.append(candidate)
+            elif candidate.is_symlink() and candidate.is_dir():
+                _fail(f"mathematics source directory must not redirect: {candidate}")
+    return tuple(sorted(sources, key=lambda path: path.as_posix()))
+
+
+def _read_tex(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        _fail(f"invalid mathematics source UTF-8: {path}: {error}")
+
+
+def _reject_cache_redirects(output: Path) -> None:
+    """Reject an existing redirected cache ancestor before creating output."""
+    try:
+        relative = output.relative_to(ROOT)
+    except ValueError:
+        _fail(f"mathematics cache must stay inside repository root: {output}")
+    if ".." in relative.parts:
+        _fail(f"mathematics cache must not escape repository root: {output}")
+    current = ROOT
+    for component in relative.parts:
+        current = current / component
+        try:
+            status = current.lstat()
+        except FileNotFoundError:
+            break
+        except OSError as error:
+            _fail(f"mathematics cache status failed: {error}")
+        if S_ISLNK(status.st_mode) or current.is_junction():
+            _fail(f"mathematics cache path must not redirect: {relative.as_posix()}")
+        if not S_ISDIR(status.st_mode):
+            _fail(f"mathematics cache path must be a directory: {current}")
+
+
 def document_sources() -> tuple[Path, ...]:
     """Return every standalone mathematical document in stable path order.
 
@@ -85,17 +161,12 @@ def document_sources() -> tuple[Path, ...]:
         Repository-owned `.tex` files containing a document class declaration.
 
     """
-    if not MATH_ROOT.is_dir():
+    try:
+        _ = MATH_ROOT.lstat()
+    except FileNotFoundError:
         _fail(f"mathematics root not found: {MATH_ROOT}")
     sources = tuple(
-        sorted(
-            (
-                path
-                for path in MATH_ROOT.rglob("*.tex")
-                if DOCUMENT_MARKER in path.read_text(encoding="utf-8")
-            ),
-            key=lambda path: path.as_posix(),
-        )
+        path for path in _discovered_tex_paths() if DOCUMENT_MARKER in _read_tex(path)
     )
     if not sources:
         _fail("no standalone mathematical documents found")
@@ -103,13 +174,14 @@ def document_sources() -> tuple[Path, ...]:
 
 
 def _validate_notation() -> None:
-    if not NOTATION.is_file():
+    try:
+        _ = NOTATION.lstat()
+    except FileNotFoundError:
         _fail("shared mathematical notation file is missing")
-    notation_text = NOTATION.read_text(encoding="utf-8")
+    _physical_math_status(NOTATION, directory=False)
+    notation_text = _read_tex(NOTATION)
     if DOCUMENT_MARKER in notation_text:
-        _fail(
-            "shared notation must remain an include, not a standalone document"
-        )
+        _fail("shared notation must remain an include, not a standalone document")
     for macro in REQUIRED_MACROS:
         if macro not in notation_text:
             _fail(f"shared notation is missing required macro: {macro}")
@@ -117,7 +189,8 @@ def _validate_notation() -> None:
 
 def _validate_document_imports(sources: tuple[Path, ...]) -> None:
     for source in sources:
-        text = source.read_text(encoding="utf-8")
+        _physical_math_status(source, directory=False)
+        text = _read_tex(source)
         if NOTATION_INCLUDE not in text:
             relative = source.relative_to(ROOT).as_posix()
             _fail(f"math document does not import shared notation: {relative}")
@@ -143,7 +216,12 @@ def output_directory(source: Path) -> Path:
         A `.cache/latex/` path preserving source directory and stem identity.
 
     """
-    relative = source.relative_to(MATH_ROOT)
+    try:
+        relative = source.relative_to(MATH_ROOT)
+    except ValueError:
+        _fail(f"mathematics source must stay inside math root: {source}")
+    if ".." in relative.parts or not relative.parts:
+        _fail(f"mathematics source must not escape math root: {source}")
     return CACHE_ROOT / relative.parent / relative.stem
 
 
@@ -163,8 +241,11 @@ def latex_compiler(
 
 
 def _compile_document(source: Path) -> None:
+    _physical_math_status(source, directory=False)
     output = output_directory(source)
+    _reject_cache_redirects(output)
     _ = output.mkdir(parents=True, exist_ok=True)
+    _reject_cache_redirects(output)
     command = [
         latex_compiler(),
         "-disable-installer",
