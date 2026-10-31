@@ -40,7 +40,6 @@ import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
@@ -198,8 +197,11 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
     group_error: Exception | None = None
     try:
         os.kill(-child.pid, GROUP_KILL_SIGNAL)
-    except ProcessLookupError:
-        pass
+    except ProcessLookupError as error:
+        # Only the native kernel ESRCH exception proves group absence.
+        # A foreign subclass must not forge a successful cleanup receipt.
+        if type(error) is not ProcessLookupError:
+            group_error = error
     except Exception as error:
         # Unexpected host signaling faults must not bypass the direct reap.
         group_error = error
@@ -208,8 +210,11 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
     direct_error: Exception | None = None
     try:
         if child.poll() is None:
-            with suppress(ProcessLookupError):
+            try:
                 child.kill()
+            except ProcessLookupError as error:
+                if type(error) is not ProcessLookupError:
+                    raise
     except Exception as error:
         direct_error = error
     if direct_error is None:

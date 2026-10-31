@@ -126,6 +126,129 @@ def test_group_cleanup_signal_error_is_typed_after_child_exit(
     assert isinstance(error.value.__cause__, PermissionError)
 
 
+class _ForeignMissingProcessGroup(ProcessLookupError):
+    """Caller-owned absence subclasses cannot assert OS process-group state."""
+
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("foreign process-group failure was formatted")
+
+
+def test_foreign_process_group_absence_cannot_claim_completed_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a native ESRCH confirms no group remained to signal."""
+    original_kill = os.kill
+    fault = _ForeignMissingProcessGroup("injected false group absence")
+
+    def forge_group_absence(group: int, signal: int) -> None:
+        if group < 0:
+            raise fault
+        original_kill(group, signal)
+
+    monkeypatch.setattr(target_process.os, "kill", forge_group_absence)
+    with pytest.raises(target_process.TargetProcessError, match="cleanup") as caught:
+        target_process.invoke(
+            _child("print('produced')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    assert caught.value.__cause__ is fault
+
+
+def test_foreign_group_absence_still_attempts_direct_child_reap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An untrusted ESRCH subclass cannot skip fallback direct cleanup."""
+    fault = _ForeignMissingProcessGroup("injected false group absence")
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self) -> int:
+            events.append("wait")
+            return 0
+
+    def forge_group_absence(_group: int, _signal: int) -> None:
+        events.append("group")
+        raise fault
+
+    monkeypatch.setattr(target_process.os, "kill", forge_group_absence)
+    with pytest.raises(_ForeignMissingProcessGroup) as caught:
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert caught.value is fault
+    assert events == ["group", "poll", "kill", "wait"]
+
+
+def test_foreign_direct_child_absence_cannot_claim_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged child.kill ESRCH cannot bypass a required direct reap."""
+    fault = _ForeignMissingProcessGroup("injected false direct absence")
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+            raise fault
+
+        def wait(self) -> int:
+            events.append("wait")
+            return 0
+
+    monkeypatch.setattr(target_process.os, "kill", lambda *_args: None)
+    with pytest.raises(_ForeignMissingProcessGroup) as caught:
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert caught.value is fault
+    assert events == ["poll", "kill"]
+
+
+def test_native_process_group_and_direct_absence_are_admitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Actual native ESRCH still permits the completed child to be reaped."""
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> None:
+            events.append("poll")
+
+        def kill(self) -> None:
+            events.append("kill")
+            raise ProcessLookupError("native direct process is already gone")
+
+        def wait(self) -> int:
+            events.append("wait")
+            return 0
+
+    def missing_group(_group: int, _signal: int) -> None:
+        events.append("group")
+        raise ProcessLookupError("native process group is already gone")
+
+    monkeypatch.setattr(target_process.os, "kill", missing_group)
+    target_process._terminate_group(  # ruff: ignore[private-member-access]
+        cast("sp.Popen[bytes]", ChildProbe())
+    )
+    assert events == ["group", "poll", "kill", "wait"]
+
+
 def test_group_cleanup_failure_preserves_primary_output_rejection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
