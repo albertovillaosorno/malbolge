@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -130,6 +131,9 @@ def test_selects_windows_runtime_contract(tmp_path: Path) -> None:
     assert selected.loader_kind == WINDOWS_LOADER
     assert selected.driver_library == WINDOWS_DRIVER
     assert selected.manifest_path.name == WINDOWS_MANIFEST
+    assert selected.manifest_sha256 == sha256(
+        selected.manifest_path.read_bytes()
+    ).hexdigest()
     assert selected.toolkit_root == tmp_path / TOOLKIT_ROOT
     assert selected.nvrtc_library == (
         selected.toolkit_root / "bin/x64/nvrtc64_130_0.dll"
@@ -147,6 +151,9 @@ def test_selects_linux_runtime_contract(tmp_path: Path) -> None:
     assert selected.loader_kind == LINUX_LOADER
     assert selected.driver_library == LINUX_DRIVER
     assert selected.manifest_path.name == LINUX_MANIFEST
+    assert selected.manifest_sha256 == sha256(
+        selected.manifest_path.read_bytes()
+    ).hexdigest()
     assert selected.nvrtc_library == (
         selected.toolkit_root / "lib/libnvrtc.so.13"
     )

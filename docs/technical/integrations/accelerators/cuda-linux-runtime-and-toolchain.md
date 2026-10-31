@@ -94,6 +94,10 @@ this Fedora session.
 - Measured runtime identity hashes only bounded, unchanged, nonredirected
   regular platform-manifest source bytes. Linked, oversized, special, or
   changing files cannot become the recorded CUDA toolchain SHA-256.
+- The selector retains the SHA-256 of the exact bytes it parsed; runtime
+  measurement must match that selected digest before publishing the identity.
+  Manifest replacement between platform selection and native initialization
+  fails closed rather than recording a different runtime contract.
 - Missing libraries, unsupported platforms, or manifest disagreement produce a
   typed unavailable result and preserve the mandatory CPU path.
 - Linux enablement cannot change CUDA kernel integer semantics, result ordering,

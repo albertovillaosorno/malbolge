@@ -2365,6 +2365,7 @@ class CudaRuntime:
             self._cu_driver_get_version,
             self._nvrtc_version,
             selection.manifest_path,
+            expected_manifest_sha256=selection.manifest_sha256,
             environment=CudaRuntimeEnvironment(
                 display_driver_version=measure_nvml_display_driver_version(),
                 host_runtime_identity=measure_cuda_host_runtime_identity(),
@@ -3068,20 +3069,22 @@ def _read_runtime_manifest_bytes(path: Path) -> bytes:
         raise AcceleratorUnavailableError(message) from error
 
 
-def measure_cuda_runtime_identity(
+# Selection evidence is an independent keyword, not optional host metadata.
+def measure_cuda_runtime_identity(  # ruff: ignore[too-many-arguments]
     driver_version_fn: _CudaFn,
     nvrtc_version_fn: _CudaFn,
     manifest_path: Path,
     *,
     environment: CudaRuntimeEnvironment | None = None,
+    expected_manifest_sha256: str | None = None,
 ) -> CudaRuntimeIdentity:
     """Measure Driver API, NVRTC, toolchain, and optional display build.
 
     Returns:
         Validated immutable runtime identity.
 
-    Failed queries and invalid manifest sources raise
-    ``AcceleratorUnavailableError``.
+    Raises:
+        AcceleratorUnavailableError: Source, query, or selected digest differs.
 
     """
     driver_version = ctypes.c_int()
@@ -3101,6 +3104,12 @@ def measure_cuda_runtime_identity(
     manifest_sha256 = sha256(
         _read_runtime_manifest_bytes(manifest_path)
     ).hexdigest()
+    if (
+        expected_manifest_sha256 is not None
+        and manifest_sha256 != expected_manifest_sha256
+    ):
+        message = "CUDA toolchain manifest changed since selection"
+        raise AcceleratorUnavailableError(message)
     observed_environment = environment or CudaRuntimeEnvironment()
     return CudaRuntimeIdentity(
         display_driver_version=observed_environment.display_driver_version,

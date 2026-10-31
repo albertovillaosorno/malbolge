@@ -536,3 +536,43 @@ def test_cuda_runtime_identity_rejects_in_place_mutation_after_read(
     ):
         _ = _measured_manifest(source)
     assert observed == SOURCE_RECHECK
+
+
+def test_cuda_runtime_identity_rejects_manifest_replaced_after_selection(
+    tmp_path: Path,
+) -> None:
+    """A later physical manifest cannot replace the selected toolchain."""
+    source = tmp_path / "toolchain.json"
+    original = b'{"schema_version":1,"toolkit_root":"one"}\n'
+    changed = b'{"schema_version":1,"toolkit_root":"two"}\n'
+    _ = source.write_bytes(original)
+    selected_digest = sha256(original).hexdigest()
+    _ = source.write_bytes(changed)
+    with pytest.raises(
+        AcceleratorUnavailableError, match="changed since selection"
+    ):
+        _ = measure_cuda_runtime_identity(
+            _version_callback(DRIVER_API_VERSION),
+            _nvrtc_callback(NVRTC_MAJOR, NVRTC_MINOR),
+            source,
+            environment=ENVIRONMENT,
+            expected_manifest_sha256=selected_digest,
+        )
+
+
+def test_cuda_runtime_identity_preserves_selected_manifest_digest(
+    tmp_path: Path,
+) -> None:
+    """Stable selected bytes produce the same identity digest at runtime."""
+    source = tmp_path / "toolchain.json"
+    original = b'{"schema_version":1,"toolkit_root":"one"}\n'
+    _ = source.write_bytes(original)
+    selected_digest = sha256(original).hexdigest()
+    measured = measure_cuda_runtime_identity(
+        _version_callback(DRIVER_API_VERSION),
+        _nvrtc_callback(NVRTC_MAJOR, NVRTC_MINOR),
+        source,
+        environment=ENVIRONMENT,
+        expected_manifest_sha256=selected_digest,
+    )
+    assert measured.toolchain_manifest_sha256 == selected_digest

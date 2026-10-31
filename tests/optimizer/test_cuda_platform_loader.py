@@ -85,6 +85,7 @@ def _selection(
     return CudaToolchainSelection(
         platform_id=platform_id,
         manifest_path=tmp_path / manifest_name,
+        manifest_sha256="0" * 64,
         toolkit_root=toolkit,
         loader_kind=loader_kind,
         driver_library=driver,

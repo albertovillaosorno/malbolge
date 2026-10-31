@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -71,6 +72,7 @@ class CudaToolchainSelection:
 
     platform_id: str
     manifest_path: Path
+    manifest_sha256: str
     toolkit_root: Path
     loader_kind: str
     driver_library: str
@@ -157,7 +159,16 @@ def _read_regular_document(path: Path, label: str) -> bytes:
         return raw
 
 
-def _read_document(path: Path, label: str) -> dict[str, object]:
+def _read_document_and_bytes(
+    path: Path,
+    label: str,
+) -> tuple[dict[str, object], bytes]:
+    """Parse JSON and retain exactly the bytes admitted from the same file.
+
+    Returns:
+        Validated object and its unchanged source byte snapshot.
+
+    """
     try:
         source = _read_regular_document(path, label)
         parsed = cast(
@@ -169,7 +180,18 @@ def _read_document(path: Path, label: str) -> dict[str, object]:
         )
     except (json.JSONDecodeError, OSError, UnicodeDecodeError) as error:
         _fail(f"cannot read {label}: {error}")
-    return _mapping(parsed, label)
+    return _mapping(parsed, label), source
+
+
+def _read_document(path: Path, label: str) -> dict[str, object]:
+    """Parse a single tracked JSON document through physical file admission.
+
+    Returns:
+        The validated JSON object.
+
+    """
+    parsed, _ = _read_document_and_bytes(path, label)
+    return parsed
 
 
 def _required_string(
@@ -248,14 +270,16 @@ def _selected_entry(
 def _selected_manifest(
     root: Path,
     platform_id: str,
-) -> tuple[dict[str, object], Path, dict[str, object]]:
+) -> tuple[dict[str, object], Path, dict[str, object], str]:
     entry, index_path = _selected_entry(root, platform_id)
     manifest_name = _local_filename(
         _required_string(entry, "manifest", "CUDA platform"),
         "manifest",
     )
     manifest_path = index_path.parent / manifest_name
-    manifest = _read_document(manifest_path, "CUDA platform manifest")
+    manifest, admitted_bytes = _read_document_and_bytes(
+        manifest_path, "CUDA platform manifest"
+    )
     _schema(manifest, _MANIFEST_SCHEMA_VERSION, "CUDA platform manifest")
     manifest_platform = _required_string(
         manifest,
@@ -264,7 +288,7 @@ def _selected_manifest(
     )
     if manifest_platform != platform_id:
         _fail("selected manifest platform mismatch")
-    return entry, manifest_path, manifest
+    return entry, manifest_path, manifest, sha256(admitted_bytes).hexdigest()
 
 
 def _runtime_selection_fields(
@@ -305,7 +329,9 @@ def select_cuda_toolchain(
         Immutable platform loader, libraries, manifest, and toolkit paths.
 
     """
-    entry, manifest_path, manifest = _selected_manifest(root, platform_id)
+    entry, manifest_path, manifest, manifest_sha256 = _selected_manifest(
+        root, platform_id
+    )
     fields = _runtime_selection_fields(root, entry, manifest)
     toolkit_root, loader_kind, driver_library, nvrtc_relative = fields
     preload_relatives = _repository_relative_paths(
@@ -315,6 +341,7 @@ def select_cuda_toolchain(
     return CudaToolchainSelection(
         platform_id=platform_id,
         manifest_path=manifest_path,
+        manifest_sha256=manifest_sha256,
         toolkit_root=toolkit_root,
         loader_kind=loader_kind,
         driver_library=driver_library,
