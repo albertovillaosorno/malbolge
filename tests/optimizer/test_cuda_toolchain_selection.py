@@ -35,10 +35,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-from accelerator.cuda import toolchain
 import pytest
+from accelerator.cuda import toolchain
 
 WINDOWS_PLATFORM = "windows-x86_64"
 LINUX_PLATFORM = "linux-x86_64"
@@ -213,3 +214,186 @@ def test_repository_linux_selector_matches_published_nvrtc_layout() -> None:
     assert selected.nvrtc_library == (
         selected.toolkit_root / "lib/libnvrtc.so.13"
     )
+
+
+@pytest.mark.parametrize("authority", ["index", "manifest"])
+def test_toolchain_rejects_linked_json_authority(
+    tmp_path: Path,
+    authority: str,
+) -> None:
+    """Tracked manifest bytes must come from the named physical source file."""
+    _write_complete_fixture(tmp_path)
+    selected = (
+        tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
+        if authority == "index"
+        else _manifest_root(tmp_path) / LINUX_MANIFEST
+    )
+    actual = selected.with_name("actual.json")
+    _ = actual.write_bytes(selected.read_bytes())
+    selected.unlink()
+    try:
+        _ = selected.symlink_to(actual)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(
+        toolchain.CudaToolchainSelectionError, match="redirect|regular"
+    ):
+        _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
+
+
+def test_toolchain_rejects_linked_manifest_parent(tmp_path: Path) -> None:
+    """A symlinked directory must not introduce external platform metadata."""
+    real_root = tmp_path / "real"
+    _write_complete_fixture(real_root)
+    alias_root = tmp_path / "alias"
+    try:
+        _ = alias_root.symlink_to(real_root, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(toolchain.CudaToolchainSelectionError, match="redirect"):
+        _ = toolchain.select_cuda_toolchain(alias_root, LINUX_PLATFORM)
+
+
+@pytest.mark.parametrize("authority", ["index", "manifest"])
+def test_toolchain_rejects_oversized_json(
+    tmp_path: Path,
+    authority: str,
+) -> None:
+    """Malformed tracked documents are bounded before JSON materialization."""
+    _write_complete_fixture(tmp_path)
+    selected = (
+        tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
+        if authority == "index"
+        else _manifest_root(tmp_path) / LINUX_MANIFEST
+    )
+    with selected.open("wb") as stream:
+        _ = stream.truncate(1024 * 1024 + 1)
+    with pytest.raises(toolchain.CudaToolchainSelectionError, match="byte limit"):
+        _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
+
+
+def test_toolchain_invalid_utf8_is_typed_error(tmp_path: Path) -> None:
+    """Corrupt encoded metadata fails closed through the public error type."""
+    _write_complete_fixture(tmp_path)
+    _ = (tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX).write_bytes(b"\xff")
+    with pytest.raises(toolchain.CudaToolchainSelectionError, match="cannot read"):
+        _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
+
+
+@pytest.mark.parametrize("authority", ["index", "manifest"])
+def test_toolchain_rejects_directory_and_fifo_source(
+    tmp_path: Path,
+    authority: str,
+) -> None:
+    """Neither directory nor writerless pipe may stand in for source JSON."""
+    _write_complete_fixture(tmp_path)
+    selected = (
+        tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
+        if authority == "index"
+        else _manifest_root(tmp_path) / LINUX_MANIFEST
+    )
+    selected.unlink()
+    selected.mkdir()
+    with pytest.raises(toolchain.CudaToolchainSelectionError, match="regular"):
+        _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
+    selected.rmdir()
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFO creation unsupported on host")
+    mkfifo(selected)
+    with pytest.raises(toolchain.CudaToolchainSelectionError, match="regular"):
+        _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
+
+
+@pytest.mark.parametrize("authority", ["index", "manifest"])
+def test_toolchain_rejects_inode_swap_between_stat_and_open(
+    tmp_path: Path,
+    authority: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even same-byte replacements cannot change admitted source identity."""
+    _write_complete_fixture(tmp_path)
+    selected = (
+        tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
+        if authority == "index"
+        else _manifest_root(tmp_path) / LINUX_MANIFEST
+    )
+    replacement = selected.with_name("replacement.json")
+    _ = replacement.write_bytes(selected.read_bytes())
+    real_open = os.open
+    swapped = False
+
+    def swap_on_open(path: Path, flags: int) -> int:
+        nonlocal swapped
+        if path == selected:
+            _ = replacement.replace(selected)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_on_open)
+    with pytest.raises(
+        toolchain.CudaToolchainSelectionError, match="changed before read"
+    ):
+        _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
+    assert swapped
+
+
+@pytest.mark.parametrize("authority", ["index", "manifest"])
+def test_toolchain_rejects_same_byte_inode_swap_after_read(
+    tmp_path: Path,
+    authority: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The named manifest must still match its descriptor after reading."""
+    _write_complete_fixture(tmp_path)
+    selected = (
+        tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
+        if authority == "index"
+        else _manifest_root(tmp_path) / LINUX_MANIFEST
+    )
+    replacement = selected.with_name("replacement.json")
+    _ = replacement.write_bytes(selected.read_bytes())
+    real_lstat = Path.lstat
+    observed = 0
+
+    def swap_at_recheck(path: Path) -> os.stat_result:
+        nonlocal observed
+        if path == selected:
+            observed += 1
+            if observed == 2:
+                _ = replacement.replace(selected)
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", swap_at_recheck)
+    with pytest.raises(
+        toolchain.CudaToolchainSelectionError, match="changed during read"
+    ):
+        _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
+    assert observed == 2
+
+
+def test_toolchain_rejects_manifest_in_place_mutation_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unchanged inode and size do not conceal modified manifest content."""
+    _write_complete_fixture(tmp_path)
+    selected = _manifest_root(tmp_path) / LINUX_MANIFEST
+    real_lstat = Path.lstat
+    observed = 0
+
+    def mutate_at_recheck(path: Path) -> os.stat_result:
+        nonlocal observed
+        if path == selected:
+            observed += 1
+            if observed == 2:
+                with selected.open("r+b") as stream:
+                    _ = stream.write(b"x")
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", mutate_at_recheck)
+    with pytest.raises(
+        toolchain.CudaToolchainSelectionError, match="changed during read"
+    ):
+        _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
+    assert observed == 2

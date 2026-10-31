@@ -81,6 +81,10 @@ this Fedora session.
 - CUDA release, platform, package version, archive path, size, and SHA-256
   remain
   exact tracked identity. No unversioned "latest" download is allowed.
+- The tracked CUDA selector index and platform JSON are admitted as bounded,
+  nonredirected regular files with stable inode, byte count, and timestamps
+  across each read. Symlinked directories, file aliases, and changing manifest
+  evidence do not authorize CUDA library selection.
 - The runtime resolves its toolkit root and NVRTC library from the selected
   manifest; it does not embed `13.3.1` or `.dll` in generic execution logic.
 - Missing libraries, unsupported platforms, or manifest disagreement produce a

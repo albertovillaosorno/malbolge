@@ -42,6 +42,8 @@ import os
 from pathlib import Path
 import re
 import shutil
+from stat import S_ISDIR
+from stat import S_ISREG
 import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
@@ -72,6 +74,9 @@ SOURCE_SHA256 = (
 )
 SCHEMA_VERSION = 1
 RUN_TIMEOUT_SECONDS = 15
+MAX_DOCUMENT_BYTES = 1_048_576
+MAX_FIXTURE_BYTES = 1_048_576
+PARENT_COMPONENT = ".."
 WINDOWS_OS_NAME = "nt"
 ASAN_ERROR = re.compile(r"ERROR: AddressSanitizer: ([a-z0-9-]+)")
 UBSAN_ERROR = re.compile(r"runtime error: ([^\r\n]+)")
@@ -177,18 +182,91 @@ def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> JsonObject:
     return document
 
 
+def _regular_identity(
+    status: os.stat_result,
+    limit: int,
+) -> tuple[int, int, int, int, int]:
+    if not S_ISREG(status.st_mode):
+        _fail("sanitizer input must be a regular file")
+    if status.st_size > limit:
+        _fail("sanitizer input exceeds byte limit")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _reject_redirected_parents(path: Path) -> None:
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            _fail("sanitizer input path must not redirect")
+
+
+def _read_regular(path: Path, *, limit: int) -> bytes:
+    """Bind a bounded regular input to its opened inode and original path.
+
+    Returns:
+        The exact stable bytes of a non-redirected regular input.
+
+    """
+    _reject_redirected_parents(path)
+    admitted = path.lstat()
+    expected = _regular_identity(admitted, limit)
+    if path.is_symlink() or path.is_junction():
+        _fail("sanitizer input path must not redirect")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        if _regular_identity(os.fstat(stream.fileno()), limit) != expected:
+            _fail("sanitizer input changed before read")
+        contents = stream.read(limit + 1)
+        if (
+            len(contents) != admitted.st_size
+            or _regular_identity(os.fstat(stream.fileno()), limit) != expected
+            or _regular_identity(path.lstat(), limit) != expected
+        ):
+            _fail("sanitizer input changed during read")
+    _reject_redirected_parents(path)
+    return contents
+
+
 def _load_object(path: Path) -> JsonObject:
     try:
         parsed = cast(
             "object",
             json.loads(
-                path.read_text(encoding="utf-8"),
+                _read_regular(path, limit=MAX_DOCUMENT_BYTES).decode("utf-8"),
                 object_pairs_hook=_reject_duplicate_pairs,
             ),
         )
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    except (
+        OSError,
+        ValueError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+    ) as error:
         _fail(f"cannot load {path}: {error}")
     return _mapping(parsed, str(path))
+
+
+def _relative_source_path(value: str, context: str) -> Path:
+    relative = Path(value)
+    if (
+        relative.is_absolute()
+        or PARENT_COMPONENT in relative.parts
+        or relative.drive
+    ):
+        _fail(f"{context} escapes the repository")
+    return relative
 
 
 def _decode_hex(value: object, context: str) -> bytes:
@@ -207,14 +285,15 @@ def _path_source(
 ) -> bytes:
     if not isinstance(value, str):
         _fail(f"case {identifier} source must be text")
-    path = (source_root / value).resolve()
+    relative = _relative_source_path(value, f"case {identifier} source")
+    path = source_root / relative
     try:
         _ = path.relative_to(ROOT)
+        return _read_regular(path, limit=MAX_FIXTURE_BYTES)
     except ValueError:
         _fail(f"case {identifier} source escapes the repository")
-    if not path.is_file():
-        _fail(f"case {identifier} source is missing: {path}")
-    return path.read_bytes()
+    except OSError as error:
+        _fail(f"case {identifier} source is unavailable: {error}")
 
 
 def _case_source(
@@ -256,13 +335,16 @@ def _source_root(document: JsonObject) -> Path:
     value = document.get("source_root")
     if not isinstance(value, str):
         _fail("sanitizer source_root must be text")
-    source_root = (ROOT / value).resolve()
+    relative = _relative_source_path(value, "sanitizer source_root")
+    source_root = ROOT / relative
+    _reject_redirected_parents(source_root)
     try:
-        _ = source_root.relative_to(ROOT)
-    except ValueError:
-        _fail("sanitizer source_root escapes the repository")
-    if not source_root.is_dir():
-        _fail("sanitizer source_root is missing")
+        if source_root.is_symlink() or source_root.is_junction():
+            _fail("sanitizer source_root must not redirect")
+        if not S_ISDIR(source_root.lstat().st_mode):
+            _fail("sanitizer source_root is not a directory")
+    except OSError as error:
+        _fail(f"sanitizer source_root is unavailable: {error}")
     return source_root
 
 
@@ -325,7 +407,7 @@ def _compiler_identity() -> None:
 
 def _verify_source() -> None:
     try:
-        source = SOURCE.read_bytes()
+        source = _read_regular(SOURCE, limit=MAX_FIXTURE_BYTES)
     except OSError as error:
         _fail(f"historical source is unavailable: {error}")
     observed = sha256(source).hexdigest()

@@ -42,8 +42,15 @@ The executable runner is
 `benchmarks/interpreter/sanitizer-cases.json`; reviewed results live in
 `benchmarks/interpreter/evidence/windows-x86_64-sanitizer-findings.json`.
 Both JSON authorities reject duplicate keys and invalid UTF-8 through the stable
-sanitizer-harness error boundary before evidence comparison. Case identifiers
-must be portable ASCII filename stems (at most 128 characters), excluding path
+sanitizer-harness error boundary before evidence comparison. Manifest and
+reviewed-result JSON are admitted only as direct, non-redirected regular files,
+with a one-MiB input bound and opened-inode identity checked before and after
+reads. In-root source fixtures and the pinned historical source obey the same
+regular-file and stable-snapshot rules, each with a one-MiB limit; fixture
+locations cannot traverse outside the repository or follow linked directories.
+FIFO and symlink substitutions fail without waiting for external input.
+Case identifiers must be portable ASCII filename stems (at most 128 characters),
+excluding path
 separators, traversal, and Windows device names; case-insensitive duplicates
 are rejected before any fixture file is written. Direct case construction and
 the execution sink enforce the same filename admission.

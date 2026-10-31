@@ -34,13 +34,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from pathlib import Path
-from pathlib import PureWindowsPath
-from typing import Final
-from typing import Never
-from typing import cast
+import os
+from dataclasses import dataclass
+from pathlib import Path, PureWindowsPath
+from stat import S_ISREG
+from typing import Final, Never, cast
 
 CUDA_TOOLCHAIN_INDEX: Final = (
     Path("src")
@@ -52,6 +51,7 @@ CUDA_TOOLCHAIN_INDEX: Final = (
     / "toolchain-manifests.json"
 )
 _INDEX_SCHEMA_VERSION: Final = 1
+_MAX_DOCUMENT_BYTES: Final = 1024 * 1024
 _MANIFEST_SCHEMA_VERSION: Final = 1
 _ALLOWED_LOADERS: Final = frozenset(("windll", "cdll"))
 _PATH_SEPARATORS: Final = frozenset(("/", "\\"))
@@ -96,16 +96,70 @@ def _mapping(value: object, label: str) -> dict[str, object]:
     return cast("dict[str, object]", value)
 
 
+def _source_identity(status: os.stat_result, label: str) -> tuple[int, ...]:
+    """Record physical regular-file identity and mutation-sensitive timestamps."""
+    if not S_ISREG(status.st_mode):
+        _fail(f"{label} must be a regular file")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _check_source_parents(path: Path, label: str) -> None:
+    """Reject directory aliases in a tracked manifest authority path."""
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            _fail(f"{label} path must not redirect")
+
+
+def _read_regular_document(path: Path, label: str) -> bytes:
+    """Read bounded source bytes from one stable, nonredirected regular file.
+
+    Returns:
+        The complete unchanged physical source bytes.
+
+    """
+    _check_source_parents(path, label)
+    admitted = path.lstat()
+    expected = _source_identity(admitted, label)
+    if admitted.st_size > _MAX_DOCUMENT_BYTES:
+        _fail(f"{label} exceeds byte limit")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        if _source_identity(os.fstat(stream.fileno()), label) != expected:
+            _fail(f"{label} changed before read")
+        raw = stream.read(_MAX_DOCUMENT_BYTES + 1)
+        if len(raw) != admitted.st_size:
+            _fail(f"{label} changed during read or exceeds byte limit")
+        opened = _source_identity(os.fstat(stream.fileno()), label)
+        named = _source_identity(path.lstat(), label)
+        if opened != expected or named != expected:
+            _fail(f"{label} changed during read")
+        _check_source_parents(path, label)
+        return raw
+
+
 def _read_document(path: Path, label: str) -> dict[str, object]:
     try:
+        source = _read_regular_document(path, label)
         parsed = cast(
             "object",
             json.loads(
-                path.read_text(encoding="utf-8"),
+                source.decode("utf-8"),
                 object_pairs_hook=_reject_duplicate_pairs,
             ),
         )
-    except (json.JSONDecodeError, OSError) as error:
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as error:
         _fail(f"cannot read {label}: {error}")
     return _mapping(parsed, label)
 
