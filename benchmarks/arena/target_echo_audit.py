@@ -710,9 +710,18 @@ def _check_forward_jump(source: bytes, row: dict[str, Any]) -> None:
 def check_forward_candidate_source(
     source: bytes, *, pairs: int, algorithm: str
 ) -> None:
-    """Admit source bytes with the independent fixed jump/echo decoder."""
-    if algorithm not in FORWARD_ALGORITHMS:
-        _fail("target verifier received an unrecognized forward algorithm")
+    """Admit bounded native source and geometry before decoding instructions.
+
+    Raises:
+        TargetEchoAuditError: Invalid bytes, requested geometry, or algorithm.
+
+    """
+    if type(source) is not bytes or not 0 < len(source) <= producer.MAX_TARGET_BYTES:
+        _fail("target forward source requires bounded native bytes")
+    if type(pairs) is not int or not 1 <= pairs <= producer.MAX_PAIRS:
+        _fail("target forward source requires bounded integer pairs")
+    if type(algorithm) is not str or algorithm not in FORWARD_ALGORITHMS:
+        _fail("target forward source requires a canonical algorithm")
     row = {
         "algorithm": algorithm,
         "case": {"difficulty": pairs},

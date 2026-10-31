@@ -169,6 +169,75 @@ def test_direct_target_audit_rejects_foreign_tool_locator_before_access(
         audit.audit(".temp/arena-target-echo-options/study.json", options=options)
 
 
+class _UntrustedSource(bytes):  # ruff: ignore[subclass-builtin]
+    """A foreign source may replace even its byte count with arbitrary code."""
+
+    def __len__(self) -> int:
+        message = "untrusted source length executed"
+        raise AssertionError(message)
+
+
+class _UntrustedPairs(int):  # ruff: ignore[subclass-builtin]
+    """A foreign repetition count can intercept arithmetic."""
+
+    def __add__(self, other: object) -> int:
+        del other
+        message = "untrusted source geometry arithmetic executed"
+        raise AssertionError(message)
+
+
+class _UntrustedAlgorithm(str):  # ruff: ignore[subclass-builtin]
+    """A foreign algorithm name can intercept equality checks."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        message = "untrusted algorithm equality executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    ("source", "pairs", "algorithm"),
+    [
+        (None, 1, audit.WALK),
+        ("a", 1, audit.WALK),
+        (bytearray(b"a"), 1, audit.WALK),
+        (_UntrustedSource(b"a"), 1, audit.WALK),
+        (b"", 1, audit.WALK),
+        (b"x" * (producer.MAX_TARGET_BYTES + 1), 1, audit.WALK),
+        (b"a", None, audit.WALK),
+        (b"a", True, audit.WALK),
+        (b"a", 1.0, audit.WALK),
+        (b"a", _UntrustedPairs(1), audit.WALK),
+        (b"a", 0, audit.WALK),
+        (b"a", -1, audit.WALK),
+        (b"a", producer.MAX_PAIRS + 1, audit.WALK),
+        (b"a", 10**15, audit.WALK),
+        (b"a", 1, _UntrustedAlgorithm(audit.WALK)),
+        (b"a", 1, object()),
+    ],
+)
+def test_direct_forward_candidate_rejects_foreign_or_unbounded_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    source: object,
+    pairs: object,
+    algorithm: object,
+) -> None:
+    """Untrusted direct inputs reject before constructing source operations."""
+
+    def forbidden_operations(*args: object, **kwargs: object) -> list[str]:
+        _ = (args, kwargs)
+        message = "invalid source request attempted operation allocation"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(audit, "_expected_operations", forbidden_operations)
+    with pytest.raises(audit.TargetEchoAuditError, match="forward source"):
+        audit.check_forward_candidate_source(
+            cast("bytes", source),
+            pairs=cast("int", pairs),
+            algorithm=cast("str", algorithm),
+        )
+
+
 @pytest.mark.parametrize(
     ("payload", "source_error"),
     [
