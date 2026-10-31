@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
 from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -109,6 +110,7 @@ def _require_utf8_path(value: str, context: str) -> None:
         _BACKSLASH in value
         or value == _DOT
         or path.is_absolute()
+        or PureWindowsPath(value).drive
         or _PARENT in path.parts
         or path.as_posix() != value
     )

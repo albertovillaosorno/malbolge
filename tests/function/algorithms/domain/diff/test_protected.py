@@ -338,6 +338,8 @@ def test_protected_path_metadata_rejects_unserializable_text(
         "nested//data.bin",
         "./relative.bin",
         "nested\\windows.bin",
+        "C:/windows.bin",
+        "C:drive-relative.bin",
     ],
 )
 def test_protected_paths_are_canonical_before_serialization(
