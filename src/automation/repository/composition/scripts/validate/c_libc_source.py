@@ -151,6 +151,25 @@ def _parse_arguments() -> _Arguments:
     return arguments
 
 
+def _checked_clang_output(
+    completed: sp.CompletedProcess[str], context: str
+) -> tuple[str, str]:
+    """Reject fabricated success and malformed decoded Clang output receipts.
+
+    Returns:
+        Canonical version/AST stdout and stderr strings.
+
+    """
+    if (
+        type(completed) is not sp.CompletedProcess
+        or type(completed.returncode) is not int
+        or type(completed.stdout) is not str
+        or type(completed.stderr) is not str
+    ):
+        _fail(f"malformed Clang {context} process receipt")
+    return completed.stdout, completed.stderr
+
+
 def _clang_identity(clang: Path) -> str:
     try:
         # jig-ignore-next-line: indivisible reviewed Ruff rule identifier
@@ -163,11 +182,13 @@ def _clang_identity(clang: Path) -> str:
             errors="replace",
             shell=False,
         )
-    except OSError as error:
-        _fail(f"failed to execute Clang version query {clang}: {error}")
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = f"failed to execute Clang version query {clang}"
+        raise LibcSourceError(message) from error
+    stdout, stderr = _checked_clang_output(completed, "version")
     if completed.returncode != 0:
         _fail(f"Clang version query failed for {clang}")
-    return completed.stdout + chr(10) + completed.stderr
+    return stdout + chr(10) + stderr
 
 
 def _ast_command(source: Path, config: _AstConfig) -> list[str]:
@@ -188,7 +209,12 @@ def _ast_command(source: Path, config: _AstConfig) -> list[str]:
 
 
 def _require_clang(clang: Path) -> None:
-    if not clang.is_file():
+    try:
+        available = clang.is_file()
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = f"Clang status failed for {clang}"
+        raise LibcSourceError(message) from error
+    if not available:
         _fail(f"pinned Clang not found: {clang}")
     expected = f"clang version {PINNED_LLVM_VERSION}"
     if expected not in _clang_identity(clang):
@@ -218,12 +244,14 @@ def _run_ast(source: Path, config: _AstConfig) -> JsonObject:
             errors="replace",
             shell=False,
         )
-    except OSError as error:
-        _fail(f"failed to execute Clang AST parse {config.clang}: {error}")
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = f"failed to execute Clang AST parse {config.clang}"
+        raise LibcSourceError(message) from error
+    stdout, stderr = _checked_clang_output(completed, "AST")
     if completed.returncode != 0:
-        detail = completed.stderr.strip()
+        detail = stderr.strip()
         _fail(detail or f"Clang AST parse failed for {source}")
-    return _parse_ast(completed.stdout, source)
+    return _parse_ast(stdout, source)
 
 
 def _range_begin(node: JsonObject) -> JsonObject | None:
@@ -509,10 +537,22 @@ def _source_snapshot(source: Path) -> _SourceSnapshot:
             | getattr(os, "O_NONBLOCK", 0)
         )
         descriptor = os.open(source, flags)
-        with os.fdopen(descriptor, "rb") as stream:
+        try:
+            stream = os.fdopen(descriptor, "rb")
+        except BaseException:
+            # The descriptor stays owned by this reader until fdopen succeeds.
+            try:
+                os.close(descriptor)
+            except (OSError, ValueError, RuntimeError, TypeError, AttributeError):
+                pass
+            raise
+        with stream:
             return _snapshot_open_source(stream, source, admitted)
-    except OSError as error:
-        _fail(f"failed to read guest C source {source}: {error}")
+    except LibcSourceError:
+        raise
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = f"failed to read guest C source {source}"
+        raise LibcSourceError(message) from error
 
 
 def analyze_source(
@@ -528,7 +568,10 @@ def analyze_source(
         Stable source-located library diagnostics.
 
     """
-    resolved = source.resolve()
+    try:
+        resolved = source.resolve()
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        raise LibcSourceError("failed to resolve guest C source") from error
     active_abi = abi or c_abi.canonical_projection()
     active_libc = libc or c_libc.canonical_projection()
     snapshot = _source_snapshot(resolved)
@@ -537,8 +580,12 @@ def analyze_source(
         _ = source_bytes.decode("utf-8")
     except UnicodeDecodeError as error:
         _fail(f"invalid guest-C UTF-8 in {resolved}: {error}")
+    try:
+        resolved_clang = clang.resolve()
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        raise LibcSourceError("failed to resolve guest C Clang") from error
     config = _AstConfig(
-        clang=clang.resolve(),
+        clang=resolved_clang,
         abi=active_abi,
         libc=active_libc,
     )

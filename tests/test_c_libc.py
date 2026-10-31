@@ -654,6 +654,191 @@ def test_atan2_kernel_input_normalizes_without_floating_division(
     assert completed.returncode == 0, completed.stderr
 
 
+def _libc_test_ast_config() -> c_libc_source._AstConfig:
+    """Provide canonical source AST configuration for isolated host tests."""
+    return c_libc_source._AstConfig(
+        clang=CLANG,
+        abi=c_abi.canonical_projection(),
+        libc=c_libc.canonical_projection(),
+    )
+
+
+def _run_libc_test_ast(stage: str) -> object:
+    """Exercise the version or AST subprocess admission with one return type."""
+    if stage == "version":
+        return c_libc_source._clang_identity(CLANG)
+    return c_libc_source._run_ast(ACCEPTED, _libc_test_ast_config())
+
+
+@pytest.mark.parametrize("stage", ["version", "ast"])
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_libc_clang_process_host_faults_are_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    fault: type[Exception],
+) -> None:
+    """Unavailable host process calls must not leak their implementation faults."""
+
+    def failing_run(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise fault("injected guest libc Clang transport failure")
+
+    monkeypatch.setattr(sp, "run", failing_run)
+    if stage == "ast":
+        monkeypatch.setattr(c_libc_source, "_require_clang", lambda _: None)
+    with pytest.raises(c_libc_source.LibcSourceError, match="Clang") as failure:
+        _ = _run_libc_test_ast(stage)
+    assert type(failure.value.__cause__) is fault
+
+
+@pytest.mark.parametrize("stage", ["version", "ast"])
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("returncode", False),
+        ("returncode", 0.0),
+        ("returncode", None),
+        ("stdout", None),
+        ("stdout", b"not text"),
+        ("stderr", None),
+        ("stderr", b"not text"),
+    ],
+)
+def test_libc_clang_rejects_malformed_process_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    field: str,
+    invalid: object,
+) -> None:
+    """A fake exit zero, missing text or byte output cannot certify Clang."""
+    values: dict[str, object] = {
+        "returncode": 0,
+        "stdout": "clang version 22.1.8" if stage == "version" else "{}",
+        "stderr": "",
+    }
+    values[field] = invalid
+    completed = sp.CompletedProcess[str](
+        args=[],
+        returncode=cast("int", values["returncode"]),
+        stdout=cast("str", values["stdout"]),
+        stderr=cast("str", values["stderr"]),
+    )
+    monkeypatch.setattr(sp, "run", lambda *args, **kwargs: completed)
+    if stage == "ast":
+        monkeypatch.setattr(c_libc_source, "_require_clang", lambda _: None)
+    with pytest.raises(c_libc_source.LibcSourceError, match="malformed Clang"):
+        _ = _run_libc_test_ast(stage)
+
+
+@pytest.mark.parametrize("stage", ["version", "ast"])
+@pytest.mark.parametrize("response", [None, False, {}, object()])
+def test_libc_clang_rejects_nonprocess_receipt_objects(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    response: object,
+) -> None:
+    """No malformed host object may impersonate a completed Clang process."""
+    monkeypatch.setattr(sp, "run", lambda *args, **kwargs: response)
+    if stage == "ast":
+        monkeypatch.setattr(c_libc_source, "_require_clang", lambda _: None)
+    with pytest.raises(c_libc_source.LibcSourceError, match="malformed Clang"):
+        _ = _run_libc_test_ast(stage)
+
+
+@pytest.mark.parametrize("fault", [OSError, ValueError, RuntimeError])
+def test_libc_source_fdopen_failure_closes_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Failed guest source wrappers must not leak the raw opened descriptor."""
+    source = tmp_path / "source.c"
+    _ = source.write_bytes(b"int guest(void) { return 0; }\n")
+    original_open = os.open
+    original_fstat = os.fstat
+    captured: list[int] = []
+
+    def tracking_open(
+        file: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        descriptor = original_open(file, flags, mode, dir_fd=dir_fd)
+        captured.append(descriptor)
+        return descriptor
+
+    def failing_fdopen(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise fault("injected libc source fdopen failure")
+
+    monkeypatch.setattr(os, "open", tracking_open)
+    monkeypatch.setattr(os, "fdopen", failing_fdopen)
+    try:
+        with pytest.raises(c_libc_source.LibcSourceError, match="source"):
+            _ = c_libc_source._source_snapshot(source)
+    finally:
+        leaked = [
+            descriptor
+            for descriptor in captured
+            if _descriptor_open(descriptor, original_fstat)
+        ]
+        for descriptor in leaked:
+            os.close(descriptor)
+    assert captured
+    assert not leaked
+
+
+@pytest.mark.parametrize("stage", ["source", "clang"])
+@pytest.mark.parametrize("fault", [OSError, ValueError, RuntimeError])
+def test_libc_source_resolve_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    fault: type[Exception],
+) -> None:
+    """Source/Clang resolution failures cannot bypass the admission boundary."""
+    source = tmp_path / "source.c"
+    _ = source.write_bytes(b"int guest(void) { return 0; }\n")
+    config = _libc_test_ast_config()
+    target = source if stage == "source" else CLANG
+    original_resolve = Path.resolve
+
+    def failing_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == target:
+            raise fault("injected libc source resolution failure")
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", failing_resolve)
+    with pytest.raises(c_libc_source.LibcSourceError, match="resolve") as error:
+        _ = c_libc_source.analyze_source(
+            source, clang=CLANG, abi=config.abi, libc=config.libc
+        )
+    assert type(error.value.__cause__) is fault
+
+
+@pytest.mark.parametrize("fault", [OSError, ValueError, RuntimeError])
+def test_libc_source_clang_status_faults_are_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Clang preflight must type even unexpected filesystem status failures."""
+    original_is_file = Path.is_file
+
+    def failing_is_file(path: Path) -> bool:
+        if path == CLANG:
+            raise fault("injected Clang file status failure")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", failing_is_file)
+    with pytest.raises(c_libc_source.LibcSourceError, match="Clang") as error:
+        c_libc_source._require_clang(CLANG)
+    assert type(error.value.__cause__) is fault
+
+
 @pytest.mark.parametrize(("fixture", "code", "routine"), SOURCE_REJECTIONS)
 def test_libc_source_preflight_reports_exact_routine_use(
     fixture: str,
