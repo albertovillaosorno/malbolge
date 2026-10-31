@@ -335,6 +335,13 @@ def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
     if satisfied > eligible:
         message = "satisfied anchor file count cannot exceed eligible files"
         raise AdmissionPolicyError(message)
+    matched_eligible = sum(
+        item.anchor_coverage is not None and item.matched_anchor_count > _ZERO
+        for item in files
+    )
+    if satisfied > matched_eligible:
+        message = "satisfied anchor file count exceeds matched eligible files"
+        raise AdmissionPolicyError(message)
     _ = _require_reason_tuple(evidence.reasons)
 
 

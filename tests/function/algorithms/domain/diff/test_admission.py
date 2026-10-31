@@ -114,6 +114,12 @@ def test_admission_evidence_rejects_incoherent_direct_construction() -> None:
     ):
         _ = TreeAdmissionEvidence(1.0, 1.0, 0, 0, (file,), ())
 
+    unmatched = FileAdmissionEvidence("a.c", 1.0, 0.0, 1, 0)
+    with pytest.raises(
+        AdmissionPolicyError, match="satisfied anchor file count"
+    ):
+        _ = TreeAdmissionEvidence(1.0, 0.0, 1, 1, (unmatched,), ())
+
 
 def test_exact_identity_tree_is_admitted() -> None:
     """Exact source lineage satisfies both independent source metrics."""
