@@ -258,7 +258,7 @@ fn project_rotated_literal_effects(
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     };
     if outputs.is_empty()
-        || outputs.len() > 13
+        || outputs.len() > 14
         || !is_byte_type(module, *type_id)
         || constant.bit_width() != 8
         || constant.little_endian().len() != 1
@@ -665,7 +665,7 @@ pub fn compile_canonical_typed_identity_byte_trace(
     compile_byte_trace(canonical, profile, ByteTraceMode::IdentityByteBitcast)
 }
 
-/// Compile one current-profile `u8` constant and one to thirteen outputs via rotation.
+/// Compile one current-profile `u8` constant and one to fourteen outputs via rotation.
 ///
 /// Unlike initial-zero, only a finite verified set of nonzero values has
 /// safe `j`, `*`, `<`, `v` source layouts. The independent bridge executes

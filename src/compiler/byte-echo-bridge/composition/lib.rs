@@ -363,6 +363,32 @@ const ROTATED_TREDECUPLE_BYTE_SEEDS: &[(u8, usize)] = &[
     (14, 24),
 ];
 
+/// Fourteen-output loader-expanded source has independently VM-checked seeds.
+const ROTATED_FOURTEEN_BYTE_SEEDS: &[(u8, usize)] = &[
+    (176, 0),
+    (162, 1),
+    (41, 2),
+    (178, 3),
+    (187, 4),
+    (66, 5),
+    (192, 6),
+    (185, 7),
+    (55, 8),
+    (200, 9),
+    (65, 10),
+    (56, 11),
+    (199, 12),
+    (57, 13),
+    (198, 15),
+    (64, 17),
+    (197, 18),
+    (193, 21),
+    (51, 22),
+    (59, 23),
+    (195, 24),
+    (49, 25),
+];
+
 /// A failed pre-layout admission, semantic bridge, or final target admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ByteEchoBridgeError {
@@ -397,6 +423,7 @@ const fn rotated_byte_seeds(outputs: usize) -> Option<RotatedByteSeedTable> {
         11 => Some(ROTATED_UNDECUPLE_BYTE_SEEDS),
         12 => Some(ROTATED_DODECUPLE_BYTE_SEEDS),
         13 => Some(ROTATED_TREDECUPLE_BYTE_SEEDS),
+        14 => Some(ROTATED_FOURTEEN_BYTE_SEEDS),
         _ => None,
     }
 }

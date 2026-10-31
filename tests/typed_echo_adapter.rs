@@ -3785,7 +3785,7 @@ fn canonical_typed_rotated_literal_rejects_unwitnessed_output_counts() -> Result
 }
 
 #[test]
-fn canonical_typed_rotated_literal_enforces_thirteen_output_witness_domain() -> Result<(), String> {
+fn canonical_typed_rotated_literal_enforces_fourteen_output_witness_domain() -> Result<(), String> {
     let unsupported_thirteenth = wire(&typed_rotated_literal_module_with_outputs(40, 13)?)?;
     if adapter::compile_canonical_typed_rotated_byte_literal(
         &unsupported_thirteenth,
@@ -3797,11 +3797,22 @@ fn canonical_typed_rotated_literal_enforces_thirteen_output_witness_domain() -> 
             "typed thirteenth output admitted unwitnessed byte",
         ));
     }
-    let fourteenth = wire(&typed_rotated_literal_module_with_outputs(22, 14)?)?;
-    if adapter::compile_canonical_typed_rotated_byte_literal(&fourteenth, current_profile())
+    let unsupported_fourteenth = wire(&typed_rotated_literal_module_with_outputs(22, 14)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(
+        &unsupported_fourteenth,
+        current_profile(),
+    ) != Err(TypedEchoAdapterError::Layout(
+        adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
+    )) {
+        return Err(String::from(
+            "typed fourteenth output admitted unwitnessed byte",
+        ));
+    }
+    let fifteenth = wire(&typed_rotated_literal_module_with_outputs(176, 15)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&fifteenth, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed fourteenth output admitted"));
+        return Err(String::from("typed fifteenth output admitted"));
     }
     Ok(())
 }
@@ -4057,6 +4068,15 @@ fn seeded_twelve_output_literal_canonical_publisher_and_real_runner() -> Result<
 fn seeded_thirteen_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
     let workspace = OwnedFixture::new()?;
     for case in [(22, 13, true, false, true), (14, 13, false, true, true)] {
+        verify_seeded_publisher_case(&workspace, case)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_fourteen_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for case in [(176, 14, true, false, true), (49, 14, false, true, true)] {
         verify_seeded_publisher_case(&workspace, case)?;
     }
     Ok(())
