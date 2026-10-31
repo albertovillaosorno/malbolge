@@ -738,6 +738,23 @@ def _rust_validation_tool_ids(toolchain_root: Path) -> tuple[str, ...]:
     return ("cargo",)
 
 
+def _write_verified_rust_adapter_script(path: Path, script: str) -> None:
+    """Reject incomplete generated Rust wrapper source writes."""
+    written = path.write_text(
+        script,
+        encoding="ascii",
+        newline="\n",
+    )
+    if type(written) is int and written == len(script):
+        return
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as error:
+        message = f"Rust adapter short or invalid character count; {error}"
+        _fail(message)
+    _fail("Rust adapter short or invalid character count")
+
+
 def _write_rust_validation_alias(
     toolchain_root: Path,
     tool_id: str,
@@ -757,11 +774,7 @@ def _write_rust_validation_alias(
         ))
         + "\n"
     )
-    _ = alias.write_text(
-        script,
-        encoding="ascii",
-        newline="\n",
-    )
+    _write_verified_rust_adapter_script(alias, script)
     alias.chmod(alias.stat().st_mode | stat.S_IXUSR)
     return alias
 
@@ -804,10 +817,8 @@ def _write_rust_toolchain_linker_adapters(
     )
     for destination in (adapter, marker, *aliases):
         _admit_rust_adapter_write_target(destination)
-    _ = adapter.write_text(
-        f'#!/bin/sh\nexec {linker_path} "$@"\n',
-        encoding="ascii",
-        newline="\n",
+    _write_verified_rust_adapter_script(
+        adapter, f'#!/bin/sh\nexec {linker_path} "$@"\n'
     )
     adapter.chmod(adapter.stat().st_mode | stat.S_IXUSR)
     for tool_id in _rust_validation_tool_ids(toolchain_root):

@@ -1447,6 +1447,45 @@ def test_rust_adapter_marker_requires_complete_staging_write(
     assert not marker.exists()
 
 
+@pytest.mark.parametrize("target_name", ["cc", "cargo.bin"])
+@pytest.mark.parametrize("bad_write_count", [1, None, True, -1, 1_000_000])
+def test_rust_adapter_scripts_require_complete_character_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    target_name: str,
+    bad_write_count: object,
+) -> None:
+    """Linker and Cargo wrapper scripts must not publish short writes."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    target = root / "bin" / target_name
+    marker = root / project.RUST_LINUX_ADAPTER_MARKER
+    original_write = type(tmp_path).write_text
+
+    def incomplete_write(
+        path: Path,
+        data: str,
+        *,
+        encoding: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        selected = data[:1] if path == target else data
+        _ = original_write(path, selected, encoding=encoding, newline=newline)
+        if path == target:
+            return cast("int", bad_write_count)
+        return len(data)
+
+    monkeypatch.setattr(type(tmp_path), "write_text", incomplete_write)
+    with pytest.raises(
+        project.InitializationError, match="short or invalid character count"
+    ):
+        _ = project.write_rust_linker_adapters(
+            (root,), LINUX_PLATFORM, linker=linker
+        )
+    assert not marker.exists()
+    assert not target.exists()
+
+
 def test_rust_adapter_writer_rejects_linked_marker_target(
     tmp_path: Path,
 ) -> None:
