@@ -43,6 +43,7 @@ from pathlib import Path
 import shutil
 import signal
 import sys
+import tempfile
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -76,6 +77,8 @@ _STDERR_NAME = "stderr"
 _POSIX_OS_NAME = "posix"
 _PROBE_WRITER_THREAD_NAME = "probe-stdin-writer"
 _GROUP_CLEANUP_FAILURE = "group cleanup failed"
+_PROBE_BATCH_PREFIX = "diff-probe-batch-"
+_PROBE_SCRATCH_PREFIX = "diff-probe-"
 _SECOND_RESOLUTION = 2
 _POSIX_WAIT_NOHANG = cast("int", getattr(os, "WNOHANG", 1))
 _LINK_CREATE_CODE = (
@@ -1321,6 +1324,70 @@ def test_mirror_snapshot_catches_copy_time_source_drift(
     with pytest.raises(ProbeExecutionError, match="changed while creating"):
         _ = run_probe_program(program, context)
     _expect(input_file.read_bytes() == _ADMITTED_INPUT, "source was modified")
+
+
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
+def test_probe_mirror_copy_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Mirror copy host errors cannot escape public probe execution."""
+    source = tmp_path / "source"
+    source.mkdir()
+
+    def denied_copy(
+        source_root: Path, destination: Path, *, symlinks: bool = False
+    ) -> Path:
+        del source_root, destination, symlinks
+        message = "copytree host failure"
+        raise failure_type(message)
+
+    monkeypatch.setattr(shutil, "copytree", denied_copy)
+    with pytest.raises(
+        ProbeExecutionError, match="source mirror creation failed"
+    ):
+        _ = run_probe_program(
+            _program("mirror-failure", "print('unreachable')"),
+            _context(source, tmp_path),
+        )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (prefix, failure_type)
+        for prefix in (_PROBE_BATCH_PREFIX, _PROBE_SCRATCH_PREFIX)
+        for failure_type in (PermissionError, ValueError, RuntimeError)
+    ],
+)
+def test_probe_temporary_workspace_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, type[Exception]],
+) -> None:
+    """Batch and scratch workspace creation must use typed probe errors."""
+    failed_prefix, failure_type = case
+    source = tmp_path / "source"
+    source.mkdir()
+    original_temporary_root = tempfile.TemporaryDirectory
+
+    def denied_temporary_root(
+        *, prefix: str
+    ) -> tempfile.TemporaryDirectory[str]:
+        if prefix == failed_prefix:
+            message = "temporary root host failure"
+            raise failure_type(message)
+        return original_temporary_root(prefix=prefix)
+
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", denied_temporary_root)
+    with pytest.raises(ProbeExecutionError, match="temporary root failed"):
+        _ = run_probe_program(
+            _program("temporary-failure", "print('unreachable')"),
+            _context(source, tmp_path),
+        )
 
 
 def test_missing_source_rejected_before_copy_without_immutability(

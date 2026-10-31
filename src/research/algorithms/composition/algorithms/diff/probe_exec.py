@@ -1035,6 +1035,14 @@ def _update_exit_digest(
     hasher.update(code_bytes)
 
 
+def _temporary_probe_root(prefix: str) -> tempfile.TemporaryDirectory[str]:
+    try:
+        return tempfile.TemporaryDirectory(prefix=prefix)
+    except (OSError, ValueError, RuntimeError) as error:
+        message = f"probe temporary root failed: {error}"
+        raise ProbeExecutionError(message) from error
+
+
 def _run_program(
     program: ProbeProgram,
     context: ProbeRunContext,
@@ -1042,7 +1050,7 @@ def _run_program(
 ) -> ProbeTranscript:
     hasher = hashlib.sha256()
     digested_commands = _ZERO
-    with tempfile.TemporaryDirectory(prefix="diff-probe-") as scratch:
+    with _temporary_probe_root("diff-probe-") as scratch:
         scratch_root = Path(scratch)
         for command_index, command in enumerate(program.commands):
             try:
@@ -1218,7 +1226,7 @@ def _run_isolated_batch(
     programs: tuple[ProbeProgram, ...], context: ProbeRunContext
 ) -> tuple[ProbeTranscript, ...]:
     source = _snapshot_probe_tree(context.source_root, "source")
-    with tempfile.TemporaryDirectory(prefix="diff-probe-batch-") as batch:
+    with _temporary_probe_root("diff-probe-batch-") as batch:
         batch_root = Path(batch)
         try:
             mirror_root = Path(
@@ -1228,7 +1236,7 @@ def _run_isolated_batch(
                     symlinks=True,
                 )
             )
-        except OSError as error:
+        except (OSError, ValueError, RuntimeError) as error:
             message = f"probe source mirror creation failed: {error}"
             raise ProbeExecutionError(message) from error
         isolated = replace(
