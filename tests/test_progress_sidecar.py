@@ -62,6 +62,7 @@ from scripts import progress_sidecar as progress
 if TYPE_CHECKING:
     from collections.abc import Callable
     from contextlib import AbstractContextManager
+    from typing import BinaryIO
 
 SOURCE_HASH = "sha256:" + ("1" * 64)
 TOOLCHAIN_HASH = "sha256:" + ("2" * 64)
@@ -12233,3 +12234,52 @@ def test_writer_lock_rejects_nonregular_opened_native_receipt(
             _ = progress.write_atomic(candidate)
     assert forged_count > 0
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("member", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("receipt", [False, True, 0], ids=["false", "true", "zero"])
+def test_noncanonical_payload_flush_receipt_rejects_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+    receipt: object,
+) -> None:
+    """A forged raw payload flush cannot authorize a durable generation."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    checkpoint = b"checkpoint-with-a-flush"
+    actual_fdopen = os.fdopen
+
+    class ForgedFlushStream:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream = stream
+
+        def write(self, payload: bytes) -> int:
+            return self.stream.write(payload)
+
+        def flush(self) -> object:
+            self.stream.flush()
+            return receipt
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def close(self) -> None:
+            self.stream.close()
+
+    def forge_flush_stream(descriptor: int, mode: str) -> ForgedFlushStream:
+        assert mode == "wb"
+        return ForgedFlushStream(cast("BinaryIO", actual_fdopen(descriptor, mode)))
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", forge_flush_stream)
+        with pytest.raises(ERROR, match="file flush.*completion receipt"):
+            if member == "pointer":
+                _ = progress.write_atomic(candidate)
+            else:
+                checkpointed = _checkpointed(
+                    candidate, checkpoint=checkpoint, partial=None
+                )
+                _ = progress.write_checkpoint_generation(checkpointed, checkpoint)
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob("*.checkpoint.*"))
