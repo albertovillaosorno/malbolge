@@ -54,6 +54,7 @@ _INSERTION = b"compatible insertion"
 _MINIMUM_ANCHOR_FILES = 3
 _MINIMUM_ANCHORS_PER_FILE = 2
 _DISTRIBUTION_REASON = "stable-anchor evidence is not sufficiently distributed"
+_STRUCTURAL_REASON = "insufficient structural source similarity"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -151,6 +152,34 @@ def test_compatible_insertions_preserve_distributed_evidence() -> None:
     _expect(evidence.source_similarity < 1.0, "insertion looked byte-exact")
     _expect(evidence.anchor_coverage < 1.0, "insertion kept every anchor")
     _expect(evidence.admitted, "compatible insertion was rejected")
+
+
+def test_missing_empty_identity_file_is_not_a_structural_match() -> None:
+    """An absent selected path is not equivalent to a present empty file."""
+    reference_files = {"empty.c": b"", "populated.c": _content("source", 0)}
+    reference = identity_tree(reference_files)
+    policy = AdmissionPolicy(
+        minimum_source_similarity=0.75,
+        minimum_anchor_coverage=0.0,
+        minimum_anchor_files=1,
+        minimum_anchors_per_file=1,
+    )
+    complete = evaluate_admission(reference, reference, policy)
+    absent = evaluate_admission(
+        reference,
+        identity_tree({"populated.c": reference_files["populated.c"]}),
+        policy,
+    )
+    assert complete.admitted
+    _expect(math.isclose(complete.source_similarity, 1.0), "complete score")
+    _expect(not absent.admitted, "missing path was accepted")
+    _expect(math.isclose(absent.source_similarity, 0.5), "missing path score")
+    _expect(absent.files[0].path == reference.files[0].path, "wrong path")
+    _expect(
+        math.isclose(absent.files[0].structural_similarity, 0.0),
+        "missing path received structural credit",
+    )
+    _expect(_STRUCTURAL_REASON in absent.reasons, "missing rejection reason")
 
 
 def test_unrelated_source_fails_closed() -> None:

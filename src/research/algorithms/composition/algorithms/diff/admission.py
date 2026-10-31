@@ -449,10 +449,14 @@ def _file_evidence(
     policy: AdmissionPolicy,
 ) -> FileAdmissionEvidence:
     candidate_bytes = b"" if candidate is None else candidate.canonical
-    structural = _structural_similarity(
-        reference.canonical,
-        candidate_bytes,
-        policy.structural_policy,
+    structural = (
+        _structural_similarity(
+            reference.canonical,
+            candidate_bytes,
+            policy.structural_policy,
+        )
+        if candidate is not None
+        else 0.0
     )
     reference_anchors = stable_anchors(
         reference.canonical, policy.anchor_policy
