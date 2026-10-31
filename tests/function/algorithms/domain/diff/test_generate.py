@@ -49,13 +49,19 @@ from algorithms.diff.generate import DiffGeneratorUnavailableError
 from algorithms.diff.generate import DiffRecipe
 from algorithms.diff.generate import TransformMode
 from algorithms.diff.generate import write_algorithm
+from algorithms.diff.protected import protect_exact_plan
 import pytest
 
 if TYPE_CHECKING:
+    from algorithms.diff.admission import IdentityTree
     from algorithms.diff.model import ExactAuthoringPlan
+    from algorithms.diff.protected import ProtectedExactPlan
+    from algorithms.diff.source_binding import SourceBindingPolicy
 
 _BLOCKS = 48
 _EXACT_PLAN_SOURCE_READS = 2
+_SOURCE_TREE = "source"
+_ORACLE_TREE = "oracle"
 _STD_MARKER = b"use std::"
 _LITERAL_MARKER = b"target-only"
 
@@ -561,6 +567,56 @@ def test_exact_generator_rejects_added_static_file_after_plan(
         write_algorithm(recipe)
     _expect(added, "post-plan source addition was not exercised")
     _expect(not recipe.output_algorithm.exists(), "unbound source was emitted")
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (_SOURCE_TREE, "b.bin"),
+        (_ORACLE_TREE, "b.bin"),
+        (_SOURCE_TREE, "new.bin"),
+        (_ORACLE_TREE, "new.bin"),
+    ],
+)
+def test_exact_generator_rechecks_static_trees_after_protection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, str],
+) -> None:
+    """Changes during key protection must not produce a stale transform."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    original_protect = protect_exact_plan
+    tree_name, relative = case
+    changed_root = (
+        recipe.source_root if tree_name == _SOURCE_TREE else recipe.oracle_root
+    )
+    changed = False
+
+    def change_during_protection(
+        exact: ExactAuthoringPlan,
+        identity: IdentityTree,
+        *,
+        binding_policy: SourceBindingPolicy,
+        context: bytes,
+    ) -> ProtectedExactPlan:
+        nonlocal changed
+        protected = original_protect(
+            exact,
+            identity,
+            binding_policy=binding_policy,
+            context=context,
+        )
+        _write(changed_root, relative, b"changed during payload protection")
+        changed = True
+        return protected
+
+    monkeypatch.setattr(
+        generate_module, "protect_exact_plan", change_during_protection
+    )
+    with pytest.raises(ExactTreeError, match=f"{tree_name} tree changed"):
+        write_algorithm(recipe)
+    _expect(changed, "post-protection mutation was not exercised")
+    _expect(not recipe.output_algorithm.exists(), "stale transform was emitted")
 
 
 def test_exact_generator_allows_dynamic_passthrough_addition_after_plan(

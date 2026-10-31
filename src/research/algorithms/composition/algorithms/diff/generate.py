@@ -355,6 +355,15 @@ def _write_exact_algorithm(recipe: DiffRecipe) -> None:
         binding_policy=policy,
         context=context,
     )
+    # Protection can take time; reject persistent input drift before emitting
+    # a distributable transform bound to a stale source or oracle snapshot.
+    for name, root, expected in (
+        ("source", recipe.source_root, exact.source),
+        ("oracle", recipe.oracle_root, exact.target),
+    ):
+        if snapshot_tree_excluding(root, recipe.passthrough_roots) != expected:
+            message = f"exact {name} tree changed during payload protection"
+            raise ExactTreeError(message)
     write_rust_transform(
         protected,
         f"{recipe.profile}-exact-baseline-v1",
