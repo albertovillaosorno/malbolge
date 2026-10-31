@@ -1270,6 +1270,37 @@ def test_probe_rejects_nul_command_and_rooted_path_arguments() -> None:
         )
 
 
+def test_probe_paths_reject_host_unencodable_metadata() -> None:
+    """Process and filesystem paths must fail typed before any launch."""
+    malformed = "unencodable" + chr(0xD800)
+    host_encodable = True
+    try:
+        _ = os.fsencode(malformed)
+    except UnicodeError:
+        host_encodable = False
+    if host_encodable:
+        pytest.skip("host filesystem codec accepts the test surrogate")
+
+    unsafe_path = Path(malformed)
+    for build in (
+        lambda: PathArgument(ProbeRoot.SOURCE, malformed),
+        lambda: RootedExecutable(ProbeRoot.REPOSITORY, malformed),
+        lambda: ProbeCommand(
+            executable=ToolExecutable(_PYTHON_TOOL),
+            arguments=(malformed,),
+        ),
+        lambda: ProbeRunContext(unsafe_path, Path("repository"), ()),
+        lambda: ProbeRunContext(Path("source"), unsafe_path, ()),
+        lambda: ProbeRunContext(
+            Path("source"),
+            Path("repository"),
+            ((_PYTHON_TOOL, unsafe_path),),
+        ),
+    ):
+        with pytest.raises(ProbeProgramError, match="filesystem-encodable"):
+            _ = build()
+
+
 def test_probe_executable_launch_failure_is_wrapped(tmp_path: Path) -> None:
     """Regular but non-executable tool files remain inside probe errors."""
     source = tmp_path / "source"

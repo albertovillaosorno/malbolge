@@ -156,6 +156,14 @@ class RootedExecutable:
 ProbeExecutable = ToolExecutable | RootedExecutable
 
 
+def _require_fs_encodable(value: str, context: str) -> None:
+    try:
+        _ = os.fsencode(value)
+    except UnicodeError as error:
+        message = f"{context} must be filesystem-encodable"
+        raise ProbeProgramError(message) from error
+
+
 def _validate_argv_strings(arguments: tuple[ProbeArgument, ...]) -> None:
     """Reject impossible platform argv bytes at record admission.
 
@@ -166,6 +174,9 @@ def _validate_argv_strings(arguments: tuple[ProbeArgument, ...]) -> None:
     if any(_NUL in item for item in arguments if type(item) is str):
         message = "probe argv strings must not contain NUL bytes"
         raise ProbeProgramError(message)
+    for argument in arguments:
+        if type(argument) is str:
+            _require_fs_encodable(argument, "probe argv string")
 
 
 def _validate_command_shape(command: ProbeCommand) -> None:
@@ -279,6 +290,7 @@ def _validate_path(value: object, context: str) -> None:
     if _NUL in str(value):
         message = f"{context} must not contain NUL bytes"
         raise ProbeProgramError(message)
+    _require_fs_encodable(str(value), context)
 
 
 def _validate_tool_binding(binding: object) -> tuple[str, Path]:
@@ -388,6 +400,7 @@ def _validate_relative_path(relative_path: object) -> None:
     if _NUL in relative_path:
         message = "probe relative paths must not contain NUL bytes"
         raise ProbeProgramError(message)
+    _require_fs_encodable(relative_path, "probe relative path")
     unsafe = (
         not relative_path
         or _BACKSLASH in relative_path
