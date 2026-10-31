@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from typing import TYPE_CHECKING, Never
 
 if TYPE_CHECKING:
@@ -77,11 +78,22 @@ def _open_study(path: Path) -> BinaryIO:
         | getattr(os, "O_NONBLOCK", 0)
         | getattr(os, "O_NOFOLLOW", 0)
     )
+    # A leaf-only O_NOFOLLOW open cannot detect a transient symlinked
+    # parent. Freeze the pre-open resolved target and compare it with the
+    # real opened descriptor pathname before accepting any bytes. Stable
+    # symlinked parents remain valid, but transient redirection rejects.
+    expected_path = (
+        os.fspath(path.resolve(strict=True)) if sys.platform == "linux" else None
+    )
     descriptor = os.open(path, flags)
     try:
+        if expected_path is not None:
+            opened_path = os.readlink(f"/proc/self/fd/{descriptor}")
+            if opened_path != expected_path:
+                _fail("arena input opened path changed")
         return os.fdopen(descriptor, "rb")
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
-        # fdopen has not taken ownership when stream construction fails.
+        # fdopen has not taken ownership when path or stream admission fails.
         # Cleanup cannot replace the original reason for rejecting this file.
         try:
             os.close(descriptor)
@@ -93,6 +105,8 @@ def _open_study(path: Path) -> BinaryIO:
             AttributeError,
         ) as close_error:
             error.add_note(f"arena input descriptor cleanup also failed: {close_error}")
+        if isinstance(error, StudyFileError):
+            raise error  # ruff: ignore[TRY201]
         raise StudyFileError("arena input stream construction failed") from error
 
 

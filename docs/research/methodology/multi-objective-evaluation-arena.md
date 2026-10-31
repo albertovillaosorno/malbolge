@@ -669,6 +669,13 @@ complete read. POSIX nonblocking/no-follow open flags reject raced FIFO and
 linked leaves; injected regular-file replacements and mid-read writes fail
 before either CLI emits partial JSON. This narrows the initial study-file
 admission race without proving an atomic filesystem snapshot or record origin.
+On Linux the study-file reader also resolves its pre-open path and checks the
+opened descriptor through `/proc/self/fd`, rejecting a transient symlinked
+parent even when an outside hard link preserves the exact inode and bytes.
+Stable parent symlinks that resolve to the same target remain readable. Missing
+procfs pathname evidence fails closed; other platforms retain their prior
+metadata-based bounds, and adversarial rewrites between checks remain outside
+any atomic snapshot claim.
 Both arena CLIs additionally re-read and compare the original exact study
 bytes after report analysis, immediately before stdout publication. A changed,
 removed, or linked study path rejects without emitting results, including

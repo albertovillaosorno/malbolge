@@ -296,6 +296,106 @@ def test_study_reader_rejects_nonbyte_or_overlong_chunks(
         analyze.read_input(path)
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux opened-descriptor path provenance is required",
+)
+def test_study_reader_rejects_transient_symlink_parent_equal_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A restored parent symlink cannot authorize an outside hard-link open."""
+    root = tmp_path / "root"
+    directory = root / "study"
+    directory.mkdir(parents=True)
+    path = directory / STABLE_INPUT
+    original = b'{"schema_version": 1}'
+    _ = path.write_bytes(original)
+    outside = tmp_path / "outside-root"
+    outside.mkdir()
+    _ = study_file.os.link(path, outside / STABLE_INPUT)
+    parked = root / "parked-study"
+    actual_open = study_file.os.open
+    swapped = False
+
+    def redirect_parent_on_open(target: Path, flags: int) -> int:
+        nonlocal swapped
+        if target != path:
+            return actual_open(target, flags)
+        swapped = True
+        directory.rename(parked)
+        directory.symlink_to(outside, target_is_directory=True)
+        try:
+            return actual_open(target, flags)
+        finally:
+            directory.unlink()
+            parked.rename(directory)
+
+    monkeypatch.setattr(study_file.os, "open", redirect_parent_on_open)
+    with pytest.raises(study_file.StudyFileError, match="opened path changed"):
+        study_file.read_study_bytes(path, limit=1024)
+    assert swapped
+    assert path.read_bytes() == original
+    assert (outside / STABLE_INPUT).read_bytes() == original
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux descriptor path preflight is required",
+)
+def test_study_reader_preserves_stable_parent_symlink(
+    tmp_path: Path,
+) -> None:
+    """A stable source reached through a symlinked parent remains readable."""
+    directory = tmp_path / "actual"
+    directory.mkdir()
+    source = directory / STABLE_INPUT
+    _ = source.write_bytes(b'{"schema_version":1}')
+    parent = tmp_path / "alias"
+    parent.symlink_to(directory, target_is_directory=True)
+    assert study_file.read_study_bytes(parent / STABLE_INPUT, limit=1024) == (
+        source.read_bytes()
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux opened-descriptor path provenance is required",
+)
+def test_study_reader_rejects_missing_fd_path_without_descriptor_leak(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing procfs descriptor path must fail closed and release the fd."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(b'{"schema_version":1}')
+    actual_open = study_file.os.open
+    actual_readlink = study_file.os.readlink
+    opened: list[int] = []
+
+    def capture_open(target: Path, flags: int) -> int:
+        descriptor = actual_open(target, flags)
+        opened.append(descriptor)
+        return descriptor
+
+    def reject_descriptor_path(target: str) -> str:
+        if target.startswith("/proc/self/fd/"):
+            raise OSError("simulated unavailable procfs")
+        return actual_readlink(target)
+
+    with monkeypatch.context() as context:
+        context.setattr(study_file.os, "open", capture_open)
+        context.setattr(study_file.os, "readlink", reject_descriptor_path)
+        with pytest.raises(
+            study_file.StudyFileError, match="stream construction failed"
+        ) as failure:
+            study_file.read_study_bytes(path, limit=1024)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = study_file.os.fstat(opened[0])
+    assert isinstance(failure.value.__cause__, OSError)
+
+
 def test_file_replaced_between_lstat_and_descriptor_open_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
