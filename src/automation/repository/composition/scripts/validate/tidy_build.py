@@ -218,7 +218,10 @@ def _write_build_script(
         compile_command,
         "exit /b %errorlevel%",
     ]
-    _ = script.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+    content = "\r\n".join(lines) + "\r\n"
+    written = script.write_text(content, encoding="utf-8", newline="")
+    if type(written) is not int or written != len(content):
+        _fail("clang-tidy build script has invalid write count")
     return script
 
 
