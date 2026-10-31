@@ -1002,6 +1002,12 @@ one function to have one normalized line/column coordinate, even across
 sibling operations and the return. A paired negative fixture for both ends
 of a byte output checks that individually valid, contained spans with
 contradictory shared-offset locations are rejected by both validator paths.
+The observed-position map now spans every function in the same source module:
+a later function cannot move backward in line/column order at a higher byte
+offset, and distinct functions cannot assign different coordinates to a shared
+byte offset. Two independently lowerable functions with forged cross-function
+positions reject through both fresh projection and standalone canonical MCTR
+admission; valid multi-function fixtures retain their canonical identities.
 Unobserved byte offsets remain unchecked; source-text authentication is not
 claimed. A production-inspector regression additionally publishes the unchanged
 canonical byte-I/O checkpoint and rejects two conflicting caller source maps

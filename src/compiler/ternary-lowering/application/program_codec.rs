@@ -2025,6 +2025,7 @@ fn validate_function<'program>(
     function: &'program TernaryFunction,
     index: usize,
     names: &mut BTreeSet<&'program str>,
+    observed: &mut SourceCoordinatesByByte,
 ) -> Result<(), TernaryProgramValidationError> {
     let expected = u32::try_from(index)
         .map_err(|_error| TernaryProgramValidationError::FunctionIdentity)?;
@@ -2035,7 +2036,7 @@ fn validate_function<'program>(
     {
         return Err(TernaryProgramValidationError::FunctionIdentity);
     }
-    validate_operations(function)
+    validate_operations(function, observed)
 }
 
 fn validate_bitwise_values(
@@ -2750,10 +2751,10 @@ fn register_source_span(
 
 fn validate_operations(
     function: &TernaryFunction,
+    observed: &mut SourceCoordinatesByByte,
 ) -> Result<(), TernaryProgramValidationError> {
     let mut values = BTreeMap::new();
-    let mut observed = BTreeMap::new();
-    if !register_source_span(&mut observed, function.span) {
+    if !register_source_span(observed, function.span) {
         return Err(TernaryProgramValidationError::SourceProvenance);
     }
     let Some((last, prefix)) = function.operations.split_last() else {
@@ -2765,7 +2766,7 @@ fn validate_operations(
         };
         if !valid_span(span)
             || !span_contains(function.span, span)
-            || !register_source_span(&mut observed, span)
+            || !register_source_span(observed, span)
         {
             return Err(TernaryProgramValidationError::SourceProvenance);
         }
@@ -2778,7 +2779,7 @@ fn validate_operations(
     };
     if !valid_span(span)
         || !span_contains(function.span, span)
-        || !register_source_span(&mut observed, span)
+        || !register_source_span(observed, span)
     {
         return Err(TernaryProgramValidationError::SourceProvenance);
     }
@@ -2816,8 +2817,19 @@ pub fn validate_ternary_program(
         return Err(TernaryProgramValidationError::ProgramIdentity);
     }
     let mut names = BTreeSet::new();
+    let mut observed = BTreeMap::new();
     for (index, function) in program.functions.iter().enumerate() {
-        validate_function(function, index, &mut names)?;
+        validate_function(function, index, &mut names, &mut observed)?;
+    }
+    let mut previous: Option<(u32, u32)> = None;
+    for coordinates in observed.values() {
+        if previous.is_some_and(|point| {
+            point.0 > coordinates.0
+                || (point.0 == coordinates.0 && point.1 > coordinates.1)
+        }) {
+            return Err(TernaryProgramValidationError::SourceProvenance);
+        }
+        previous = Some(*coordinates);
     }
     Ok(())
 }

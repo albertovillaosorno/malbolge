@@ -3143,6 +3143,110 @@ fn forge_target_subspan_coordinates(
 }
 
 #[test]
+fn ternary_rejects_cross_function_shared_byte_disagreement()
+-> Result<(), String> {
+    let original = project_typed_ir(&mixed_return_module(true, false))?;
+    let mut projection = original.clone();
+    let projected_first = projection
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("projection function missing"))?;
+    projected_first.span.end.byte = 5;
+    projected_first.span.end.column = 5;
+    if lower_typed_ir(&projection)
+        != Err(TernaryLoweringError::InvalidProjection)
+    {
+        return Err(String::from(
+            "shared byte disagreement passed fresh lowering",
+        ));
+    }
+
+    let mut checkpoint = lower_typed_ir(&original)
+        .map_err(|error| format!("lower original source fixture: {error:?}"))?;
+    let checkpoint_first = checkpoint
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("checkpoint function missing"))?;
+    checkpoint_first.span.end.byte = 5;
+    checkpoint_first.span.end.column = 5;
+    if ternary_lowering::validate_ternary_program(&checkpoint)
+        != Err(TernaryProgramValidationError::SourceProvenance)
+        || canonical_ternary_bytes(&checkpoint)
+            != Err(TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SourceProvenance,
+            ))
+    {
+        return Err(String::from(
+            "shared byte disagreement acquired canonical identity",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn ternary_rejects_cross_function_source_coordinate_reversal()
+-> Result<(), String> {
+    let original = project_typed_ir(&mixed_return_module(true, false))?;
+    let target = lower_typed_ir(&original)
+        .map_err(|error| format!("lower valid mixed functions: {error:?}"))?;
+    let mut projection = original;
+    let projected_first = projection
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("projection function missing"))?;
+    projected_first.span.begin.line = 3;
+    projected_first.span.end.line = 3;
+    let block = projected_first
+        .blocks
+        .first_mut()
+        .ok_or_else(|| String::from("projection block missing"))?;
+    let InputTerminator::Return {
+        span: projected_return_span,
+        ..
+    } = &mut block.terminator
+    else {
+        return Err(String::from("projection void return missing"));
+    };
+    projected_return_span.begin.line = 3;
+    projected_return_span.end.line = 3;
+    if lower_typed_ir(&projection)
+        != Err(TernaryLoweringError::InvalidProjection)
+    {
+        return Err(String::from(
+            "cross-function source reversal passed fresh lowering",
+        ));
+    }
+
+    let mut checkpoint = target;
+    let checkpoint_first = checkpoint
+        .functions
+        .first_mut()
+        .ok_or_else(|| String::from("checkpoint function missing"))?;
+    checkpoint_first.span.begin.line = 3;
+    checkpoint_first.span.end.line = 3;
+    let Some(TernaryOperation::ReturnVoid {
+        span: checkpoint_return_span,
+    }) = checkpoint_first.operations.first_mut()
+    else {
+        return Err(String::from("checkpoint void return missing"));
+    };
+    checkpoint_return_span.begin.line = 3;
+    checkpoint_return_span.end.line = 3;
+    if ternary_lowering::validate_ternary_program(&checkpoint)
+        != Err(TernaryProgramValidationError::SourceProvenance)
+        || canonical_ternary_bytes(&checkpoint)
+            != Err(TernaryProgramCodecError::Validation(
+                TernaryProgramValidationError::SourceProvenance,
+            ))
+    {
+        return Err(String::from(
+            "cross-function source reversal acquired canonical identity",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn ternary_source_subspans_reject_forged_line_column_coordinates()
 -> Result<(), String> {
     let original = project_typed_ir(&byte_io_module())?;

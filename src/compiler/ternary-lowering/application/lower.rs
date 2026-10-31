@@ -216,8 +216,15 @@ pub(super) fn validate_projection_spans(
     function: &InputFunction,
 ) -> Result<(), TernaryLoweringError> {
     let mut observed = BTreeMap::new();
+    validate_projection_spans_into(function, &mut observed)
+}
+
+fn validate_projection_spans_into(
+    function: &InputFunction,
+    observed: &mut SourceCoordinatesByByte,
+) -> Result<(), TernaryLoweringError> {
     if !valid_projection_span(function.span)
-        || !register_projection_span(&mut observed, function.span)
+        || !register_projection_span(observed, function.span)
     {
         return Err(TernaryLoweringError::InvalidProjection);
     }
@@ -228,7 +235,7 @@ pub(super) fn validate_projection_spans(
     if let InputTerminator::Return { span, .. } = block.terminator
         && (!valid_projection_span(span)
             || !projection_span_contains(function.span, span)
-            || !register_projection_span(&mut observed, span))
+            || !register_projection_span(observed, span))
     {
         return Err(TernaryLoweringError::InvalidProjection);
     }
@@ -236,7 +243,7 @@ pub(super) fn validate_projection_spans(
         if let Some(span) = projected_instruction_span(instruction)
             && (!valid_projection_span(span)
                 || !projection_span_contains(function.span, span)
-                || !register_projection_span(&mut observed, span))
+                || !register_projection_span(observed, span))
         {
             return Err(TernaryLoweringError::InvalidProjection);
         }
@@ -2077,6 +2084,26 @@ fn validate_projection(
     validate_projection_function_identities(input)
 }
 
+fn validate_projection_source_positions(
+    input: &TypedIrInput,
+) -> Result<(), TernaryLoweringError> {
+    let mut observed = BTreeMap::new();
+    for function in &input.functions {
+        validate_projection_spans_into(function, &mut observed)?;
+    }
+    let mut previous: Option<(u32, u32)> = None;
+    for coordinates in observed.values() {
+        if previous.is_some_and(|point| {
+            point.0 > coordinates.0
+                || (point.0 == coordinates.0 && point.1 > coordinates.1)
+        }) {
+            return Err(TernaryLoweringError::InvalidProjection);
+        }
+        previous = Some(*coordinates);
+    }
+    Ok(())
+}
+
 /// Lowers one validated typed-IR semantic projection into the initial model.
 ///
 /// # Errors
@@ -2091,6 +2118,7 @@ pub fn lower_typed_ir(
     if input.global_count != 0 || input.proof_obligation_count != 0 {
         return Err(TernaryLoweringError::UnsupportedModule);
     }
+    validate_projection_source_positions(input)?;
     let functions = input
         .functions
         .iter()
