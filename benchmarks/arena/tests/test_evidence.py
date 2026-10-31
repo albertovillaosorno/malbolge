@@ -432,6 +432,112 @@ def test_cli_cross_checks_before_reporting(
     assert LINKED_ERROR in error.err
 
 
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "require_raw_rows",
+        "require_trial_run_identity",
+        "require_budget_agreement",
+        "require_matched_accelerator",
+        "require_host_c_challenge_oracle",
+    ],
+)
+@pytest.mark.parametrize("invalid", ["false", 0, None, object()])
+def test_direct_evidence_policy_rejects_nonboolean_flags_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    flag: str,
+    invalid: object,
+) -> None:
+    """Direct evidence replay cannot be switched on by truthy foreign flags."""
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("invalid evidence policy reached evidence admission")
+
+    monkeypatch.setattr(evidence, "_admit_observation", forbidden)
+    options: dict[str, Any] = {flag: invalid}
+    policy = evidence.EvidencePolicy(**options)
+    with pytest.raises(evidence.EvidenceError, match="exact booleans"):
+        evidence.validate_links(
+            {"study": {}, "observations": [{}]}, tmp_path, policy=policy
+        )
+
+
+@pytest.mark.parametrize("foreign", [None, {}, object()])
+def test_direct_evidence_rejects_foreign_policy_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+) -> None:
+    """A non-policy object cannot bypass admission through dynamic attributes."""
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("foreign policy reached evidence admission")
+
+    monkeypatch.setattr(evidence, "_admit_observation", forbidden)
+    with pytest.raises(evidence.EvidenceError, match="exact EvidencePolicy"):
+        evidence.validate_links(
+            {"study": {}, "observations": [{}]},
+            tmp_path,
+            policy=cast("evidence.EvidencePolicy", foreign),
+        )
+
+
+@pytest.mark.parametrize("foreign", [1, False, b"bundles", [], "", "../escape"])
+def test_direct_evidence_rejects_invalid_challenge_root_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+) -> None:
+    """A challenge-root policy must be canonical before any manifest lookup."""
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("invalid challenge root reached evidence admission")
+
+    monkeypatch.setattr(evidence, "_admit_observation", forbidden)
+    policy = evidence.EvidencePolicy(challenge_root=cast("str", foreign))
+    with pytest.raises(evidence.EvidenceError, match="challenge root"):
+        evidence.validate_links(
+            {"study": {}, "observations": [{}]}, tmp_path, policy=policy
+        )
+
+
+class _ForgedEvidenceRoot(type(Path())):
+    """Caller-owned path can substitute its resolution target before I/O."""
+
+    __slots__ = ()
+
+    def resolve(self, strict: bool = False) -> Path:
+        """Never permit this forged accessor to be called.
+
+        Returns:
+            No resolved path; the expected type gate must reject first.
+
+        """
+        del strict
+        message = "foreign root resolved before evidence type admission"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("reader", ["regular", "bounded", "links"])
+def test_direct_evidence_rejects_foreign_root_before_resolution(
+    tmp_path: Path,
+    reader: str,
+) -> None:
+    """A forged path subclass cannot redirect evidence to a different root."""
+    root = _ForgedEvidenceRoot(str(tmp_path))
+    with pytest.raises(evidence.EvidenceError, match="native Path"):
+        if reader == "regular":
+            evidence.regular_path(root, "raw.csv")
+        elif reader == "bounded":
+            evidence.read_bounded_regular(root, "raw.csv", limit=100)
+        else:
+            evidence.validate_links({"study": {}, "observations": [{}]}, root)
+
+
 def test_direct_link_api_rejects_parent_traversal(tmp_path: Path) -> None:
     """Even a caller bypassing schema admission cannot read a parent path."""
     document = sample_study(tmp_path)

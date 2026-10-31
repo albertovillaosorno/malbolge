@@ -106,6 +106,11 @@ def _admit_byte_limit(limit: int) -> None:
         _fail("evidence byte limit must be an exact positive integer")
 
 
+def _admit_root(root: Path) -> None:
+    if type(root) is not type(Path()):
+        _fail("evidence root requires an exact native Path")
+
+
 def regular_path(
     root: Path,
     relative: str,
@@ -120,6 +125,7 @@ def regular_path(
     """
     if limit is not None:
         _admit_byte_limit(limit)
+    _admit_root(root)
     current = root.resolve(strict=True)
     for segment in _segments(relative):
         current /= segment
@@ -351,6 +357,30 @@ class EvidencePolicy:
 
 
 DEFAULT_EVIDENCE_POLICY = EvidencePolicy()
+
+
+def _admit_policy(policy: EvidencePolicy) -> None:
+    if type(policy) is not EvidencePolicy:
+        _fail("evidence requires an exact EvidencePolicy")
+    if any(
+        type(value) is not bool
+        for value in (
+            policy.require_raw_rows,
+            policy.require_trial_run_identity,
+            policy.require_budget_agreement,
+            policy.require_matched_accelerator,
+            policy.require_host_c_challenge_oracle,
+        )
+    ):
+        _fail("evidence policy flags require exact booleans")
+    if policy.challenge_root is not None:
+        if type(policy.challenge_root) is not str:
+            _fail("evidence challenge root must be a canonical relative path")
+        try:
+            _ = _segments(policy.challenge_root)
+        except EvidenceError as error:
+            message = "evidence challenge root must be a canonical relative path"
+            raise EvidenceError(message) from error
 
 
 @dataclass(slots=True)
@@ -719,6 +749,8 @@ def validate_links(
         EvidenceError: A linked identity or retained file is inadmissible.
 
     """
+    _admit_root(root)
+    _admit_policy(policy)
     if policy.require_host_c_challenge_oracle and policy.challenge_root is None:
         _fail("host-C oracle replay requires --challenge-root")
     context = _EvidenceContext(
