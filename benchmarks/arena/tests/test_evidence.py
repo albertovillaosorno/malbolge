@@ -735,6 +735,83 @@ def test_bounded_reader_returns_original_bytes_for_ordinary_file(
     )
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux opened-descriptor path provenance is required",
+)
+def test_bounded_reader_rejects_transient_symlink_parent_to_equal_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hard-link equality must not conceal a symlink hop outside the root."""
+    root = tmp_path / "root"
+    root.mkdir()
+    doc = sample_study(root)
+    relative = doc["observations"][0]["raw_sample"]
+    path = root / relative
+    directory = path.parent
+    parked = root / "parked-evidence"
+    outside = tmp_path / "outside-root"
+    outside.mkdir()
+    _ = evidence.os.link(path, outside / path.name)
+    original_open = evidence.os.open
+    swapped = False
+
+    def swap_parent_during_open(target: Path, flags: int) -> int:
+        nonlocal swapped
+        if target != path:
+            return original_open(target, flags)
+        swapped = True
+        directory.rename(parked)
+        directory.symlink_to(outside, target_is_directory=True)
+        try:
+            return original_open(target, flags)
+        finally:
+            directory.unlink()
+            parked.rename(directory)
+
+    monkeypatch.setattr(evidence.os, "open", swap_parent_during_open)
+    with pytest.raises(evidence.EvidenceError, match="opened path changed"):
+        evidence.read_bounded_regular(root, relative, limit=1024)
+    assert swapped
+    assert path.read_bytes() == (outside / path.name).read_bytes()
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Linux opened-descriptor path provenance is required",
+)
+def test_bounded_reader_fails_closed_when_fd_path_provenance_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unavailable procfs path evidence rejects and closes the raw descriptor."""
+    doc = sample_study(tmp_path)
+    relative = doc["observations"][0]["raw_sample"]
+    actual_open = evidence.os.open
+    actual_readlink = evidence.os.readlink
+    opened: list[int] = []
+
+    def capture_open(target: Path, flags: int) -> int:
+        descriptor = actual_open(target, flags)
+        opened.append(descriptor)
+        return descriptor
+
+    def reject_proc_path(target: str) -> str:
+        if target.startswith("/proc/self/fd/"):
+            raise OSError("simulated missing procfs")
+        return actual_readlink(target)
+
+    with monkeypatch.context() as context:
+        context.setattr(evidence.os, "open", capture_open)
+        context.setattr(evidence.os, "readlink", reject_proc_path)
+        with pytest.raises(evidence.EvidenceError, match="stream could not open"):
+            evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = evidence.os.fstat(opened[0])
+
+
 @pytest.mark.parametrize(
     "fault",
     [OSError, ValueError, RuntimeError, TypeError, AttributeError],

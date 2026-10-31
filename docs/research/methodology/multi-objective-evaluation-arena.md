@@ -702,8 +702,13 @@ rechecks the canonical nonlinked path after read. Nonblocking/no-follow open
 flags where available prevent a replaced FIFO or linked leaf from becoming an
 indefinite blocking read. Deterministic replacement, in-place rewrite, and
 POSIX FIFO substitution regressions prove rejection of observed file drift.
-This is not an atomic snapshot guarantee against an adversarial filesystem
-scheduler.
+Linux additionally checks the opened descriptor's path through `/proc/self/fd`
+before transferring ownership to the reader. An injected transient parent
+symlink redirect to an outside-root hard link of the same inode now rejects even
+if the source pathname is restored before final recheck. Unavailable Linux
+procfs identity evidence fails closed; non-Linux systems retain only their
+existing descriptor/path checks. This is not an atomic snapshot guarantee
+against an adversarial filesystem scheduler.
 
 A raw match cannot independently prove that the CSV was measured accurately,
 that a verifier actually ran, or that resource budgets were enforced.

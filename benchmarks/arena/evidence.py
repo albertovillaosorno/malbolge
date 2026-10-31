@@ -150,9 +150,18 @@ def _open_evidence(path: Path) -> IO[bytes]:
         message = f"evidence file could not open safely: {path}"
         raise EvidenceError(message) from error
     try:
+        # O_NOFOLLOW only protects the leaf. A parent directory may be
+        # exchanged for a symlink after the component-by-component lstat,
+        # then restored before the post-read pathname check. On Linux the
+        # descriptor's actual pathname exposes that redirected open even when
+        # the outside target is a hard link to the admitted inode.
+        if sys.platform == "linux":
+            actual_path = os.readlink(f"/proc/self/fd/{descriptor}")
+            if actual_path != os.fspath(path):
+                _fail(f"evidence opened path changed: {path}")
         return os.fdopen(descriptor, "rb")
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
-        # Stream construction failed before it acquired descriptor ownership.
+        # Stream construction/path admission failed before stream ownership.
         # An unsuccessful close must not erase the original admission failure.
         try:
             os.close(descriptor)
@@ -164,6 +173,8 @@ def _open_evidence(path: Path) -> IO[bytes]:
             AttributeError,
         ) as close_error:
             error.add_note(f"evidence descriptor cleanup also failed: {close_error}")
+        if isinstance(error, EvidenceError):
+            raise error  # ruff: ignore[TRY201]
         message = f"evidence stream could not open: {path}"
         raise EvidenceError(message) from error
 
