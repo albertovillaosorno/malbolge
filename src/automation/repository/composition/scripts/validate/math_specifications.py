@@ -90,7 +90,17 @@ def _host_error_detail(error: Exception) -> str:
         Native exception text, or the foreign exception's type name.
 
     """
-    if type(error) in (OSError, ValueError, TypeError, RuntimeError):
+    if type(error) in (
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        PermissionError,
+        FileNotFoundError,
+        FileExistsError,
+        IsADirectoryError,
+        NotADirectoryError,
+    ):
         return str(error)
     return type(error).__name__
 
@@ -489,9 +499,24 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
             ) from error
         _reject_cache_redirects(log_path.parent)
         _admit_math_build_log(log_path)
-        _ = temporary.replace(log_path)
+        try:
+            _ = temporary.replace(log_path)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise MathSpecificationError(
+                f"mathematics build log replace failed: {_host_error_detail(error)}"
+            ) from error
     finally:
-        temporary.unlink(missing_ok=True)
+        primary = sys.exception()
+        try:
+            temporary.unlink(missing_ok=True)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            detail = _host_error_detail(error)
+            if primary is None:
+                raise MathSpecificationError(
+                    f"mathematics build log cleanup failed: {detail}"
+                ) from error
+            if type(primary) is MathSpecificationError:
+                primary.add_note(f"mathematics build log cleanup failed: {detail}")
 
 
 def _compile_document(source: Path) -> None:

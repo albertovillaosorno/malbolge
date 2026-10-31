@@ -1011,8 +1011,12 @@ def test_math_log_failed_atomic_replace_preserves_original(
 
     monkeypatch.setattr(sp, "run", fake_latex)
     monkeypatch.setattr(Path, "replace", failing_replace)
-    with pytest.raises(PermissionError, match="replacement refused"):
+    with pytest.raises(
+        validator.MathSpecificationError, match="replace failed"
+    ) as caught:
         _compile_math_source(source)
+    assert isinstance(caught.value.__cause__, PermissionError)
+    assert "replacement refused" in str(caught.value)
     assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
     assert tuple(log.parent.iterdir()) == (log,)
 
@@ -1168,3 +1172,106 @@ def test_math_native_host_error_keeps_detail_and_cause(
     ) as caught:
         _ = validator._read_tex(source)
     assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_math_log_foreign_replace_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Failed atomic publication must not invoke a foreign error formatter."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign mathematics replace formatter executed")
+
+    foreign = type("ForeignMathReplaceFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("replace rejected")
+    original_replace = Path.replace
+
+    def fail_replace(path: Path, target: Path) -> Path:
+        if target == log:
+            raise fault
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    with pytest.raises(
+        validator.MathSpecificationError, match="replace failed"
+    ) as caught:
+        validator._write_math_build_log(log, "new data")
+    assert caught.value.__cause__ is fault
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    assert tuple(log.parent.iterdir()) == (log,)
+
+
+def test_math_log_cleanup_failure_does_not_mask_primary_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup diagnostics cannot supersede a failed atomic replacement."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    primary = PermissionError("replace rejected")
+
+    class ForeignCleanupError(OSError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign mathematics cleanup formatter executed")
+
+    cleanup = ForeignCleanupError("cleanup rejected")
+    original_unlink = Path.unlink
+    original_replace = Path.replace
+
+    def fail_replace(path: Path, target: Path) -> Path:
+        if target == log:
+            raise primary
+        return original_replace(path, target)
+
+    def fail_cleanup(path: Path, *, missing_ok: bool = False) -> None:
+        if path.parent == log.parent and path.name.startswith(".build.stdout."):
+            raise cleanup
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    monkeypatch.setattr(Path, "unlink", fail_cleanup)
+    try:
+        with pytest.raises(
+            validator.MathSpecificationError, match="replace failed"
+        ) as caught:
+            validator._write_math_build_log(log, "new data")
+        assert caught.value.__cause__ is primary
+        assert any("ForeignCleanupError" in note for note in caught.value.__notes__)
+        assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    finally:
+        monkeypatch.setattr(Path, "unlink", original_unlink)
+        for artifact in log.parent.iterdir():
+            if artifact.name.startswith(".build.stdout."):
+                artifact.unlink()
+
+
+def test_math_log_cleanup_only_failure_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cleanup fault after publication still has a typed diagnostic."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+
+    class ForeignCleanupError(RuntimeError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign mathematics cleanup formatter executed")
+
+    cleanup = ForeignCleanupError("cleanup rejected")
+    original_unlink = Path.unlink
+
+    def fail_cleanup(path: Path, *, missing_ok: bool = False) -> None:
+        if path.parent == log.parent and path.name.startswith(".build.stdout."):
+            raise cleanup
+        original_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", fail_cleanup)
+    with pytest.raises(
+        validator.MathSpecificationError, match="cleanup failed"
+    ) as caught:
+        validator._write_math_build_log(log, "new data")
+    assert caught.value.__cause__ is cleanup
+    assert log.read_text(encoding="utf-8") == "new data"
