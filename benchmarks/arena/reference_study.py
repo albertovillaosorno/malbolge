@@ -250,9 +250,9 @@ def _generate_bundle(
     directory = f"bundles/{family}/v1/seed-{seed}/nodes-{nodes}"
     output = root / directory
     output.mkdir(parents=True)
-    _ = (output / "program.c").write_bytes(generated.source)
-    _ = (output / "oracle.bin").write_bytes(generated.oracle)
-    _ = (output / "manifest.json").write_bytes(generated.manifest)
+    _write_retained_bytes(output / "program.c", generated.source)
+    _write_retained_bytes(output / "oracle.bin", generated.oracle)
+    _write_retained_bytes(output / "manifest.json", generated.manifest)
     case = {
         "family": family,
         "version": 1,
@@ -277,7 +277,7 @@ def _successful(
     if measured.elapsed_ns > BUDGET_SECONDS * 1_000_000_000:
         _fail("host-C successful measurement exceeds declared budget")
     path = f"candidates/{name}"
-    _ = (root / path).write_bytes(measured.executable)
+    _write_retained_bytes(root / path, measured.executable)
     return (
         {
             "elapsed_ns": measured.elapsed_ns,
@@ -368,11 +368,10 @@ def _write_attempt(
     if diagnostic is not None:
         environment.failures[row["experiment_manifest"]] = diagnostic
     raw = _raw_csv(row)
-    _ = (_ROOT / row["raw_sample"]).write_bytes(raw)
+    _write_retained_bytes(_ROOT / row["raw_sample"], raw)
     metadata = _ManifestMeta(environment, fingerprint, sha256(raw).hexdigest())
-    _ = (_ROOT / row["experiment_manifest"]).write_text(
-        _manifest(row, metadata),
-        encoding="utf-8",
+    _write_retained_text(
+        _ROOT / row["experiment_manifest"], _manifest(row, metadata)
     )
     return row, artifact
 
@@ -603,6 +602,13 @@ def check_retained_failures(
     ):
         _fail("host-C failure diagnostics must be bounded printable ASCII")
     return len(failures)
+
+
+def _write_retained_bytes(path: Path, content: bytes) -> None:
+    """Reject short or foreign byte acknowledgements for retained evidence."""
+    written = path.write_bytes(content)
+    if type(written) is not int or written != len(content):
+        _fail(f"host-C retained {path.name} has invalid write count")
 
 
 def _write_retained_text(path: Path, content: str) -> None:

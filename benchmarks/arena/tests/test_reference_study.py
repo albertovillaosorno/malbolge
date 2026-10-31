@@ -169,6 +169,74 @@ def test_reference_retained_sidecars_reject_incomplete_write_acknowledgement(
 
 
 @pytest.mark.parametrize(
+    "filename",
+    [
+        "program.c",
+        "oracle.bin",
+        "manifest.json",
+        "host-clang-O0-nodes-4-trial-0",
+        "host-clang-O0-nodes-4-trial-0.csv",
+        "host-clang-O0-nodes-4-trial-0.toml",
+    ],
+)
+@pytest.mark.parametrize("bad_count", [None, True, -1, 1, 1_000_000])
+def test_reference_evidence_rejects_incomplete_write_acknowledgement(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    filename: str,
+    bad_count: object,
+) -> None:
+    """No incomplete retained evidence write may be a verified trial."""
+    original_bytes = type(tmp_path).write_bytes
+    original_text = type(tmp_path).write_text
+    matched = 0
+
+    def faulty_bytes(path: Path, payload: bytes) -> int:
+        nonlocal matched
+        if path.name == filename:
+            matched += 1
+            _ = original_bytes(path, payload[:1])
+            return cast("int", bad_count)
+        return original_bytes(path, payload)
+
+    def faulty_text(
+        path: Path,
+        payload: str,
+        encoding: str | None = None,
+    ) -> int:
+        nonlocal matched
+        if path.name == filename:
+            matched += 1
+            _ = original_text(path, payload[:1], encoding=encoding)
+            return cast("int", bad_count)
+        return original_text(path, payload, encoding=encoding)
+
+    monkeypatch.setattr(reference_study, "_ROOT", tmp_path)
+    monkeypatch.setattr(reference_study, "_LOCAL", tmp_path)
+    monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
+    monkeypatch.setattr(
+        host_c_oracle, "require_child_resource_controls", lambda: None
+    )
+    monkeypatch.setattr(
+        host_c_oracle,
+        "measure_reference",
+        lambda *_: host_c_oracle.ReferenceMeasurement(
+            10, b"fake-executable", 1024
+        ),
+    )
+    monkeypatch.setattr(type(tmp_path), "write_bytes", faulty_bytes)
+    monkeypatch.setattr(type(tmp_path), "write_text", faulty_text)
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="write count"
+    ):
+        _ = reference_study.run_study(
+            reference_study.StudyPlan(FAMILY, (4,), 7, 1)
+        )
+    assert matched == 1
+
+
+@pytest.mark.parametrize(
     "plan",
     [
         reference_study.StudyPlan(FAMILY, (), 7, 1),
