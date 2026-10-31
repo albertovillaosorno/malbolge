@@ -171,6 +171,48 @@ def test_writer_and_flush_exceptions_are_typed_failures(
     assert not output.flushed
 
 
+@pytest.mark.parametrize(
+    "invalid_root",
+    [[], (), None, 0, "text", True],
+    ids=["list", "tuple", "null", "integer", "text", "boolean"],
+)
+def test_report_root_requires_exact_native_json_object(
+    invalid_root: object,
+) -> None:
+    """A JSON scalar or array is not an arena report, even when serializable."""
+    output = _FakeStream("healthy")
+    with pytest.raises(
+        report_output.ReportOutputError, match="JSON serialization"
+    ) as error:
+        report_output.publish(cast("dict[str, object]", invalid_root), output)
+    assert isinstance(error.value.__cause__, TypeError)
+    assert not output.records
+    assert not output.flushed
+
+
+def test_analyzer_cli_rejects_nonobject_analysis_without_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A corrupted analyzer cannot complete a CLI with top-level JSON null."""
+    document = sample_study(tmp_path)
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+
+    def invalid_analysis(*args: object, **kwargs: object) -> dict[str, object]:
+        del args, kwargs
+        return cast("dict[str, object]", None)
+
+    monkeypatch.setattr(analyze, "analyze", invalid_analysis)
+    monkeypatch.setattr(analyze.sys, "argv", ["arena", str(path)])
+    with pytest.raises(SystemExit, match="2"):
+        analyze.main()
+    result = capsys.readouterr()
+    assert not result.out
+    assert "arena report JSON serialization failed" in result.err
+
+
 @pytest.mark.parametrize("nonfinite", [float("nan"), float("inf"), -float("inf")])
 def test_nonfinite_nested_costs_fail_before_any_stdout(
     nonfinite: float,

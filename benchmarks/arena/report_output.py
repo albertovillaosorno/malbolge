@@ -78,7 +78,7 @@ def _flush_complete(stream: TextReportStream) -> None:
 
 
 def _admit_native_json(report: object) -> None:
-    """Reject caller-owned JSON subclasses before invoking encoder hooks.
+    """Require a native report object and reject caller-owned JSON subclasses.
 
     Exact native containers avoid user-overridden iteration and comparison.
     Already visited objects are skipped to terminate cyclic-graph preflight;
@@ -88,6 +88,9 @@ def _admit_native_json(report: object) -> None:
         TypeError: A value or mapping key is not an exact JSON-native type.
 
     """
+    if type(report) is not dict:
+        message = "arena report requires an exact native JSON object root"
+        raise TypeError(message)
     pending: list[object] = [report]
     seen: set[int] = set()
     while pending:

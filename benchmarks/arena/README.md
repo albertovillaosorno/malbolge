@@ -120,9 +120,10 @@ single-record checked text writer. A valid `write()` must return the exact
 character count, not a boolean, absent value, short count or overstated count,
 and a successful `flush()` must follow before the command returns zero. Writer
 and flush failures now produce nonzero operator exits with a diagnostic.
-The direct publisher first admits only exact native JSON scalar/container types,
-including native tuples as arrays and native string mapping keys. Foreign
-container or key subclasses, cycles, and nonfinite numbers fail before stdout.
+The direct publisher requires an exact native JSON object at the report root
+and exact native JSON scalar/container types within it, including native
+tuples as arrays and native string mapping keys. Foreign containers or key
+subclasses, non-object roots, cycles, and nonfinite numbers fail before stdout.
 Any ordinary write/flush exception becomes a typed `ReportOutputError` with its
 original cause preserved, without invoking caller-defined error formatting.
 An already-emitted prefix on a failed output stream **cannot be rolled back**;
