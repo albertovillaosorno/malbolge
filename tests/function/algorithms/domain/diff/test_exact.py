@@ -308,6 +308,42 @@ def test_exact_materialization_rejects_changed_source_before_output(
     _expect(not staging.exists(), "rejected staging tree survived")
 
 
+def test_exact_rejects_linked_source_path_ancestor_before_read(
+    tmp_path: Path,
+) -> None:
+    """An excluded dynamic alias cannot authorize an exact source read."""
+    source = tmp_path / "source"
+    oracle = tmp_path / "oracle"
+    _write(source, "real/file.bin", b"source")
+    _write(source, "dynamic/keep.bin", b"unverified")
+    _write(oracle, "output.bin", b"source")
+    alias = source / "dynamic" / "alias"
+    try:
+        alias.symlink_to(source / "real", target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks are unavailable")
+
+    target = snapshot_tree(oracle)
+    source_snapshot = snapshot_tree_excluding(source, ("dynamic",))
+    instruction = ExactInstruction(
+        output_path="output.bin",
+        kind=ExactInstructionKind.COPY_SOURCE,
+        expected_sha256=target.files[0].sha256,
+        source_path="dynamic/alias/file.bin",
+    )
+    plan = ExactAuthoringPlan(
+        source=source_snapshot,
+        target=target,
+        instructions=(instruction,),
+        passthrough_roots=("dynamic",),
+    )
+    output = tmp_path / "out"
+
+    with pytest.raises(ExactTreeError, match="linked tree path component"):
+        materialize_exact_plan(source, plan, output)
+    _expect(not output.exists(), "linked source ancestor published output")
+
+
 def test_exact_materialization_rejects_linked_source_root_when_supported(
     tmp_path: Path,
 ) -> None:

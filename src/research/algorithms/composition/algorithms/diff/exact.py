@@ -653,6 +653,16 @@ def build_exact_plan(
     )
 
 
+def _reject_linked_tree_ancestors(root: Path, relative_path: str) -> None:
+    current = root
+    for component in PurePosixPath(relative_path).parts[:-1]:
+        current /= component
+        mode = _entry_mode(current, "tree path component")
+        if mode is not None and _is_redirect(current, mode):
+            message = f"linked tree path component is not supported: {current}"
+            raise ExactTreeError(message)
+
+
 def _safe_tree_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
@@ -667,6 +677,7 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
     except ValueError as error:
         message = f"path escapes tree root: {relative_path!r}"
         raise ExactTreeError(message) from error
+    _reject_linked_tree_ancestors(root, normalized)
     return path
 
 
