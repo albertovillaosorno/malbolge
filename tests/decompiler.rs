@@ -16,7 +16,7 @@
 // - Allows:
 //   - Inputs: project-owned synthetic Malbolge fixtures and canonical profiles.
 //   - Outputs: assertions over generated C source.
-//   - Side effects: test-process allocation only.
+//   - Side effects: test-local temporary input files and CLI child processes.
 // - Split-When:
 //   - Split when executable C differential tests need independent toolchain
 //   - setup.
@@ -39,7 +39,11 @@ pub mod analysis;
 #[path = "../src/tooling/decompiler/application/render.rs"]
 pub mod decompiler;
 
-use std::process::Command;
+use std::env::temp_dir;
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output, id};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use malbolge::{
     ProfileMachine, RunOutcome, Termination, current_profile,
@@ -50,6 +54,93 @@ const ANALYSIS_SOURCE: &[u8] = b"b&&;@L";
 const OUTPUT_SOURCE: &[u8] = b"ubO";
 
 type DuplicateCliCase = (&'static [&'static str], &'static str);
+
+fn temporary_cli_inputs() -> Result<PathBuf, String> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("timestamp fixture: {error}"))?
+        .as_nanos();
+    let directory =
+        temp_dir().join(format!("malbolge-decompiler-input-{}-{nonce}", id()));
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("create input fixture: {error}"))?;
+    Ok(directory)
+}
+
+fn run_analysis_input(path: &Path) -> Result<Output, String> {
+    Command::new(env!("CARGO_BIN_EXE_malbolge_decompile"))
+        .args(["--profile", "malbolge-1998"])
+        .args(["--representation", "analysis"])
+        .arg(path)
+        .output()
+        .map_err(|error| format!("execute decompiler CLI: {error}"))
+}
+
+#[test]
+fn cli_rejects_oversized_regular_source_before_rendering() -> Result<(), String>
+{
+    let directory = temporary_cli_inputs()?;
+    let source = directory.join("oversized.malbolge");
+    let file = File::create(&source)
+        .map_err(|error| format!("create oversized source: {error}"))?;
+    file.set_len(1_048_577)
+        .map_err(|error| format!("extend sparse source: {error}"))?;
+    drop(file);
+    let output = run_analysis_input(&source)?;
+    fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove source fixture: {error}"))?;
+    let diagnostic = String::from_utf8_lossy(&output.stderr);
+    if output.status.success()
+        || !diagnostic.contains("regular file at most 1 MiB")
+        || !output.stdout.is_empty()
+    {
+        return Err(format!("oversized source admitted: {diagnostic}"));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn cli_rejects_fifo_and_fifo_symlink_without_waiting() -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+
+    let directory = temporary_cli_inputs()?;
+    let fifo = directory.join("blocked-input.fifo");
+    let alias = directory.join("blocked-link.fifo");
+    let status = Command::new("/usr/bin/mkfifo")
+        .arg(&fifo)
+        .status()
+        .map_err(|error| format!("create FIFO: {error}"))?;
+    if !status.success() {
+        return Err(format!("mkfifo failed: {status}"));
+    }
+    symlink(&fifo, &alias)
+        .map_err(|error| format!("create FIFO symlink: {error}"))?;
+    let mut failures = Vec::new();
+    for source in [&fifo, &alias] {
+        let output = Command::new("/usr/bin/timeout")
+            .arg("2s")
+            .arg(env!("CARGO_BIN_EXE_malbolge_decompile"))
+            .args(["--profile", "malbolge-1998"])
+            .args(["--representation", "analysis"])
+            .arg(source)
+            .output()
+            .map_err(|error| format!("run bounded FIFO CLI: {error}"))?;
+        let diagnostic = String::from_utf8_lossy(&output.stderr);
+        if output.status.code() == Some(124i32)
+            || output.status.success()
+            || !diagnostic.contains("regular file at most 1 MiB")
+        {
+            failures.push(format!("{}: {diagnostic}", source.display()));
+        }
+    }
+    fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove FIFO fixture: {error}"))?;
+    if !failures.is_empty() {
+        return Err(format!("FIFO acquisition unsafe: {failures:?}"));
+    }
+    Ok(())
+}
 
 #[test]
 fn cli_rejects_duplicate_semantic_options() -> Result<(), String> {

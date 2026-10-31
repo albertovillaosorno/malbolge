@@ -35,13 +35,19 @@
 
 use std::env;
 use std::ffi::OsString;
-use std::fs::{read, write};
-use std::io::{Error as IoError, Result as IoResult, Write as _, stdout};
-use std::path::PathBuf;
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use std::fs::OpenOptions;
+use std::fs::{File, write};
+use std::io::{
+    Error as IoError, Read as _, Result as IoResult, Write as _, stdout,
+};
+use std::path::{Path, PathBuf};
 
 use malbolge::target_profile;
 
 use super::decompiler;
+
+const MAX_DECOMPILER_SOURCE_BYTES: u64 = 1_048_576;
 
 const USAGE: &str = concat!(
     "usage: malbolge_decompile --profile ID --representation analysis|c ",
@@ -81,7 +87,7 @@ pub fn run() -> IoResult<()> {
     let profile = target_profile(&arguments.profile_id).ok_or_else(|| {
         IoError::other(format!("unknown profile: {}", arguments.profile_id))
     })?;
-    let source = read(&arguments.input)?;
+    let source = read_decompiler_source(&arguments.input)?;
     let rendered = match arguments.representation {
         OutputRepresentation::Analysis => {
             decompiler::render_analysis(profile, &source)
@@ -95,6 +101,49 @@ pub fn run() -> IoResult<()> {
         stdout().lock().write_all(rendered.as_bytes())?;
     }
     Ok(())
+}
+
+// Open an attacker-selected FIFO without waiting for an external writer.
+// On platforms without this flag, preflight regular-file metadata first.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn open_decompiler_source(path: &Path) -> IoResult<File> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    const LINUX_O_NONBLOCK: i32 = 1 << 11;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(LINUX_O_NONBLOCK)
+        .open(path)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn open_decompiler_source(path: &Path) -> IoResult<File> {
+    if !std::fs::metadata(path)?.is_file() {
+        return Err(IoError::other("decompiler source must be a regular file"));
+    }
+    File::open(path)
+}
+
+fn read_decompiler_source(path: &Path) -> IoResult<Vec<u8>> {
+    let file = open_decompiler_source(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_DECOMPILER_SOURCE_BYTES {
+        return Err(IoError::other(
+            "decompiler source must be a regular file at most 1 MiB",
+        ));
+    }
+    // Metadata can become stale while another process appends to this file.
+    // Read at most one byte beyond the ceiling, and reject that overflow.
+    let mut bytes = Vec::new();
+    let _read = file
+        .take(MAX_DECOMPILER_SOURCE_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if u64::try_from(bytes.len()).map_err(IoError::other)?
+        > MAX_DECOMPILER_SOURCE_BYTES
+    {
+        return Err(IoError::other("decompiler source exceeds 1 MiB"));
+    }
+    Ok(bytes)
 }
 
 fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
