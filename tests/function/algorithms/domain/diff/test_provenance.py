@@ -207,8 +207,13 @@ def test_pinned_snapshot_rejects_byte_or_path_change(tmp_path: Path) -> None:
         _ = require_source_pin(tmp_path, pin)
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_pinned_source_root_status_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """An inaccessible pin root cannot be normalized into a weaker error."""
     original_lstat = Path.lstat
@@ -216,12 +221,35 @@ def test_pinned_source_root_status_error_fails_closed(
     def fail_status(path: Path) -> object:
         if path == tmp_path:
             message = "blocked pin root"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_lstat(path)
 
     monkeypatch.setattr(Path, "lstat", fail_status)
     with pytest.raises(SourcePinError, match="pinned source status failed"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_pinned_source_root_resolution_errors_fail_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Do not leak invalid or cyclic root normalization from source-pin APIs."""
+    _write(tmp_path, "README", b"pinned")
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == tmp_path:
+            message = "blocked pin root resolution"
+            raise failure_type(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(
+        SourcePinError, match="pinned source root resolution failed"
+    ):
+        _ = source_snapshot_evidence(tmp_path, ("README",))
 
 
 def test_pinned_source_rejects_linked_root_when_supported(
@@ -293,9 +321,13 @@ def test_pinned_snapshot_walk_errors_fail_closed(
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_pinned_entry_status_errors_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """An inaccessible pinned entry cannot disappear from source evidence."""
     blocked = tmp_path / "src" / "blocked.c"
@@ -305,7 +337,7 @@ def test_pinned_entry_status_errors_fail_closed(
     def fail_status(path: Path) -> object:
         if path == blocked:
             message = "blocked pinned entry"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_lstat(path)
 
     monkeypatch.setattr(Path, "lstat", fail_status)

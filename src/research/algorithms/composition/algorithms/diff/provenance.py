@@ -206,7 +206,7 @@ def _source_mode(path: Path, relative: str) -> int | None:
         mode = path.lstat().st_mode
     except FileNotFoundError:
         return None
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"pinned source status failed for {relative}: {error}"
         raise SourcePinError(message) from error
     if S_ISLNK(mode) or path.is_junction():
@@ -316,7 +316,7 @@ def _resolved_source_root(root: Path) -> Path:
         raise SourcePinError(message)
     try:
         return root.resolve(strict=True)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"pinned source root resolution failed: {root}: {error}"
         raise SourcePinError(message) from error
 
