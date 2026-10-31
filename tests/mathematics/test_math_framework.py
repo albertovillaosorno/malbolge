@@ -35,10 +35,9 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-from typing import TYPE_CHECKING
-from typing import cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Self, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -83,6 +82,167 @@ def _relative_documents() -> tuple[str, ...]:
         path.relative_to(validator.ROOT).as_posix()
         for path in validator.validate_source_layout()
     )
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation", ("lstat", "junction", "open", "fdopen", "fstat", "read", "post_lstat")
+)
+def test_math_tex_source_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """TeX source inspection and transport reject unexpected host failures."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    if operation in {"lstat", "post_lstat"}:
+        original_lstat = Path.lstat
+        observations = 0
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            nonlocal observations
+            if path == source:
+                observations += 1
+                if operation == "lstat" or observations >= 3:
+                    raise fault_type("injected math lstat failure")
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    elif operation == "junction":
+        original_junction = Path.is_junction
+
+        def fail_junction(path: Path) -> bool:
+            if path == source:
+                raise fault_type("injected math junction failure")
+            return original_junction(path)
+
+        monkeypatch.setattr(Path, "is_junction", fail_junction)
+    elif operation == "open":
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == source:
+                raise fault_type("injected math open failure")
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    elif operation == "fdopen":
+
+        def fail_fdopen(_descriptor: int, _mode: str) -> object:
+            raise fault_type("injected math fdopen failure")
+
+        monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    elif operation == "fstat":
+
+        def fail_fstat(_descriptor: int) -> os.stat_result:
+            raise fault_type("injected math fstat failure")
+
+        monkeypatch.setattr(os, "fstat", fail_fstat)
+    else:
+        original_fdopen = os.fdopen
+
+        class BadReadStream:
+            def __init__(self, descriptor: int) -> None:
+                self._stream = original_fdopen(descriptor, "rb")
+
+            def __enter__(self) -> Self:
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                self._stream.close()
+
+            def fileno(self) -> int:
+                return self._stream.fileno()
+
+            def read(self, _size: int) -> bytes:
+                raise fault_type("injected math read failure")
+
+        monkeypatch.setattr(
+            os, "fdopen", lambda descriptor, _mode: BadReadStream(descriptor)
+        )
+    with pytest.raises(validator.MathSpecificationError, match="mathematics source"):
+        _ = validator._read_tex(source)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_math_tex_fdopen_failure_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """TeX stream wrapper failure releases the descriptor from os.open."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    original_open = os.open
+    opened: list[int] = []
+
+    def track_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        if path == source:
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(_descriptor: int, _mode: str) -> object:
+        raise fault_type("injected math fdopen failure")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    with pytest.raises(validator.MathSpecificationError):
+        _ = validator._read_tex(source)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+def test_math_source_scan_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """TeX discovery errors are typed before any build is attempted."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    original_walk = Path.walk
+
+    def fail_walk(
+        path: Path, *, on_error: Callable[[OSError], object] | None = None
+    ) -> object:
+        if path == source.parent:
+            raise fault_type("injected math scan failure")
+        return original_walk(path, on_error=on_error)
+
+    monkeypatch.setattr(Path, "walk", fail_walk)
+    with pytest.raises(validator.MathSpecificationError, match="scan"):
+        _ = validator.document_sources()
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("source_kind", ["root", "notation"])
+def test_math_source_preflight_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    source_kind: str,
+) -> None:
+    """Root and notation preflight failures become typed validation errors."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    notation = source.parent / "malbolge-notation.tex"
+    _ = notation.write_text("\n".join(validator.REQUIRED_MACROS), encoding="utf-8")
+    monkeypatch.setattr(validator, "NOTATION", notation)
+    target = source.parent if source_kind == "root" else notation
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> os.stat_result:
+        if path == target:
+            raise fault_type("injected math authority status failure")
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(validator.MathSpecificationError, match="mathematics"):
+        if source_kind == "root":
+            _ = validator.document_sources()
+        else:
+            validator._validate_notation()
 
 
 def test_all_math_documents_share_one_notation_framework() -> None:
@@ -149,9 +309,7 @@ def test_math_source_layout_rejects_redirected_inputs(
     document_root = math_root / "specification"
     document_root.mkdir(parents=True)
     notation = math_root / "malbolge-notation.tex"
-    _ = notation.write_text(
-        "\n".join(validator.REQUIRED_MACROS), encoding="utf-8"
-    )
+    _ = notation.write_text("\n".join(validator.REQUIRED_MACROS), encoding="utf-8")
     document = document_root / "proof.tex"
     _ = document.write_text(
         validator.DOCUMENT_MARKER + "{article}\n" + validator.NOTATION_INCLUDE,
@@ -184,9 +342,7 @@ def test_math_output_path_rejects_parent_segment_escape(
     """A direct build request cannot use a parent segment in its cache path."""
     monkeypatch.setattr(validator, "MATH_ROOT", tmp_path / "math")
     with pytest.raises(validator.MathSpecificationError, match="escape"):
-        _ = validator.output_directory(
-            validator.MATH_ROOT / ".." / "outside.tex"
-        )
+        _ = validator.output_directory(validator.MATH_ROOT / ".." / "outside.tex")
 
 
 @pytest.mark.parametrize("redirected", ["cache-root", "cache-parent"])
@@ -208,16 +364,12 @@ def test_math_compilation_rejects_redirected_cache_without_writing(
         cache_root.symlink_to(outside, target_is_directory=True)
     else:
         cache_root.mkdir()
-        (cache_root / "specification").symlink_to(
-            outside, target_is_directory=True
-        )
+        (cache_root / "specification").symlink_to(outside, target_is_directory=True)
     monkeypatch.setattr(validator, "ROOT", tmp_path)
     monkeypatch.setattr(validator, "MATH_ROOT", math_root)
     monkeypatch.setattr(validator, "CACHE_ROOT", cache_root)
     monkeypatch.setattr(validator, "validate_source_layout", lambda: (source,))
-    with pytest.raises(
-        validator.MathSpecificationError, match=r"cache.*redirect"
-    ):
+    with pytest.raises(validator.MathSpecificationError, match=r"cache.*redirect"):
         _ = validator.build_documents()
     assert not (outside / "proof").exists()
 
@@ -232,9 +384,7 @@ def test_math_invalid_utf8_is_typed_validation_failure(
     math_root = tmp_path / "math"
     math_root.mkdir()
     notation = math_root / "malbolge-notation.tex"
-    _ = notation.write_text(
-        "\n".join(validator.REQUIRED_MACROS), encoding="utf-8"
-    )
+    _ = notation.write_text("\n".join(validator.REQUIRED_MACROS), encoding="utf-8")
     document = math_root / "proof.tex"
     _ = document.write_text(
         validator.DOCUMENT_MARKER + "{article}\n" + validator.NOTATION_INCLUDE,
@@ -249,9 +399,7 @@ def test_math_invalid_utf8_is_typed_validation_failure(
         _ = validator.validate_source_layout()
 
 
-@pytest.mark.skipif(
-    not hasattr(os, "mkfifo"), reason="FIFO fixture needs POSIX"
-)
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO fixture needs POSIX")
 def test_math_discovery_rejects_fifo_before_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -262,9 +410,7 @@ def test_math_discovery_rejects_fifo_before_read(
     mkfifo(math_root / "untrusted.tex")
     monkeypatch.setattr(validator, "ROOT", tmp_path)
     monkeypatch.setattr(validator, "MATH_ROOT", math_root)
-    with pytest.raises(
-        validator.MathSpecificationError, match="physical regular"
-    ):
+    with pytest.raises(validator.MathSpecificationError, match="physical regular"):
         _ = validator.document_sources()
 
 
@@ -280,13 +426,9 @@ def test_math_missing_inputs_retain_explicit_diagnostics(
         math_root.mkdir()
     monkeypatch.setattr(validator, "ROOT", tmp_path)
     monkeypatch.setattr(validator, "MATH_ROOT", math_root)
-    monkeypatch.setattr(
-        validator, "NOTATION", math_root / "malbolge-notation.tex"
-    )
+    monkeypatch.setattr(validator, "NOTATION", math_root / "malbolge-notation.tex")
     if missing == MISSING_ROOT_CASE:
-        with pytest.raises(
-            validator.MathSpecificationError, match="root not found"
-        ):
+        with pytest.raises(validator.MathSpecificationError, match="root not found"):
             _ = validator.document_sources()
     else:
         with pytest.raises(
@@ -424,9 +566,7 @@ def _math_log_fixture(
 
 
 def _compile_math_source(source: Path) -> None:
-    compilation = cast(
-        "Callable[[Path], None]", vars(validator)["_compile_document"]
-    )
+    compilation = cast("Callable[[Path], None]", vars(validator)["_compile_document"])
     compilation(source)
 
 
@@ -460,9 +600,7 @@ def test_math_log_rejects_link_planted_by_compiler(
     outside = tmp_path / "outside.txt"
     _ = outside.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
 
-    def replace_log(
-        *args: object, **kwargs: object
-    ) -> sp.CompletedProcess[str]:
+    def replace_log(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
         _ = (args, kwargs)
         _ = log.symlink_to(outside)
         return sp.CompletedProcess(

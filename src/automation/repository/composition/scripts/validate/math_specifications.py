@@ -35,18 +35,15 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import shutil
-from stat import S_ISDIR
-from stat import S_ISLNK
-from stat import S_ISREG
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed TeX argv, never a shell command.
 import sys
 import tempfile
-from typing import Never
-from typing import TYPE_CHECKING
+from pathlib import Path
+from stat import S_ISDIR, S_ISLNK, S_ISREG
+from typing import TYPE_CHECKING, Never
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -110,19 +107,17 @@ def _physical_math_status(path: Path, *, directory: bool) -> None:
         current /= component
         try:
             status = current.lstat()
-        except OSError as error:
+        except (OSError, ValueError, RuntimeError) as error:
             _fail(f"mathematics source status failed: {error}")
-        if S_ISLNK(status.st_mode) or current.is_junction():
-            _fail(
-                f"mathematics source must not redirect: {relative.as_posix()}"
-            )
-        expect_directory = (
-            directory if index == len(relative.parts) - 1 else True
-        )
+        try:
+            junction = current.is_junction()
+        except (OSError, ValueError, RuntimeError) as error:
+            _fail(f"mathematics source redirect status failed: {error}")
+        if S_ISLNK(status.st_mode) or junction:
+            _fail(f"mathematics source must not redirect: {relative.as_posix()}")
+        expect_directory = directory if index == len(relative.parts) - 1 else True
         is_expected = (
-            S_ISDIR(status.st_mode)
-            if expect_directory
-            else S_ISREG(status.st_mode)
+            S_ISDIR(status.st_mode) if expect_directory else S_ISREG(status.st_mode)
         )
         if not is_expected:
             reason = "mathematics source must be a physical regular artifact"
@@ -145,12 +140,19 @@ def _discovered_tex_paths() -> tuple[Path, ...]:
     def fail_walk(error: OSError) -> None:
         _fail(f"mathematics source scan failed: {error}")
 
-    for parent, directories, filenames in MATH_ROOT.walk(on_error=fail_walk):
-        _physical_math_status(parent, directory=True)
-        for name in directories:
-            _physical_math_status(parent / name, directory=True)
-        for name in filenames:
-            _admit_tex_candidate(parent / name, sources)
+    try:
+        for parent, directories, filenames in MATH_ROOT.walk(on_error=fail_walk):
+            _physical_math_status(parent, directory=True)
+            for name in directories:
+                _physical_math_status(parent / name, directory=True)
+            for name in filenames:
+                _admit_tex_candidate(parent / name, sources)
+    except MathSpecificationError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics source scan failed: {error}"
+        ) from error
     return tuple(sorted(sources, key=lambda path: path.as_posix()))
 
 
@@ -193,7 +195,15 @@ def _read_open_tex_bytes(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except (OSError, ValueError, RuntimeError):
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+    with stream:
         if _tex_source_identity(os.fstat(stream.fileno())) != admitted:
             _fail("mathematics source changed before read")
         data = stream.read(MAX_TEX_BYTES + 1)
@@ -232,8 +242,12 @@ def _read_tex(path: Path) -> str:
         return _stable_tex_source_bytes(path).decode("utf-8")
     except UnicodeDecodeError as error:
         _fail(f"invalid mathematics source UTF-8: {path}: {error}")
-    except OSError as error:
-        _fail(f"mathematics source read failed: {path}: {error}")
+    except MathSpecificationError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics source read failed: {path}: {error}"
+        ) from error
 
 
 def _cache_relative_path(output: Path) -> Path:
@@ -266,9 +280,7 @@ def _cache_component_is_physical(path: Path, relative: Path) -> bool:
     except OSError as error:
         _fail(f"mathematics cache status failed: {error}")
     if S_ISLNK(status.st_mode) or path.is_junction():
-        _fail(
-            f"mathematics cache path must not redirect: {relative.as_posix()}"
-        )
+        _fail(f"mathematics cache path must not redirect: {relative.as_posix()}")
     if not S_ISDIR(status.st_mode):
         _fail(f"mathematics cache path must be a directory: {path}")
     return True
@@ -295,10 +307,10 @@ def document_sources() -> tuple[Path, ...]:
         _ = MATH_ROOT.lstat()
     except FileNotFoundError:
         _fail(f"mathematics root not found: {MATH_ROOT}")
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail(f"mathematics root status failed: {error}")
     sources = tuple(
-        path
-        for path in _discovered_tex_paths()
-        if DOCUMENT_MARKER in _read_tex(path)
+        path for path in _discovered_tex_paths() if DOCUMENT_MARKER in _read_tex(path)
     )
     if not sources:
         _fail("no standalone mathematical documents found")
@@ -310,12 +322,12 @@ def _validate_notation() -> None:
         _ = NOTATION.lstat()
     except FileNotFoundError:
         _fail("shared mathematical notation file is missing")
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail(f"mathematics notation status failed: {error}")
     _physical_math_status(NOTATION, directory=False)
     notation_text = _read_tex(NOTATION)
     if DOCUMENT_MARKER in notation_text:
-        _fail(
-            "shared notation must remain an include, not a standalone document"
-        )
+        _fail("shared notation must remain an include, not a standalone document")
     for macro in REQUIRED_MACROS:
         if macro not in notation_text:
             _fail(f"shared notation is missing required macro: {macro}")
@@ -397,9 +409,7 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
     )
     temporary = Path(temporary_name)
     try:
-        with os.fdopen(
-            descriptor, "w", encoding="utf-8", newline="\n"
-        ) as stream:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
             written = stream.write(log)
         if written != len(log):
             _fail(f"incomplete LaTeX build log write: {log_path}")
