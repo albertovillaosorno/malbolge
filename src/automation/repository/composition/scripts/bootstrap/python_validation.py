@@ -422,6 +422,20 @@ def _uv_version_matches(output: str, version: str) -> bool:
     return output == expected or output.startswith(f"{expected} ")
 
 
+def _write_verified_uv_binary(temporary: Path, binary: bytes) -> None:
+    """Require the complete pinned uv payload before executable publication."""
+    written = temporary.write_bytes(binary)
+    if type(written) is int and written == len(binary):
+        return
+    try:
+        temporary.unlink(missing_ok=True)
+    except OSError as error:
+        _fail(
+            f"uv staging short or invalid byte count; cleanup failed: {error}"
+        )
+    _fail("uv staging short or invalid byte count")
+
+
 def ensure_uv(
     root: Path = ROOT,
     *,
@@ -445,7 +459,7 @@ def ensure_uv(
     binary = _uv_member_bytes(data, artifact)
     executable.parent.mkdir(parents=True, exist_ok=True)
     temporary = executable.with_name(f"{executable.name}.tmp")
-    _ = temporary.write_bytes(binary)
+    _write_verified_uv_binary(temporary, binary)
     if not selected.startswith("windows-"):
         _make_executable(temporary)
     _ = temporary.replace(executable)

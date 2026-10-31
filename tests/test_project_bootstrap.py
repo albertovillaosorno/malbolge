@@ -433,6 +433,92 @@ def test_uv_manifest_rejects_drive_relative_version_path(
         _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
 
 
+@pytest.mark.parametrize("bad_write_count", [1, None, True, -1, 1_000_000])
+def test_uv_staging_rejects_incomplete_or_foreign_write_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_write_count: object,
+) -> None:
+    """Do not publish a corrupt executable on an invalid staging write."""
+    artifact = python_validation.uv_artifact(LINUX_PLATFORM)
+    executable = python_validation.uv_executable(artifact, tmp_path)
+    temporary = executable.with_name(f"{executable.name}.tmp")
+    binary = b"synthetic-uv-binary-payload"
+    original_write = type(tmp_path).write_bytes
+
+    def incomplete_write(path: Path, data: bytes) -> int:
+        assert path == temporary
+        _ = original_write(path, data[:1])
+        return cast("int", bad_write_count)
+
+    def fake_download(selected_artifact: python_validation.UvArtifact) -> bytes:
+        assert selected_artifact == artifact
+        return binary
+
+    def fake_member(
+        archive_data: bytes, selected_artifact: python_validation.UvArtifact
+    ) -> bytes:
+        assert archive_data == binary
+        assert selected_artifact == artifact
+        return binary
+
+    def fake_run(command: list[str]) -> str:
+        assert command == [str(executable), "--version"]
+        return f"uv {artifact.version}"
+
+    monkeypatch.setattr(type(tmp_path), "write_bytes", incomplete_write)
+    monkeypatch.setattr(
+        python_validation, "_download_uv_archive", fake_download
+    )
+    monkeypatch.setattr(python_validation, "_uv_member_bytes", fake_member)
+    monkeypatch.setattr(python_validation, "_run", fake_run)
+
+    with pytest.raises(
+        python_validation.ProvisionError, match="short or invalid byte count"
+    ):
+        _ = python_validation.ensure_uv(tmp_path, platform_id=LINUX_PLATFORM)
+    assert not executable.exists()
+    assert not temporary.exists()
+
+
+def test_uv_provisioning_publishes_complete_extracted_binary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exact uv staging write publishes the complete artifact bytes."""
+    artifact = python_validation.uv_artifact(LINUX_PLATFORM)
+    executable = python_validation.uv_executable(artifact, tmp_path)
+    binary = b"synthetic-uv-binary-payload"
+
+    def fake_download(selected_artifact: python_validation.UvArtifact) -> bytes:
+        assert selected_artifact == artifact
+        return binary
+
+    def fake_member(
+        archive_data: bytes, selected_artifact: python_validation.UvArtifact
+    ) -> bytes:
+        assert archive_data == binary
+        assert selected_artifact == artifact
+        return binary
+
+    def fake_run(command: list[str]) -> str:
+        assert command == [str(executable), "--version"]
+        return f"uv {artifact.version}"
+
+    monkeypatch.setattr(
+        python_validation, "_download_uv_archive", fake_download
+    )
+    monkeypatch.setattr(python_validation, "_uv_member_bytes", fake_member)
+    monkeypatch.setattr(python_validation, "_run", fake_run)
+
+    provisioned = python_validation.ensure_uv(
+        tmp_path, platform_id=LINUX_PLATFORM
+    )
+    assert provisioned == executable
+    assert executable.read_bytes() == binary
+    assert not executable.with_name(f"{executable.name}.tmp").exists()
+
+
 def test_uv_archive_hash_verification_fails_closed() -> None:
     """Standalone uv bytes must match the tracked digest."""
     payload = b"reviewed uv archive"
