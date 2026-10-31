@@ -2784,9 +2784,9 @@ def _publish_immutable_payload(
     """Return an admitted collision inode, or None for a new publication."""
     try:
         _publish_no_replace(temporary, destination, platform=platform)
-    except FileExistsError:
-        return _admit_existing_immutable(destination, payload)
     except OSError as error:
+        if type(error) is FileExistsError:
+            return _admit_existing_immutable(destination, payload)
         _fail(f"immutable progress payload publication failed: {_host_error_detail(error)}")
     return None
 

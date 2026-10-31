@@ -4698,6 +4698,49 @@ def test_immutable_publication_selects_platform_no_replace_primitive(
     assert len(link_calls) == 1
 
 
+@pytest.mark.parametrize("existing", [False, True], ids=["missing", "matching"])
+def test_immutable_publication_rejects_foreign_collision_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    existing: bool,
+) -> None:
+    """Only a native no-replace collision may reuse a verified generation."""
+
+    class ForeignExists(FileExistsError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign collision exception was formatted")
+
+    payload = b"immutable-verified-payload"
+    destination = tmp_path / "immutable-generation"
+    if existing:
+        _ = destination.write_bytes(payload)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    calls: list[Path] = []
+
+    def forged_collision(
+        _temporary: Path,
+        target: Path,
+        *,
+        platform: str = os.name,
+    ) -> None:
+        del _temporary, platform
+        calls.append(target)
+        raise ForeignExists("not-a-genuine-collision")
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_publish_no_replace", forged_collision)
+        with pytest.raises(ERROR, match="publication failed"):
+            _ = writer(destination, payload, platform="posix")
+
+    assert calls == [destination]
+    assert destination.exists() is existing
+    if existing:
+        assert destination.read_bytes() == payload
+    assert not tuple(tmp_path.glob(".*.tmp"))
+
+
 def test_immutable_publication_wraps_disappearing_collision(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
