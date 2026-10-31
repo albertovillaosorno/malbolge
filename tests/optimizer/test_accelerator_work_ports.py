@@ -35,6 +35,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import sys
+from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
 from typing import final
@@ -1314,3 +1316,55 @@ def test_synchronous_adapter_protocol_surfaces_fail_closed() -> None:
         assist,
         cast("VerificationAssistAdapter", foreign),
     ) == ()
+
+
+@final
+class _ForeignSeedFormatter:
+    """An invalid search identity must not render injected methods."""
+
+    @override
+    def __str__(self) -> Never:
+        raise AssertionError
+
+    @override
+    def __repr__(self) -> Never:
+        raise AssertionError
+
+
+def test_search_port_invalid_seed_never_formats_foreign_objects() -> None:
+    """Both caller and backend seed admission remain typed under sabotage."""
+    request = SearchRequest("algorithm", 1, b"problem", 0)
+    foreign = cast("int", cast("object", _ForeignSeedFormatter()))
+    _expect_error(
+        InvalidAcceleratorWorkError,
+        "search seed outside unsigned 64-bit domain",
+        lambda: replace(request, seed=foreign).validated(),
+    )
+    result = SearchResult("algorithm", TEST_CAPABILITY, (), foreign)
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "search seed outside unsigned 64-bit domain",
+        lambda: result.validated_against(request, TEST_CAPABILITY),
+    )
+
+
+def test_search_port_invalid_huge_seed_bypasses_decimal_digit_limit() -> None:
+    """Out-of-range integers reject without host decimal serialization."""
+    old_limit = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(640)
+        huge = 10**1000
+        request = SearchRequest("algorithm", 1, b"problem", 0)
+        _expect_error(
+            InvalidAcceleratorWorkError,
+            "search seed outside unsigned 64-bit domain",
+            lambda: replace(request, seed=huge).validated(),
+        )
+        result = SearchResult("algorithm", TEST_CAPABILITY, (), huge)
+        _expect_error(
+            InvalidAcceleratorResultError,
+            "search seed outside unsigned 64-bit domain",
+            lambda: result.validated_against(request, TEST_CAPABILITY),
+        )
+    finally:
+        sys.set_int_max_str_digits(old_limit)

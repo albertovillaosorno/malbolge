@@ -1346,13 +1346,13 @@ def validated_accelerator_capability(
 
 def _validate_result_u64(value: int, label: str) -> None:
     if type(value) is not int or not 0 <= value <= MAX_U64:
-        message = f"{label} outside unsigned 64-bit domain: {value!r}"
+        message = f"{label} outside unsigned 64-bit domain"
         raise InvalidAcceleratorResultError(message)
 
 
 def _validate_u64(value: int, label: str) -> None:
     if type(value) is not int or not 0 <= value <= MAX_U64:
-        message = f"{label} outside unsigned 64-bit domain: {value}"
+        message = f"{label} outside unsigned 64-bit domain"
         raise InvalidAcceleratorWorkError(message)
 
 
