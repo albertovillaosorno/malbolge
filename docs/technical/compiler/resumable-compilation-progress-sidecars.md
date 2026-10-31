@@ -52,9 +52,22 @@ Both immutable payload and
 mutable pointer writes require an exact integer byte count before sync or
 publication. Boolean reports, including `True` for a single byte and `False`
 for an empty checkpoint, cannot be mistaken for completed payload writes.
-Mutable pointer updates are serialized across processes from prior-sidecar
-validation through replacement, so a stale writer cannot overwrite a generation
-committed concurrently.
+Malformed non-integer write results are rejected before diagnostic formatting,
+so an unexpected result object cannot invoke foreign string methods or mask the
+typed prepublication failure. Mutable pointer updates are serialized across
+processes from prior-sidecar validation through replacement, so a stale writer
+cannot overwrite a generation committed concurrently.
+
+Public progress path helpers and readers accept only exact native platform
+`pathlib.Path` values (or exact strings for output path helpers), rejecting
+foreign subclasses before their overridden filesystem or rendering methods can
+run. Direct progress and portable-checkpoint JSON parsing similarly requires an
+exact native mapping before traversing its items, rather than dispatching a
+foreign mapping subclass's methods. Only a native `FileNotFoundError` may prove
+an absent progress pointer during preflight; only a native `FileExistsError`
+may authorize an immutable-generation no-replace collision and its subsequent
+byte-verified reuse. Foreign subclasses of either exception fail closed, even
+when a matching generation inode already exists.
 
 Temporary payload writers retain raw-descriptor ownership until Python stream
 construction succeeds. Unexpected non-`OSError` construction failures still
