@@ -120,13 +120,17 @@ def _fail(message: str) -> Never:
 
 
 def _mapping(value: object, keys: set[str], where: str) -> dict[str, Any]:
-    if not isinstance(value, dict) or set(value) != keys:
+    if (
+        type(value) is not dict
+        or any(type(name) is not str for name in value)
+        or set(value) != keys
+    ):
         _fail(f"{where}: expected fields {sorted(keys)}")
     return value
 
 
 def _text(value: object, where: str) -> str:
-    if not isinstance(value, str) or not value or value.strip() != value:
+    if type(value) is not str or not value or value.strip() != value:
         _fail(f"{where}: expected nonempty, unpadded text")
     if NUL in value:
         _fail(f"{where}: NUL not allowed")
@@ -170,10 +174,10 @@ def _reject_constant(value: str) -> Never:
 
 
 def _objectives(value: object) -> list[str]:
-    if not isinstance(value, list) or not value:
+    if type(value) is not list or not value:
         _fail("study.objectives: expected nonempty list")
     if any(
-        not isinstance(item, str) or item not in COST_METRICS for item in value
+        type(item) is not str or item not in COST_METRICS for item in value
     ):
         _fail("study.objectives: unknown cost metric")
     if len(set(value)) != len(value):
@@ -205,11 +209,11 @@ def _case(value: object, where: str) -> dict[str, Any]:
 
 def _verdict(row: dict[str, Any], where: str) -> None:
     outcome = row["outcome"]
-    if not isinstance(outcome, str) or outcome not in OUTCOMES:
+    if type(outcome) is not str or outcome not in OUTCOMES:
         _fail(f"{where}.outcome: unknown outcome")
     verifier = _text(row["verifier"], f"{where}.verifier")
     verdict = row["verifier_verdict"]
-    if not isinstance(verdict, str) or verdict not in {
+    if type(verdict) is not str or verdict not in {
         ACCEPTED,
         REJECTED,
         NOT_RUN,
@@ -223,7 +227,11 @@ def _verdict(row: dict[str, Any], where: str) -> None:
 
 
 def _metrics_shape(value: object, where: str) -> dict[str, int]:
-    if not isinstance(value, dict) or not set(value) <= COST_METRICS:
+    if (
+        type(value) is not dict
+        or any(type(name) is not str for name in value)
+        or not set(value) <= COST_METRICS
+    ):
         _fail(f"{where}.metrics: unknown metric")
     if ELAPSED not in value:
         _fail(f"{where}.metrics: elapsed_ns required even on failure")
@@ -328,7 +336,7 @@ def _admit_document(document: object) -> dict[str, Any]:
         _fail("unsupported arena schema version")
     study = _study(root["study"])
     observations = root["observations"]
-    if not isinstance(observations, list) or not observations:
+    if type(observations) is not list or not observations:
         _fail("observations: expected nonempty array")
     seen: set[tuple[Any, ...]] = set()
     for index, item in enumerate(observations):

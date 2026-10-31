@@ -1131,6 +1131,108 @@ def test_direct_analyzer_rejects_foreign_document_before_grouping(
         _ = analyze.analyze(cast("dict[str, Any]", foreign))
 
 
+class _HostileMap(dict[str, Any]):
+    """A caller-owned mapping can lie when admission iterates its keys."""
+
+    def __iter__(self) -> Any:
+        """Never allow untrusted mapping hooks to run before type admission."""
+        message = "caller-owned mapping iterator executed"
+        raise AssertionError(message)
+
+
+class _HostileList(list[Any]):
+    """A caller-owned array can replace observation values during parsing."""
+
+    def __iter__(self) -> Any:
+        """Never allow untrusted list hooks to run before type admission."""
+        message = "caller-owned list iterator executed"
+        raise AssertionError(message)
+
+
+class _HostileText(str):  # ruff: ignore[subclass-builtin]
+    """Text subclasses may override normalization methods."""
+
+    def strip(self, chars: str | None = None) -> str:
+        """The exact text-type guard must reject before calling strip."""
+        del chars
+        message = "caller-owned text normalization executed"
+        raise AssertionError(message)
+
+
+class _HostileKey(str):  # ruff: ignore[subclass-builtin]
+    """Caller-supplied dict keys can run code when rehashed."""
+
+    armed = False
+
+    def __hash__(self) -> int:
+        """Reject key inspection after construction unless type admission runs first.
+
+        Returns:
+            Original string hash while the fixture constructs its dictionary.
+
+        """
+        if self.armed:
+            message = "caller-owned key hash executed"
+            raise AssertionError(message)
+        return str.__hash__(self)
+
+
+@pytest.mark.parametrize("kind", ["root", "metrics"])
+def test_direct_analyzer_rejects_custom_key_hash_before_rehash(kind: str) -> None:
+    """Mutable in-memory records cannot run key hooks inside schema admission."""
+    document = _document()
+    source: dict[str, Any] = (
+        document if kind == "root" else document["observations"][0]["metrics"]
+    )
+    key = "study" if kind == "root" else "elapsed_ns"
+    val = source.pop(key)
+    source[_HostileKey(key)] = val
+    _HostileKey.armed = True
+    try:
+        with pytest.raises(analyze.ArenaError, match="expected fields|unknown metric"):
+            _ = analyze.analyze(document)
+    finally:
+        _HostileKey.armed = False
+
+
+@pytest.mark.parametrize(
+    ("kind", "diagnostic"),
+    [
+        ("root", "root: expected fields"),
+        ("study", "study: expected fields"),
+        ("observation", r"observations\[0\]: expected fields"),
+        ("metrics", "metrics: unknown metric"),
+        ("objectives", "study.objectives: expected nonempty list"),
+        ("observations", "observations: expected nonempty array"),
+        ("text", "study.question: expected nonempty"),
+    ],
+)
+def test_direct_analyzer_rejects_spoofed_nested_json_types_before_hooks(
+    kind: str, diagnostic: str,
+) -> None:
+    """Native JSON shapes, not caller-controlled method overrides, enter ranking."""
+    document = _document()
+    if kind == "root":
+        document = _HostileMap(document)
+    elif kind == "study":
+        document["study"] = _HostileMap(document["study"])
+    elif kind == "observation":
+        document["observations"][0] = _HostileMap(document["observations"][0])
+    elif kind == "metrics":
+        row = document["observations"][0]
+        row["metrics"] = _HostileMap(row["metrics"])
+    elif kind == "objectives":
+        study = document["study"]
+        study["objectives"] = _HostileList(study["objectives"])
+    elif kind == "observations":
+        document["observations"] = _HostileList(document["observations"])
+    elif kind == "text":
+        study = document["study"]
+        study["question"] = _HostileText(study["question"])
+    with pytest.raises(analyze.ArenaError, match=diagnostic):
+        _ = analyze.analyze(document)
+
+
 @pytest.mark.parametrize(
     ("field", "invalid"),
     [
