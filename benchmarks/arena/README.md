@@ -276,7 +276,11 @@ exception subclass, malformed status, or forged acknowledgement rejects the
 attempt as a typed cleanup failure. A malformed `poll()` still triggers the
 direct kill and reap fallback before rejection. This guards against false
 producer success from untrusted host receipts; it does **not** prove that
-all descendants were contained or terminated.
+all descendants were contained or terminated. Pipe cleanup also requires an
+exact native boolean `closed` state and native `None` from any needed stream
+`close()`; foreign status and false success-looking close receipts reject the
+attempt. When another failure is already active, cleanup faults remain
+secondary and cannot replace the original child rejection.
 Direct target subprocess calls additionally admit at most 512 arguments and
 16 KiB of filesystem-encoded argument bytes (including NUL terminators).
 Unencodable host argument strings, oversized lists and oversized encoded

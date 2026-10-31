@@ -433,8 +433,14 @@ def _finish_child(child: sp.Popen[bytes]) -> None:
     for stream in (child.stdin, child.stdout, child.stderr):
         if stream is not None:
             try:
-                if not stream.closed:
-                    stream.close()
+                # Foreign wrappers cannot claim cleanup with truthy/falsey
+                # state or a non-void close receipt. Real pipe APIs return
+                # native booleans for closed and None from close().
+                closed = stream.closed
+                if type(closed) is not bool:
+                    _fail("bounded target stream closed state invalid")
+                if not closed and stream.close() is not None:
+                    _fail("bounded target stream close returned invalid receipt")
             except Exception as error:
                 # Preserve the primary failure even if close or its state
                 # inspection raises an unexpected ordinary exception.

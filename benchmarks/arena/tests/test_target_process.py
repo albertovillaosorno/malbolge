@@ -2652,6 +2652,92 @@ def test_target_input_close_bypasses_foreign_primary_add_note(
     ]
 
 
+@pytest.mark.parametrize("receipt", [False, True, 0, 1, "closed"])
+def test_target_cleanup_rejects_foreign_stream_close_receipt(
+    monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """No non-None output-pipe close receipt can certify cleanup."""
+    events: list[str] = []
+
+    class StreamProbe:
+        closed = False
+
+        def close(self) -> object:
+            events.append("close")
+            return receipt
+
+    class ChildProbe:
+        stdin = None
+        stdout = StreamProbe()
+        stderr = None
+
+    monkeypatch.setattr(target_process, "_terminate_group", lambda _child: None)
+    with pytest.raises(target_process.TargetProcessError, match="cleanup"):
+        target_process._finish_child(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert events == ["close"]
+
+
+@pytest.mark.parametrize("state", [None, 0, 1, "yes"])
+def test_target_cleanup_rejects_foreign_stream_closed_state(
+    monkeypatch: pytest.MonkeyPatch, state: object
+) -> None:
+    """Only a native boolean can justify skipping or attempting close."""
+    events: list[str] = []
+
+    class StreamProbe:
+        closed = state
+
+        def close(self) -> None:
+            events.append("close")
+
+    class ChildProbe:
+        stdin = None
+        stdout = StreamProbe()
+        stderr = None
+
+    monkeypatch.setattr(target_process, "_terminate_group", lambda _child: None)
+    with pytest.raises(target_process.TargetProcessError, match="cleanup"):
+        target_process._finish_child(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert events == []
+
+
+def test_target_cleanup_forged_receipt_preserves_primary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged close return remains secondary to an existing failure."""
+
+    class StreamProbe:
+        closed = False
+
+        def close(self) -> bool:
+            return True
+
+    class ChildProbe:
+        stdin = None
+        stdout = StreamProbe()
+        stderr = None
+
+    monkeypatch.setattr(target_process, "_terminate_group", lambda _child: None)
+    primary = _HostilePrimaryTargetError("original output overflow")
+    with pytest.raises(_HostilePrimaryTargetError) as caught:
+        try:
+            raise primary
+        finally:
+            target_process._finish_child(  # ruff: ignore[private-member-access]
+                cast("sp.Popen[bytes]", ChildProbe())
+            )
+    assert caught.value is primary
+    expected_note = (
+        "bounded target cleanup also failed: "
+        "bounded target stream close returned invalid receipt"
+    )
+    assert primary.__notes__ == [expected_note]
+
+
 class _UnexpectedTargetCleanupError(Exception):
     """Foreign cleanup code may throw outside the usual I/O error family."""
 

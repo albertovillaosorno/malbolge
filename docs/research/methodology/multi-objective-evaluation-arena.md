@@ -244,6 +244,11 @@ receipts. A failed delivery still retains its original typed cause, with a
 bad close receipt reported only as secondary cleanup evidence. Red-first
 regressions show previously accepted forged close returns for delivered
 bytes; this checks an adapter receipt, not independent OS-level EOF proof.
+The final subprocess cleanup separately requires exact native boolean stream
+`closed` states and native `None` for any needed stdout/stderr/stdin `close()`.
+Previously a false, integer, or textual close receipt could yield successful
+capture; red-first regressions now reject it. Cleanup errors remain secondary
+to an existing process failure, and these checks are not OS close attestation.
 
 Selector output collection now anchors each readiness key to the exact
 registration receipt for its original stdout/stderr descriptor, checks the
