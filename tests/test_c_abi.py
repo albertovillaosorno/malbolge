@@ -728,3 +728,94 @@ def test_manual_doom_accepts_physical_nesting_and_explicit_alias(
     alias = tmp_path / "alias.c"
     alias.symlink_to(source)
     assert manual_validator._validated_files([str(alias)]) == (source,)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_c_abi_foreign_host_failure_never_formats_exception(
+    monkeypatch: pytest.MonkeyPatch, fault_type: type[Exception]
+) -> None:
+    """Disk admission faults stay typed without running foreign formatters."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign ABI disk failure formatter executed")
+
+    foreign = type("ForeignAbiDiskFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("disk denied")
+
+    def fail_read(_path: Path) -> bytes:
+        raise fault
+
+    monkeypatch.setattr(c_abi, "_read_document_bytes", fail_read)
+    with pytest.raises(
+        c_abi.CAbiValidationError, match="failed to read C ABI"
+    ) as caught:
+        _ = c_abi.load_document(ABI_PATH)
+    assert caught.value.__cause__ is fault
+    assert "ForeignAbiDiskFault" in str(caught.value)
+
+
+def test_c_abi_foreign_json_parser_failure_never_formats_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A JSON decoder subclass cannot substitute execution for diagnostics."""
+
+    class ForeignJsonFault(json.JSONDecodeError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign ABI JSON decoder formatter executed")
+
+    fault = ForeignJsonFault("bad JSON", "{}", 0)
+
+    def fail_decode(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(c_abi.json, "loads", fail_decode)
+    with pytest.raises(c_abi.CAbiValidationError, match="invalid JSON") as caught:
+        _ = c_abi.loads_document("{}")
+    assert caught.value.__cause__ is fault
+    assert "ForeignJsonFault" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [c_abi.CAbiValidationError, c_abi.target_profile.ProfileValidationError],
+)
+def test_c_abi_cli_never_formats_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """The ABI validator exits one instead of invoking foreign error hooks."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign ABI CLI failure formatter executed")
+
+    foreign = type("ForeignAbiCliFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe CLI error")
+
+    def fail_projection() -> None:
+        raise fault
+
+    monkeypatch.setattr(c_abi, "canonical_projection", fail_projection)
+    assert c_abi.main() == 1
+    output = capsys.readouterr()
+    assert not output.out
+    assert "ForeignAbiCliFault" in output.err
+
+
+def test_c_abi_native_host_failure_retains_detail_and_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Trusted native disk failures retain their original useful diagnosis."""
+    fault = PermissionError("ABI document read permission denied")
+
+    def fail_read(_path: Path) -> bytes:
+        raise fault
+
+    monkeypatch.setattr(c_abi, "_read_document_bytes", fail_read)
+    with pytest.raises(
+        c_abi.CAbiValidationError, match="ABI document read permission denied"
+    ) as caught:
+        _ = c_abi.load_document(ABI_PATH)
+    assert caught.value.__cause__ is fault

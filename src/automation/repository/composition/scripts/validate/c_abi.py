@@ -213,6 +213,28 @@ def _fail(message: str) -> Never:
     raise CAbiValidationError(message)
 
 
+def _safe_error_detail(error: Exception) -> str:
+    """Preserve native diagnostics without invoking untrusted formatter hooks.
+
+    Returns:
+        Text for exact owned/native exceptions, or foreign exception type name.
+
+    """
+    if type(error) in (
+        CAbiValidationError,
+        target_profile.ProfileValidationError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+        OSError,
+        PermissionError,
+        FileNotFoundError,
+        ValueError,
+        RuntimeError,
+    ):
+        return str(error)
+    return type(error).__name__
+
+
 def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> JsonObject:
     result: JsonObject = {}
     for key, value in pairs:
@@ -265,7 +287,9 @@ def loads_document(text: str) -> JsonObject:
             json.loads(text, object_pairs_hook=_reject_duplicate_pairs),
         )
     except json.JSONDecodeError as error:
-        _fail(f"invalid JSON: {error}")
+        raise CAbiValidationError(
+            f"invalid JSON: {_safe_error_detail(error)}"
+        ) from error
     return _mapping(parsed, "C ABI document")
 
 
@@ -376,10 +400,12 @@ def load_document(path: Path = DEFAULT_ABI) -> JsonObject:
     except CAbiValidationError:
         raise
     except UnicodeDecodeError as error:
-        _fail(f"invalid C ABI UTF-8: {error}")
+        raise CAbiValidationError(
+            f"invalid C ABI UTF-8: {_safe_error_detail(error)}"
+        ) from error
     except (OSError, ValueError, RuntimeError) as error:
         raise CAbiValidationError(
-            f"failed to read C ABI document {path}: {error}"
+            f"failed to read C ABI document {path}: {_safe_error_detail(error)}"
         ) from error
     return loads_document(text)
 
@@ -738,7 +764,7 @@ def main() -> int:
         CAbiValidationError,
         target_profile.ProfileValidationError,
     ) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
         return 1
     message = f"{projection.abi_id} target={projection.target_profile} "
     message += f"clang={projection.clang_target}\n"
