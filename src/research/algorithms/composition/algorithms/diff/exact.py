@@ -775,10 +775,13 @@ def _instruction_bytes(
 def _write_output_file(path: Path, data: bytes, context: str) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_bytes(data)
+        written = path.write_bytes(data)
     except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} write failed: {path}: {error}"
         raise ExactTreeError(message) from error
+    if type(written) is not int or written != len(data):
+        message = f"{context} short or invalid byte count: {path}"
+        raise ExactTreeError(message)
 
 
 def _make_output_directory(

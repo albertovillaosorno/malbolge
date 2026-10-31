@@ -83,6 +83,7 @@ _COPY_SIZE_CASE = "copy-size"
 _PATCH_RANGE_CASE = "patch-range"
 _LITERAL_SIZE_CASE = "literal-size"
 _LITERAL_DIGEST_CASE = "literal-digest"
+_SHORT_WRITE = "short"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -1390,6 +1391,41 @@ def test_passthrough_root_is_dynamic_after_exact_authoring(
         ),
         "passthrough path leaked into static source snapshot",
     )
+
+
+@pytest.mark.parametrize(
+    "reported",
+    [_SHORT_WRITE, None, True, -1, 10**9],
+)
+def test_passthrough_write_count_must_not_publish_incomplete_dynamic_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reported: object,
+) -> None:
+    """Dynamic passthrough bytes need complete writes, not a static digest."""
+    source, oracle = _synthetic_pair(tmp_path)
+    _write(source, "external/game.bin", b"authoring-data")
+    _write(oracle, "external/game.bin", b"authoring-data")
+    plan = build_exact_plan(source, oracle, passthrough_roots=("external",))
+    _write(source, "external/game.bin", _RUNTIME_DATA)
+    output = tmp_path / "passthrough-out"
+    staging = tmp_path / ".passthrough-out.staging"
+    blocked = staging / "external/game.bin"
+    original_write = Path.write_bytes
+
+    def misreported_write(path: Path, data: bytes) -> int:
+        if path == blocked and reported == _SHORT_WRITE:
+            return original_write(path, data[:1])
+        written = original_write(path, data)
+        if path == blocked:
+            return cast("int", reported)
+        return written
+
+    monkeypatch.setattr(Path, "write_bytes", misreported_write)
+    with pytest.raises(ExactTreeError, match="short or invalid byte count"):
+        materialize_exact_plan(source, plan, output)
+    assert not output.exists()
+    assert not staging.exists()
 
 
 def test_passthrough_authoring_requires_matching_source_and_oracle(
