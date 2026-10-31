@@ -429,6 +429,141 @@ def test_historical_csv_header_rejected_before_dict_reader(
         historical_pairs.build_report(tmp_path, TEMP)
 
 
+def test_historical_csv_direct_text_rejects_subclass_before_hooks() -> None:
+    """Direct callers cannot run foreign text methods ahead of preflight."""
+
+    class HostileText(str):
+        def __contains__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign historical text contains hook executed")
+
+        def __getitem__(self, other: object) -> str:
+            del other
+            raise AssertionError("foreign historical text slicing hook executed")
+
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="exact bounded text"
+    ):
+        historical_pairs._csv_rows(
+            HostileText("repetition,strategy_id\n0,baseline\n"),
+            registered_fields=historical_pairs.REGISTERED_RAW_COLUMNS[
+                "prefix_decomposition_measurement"
+            ],
+            expected_rows=1,
+        )
+
+
+def test_historical_csv_direct_text_rejects_multibyte_overflow(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Unicode text can be shorter in characters than its UTF-8 byte size."""
+    content = "é" * (historical_pairs.MAX_SOURCE_BYTES // 2 + 1)
+    assert len(content) <= historical_pairs.MAX_SOURCE_BYTES
+    assert len(content.encode("utf-8")) > historical_pairs.MAX_SOURCE_BYTES
+    monkeypatch.setattr(
+        historical_pairs.csv,
+        "DictReader",
+        lambda *_args, **_kwargs: pytest.fail("oversized source reached CSV reader"),
+    )
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="exact bounded text"
+    ):
+        historical_pairs._csv_rows(
+            content,
+            registered_fields=historical_pairs.REGISTERED_RAW_COLUMNS[
+                "prefix_decomposition_measurement"
+            ],
+            expected_rows=1,
+        )
+
+
+def test_historical_csv_direct_text_rejects_unpaired_surrogate() -> None:
+    """Direct malformed Unicode stays a typed rejection before CSV parsing."""
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="strict UTF-8 text"
+    ) as caught:
+        historical_pairs._csv_rows(
+            "bad\ud800text",
+            registered_fields=historical_pairs.REGISTERED_RAW_COLUMNS[
+                "prefix_decomposition_measurement"
+            ],
+            expected_rows=1,
+        )
+    assert type(caught.value.__cause__) is UnicodeEncodeError
+
+
+class _HostileHistoricalCSVVerdict:
+    """A forged guard result must not run its truthiness hook."""
+
+    def __bool__(self) -> bool:
+        raise AssertionError("foreign historical CSV preflight bool executed")
+
+
+@pytest.mark.parametrize(
+    "receipt", [1, 0, "admitted", [], object(), _HostileHistoricalCSVVerdict()]
+)
+def test_historical_csv_preflight_rejects_nonboolean_receipts_before_reader(
+    monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Only a native boolean may authorize CSV column allocation."""
+    columns = historical_pairs.REGISTERED_RAW_COLUMNS[
+        "prefix_decomposition_measurement"
+    ]
+    called: list[str] = []
+
+    def forged_guard(_text: str, _limit: int) -> object:
+        return receipt
+
+    def forbidden_reader(*_args: object, **_kwargs: object) -> None:
+        called.append("parser")
+        raise AssertionError("forged preflight reached historical CSV parser")
+
+    monkeypatch.setattr(
+        historical_pairs.csv_admission, "within_column_limit", forged_guard
+    )
+    monkeypatch.setattr(historical_pairs.csv, "DictReader", forbidden_reader)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="preflight.*nonnative"
+    ):
+        historical_pairs._csv_rows(
+            "repetition,strategy_id\n0,baseline\n",
+            registered_fields=columns,
+            expected_rows=1,
+        )
+    assert not called
+
+
+@pytest.mark.parametrize("kind", [ValueError, TypeError, RuntimeError, IndexError])
+def test_historical_csv_preflight_types_unexpected_host_fault(
+    monkeypatch: pytest.MonkeyPatch, kind: type[Exception]
+) -> None:
+    """Preflight crashes are typed failures without formatting foreign hooks."""
+
+    class HostileFault(kind):
+        def __str__(self) -> str:
+            raise AssertionError("foreign historical CSV fault was formatted")
+
+    fault = HostileFault("broken dependency")
+
+    def failed_guard(_text: str, _limit: int) -> bool:
+        raise fault
+
+    monkeypatch.setattr(
+        historical_pairs.csv_admission, "within_column_limit", failed_guard
+    )
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="column preflight failed"
+    ) as caught:
+        historical_pairs._csv_rows(
+            "repetition,strategy_id\n0,baseline\n",
+            registered_fields=historical_pairs.REGISTERED_RAW_COLUMNS[
+                "prefix_decomposition_measurement"
+            ],
+            expected_rows=1,
+        )
+    assert caught.value.__cause__ is fault
+
+
 def test_excessive_historical_data_columns_reject_before_parser(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

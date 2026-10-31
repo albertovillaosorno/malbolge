@@ -899,6 +899,12 @@ quality-map fingerprints, complete registered raw CSV schemas, exact
 structural counts, and source-byte hashes. The independent retained
 `source-commit.txt` must agree with the manifest's recorded Git revision.
 An explicit evidence-status marker states `source-reported-not-reverified`.
+The importer also admits exact native CSV source text bounded by the retained
+4 MiB byte limit, including UTF-8 expansion. The shared column preflight must
+return an exact native boolean before the `DictReader` is constructed, and
+unexpected dependency errors are converted to typed import failures without
+formatting caller-supplied exceptions. Red-first tests reject nonnative and
+hostile preflight receipts; this does not authenticate the original timing.
 
 The prefix-decomposition study reports 8,836 versus 8,742 verifier calls,
 with baseline/candidate timing medians of 831,921,051 and 835,180,632 ns.

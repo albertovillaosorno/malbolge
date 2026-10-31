@@ -209,16 +209,40 @@ def _bounded_csv_rows(
     return records
 
 
+def _admit_csv_text(text: str) -> None:
+    """Bound direct CSV inputs to the original retained source byte limit."""
+    if type(text) is not str or not text or len(text) > MAX_SOURCE_BYTES:
+        _fail("historical raw CSV requires exact bounded text")
+    try:
+        size = len(text.encode("utf-8"))
+    except UnicodeError as error:
+        message = "historical raw CSV requires strict UTF-8 text"
+        raise HistoricalEvidenceError(message) from error
+    if size > MAX_SOURCE_BYTES:
+        _fail("historical raw CSV requires exact bounded text")
+
+
 def _csv_rows(
     text: str,
     *,
     registered_fields: frozenset[str],
     expected_rows: int,
 ) -> list[dict[str, str]]:
+    _admit_csv_text(text)
     if analyze.NUL in text:
         _fail("historical raw CSV cannot contain NUL")
     _require_bounded_csv_header(text)
-    if not csv_admission.within_column_limit(text, len(registered_fields)):
+    try:
+        column_receipt = csv_admission.within_column_limit(
+            text, len(registered_fields)
+        )
+    except Exception as error:
+        # Never trust the preflight dependency to supply or format a verdict.
+        message = "historical raw CSV column preflight failed"
+        raise HistoricalEvidenceError(message) from error
+    if type(column_receipt) is not bool:
+        _fail("historical raw CSV column preflight returned nonnative verdict")
+    if not column_receipt:
         _fail("historical raw CSV columns exceed registered count")
     try:
         reader = csv.DictReader(StringIO(text, newline=""), strict=True)

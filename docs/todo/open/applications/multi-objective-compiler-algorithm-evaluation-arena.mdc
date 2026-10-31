@@ -549,6 +549,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   commit pin, with exact source byte fingerprints.
   The original research records remain the evidence authority; no new runs,
   verifier replay, or multi-difficulty scaling conclusion is asserted.
+  Its direct historical CSV adapter now rejects nonnative or oversized UTF-8
+  source text before header or parser hooks, and admits the shared column
+  preflight only with an exact boolean verdict. Unexpected preflight errors
+  become typed import failures without formatting foreign exceptions;
+  synthetic red-first regressions demonstrate these boundaries.
 - Required evidence: reproducible run commands, retained challenge and
   algorithm identities, raw multidimensional samples, and independent verifier
   outcomes for every measured stage.
