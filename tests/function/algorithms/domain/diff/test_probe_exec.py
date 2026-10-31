@@ -814,6 +814,99 @@ def test_uncaught_reader_thread_failure_rejects_probe(
     _expect(bool(uncaught), "worker exception fixture was not exercised")
 
 
+def _hostile_primary_probe_fault() -> RuntimeError:
+    """Foreign primary which forbids overridden notes while unwinding."""
+
+    def reject_note(self: BaseException, note: str) -> None:
+        del self, note
+        raise AssertionError("foreign probe primary note hook executed")
+
+    foreign = type("ForeignProbePrimary", (RuntimeError,), {"add_note": reject_note})
+    return foreign("original probe operation failed")
+
+
+@pytest.mark.parametrize("cleanup_kind", ["native", "foreign", "hostile-args"])
+def test_unowned_probe_pipe_close_keeps_foreign_primary(
+    cleanup_kind: str,
+) -> None:
+    """Cleanup notes cannot invoke untrusted error text or primary hooks."""
+    primary = _hostile_primary_probe_fault()
+
+    class ForeignCloseError(OSError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign pipe close text executed")
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("pipe close argument text executed")
+
+    secondary = {
+        "native": OSError("native pipe close denied"),
+        "foreign": ForeignCloseError("foreign pipe close denied"),
+        "hostile-args": OSError(HostileArgument()),
+    }[cleanup_kind]
+
+    class CloseFault(io.BytesIO):
+        def close(self) -> None:
+            super().close()
+            raise secondary
+
+    stream = CloseFault(b"payload")
+    probe_exec_module._close_unowned_pipe(stream, None, primary)
+    _expect(stream.closed, "unowned pipe was not closed")
+    notes = cast("list[str]", getattr(primary, "__notes__", []))
+    _expect(len(notes) == 1 and "pipe close failed" in notes[0], "cleanup note missing")
+    if cleanup_kind == "native":
+        _expect("native pipe close denied" in notes[0], "native note detail lost")
+
+
+@pytest.mark.parametrize("cleanup_kind", ["native", "foreign", "hostile-args"])
+def test_probe_child_cleanup_keeps_foreign_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_kind: str,
+) -> None:
+    """A secondary child-stop fault cannot replace worker failure."""
+    primary = _hostile_primary_probe_fault()
+
+    class ForeignStopError(ProbeExecutionError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign child-stop text executed")
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("child-stop argument text executed")
+
+    secondary = {
+        "native": ProbeExecutionError("native child cleanup denied"),
+        "foreign": ForeignStopError("foreign child cleanup denied"),
+        "hostile-args": ProbeExecutionError(HostileArgument()),
+    }[cleanup_kind]
+    process = object()
+
+    def fail_worker(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise primary
+
+    def fail_stop(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise secondary
+
+    with monkeypatch.context() as patch:
+        patch.setattr(probe_exec_module, "_spawn_probe", lambda *_args: process)
+        patch.setattr(probe_exec_module, "_start_capture_checked", fail_worker)
+        patch.setattr(probe_exec_module, "_stop_child", fail_stop)
+        command = ProbeCommand(ToolExecutable(_PYTHON_TOOL))
+        with pytest.raises(RuntimeError) as caught:
+            probe_exec_module._launch_command(["probe"], command, tmp_path)
+
+    _expect(caught.value is primary, "child cleanup replaced original failure")
+    notes = cast("list[str]", getattr(primary, "__notes__", []))
+    _expect(len(notes) == 1 and "child cleanup" in notes[0], "cleanup note missing")
+    if cleanup_kind == "native":
+        _expect("native child cleanup denied" in notes[0], "native note detail lost")
+
+
 @pytest.mark.parametrize("fail_writer", [False, True])
 def test_probe_worker_startup_failures_are_wrapped(
     tmp_path: Path,

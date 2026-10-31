@@ -778,6 +778,20 @@ def _start_writer(
     return writer
 
 
+def _safe_probe_cleanup_detail(error: BaseException) -> str:
+    """Describe native cleanup faults without formatting foreign objects.
+
+    Returns:
+        A native single-string reason or an exception class name.
+
+    """
+    if type(error) in (OSError, RuntimeError, ValueError, ProbeExecutionError):
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+    return type(error).__name__
+
+
 def _close_unowned_pipe(
     stream: IO[bytes] | None,
     worker: threading.Thread | None,
@@ -789,7 +803,9 @@ def _close_unowned_pipe(
     try:
         stream.close()
     except (OSError, RuntimeError, ValueError) as error:
-        failure.add_note(f"probe unused pipe close failed: {error}")
+        BaseException.add_note(
+            failure, "probe unused pipe close failed: " + _safe_probe_cleanup_detail(error)
+        )
 
 
 def _start_capture(
@@ -983,7 +999,11 @@ def _launch_command(
         try:
             _stop_child(process)
         except ProbeExecutionError as cleanup_error:
-            error.add_note(f"probe child cleanup also failed: {cleanup_error}")
+            BaseException.add_note(
+                error,
+                "probe child cleanup also failed: "
+                + _safe_probe_cleanup_detail(cleanup_error),
+            )
         if running is not None:
             _close_failed_running_pipes(running, error)
         raise
