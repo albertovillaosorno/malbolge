@@ -895,6 +895,61 @@ def test_cli_opt_in_verifier_cost_publishes_four_objective_study(
 
 
 @pytest.mark.parametrize(
+    "invalid_pairs",
+    [None, 1, "1", [1], ([],), (1, []), ((1,),)],
+    ids=[
+        "missing",
+        "scalar",
+        "text",
+        "list",
+        "unhashable",
+        "mixed-unhashable",
+        "nested-tuple",
+    ],
+)
+def test_direct_target_plan_rejects_foreign_pair_collections_before_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_pairs: object,
+) -> None:
+    """Malformed collections cannot pass or crash before target setup."""
+    plan = target_echo_reference.StudyPlan(
+        cast("tuple[int, ...]", invalid_pairs), 1
+    )
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        message = "malformed pair collection launched target study"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(target_echo_reference, "_prepare_context", forbidden)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="exact tuple"
+    ):
+        target_echo_reference.run_study(plan)
+
+
+@pytest.mark.parametrize("invalid", [None, False, 0, "plan", object()])
+def test_direct_target_study_rejects_foreign_plan_before_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """Direct producer APIs require an actual StudyPlan before any I/O."""
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        message = "foreign plan launched target study"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(target_echo_reference, "_prepare_context", forbidden)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="exact StudyPlan"
+    ):
+        target_echo_reference.run_study(
+            cast("target_echo_reference.StudyPlan", invalid)
+        )
+
+
+@pytest.mark.parametrize(
     "plan",
     [
         target_echo_reference.StudyPlan((), 1),

@@ -176,14 +176,17 @@ def _fail(message: str) -> Never:
 
 
 def _validate_plan(plan: StudyPlan) -> None:
+    if type(plan) is not StudyPlan:
+        _fail("target echo requires an exact StudyPlan")
+    if type(plan.pairs) is not tuple:
+        _fail("target echo pairs require an exact tuple of integers")
     if not 1 <= len(plan.pairs) <= MAX_LEVELS:
         _fail("target echo requires between one and four difficulty levels")
+    if any(type(value) is not int for value in plan.pairs):
+        _fail("target echo pairs require an exact tuple of integers")
     if len(set(plan.pairs)) != len(plan.pairs):
         _fail("target echo difficulty levels must be distinct")
-    if any(
-        type(value) is not int or not 1 <= value <= MAX_PAIRS
-        for value in plan.pairs
-    ):
+    if any(not 1 <= value <= MAX_PAIRS for value in plan.pairs):
         _fail("target echo requires 1..64 input/output pairs per level")
     if type(plan.trials) is not int or not 1 <= plan.trials <= MAX_TRIALS:
         _fail("target echo requires one to three paired trials")
