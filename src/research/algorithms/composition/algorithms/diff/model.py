@@ -344,6 +344,79 @@ class ExactAuthoringPlan:
         _require_static_target_outside_passthrough(
             self.target, self.passthrough_roots
         )
+        _require_static_source_references(self)
+
+
+def _require_static_source_entry(
+    path: str,
+    source_by_path: dict[str, FileRecord],
+    passthrough_roots: tuple[str, ...],
+) -> FileRecord | None:
+    """Find a static source file, or permit an explicit dynamic path.
+
+    Returns:
+        The admitted source record, or None for dynamic passthrough.
+
+    Raises:
+        TreeModelError: The static reference is absent from the snapshot.
+
+    """
+    source = source_by_path.get(path)
+    if source is not None:
+        return source
+    if any(
+        path == root or path.startswith(root + "/")
+        for root in passthrough_roots
+    ):
+        return None
+    message = f"exact plan source path is absent from snapshot: {path}"
+    raise TreeModelError(message)
+
+
+def _require_static_instruction_consistency(
+    instruction: ExactInstruction,
+    source: FileRecord,
+    target: FileRecord,
+) -> None:
+    """Require copy and patch references to fit their static snapshots.
+
+    Raises:
+        TreeModelError: A copy disagrees or a patch exceeds source size.
+
+    """
+    if instruction.kind is ExactInstructionKind.COPY_SOURCE:
+        if instruction.expected_sha256 != source.sha256:
+            message = f"exact plan copy-source digest differs: {source.path}"
+            raise TreeModelError(message)
+        if target.size != source.size:
+            message = f"exact plan copy-source size differs: {source.path}"
+            raise TreeModelError(message)
+    if instruction.kind is ExactInstructionKind.PATCH_SOURCE and any(
+        segment.offset + segment.length > source.size
+        for segment in instruction.segments
+        if type(segment) is SourceSlice
+    ):
+        message = (
+            f"exact plan source slice exceeds snapshot size: {source.path}"
+        )
+        raise TreeModelError(message)
+
+
+def _require_static_source_references(plan: ExactAuthoringPlan) -> None:
+    """Reject impossible static copy and byte-slice instructions."""
+    source_by_path = {record.path: record for record in plan.source.files}
+    target_by_path = {record.path: record for record in plan.target.files}
+    for instruction in plan.instructions:
+        path = instruction.source_path
+        if path is None:
+            continue
+        source = _require_static_source_entry(
+            path, source_by_path, plan.passthrough_roots
+        )
+        if source is not None:
+            _require_static_instruction_consistency(
+                instruction, source, target_by_path[instruction.output_path]
+            )
 
 
 def _require_static_target_outside_passthrough(

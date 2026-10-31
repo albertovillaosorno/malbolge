@@ -78,6 +78,8 @@ _MISSING_PLAN_TARGET = "missing"
 _EXTRA_PLAN_TARGET = "extra"
 _CLOSE_FAILURE_NOTE = "descriptor close also failed"
 _TREE_FILE_CONTEXT = "tree file"
+_COPY_SIZE_CASE = "copy-size"
+_PATCH_RANGE_CASE = "patch-range"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -383,6 +385,55 @@ def test_exact_plan_requires_exact_target_instruction_mapping(
             target=valid.target,
             instructions=instructions,
             passthrough_roots=valid.passthrough_roots,
+        )
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected"),
+    [
+        ("missing-source", "source path is absent"),
+        ("copy-digest", "copy-source digest"),
+        ("copy-size", "copy-source size"),
+        ("patch-range", "source slice exceeds"),
+    ],
+)
+def test_direct_exact_plan_rejects_impossible_static_source_references(
+    variant: str,
+    expected: str,
+) -> None:
+    """Static snapshot evidence must bound all referenced source bytes."""
+    source = TreeSnapshot(
+        files=(
+            FileRecord("src/a.bin", "a" * 64, 4),
+            FileRecord("src/b.bin", "b" * 64, 2),
+        )
+    )
+    target_size = 5 if variant == _COPY_SIZE_CASE else 4
+    target = TreeSnapshot(files=(FileRecord("out.bin", "a" * 64, target_size),))
+    source_path = {
+        "missing-source": "src/missing.bin",
+        "copy-digest": "src/b.bin",
+    }.get(variant, "src/a.bin")
+    if variant == _PATCH_RANGE_CASE:
+        instruction = ExactInstruction(
+            output_path="out.bin",
+            kind=ExactInstructionKind.PATCH_SOURCE,
+            expected_sha256="a" * 64,
+            source_path=source_path,
+            segments=(SourceSlice(offset=3, length=2),),
+        )
+    else:
+        instruction = ExactInstruction(
+            output_path="out.bin",
+            kind=ExactInstructionKind.COPY_SOURCE,
+            expected_sha256="a" * 64,
+            source_path=source_path,
+        )
+    with pytest.raises(TreeModelError, match=expected):
+        _ = ExactAuthoringPlan(
+            source=source,
+            target=target,
+            instructions=(instruction,),
         )
 
 
