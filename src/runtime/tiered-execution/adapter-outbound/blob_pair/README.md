@@ -15,6 +15,18 @@ Atomic `rename` of that staging manifest is the single commit point. Readers
 first read one complete manifest and then load only the two immutable members it
 names indirectly through its epoch/generation token.
 
+A bounded reader admits each manifest and immutable member as an actual
+regular file without following symlinks, checking stable descriptor/path
+identity, size and change stamps before and after reading. Linux/Android
+opens are nonblocking even if an uncooperative writer substitutes a FIFO
+for the initial regular pathname. Symlink, directory, observed replacement
+and in-place rewrite sources reject with typed open/read errors; current
+pair-member validation before generation reclamation applies the same admission
+rather than opening an unchecked directory, link, or FIFO; these checks
+do not claim atomic snapshots against later hostile mutations. Each member
+retains its caller-supplied positive byte limit; the manifest read retains
+its exact 24-byte canonical frame limit.
+
 A persistent sibling `.lock` file coordinates cooperating readers and
 publishers. Readers hold a shared lock from manifest observation through both
 immutable member reads. Generation creation, manifest replacement, and

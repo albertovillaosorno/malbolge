@@ -60,6 +60,87 @@ use crate::file_coordination::{
     NativeContinuationFileExclusiveGuard, NativeContinuationFileSharedGuard,
 };
 
+// On Linux/Android, a pathname replaced with a writerless FIFO must not
+// turn an otherwise bounded manifest/member read into an unbounded wait.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn open_pair_source(path: &Path) -> std::io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    const LINUX_O_NONBLOCK: i32 = 1 << 11;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(LINUX_O_NONBLOCK)
+        .open(path)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn open_pair_source(path: &Path) -> std::io::Result<File> {
+    File::open(path)
+}
+
+#[cfg(unix)]
+fn pair_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.dev() == after.dev()
+        && before.ino() == after.ino()
+        && before.len() == after.len()
+        && before.mtime() == after.mtime()
+        && before.mtime_nsec() == after.mtime_nsec()
+        && before.ctime() == after.ctime()
+        && before.ctime_nsec() == after.ctime_nsec()
+}
+
+#[cfg(windows)]
+fn pair_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.volume_serial_number().is_some()
+        && before.volume_serial_number() == after.volume_serial_number()
+        && before.file_index().is_some()
+        && before.file_index() == after.file_index()
+        && before.last_write_time() == after.last_write_time()
+        && before.change_time() == after.change_time()
+}
+
+#[cfg(not(any(unix, windows)))]
+fn pair_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.modified().ok().is_some()
+        && before.modified().ok() == after.modified().ok()
+}
+
+fn verify_pair_source(path: &Path, opened: &File, before: &fs::Metadata) -> std::io::Result<()> {
+    let descriptor = opened.metadata()?;
+    let pathname = fs::symlink_metadata(path)?;
+    if pair_metadata_matches(before, &descriptor)
+        && pair_metadata_matches(before, &pathname)
+    {
+        Ok(())
+    } else {
+        Err(std::io::Error::from(ErrorKind::InvalidData))
+    }
+}
+
+fn open_bounded_pair_source(path: &Path) -> std::io::Result<(File, fs::Metadata)> {
+    // Check the literal pathname, never a followed symlink. A post-open
+    // descriptor check protects Linux against a regular-to-FIFO open race.
+    let before = fs::symlink_metadata(path)?;
+    if !before.is_file() {
+        return Err(std::io::Error::from(ErrorKind::InvalidData));
+    }
+    let opened = open_pair_source(path)?;
+    verify_pair_source(path, &opened, &before)?;
+    Ok((opened, before))
+}
+
 const MANIFEST_BYTES: usize = 24;
 const MANIFEST_MAGIC: [u8; 8] = *b"MBPPAIR1";
 const REVISION_BYTES: usize = 24;
@@ -758,7 +839,8 @@ impl NativeContinuationFileBlobPairStore {
         member: NativeContinuationFileBlobPairMember,
         maximum_bytes: NonZeroUsize,
     ) -> Result<Vec<u8>, NativeContinuationFileBlobPairStoreError> {
-        let mut file = File::open(self.generation_path(generation, member)?)
+        let path = self.generation_path(generation, member)?;
+        let (mut file, initial) = open_bounded_pair_source(&path)
             .map_err(|error| PairStoreError::GenerationOpen {
                 kind: error.kind(),
                 member,
@@ -786,22 +868,27 @@ impl NativeContinuationFileBlobPairStore {
                 member,
             }
         })?;
-        if extra_bytes == 0 {
-            Ok(bytes)
-        } else {
-            Err(NativeContinuationFileBlobPairStoreError::LoadByteLimit {
+        if extra_bytes != 0 {
+            return Err(NativeContinuationFileBlobPairStoreError::LoadByteLimit {
                 maximum_bytes,
                 member,
-            })
+            });
         }
+        verify_pair_source(&path, &file, &initial).map_err(|error| {
+            NativeContinuationFileBlobPairStoreError::GenerationRead {
+                kind: error.kind(),
+                member,
+            }
+        })?;
+        Ok(bytes)
     }
 
     fn read_manifest(
         &self,
     ) -> Result<Option<NativeContinuationFileBlobPairRevision>, PairStoreError>
     {
-        let mut file = match File::open(&self.manifest) {
-            Ok(file) => file,
+        let (mut file, initial) = match open_bounded_pair_source(&self.manifest) {
+            Ok(opened) => opened,
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 return Ok(None);
             },
@@ -814,8 +901,15 @@ impl NativeContinuationFileBlobPairStore {
             },
         };
         let mut bytes = Vec::with_capacity(MANIFEST_BYTES + 1);
-        let mut bounded = (&mut file).take(25);
-        let _read = bounded.read_to_end(&mut bytes).map_err(|error| {
+        {
+            let mut bounded = (&mut file).take(25);
+            let _read = bounded.read_to_end(&mut bytes).map_err(|error| {
+                NativeContinuationFileBlobPairStoreError::ManifestRead {
+                    kind: error.kind(),
+                }
+            })?;
+        }
+        verify_pair_source(&self.manifest, &file, &initial).map_err(|error| {
             NativeContinuationFileBlobPairStoreError::ManifestRead {
                 kind: error.kind(),
             }
@@ -1071,7 +1165,7 @@ impl NativeContinuationFileBlobPairStore {
             NativeContinuationFileBlobPairMember::Second,
         ] {
             let path = self.generation_path(revision, member)?;
-            let _file = File::open(path).map_err(|error| {
+            let _file = open_bounded_pair_source(&path).map_err(|error| {
                 NativeContinuationFileBlobPairStoreError::GenerationOpen {
                     kind: error.kind(),
                     member,
@@ -1458,3 +1552,7 @@ fn write_generation_member(
         }
     })
 }
+
+#[cfg(test)]
+#[path = "../../../../../tests/runtime/blob_pair/regular_file_admission.rs"]
+mod regular_file_admission;
