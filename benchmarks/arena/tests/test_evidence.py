@@ -1097,6 +1097,40 @@ def test_direct_run_extensions_reject_foreign_parser_mappings(
         parser(valid)
 
 
+class _ForgedTomlDigest(str):  # ruff: ignore[subclass-builtin]
+    """Foreign digest text can fake length, characters, and equality."""
+
+    def __len__(self) -> int:
+        return analyze.SHA256_HEX_LENGTH
+
+    def __iter__(self) -> Iterator[str]:
+        return iter("a" * analyze.SHA256_HEX_LENGTH)
+
+    def __eq__(self, _other: object) -> bool:
+        return True
+
+    def __ne__(self, _other: object) -> bool:
+        return False
+
+    __hash__ = str.__hash__
+
+
+def test_trial_run_digest_rejects_foreign_text_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged reported raw hash cannot approve itself via string hooks."""
+    document = {
+        "arena_trial": {
+            "schema_version": 1,
+            "trial": 0,
+            "raw_sha256": _ForgedTomlDigest("not-a-real-sha256"),
+        }
+    }
+    monkeypatch.setattr(trial_runs.tomllib, "loads", lambda _value: document)
+    with pytest.raises(trial_runs.TrialRunError, match="lowercase SHA-256"):
+        trial_runs.parse_trial_run(TRIAL_MANIFEST)
+
+
 BUDGET_SECONDS = 1
 BUDGET_MEMORY_MIB = 128
 BYTES_PER_MIB = 1_048_576

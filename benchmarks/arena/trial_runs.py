@@ -63,7 +63,7 @@ def _fail(message: str) -> Never:
 
 
 def _digest(value: object) -> str:
-    if not isinstance(value, str) or len(value) != analyze.SHA256_HEX_LENGTH:
+    if type(value) is not str or len(value) != analyze.SHA256_HEX_LENGTH:
         _fail("arena_trial requires lowercase SHA-256 raw_sha256")
     if not set(value) <= analyze.SHA256_ALPHABET:
         _fail("arena_trial requires lowercase SHA-256 raw_sha256")
