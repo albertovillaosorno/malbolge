@@ -2092,14 +2092,77 @@ def test_audit_git_rejects_forged_successful_process_object(
         reference_audit._require_git_commit("0" * 40)
 
 
+class _HostileGitCommandList(list[str]):
+    """A foreign returned command must not control equality admission."""
+
+    def __eq__(self, other: object) -> bool:
+        raise AssertionError("foreign Git command equality hook executed")
+
+
+@pytest.mark.parametrize(
+    "argument_kind",
+    ["other-command", "tuple", "hostile-list", "string", "no-command"],
+)
+def test_audit_git_rejects_forged_command_receipt(
+    monkeypatch: pytest.MonkeyPatch, argument_kind: str
+) -> None:
+    """Only an exact native returned command can bind an observed Git object."""
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        recorded: object = (
+            ["not-git", "cat-file", "-t", "0" * 40]
+            if argument_kind == "other-command"
+            else tuple(command)
+            if argument_kind == "tuple"
+            else _HostileGitCommandList(command)
+            if argument_kind == "hostile-list"
+            else "git cat-file"
+            if argument_kind == "string"
+            else None
+        )
+        return reference_audit.sp.CompletedProcess(
+            cast("Any", recorded), 0, stdout=b"commit\n", stderr=b""
+        )
+
+    monkeypatch.setattr(reference_audit.sp, "run", forged)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="local Git commit object"
+    ):
+        reference_audit._require_git_commit("0" * 40)
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [b"commit", b" commit\n", b"commit\n\n", b"commit \n"],
+    ids=["missing-newline", "leading-space", "extra-newline", "trailing-space"],
+)
+def test_audit_git_rejects_noncanonical_object_type_line(
+    monkeypatch: pytest.MonkeyPatch, stdout: bytes
+) -> None:
+    """Only the exact Git object-type line can prove a recorded commit object."""
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        return reference_audit.sp.CompletedProcess(
+            command, 0, stdout=stdout, stderr=b""
+        )
+
+    monkeypatch.setattr(reference_audit.sp, "run", forged)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="local Git commit object"
+    ):
+        reference_audit._require_git_commit("0" * 40)
+
+
 def test_audit_git_admits_native_successful_process_object(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The native successful no-diagnostic Git receipt remains admissible."""
-    completed = reference_audit.sp.CompletedProcess(
-        ["git", "cat-file"], 0, stdout=b"commit\n", stderr=b""
-    )
-    monkeypatch.setattr(reference_audit.sp, "run", lambda *_a, **_kw: completed)
+    def native(command: list[str], **_kwargs: object) -> object:
+        return reference_audit.sp.CompletedProcess(
+            command, 0, stdout=b"commit\n", stderr=b""
+        )
+
+    monkeypatch.setattr(reference_audit.sp, "run", native)
     reference_audit._require_git_commit("0" * 40)
 
 
@@ -2143,14 +2206,13 @@ def test_audit_git_filters_native_git_environment_from_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Ordinary native non-Git environment values survive sanitization."""
-    child = reference_audit.sp.CompletedProcess(
-        ["git", "cat-file"], 0, stdout=b"commit\n", stderr=b""
-    )
     observed: list[dict[str, str]] = []
 
-    def check_child(*_args: object, **kwargs: object) -> object:
+    def check_child(command: list[str], **kwargs: object) -> object:
         observed.append(cast("dict[str, str]", kwargs["env"]))
-        return child
+        return reference_audit.sp.CompletedProcess(
+            command, 0, stdout=b"commit\n", stderr=b""
+        )
 
     monkeypatch.setattr(
         reference_audit.os,

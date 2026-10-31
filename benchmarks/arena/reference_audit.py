@@ -503,9 +503,10 @@ def _require_git_commit(commit: str) -> None:
     except Exception as error:
         message = "host-C source commit Git environment unavailable"
         raise ReferenceAuditError(message) from error
+    command = [executable, "cat-file", "-t", commit]
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [executable, "cat-file", "-t", commit],
+            command,
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             env=clean_env,
@@ -523,10 +524,13 @@ def _require_git_commit(commit: str) -> None:
     returncode = completed.returncode
     stdout = completed.stdout
     if (
-        type(returncode) is not int
+        type(completed.args) is not list
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != command
+        or type(returncode) is not int
         or returncode != 0
         or type(stdout) is not bytes
-        or stdout.strip() != GIT_COMMIT_TYPE
+        or stdout != GIT_COMMIT_TYPE + b"\n"
         or type(completed.stderr) is not bytes
         or completed.stderr != b""
     ):
