@@ -230,7 +230,9 @@ def _csv_rows(
         detail = _native_error_detail(error, csv.Error)
         message = f"malformed historical raw CSV: {detail}"
         raise HistoricalEvidenceError(message) from error
-    except (TypeError, ValueError, RuntimeError) as error:
+    except Exception as error:
+        # Any ordinary CSV dependency failure must remain a typed rejection.
+        # The exception class is safe to report; its formatter is not.
         message = f"malformed historical raw CSV parser: {type(error).__name__}"
         raise HistoricalEvidenceError(message) from error
     _csv_shape(fields, records, registered_fields=registered_fields)
@@ -654,13 +656,10 @@ def build_report(root: Path, relative: str) -> dict[str, Any]:
         _fail("historical paired source must be under research evidence")
     try:
         return _build_report(root, relative)
-    except (
-        KeyError,
-        TypeError,
-        ValueError,
-        RecursionError,
-        csv.Error,
-    ) as error:
+    except OSError:
+        # Preserve distinct filesystem failures for operator I/O diagnostics.
+        raise
+    except Exception as error:
         # Foreign exception subtypes may run arbitrary code in __str__.
         # Preserve useful diagnostics for exact native parser errors only.
         native_parser_errors = (

@@ -408,7 +408,16 @@ def test_historical_source_changes_during_report_are_rejected(
 
 @pytest.mark.parametrize(
     "error_type",
-    [ValueError, TypeError, KeyError, RecursionError, historical_pairs.HistoricalEvidenceError],
+    [
+        ValueError,
+        TypeError,
+        KeyError,
+        RecursionError,
+        historical_pairs.HistoricalEvidenceError,
+        IndexError,
+        OverflowError,
+        Exception,
+    ],
 )
 def test_historical_parser_fault_rejects_hostile_exception_formatters(
     tmp_path: Path,
@@ -438,8 +447,37 @@ def test_historical_parser_fault_rejects_hostile_exception_formatters(
     assert caught.value.__cause__ is fault
 
 
+@pytest.mark.parametrize("fault_type", [OSError, FileNotFoundError])
+def test_historical_import_preserves_direct_filesystem_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[OSError],
+) -> None:
+    """Physical I/O failures retain their existing operator-facing boundary."""
+    fault = fault_type("unable to read historical input")
+
+    def broken(root: Path, relative: str) -> dict[str, Any]:
+        del root, relative
+        raise fault
+
+    monkeypatch.setattr(historical_pairs, "_build_report", broken)
+    with pytest.raises(fault_type, match="unable to read historical") as caught:
+        historical_pairs.build_report(tmp_path, BASE + PREFIX)
+    assert caught.value is fault
+
+
 @pytest.mark.parametrize(
-    "fault_type", [csv.Error, TypeError, ValueError, RuntimeError, RecursionError]
+    "fault_type",
+    [
+        csv.Error,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        RecursionError,
+        IndexError,
+        OverflowError,
+        Exception,
+    ],
 )
 def test_historical_raw_csv_direct_parser_fault_never_formats_foreign_error(
     monkeypatch: pytest.MonkeyPatch,
