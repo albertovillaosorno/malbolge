@@ -36,12 +36,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import os
 from pathlib import PurePosixPath
 import shutil
 from stat import S_ISDIR
 from stat import S_ISLNK
 from stat import S_ISREG
+import sys
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstruction
@@ -62,6 +65,13 @@ _BACKSLASH = "\\"
 _UNSAFE_PATH_PARTS = frozenset({"", ".", ".."})
 _STAGING_SUFFIX = ".staging"
 _MATCH_BLOCK_BYTES = 32
+_FILE_READ_CHUNK_BYTES = 65_536
+_FILE_READ_FLAGS = (
+    os.O_RDONLY
+    | getattr(os, "O_BINARY", 0)
+    | getattr(os, "O_NOFOLLOW", 0)
+    | getattr(os, "O_NONBLOCK", 0)
+)
 _ZERO = 0
 
 
@@ -235,12 +245,91 @@ def _is_redirect(path: Path, mode: int) -> bool:
     return S_ISLNK(mode) or path.is_junction()
 
 
-def _read_file_bytes(path: Path, context: str) -> bytes:
+def _file_identity(status: os.stat_result) -> tuple[int, ...]:
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _admit_opened_file(
+    descriptor: int, path: Path, context: str
+) -> os.stat_result:
+    opened = os.fstat(descriptor)
+    named = path.lstat()
+    regular_identity = (
+        S_ISREG(opened.st_mode)
+        and S_ISREG(named.st_mode)
+        and (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino)
+    )
+    if not regular_identity or path.is_junction():
+        message = f"{context} read lost regular file identity: {path}"
+        raise ExactTreeError(message)
+    return opened
+
+
+def _read_admitted_descriptor(
+    descriptor: int, length: int, context: str
+) -> bytes:
+    payload = bytearray()
+    while len(payload) < length:
+        requested = min(_FILE_READ_CHUNK_BYTES, length - len(payload))
+        chunk = os.read(descriptor, requested)
+        if not chunk or len(chunk) > requested:
+            message = f"{context} read did not match admitted byte length"
+            raise ExactTreeError(message)
+        payload.extend(chunk)
+    if os.read(descriptor, 1):
+        message = f"{context} read exceeded admitted byte length"
+        raise ExactTreeError(message)
+    return bytes(payload)
+
+
+def _read_bound_file(path: Path, context: str) -> bytes:
+    descriptor = os.open(path, _FILE_READ_FLAGS)
     try:
-        return path.read_bytes()
-    except OSError as error:
+        before = _admit_opened_file(descriptor, path, context)
+        payload = _read_admitted_descriptor(descriptor, before.st_size, context)
+        after = _admit_opened_file(descriptor, path, context)
+        if _file_identity(before) != _file_identity(after):
+            message = f"{context} read inode changed during acquisition"
+            raise ExactTreeError(message)
+        return payload
+    finally:
+        primary = sys.exception()
+        try:
+            os.close(descriptor)
+        except BaseException as error:
+            if primary is not None:
+                primary.add_note(f"file descriptor close also failed: {error}")
+            else:
+                raise
+
+
+def _read_file_bytes(path: Path, context: str) -> bytes:
+    """Read from an admitted regular inode, never an opened FIFO or link.
+
+    Returns:
+        Exact file bytes from a path still bound to the opened inode.
+
+    Raises:
+        ExactTreeError: File identity, length, or content acquisition failed.
+
+    """
+    try:
+        return _read_bound_file(path, context)
+    except ExactTreeError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} read failed: {path}: {error}"
-        raise ExactTreeError(message) from error
+        failure = ExactTreeError(message)
+        notes = cast("list[str]", getattr(error, "__notes__", []))
+        for note in notes:
+            failure.add_note(note)
+        raise failure from error
 
 
 def _record_file(root: Path, path: Path) -> FileRecord | None:

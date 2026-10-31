@@ -252,18 +252,15 @@ def test_exact_identity_second_read_failure_stays_in_exact_boundary(
     recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
     blocked = recipe.source_root / "b.bin"
     original_read = Path.read_bytes
-    reads = 0
 
-    def fail_second_read(path: Path) -> bytes:
-        nonlocal reads
+    def fail_identity_read(path: Path) -> bytes:
         if path == blocked:
-            reads += 1
-            if reads > 1:
-                message = "blocked exact identity reread"
-                raise PermissionError(message)
+            message = "blocked exact identity reread"
+            raise PermissionError(message)
         return original_read(path)
 
-    monkeypatch.setattr(Path, "read_bytes", fail_second_read)
+    # Tree admission now uses descriptor reads; identity replay uses this API.
+    monkeypatch.setattr(Path, "read_bytes", fail_identity_read)
     with pytest.raises(ExactTreeError, match="source identity read failed"):
         write_algorithm(recipe)
     _expect(

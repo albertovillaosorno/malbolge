@@ -34,9 +34,16 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import shutil
+
+# jig-ignore-next-line: indivisible reviewed identifier
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - bounded no-shell FIFO regression.
+import sys
+import textwrap
 from typing import TYPE_CHECKING
+from typing import cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -60,6 +67,8 @@ _PATCH_SUFFIX = b"fedcba9876543210" * 8
 _RUNTIME_DATA = b"runtime-data"
 _RUNTIME_EXTRA = b"runtime-extra"
 _FOREIGN_OUTPUT = b"foreign"
+_POSIX_OS_NAME = "posix"
+_CLOSE_FAILURE_NOTE = "descriptor close also failed"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -148,25 +157,42 @@ def test_exact_plan_reconstructs_synthetic_tree_byte_for_byte(
     )
 
 
+def _deny_file_open(
+    monkeypatch: pytest.MonkeyPatch,
+    blocked: Path,
+    *,
+    fail_on: int,
+    label: str,
+) -> None:
+    """Fail one exact file-open after the chosen read admission count."""
+    original_open = os.open
+    attempts = 0
+
+    def deny_open(
+        file: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal attempts
+        if os.fspath(file) == os.fspath(blocked):
+            attempts += 1
+            if attempts >= fail_on:
+                message = f"blocked {label} read"
+                raise PermissionError(message)
+        return original_open(file, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", deny_open)
+
+
 def test_exact_planning_wraps_oracle_read_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A later oracle read failure stays inside the exact-tree boundary."""
     source, oracle = _synthetic_pair(tmp_path)
     blocked = oracle / "created.txt"
-    original_read = Path.read_bytes
-    reads = 0
-
-    def fail_second_read(path: Path) -> bytes:
-        nonlocal reads
-        if path == blocked:
-            reads += 1
-            if reads > 1:
-                message = "blocked oracle replay read"
-                raise PermissionError(message)
-        return original_read(path)
-
-    monkeypatch.setattr(Path, "read_bytes", fail_second_read)
+    _deny_file_open(monkeypatch, blocked, fail_on=2, label="oracle replay")
     with pytest.raises(ExactTreeError, match="tree file read failed"):
         _ = build_exact_plan(source, oracle)
 
@@ -194,19 +220,7 @@ def test_exact_materialization_wraps_instruction_read_failure(
     source, oracle = _synthetic_pair(tmp_path)
     plan = build_exact_plan(source, oracle)
     blocked = source / _MOVED_SOURCE
-    original_read = Path.read_bytes
-    reads = 0
-
-    def fail_second_read(path: Path) -> bytes:
-        nonlocal reads
-        if path == blocked:
-            reads += 1
-            if reads > 1:
-                message = "blocked instruction read"
-                raise PermissionError(message)
-        return original_read(path)
-
-    monkeypatch.setattr(Path, "read_bytes", fail_second_read)
+    _deny_file_open(monkeypatch, blocked, fail_on=2, label="instruction")
     output = tmp_path / "result"
     with pytest.raises(ExactTreeError, match="instruction source read failed"):
         materialize_exact_plan(source, plan, output)
@@ -488,15 +502,7 @@ def test_snapshot_entry_read_errors_fail_closed(
     root.mkdir()
     blocked = root / "blocked.txt"
     _ = blocked.write_bytes(b"evidence")
-    original_read = Path.read_bytes
-
-    def fail_read(path: Path) -> bytes:
-        if path == blocked:
-            message = "blocked exact read"
-            raise PermissionError(message)
-        return original_read(path)
-
-    monkeypatch.setattr(Path, "read_bytes", fail_read)
+    _deny_file_open(monkeypatch, blocked, fail_on=1, label="exact")
     with pytest.raises(ExactTreeError, match="tree entry read failed"):
         _ = snapshot_tree(root)
 
@@ -517,6 +523,178 @@ def test_snapshot_rejects_symlink_when_supported(tmp_path: Path) -> None:
         _ = snapshot_tree(root)
 
 
+def test_snapshot_read_error_remains_primary_after_close_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A secondary close failure must not hide the original read failure."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    _ = (root / "leaf").write_bytes(b"normal")
+    original_close = os.close
+
+    def fail_read(descriptor: int, count: int) -> bytes:
+        _ = descriptor, count
+        message = "injected read denial"
+        raise PermissionError(message)
+
+    def fail_close(descriptor: int) -> None:
+        original_close(descriptor)
+        message = "injected close denial"
+        raise OSError(message)
+
+    monkeypatch.setattr(os, "read", fail_read)
+    monkeypatch.setattr(os, "close", fail_close)
+    with pytest.raises(ExactTreeError, match="tree entry read failed") as error:
+        _ = snapshot_tree(root)
+    _expect(
+        isinstance(error.value.__cause__, PermissionError),
+        "file close error replaced the primary read error",
+    )
+    notes = cast("list[str]", getattr(error.value, "__notes__", []))
+    _expect(
+        any(_CLOSE_FAILURE_NOTE in note for note in notes),
+        "close failure was not attached to the typed primary error",
+    )
+
+
+def test_snapshot_rejects_file_swapped_to_symlink_after_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A regular-file status cannot authorize a later linked file read."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    leaf = root / "data.bin"
+    _ = leaf.write_bytes(b"original")
+    foreign = tmp_path / "foreign.bin"
+    _ = foreign.write_bytes(b"foreign!")
+    original_status = Path.lstat
+    swapped = False
+
+    def swap_after_status(path: Path) -> os.stat_result:
+        nonlocal swapped
+        observed = original_status(path)
+        if path == leaf and not swapped:
+            leaf.unlink()
+            try:
+                leaf.symlink_to(foreign)
+            except OSError:
+                pytest.skip("filesystem leaf symlinks are unavailable")
+            swapped = True
+        return observed
+
+    monkeypatch.setattr(Path, "lstat", swap_after_status)
+    with pytest.raises(ExactTreeError, match="tree entry"):
+        _ = snapshot_tree(root)
+    _expect(swapped, "regular-file admission race did not execute")
+
+
+def test_snapshot_rejects_writerless_fifo_swap_without_blocking(
+    tmp_path: Path,
+) -> None:
+    """A FIFO substituted after lstat must not block an untrusted read."""
+    if os.name != _POSIX_OS_NAME or not hasattr(os, "mkfifo"):
+        pytest.skip("nonblocking FIFO admission requires POSIX")
+    root = tmp_path / "tree"
+    root.mkdir()
+    _ = (root / "leaf").write_bytes(b"normal")
+    script = textwrap.dedent(
+        """\
+        import os
+        import sys
+        from pathlib import Path
+        from algorithms.diff.exact import ExactTreeError, snapshot_tree
+
+        root = Path(sys.argv[1])
+        leaf = root / "leaf"
+        lstat = Path.lstat
+        changed = [False]
+
+        def swap(path):
+            status = lstat(path)
+            if path == leaf and not changed[0]:
+                changed[0] = True
+                leaf.unlink()
+                os.mkfifo(leaf)
+            return status
+
+        Path.lstat = swap
+        try:
+            snapshot_tree(root)
+        except ExactTreeError:
+            sys.exit(0)
+        sys.exit(2)
+        """
+    )
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(sys.path)
+    # A previous path-based read blocked forever here with no FIFO writer.
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - explicit argv and shell=False.
+        [sys.executable, "-c", script, str(root)],
+        shell=False,
+        check=False,
+        capture_output=True,
+        timeout=2.0,
+        env=environment,
+    )
+    _expect(
+        completed.returncode == 0,
+        f"FIFO read admission did not reject: {completed.stderr!r}",
+    )
+
+
+def test_snapshot_rejects_leaf_replacement_during_descriptor_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid opened inode cannot authorize a replaced pathname afterward."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    leaf = root / "leaf"
+    _ = leaf.write_bytes(b"old bytes")
+    foreign = tmp_path / "foreign"
+    _ = foreign.write_bytes(b"foreign!!")
+    original_read = os.read
+    changed = False
+
+    def replace_after_open(descriptor: int, count: int) -> bytes:
+        nonlocal changed
+        fragment = original_read(descriptor, count)
+        if not changed:
+            leaf.unlink()
+            leaf.symlink_to(foreign)
+            changed = True
+        return fragment
+
+    monkeypatch.setattr(os, "read", replace_after_open)
+    with pytest.raises(ExactTreeError, match="regular file identity"):
+        _ = snapshot_tree(root)
+    _expect(changed, "post-open pathname replacement did not execute")
+
+
+def test_snapshot_rejects_same_inode_rewrite_during_descriptor_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Changed contents must reject even if the inode and size are stable."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    leaf = root / "leaf"
+    _ = leaf.write_bytes(b"old bytes")
+    original_read = os.read
+    changed = False
+
+    def rewrite_after_open(descriptor: int, count: int) -> bytes:
+        nonlocal changed
+        fragment = original_read(descriptor, count)
+        if not changed:
+            _ = leaf.write_bytes(b"new bytes")
+            changed = True
+        return fragment
+
+    monkeypatch.setattr(os, "read", rewrite_after_open)
+    with pytest.raises(ExactTreeError, match="inode changed"):
+        _ = snapshot_tree(root)
+    _expect(changed, "in-place rewrite did not execute")
+
+
 def test_snapshot_excluding_does_not_read_passthrough_payload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -525,15 +703,7 @@ def test_snapshot_excluding_does_not_read_passthrough_payload(
     _write(root, "static.bin", b"static")
     dynamic = root / "external" / "game.bin"
     _write(root, "external/game.bin", b"dynamic")
-    original_read = Path.read_bytes
-
-    def reject_dynamic_read(path: Path) -> bytes:
-        if path == dynamic:
-            message = "passthrough payload must not be read"
-            raise PermissionError(message)
-        return original_read(path)
-
-    monkeypatch.setattr(Path, "read_bytes", reject_dynamic_read)
+    _deny_file_open(monkeypatch, dynamic, fail_on=1, label="passthrough")
     snapshot = snapshot_tree_excluding(root, ("external",))
     _expect(
         tuple(record.path for record in snapshot.files) == ("static.bin",),
@@ -549,15 +719,9 @@ def test_snapshot_excluding_nested_root_preserves_static_sibling(
     _write(root, "external/keep.bin", b"keep")
     dynamic = root / "external" / "data" / "game.bin"
     _write(root, "external/data/game.bin", b"dynamic")
-    original_read = Path.read_bytes
-
-    def reject_dynamic_read(path: Path) -> bytes:
-        if path == dynamic:
-            message = "nested passthrough payload must not be read"
-            raise PermissionError(message)
-        return original_read(path)
-
-    monkeypatch.setattr(Path, "read_bytes", reject_dynamic_read)
+    _deny_file_open(
+        monkeypatch, dynamic, fail_on=1, label="nested passthrough"
+    )
     snapshot = snapshot_tree_excluding(root, ("external/data",))
     paths = tuple(record.path for record in snapshot.files)
     _expect(

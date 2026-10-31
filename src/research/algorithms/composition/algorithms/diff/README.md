@@ -52,7 +52,14 @@ spans; those blocks are **not** the future stable admission anchors.
 `materialize_exact_plan()` requires the exact source snapshot, writes into a
 deterministic staging directory, verifies the complete target snapshot, and only
 then publishes the output tree. Symlinks and special filesystem entries fail
-closed. Empty directories are outside the version-one byte-tree model.
+closed. Snapshot, oracle replay, instruction and passthrough file reads now
+open nonblocking, no-follow file descriptors where supported, require the
+opened inode and pathname to agree on a regular file before and after bounded
+64 KiB read chunks, and reject incomplete, growing or metadata-changing inode
+reads. This prevents a regular-file stat from authorizing a later leaf symlink
+or writerless FIFO read, but does not provide an atomic filesystem snapshot or
+prevent concurrent parent-directory replacement; external writers still need
+coordination. Empty directories are outside the version-one byte-tree model.
 
 Exact recipes may declare sorted, non-overlapping `passthrough_roots`. Those
 roots
