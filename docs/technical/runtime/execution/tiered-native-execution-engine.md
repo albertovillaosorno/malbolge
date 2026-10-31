@@ -142,6 +142,14 @@ A default 60-second direct-child host ceiling and a caller-selectable tighter
 positive budget terminate and reap non-exiting compilers with a typed deadline
 error; zero budget rejects before lowering and spawn.
 
+Bootstrap compilation also reserves one of 32 process-wide worker-group permits
+before spawning a compiler. Each permit stays owned by all three pipe workers
+until the last exits, including when a caller times out and an escaped child
+keeps a read pipe open after process-group termination. Permit exhaustion
+returns typed `WorkerCapacityExceeded` before launch instead of accumulating
+unbounded blocked threads. This does not claim to terminate descendants that
+escape the compiler's process group.
+
 Source and object containers remain explicitly `Untrusted*`: matching IR/target
 identity proves provenance of the claim, not semantic correctness of
 

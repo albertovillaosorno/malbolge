@@ -41,7 +41,7 @@ use std::process::{
     Stdio,
 };
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -59,6 +59,37 @@ use crate::execution_cache::{HostIsa, HostOperatingSystem};
 const MAX_BOOTSTRAP_OBJECT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_BOOTSTRAP_DIAGNOSTIC_BYTES: usize = 256 * 1024;
 const MAX_BOOTSTRAP_COMPILER_MILLIS: u64 = 60_000;
+// Timed-out compilers can leave blocked pipe readers if a descendant escapes
+// the compiler process group. Count outstanding compiler worker groups until
+// their *last* worker exits, not just until the timed-out caller returns.
+const MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS: usize = 32;
+static BOOTSTRAP_COMPILER_WORKER_GROUPS: AtomicUsize = AtomicUsize::new(0);
+
+struct CompilerWorkerPermit<'counter> {
+    counter: &'counter AtomicUsize,
+}
+
+impl<'counter> CompilerWorkerPermit<'counter> {
+    fn acquire(
+        counter: &'counter AtomicUsize,
+        maximum: usize,
+    ) -> Result<Self, BootstrapCompilerError<'static>> {
+        let _prior = counter
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+                active.checked_add(1).filter(|next| *next <= maximum)
+            })
+            .map_err(|_active| {
+                BootstrapCompilerError::WorkerCapacityExceeded { maximum }
+            })?;
+        Ok(Self { counter })
+    }
+}
+
+impl Drop for CompilerWorkerPermit<'_> {
+    fn drop(&mut self) {
+        let _prior = self.counter.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 /// Failure while compiling one profile-preflighted bootstrap source artifact.
 #[derive(Debug, Eq, PartialEq)]
@@ -94,6 +125,11 @@ pub enum BootstrapCompilerError<'requirement> {
     SourceWrite(Box<str>),
     /// Compiler process could not be joined after source submission.
     Wait(Box<str>),
+    /// All bounded compiler worker groups remain owned by active threads.
+    WorkerCapacityExceeded {
+        /// Maximum number of simultaneous compiler worker groups.
+        maximum: usize,
+    },
 }
 
 impl Display for BootstrapCompilerError<'_> {
@@ -107,29 +143,35 @@ impl Display for BootstrapCompilerError<'_> {
                     None => f.write_str("unavailable")?,
                 }
                 write!(f, ": {}", String::from_utf8_lossy(stderr))
-            },
-            Self::OutputLimit { stream, maximum_bytes } => {
+            }
+            Self::OutputLimit {
+                stream,
+                maximum_bytes,
+            } => {
                 write!(
                     f,
                     "native Clang {stream} exceeded {maximum_bytes} bytes"
                 )
-            },
+            }
             Self::DeadlineExceeded { maximum_ms } => {
                 write!(f, "native Clang exceeded {maximum_ms} ms")
-            },
+            }
             Self::Launch(message) => {
                 write!(f, "native Clang launch failed: {message}")
-            },
+            }
             Self::MissingInputPipe => {
                 f.write_str("native Clang stdin pipe is unavailable")
-            },
+            }
             Self::Preflight(error) => Display::fmt(error, f),
             Self::SourceWrite(message) => {
                 write!(f, "native Clang source write failed: {message}")
-            },
+            }
             Self::Wait(message) => {
                 write!(f, "native Clang wait failed: {message}")
-            },
+            }
+            Self::WorkerCapacityExceeded { maximum } => {
+                write!(f, "native Clang worker capacity exceeded: {maximum}")
+            }
         }
     }
 }
@@ -156,6 +198,7 @@ struct CompilerPipes {
     diagnostics: ChildStderr,
     input: ChildStdin,
     output: ChildStdout,
+    permit: Arc<CompilerWorkerPermit<'static>>,
 }
 
 #[derive(Debug)]
@@ -259,7 +302,7 @@ fn wait_for_bounded_child(
                     terminate_bootstrap_group(child);
                     drop(child.wait());
                     return Err(error);
-                },
+                }
             }
         }
         if exit_status.is_some_and(|status| !status.success()) {
@@ -329,6 +372,7 @@ fn collect_compiler_output<'requirement>(
     mut child: Child,
     source: &str,
     budget: Duration,
+    permit: Arc<CompilerWorkerPermit<'static>>,
 ) -> Result<Output, BootstrapCompilerError<'requirement>> {
     let pipes = CompilerPipes {
         diagnostics: child.stderr.take().ok_or_else(|| {
@@ -341,6 +385,7 @@ fn collect_compiler_output<'requirement>(
         output: child.stdout.take().ok_or_else(|| {
             BootstrapCompilerError::Wait("compiler stdout pipe absent".into())
         })?,
+        permit,
     };
     collect_compiler_owned(&mut child, pipes, source, budget)
 }
@@ -371,18 +416,23 @@ fn spawn_compiler_workers(
         diagnostics,
         mut input,
         output,
+        permit,
     } = pipes;
     let state = Arc::new(CompilerPipeState::default());
     let owned_source = source.as_bytes().to_vec();
     let input_state = Arc::clone(&state);
+    let input_permit = Arc::clone(&permit);
     let input_task = spawn_compiler_task(child, move || {
+        let _permit = input_permit;
         let result = input.write_all(&owned_source);
         drop(input);
         input_state.input_done.store(true, Ordering::Release);
         result
     })?;
     let output_state = Arc::clone(&state);
+    let output_permit = Arc::clone(&permit);
     let output_task = spawn_compiler_task(child, move || {
+        let _permit = output_permit;
         let bytes = collect_bounded_pipe(
             output,
             MAX_BOOTSTRAP_OBJECT_BYTES,
@@ -392,7 +442,9 @@ fn spawn_compiler_workers(
         bytes
     })?;
     let diagnostic_state = Arc::clone(&state);
+    let diagnostic_permit = Arc::clone(&permit);
     let diagnostic_task = spawn_compiler_task(child, move || {
+        let _permit = diagnostic_permit;
         let bytes = collect_bounded_pipe(
             diagnostics,
             MAX_BOOTSTRAP_DIAGNOSTIC_BYTES,
@@ -627,12 +679,20 @@ pub fn compile_preflighted_clang_c23_with_budget(
     let source = lower_preflighted_clang_c23(program, runtime, target)
         .map_err(BootstrapCompilerError::Preflight)?;
     require_explicit_compiler_path(compiler)?;
+    // Reserve before launching the compiler. One permit stays owned by the
+    // source writer and both readers, even if their JoinHandles are detached
+    // after a timeout; exhaustion cannot create more blocked pipe workers.
+    let permit = Arc::new(CompilerWorkerPermit::acquire(
+        &BOOTSTRAP_COMPILER_WORKER_GROUPS,
+        MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS,
+    )?);
     let mut command =
         configured_clang_command(compiler, source.target_triple());
     let child = command.spawn().map_err(|error| {
         BootstrapCompilerError::Launch(error.to_string().into_boxed_str())
     })?;
-    let output = collect_compiler_output(child, source.source(), budget)?;
+    let output =
+        collect_compiler_output(child, source.source(), budget, permit)?;
     if !output.status.success() {
         return Err(BootstrapCompilerError::CompilerFailure {
             code: output.status.code(),
@@ -641,4 +701,133 @@ pub fn compile_preflighted_clang_c23_with_budget(
     }
     normalize_compiler_output(&source, output.stdout)
         .map_err(BootstrapCompilerError::Artifact)
+}
+
+#[cfg(test)]
+mod worker_capacity_tests {
+    use super::*;
+
+    #[test]
+    fn compiler_worker_permits_reject_over_capacity_and_release_once()
+    -> Result<(), String> {
+        let counter = AtomicUsize::new(0);
+        let mut permits = Vec::new();
+        for _ in 0..MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS {
+            permits.push(
+                CompilerWorkerPermit::acquire(
+                    &counter,
+                    MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS,
+                )
+                .map_err(|error| error.to_string())?,
+            );
+        }
+        let exhausted = CompilerWorkerPermit::acquire(
+            &counter,
+            MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS,
+        )
+        .err();
+        if exhausted
+            != Some(BootstrapCompilerError::WorkerCapacityExceeded {
+                maximum: MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS,
+            })
+        {
+            return Err(format!("worker exhaustion drifted: {exhausted:?}"));
+        }
+        if counter.load(Ordering::Acquire)
+            != MAX_BOOTSTRAP_COMPILER_WORKER_GROUPS
+        {
+            return Err(String::from("worker limit was oversubscribed"));
+        }
+        drop(permits);
+        if counter.load(Ordering::Acquire) != 0 {
+            return Err(String::from("released workers retained capacity"));
+        }
+        let _reused = CompilerWorkerPermit::acquire(&counter, 1)
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[test]
+    fn compiler_worker_permit_remains_owned_by_last_detached_reader()
+    -> Result<(), String> {
+        let counter = AtomicUsize::new(0);
+        let permit = Arc::new(
+            CompilerWorkerPermit::acquire(&counter, 1)
+                .map_err(|error| error.to_string())?,
+        );
+        let input = Arc::clone(&permit);
+        let output = Arc::clone(&permit);
+        let diagnostic = Arc::clone(&permit);
+        drop(permit);
+        drop(input);
+        drop(output);
+        if CompilerWorkerPermit::acquire(&counter, 1).err()
+            != Some(BootstrapCompilerError::WorkerCapacityExceeded {
+                maximum: 1,
+            })
+        {
+            return Err(String::from("last detached reader lost its permit"));
+        }
+        drop(diagnostic);
+        if counter.load(Ordering::Acquire) != 0 {
+            return Err(String::from("last reader did not restore capacity"));
+        }
+        let _reacquired = CompilerWorkerPermit::acquire(&counter, 1)
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn escaped_compiler_pipe_reader_retains_capacity_after_deadline()
+    -> Result<(), String> {
+        use std::os::unix::process::CommandExt as _;
+
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let permit = Arc::new(
+            CompilerWorkerPermit::acquire(&COUNTER, 1)
+                .map_err(|error| error.to_string())?,
+        );
+        let mut command = Command::new("/bin/sh");
+        let _configured = command
+            .args(["-c", "/usr/bin/setsid /usr/bin/sleep 2 & exit 0"])
+            .process_group(0)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let child = command.spawn().map_err(|error| error.to_string())?;
+        let result = collect_compiler_output(
+            child,
+            "",
+            Duration::from_millis(80),
+            permit,
+        );
+        if !matches!(
+            result,
+            Err(BootstrapCompilerError::DeadlineExceeded { .. })
+        ) {
+            return Err(format!(
+                "escaped compiler bypassed deadline: {result:?}"
+            ));
+        }
+        if CompilerWorkerPermit::acquire(&COUNTER, 1).err()
+            != Some(BootstrapCompilerError::WorkerCapacityExceeded {
+                maximum: 1,
+            })
+        {
+            return Err(String::from("escaped reader lost its worker permit"));
+        }
+        let started = Instant::now();
+        while COUNTER.load(Ordering::Acquire) != 0
+            && started.elapsed() < Duration::from_secs(5)
+        {
+            thread::sleep(Duration::from_millis(10));
+        }
+        if COUNTER.load(Ordering::Acquire) != 0 {
+            return Err(String::from("escaped reader never released capacity"));
+        }
+        let _reacquired = CompilerWorkerPermit::acquire(&COUNTER, 1)
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
 }
