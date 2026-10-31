@@ -641,6 +641,16 @@ Writer-lock release and close helpers also type unexpected `ValueError` and
 the committed-error cause still identifies the original raw cleanup fault
 rather than losing it inside the helper's typed wrapper.
 
+Ordinary unexpected lock dependency exceptions such as `IndexError` and
+`OverflowError` now follow the same lifecycle boundary. Stream opening, lock
+acquisition, and acquired-inode inspection fail before pointer publication with
+a typed original cause. Release and close failures after a durable pointer
+commit instead raise `ProgressSidecarCommittedError` with that pointer's exact
+path and their raw cause; earlier body errors remain primary with cleanup noted
+secondarily. Fourteen red-first cases cover all three admission phases and
+both teardown phases. This containment does not catch `BaseException`
+cancellation or treat a failed lock operation as successful acquisition.
+
 The lock stream's close result must also be the exact native `None` receipt:
 a boolean, integer, or text success claim cannot certify teardown. Four
 red-first post-commit regressions preserve the published pointer and raise

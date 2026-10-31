@@ -2212,7 +2212,7 @@ def _open_writer_lock_stream(lock_path: Path) -> _LockStream:
         return _open_regular_writer_lock(lock_path)
     except ProgressSidecarError:
         raise
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         _fail_with_source(
             f"progress writer lock cannot be opened: {_host_error_detail(error)}", error
         )
@@ -2223,7 +2223,7 @@ def _release_writer_lock(release: Callable[[], None]) -> None:
         _require_native_lock_receipt(release(), "release callback")
     except ProgressSidecarError:
         raise
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         _fail_with_source(
             f"progress writer lock cannot be released: {_host_error_detail(error)}", error
         )
@@ -2234,7 +2234,7 @@ def _close_writer_lock_stream(stream: _LockStream) -> None:
         _require_native_lock_receipt(stream.close(), "close")
     except ProgressSidecarError:
         raise
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         _fail_with_source(
             f"progress writer lock cannot be closed: {_host_error_detail(error)}", error
         )
@@ -2246,7 +2246,7 @@ def _release_writer_lock_preserving_primary(
     primary_error = sys.exception()
     try:
         _release_writer_lock(release)
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         if primary_error is not None:
             BaseException.add_note(primary_error, f"writer lock release also failed: {_host_error_detail(error)}")
             return
@@ -2257,7 +2257,7 @@ def _close_writer_lock_preserving_primary(stream: _LockStream) -> None:
     primary_error = sys.exception()
     try:
         _close_writer_lock_stream(stream)
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         if primary_error is not None:
             BaseException.add_note(primary_error, f"writer lock close also failed: {_host_error_detail(error)}")
             return
@@ -2275,8 +2275,10 @@ def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
         )
     except ProgressSidecarError:
         raise
-    except _OUTPUT_STREAM_ERRORS as error:
-        _fail(f"progress writer lock identity cannot be verified: {_host_error_detail(error)}")
+    except Exception as error:
+        _fail_with_source(
+            f"progress writer lock identity cannot be verified: {_host_error_detail(error)}", error
+        )
     if not stat.S_ISREG(opened.st_mode):
         _fail("progress writer lock opened descriptor must be a regular file")
     if (
@@ -2297,7 +2299,7 @@ def _writer_lock(destination: Path) -> Generator[_LockStream]:
             release = _acquire_writer_lock(stream)
         except ProgressSidecarError:
             raise
-        except _OUTPUT_STREAM_ERRORS as error:
+        except Exception as error:
             _fail_with_source(
                 f"progress writer lock cannot be acquired: {_host_error_detail(error)}", error
             )
@@ -2319,7 +2321,7 @@ def _writer_publication_lock(destination: Path) -> Generator[_LockStream]:
             publication_completed = True
     except ProgressSidecarCommittedError:
         raise
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         if not publication_completed:
             raise
         message = (
@@ -2329,7 +2331,7 @@ def _writer_publication_lock(destination: Path) -> Generator[_LockStream]:
         source = (
             error.__cause__
             if isinstance(error, ProgressSidecarError)
-            and isinstance(error.__cause__, _OUTPUT_STREAM_ERRORS)
+            and isinstance(error.__cause__, Exception)
             else error
         )
         raise ProgressSidecarCommittedError(message, destination) from source

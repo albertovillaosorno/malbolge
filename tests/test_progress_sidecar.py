@@ -14185,3 +14185,139 @@ def test_durable_reader_unexpected_raw_close_keeps_constructor_fault(
     ]
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("site", ["release", "close"])
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_unexpected_lock_cleanup_fault_preserves_durable_pointer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+    fault_type: type[Exception],
+) -> None:
+    """A committed pointer remains attributable after unusual lock teardown."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    original_release = cast(
+        "Callable[[Callable[[], None]], None]", vars(progress)["_release_writer_lock"]
+    )
+    original_close = cast(
+        "Callable[[object], None]", vars(progress)["_close_writer_lock_stream"]
+    )
+    failure = "injected unexpected committed lock cleanup fault"
+
+    def failing_release(callback: Callable[[], None]) -> None:
+        original_release(callback)
+        raise fault_type(failure)
+
+    def failing_close(stream: object) -> None:
+        original_close(stream)
+        raise fault_type(failure)
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress,
+            "_release_writer_lock" if site == "release" else "_close_writer_lock_stream",
+            failing_release if site == "release" else failing_close,
+        )
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="committed durably but writer lock cleanup failed",
+        ) as captured:
+            _ = progress.write_atomic(sidecar)
+    assert captured.value.published_path == destination
+    assert type(captured.value.__cause__) is fault_type
+    assert progress.read(destination) == sidecar
+
+
+@pytest.mark.parametrize("site", ["release", "close"])
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_unexpected_lock_cleanup_fault_does_not_mask_body_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+    fault_type: type[Exception],
+) -> None:
+    """Unknown ordinary lock cleanup errors stay secondary to body failures."""
+    writer_lock = cast("WriterLock", vars(progress)["_writer_lock"])
+    original_release = cast(
+        "Callable[[Callable[[], None]], None]", vars(progress)["_release_writer_lock"]
+    )
+    original_close = cast(
+        "Callable[[object], None]", vars(progress)["_close_writer_lock_stream"]
+    )
+    primary = progress.ProgressSidecarError("injected lock body rejection")
+    secondary = fault_type("injected lock cleanup rejection")
+
+    def failing_release(callback: Callable[[], None]) -> None:
+        original_release(callback)
+        raise secondary
+
+    def failing_close(stream: object) -> None:
+        original_close(stream)
+        raise secondary
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress,
+            "_release_writer_lock" if site == "release" else "_close_writer_lock_stream",
+            failing_release if site == "release" else failing_close,
+        )
+        with pytest.raises(ERROR, match="lock body rejection") as captured:
+            with writer_lock(tmp_path / PROGRESS_NAME):
+                raise primary
+    assert captured.value is primary
+    assert getattr(primary, "__notes__", None) == [
+        f"writer lock {site} also failed: {fault_type.__name__}"
+    ]
+    assert not (tmp_path / PROGRESS_NAME).exists()
+
+
+@pytest.mark.parametrize("site", ["open", "acquire", "identity"])
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_unexpected_lock_admission_fault_rejects_before_pointer_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+    fault_type: type[Exception],
+) -> None:
+    """Unusual lock-open, acquisition, or inode faults never enter a write."""
+    sidecar = _sidecar(tmp_path)
+    failure = "injected unexpected lock admission fault"
+    original_stat = Path.stat
+    observed: list[str] = []
+
+    def failing_open(lock_path: Path) -> None:
+        del lock_path
+        observed.append("open")
+        raise fault_type(failure)
+
+    def failing_acquire(stream: object) -> None:
+        del stream
+        observed.append("acquire")
+        raise fault_type(failure)
+
+    def failing_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if (
+            site == "identity"
+            and path.name.endswith(".lock")
+            and not follow_symlinks
+        ):
+            observed.append("identity")
+            raise fault_type(failure)
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        if site == "open":
+            context.setattr(progress, "_open_regular_writer_lock", failing_open)
+        elif site == "acquire":
+            context.setattr(progress, "_acquire_writer_lock", failing_acquire)
+        else:
+            context.setattr(Path, "stat", failing_stat)
+        with pytest.raises(ERROR, match="progress writer lock") as captured:
+            _ = progress.write_atomic(sidecar)
+    assert observed == [site]
+    assert isinstance(captured.value.__cause__, fault_type)
+    assert not Path(sidecar.progress_path).exists()

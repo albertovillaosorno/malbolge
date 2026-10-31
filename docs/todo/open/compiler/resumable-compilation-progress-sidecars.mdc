@@ -224,6 +224,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   admission, with no publication attempted after failed lock-open,
   lock release/close also type non-`OSError` cleanup faults before
   publication while preserving raw causes for committed-path failures,
+  fourteen additional red-first `IndexError`/`OverflowError` lock dependency
+  cases reject writer-lock open, acquire, and acquired-inode admission before
+  pointer publication; postcommit release/close failure retains the exact
+  committed pointer path and raw cause, while a primary body error remains
+  primary with only secondary cleanup notes; `BaseException` stays untouched,
   already typed lock-open and lock-acquire failures retain exact exception
   identity and secondary notes without redundant wrappers,
   owner-only requested POSIX permissions for newly created writer locks
