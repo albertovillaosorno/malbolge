@@ -1248,6 +1248,73 @@ def test_exact_descriptor_close_cannot_override_original_read_failure(
         )
 
 
+@pytest.mark.parametrize(
+    "fault_kind", ["foreign-str", "native-hostile-arg", "foreign-notes"]
+)
+def test_exact_regular_reader_cannot_dispatch_foreign_host_error_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_kind: str,
+) -> None:
+    """Host read rejection stays typed without foreign text or notes access."""
+    leaf = tmp_path / "leaf"
+    _ = leaf.write_bytes(b"payload")
+
+    class HostileHostError(OSError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign host read formatter executed")
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("host error argument formatter executed")
+
+    class HostileNoteReader(OSError):
+        def __getattribute__(self, name: str) -> object:
+            if name == "__notes__":
+                raise AssertionError("foreign host note accessor executed")
+            return super().__getattribute__(name)
+
+    fault = {
+        "foreign-str": HostileHostError("host read failed"),
+        "native-hostile-arg": OSError(HostileArgument()),
+        "foreign-notes": HostileNoteReader("host read failed"),
+    }[fault_kind]
+
+    def fail_read(descriptor: int, count: int) -> bytes:
+        del descriptor, count
+        raise fault
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "read", fail_read)
+        with pytest.raises(ExactTreeError, match="tree entry read failed") as caught:
+            exact_module.read_exact_regular_file(leaf, "tree entry")
+
+    _expect(caught.value.__cause__ is fault, "foreign host read cause lost")
+    _expect(
+        type(caught.value) is ExactTreeError,
+        "host read fault escaped exact tree admission boundary",
+    )
+
+
+def test_exact_regular_reader_preserves_native_host_error_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Safe native read diagnostics remain useful and causal."""
+    leaf = tmp_path / "leaf"
+    _ = leaf.write_bytes(b"payload")
+    primary = OSError("native read denied")
+
+    def fail_read(descriptor: int, count: int) -> bytes:
+        del descriptor, count
+        raise primary
+
+    monkeypatch.setattr(os, "read", fail_read)
+    with pytest.raises(ExactTreeError, match="native read denied") as caught:
+        exact_module.read_exact_regular_file(leaf, "tree entry")
+    _expect(caught.value.__cause__ is primary, "native read cause lost")
+
+
 def test_snapshot_rejects_file_swapped_to_symlink_after_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

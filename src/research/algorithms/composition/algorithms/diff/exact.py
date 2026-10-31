@@ -46,7 +46,6 @@ from stat import S_ISLNK
 from stat import S_ISREG
 import sys
 from typing import TYPE_CHECKING
-from typing import cast
 
 from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstruction
@@ -325,6 +324,20 @@ def _read_admitted_descriptor(
     return bytes(payload)
 
 
+def _safe_host_error_detail(error: BaseException) -> str:
+    """Describe only exact native exception arguments without calling hooks.
+
+    Returns:
+        The native single-string reason or the exception's class name.
+
+    """
+    if type(error) in (OSError, ValueError, RuntimeError):
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+    return type(error).__name__
+
+
 def _read_bound_file(path: Path, context: str) -> bytes:
     descriptor = os.open(path, _FILE_READ_FLAGS)
     try:
@@ -344,13 +357,9 @@ def _read_bound_file(path: Path, context: str) -> bytes:
                 raise
             # Cleanup is secondary: never call foreign exception formatters or
             # an overridden primary.add_note hook while reporting the failure.
-            detail = type(error).__name__
-            if type(error) in (OSError, ValueError, RuntimeError):
-                arguments = error.args
-                if len(arguments) == 1 and type(arguments[0]) is str:
-                    detail = arguments[0]
             BaseException.add_note(
-                primary, f"file descriptor close also failed: {detail}"
+                primary,
+                "file descriptor close also failed: " + _safe_host_error_detail(error),
             )
 
 
@@ -369,11 +378,17 @@ def read_exact_regular_file(path: Path, context: str) -> bytes:
     except ExactTreeError:
         raise
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} read failed: {path}: {error}"
+        message = f"{context} read failed: {path}: {_safe_host_error_detail(error)}"
         failure = ExactTreeError(message)
-        notes = cast("list[str]", getattr(error, "__notes__", []))
-        for note in notes:
-            failure.add_note(note)
+        # Native BaseException access bypasses a subclass's __getattribute__.
+        try:
+            notes: object = BaseException.__getattribute__(error, "__notes__")
+        except AttributeError:
+            notes = ()
+        if type(notes) is list:
+            for note in notes:
+                if type(note) is str:
+                    BaseException.add_note(failure, note)
         raise failure from error
 
 
