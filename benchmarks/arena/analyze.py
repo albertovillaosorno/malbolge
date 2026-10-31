@@ -493,6 +493,75 @@ def _paired_outcomes(
     return counts
 
 
+def _median_interval_receipt(values: list[int]) -> dict[str, Any] | None:
+    """Accept only native, bounded and owned median inference metadata.
+
+    Returns:
+        Canonical copied endpoints/coverage, or no eligible interval.
+
+    """
+    try:
+        receipt: object = median_intervals.median_interval_95(values)
+    except Exception as error:
+        message = "median interval computation failed"
+        raise ArenaError(message) from error
+    count = len(values)
+    if count < median_intervals.MIN_SAMPLES or count > median_intervals.MAX_SAMPLES:
+        if receipt is not None:
+            _fail("median interval receipt has unsupported sample count")
+        return None
+    fields = {"lower", "upper", "coverage", "sample_count"}
+    if (
+        type(receipt) is not dict
+        or any(type(name) is not str for name in receipt)
+        or set(receipt) != fields
+        or type(receipt["sample_count"]) is not int
+        or receipt["sample_count"] != count
+        or type(receipt["lower"]) is not int
+        or type(receipt["upper"]) is not int
+    ):
+        _fail("median interval receipt has invalid native source identity")
+    lower = receipt["lower"]
+    upper = receipt["upper"]
+    ordered = sorted(values)
+    if (
+        lower > upper
+        or lower not in ordered
+        or upper not in ordered
+        or not lower <= ordered[(count - 1) // 2]
+        or not ordered[count // 2] <= upper
+    ):
+        _fail("median interval receipt does not bound observed sample median")
+    coverage = receipt["coverage"]
+    if (
+        type(coverage) is not list
+        or len(coverage) != 2
+        or any(type(number) is not int for number in coverage)
+    ):
+        _fail("median interval receipt requires exact native coverage")
+    numerator, denominator = coverage
+    if (
+        denominator < 1
+        or denominator > (1 << count)
+        or denominator & (denominator - 1) != 0
+        or not 0 <= numerator <= denominator
+    ):
+        _fail("median interval receipt has invalid rational coverage")
+    rational = Fraction(numerator, denominator)
+    if (
+        rational < median_intervals.REQUESTED_CONFIDENCE
+        or [rational.numerator, rational.denominator] != coverage
+    ):
+        _fail("median interval receipt has unsupported confidence coverage")
+    # Never publish the dependency's mutable mapping or fraction list.
+    return {
+        "lower": lower,
+        "upper": upper,
+        "coverage": [rational.numerator, rational.denominator],
+        "sample_count": count,
+    }
+
+
 def _paired_cost(
     pairs: list[tuple[dict[str, Any], dict[str, Any]]],
     name: str,
@@ -515,7 +584,7 @@ def _paired_cost(
     }
     if median_intervals_95:
         result["median_confidence_interval_95"] = (
-            median_intervals.median_interval_95(differences)
+            _median_interval_receipt(differences)
         )
     if paired_exact_tests_enabled:
         result["paired_sign_test"] = paired_exact_tests.two_sided_sign_test(
@@ -626,11 +695,11 @@ def _point(
     }
     if policy.median_intervals_95:
         point["median_confidence_intervals_95"] = {
-            name: median_intervals.median_interval_95(values)
+            name: _median_interval_receipt(values)
             for name, values in success_values.items()
         }
         point["all_attempt_elapsed_ns"]["median_confidence_interval_95"] = (
-            median_intervals.median_interval_95(all_elapsed)
+            _median_interval_receipt(all_elapsed)
         )
     return point
 

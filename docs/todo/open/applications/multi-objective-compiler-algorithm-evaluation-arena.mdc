@@ -545,6 +545,14 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   partially annotating a report. A separate red-first receipt-alias test
   proves later helper-side mutation cannot rewrite published interval metadata;
   no independent math attestation is claimed.
+- Optional median inference now binds each returned interval to the admitted
+  sample size, observed central order statistics, and reduced binary-rational
+  coverage of at least 95%; copied records cannot be changed through retained
+  helper aliases. Forty-two red-first site/forgery cases cover successful
+  costs, all-attempt elapsed time, and paired differences. Additional tests
+  reject hostile helper exceptions and false over-limit intervals, confirm
+  both CLIs publish no JSON on drift, and preserve the legitimate null path.
+  The returned coverage is structurally checked, not mathematically certified.
 - The host-C reference-study producer's operator JSON now uses the same
   checked stdout publisher and fails nonzero on incomplete writes or flush,
   without pretending that already-emitted text can be retracted. Unexpected

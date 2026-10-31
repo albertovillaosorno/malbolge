@@ -2229,3 +2229,177 @@ def test_success_interval_receipts_are_copied_before_annotation(
     returned[0]["lower"][1] = 0
     returned[0]["sample_count"] = -5
     assert first == expected
+
+
+class _ForeignMedianReceipt(dict[str, object]):
+    """A statistics return cannot inject customized mapping traversal."""
+
+    def __iter__(self):  # type: ignore[override]
+        raise AssertionError("foreign median result iteration executed")
+
+
+@pytest.mark.parametrize(
+    "call_index", [1, 3, 7], ids=["success", "all-attempt", "paired"]
+)
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        None,
+        True,
+        "ready",
+        {"lower": 0},
+        {"lower": 0, "upper": 1, "coverage": [1, 0], "sample_count": 10},
+        {"lower": 0, "upper": 1, "coverage": [1, 1], "sample_count": 11},
+        {"lower": False, "upper": 1, "coverage": [1, 1], "sample_count": 10},
+        {"lower": 1, "upper": 0, "coverage": [1, 1], "sample_count": 10},
+        {"lower": 0, "upper": 1, "coverage": [True, 1], "sample_count": 10},
+        {"lower": 0, "upper": 1, "coverage": [2, 2], "sample_count": 10},
+        {"lower": 0, "upper": 1, "coverage": [13, 17], "sample_count": 10},
+        {"lower": 0, "upper": 1, "coverage": [31, 32], "sample_count": 10},
+        {"lower": -999999, "upper": 999999, "coverage": [1, 1], "sample_count": 10},
+        _ForeignMedianReceipt({"lower": 0}),
+    ],
+    ids=[
+        "missing",
+        "boolean",
+        "text",
+        "missing-fields",
+        "zero-denominator",
+        "wrong-sample-count",
+        "boolean-endpoint",
+        "reversed-endpoints",
+        "boolean-coverage",
+        "unreduced-coverage",
+        "nongrid-coverage",
+        "low-coverage",
+        "bounds-not-observed",
+        "foreign-mapping",
+    ],
+)
+def test_median_inference_rejects_forged_statistics_at_all_call_sites(
+    monkeypatch: pytest.MonkeyPatch,
+    call_index: int,
+    receipt: object,
+) -> None:
+    """Every inference site rejects forged receipts before a report exists."""
+    original = analyze.median_intervals.median_interval_95
+    calls = 0
+
+    def substituted(values: list[int]) -> object:
+        nonlocal calls
+        calls += 1
+        return receipt if calls == call_index else original(values)
+
+    monkeypatch.setattr(analyze.median_intervals, "median_interval_95", substituted)
+    doc = analyze.parse_document(json.dumps(_repeated_success_study(10)))
+    with pytest.raises(analyze.ArenaError, match="median interval receipt"):
+        analyze.analyze(doc, median_intervals_95=True)
+    assert calls == call_index
+
+
+def test_median_inference_types_unanticipated_helper_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hostile calculation error cannot escape or format its diagnostics."""
+
+    class ForeignMedianError(IndexError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign median exception formatted")
+
+    failure = ForeignMedianError("untrusted content")
+
+    def raise_failure(_values: list[int]) -> Never:
+        raise failure
+
+    monkeypatch.setattr(analyze.median_intervals, "median_interval_95", raise_failure)
+    doc = analyze.parse_document(json.dumps(_repeated_success_study(10)))
+    with pytest.raises(
+        analyze.ArenaError, match="median interval computation failed"
+    ) as error:
+        analyze.analyze(doc, median_intervals_95=True)
+    assert error.value.__cause__ is failure
+
+
+def test_median_report_copies_accepted_receipts_from_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutating a returned coverage list after analysis cannot poison JSON."""
+    original = analyze.median_intervals.median_interval_95
+    retained: list[analyze.median_intervals.MedianInterval] = []
+
+    def borrowed(values: list[int]) -> analyze.median_intervals.MedianInterval | None:
+        interval = original(values)
+        if interval is not None:
+            retained.append(interval)
+        return interval
+
+    monkeypatch.setattr(analyze.median_intervals, "median_interval_95", borrowed)
+    doc = analyze.parse_document(json.dumps(_repeated_success_study(10)))
+    report = analyze.analyze(doc, median_intervals_95=True)
+    first = report["capacity_curve"][0][INTERVALS_KEY]["elapsed_ns"]
+    expected = copy.deepcopy(first)
+    assert retained
+    retained[0]["coverage"][1] = 0
+    retained[0]["sample_count"] = -5
+    assert first == expected
+
+
+@pytest.mark.parametrize("cli", ["standalone", "linked-evidence"])
+def test_median_clis_fail_before_json_on_helper_receipt_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cli: str,
+) -> None:
+    """Neither CLI advertises an invalid median interval as evidence."""
+    from benchmarks.arena import evidence
+    from benchmarks.arena.tests.test_evidence import sample_study
+
+    doc = _repeated_success_study(10) if cli == "standalone" else sample_study(tmp_path)
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(doc), encoding="utf-8")
+    monkeypatch.setattr(
+        analyze.median_intervals,
+        "median_interval_95",
+        lambda *_args: {"lower": 0, "upper": 0, "coverage": [1, 0], "sample_count": 10},
+    )
+    if cli == "standalone":
+        args = ["arena", str(path), "--median-intervals-95"]
+        entry = analyze.main
+    else:
+        args = [
+            "arena-evidence",
+            str(path),
+            "--root",
+            str(tmp_path),
+            "--median-intervals-95",
+        ]
+        entry = evidence.main
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit, match="2"):
+        entry()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "median interval receipt" in output.err
+
+
+@pytest.mark.parametrize("count", [5, analyze.median_intervals.MAX_SAMPLES + 1])
+def test_median_inference_requires_null_beyond_supported_sample_sizes(
+    monkeypatch: pytest.MonkeyPatch,
+    count: int,
+) -> None:
+    """A fabricated bound cannot turn ineligible samples into inference."""
+    values = list(range(count))
+    assert analyze._median_interval_receipt(values) is None
+    monkeypatch.setattr(
+        analyze.median_intervals,
+        "median_interval_95",
+        lambda *_args: {
+            "lower": values[0],
+            "upper": values[-1],
+            "coverage": [1, 1],
+            "sample_count": count,
+        },
+    )
+    with pytest.raises(analyze.ArenaError, match="median interval receipt"):
+        analyze._median_interval_receipt(values)

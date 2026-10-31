@@ -95,6 +95,13 @@ distributed sampling assumptions. Neither independence, physical timing,
 randomization, nor verifier replay follows from the labels or this estimator;
 selection on success changes the population being estimated. The default JSON
 and nominal Pareto selection remain unchanged by the opt-in calculation.
+The analyzer now checks every median helper result before reporting successful,
+all-attempt, or paired-difference intervals: native bounded records, exact
+sample count, observed middle-rank containment, reduced binary-rational
+coverage of at least 95%, and owned copied output. A missing eligible result,
+a fabricated over-limit bound, or unexpected helper exception rejects before
+publication; foreign results cannot mutate the retained report afterward.
+These checks do not independently certify exact binomial-tail computations.
 
 A third optional inference view, `--success-intervals-95`, bounds the
 reported probability of verifier success among **all** attempts, retaining
