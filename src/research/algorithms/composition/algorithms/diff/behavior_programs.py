@@ -357,7 +357,7 @@ def _require_digest(transcript: ProbeTranscript) -> bytes:
 def _resolved_context_path(path: Path, description: str) -> Path:
     try:
         return path.resolve()
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"behavior {description} resolution failed: {path}: {error}"
         raise BehaviorProgramError(message) from error
 

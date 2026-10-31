@@ -167,8 +167,13 @@ def _authored(
     return authored, source, oracle
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_context_repository_resolution_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Keep repository resolution failures inside behavior authoring."""
     source, oracle = _trees(tmp_path)
@@ -177,7 +182,7 @@ def test_context_repository_resolution_error_fails_closed(
     def fail_resolve(path: Path, *, strict: bool = False) -> Path:
         if path == tmp_path:
             message = "blocked behavior repository"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
@@ -191,8 +196,13 @@ def test_context_repository_resolution_error_fails_closed(
         )
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_context_tool_resolution_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Keep tool resolution failures inside behavior authoring."""
     source, oracle = _trees(tmp_path)
@@ -202,7 +212,7 @@ def test_context_tool_resolution_error_fails_closed(
     def fail_resolve(path: Path, *, strict: bool = False) -> Path:
         if path == tool:
             message = "blocked behavior tool"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
