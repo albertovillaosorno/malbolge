@@ -42,6 +42,7 @@ import json
 import os
 from pathlib import Path
 from stat import S_ISREG
+from struct import calcsize
 import sys
 from typing import Never
 from typing import TYPE_CHECKING
@@ -89,6 +90,7 @@ CUDA_BACKEND = "cuda"
 CONFIGURATION_ERROR = 2
 OUTPUT_SCHEMA_VERSION = 1
 MAX_SEARCH_INPUT_BYTES = 64 * 1024 * 1024
+_MAX_NATIVE_DESCRIPTOR = (1 << (8 * calcsize("@i") - 1)) - 1
 PROPOSAL_TRUST = "untrusted"
 _CUDA_SEARCH_ALGORITHMS = frozenset((
     CRAZY_TARGET_ALGORITHM_ID,
@@ -518,7 +520,20 @@ def _read_cli_descriptor(
         SearchCliError: The selected input changes while being read.
 
     """
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        owned_stream = os.fdopen(descriptor, "rb")
+    except BaseException as failure:
+        # The raw descriptor is ours until fdopen transfers ownership. Even a
+        # failed transfer must not leak it; cleanup cannot mask the first fault.
+        try:
+            os.close(descriptor)
+        except Exception as cleanup_error:  # noqa: BLE001 - cleanup is secondary
+            BaseException.add_note(
+                failure,
+                f"binary source descriptor close also failed: {type(cleanup_error).__name__}",
+            )
+        raise
+    with owned_stream as stream:
         if _cli_source_identity(os.fstat(stream.fileno()), label) != expected:
             message = f"{label} changed before read"
             raise SearchCliError(message)
@@ -556,6 +571,13 @@ def _read_cli_file(path: Path, label: str) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
+    if (
+        type(descriptor) is not int
+        or descriptor < 0
+        or descriptor > _MAX_NATIVE_DESCRIPTOR
+    ):
+        message = f"{label} opened an invalid native descriptor"
+        raise SearchCliError(message)
     return _read_cli_descriptor(
         path, label, descriptor, expected=expected
     )

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from contextlib import redirect_stderr
 from contextlib import redirect_stdout
+from contextlib import suppress
 from hashlib import sha256
 from io import StringIO
 import json
@@ -43,6 +44,7 @@ import os
 from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
 from unittest import SkipTest
@@ -1094,3 +1096,80 @@ def test_cli_allows_explicit_binary_aliases(tmp_path: Path) -> None:
     assert status == 0
     assert not error
     assert _json_object(output)["actual_backend_id"] == CPU_BACKEND
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+@pytest.mark.parametrize(
+    "opened",
+    [False, True, -1, "5", 2**80, type("ForeignFd", (int,), {})(7)],
+    ids=["false", "true", "negative", "text", "overlarge", "subclass"],
+)
+def test_cli_rejects_foreign_binary_descriptor_before_fdopen(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+    opened: object,
+) -> None:
+    """An untrusted descriptor must never alias or close a host standard FD."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    real_open = os.open
+    reached = False
+
+    def fake_open(path: Path, flags: int) -> int:
+        nonlocal reached
+        if path == selected:
+            reached = True
+            monkeypatch.setattr(os, "fdopen", forbidden_fdopen)
+            return cast("int", opened)
+        return real_open(path, flags)
+
+    def forbidden_fdopen(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        raise AssertionError("foreign descriptor reached fdopen")
+
+    monkeypatch.setattr(os, "open", fake_open)
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert reached
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert "descriptor" in error
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+def test_cli_fdopen_failure_releases_binary_source_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+) -> None:
+    """An opened native source FD cannot leak when stream transfer fails."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    real_open = os.open
+    opened_descriptor: int | None = None
+
+    def fake_open(path: Path, flags: int) -> int:
+        nonlocal opened_descriptor
+        descriptor = real_open(path, flags)
+        if path == selected:
+            opened_descriptor = descriptor
+            monkeypatch.setattr(os, "fdopen", failing_fdopen)
+        return descriptor
+
+    def failing_fdopen(*args: object, **kwargs: object) -> Never:
+        del args, kwargs
+        raise ValueError("synthetic stream transfer failure")
+
+    monkeypatch.setattr(os, "open", fake_open)
+    try:
+        status, output, error = _file_input_cli(config, problem, checkpoint)
+        assert opened_descriptor is not None
+        assert status == CONFIGURATION_ERROR
+        assert not output
+        assert "synthetic stream transfer failure" in error
+        with pytest.raises(OSError):
+            _ = os.fstat(opened_descriptor)
+    finally:
+        if opened_descriptor is not None:
+            with suppress(OSError):
+                os.close(opened_descriptor)

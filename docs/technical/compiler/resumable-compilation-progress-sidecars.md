@@ -857,6 +857,17 @@ open.
 
 Canonical typed-IR durable state is already backend-identity neutral.
 
+The external optimizer runner additionally admits exact native nonnegative
+C-int file descriptors for both binary problem inputs and resume checkpoint
+files before any `fdopen` ownership transfer. Boolean, negative, text, foreign
+integer-subclass, and overflowing open receipts fail with configuration status
+without touching an unrelated host descriptor. Native descriptors still require
+the existing stable regular-file inode/size/timestamp checks; an integer alone
+is not filesystem provenance. If binary stream ownership transfer fails, the
+runner closes the still-owned raw descriptor and preserves the original failure
+over any secondary close error. This applies to both problem and checkpoint
+inputs and does not grant the resumed evidence acceptance authority.
+
 The external optimizer runner now accepts `--resume-checkpoint PATH` for
 rotate-target and crazy-target evaluated-search checkpoint payloads. It
 preserves
