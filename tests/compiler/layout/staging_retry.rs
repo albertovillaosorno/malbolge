@@ -80,6 +80,66 @@ fn stage(output: &Path, sequence: Option<usize>) -> PathBuf {
     }
 }
 
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "valid long output filenames must publish"
+)]
+fn long_valid_output_names_have_bounded_unique_stage_names() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let common = "x".repeat(235);
+    let first = fixture.0.join(format!("{common}a.malbolge"));
+    let second = fixture.0.join(format!("{common}b.malbolge"));
+    // The target filename itself must be valid on this filesystem; only the
+    // staging suffix would cross the per-component filename limit.
+    fs::write(&first, b"probe").map_err(|error| error.to_string())?;
+    fs::remove_file(&first).map_err(|error| error.to_string())?;
+    publish_new(&first, b"ctO")?;
+    publish_new(&second, b"qPh")?;
+    assert_eq!(fs::read(&first).map_err(|error| error.to_string())?, b"ctO");
+    assert_eq!(
+        fs::read(&second).map_err(|error| error.to_string())?,
+        b"qPh"
+    );
+    assert_eq!(
+        fs::read_dir(&fixture.0)
+            .map_err(|error| error.to_string())?
+            .count(),
+        2,
+        "only final targets, not temporary stages, may survive"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "preserve occupied compact staging name"
+)]
+fn long_output_retries_occupied_compact_stage_without_overwriting() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let name = format!("{}.malbolge", "m".repeat(236));
+    let output = fixture.0.join(&name);
+    let basename = super::fresh_stage_basename(&name);
+    assert!(basename.starts_with(".layout-"));
+    assert!(basename.len() <= super::MAX_STAGE_BASENAME_BYTES);
+    let stale = output.with_file_name(&basename);
+    fs::write(&stale, b"existing-stale-bytes").map_err(|error| error.to_string())?;
+    publish_new(&output, b"ctO")?;
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert_eq!(
+        fs::read(&stale).map_err(|error| error.to_string())?,
+        b"existing-stale-bytes"
+    );
+    assert!(!output.with_file_name(format!("{basename}-1")).exists());
+    Ok(())
+}
+
 #[test]
 #[expect(clippy::panic_in_result_fn, reason = "assert exact publication bytes")]
 fn stale_process_id_stage_is_preserved_during_successful_retry() -> Result<(), String> {

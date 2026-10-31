@@ -76,6 +76,11 @@ const TERNARY_STDIN_ARG: &str = "--ternary-stdin";
 const AUTO_LAYOUT_ARG: &str = "--auto-layout";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 const MAX_STAGE_NAME_ATTEMPTS: usize = 32;
+// Leave enough room for an attempt suffix on ordinary filesystems and never
+// derive an overlong staging component from a valid final target basename.
+const MAX_STAGE_BASENAME_BYTES: usize = 128;
+const STAGE_NAME_FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
+const STAGE_NAME_FNV_PRIME: u64 = 1_099_511_628_211;
 
 #[derive(Debug)]
 enum SourceSpec {
@@ -315,8 +320,25 @@ fn parse_arguments(mut arguments: impl Iterator<Item = OsString>) -> Result<Comm
     })
 }
 
+fn fresh_stage_basename(name: &str) -> String {
+    let named = format!(".{name}.stage-{}", id());
+    if named.len() <= MAX_STAGE_BASENAME_BYTES {
+        return named;
+    }
+    // This noncryptographic digest is only a deterministic *name hint*, not
+    // an integrity authority. All candidates still require create_new(true), so
+    // even a forced digest collision cannot overwrite a prior stage.
+    let digest = name
+        .as_bytes()
+        .iter()
+        .fold(STAGE_NAME_FNV_OFFSET, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(STAGE_NAME_FNV_PRIME)
+        });
+    format!(".layout-{digest:016x}.stage-{}", id())
+}
+
 fn open_fresh_stage(path: &Path, name: &str) -> Result<StageFile, String> {
-    let basename = format!(".{name}.stage-{}", id());
+    let basename = fresh_stage_basename(name);
     for attempt in 0..MAX_STAGE_NAME_ATTEMPTS {
         let staged = if attempt == 0 {
             path.with_file_name(&basename)

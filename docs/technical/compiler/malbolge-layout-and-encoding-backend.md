@@ -162,6 +162,14 @@ without creating a final file. On abrupt interruption a hidden
 staging file may remain; it cannot expose a partial final target. A later
 producer preserves any occupied `.stage-<pid>` staging pathname and retries
 fresh sequence-suffixed names via exclusive creation, with 32 total attempts.
+For output filenames whose full staging suffix would exceed a conservative
+128-byte basename budget, the publisher uses a compact, reproducible
+64-bit FNV-1a digest of the complete UTF-8 target filename instead of embedding
+the original name in the stage. The digest is only a collision-prone name hint:
+exclusive creation and bounded retries still prevent overwriting any existing
+stage, including a digest collision. Distinct valid long output filenames
+publish independently without overflowing a common 255-byte filesystem
+component limit. An occupied hashed staging name is preserved and retried.
 Only its own newly created stage is removed; exhausted collisions reject
 before touching the verified source or an existing target.
 
