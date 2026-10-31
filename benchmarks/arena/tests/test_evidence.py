@@ -2403,14 +2403,18 @@ def test_evidence_cli_does_not_format_foreign_input_failure(
     assert not captured.out
 
 
+@pytest.mark.parametrize(
+    "fault_type", [evidence.report_output.ReportOutputError, IndexError, Exception]
+)
 def test_evidence_cli_output_does_not_format_foreign_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
 ) -> None:
     """Output diagnostics preserve the exit status without calling __str__."""
     import argparse
 
-    class HostileReportError(evidence.report_output.ReportOutputError):
+    class HostileReportError(fault_type):
         def __str__(self) -> str:
             raise AssertionError("foreign report error formatter invoked")
 

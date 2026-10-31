@@ -932,7 +932,8 @@ def _publish_cli_report(
 ) -> None:
     try:
         report_output.publish(report, sys.stdout)
-    except report_output.ReportOutputError as error:
+    except Exception as error:
+        # Unexpected publisher faults cannot override the operator exit status.
         detail = _native_error_detail(error, report_output.ReportOutputError)
         parser.exit(2, f"arena evidence: {detail}\n")
 
