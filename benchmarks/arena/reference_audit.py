@@ -151,7 +151,18 @@ def _safe_error_detail(error: Exception) -> str:
         UnicodeError,
         UnicodeDecodeError,
     ):
-        return str(error)
+        # Exact native exception types can still carry caller-owned arguments.
+        # Never let their default __str__ format a foreign object.
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+        if (
+            type(error) in (OSError, PermissionError, FileNotFoundError)
+            and len(arguments) == 2
+            and type(arguments[0]) is int
+            and type(arguments[1]) is str
+        ):
+            return f"{type(error).__name__}: [Errno {arguments[0]}] {arguments[1]}"
     return type(error).__name__
 
 
@@ -211,7 +222,8 @@ def _read_json(
         )
     except ReferenceAuditError:
         raise
-    except (UnicodeError, ValueError, RecursionError) as error:
+    except Exception as error:
+        # Any ordinary JSON dependency fault remains a typed admission failure.
         message = f"host-C retained JSON is not valid: {relative}"
         raise ReferenceAuditError(message) from error
     fingerprints[relative] = sha256(raw).digest()
@@ -740,15 +752,11 @@ def audit(
         ):
             _fail("host-C retained artifact count changed during audit")
         _check_trial_file_inventory(data.document, data.artifacts, prefix)
-    except (
-        analyze.ArenaError,
-        evidence.EvidenceError,
-        reference_study.ReferenceStudyError,
-        host_c_oracle.HostOracleError,
-        experiment_manifest.ExperimentManifestError,
-        OSError,
-        UnicodeError,
-    ) as error:
+    except ReferenceAuditError:
+        # Local typed evidence rejections already contain the right diagnostic.
+        raise
+    except Exception as error:
+        # Dependency faults must remain typed and safe to render at the CLI.
         message = f"host-C reference evidence audit failed: {_safe_error_detail(error)}"
         raise ReferenceAuditError(message) from error
     return {

@@ -1531,6 +1531,9 @@ def test_rss_claim_requires_v2_recorded_linux_measurement_policy(
         host_c_oracle.HostOracleError,
         OSError,
         UnicodeError,
+        IndexError,
+        OverflowError,
+        Exception,
     ],
 )
 def test_host_c_audit_never_formats_foreign_dependency_errors(
@@ -1590,6 +1593,93 @@ def test_host_c_audit_cli_rejects_foreign_formatter_without_traceback(
     output = capsys.readouterr()
     assert not output.out
     assert "ForeignHostAuditCliFault" in output.err
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [reference_audit.ReferenceAuditError, report_output.ReportOutputError],
+)
+def test_host_c_audit_cli_never_formats_native_error_foreign_argument(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """An exact native error class cannot launder an unsafe argument."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("native audit error formatted caller argument")
+
+    fault = fault_type(HostileArgument())
+
+    def fail_audit(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(reference_audit, "audit", fail_audit)
+    monkeypatch.setattr(
+        reference_audit.sys,
+        "argv",
+        ["reference-audit", ".temp/arena-host-c-study-foreign/study.json"],
+    )
+    with pytest.raises(SystemExit) as caught:
+        reference_audit.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert fault_type.__name__ in output.err
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, analyze.ArenaError])
+def test_host_c_audit_never_formats_native_dependency_foreign_argument(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Audit admission must not stringify objects stored in error.args."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("native audit dependency formatted caller argument")
+
+    fault = fault_type(HostileArgument())
+
+    def fail_admit(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(reference_audit, "_admit_data", fail_admit)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="host-C reference evidence audit failed",
+    ) as caught:
+        reference_audit.audit(".temp/arena-host-c-study-foreign/study.json")
+    assert caught.value.__cause__ is fault
+    assert fault_type.__name__ in str(caught.value)
+
+
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError, Exception])
+def test_host_c_retained_json_parser_types_unexpected_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A direct retained JSON reader must contain all ordinary parser faults."""
+
+    class HostileFault(fault_type):
+        def __str__(self) -> str:
+            raise AssertionError("retained JSON dependency formatter executed")
+
+    fault = HostileFault("opaque decoder fault")
+
+    def fail_parse(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(reference_audit.evidence, "read_bounded_regular", lambda *_args, **_kwargs: b"{}")
+    monkeypatch.setattr(reference_audit.json, "loads", fail_parse)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="not valid") as caught:
+        reference_audit._read_json(
+            ".temp/arena-host-c-study-test/failures.json",
+            limit=reference_audit.MAX_FAILURES_BYTES,
+            fingerprints={},
+        )
+    assert caught.value.__cause__ is fault
 
 
 def test_host_c_audit_native_failure_retains_causal_details(
