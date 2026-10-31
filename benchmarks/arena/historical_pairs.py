@@ -48,8 +48,7 @@ from typing import TYPE_CHECKING, Any, Never
 import tomllib
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
 from benchmarks.arena import analyze, csv_admission, evidence, report_output
 from scripts.validate import benchmark_protocol, experiment_manifest
@@ -614,6 +613,10 @@ def build_report(root: Path, relative: str) -> dict[str, Any]:
         HistoricalEvidenceError: An imported source disagrees with its plan.
 
     """
+    if type(root) is not type(Path()):
+        _fail("historical paired root requires an exact native Path")
+    if type(relative) is not str:
+        _fail("historical paired source requires an exact string")
     if not relative.startswith("benchmarks/research/evidence/"):
         _fail("historical paired source must be under research evidence")
     try:

@@ -41,9 +41,7 @@ import json
 import sys
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
-from typing import Self
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Self, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -475,6 +473,90 @@ def test_missing_and_linked_historical_source_rejected(tmp_path: Path) -> None:
         historical_pairs.HistoricalEvidenceError, match="symlink"
     ):
         historical_pairs.build_report(tmp_path, TEMP)
+
+
+@pytest.mark.parametrize(
+    "invalid_relative", [None, False, b"benchmarks/research/evidence/a", [], 3]
+)
+def test_historical_import_rejects_nonstring_source_before_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_relative: object,
+) -> None:
+    """Malformed direct source identifiers cannot execute importer I/O."""
+
+    def forbid_import(*args: object, **kwargs: object) -> dict[str, object]:
+        _ = (args, kwargs)
+        message = "untyped historical source reached import"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(historical_pairs, "_build_report", forbid_import)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="exact"):
+        historical_pairs.build_report(tmp_path, cast("str", invalid_relative))
+
+
+def test_historical_import_rejects_forged_string_subclass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A purported relative string cannot override its prefix check."""
+
+    class ForgedSource(str):  # ruff: ignore[subclass-builtin]
+        def startswith(self, *args: object, **kwargs: object) -> bool:
+            _ = (args, kwargs)
+            message = "untrusted startswith executed"
+            raise AssertionError(message)
+
+    def forbid_import(*args: object, **kwargs: object) -> dict[str, object]:
+        _ = (args, kwargs)
+        message = "forged relative source reached import"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(historical_pairs, "_build_report", forbid_import)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="exact"):
+        historical_pairs.build_report(
+            tmp_path, ForgedSource(BASE + PREFIX)
+        )
+
+
+@pytest.mark.parametrize("invalid_root", [None, "not-a-path", False])
+def test_historical_import_rejects_nonnative_root_before_access(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_root: object,
+) -> None:
+    """An invalid root never reaches imported source filesystem resolution."""
+
+    def forbid_import(*args: object, **kwargs: object) -> dict[str, object]:
+        _ = (args, kwargs)
+        message = "invalid source root reached import"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(historical_pairs, "_build_report", forbid_import)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="native Path"):
+        historical_pairs.build_report(cast("Path", invalid_root), BASE + PREFIX)
+
+
+def test_historical_import_rejects_redirected_root_subclass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The source root cannot masquerade as another physical filesystem path."""
+
+    class RedirectedRoot(type(tmp_path)):
+        def __fspath__(self) -> str:
+            return str(tmp_path / "outside")
+
+    forged = RedirectedRoot(tmp_path)
+    assert str(forged) == str(tmp_path)
+
+    def forbid_import(*args: object, **kwargs: object) -> dict[str, object]:
+        _ = (args, kwargs)
+        message = "foreign root reached import"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(historical_pairs, "_build_report", forbid_import)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="native Path"):
+        historical_pairs.build_report(forged, BASE + PREFIX)
 
 
 def test_unsupported_source_root_rejected(tmp_path: Path) -> None:
