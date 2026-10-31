@@ -591,6 +591,13 @@ note. This does not turn a read into an atomic filesystem snapshot.
 Temporary payload-stream teardown likewise keeps an
 earlier write, flush, or file-sync failure primary when close also fails.
 
+The staged payload stream's close completion must be the native `None` receipt.
+Eight red-first pointer/checkpoint writer cases reject forged boolean,
+integer, or text completion before publication, leaving no durable member.
+A separate primary write failure test keeps the write error and attaches an
+invalid close receipt as secondary evidence, while descriptor closure remains
+verifiable.
+
 A crash after writing a later generation but before replacing the sidecar leaves
 the previously referenced generation intact and resumable. Unreferenced newer
 generations are ignored until a valid sidecar publishes them. `ProgressTimer`

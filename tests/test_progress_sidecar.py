@@ -12478,6 +12478,100 @@ def test_writer_lock_forged_close_receipt_stays_secondary_to_body_failure() -> N
 
 
 @pytest.mark.parametrize("member", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("receipt", [False, True, 0, "closed"])
+def test_payload_close_rejects_noncanonical_receipt_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+    receipt: object,
+) -> None:
+    """A deceptive post-fsync close result cannot publish a durable member."""
+    checkpoint = b"immutable-payload"
+    candidate = _sidecar(tmp_path)
+    if member == "checkpoint":
+        candidate = _checkpointed(candidate, checkpoint=checkpoint, partial=None)
+    opened: list[int] = []
+    closed: list[int] = []
+
+    class ForgedCloseStream:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor: int = descriptor
+
+        def write(self, payload: bytes) -> int:
+            return os.write(self.descriptor, payload)
+
+        @staticmethod
+        def flush() -> None:
+            return None
+
+        def fileno(self) -> int:
+            return self.descriptor
+
+        def close(self) -> object:
+            os.close(self.descriptor)
+            closed.append(self.descriptor)
+            return receipt
+
+    def forged_fdopen(descriptor: int, mode: str) -> ForgedCloseStream:
+        assert mode == "wb"
+        opened.append(descriptor)
+        return ForgedCloseStream(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", forged_fdopen)
+        with pytest.raises(ERROR, match="payload close receipt"):
+            if member == "checkpoint":
+                _ = progress.write_checkpoint_generation(candidate, checkpoint)
+            else:
+                _ = progress.write_atomic(candidate)
+
+    assert len(opened) == 1
+    assert closed == opened
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+    assert not Path(candidate.progress_path).exists()
+    if candidate.checkpoint_path is not None:
+        assert not Path(candidate.checkpoint_path).exists()
+
+
+def test_payload_forged_close_receipt_keeps_primary_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A false cleanup completion cannot replace the original write error."""
+    target = tmp_path / "unpublished-payload"
+    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    writer = cast(
+        "Callable[[int, bytes], None]", vars(progress)["_write_payload_descriptor"]
+    )
+
+    class ForgedCloseStream:
+        @staticmethod
+        def write(payload: bytes) -> int:
+            del payload
+            raise OSError("injected primary payload write failure")
+
+        def close(self) -> bool:
+            os.close(descriptor)
+            return False
+
+    def forged_fdopen(observed: int, mode: str) -> ForgedCloseStream:
+        assert (observed, mode) == (descriptor, "wb")
+        return ForgedCloseStream()
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", forged_fdopen)
+        with pytest.raises(OSError, match="primary payload write") as caught:
+            writer(descriptor, b"not-published")
+    close_message = "progress payload close receipt must be None"
+    assert getattr(caught.value, "__notes__", None) == [
+        f"payload descriptor close also failed: {close_message}"
+    ]
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(descriptor)
+
+
+@pytest.mark.parametrize("member", ["pointer", "checkpoint"])
 @pytest.mark.parametrize("receipt", [False, True, 0], ids=["false", "true", "zero"])
 def test_noncanonical_payload_sync_receipt_rejects_publication(
     tmp_path: Path,

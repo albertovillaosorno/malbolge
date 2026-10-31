@@ -2721,7 +2721,8 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
     finally:
         primary_error = sys.exception()
         try:
-            stream.close()
+            if stream.close() is not None:
+                _fail("progress payload close receipt must be None")
         except BaseException as error:
             if primary_error is not None:
                 BaseException.add_note(
