@@ -27,7 +27,7 @@
 # - Usage:
 #   - invoke([absolute_program, *args], timeout_seconds=15).
 # - Defaults:
-#   - Fifteen seconds, four KiB stdout, sixteen KiB stderr, POSIX only.
+#   - Fifteen seconds, bounded output, 512 argv entries/16 KiB, POSIX only.
 #
 
 """Fail-closed, bounded POSIX subprocess transport for target research."""
@@ -51,6 +51,8 @@ DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_STDOUT_LIMIT = 4 * 1024
 DEFAULT_STDERR_LIMIT = 16 * 1024
 MAX_STDIN_BYTES = 256
+MAX_COMMAND_ARGUMENTS = 512
+MAX_COMMAND_BYTES = 16 * 1024
 READ_CHUNK_BYTES = 64 * 1024
 POSIX_PLATFORM = "posix"
 GROUP_KILL_SIGNAL = 9
@@ -106,15 +108,29 @@ def _admit_limits(
 def _admit_command(command: list[str]) -> None:
     if type(command) is not list or not command:
         _fail("bounded target command requires a nonempty argument list")
+    if len(command) > MAX_COMMAND_ARGUMENTS:
+        _fail("bounded target command exceeds argument count limit")
     if type(command[0]) is not str or not command[0]:
         _fail("bounded target command requires a nonempty executable string")
     # Reject host PATH lookup and relative cwd resolution: the caller must
     # select the exact binary path before the bounded process is launched.
     if not Path(command[0]).is_absolute():
         _fail("bounded target command requires an absolute executable path")
+    total_bytes = 0
     for argument in command:
         if type(argument) is not str or NUL_CHARACTER in argument:
             _fail("bounded target command has nonstring or NUL arguments")
+        # Bound both Python-side argv allocation and the actual exec byte
+        # payload. The NUL terminator counts toward the cumulative budget.
+        if len(argument) > MAX_COMMAND_BYTES:
+            _fail("bounded target command exceeds argument bytes limit")
+        try:
+            total_bytes += len(os.fsencode(argument)) + 1
+        except UnicodeError as error:
+            message = "bounded target command requires encodable filesystem text"
+            raise TargetProcessError(message) from error
+        if total_bytes > MAX_COMMAND_BYTES:
+            _fail("bounded target command exceeds argument bytes limit")
 
 
 def _system_tool(name: str) -> str | None:

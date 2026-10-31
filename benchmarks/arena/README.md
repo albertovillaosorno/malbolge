@@ -245,6 +245,11 @@ additional byte on either stream, a cumulative wall timeout, and
 ordinary pipe-retaining descendants. Cleanup signals the original isolated
 process group and reaps the direct child; detached descendants and any
 physical memory or CPU budget enforcement remain outside this claim.
+Direct target subprocess calls additionally admit at most 512 arguments and
+16 KiB of filesystem-encoded argument bytes (including NUL terminators).
+Unencodable host argument strings, oversized lists and oversized encoded
+payloads reject before child creation or resource-tool discovery. These are
+per-command input caps, not execution resource guarantees.
 The runner checks complete stdout against the expected bytes; mismatches
 remain `verifier_rejected`, and launcher failures, stream overruns and
 child timeouts remain `tool_failed`, never credited as successes. It also

@@ -490,6 +490,74 @@ def test_invalid_child_command_rejects_before_launch(
     assert not launched
 
 
+@pytest.mark.parametrize(
+    ("command", "reason"),
+    [
+        ([sys.executable, *(["x"] * 513)], "argument count"),
+        ([sys.executable, "x" * 32768], "argument bytes"),
+        ([sys.executable, *(["x" * 512] * 32)], "argument bytes"),
+        ([sys.executable, "☃" * 6000], "argument bytes"),
+        ([sys.executable, "\ud800"], "filesystem text"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("launcher", "input_mode"),
+    [
+        (target_process.invoke, "null"),
+        (target_process.invoke_limited, "null"),
+        (target_process.invoke_with_input, MEASURED_BINARY_INPUT_MODE),
+        (target_process.invoke_limited_measured, "null"),
+        (
+            target_process.invoke_with_input_limited_measured_raw,
+            MEASURED_BINARY_INPUT_MODE,
+        ),
+    ],
+)
+def test_child_command_argument_budget_rejects_before_host_work(
+    monkeypatch: pytest.MonkeyPatch,
+    command: list[str],
+    reason: str,
+    launcher: Callable[..., object],
+    input_mode: str,
+) -> None:
+    """A huge or unencodable argv cannot trigger launches or host probes."""
+    host_calls: list[str] = []
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        host_calls.append("host")
+        message = "oversized command reached host APIs"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(target_process.sp, "Popen", forbidden)
+    monkeypatch.setattr(target_process, "_system_tool", forbidden)
+    monkeypatch.setattr(
+        target_process, "require_child_rss_measurement", forbidden
+    )
+    input_args = (b"input",) if input_mode == MEASURED_BINARY_INPUT_MODE else ()
+    with pytest.raises(target_process.TargetProcessError, match=reason):
+        launcher(command, *input_args)
+    assert not host_calls
+
+
+def test_child_command_budget_accepts_bounded_utf8_and_maximum_argv() -> None:
+    """Byte-count admission must not discard real maximum-length argv runs."""
+    command = [
+        sys.executable,
+        "-c",
+        "import sys; print(len(sys.argv))",
+        "☃" * 4900,
+        *(["x"] * 508),
+    ]
+    assert len(command) == target_process.MAX_COMMAND_ARGUMENTS
+    result = target_process.invoke(
+        command, timeout_seconds=LARGE_TIMEOUT_SECONDS
+    )
+    assert result.returncode == 0
+    assert result.stdout == b"510\n"
+    assert result.stderr == b""
+
+
 @pytest.mark.parametrize("executable", ["python3", "./compiler", "../compiler"])
 def test_relative_child_executable_refused_before_launch(
     executable: str,
