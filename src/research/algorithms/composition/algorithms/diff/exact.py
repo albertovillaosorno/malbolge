@@ -951,7 +951,7 @@ def _cleanup_exact_staging(path: Path) -> str | None:
         shutil.rmtree(path)
     except FileNotFoundError:
         return None
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         return str(error)
     return None
 

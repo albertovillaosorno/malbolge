@@ -719,8 +719,13 @@ def test_exact_materialization_wraps_output_write_failure(
     _expect(not (tmp_path / ".result.staging").exists(), "staging survived")
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_exact_cleanup_failure_is_reported_with_primary_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """A failed staging cleanup cannot hide or replace the primary failure."""
     source, oracle = _synthetic_pair(tmp_path)
@@ -738,7 +743,7 @@ def test_exact_cleanup_failure_is_reported_with_primary_error(
     def fail_cleanup(path: Path) -> None:
         _ = path
         message = "blocked staging cleanup"
-        raise PermissionError(message)
+        raise failure_type(message)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
     monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
