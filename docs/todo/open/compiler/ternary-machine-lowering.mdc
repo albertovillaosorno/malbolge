@@ -818,8 +818,13 @@ instruction.
   other 235 values in each complete 256-byte admission domain. A separate
   tenth-output scan verifies 25 distinct seeds, rejecting 231 other bytes.
   Canonical MCTI/MCTR and raw/capsule publishers execute ten identical
-  outputs through the real VM and general CLI; eleven or more outputs,
-  unsupported literals and arbitrary dataflow still reject.
+  outputs through the real VM and general CLI; at that tenth-output stage,
+  eleven or more outputs, unsupported literals and arbitrary dataflow reject.
+- A separate twenty-two-output independent source/guest scan verifies all
+  26 bounded no-op phases, yielding 25 distinct nonzero byte witnesses and
+  rejecting the other 231 possible byte values for exactly 22 outputs.
+  Typed MCTI/MCTR, capsule CLI and real runner prove repeated outputs for
+  values 64 and 18; twenty-three or more outputs remain excluded.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

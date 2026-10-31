@@ -369,18 +369,17 @@ failed I/O, memory, arbitrary C, or guest ABI is realized.
 ### Guest-computed finite nonzero byte literals
 
 An explicit `--seeded-byte-literal` canonical MCTI or MCTR file/stdin mode
-admits one source `u8` constant followed by one to twenty-one same-SSA outputs.
+admits one source `u8` constant followed by one to twenty-two same-SSA outputs.
 The exact output counts have independent current-profile witness tables:
 14 distinct bytes with one output, 10 with two, 21 with three, 24 with four,
 18 with five, 19 with six, 18 with seven, 21 with eight, 21 with nine
 and 25 with ten, plus 17 with eleven, 20 with twelve, 19 with thirteen,
 22 with fourteen, 17 with fifteen, 24 with sixteen, 19 with seventeen and
-20 with eighteen, 19 with nineteen, 21 with twenty and 20 with twenty-one. Each bounded
-source-prefix
-scan for counts three through twenty-one confirms 25 or 26 tested phases emit
-identical nonzero
-bytes and retains the shortest
-valid prefix for each distinct value. Every extra `<` changes
+20 with eighteen, 19 with nineteen, 21 with twenty, 20 with twenty-one
+and 25 with twenty-two. Each bounded source-prefix scan for counts three
+through twenty-two confirms 25 or 26 tested phases emit identical nonzero
+bytes and retains the shortest valid prefix per distinct value. Every extra
+`<` changes
 source positions and loader-expanded data, so seeds cannot be shared across
 counts. The admitted `j`/`*`/`<`/`v` layout computes bytes through actual
 guest data rotation, never a host literal-output callback.

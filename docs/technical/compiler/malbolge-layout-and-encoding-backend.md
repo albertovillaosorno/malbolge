@@ -336,21 +336,22 @@ publication remain distinct guarantees.
 ### Genuine Nonzero Byte Constant Artifact Pilot
 
 The explicit `--seeded-byte-literal` mode admits one verified nonzero
-`u8` literal and one to twenty-one matching outputs via canonical MCTI
+`u8` literal and one to twenty-two matching outputs via canonical MCTI
 or MCTR file/stdin. The original 14-value current-profile seed table
 remains exclusive to single-output sources. Ten different byte values
 `55, 64, 65, 66, 163, 164, 165, 182, 183, 200` have a separately
-verified two-output seed table. Third- through twenty-first-output phases
+verified two-output seed table. Third- through twenty-second-output phases
 add 21, 24, 18, 19, 18, 21, 21, 25, 17, 20, 19, 22, 17, 24,
-19, 20, 19, 21 and 20 independently re-executed distinct byte values,
+19, 20, 19, 21, 20 and 25 independently re-executed distinct byte values,
 respectively. All 26
 reviewed phases for counts three through fourteen and sixteen through
 twenty halt with equal nonzero bytes. Fifteen outputs have 25 verified
 phases; phase 20 is excluded. Twenty-one outputs admit 25 of 26 phases:
-phase fourteen fails, while 20 distinct byte values remain. Separate VM
-scans for sixteen through twenty-one outputs and real CLI fixtures prove
-41/194, 6/133, 66/59, 20/6, 192/48 and 140/252 at distinct source
-positions, respectively. The admission
+phase fourteen fails, while 20 distinct byte values remain.
+Twenty-two outputs pass all 26 phases, retaining 25 shortest distinct
+byte witnesses. Separate VM scans for sixteen through twenty-two outputs
+and real CLI fixtures prove 41/194, 6/133, 66/59, 20/6, 192/48,
+140/252 and 64/18 at distinct source positions, respectively. The admission
 table retains only the shortest phase per witnessed byte, not inferred values
 for untested source lengths.
 Each additional `<` changes source position decoding and loader-expanded
@@ -362,7 +363,7 @@ no-overwrite semantics. General-runner process tests select the current
 profile through a capsule; raw graphical source carries no profile ID and
 can produce different values under the runner's historical default.
 The guest computes the byte without a host-provided result. Other profiles,
-unknown literals, zero/twenty-two-or-more outputs, additional effects and
+unknown literals, zero/twenty-three-or-more outputs, additional effects and
 arbitrary arithmetic reject.
 
 ### Signed/unsigned byte identity-cast artifact publication
