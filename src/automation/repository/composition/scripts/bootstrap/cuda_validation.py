@@ -42,10 +42,12 @@ from dataclasses import dataclass
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 from pathlib import PurePosixPath
 from pathlib import PureWindowsPath
 import shutil
+from stat import S_ISREG
 import tarfile
 from typing import Final
 from typing import Never
@@ -65,6 +67,8 @@ NVIDIA_CUDA_REDIST_BASE: Final = (
 CUDA_PROVISION_MARKER: Final = ".malbolge-cuda-toolkit-provision-v1.json"
 CUDA_PROVISION_SCHEMA_VERSION: Final = 1
 CUDA_TOOLCHAIN_SCHEMA_VERSION: Final = 1
+_MAX_MANIFEST_BYTES: Final = 1024 * 1024
+_MAX_MARKER_BYTES: Final = 16 * 1024
 SHA256_HEX_LENGTH: Final = 64
 LOWER_HEX_DIGITS: Final = frozenset("0123456789abcdef")
 PARENT_SEGMENT: Final = ".."
@@ -132,9 +136,73 @@ def _required_string(
     return value
 
 
+def _manifest_identity(status: os.stat_result, label: str) -> tuple[int, ...]:
+    """Admit a physical regular file with a stable identity.
+
+    Returns:
+        The device, inode, size, and mutation-sensitive timestamps.
+
+    """
+    if not S_ISREG(status.st_mode):
+        _fail(f"{label} must be a regular file")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _check_manifest_parents(path: Path, label: str) -> None:
+    """Reject symlink or junction redirects in manifest ancestry."""
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            _fail(f"{label} path must not redirect")
+
+
+def _read_manifest_source(
+    path: Path,
+    label: str,
+    *,
+    max_bytes: int = _MAX_MANIFEST_BYTES,
+) -> bytes:
+    """Read exact bounded bytes from one stable physical authority file.
+
+    Returns:
+        Bytes whose named inode and timestamps are unchanged after read.
+
+    """
+    _check_manifest_parents(path, label)
+    admitted = path.lstat()
+    expected = _manifest_identity(admitted, label)
+    if admitted.st_size > max_bytes:
+        _fail(f"{label} exceeds byte limit")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        if _manifest_identity(os.fstat(stream.fileno()), label) != expected:
+            _fail(f"{label} changed before read")
+        payload = stream.read(max_bytes + 1)
+        if len(payload) != admitted.st_size:
+            _fail(f"{label} changed during read or exceeds byte limit")
+        if (
+            _manifest_identity(os.fstat(stream.fileno()), label) != expected
+            or _manifest_identity(path.lstat(), label) != expected
+        ):
+            _fail(f"{label} changed during read")
+        _check_manifest_parents(path, label)
+        return payload
+
+
 def _read_document(path: Path, label: str) -> tuple[dict[str, object], bytes]:
     try:
-        payload = path.read_bytes()
+        payload = _read_manifest_source(path, label)
         parsed = cast(
             "object",
             json.loads(
@@ -470,12 +538,13 @@ def _marker_bytes(manifest: CudaProvisionManifest) -> bytes:
 
 def _completed_toolkit_matches(manifest: CudaProvisionManifest) -> bool:
     marker = manifest.toolkit_root / CUDA_PROVISION_MARKER
-    if not marker.is_file():
-        return False
     try:
-        return marker.read_bytes() == _marker_bytes(manifest)
-    except OSError:
+        observed = _read_manifest_source(
+            marker, "CUDA provision marker", max_bytes=_MAX_MARKER_BYTES
+        )
+    except (OSError, CudaProvisionError):
         return False
+    return observed == _marker_bytes(manifest)
 
 
 def provision_cuda_manifest(

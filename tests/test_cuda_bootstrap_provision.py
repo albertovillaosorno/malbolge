@@ -37,6 +37,8 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
+from pathlib import Path
 import tarfile
 from typing import TYPE_CHECKING
 
@@ -46,9 +48,10 @@ from scripts.bootstrap import project
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 LINUX_PLATFORM = "linux-x86_64"
+FILE_REDIRECT = "file"
+SOURCE_RECHECK = 2
 TOOLKIT_ROOT = ".dependencies/cuda/13.3.1/toolkit"
 PACKAGE_NAME = "cuda_nvrtc"
 PACKAGE_VERSION = "13.3.33"
@@ -110,6 +113,20 @@ def _payload() -> bytes:
         NVRTC_MEMBER: NVRTC_BYTES,
         BUILTINS_MEMBER: BUILTINS_BYTES,
     })
+
+
+def _download_fixture(payload: bytes) -> Callable[[str], bytes]:
+    """Return exact synthetic package bytes for the pinned URL.
+
+    Returns:
+        A downloader restricted to the expected NVIDIA package URL.
+
+    """
+    def download(url: str) -> bytes:
+        assert url == cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH
+        return payload
+
+    return download
 
 
 def test_manifest_parses_exact_linux_nvrtc_package(tmp_path: Path) -> None:
@@ -317,3 +334,204 @@ def test_project_cuda_provisioning_uses_selected_manifest(
 
     assert result == tmp_path / TOOLKIT_ROOT
     assert calls == [(tmp_path, manifest, LINUX_PLATFORM)]
+
+
+@pytest.mark.parametrize("redirect", ["file", "directory"])
+def test_provision_manifest_rejects_redirected_source(
+    tmp_path: Path,
+    redirect: str,
+) -> None:
+    """Explicit provisioning may not trust linked manifest authority."""
+    real = tmp_path / "real"
+    real.mkdir()
+    source = _manifest(real, _payload())
+    if redirect == FILE_REDIRECT:
+        alias = tmp_path / "linked.json"
+    else:
+        alias = tmp_path / "linked-dir"
+    try:
+        if redirect == FILE_REDIRECT:
+            _ = alias.symlink_to(source)
+        else:
+            _ = alias.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    manifest = alias if redirect == FILE_REDIRECT else alias / source.name
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match=r"regular|redirect"
+    ):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+
+
+def test_provision_manifest_rejects_oversized_file(tmp_path: Path) -> None:
+    """Large authority documents fail before parsing into package records."""
+    manifest = _manifest(tmp_path, _payload())
+    with manifest.open("wb") as stream:
+        _ = stream.truncate(1024 * 1024 + 1)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="byte limit"):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+
+
+def test_provision_manifest_rejects_directory_and_fifo(tmp_path: Path) -> None:
+    """Neither a directory nor writerless FIFO may stand in for JSON."""
+    manifest = _manifest(tmp_path, _payload())
+    manifest.unlink()
+    manifest.mkdir()
+    with pytest.raises(cuda_validation.CudaProvisionError, match="regular"):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+    manifest.rmdir()
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFO unavailable on host")
+    mkfifo(manifest)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="regular"):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+
+
+def test_provision_manifest_rejects_same_byte_inode_swap_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The manifest descriptor must refer to the admitted named inode."""
+    manifest = _manifest(tmp_path, _payload())
+    replacement = tmp_path / "replacement.json"
+    _ = replacement.write_bytes(manifest.read_bytes())
+    real_open = os.open
+    swapped = False
+
+    def swap_on_open(path: Path, flags: int) -> int:
+        nonlocal swapped
+        if path == manifest:
+            _ = replacement.replace(manifest)
+            swapped = True
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_on_open)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="changed"):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+    assert swapped
+
+
+def test_provision_manifest_rejects_in_place_modification_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Content changes under the same inode invalidate package authority."""
+    manifest = _manifest(tmp_path, _payload())
+    real_lstat = Path.lstat
+    observed = 0
+
+    def modify_at_recheck(path: Path) -> os.stat_result:
+        nonlocal observed
+        if path == manifest:
+            observed += 1
+            if observed == SOURCE_RECHECK:
+                with manifest.open("r+b") as stream:
+                    _ = stream.write(b"x")
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", modify_at_recheck)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="changed"):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+    assert observed == SOURCE_RECHECK
+
+
+def test_provision_manifest_rejects_inode_swap_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The named source must still match the opened descriptor after read."""
+    manifest = _manifest(tmp_path, _payload())
+    replacement = tmp_path / "replacement.json"
+    _ = replacement.write_bytes(manifest.read_bytes())
+    real_lstat = Path.lstat
+    observed = 0
+
+    def replace_at_recheck(path: Path) -> os.stat_result:
+        nonlocal observed
+        if path == manifest:
+            observed += 1
+            if observed == SOURCE_RECHECK:
+                _ = replacement.replace(manifest)
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", replace_at_recheck)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="changed"):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+    assert observed == SOURCE_RECHECK
+
+
+def test_provision_completion_marker_rejects_linked_source(
+    tmp_path: Path,
+) -> None:
+    """A linked byte-identical marker cannot claim an installed toolkit."""
+    payload = _payload()
+    manifest_path = _manifest(tmp_path, payload)
+    first = cuda_validation.provision_cuda_manifest(
+        tmp_path,
+        manifest_path,
+        LINUX_PLATFORM,
+        downloader=_download_fixture(payload),
+    )
+    marker = first / cuda_validation.CUDA_PROVISION_MARKER
+    external = tmp_path / "external-marker.json"
+    _ = external.write_bytes(marker.read_bytes())
+    marker.unlink()
+    try:
+        _ = marker.symlink_to(external)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(
+        cuda_validation.CudaProvisionError,
+        match="exists without the exact provision marker",
+    ):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest_path,
+            LINUX_PLATFORM,
+            downloader=_download_fixture(payload),
+        )
+
+
+def test_provision_completion_marker_rejects_redirected_parent(
+    tmp_path: Path,
+) -> None:
+    """A linked toolkit root cannot claim completion through a marker."""
+    payload = _payload()
+    manifest_path = _manifest(tmp_path, payload)
+    real_root = tmp_path / "real"
+    _ = cuda_validation.provision_cuda_manifest(
+        real_root,
+        manifest_path,
+        LINUX_PLATFORM,
+        downloader=_download_fixture(payload),
+    )
+    fake_root = tmp_path / "fake"
+    try:
+        _ = fake_root.symlink_to(real_root, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(
+        cuda_validation.CudaProvisionError,
+        match="exists without the exact provision marker",
+    ):
+        _ = cuda_validation.provision_cuda_manifest(
+            fake_root,
+            manifest_path,
+            LINUX_PLATFORM,
+            downloader=_download_fixture(payload),
+        )

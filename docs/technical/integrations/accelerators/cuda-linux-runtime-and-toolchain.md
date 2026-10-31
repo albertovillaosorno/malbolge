@@ -36,14 +36,18 @@ libraries. Linux preloads the manifest-declared
 published NVRTC ELF does not carry
 an RPATH/RUNPATH for that required companion library.
 
-The bootstrap has an explicit `--provision-cuda` operation. It downloads only
+The bootstrap has an explicit `--provision-cuda` operation. It admits the
+selected host manifest only as bounded, nonredirected regular bytes with stable
+device, inode, size, and timestamps across each read. It downloads only
 the package identities in the selected host manifest, validates tracked byte
 size and SHA-256 before extraction, rejects archive traversal, stages inside the
-repository, and atomically publishes a completion-marker-bound toolkit. Normal
-bootstrap remains offline with respect to CUDA and reports a missing toolkit
-instead of installing one implicitly. The current Linux package surface is the
-NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed host driver is a
-runtime capability and is not copied into `.dependencies`.
+repository, and atomically publishes a completion-marker-bound toolkit. The
+completion marker must likewise be a bounded stable regular file, with no
+symlinked leaf or parent; invalid markers cannot assert an installed toolkit.
+Normal bootstrap remains offline with respect to CUDA and reports a missing
+toolkit instead of installing one implicitly. The current Linux package
+surface is the NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed
+host driver is a runtime capability and is not copied into `.dependencies`.
 
 Live Fedora evidence at pre-documentation commit `bc2ebf7b` constructs the
 exact adapter on an NVIDIA GeForce RTX 4060 (`sm_89`). The measured identity is
