@@ -595,7 +595,8 @@ def _rss_workspace() -> Path:
     workspace = _ROOT / ".temp"
     try:
         details = workspace.lstat()
-    except (OSError, ValueError, RuntimeError) as error:
+    except Exception as error:
+        # An unexpected host stat fault must not escape resource admission.
         message = "bounded target RSS workspace cannot be inspected"
         raise TargetProcessError(message) from error
     if not S_ISDIR(details.st_mode):
@@ -648,9 +649,14 @@ def _measured_limited(
             except BaseException as error:
                 primary = error
                 raise
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
+        if error is primary and isinstance(
+            error, (TargetProcessError, sp.TimeoutExpired)
+        ):
+            # Without a secondary directory fault, preserve the child verdict.
+            raise
         if primary is not None and error is not primary:
-            # Directory cleanup must not replace the original child failure.
+            # An unexpected directory cleanup fault cannot replace the child.
             BaseException.add_note(
                 primary,
                 "bounded target RSS cleanup also failed: "

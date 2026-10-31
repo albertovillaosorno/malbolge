@@ -231,6 +231,13 @@ class _HostileCleanupArg:
         raise AssertionError("foreign target cleanup argument formatted")
 
 
+class _UnexpectedTargetHostFault(Exception):
+    """Foreign host adapter failures must not reach their formatter."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign target host error formatter executed")
+
+
 def test_target_cleanup_native_oserror_with_hostile_filename_is_safe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -872,6 +879,173 @@ def test_measured_rss_workspace_host_inspection_errors_are_typed(
     ) as rejected:
         target_process.invoke_limited_measured(_child("pass"))
     assert isinstance(rejected.value.__cause__, failure_type)
+
+
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetHostFault]
+)
+def test_measured_rss_workspace_unexpected_host_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Unanticipated workspace stat errors cannot escape resource admission."""
+    workspace = tmp_path / ".temp"
+    fault = fault_class("unexpected workspace inspection")
+    real_lstat = type(tmp_path).lstat
+
+    def broken_lstat(path: Path) -> os.stat_result:
+        if path == workspace:
+            raise fault
+        return real_lstat(path)
+
+    monkeypatch.setattr(target_process, "_ROOT", tmp_path)
+    monkeypatch.setattr(type(tmp_path), "lstat", broken_lstat)
+    with pytest.raises(
+        target_process.TargetProcessError, match="RSS workspace"
+    ) as caught:
+        target_process.invoke_limited_measured(_child("pass"))
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("phase", ["constructor", "enter", "exit"])
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetHostFault]
+)
+def test_measured_rss_unexpected_directory_fault_is_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected temp-directory setup and close faults remain typed."""
+    fault = fault_class("unexpected temporary directory failure")
+
+    class BrokenDirectory:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+            if phase == "constructor":
+                raise fault
+
+        def __enter__(self) -> str:
+            if phase == "enter":
+                raise fault
+            return "/ignored-test-receipt-directory"
+
+        def __exit__(self, *args: object) -> None:
+            del args
+            if phase == "exit":
+                raise fault
+
+    def completed(
+        *args: object, **kwargs: object
+    ) -> sp.CompletedProcess[bytes]:
+        del args, kwargs
+        return sp.CompletedProcess([sys.executable], 0, b"", b"")
+
+    monkeypatch.setattr(
+        target_process.tempfile, "TemporaryDirectory", BrokenDirectory
+    )
+    monkeypatch.setattr(
+        target_process, "require_child_rss_measurement", lambda: None
+    )
+    monkeypatch.setattr(
+        target_process, "_system_tool", lambda _name: "/usr/bin/time"
+    )
+    monkeypatch.setattr(target_process, "_run", completed)
+    monkeypatch.setattr(
+        target_process, "_rss_report_bytes", lambda _path: b"10\n"
+    )
+    with pytest.raises(
+        target_process.TargetProcessError, match="RSS directory"
+    ) as caught:
+        target_process.invoke_limited_measured(_child("pass"))
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetHostFault]
+)
+def test_measured_rss_unexpected_cleanup_preserves_primary_child_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected RSS cleanup faults cannot replace the child failure."""
+    fault = fault_class("unexpected RSS cleanup")
+    primary = target_process.TargetProcessError("original RSS child error")
+
+    class BrokenDirectory:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+
+        def __enter__(self) -> str:
+            return "/ignored-test-receipt-directory"
+
+        def __exit__(self, *args: object) -> None:
+            del args
+            raise fault
+
+    def rejected_child(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise primary
+
+    monkeypatch.setattr(
+        target_process.tempfile, "TemporaryDirectory", BrokenDirectory
+    )
+    monkeypatch.setattr(
+        target_process, "require_child_rss_measurement", lambda: None
+    )
+    monkeypatch.setattr(
+        target_process, "_system_tool", lambda _name: "/usr/bin/time"
+    )
+    monkeypatch.setattr(target_process, "_run", rejected_child)
+    with pytest.raises(
+        target_process.TargetProcessError, match="original RSS child error"
+    ) as caught:
+        target_process.invoke_limited_measured(_child("pass"))
+    assert caught.value is primary
+    assert caught.value.__cause__ is fault
+    assert any("RSS cleanup also failed" in note for note in primary.__notes__)
+
+
+@pytest.mark.parametrize("kind", ["typed", "timeout"])
+def test_measured_rss_transparent_directory_preserves_primary_child_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """RSS directory admission cannot relabel a normal child rejection."""
+    primary: Exception = (
+        target_process.TargetProcessError("original target child failure")
+        if kind == "typed"
+        else sp.TimeoutExpired([sys.executable], 1)
+    )
+
+    class TransparentDirectory:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+
+        def __enter__(self) -> str:
+            return "/ignored-test-receipt-directory"
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+    def rejected_child(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise primary
+
+    monkeypatch.setattr(
+        target_process.tempfile, "TemporaryDirectory", TransparentDirectory
+    )
+    monkeypatch.setattr(
+        target_process, "require_child_rss_measurement", lambda: None
+    )
+    monkeypatch.setattr(
+        target_process, "_system_tool", lambda _name: "/usr/bin/time"
+    )
+    monkeypatch.setattr(target_process, "_run", rejected_child)
+    with pytest.raises(type(primary)) as caught:
+        target_process.invoke_limited_measured(_child("pass"))
+    assert caught.value is primary
 
 
 @pytest.mark.parametrize("phase", ["constructor", "enter", "exit"])
