@@ -223,8 +223,11 @@ format.
   roots resolving inside the candidate source, including linked ancestors, now
   reject before staging; concurrent external writers remain uncoordinated.
   Direct plan construction rejects ancestor-overlapping output file paths, and
-  source/output instruction labels reject Windows drive prefixes. A synthetic
-  boundary-change test deliberately still fails, defining the next mapped-token
+  source/output instruction labels reject Windows drive prefixes. Authoring
+  verifies the exact source snapshot before and after building locators,
+  excluding declared static passthrough roots; external writer races remain.
+  A synthetic boundary-change test deliberately still fails, defining the
+  next mapped-token
   C
   placement milestone rather than pretending byte relocation solves
   reformatting.

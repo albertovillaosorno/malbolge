@@ -535,6 +535,11 @@ race a non-atomic input snapshot or path check and require coordination.
 Direct relocatable plan construction rejects output file paths that also name
 ancestor directories of other output files. Source and output instruction
 labels reject Windows drive-absolute and drive-relative forms before placement.
+Relocatable authoring now verifies the exact plan's source snapshot both before
+and after constructing boundary locators. Static snapshot comparison excludes
+explicit exact passthrough roots, but detects changed patched or copied files
+and nonportable linked entries. These two checks remain non-atomic against
+external writers.
 
 This is deliberately a placement primitive, not compatible admission. Synthetic
 tests

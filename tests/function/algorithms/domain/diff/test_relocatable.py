@@ -43,6 +43,7 @@ from typing import cast
 
 from algorithms.diff import relocatable as relocatable_module
 from algorithms.diff.exact import build_exact_plan
+from algorithms.diff.exact import read_exact_regular_file
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
 from algorithms.diff.model import TreeModelError
@@ -129,6 +130,61 @@ def test_relocatable_rejects_output_inside_candidate_source(
     _expect(
         entries == ["code.bin", "copy.bin"],
         "relocatable materialization mutated the candidate source tree",
+    )
+
+
+@pytest.mark.parametrize("changed", ["code.bin", "copy.bin"])
+def test_relocatable_authoring_rejects_changed_exact_source(
+    tmp_path: Path,
+    changed: str,
+) -> None:
+    """Relocation must not author locators against stale exact snapshots."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    previous = (source / changed).read_bytes()
+    _write(source, changed, previous + b"late source change")
+
+    with pytest.raises(RelocationError, match="source snapshot"):
+        _ = build_relocatable_plan(source, exact)
+
+
+def test_relocatable_authoring_detects_drift_during_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-locator snapshot catches source edits during authoring."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    original = read_exact_regular_file
+    modified = False
+
+    def change_after_read(path: Path, context: str) -> bytes:
+        nonlocal modified
+        result = original(path, context)
+        if not modified:
+            modified = True
+            _write(source, "copy.bin", _blocks("copy") + b"late edit")
+        return result
+
+    monkeypatch.setattr(
+        relocatable_module, "read_exact_regular_file", change_after_read
+    )
+    with pytest.raises(RelocationError, match="source snapshot"):
+        _ = build_relocatable_plan(source, exact)
+    _expect(modified, "authoring did not exercise post-read validation")
+
+
+def test_relocatable_authoring_preserves_exact_passthrough_scope(
+    tmp_path: Path,
+) -> None:
+    """Source snapshot checks exclude exact-authoring passthrough files."""
+    source, oracle, _ = _fixture(tmp_path)
+    passthrough = "copy.bin"
+    exact = build_exact_plan(source, oracle, passthrough_roots=(passthrough,))
+    plan = build_relocatable_plan(source, exact)
+    _expect(
+        passthrough not in (item.output_path for item in plan.instructions),
+        "exact passthrough root unexpectedly became a static output",
     )
 
 
@@ -372,7 +428,9 @@ def test_relocatable_authoring_rejects_linked_source_after_exact_plan(
         code.symlink_to(shadow)
     except OSError:
         pytest.skip("filesystem symlinks unavailable")
-    with pytest.raises(RelocationError, match="relocatable source read failed"):
+    with pytest.raises(
+        RelocationError, match="relocatable source snapshot failed"
+    ):
         _ = build_relocatable_plan(source, exact)
 
 
@@ -419,7 +477,9 @@ def test_relocatable_rejects_linked_authoring_directory(
     except OSError:
         pytest.skip("directory symlinks unavailable")
 
-    with pytest.raises(RelocationError, match="linked path component"):
+    with pytest.raises(
+        RelocationError, match="relocatable source snapshot failed"
+    ):
         _ = build_relocatable_plan(source, exact)
 
 
@@ -472,7 +532,9 @@ def test_relocatable_authoring_read_error_fails_closed(
         return original_open(file, flags, mode, dir_fd=dir_fd)
 
     monkeypatch.setattr(os, "open", fail_open)
-    with pytest.raises(RelocationError, match="relocatable source read failed"):
+    with pytest.raises(
+        RelocationError, match="relocatable source snapshot failed"
+    ):
         _ = build_relocatable_plan(source, exact)
 
 

@@ -53,6 +53,7 @@ from typing import cast
 
 from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import read_exact_regular_file
+from algorithms.diff.exact import snapshot_tree_excluding
 from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
@@ -383,6 +384,27 @@ def _validate_path(value: object, context: str) -> None:
         raise RelocationError(message) from error
 
 
+def _require_exact_source_snapshot(
+    source_root: Path, exact_plan: ExactAuthoringPlan
+) -> None:
+    """Require the authoring tree to match the bound exact source evidence.
+
+    Raises:
+        RelocationError: The source snapshot is invalid or has changed.
+
+    """
+    try:
+        current = snapshot_tree_excluding(
+            source_root, exact_plan.passthrough_roots
+        )
+    except ExactTreeError as error:
+        message = f"relocatable source snapshot failed: {error}"
+        raise RelocationError(message) from error
+    if current != exact_plan.source:
+        message = "relocatable source snapshot differs from exact plan"
+        raise RelocationError(message)
+
+
 def build_relocatable_plan(
     source_root: Path,
     exact_plan: ExactAuthoringPlan,
@@ -402,12 +424,13 @@ def build_relocatable_plan(
             "relocatable source plan must use the exact authoring-plan type"
         )
         raise RelocationError(message)
-    return RelocatableAuthoringPlan(
-        instructions=tuple(
-            _instruction(source_root, instruction)
-            for instruction in exact_plan.instructions
-        )
+    _require_exact_source_snapshot(source_root, exact_plan)
+    instructions = tuple(
+        _instruction(source_root, instruction)
+        for instruction in exact_plan.instructions
     )
+    _require_exact_source_snapshot(source_root, exact_plan)
+    return RelocatableAuthoringPlan(instructions=instructions)
 
 
 def _validate_relative_path(relative_path: object) -> str:
