@@ -7617,6 +7617,112 @@ def test_temporary_descriptor_admission_failure_closes_raw_fd(
 
 
 @pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+@pytest.mark.parametrize("receipt_number", [1, 3, 5])
+def test_writer_rejects_foreign_staging_descriptor_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    receipt_number: int,
+) -> None:
+    """Staging metadata cannot substitute foreign properties for a native inode."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    original_mkstemp = tempfile.mkstemp
+    original_fstat = os.fstat
+    staged_descriptors: list[int] = []
+    staged_receipts = 0
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign staging metadata accessed: {field}")
+
+    def track_mkstemp(
+        *, prefix: str, suffix: str, **options: Path
+    ) -> tuple[int, str]:
+        descriptor, name = original_mkstemp(
+            dir=options["dir"], prefix=prefix, suffix=suffix
+        )
+        staged_descriptors.append(descriptor)
+        return descriptor, name
+
+    def foreign_fstat(descriptor: int) -> os.stat_result:
+        nonlocal staged_receipts
+        if descriptor in staged_descriptors:
+            staged_receipts += 1
+            if staged_receipts == receipt_number:
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_fstat(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(tempfile, "mkstemp", track_mkstemp)
+        context.setattr(os, "fstat", foreign_fstat)
+        with pytest.raises(ERROR, match="native os.stat_result"):
+            _ = _publish_for_temporary_admission_test(kind, sidecar, destination)
+    assert len(staged_descriptors) == 1
+    assert staged_receipts == receipt_number
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(staged_descriptors[0])
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+@pytest.mark.parametrize("receipt_number", [1, 4])
+def test_writer_rejects_foreign_staging_path_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    receipt_number: int,
+) -> None:
+    """A forged staging pathname cannot authorize pointer publication."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    original_mkstemp = tempfile.mkstemp
+    original_stat = Path.stat
+    staged_paths: list[Path] = []
+    staged_receipts = 0
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign staging metadata accessed: {field}")
+
+    def track_mkstemp(
+        *, prefix: str, suffix: str, **options: Path
+    ) -> tuple[int, str]:
+        descriptor, name = original_mkstemp(
+            dir=options["dir"], prefix=prefix, suffix=suffix
+        )
+        staged_paths.append(Path(name))
+        return descriptor, name
+
+    def foreign_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal staged_receipts
+        if path in staged_paths:
+            staged_receipts += 1
+            if staged_receipts == receipt_number:
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(tempfile, "mkstemp", track_mkstemp)
+        context.setattr(Path, "stat", foreign_stat)
+        with pytest.raises(ERROR, match="native os.stat_result"):
+            _ = _publish_for_temporary_admission_test(kind, sidecar, destination)
+    assert len(staged_paths) == 1
+    assert staged_receipts >= receipt_number
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
 @pytest.mark.parametrize("replacement", [TEMP_REGULAR, TEMP_SYMLINK])
 def test_failed_temporary_descriptor_admission_preserves_foreign_path(
     tmp_path: Path,

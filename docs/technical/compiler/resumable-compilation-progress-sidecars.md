@@ -69,6 +69,13 @@ may authorize an immutable-generation no-replace collision and its subsequent
 byte-verified reuse. Foreign subclasses of either exception fail closed, even
 when a matching generation inode already exists.
 
+Progress writers also require native `os.stat_result` for the initially
+created staging descriptor and each staged pathname/descriptor size and inode
+check. Foreign receipts reject before property access and before mutable or
+immutable publication. A failed first-descriptor admission keeps the stage
+pathname untouched because its inode ownership was never established; later
+stage validation still closes and cleans up its own verified staging member.
+
 Temporary payload writers retain raw-descriptor ownership until Python stream
 construction succeeds. Unexpected non-`OSError` construction failures still
 close the descriptor before propagating their primary error, while any raw

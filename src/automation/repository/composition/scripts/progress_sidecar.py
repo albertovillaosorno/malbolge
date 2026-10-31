@@ -1805,7 +1805,7 @@ def loads(text: str) -> ProgressSidecar:
     return sidecar
 
 
-def _admit_read_stat(receipt: object, context: str) -> os.stat_result:
+def _admit_native_stat(receipt: object, context: str) -> os.stat_result:
     """Reject foreign filesystem metadata before reading any of its fields."""
     if type(receipt) is not os.stat_result:
         _fail(f"{context} metadata must use native os.stat_result")
@@ -1820,12 +1820,12 @@ def _verify_opened_read_identity(
     phase: str = "file open",
 ) -> None:
     """Require an admitted regular descriptor to still name the read path."""
-    opened = _admit_read_stat(os.fstat(descriptor), context)
+    opened = _admit_native_stat(os.fstat(descriptor), context)
     if not stat.S_ISREG(opened.st_mode):
         _fail(f"{context} must be a regular file")
     _reject_path_redirect(path, context)
     try:
-        current = _admit_read_stat(path.stat(follow_symlinks=False), context)
+        current = _admit_native_stat(path.stat(follow_symlinks=False), context)
     except OSError as error:
         _fail(f"{context} path identity cannot be verified: {_host_error_detail(error)}")
     if (
@@ -1861,7 +1861,7 @@ def _read_regular_bytes(
 
     """
     _reject_path_redirect(path, context)
-    if not stat.S_ISREG(_admit_read_stat(path.stat(), context).st_mode):
+    if not stat.S_ISREG(_admit_native_stat(path.stat(), context).st_mode):
         _fail(f"{context} must be a regular file")
     flags = os.O_RDONLY
     flags |= cast("int", getattr(os, "O_NONBLOCK", 0))
@@ -1870,7 +1870,7 @@ def _read_regular_bytes(
     descriptor = os.open(path, flags)
     try:
         _verify_opened_read_identity(path, descriptor, context)
-        initial = _admit_read_stat(os.fstat(descriptor), context)
+        initial = _admit_native_stat(os.fstat(descriptor), context)
         if max_bytes is not None and initial.st_size > max_bytes:
             _fail(f"{context} exceeds maximum byte length")
         stream = FileIO(descriptor, "rb", closefd=True)
@@ -1954,7 +1954,7 @@ def _read_stream_preserving_primary(
         _verify_opened_read_identity(
             path, descriptor, context, phase="file read"
         )
-        final = _admit_read_stat(os.fstat(descriptor), context)
+        final = _admit_native_stat(os.fstat(descriptor), context)
         if (
             initial.st_size != final.st_size
             or initial.st_mtime_ns != final.st_mtime_ns
@@ -2321,7 +2321,7 @@ def _temporary_descriptor_identity(descriptor: int) -> tuple[int, int]:
 
     """
     try:
-        opened = os.fstat(descriptor)
+        opened = _admit_native_stat(os.fstat(descriptor), "progress temporary")
     except (OSError, ValueError, RuntimeError) as error:
         _close_unadmitted_temporary(descriptor, error)
         _fail_with_source(
@@ -2341,6 +2341,7 @@ def _admit_temporary_inode(
     observed: os.stat_result, identity: tuple[int, int], expected_size: int
 ) -> None:
     """Require the same regular staging inode with its expected byte count."""
+    observed = _admit_native_stat(observed, "progress temporary")
     if (
         not stat.S_ISREG(observed.st_mode)
         or (observed.st_dev, observed.st_ino) != identity
@@ -2961,7 +2962,7 @@ def _admit_immutable_payload_path(path: Path, context: str) -> tuple[int, int]:
 
     """
     _reject_path_redirect(path, f"{context} payload")
-    observed = _admit_read_stat(path.stat(follow_symlinks=False), f"{context} payload")
+    observed = _admit_native_stat(path.stat(follow_symlinks=False), f"{context} payload")
     if not stat.S_ISREG(observed.st_mode):
         _fail(f"{context} payload must be a regular file")
     if observed.st_nlink != 1:

@@ -584,6 +584,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   regressions reject foreign stat objects before reading any forged property;
   ordinary canonical and checkpoint reads preserve their existing behavior.
 
+  Durable pointer and immutable payload writers now reject foreign staging
+  descriptor receipts before inspecting their fields or acquiring staging
+  ownership. Both publishers also reject forged metadata at the initial and
+  post-read staging inode/size probes. Ten adversarial phase regressions check
+  typed failures, closed descriptors and absent final artifacts without
+  broadening the stage's persistence semantics.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact
