@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
@@ -199,17 +200,54 @@ def test_pinned_entry_read_error_fails_closed(
     """An unreadable admitted source file cannot leak a host exception."""
     blocked = tmp_path / "src" / "a.c"
     _write(tmp_path, "src/a.c", b"int a;")
-    original_read = Path.read_bytes
+    original_open = os.open
 
-    def fail_read(path: Path) -> bytes:
-        if path == blocked:
+    def fail_open(
+        file: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if os.fspath(file) == os.fspath(blocked):
             message = "blocked pinned source read"
             raise PermissionError(message)
-        return original_read(path)
+        return original_open(file, flags, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(Path, "read_bytes", fail_read)
+    monkeypatch.setattr(os, "open", fail_open)
     with pytest.raises(SourcePinError, match="pinned source read failed"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
+
+
+def test_pinned_source_rejects_symlink_swapped_after_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pre-read status cannot admit a later foreign leaf pathname."""
+    root = tmp_path / "source"
+    root.mkdir()
+    leaf = root / "README"
+    _ = leaf.write_bytes(b"same byte content")
+    foreign = tmp_path / "foreign"
+    _ = foreign.write_bytes(b"same byte content")
+    original_status = Path.lstat
+    swapped = False
+
+    def swap_after_status(path: Path) -> object:
+        nonlocal swapped
+        status = original_status(path)
+        if path == leaf and not swapped:
+            leaf.unlink()
+            try:
+                leaf.symlink_to(foreign)
+            except OSError:
+                pytest.skip("filesystem symlinks unavailable")
+            swapped = True
+        return status
+
+    monkeypatch.setattr(Path, "lstat", swap_after_status)
+    with pytest.raises(SourcePinError, match="pinned source read failed"):
+        _ = source_snapshot_evidence(root, ("README",))
+    _expect(swapped, "source pin symlink substitution did not execute")
 
 
 def test_missing_or_symlinked_selected_root_fails_closed(

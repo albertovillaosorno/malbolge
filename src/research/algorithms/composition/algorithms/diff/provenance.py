@@ -43,6 +43,9 @@ from stat import S_ISLNK
 from stat import S_ISREG
 from typing import cast
 
+from algorithms.diff.exact import ExactTreeError
+from algorithms.diff.exact import read_exact_regular_file
+
 _ZERO = 0
 _ONE = 1
 _FRAME_BYTES = 8
@@ -266,10 +269,13 @@ def _resolved_source_root(root: Path) -> Path:
 
 def _read_pinned_source(path: Path, relative: str) -> bytes:
     try:
-        return path.read_bytes()
-    except OSError as error:
+        return read_exact_regular_file(path, "pinned source")
+    except ExactTreeError as error:
         message = f"pinned source read failed for {relative}: {error}"
-        raise SourcePinError(message) from error
+        failure = SourcePinError(message)
+        for note in cast("list[str]", getattr(error, "__notes__", [])):
+            failure.add_note(note)
+        raise failure from error
 
 
 def source_snapshot_evidence(
