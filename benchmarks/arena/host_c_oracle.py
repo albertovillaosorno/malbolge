@@ -41,7 +41,8 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
 import time
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -551,6 +552,26 @@ def _canonical_payload(
     return generated
 
 
+@contextmanager
+def _native_workspace(prefix: str) -> Iterator[Path]:
+    """Preserve an original replay failure if workspace cleanup also fails."""
+    workspace = tempfile.TemporaryDirectory(prefix=prefix, dir=_TEMP)
+    temporary = workspace.__enter__()
+    try:
+        yield Path(temporary)
+    except BaseException as primary:
+        try:
+            workspace.__exit__(type(primary), primary, primary.__traceback__)
+        except Exception as cleanup:
+            BaseException.add_note(
+                primary,
+                f"host-C workspace cleanup also failed: {_cleanup_error_detail(cleanup)}",
+            )
+        raise
+    else:
+        workspace.__exit__(None, None, None)
+
+
 def replay_one(
     case: dict[str, Any],
     profile: str,
@@ -569,11 +590,7 @@ def replay_one(
     _require_local_scratch_root()
     generated = _canonical_payload(case, profile, source_sha256)
     try:
-        with tempfile.TemporaryDirectory(
-            prefix="arena-host-c-oracle-",
-            dir=_TEMP,
-        ) as temporary:
-            directory = Path(temporary)
+        with _native_workspace("arena-host-c-oracle-") as directory:
             _write_canonical_source(directory, generated)
             for mode in OPTIMIZATION_MODES:
                 _replay_mode(directory, mode)
@@ -659,11 +676,7 @@ def rebuild_reference(
     """
     generated = _reference_source(identity, mode)
     try:
-        with tempfile.TemporaryDirectory(
-            prefix="arena-host-c-rebuild-",
-            dir=_TEMP,
-        ) as temporary:
-            directory = Path(temporary)
+        with _native_workspace("arena-host-c-rebuild-") as directory:
             _write_canonical_source(directory, generated)
             _replay_mode(directory, mode)
             return _read_reference_executable(directory)
@@ -690,11 +703,7 @@ def measure_reference(
     """
     generated = _reference_source(identity, mode)
     try:
-        with tempfile.TemporaryDirectory(
-            prefix="arena-host-c-measure-",
-            dir=_TEMP,
-        ) as temporary:
-            directory = Path(temporary)
+        with _native_workspace("arena-host-c-measure-") as directory:
             _write_canonical_source(directory, generated)
             started = time.perf_counter_ns()
             peak_rss = _replay_mode(directory, mode)

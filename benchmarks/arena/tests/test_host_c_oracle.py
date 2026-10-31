@@ -1871,3 +1871,47 @@ def test_host_c_direct_workspaces_contain_unexpected_host_faults(
         else:
             host_c_oracle.measure_reference(identity, "-O0")
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("operation", ["replay", "rebuild", "measure"])
+def test_host_c_workspace_cleanup_cannot_mask_primary_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """A second workspace cleanup fault must preserve the true replay failure."""
+
+    class ForeignCleanupFault(LookupError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign workspace cleanup formatter executed")
+
+    primary = host_c_oracle.HostOracleError("native oracle stage failed")
+    cleanup = ForeignCleanupFault("untrusted cleanup details")
+
+    class FailingCleanup:
+        def __enter__(self) -> str:
+            return str(tmp_path)
+
+        def __exit__(self, *_args: object) -> None:
+            raise cleanup
+
+    def fail_replay(_directory: Path, _mode: str) -> int:
+        raise primary
+
+    def fake_workspace(**_kwargs: object) -> FailingCleanup:
+        return FailingCleanup()
+
+    monkeypatch.setattr(host_c_oracle.tempfile, "TemporaryDirectory", fake_workspace)
+    monkeypatch.setattr(host_c_oracle, "_replay_mode", fail_replay)
+    identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    with pytest.raises(
+        host_c_oracle.HostOracleError, match="native oracle stage"
+    ) as caught:
+        if operation == "replay":
+            host_c_oracle.replay_one(_case(), PROFILE, _digest())
+        elif operation == "rebuild":
+            host_c_oracle.rebuild_reference(identity, "-O0")
+        else:
+            host_c_oracle.measure_reference(identity, "-O0")
+    assert caught.value is primary
+    assert any("ForeignCleanupFault" in note for note in primary.__notes__)
