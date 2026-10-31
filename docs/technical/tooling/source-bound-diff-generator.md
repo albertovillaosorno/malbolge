@@ -58,9 +58,11 @@ The public authoring recipe rejects NUL-bearing or host-unencodable source,
 oracle, module, and output paths, as well as NUL-bearing or non-UTF-8 profile
 identifiers, before domain preflight or source-tree reads. The generated Rust
 output destination must resolve outside both input trees, including through
-symlinked aliases. This preserves source and oracle inputs against ordinary
-generator writes; concurrent path replacement still requires external writer
-coordination.
+symlinked aliases, and must not resolve to the imported domain-policy
+module. Passthrough roots must be canonical UTF-8 relative paths with unique,
+sorted, disjoint topology; invalid roots fail before domain callbacks run.
+These checks preserve authoring inputs against ordinary generator writes;
+concurrent path replacement still requires external writer coordination.
 
 All implemented public metadata boundaries now admit exact runtime types before
 using them as evidence or touching output. Numeric thresholds and counts reject

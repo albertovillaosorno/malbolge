@@ -518,8 +518,10 @@ support.
 The public recipe validates source, oracle, module, and output paths for
 NUL and host encodability, and requires a NUL-free UTF-8 profile identifier
 before domain preflight. Generated Rust output must resolve outside both the
-source and oracle roots, including symlinked aliases, so publication cannot
-modify an input tree. This preflight is not atomic against concurrent path
+source and oracle roots, including symlinked aliases, and must not
+overwrite the imported domain-policy module. Passthrough roots must be
+canonical UTF-8 relative paths, unique, sorted, and nonoverlapping before
+consumer preflight. These checks are not atomic against concurrent path
 replacement by an external writer.
 
 `DiffRecipe` now requires an explicit `TransformMode`. `EXACT_BASELINE` is a
