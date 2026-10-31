@@ -242,6 +242,10 @@ The binary-stdin transport now also requires native `None` from the
 nonblocking pipe configuration call before writing any bytes. Red-first
 regressions reject forged setup receipts that previously reached the input
 write without evidence that the pipe could not block beyond the wall deadline.
+It also admits one exact nonnegative integer stdin descriptor and reuses it
+for nonblocking setup and the write. A changing or boolean `fileno()` value
+must not switch output to a different descriptor after admission; red-first
+regressions reject these substitutions before any host I/O.
 It requires the native `None` return from input pipe close, rejecting foreign
 success-looking booleans, integers and text receipts. A failed delivery still retains its original typed cause, with a
 bad close receipt reported only as secondary cleanup evidence. Red-first

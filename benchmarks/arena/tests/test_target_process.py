@@ -1023,6 +1023,71 @@ def test_binary_input_close_fault_preserves_delivery_evidence(
         assert type(error.value.__cause__) is RuntimeError
 
 
+@pytest.mark.parametrize("descriptor", [False, True, -1, 3.0, "3", None])
+def test_binary_input_rejects_foreign_file_descriptors_before_host_io(
+    monkeypatch: pytest.MonkeyPatch, descriptor: object
+) -> None:
+    """A false integer or negative FD must not redirect process input."""
+    closes: list[str] = []
+
+    class InputProbe:
+        def fileno(self) -> object:
+            return descriptor
+
+        def close(self) -> None:
+            closes.append("close")
+
+    class ChildProbe:
+        stdin = InputProbe()
+
+    def unexpected_io(*_args: object) -> None:
+        pytest.fail("foreign input descriptor reached the host I/O boundary")
+
+    monkeypatch.setattr(target_process.os, "set_blocking", unexpected_io)
+    monkeypatch.setattr(target_process.os, "write", unexpected_io)
+    with pytest.raises(target_process.TargetProcessError, match="descriptor"):
+        target_process._send_input(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()), b"x"
+        )
+    assert closes == ["close"]
+
+
+def test_binary_input_binds_one_descriptor_to_setup_and_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing fileno() cannot switch the destination after setup."""
+    calls: list[str] = []
+    writes: list[tuple[int, bytes]] = []
+
+    class InputProbe:
+        def fileno(self) -> int:
+            calls.append("fileno")
+            return 401 if len(calls) == 1 else 402
+
+        def close(self) -> None:
+            calls.append("close")
+
+    class ChildProbe:
+        stdin = InputProbe()
+
+    def setup(descriptor: int, blocking: bool) -> None:
+        assert descriptor == 401
+        assert blocking is False
+        calls.append("configured")
+
+    def deliver(descriptor: int, data: bytes) -> int:
+        writes.append((descriptor, data))
+        return len(data)
+
+    monkeypatch.setattr(target_process.os, "set_blocking", setup)
+    monkeypatch.setattr(target_process.os, "write", deliver)
+    target_process._send_input(  # ruff: ignore[private-member-access]
+        cast("sp.Popen[bytes]", ChildProbe()), b"x"
+    )
+    assert calls == ["fileno", "configured", "close"]
+    assert writes == [(401, b"x")]
+
+
 @pytest.mark.parametrize("receipt", [False, True, 0, 1, "configured"])
 def test_binary_input_nonblocking_setup_requires_void_host_receipt(
     monkeypatch: pytest.MonkeyPatch, receipt: object

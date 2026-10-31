@@ -389,10 +389,13 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
     try:
         # At most 256 bytes fit in an initially empty POSIX pipe. Nonblocking
         # prevents a broken child from extending the same wall deadline.
-        if os.set_blocking(child.stdin.fileno(), False) is not None:
+        descriptor = child.stdin.fileno()
+        if type(descriptor) is not int or descriptor < 0:
+            _fail("bounded target input requires a native file descriptor")
+        if os.set_blocking(descriptor, False) is not None:
             _fail("bounded target input nonblocking setup returned invalid receipt")
         if data:
-            written = os.write(child.stdin.fileno(), data)
+            written = os.write(descriptor, data)
             if type(written) is not int or written != len(data):
                 _fail("bounded target input could not be delivered completely")
     except BrokenPipeError as error:
