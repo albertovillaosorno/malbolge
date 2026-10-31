@@ -496,3 +496,121 @@ def test_lifecycle_parent_link_is_rejected_during_discovery(
     original.symlink_to(outside, target_is_directory=True)
     with pytest.raises(OSError, match="research directory must not redirect"):
         _ = validator.validate_repository_lifecycle(manifest)
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [validator.tomllib.TOMLDecodeError, ValueError, TypeError, RuntimeError],
+)
+def test_lifecycle_parser_does_not_format_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch, fault_type: type[Exception]
+) -> None:
+    """Foreign TOML exceptions cannot execute hooks during typed admission."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("lifecycle decoder exception formatter executed")
+
+    foreign = type("ForeignLifecycleTOMLFault", (fault_type,), {"__str__": unsafe_str})
+    fault = (
+        foreign("decoder fault", "[invalid", 1)
+        if fault_type is validator.tomllib.TOMLDecodeError
+        else foreign("decoder fault")
+    )
+
+    def fail_parser(_text: str) -> None:
+        raise fault
+
+    monkeypatch.setattr(validator.tomllib, "loads", fail_parser)
+    with pytest.raises(
+        validator.AlgorithmLifecycleError, match="invalid TOML"
+    ) as caught:
+        validator.parse_lifecycle(_base(validator.EXPERIMENTAL))
+    assert caught.value.__cause__ is fault
+
+
+def test_lifecycle_native_toml_parser_retains_source_diagnostics() -> None:
+    """Plain TOML syntax errors keep the native position and cause."""
+    with pytest.raises(
+        validator.AlgorithmLifecycleError, match="invalid TOML"
+    ) as caught:
+        validator.parse_lifecycle("[broken\n")
+    assert type(caught.value.__cause__) is validator.tomllib.TOMLDecodeError
+    assert "line" in str(caught.value)
+
+
+@pytest.mark.parametrize("position", ["root", "table", "key"])
+def test_lifecycle_parser_rejects_foreign_mapping_receipts(
+    monkeypatch: pytest.MonkeyPatch, position: str
+) -> None:
+    """Untrusted mapping or key subclasses cannot execute iteration hooks."""
+
+    class ForeignMap(dict[str, object]):
+        def items(self):  # type: ignore[override]
+            raise AssertionError("foreign lifecycle map iteration executed")
+
+    class ForeignKey(str):
+        __hash__ = str.__hash__
+
+        def __str__(self) -> str:
+            raise AssertionError("foreign lifecycle key formatter executed")
+
+    native = validator.tomllib.loads(_base(validator.EXPERIMENTAL))
+    if position == "root":
+        forged: object = ForeignMap(native)
+    elif position == "table":
+        forged = {**native, "algorithm": ForeignMap(native["algorithm"])}
+    else:
+        forged = {**native, ForeignKey("unexpected"): "value"}
+    monkeypatch.setattr(validator.tomllib, "loads", lambda _text: forged)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="lifecycle"):
+        validator.parse_lifecycle(_base(validator.EXPERIMENTAL))
+
+
+@pytest.mark.parametrize("phase", ["manifest", "evidence"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_lifecycle_host_failures_never_format_foreign_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    fault_type: type[Exception],
+) -> None:
+    """File and evidence admission preserve causes without foreign __str__."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("lifecycle host exception formatter executed")
+
+    foreign = type("ForeignLifecycleHostFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe filesystem diagnostic")
+    if phase == "manifest":
+        path = tmp_path / "lifecycle.toml"
+        _ = path.write_text(_base(validator.EXPERIMENTAL), encoding="utf-8")
+        original_lstat = Path.lstat
+
+        def fail_lstat(candidate: Path) -> os.stat_result:
+            if candidate == path:
+                raise fault
+            return original_lstat(candidate)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+        with pytest.raises(
+            validator.AlgorithmLifecycleError, match="manifest cannot be read"
+        ) as caught:
+            validator.validate_repository_lifecycle(path)
+    else:
+        root = tmp_path / "root"
+        root.mkdir()
+        monkeypatch.setattr(validator, "ROOT", root)
+
+        def fail_evidence(_parts: tuple[str, ...]) -> None:
+            raise fault
+
+        monkeypatch.setattr(validator, "_evidence_descriptor_walk", fail_evidence)
+        with pytest.raises(
+            validator.AlgorithmLifecycleError, match="evidence not admitted"
+        ) as caught:
+            validator._require_existing(  # pyright: ignore[reportPrivateUsage]
+                "docs/proof.md", "research record"
+            )
+    assert caught.value.__cause__ is fault

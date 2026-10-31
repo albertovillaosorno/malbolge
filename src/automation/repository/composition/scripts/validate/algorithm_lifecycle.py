@@ -121,14 +121,26 @@ def _fail(message: str) -> Never:
     raise AlgorithmLifecycleError(message)
 
 
+def _host_error_detail(error: Exception) -> str:
+    """Render only exact native host exception diagnostics.
+
+    Returns:
+        Built-in diagnostic text or a foreign exception's type name.
+
+    """
+    if type(error) in (OSError, ValueError, TypeError, RuntimeError):
+        return str(error)
+    return type(error).__name__
+
+
 def _mapping(value: object, context: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        _fail(f"{context} must be a table")
+    if type(value) is not dict:
+        _fail(f"{context} must be an exact native table")
     raw = cast("dict[object, object]", value)
     result: dict[str, object] = {}
     for key, item in raw.items():
-        if not isinstance(key, str):
-            _fail(f"{context} contains a non-string key")
+        if type(key) is not str:
+            _fail(f"{context} contains a non-native string key")
         result[key] = item
     return result
 
@@ -220,9 +232,18 @@ def _parse_document(text: str) -> dict[str, object]:
     try:
         parsed = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:
-        _fail(f"invalid TOML: {error}")
-    except (ValueError, RecursionError):
-        _fail("invalid TOML exceeds host parser capacity")
+        detail = (
+            str(error)
+            if type(error) is tomllib.TOMLDecodeError
+            else type(error).__name__
+        )
+        raise AlgorithmLifecycleError(f"invalid TOML: {detail}") from error
+    except (ValueError, RecursionError) as error:
+        message = "invalid TOML exceeds host parser capacity"
+        raise AlgorithmLifecycleError(message) from error
+    except (TypeError, RuntimeError) as error:
+        message = "invalid TOML host parser failure"
+        raise AlgorithmLifecycleError(message) from error
     document = _mapping(parsed, "lifecycle")
     version = document.get("schema_version")
     if type(version) is not int or version != SCHEMA_VERSION:
@@ -435,8 +456,9 @@ def _require_existing(relative: str, context: str) -> None:
             _evidence_fallback(parts)
     except AlgorithmLifecycleError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} evidence not admitted: {relative}: {error}"
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        message = f"{context} evidence not admitted: {relative}: {detail}"
         raise AlgorithmLifecycleError(message) from error
 
 
@@ -523,9 +545,10 @@ def _read_utf8(path: Path) -> str:
         raw = _read_lifecycle_file(path)
     except AlgorithmLifecycleError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
         raise AlgorithmLifecycleError(
-            f"algorithm lifecycle manifest cannot be read: {path}: {error}"
+            f"algorithm lifecycle manifest cannot be read: {path}: {detail}"
         ) from error
     try:
         return raw.decode("utf-8")
