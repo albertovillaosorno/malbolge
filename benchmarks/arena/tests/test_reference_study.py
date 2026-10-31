@@ -233,6 +233,113 @@ def test_noninteger_trial_count_rejects_before_native_or_output_setup(
         )
 
 
+def test_host_reference_source_commit_preflight_does_not_orphan_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unavailable source revision must reject before allocating evidence."""
+
+    def rejected_commit() -> str:
+        raise reference_study.ReferenceStudyError("source commit unavailable")
+
+    def forbidden_workspace(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("source identity failure allocated a study directory")
+
+    monkeypatch.setattr(reference_study, "_validate_plan", lambda plan: None)
+    monkeypatch.setattr(reference_study, "_commit", rejected_commit)
+    monkeypatch.setattr(reference_study.tempfile, "mkdtemp", forbidden_workspace)
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="source commit unavailable"
+    ):
+        reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
+
+
+def test_host_reference_refuses_redirected_evidence_root_before_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A symlinked .temp cannot redirect retained host-C output outside the tree."""
+    outside = tmp_path / "external"
+    outside.mkdir()
+    link = tmp_path / "redirected-root"
+    link.symlink_to(outside, target_is_directory=True)
+
+    def forbidden_workspace(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("redirected root reached workspace allocation")
+
+    monkeypatch.setattr(reference_study, "_validate_plan", lambda plan: None)
+    monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
+    monkeypatch.setattr(reference_study, "_LOCAL", link)
+    monkeypatch.setattr(reference_study.tempfile, "mkdtemp", forbidden_workspace)
+    with pytest.raises(reference_study.ReferenceStudyError, match="physical"):
+        reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
+    assert list(outside.iterdir()) == []
+
+
+@pytest.mark.parametrize("kind", ["missing", "regular-file"])
+def test_host_reference_requires_an_existing_directory_for_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    """Absent and non-directory .temp roots fail before any child is created."""
+    root = tmp_path / "non-directory"
+    if kind == "regular-file":
+        root.write_bytes(b"not a directory")
+
+    def forbidden_workspace(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("invalid evidence root reached workspace allocation")
+
+    monkeypatch.setattr(reference_study, "_validate_plan", lambda plan: None)
+    monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
+    monkeypatch.setattr(reference_study, "_LOCAL", root)
+    monkeypatch.setattr(reference_study.tempfile, "mkdtemp", forbidden_workspace)
+    with pytest.raises(reference_study.ReferenceStudyError, match="workspace"):
+        reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
+
+
+@pytest.mark.parametrize("failed_stage", ["allocate", "raw", "runs", "candidates"])
+def test_host_reference_workspace_failures_are_typed_and_cleanup_own_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failed_stage: str,
+) -> None:
+    """Failed setup cannot leak host errors or an incomplete local study."""
+    directory = tmp_path / "arena-host-c-study-setup"
+    original_mkdir = reference_study.Path.mkdir
+
+    def faulty_mkdtemp(*, prefix: str, dir: Path) -> str:
+        assert prefix == "arena-host-c-study-"
+        assert dir == reference_study._LOCAL  # ruff: ignore[private-member-access]
+        if failed_stage == "allocate":
+            raise OSError("injected workspace allocation failure")
+        original_mkdir(directory)
+        return str(directory)
+
+    def faulty_mkdir(
+        path: Path, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
+    ) -> None:
+        if path.parent == directory and path.name == failed_stage:
+            raise OSError("injected workspace child failure")
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    def forbidden_measurement(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("uninitialized workspace started host-C measurements")
+
+    monkeypatch.setattr(reference_study, "_validate_plan", lambda plan: None)
+    monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
+    monkeypatch.setattr(reference_study.tempfile, "mkdtemp", faulty_mkdtemp)
+    monkeypatch.setattr(reference_study.Path, "mkdir", faulty_mkdir)
+    monkeypatch.setattr(reference_study, "_run_study", forbidden_measurement)
+    with pytest.raises(reference_study.ReferenceStudyError, match="workspace") as error:
+        reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
+    assert isinstance(error.value.__cause__, OSError)
+    assert not directory.exists()
+
+
 @pytest.mark.skipif(
     not host_c_oracle._PINNED_CLANG.is_file(),  # ruff: ignore[private-member-access]
     reason="repository pinned native Clang is unavailable",

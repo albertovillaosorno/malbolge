@@ -40,6 +40,7 @@ import json
 import os
 import platform
 import shutil
+import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
@@ -604,11 +605,11 @@ def check_retained_failures(
     return len(failures)
 
 
-def _run_study(root: Path, plan: StudyPlan) -> dict[str, Any]:
+def _run_study(root: Path, plan: StudyPlan, *, commit: str) -> dict[str, Any]:
     environment = _Env(
         root=root,
         plan=plan,
-        commit=_commit(),
+        commit=commit,
         host=f"{platform.system()}-{platform.machine()}-{platform.node()}",
         toolchain="repo-pinned-clang-22.1.8",
         prefix=root.relative_to(_ROOT).as_posix(),
@@ -697,15 +698,40 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
 
     """
     _validate_plan(plan)
-    directory = Path(
-        tempfile.mkdtemp(
-            prefix="arena-host-c-study-",
-            dir=_LOCAL,
+    # Fail the Git provenance preflight before allocating retained evidence.
+    commit = _commit()
+    # Only an existing physical .temp directory may contain new host-C trials.
+    # This is static admission, not a cross-process filesystem race guarantee.
+    try:
+        local_mode = _LOCAL.lstat().st_mode
+    except OSError as error:
+        message = "host-C reference workspace root is unavailable"
+        raise ReferenceStudyError(message) from error
+    if not stat.S_ISDIR(local_mode):
+        _fail("host-C reference workspace requires a physical output directory")
+    try:
+        directory = Path(
+            tempfile.mkdtemp(
+                prefix="arena-host-c-study-",
+                dir=_LOCAL,
+            )
         )
-    )
-    for child in ("raw", "runs", "candidates"):
-        (directory / child).mkdir()
-    return directory, _run_study(directory, plan)
+    except OSError as error:
+        message = "host-C reference workspace allocation failed"
+        raise ReferenceStudyError(message) from error
+    try:
+        for child in ("raw", "runs", "candidates"):
+            (directory / child).mkdir()
+    except OSError as error:
+        # Only remove our newly allocated, not-yet-measured study directory.
+        # Preserve the original failure if cleanup also fails.
+        try:
+            shutil.rmtree(directory)
+        except OSError as cleanup_error:
+            error.add_note(f"host-C workspace cleanup also failed: {cleanup_error}")
+        message = "host-C reference workspace setup failed"
+        raise ReferenceStudyError(message) from error
+    return directory, _run_study(directory, plan, commit=commit)
 
 
 def main() -> int:
