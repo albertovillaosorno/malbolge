@@ -38,6 +38,7 @@ import argparse
 import os
 from pathlib import Path
 import shutil
+from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from typing import cast
@@ -52,6 +53,35 @@ LINUX_PLATFORM = "linux"
 
 class JigRunnerError(RuntimeError):
     """One required validation tool cannot be used."""
+
+
+def _unredirected_launcher(path: Path) -> bool:
+    """Reject a launcher reached through any filesystem redirect.
+
+    Returns:
+        True only for a direct leaf with nonredirecting ancestor paths.
+
+    """
+    try:
+        return not any(
+            component.is_symlink() or component.is_junction()
+            for component in (path, *path.parents)
+        )
+    except OSError, ValueError:
+        return False
+
+
+def _regular_executable(path: Path) -> bool:
+    """Check direct regular-file and executable-mode admission.
+
+    Returns:
+        True only for a regular file executable by the current process.
+
+    """
+    try:
+        return S_ISREG(path.lstat().st_mode) and os.access(path, os.X_OK)
+    except OSError:
+        return False
 
 
 def jig_environment(root: Path, inherited: dict[str, str]) -> dict[str, str]:
@@ -70,7 +100,10 @@ def jig_environment(root: Path, inherited: dict[str, str]) -> dict[str, str]:
     pinned_bin = root / ".dependencies/bin"
     for tool in PINNED_TOOLS:
         launcher = pinned_bin / tool
-        if not launcher.is_file() or not os.access(launcher, os.X_OK):
+        if not _unredirected_launcher(launcher):
+            message = f"redirected Jig validation tool path: {launcher}"
+            raise JigRunnerError(message)
+        if not _regular_executable(launcher):
             message = f"missing executable Jig validation tool: {launcher}"
             raise JigRunnerError(message)
     environment = dict(inherited)

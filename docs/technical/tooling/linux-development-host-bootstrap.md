@@ -55,7 +55,11 @@ This entrypoint constrains tool lookup to `.dependencies/bin` and the system
 default, without altering the installed Jig, its policies, or its exit status.
 
 The same entrypoint supports `doctor` and `validate` and fails if either pinned
-ChkTeX or LaTeXmk launcher is missing. Set
+ChkTeX or LaTeXmk launcher is missing. Jig validates launcher admission as
+physical executable regular files with no symlink/junction in the file or any
+ancestor directory. Redirected paths and nonregular nodes (including FIFOs)
+fail before the validation `PATH` is constructed; a linked alias cannot silently
+substitute an ambient version for the repository-pinned launcher. Set
 `PYTHONPATH=src/automation/repository/composition` before invoking it.
 
 Jig consumes only repository-local validation aliases. Linux Rust linking

@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 from typing import cast
 
 import pytest
+
 from scripts.validate import jig_runner
 
 if TYPE_CHECKING:
@@ -102,6 +103,68 @@ def test_environment_rejects_missing_or_nonexecutable_alias(
         jig_runner.JigRunnerError,
         match="missing executable Jig validation tool",
     ):
+        _ = jig_runner.jig_environment(tmp_path, {"PATH": "/usr/bin"})
+
+
+@pytest.mark.parametrize("tool", jig_runner.PINNED_TOOLS)
+def test_environment_rejects_linked_pinned_launcher(
+    tmp_path: Path,
+    tool: str,
+) -> None:
+    """Valid-looking launcher symlinks must not override pinned tools."""
+    bin_dir = _pinned_launchers(tmp_path)
+    launcher = bin_dir / tool
+    real = bin_dir / f"{tool}-actual"
+    _ = launcher.replace(real)
+    try:
+        _ = launcher.symlink_to(real)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(jig_runner.JigRunnerError, match="redirect"):
+        _ = jig_runner.jig_environment(tmp_path, {"PATH": "/usr/bin"})
+
+
+def test_environment_rejects_linked_pinned_bin_directory(
+    tmp_path: Path,
+) -> None:
+    """An alias to pinned-bin cannot authorize executable precedence."""
+    pinned = _pinned_launchers(tmp_path)
+    real = pinned.with_name("physical-bin")
+    _ = pinned.replace(real)
+    try:
+        _ = pinned.symlink_to(real, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(jig_runner.JigRunnerError, match="redirect"):
+        _ = jig_runner.jig_environment(tmp_path, {"PATH": "/usr/bin"})
+
+
+def test_environment_rejects_linked_dependency_root(
+    tmp_path: Path,
+) -> None:
+    """The dependencies directory itself may not redirect launcher reads."""
+    _ = _pinned_launchers(tmp_path)
+    dependencies = tmp_path / ".dependencies"
+    real = tmp_path / "physical-dependencies"
+    _ = dependencies.replace(real)
+    try:
+        _ = dependencies.symlink_to(real, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    with pytest.raises(jig_runner.JigRunnerError, match="redirect"):
+        _ = jig_runner.jig_environment(tmp_path, {"PATH": "/usr/bin"})
+
+
+def test_environment_rejects_nonregular_pinned_fifo(tmp_path: Path) -> None:
+    """A named pipe with executable mode must not be a pinned launcher."""
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFO unsupported")
+    pinned = _pinned_launchers(tmp_path)
+    launcher = pinned / "chktex"
+    launcher.unlink()
+    mkfifo(launcher, 0o700)
+    with pytest.raises(jig_runner.JigRunnerError, match="missing executable"):
         _ = jig_runner.jig_environment(tmp_path, {"PATH": "/usr/bin"})
 
 
