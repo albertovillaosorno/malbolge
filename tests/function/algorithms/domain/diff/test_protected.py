@@ -383,6 +383,24 @@ def test_protected_passthrough_roots_reject_duplicates_or_overlaps(
         )
 
 
+def test_protected_metadata_rejects_duplicate_output_instructions(
+    tmp_path: Path,
+) -> None:
+    """Invalid output topology must fail before encryption or recovery."""
+    _, _, _, _, protected = _protected(tmp_path)
+    duplicate = (protected.instructions[0], protected.instructions[0])
+
+    with pytest.raises(ProtectedPlanError, match="unique output paths"):
+        _ = ProtectedMetadata(
+            source=protected.source,
+            target=protected.target,
+            instructions=duplicate,
+            passthrough_roots=protected.passthrough_roots,
+        )
+    with pytest.raises(ProtectedPlanError, match="unique output paths"):
+        _ = replace(protected, instructions=duplicate)
+
+
 def test_protected_metadata_requires_exact_runtime_records(
     tmp_path: Path,
 ) -> None:

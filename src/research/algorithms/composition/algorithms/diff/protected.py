@@ -257,6 +257,15 @@ class ProtectedInstruction:
         )
 
 
+def _require_unique_instruction_outputs(
+    instructions: tuple[ProtectedInstruction, ...],
+) -> None:
+    paths = tuple(item.output_path for item in instructions)
+    if len(paths) != len(set(paths)):
+        message = "protected instructions require unique output paths"
+        raise ProtectedPlanError(message)
+
+
 @dataclass(frozen=True, slots=True)
 class ProtectedMetadata:
     """Authenticated static metadata for one protected exact plan."""
@@ -290,6 +299,7 @@ class ProtectedMetadata:
                 "records"
             )
             raise ProtectedPlanError(message)
+        _require_unique_instruction_outputs(self.instructions)
         if type(self.passthrough_roots) is not tuple:
             message = "protected passthrough roots must use an immutable tuple"
             raise ProtectedPlanError(message)
