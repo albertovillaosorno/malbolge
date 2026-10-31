@@ -422,16 +422,30 @@ def _verify_source() -> bytes:
     return source
 
 
+def _write_staged_bytes(path: Path, content: bytes) -> None:
+    """Demand a complete staged source write before external execution."""
+    written = path.write_bytes(content)
+    if type(written) is not int or written != len(content):
+        _fail(f"sanitizer staged {path.name} has invalid write count")
+
+
+def _write_staged_text(path: Path, content: str) -> None:
+    """Demand a complete generated C shim write before compiler execution."""
+    written = path.write_text(content, encoding="ascii", newline="\n")
+    if type(written) is not int or written != len(content):
+        _fail(f"sanitizer staged {path.name} has invalid write count")
+
+
 def _build(work: Path, *, source_bytes: bytes) -> Path:
     source = work / "main.c"
-    _ = source.write_bytes(source_bytes)
+    _write_staged_bytes(source, source_bytes)
     if _read_regular(source, limit=MAX_FIXTURE_BYTES) != source_bytes:
         _fail("staged historical source differs from verified source")
     header = work / "halloc_compat.h"
     shim = work / "halloc_compat.c"
     executable = work / "malbolge-sanitized.exe"
-    _ = header.write_text(HALLOC_HEADER, encoding="ascii", newline="\n")
-    _ = shim.write_text(HALLOC_SOURCE, encoding="ascii", newline="\n")
+    _write_staged_text(header, HALLOC_HEADER)
+    _write_staged_text(shim, HALLOC_SOURCE)
     command = (
         str(CLANG),
         "-D_CRT_SECURE_NO_WARNINGS=1",
@@ -480,7 +494,7 @@ def _execute_case(
 ) -> JsonObject:
     identifier = _validated_case_identifier(case.identifier)
     source = work / f"{identifier}.malbolge"
-    _ = source.write_bytes(case.source_bytes)
+    _write_staged_bytes(source, case.source_bytes)
     environment = os.environ.copy()
     environment["ASAN_OPTIONS"] = (
         "halt_on_error=1:abort_on_error=0:detect_leaks=0:symbolize=0"

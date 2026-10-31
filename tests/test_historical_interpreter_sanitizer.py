@@ -422,3 +422,129 @@ def test_sanitizer_harness_reproduces_reviewed_findings() -> None:
     if not harness.is_supported():
         pytest.skip("pinned Windows sanitizer toolchain is unavailable")
     assert harness.run_harness() == harness.load_evidence()
+
+
+_INVALID_WRITE_COUNTS = ("short", "overlong", "boolean", "missing")
+_STAGED_MAIN_C = "main.c"
+_STAGED_HEADER = "halloc_compat.h"
+_STAGED_SHIM = "halloc_compat.c"
+_STAGED_CASE = "short-write.malbolge"
+_STAGED_SOURCE = b"source"
+
+
+def _malformed_write_count(kind: str, length: int) -> int:
+    """Simulate a defective filesystem write acknowledgement.
+
+    Returns:
+        An invalid count for a deliberately truncated payload.
+
+    """
+    results: dict[str, object] = {
+        "short": length - 1,
+        "overlong": length + 1,
+        "boolean": True,
+        "missing": None,
+    }
+    return cast("int", results[kind])
+
+
+def _inject_bad_historical_write(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    filename: str,
+    invalid_count: str,
+) -> None:
+    real_bytes = Path.write_bytes
+    real_text = Path.write_text
+
+    def bad_bytes(path: Path, content: bytes) -> int:
+        if path.name == filename:
+            _ = real_bytes(path, content[:-1])
+            return _malformed_write_count(invalid_count, len(content))
+        return real_bytes(path, content)
+
+    def bad_text(
+        path: Path,
+        content: str,
+        *,
+        encoding: str,
+        newline: str,
+    ) -> int:
+        if path.name == filename:
+            _ = real_text(
+                path, content[:-1], encoding=encoding, newline=newline
+            )
+            return _malformed_write_count(invalid_count, len(content))
+        return real_text(path, content, encoding=encoding, newline=newline)
+
+    monkeypatch.setattr(Path, "write_bytes", bad_bytes)
+    monkeypatch.setattr(Path, "write_text", bad_text)
+
+
+@pytest.mark.parametrize(
+    "filename", [_STAGED_MAIN_C, _STAGED_HEADER, _STAGED_SHIM]
+)
+@pytest.mark.parametrize("invalid_count", list(_INVALID_WRITE_COUNTS))
+def test_sanitizer_rejects_incomplete_build_file_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    filename: str,
+    invalid_count: str,
+) -> None:
+    """No compiler runs after an incomplete historical C staging write."""
+    monkeypatch.setattr(harness, "ROOT", tmp_path)
+    monkeypatch.setattr(harness, "is_supported", lambda: True)
+    monkeypatch.setattr(harness, "_compiler_identity", lambda: None)
+    monkeypatch.setattr(harness, "_verify_source", lambda: _STAGED_SOURCE)
+
+    def unexpected_compile(*args: object, **kwargs: object) -> None:
+        pytest.fail(f"unverified C reached compiler: {len(args)} {len(kwargs)}")
+
+    monkeypatch.setattr(harness, "_run", unexpected_compile)
+    _inject_bad_historical_write(
+        monkeypatch, filename=filename, invalid_count=invalid_count
+    )
+    with pytest.raises(harness.SanitizerHarnessError, match="write count"):
+        _ = harness.run_harness()
+
+
+@pytest.mark.parametrize("invalid_count", list(_INVALID_WRITE_COUNTS))
+def test_sanitizer_rejects_incomplete_case_file_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_count: str,
+) -> None:
+    """No sanitizer process executes with an incomplete guest fixture."""
+    monkeypatch.setattr(harness, "ROOT", tmp_path)
+    monkeypatch.setattr(harness, "is_supported", lambda: True)
+    monkeypatch.setattr(harness, "_compiler_identity", lambda: None)
+    monkeypatch.setattr(harness, "_verify_source", lambda: _STAGED_SOURCE)
+
+    def fake_build(work: Path, *, source_bytes: bytes) -> Path:
+        assert work.is_dir()
+        assert source_bytes == _STAGED_SOURCE
+        return work / "simulated-sanitizer.exe"
+
+    monkeypatch.setattr(harness, "_build", fake_build)
+    monkeypatch.setattr(
+        harness,
+        "load_cases",
+        lambda: (
+            harness.SanitizerCase(
+                identifier="short-write", input_bytes=b"", source_bytes=b"D"
+            ),
+        ),
+    )
+
+    def unexpected_process(*args: object, **kwargs: object) -> None:
+        pytest.fail(
+            f"unverified guest reached process: {len(args)} {len(kwargs)}"
+        )
+
+    monkeypatch.setattr(subprocess, "run", unexpected_process)
+    _inject_bad_historical_write(
+        monkeypatch, filename=_STAGED_CASE, invalid_count=invalid_count
+    )
+    with pytest.raises(harness.SanitizerHarnessError, match="write count"):
+        _ = harness.run_harness()
