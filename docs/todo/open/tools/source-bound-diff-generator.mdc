@@ -33,6 +33,9 @@ format.
 
 **Current implementation.**
 
+- Recipe preflight now rejects foreign `pathlib.Path` subclasses for source,
+  oracle, output, and domain module before invoking path conversion or
+  resolution; four red-first tests prove these inputs cannot execute overrides.
 - Generator recipe preflight rejects NUL-bearing and host-unencodable
   filesystem paths, NUL-bearing or non-UTF-8 profile identifiers, and output
   destinations resolving inside the source or oracle tree, including linked
@@ -232,6 +235,9 @@ format.
   placement milestone rather than pretending byte relocation solves
   reformatting.
 
+- The Python generated-Rust source emitter now admits only an exact native
+  `pathlib.Path` output before rendering or staging, with red-first regressions
+  for both render-only and disk-output APIs.
 - The no-replace directory publisher now rejects foreign `pathlib.Path`
   subclasses for both staging and destination before any path conversion or
   filesystem method can run. Two red-first regressions preserve exact native

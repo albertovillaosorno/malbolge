@@ -154,8 +154,10 @@ def _validate_binding_policy(recipe: DiffRecipe) -> None:
 
 
 def _validate_path(value: object, name: str) -> None:
-    if not isinstance(value, Path):
-        message = f"{name} must be a pathlib Path"
+    # Reject Path subclasses before evaluating __fspath__ or .resolve:
+    # either override can redirect authoring reads and output publication.
+    if type(value) is not type(Path()):
+        message = f"{name} must use exact pathlib Path"
         raise TypeError(message)
     if _NUL in os.fspath(value):
         message = f"{name} must be a usable path without NUL"

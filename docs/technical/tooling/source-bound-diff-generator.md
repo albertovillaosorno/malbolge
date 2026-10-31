@@ -54,6 +54,10 @@ source plus source-bound transformation material.
 Possession of the generated transform alone must be insufficient to materialize
 the local oracle.
 
+The public authoring recipe first requires exact host-native `pathlib.Path`
+values for source, oracle, generated output and optional domain module; a
+caller-defined path subclass cannot redirect source reads or publication before
+recipe preflight. Four red-first regressions cover every path role.
 The public authoring recipe rejects NUL-bearing or host-unencodable source,
 oracle, module, and output paths, as well as NUL-bearing or non-UTF-8 profile
 identifiers, before domain preflight or source-tree reads. The generated Rust
@@ -120,6 +124,9 @@ passthrough roots remain dynamic. The final check and rename are not atomic;
 external concurrent writers still need coordination. The no-replace
 directory publisher also rejects host selectors that disagree with the actual
 runtime OS, preventing a caller from selecting an overwrite-capable rename.
+The Python generated-Rust source emitter separately requires an exact native
+`pathlib.Path` output before rendering or staging bytes. Its default native path
+remains valid; caller-defined path subclasses never receive filesystem calls.
 The same publisher admits only the running host's exact native `pathlib.Path`
 type for both staging and destination before querying filesystem methods.
 Caller-defined `Path` subclasses may override path resolution, file status, or

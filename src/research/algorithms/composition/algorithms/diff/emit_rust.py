@@ -220,8 +220,10 @@ def _validate_emission_inputs(
 
 
 def _validate_output_path(output_path: object) -> None:
-    if not isinstance(output_path, Path):
-        message = "Rust transform output path must use pathlib Path"
+    # A subclass can override path conversion and publication operations.
+    # Reject it before evaluating its string or filesystem representation.
+    if type(output_path) is not type(Path()):
+        message = "Rust transform output path must use exact pathlib Path"
         raise RustEmissionError(message)
     if _NUL in str(output_path):
         message = "Rust transform output path must not contain NUL"

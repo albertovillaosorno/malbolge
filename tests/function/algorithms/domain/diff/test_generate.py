@@ -207,6 +207,30 @@ def test_generator_rejects_invalid_fraction_before_output(
     _expect(not recipe.output_algorithm.exists(), "invalid recipe wrote output")
 
 
+class _ForeignRecipePath(type(Path())):
+    """An override may redirect a transform input before admission."""
+
+    def __fspath__(self) -> str:
+        message = "foreign recipe path conversion executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    "field", ["source_root", "oracle_root", "output_algorithm", "domain_module"]
+)
+def test_generator_rejects_foreign_path_subclasses_before_access(
+    tmp_path: Path, field: str
+) -> None:
+    """All authoring roots must be native paths before any path method runs."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    candidate = replace(
+        recipe, **{field: _ForeignRecipePath(tmp_path / "foreign")}
+    )
+    with pytest.raises(TypeError, match=f"{field} must use exact pathlib Path"):
+        write_algorithm(candidate)
+    assert not recipe.output_algorithm.exists()
+
+
 @pytest.mark.parametrize("unsafe_fragment", ["bad\x00path", "bad\ud800path"])
 def test_generator_rejects_nonportable_recipe_paths_before_work(
     tmp_path: Path,

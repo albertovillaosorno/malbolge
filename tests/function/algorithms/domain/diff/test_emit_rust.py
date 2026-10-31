@@ -277,6 +277,28 @@ def test_emitter_rejects_foreign_public_inputs(tmp_path: Path) -> None:
         )
 
 
+class _ForeignOutputPath(type(Path())):
+    """An overridden filesystem path cannot act as emission authority."""
+
+    def __fspath__(self) -> str:
+        message = "untrusted Rust output filesystem conversion ran"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("write_to_disk", [False, True])
+def test_rust_emitter_rejects_foreign_output_paths_before_conversion(
+    tmp_path: Path, *, write_to_disk: bool
+) -> None:
+    """Reject foreign Path overrides before rendering or staging output."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "foreign-generated.rs"
+    foreign = _ForeignOutputPath(output)
+    action = write_rust_transform if write_to_disk else emit_rust_transform
+    with pytest.raises(RustEmissionError, match="pathlib Path"):
+        _ = action(protected, _PROFILE, foreign)
+    assert not output.exists()
+
+
 @pytest.mark.parametrize("filename", ["bad\x00.rs", "bad\ud800.rs"])
 def test_emitter_rejects_unrepresentable_output_path(
     tmp_path: Path,
