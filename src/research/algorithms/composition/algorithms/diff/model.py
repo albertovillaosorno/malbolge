@@ -339,3 +339,15 @@ def _require_passthrough_roots(roots: object) -> None:
         raise TreeModelError(message)
     for root in cast("tuple[object, ...]", roots):
         _require_canonical_relative_path(root, "exact plan passthrough root")
+    _validate_passthrough_topology(cast("tuple[str, ...]", roots))
+
+
+def _validate_passthrough_topology(ordered: tuple[str, ...]) -> None:
+    if ordered != tuple(sorted(set(ordered))):
+        message = "exact plan passthrough roots must be unique and sorted"
+        raise TreeModelError(message)
+    for index, root in enumerate(ordered):
+        prefix = root + "/"
+        if any(other.startswith(prefix) for other in ordered[index + 1 :]):
+            message = "exact plan passthrough roots must not overlap"
+            raise TreeModelError(message)

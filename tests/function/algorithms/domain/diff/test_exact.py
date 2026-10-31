@@ -306,6 +306,30 @@ def test_exact_plan_requires_exact_target_instruction_mapping(
         )
 
 
+@pytest.mark.parametrize(
+    "invalid_roots",
+    [
+        ("dynamic", "dynamic"),
+        ("z-activity", "a-activity"),
+        ("dynamic", "dynamic/nested"),
+    ],
+)
+def test_exact_plan_rejects_ambiguous_passthrough_root_topology(
+    tmp_path: Path,
+    invalid_roots: tuple[str, ...],
+) -> None:
+    """Direct exact plans cannot bypass the builder's dynamic-root policy."""
+    source, oracle = _synthetic_pair(tmp_path)
+    valid = build_exact_plan(source, oracle)
+    with pytest.raises(TreeModelError, match="passthrough roots"):
+        _ = ExactAuthoringPlan(
+            source=valid.source,
+            target=valid.target,
+            instructions=valid.instructions,
+            passthrough_roots=invalid_roots,
+        )
+
+
 def test_exact_materialization_wraps_instruction_read_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
