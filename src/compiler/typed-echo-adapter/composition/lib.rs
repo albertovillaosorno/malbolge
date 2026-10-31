@@ -258,7 +258,7 @@ fn project_rotated_literal_effects(
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     };
     if outputs.is_empty()
-        || outputs.len() > 24
+        || outputs.len() > 25
         || !is_byte_type(module, *type_id)
         || constant.bit_width() != 8
         || constant.little_endian().len() != 1

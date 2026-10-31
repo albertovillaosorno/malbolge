@@ -1162,7 +1162,7 @@ computation, heap, C ABI or guest libc/EOF realization.
 ### First Verified Nonzero Guest U8 Literal
 
 An opt-in `encode_rotated_byte_literal` bridge admits one exact
-`MaterializeU8` with one to twenty-four same-SSA `ByteOutput`s, followed
+`MaterializeU8` with one to twenty-five same-SSA `ByteOutput`s, followed
 by `ReturnVoid`.
 For one output, 14 current-profile nonzero bytes are realized:
 `4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253`. A bounded
@@ -1193,10 +1193,10 @@ Independent 256-byte-domain checks reject the 237 and 238 unseeded values
 respectively. Separate eight- and nine-output short-phase scans each confirm 21
 distinct shortest seeds, rejecting the other 235 bytes per count.
 The tenth-output scan confirms 25 shortest seeds and rejects the other
-231 bytes. Independently re-executed eleven- through twenty-four-output
-scans admit 17, 20, 19, 22, 17, 24, 19, 20, 19, 21, 20, 25, 21 and 21
-nonzero byte values, respectively. The seventeen- through twenty-output
-scans each verify all 26 tested phases. Twenty-one outputs admit 25
+231 bytes. Independently re-executed eleven- through twenty-five-output
+scans admit 17, 20, 19, 22, 17, 24, 19, 20, 19, 21, 20, 25, 21, 21
+and 19 nonzero byte values, respectively. The seventeen- through
+twenty-output scans each verify all 26 tested phases. Twenty-one outputs admit 25
 phases, excluding phase fourteen.
 All counts retain the shortest seed per byte. Eighteen
 outputs retain 20 unique byte values and nineteen outputs retain 19 values
@@ -1207,12 +1207,14 @@ retain 25 distinct bytes from 26 VM-verified phases, including the shorter
 of two prefixes for byte 200. Twenty-three outputs realize 21 distinct
 nonzero values across all 26 phases, preserving the shortest duplicate
 witnesses. Twenty-four outputs admit 25 phases (excluding phase seven),
-retaining 21 distinct shortest nonzero-byte witnesses.
-Twenty-five or more outputs, foreign profiles, unknown byte
+retaining 21 distinct shortest nonzero-byte witnesses. Twenty-five
+outputs succeed in 25 phases (not seven), admitting 19 distinct bytes
+with the shortest prefixes; typed MCTI/MCTR and real runner check 18/44.
+Twenty-six or more outputs, foreign profiles, unknown byte
 values and mixed SSA effects reject.
 
 `compile_canonical_typed_rotated_byte_literal` projects complete
-canonical MCTI with one `u8 ConstantInteger`, one to twenty-four matching
+canonical MCTI with one `u8 ConstantInteger`, one to twenty-five matching
 `ByteOutput`s and final void return. Canonical MCTR re-admission and source
 comparison
 retain source/SSA/ABI/target provenance. The standalone CLI adds explicit
