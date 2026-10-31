@@ -21,7 +21,9 @@ manifest is:
 Changing any normative value in that manifest requires a new ABI identifier or
 an explicitly versioned schema change. Consumers fail closed on unknown keys,
 duplicate JSON keys, unknown schema versions, or disagreement with the current
-target profile.
+target profile. The ABI authority loader admits only stable regular
+UTF-8 files of at most 1 MiB; linked leaves and parent directories, special
+files, and changed document identities are rejected before JSON parsing.
 
 ## Scope
 

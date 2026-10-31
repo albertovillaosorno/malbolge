@@ -36,7 +36,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
+from stat import S_ISREG
 import sys
 from typing import Never
 from typing import cast
@@ -63,6 +65,7 @@ POINTER_SIZE = 4
 POINTER_ALIGNMENT = 4
 STACK_ALIGNMENT = 16
 FRAME_HEADER_BYTES = 32
+MAX_DOCUMENT_BYTES = 1024 * 1024
 
 TOP_LEVEL_KEYS = frozenset({
     "abi_id",
@@ -251,15 +254,101 @@ def loads_document(text: str) -> JsonObject:
     return _mapping(parsed, "C ABI document")
 
 
+def _document_identity(
+    status: os.stat_result,
+) -> tuple[int, int, int, int, int]:
+    """Return the regular document identity and write-time evidence.
+
+    Returns:
+        Device, inode, size, mtime, and ctime.
+
+    """
+    if not S_ISREG(status.st_mode):
+        _fail("C ABI document must be a regular file")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _check_document_identity(
+    expected: os.stat_result,
+    observed: os.stat_result,
+) -> None:
+    """Reject replacement, in-place changes, or oversized document input."""
+    identity = _document_identity(observed)
+    if observed.st_size > MAX_DOCUMENT_BYTES:
+        _fail("C ABI document exceeds byte limit")
+    if identity != _document_identity(expected):
+        _fail("C ABI document changed during read")
+
+
+def _check_document_parents(path: Path) -> None:
+    """Reject directory aliases along the ABI document pathname."""
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            _fail("C ABI document path must not redirect")
+
+
+def _read_open_document(
+    descriptor: int,
+    path: Path,
+    admitted: os.stat_result,
+) -> bytes:
+    """Read one stable bounded regular-file descriptor.
+
+    Returns:
+        UTF-8-compatible bytes before decoding.
+
+    """
+    with os.fdopen(descriptor, "rb") as stream:
+        opened = os.fstat(stream.fileno())
+        _check_document_identity(admitted, opened)
+        data = stream.read(MAX_DOCUMENT_BYTES + 1)
+        _check_document_identity(opened, os.fstat(stream.fileno()))
+        _check_document_identity(opened, path.lstat())
+        if len(data) != opened.st_size or len(data) > MAX_DOCUMENT_BYTES:
+            _fail("C ABI document changed during read or exceeds byte limit")
+    return data
+
+
+def _read_document_bytes(path: Path) -> bytes:
+    """Admit a non-redirected ABI document and read it without leaf-following.
+
+    Returns:
+        Stable bounded document bytes.
+
+    """
+    _check_document_parents(path)
+    admitted = path.lstat()
+    if path.is_symlink() or path.is_junction():
+        _fail("C ABI document path must not redirect")
+    if not S_ISREG(admitted.st_mode):
+        _fail("C ABI document must be a regular file")
+    if admitted.st_size > MAX_DOCUMENT_BYTES:
+        _fail("C ABI document exceeds byte limit")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    return _read_open_document(descriptor, path, admitted)
+
+
 def load_document(path: Path = DEFAULT_ABI) -> JsonObject:
-    """Load a UTF-8 ABI document from disk.
+    """Load stable regular UTF-8 guest C ABI document from disk.
 
     Returns:
         The parsed top-level ABI object.
 
     """
     try:
-        text = path.read_text(encoding="utf-8-sig")
+        text = _read_document_bytes(path).decode("utf-8-sig")
     except UnicodeDecodeError as error:
         _fail(f"invalid C ABI UTF-8: {error}")
     except OSError as error:

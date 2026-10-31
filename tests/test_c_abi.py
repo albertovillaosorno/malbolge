@@ -375,3 +375,34 @@ def test_abi_preflight_rejects_same_byte_inode_swap_during_ast(
     monkeypatch.setattr(c_abi_source, "_run_ast", swap_source)
     with pytest.raises(c_abi_source.SourceAnalysisError, match="changed"):
         _ = c_abi_source.analyze_source(source)
+
+
+def test_abi_document_rejects_symlinked_leaf(tmp_path: Path) -> None:
+    """A linked canonical-looking JSON file is not ABI authority."""
+    external = tmp_path / "outside.json"
+    _ = external.write_text(_canonical_text(), encoding="utf-8")
+    manifest = tmp_path / "c-abi-v1.json"
+    manifest.symlink_to(external)
+    with pytest.raises(c_abi.CAbiValidationError, match=r"regular|redirect"):
+        _ = c_abi.load_document(manifest)
+
+
+def test_abi_document_rejects_symlinked_directory(tmp_path: Path) -> None:
+    """ABI authority cannot be borrowed through a linked parent directory."""
+    external = tmp_path / "outside"
+    external.mkdir()
+    _ = (external / "c-abi-v1.json").write_text(
+        _canonical_text(), encoding="utf-8"
+    )
+    alias = tmp_path / "alias"
+    alias.symlink_to(external, target_is_directory=True)
+    with pytest.raises(c_abi.CAbiValidationError, match="redirect"):
+        _ = c_abi.load_document(alias / "c-abi-v1.json")
+
+
+def test_abi_document_rejects_oversized_regular_file(tmp_path: Path) -> None:
+    """Oversized regular JSON must fail before parsing or allocating a tree."""
+    manifest = tmp_path / "large.json"
+    _ = manifest.write_bytes(b" " * ((1024 * 1024) + 1))
+    with pytest.raises(c_abi.CAbiValidationError, match="byte limit"):
+        _ = c_abi.load_document(manifest)
