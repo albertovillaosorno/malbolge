@@ -49,6 +49,24 @@ class ProfileIdentityCliError(ValueError):
     """Invalid profile-identity command-line invocation."""
 
 
+def _safe_error_detail(error: Exception) -> str:
+    """Describe trusted native failures without invoking foreign formatters.
+
+    Returns:
+        Native diagnostic text, or the foreign exception type name.
+
+    """
+    if type(error) in (
+        ProfileIdentityCliError,
+        target_profile.ProfileValidationError,
+        OSError,
+        PermissionError,
+        FileNotFoundError,
+    ):
+        return str(error)
+    return type(error).__name__
+
+
 def _arguments(arguments: list[str]) -> tuple[Path, str | None]:
     if arguments in (["-h"], ["--help"]):
         usage = f"usage: {MODULE_COMMAND} PROFILE.json [EXPECTED-FINGERPRINT]\n"
@@ -101,7 +119,7 @@ def main() -> int:
         ProfileIdentityCliError,
         target_profile.ProfileValidationError,
     ) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
         return 1
     _ = sys.stdout.write(f"profile={profile_id} fingerprint={fingerprint}\n")
     return 0

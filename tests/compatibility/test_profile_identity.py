@@ -196,12 +196,14 @@ def test_canonical_id_cannot_be_redefined_externally() -> None:
 
 def test_artifact_fingerprint_mismatch_has_stable_diagnostic() -> None:
     """An external config mismatch is detected instead of reinterpreted."""
-    expected = " ".join((
-        "MALBOLGE-PROFILE-ID-001",
-        f"profile={CUSTOM_PROFILE}",
-        f"expected={MISMATCH_FINGERPRINT}",
-        f"observed={EXAMPLE_FINGERPRINT}",
-    ))
+    expected = " ".join(
+        (
+            "MALBOLGE-PROFILE-ID-001",
+            f"profile={CUSTOM_PROFILE}",
+            f"expected={MISMATCH_FINGERPRINT}",
+            f"observed={EXAMPLE_FINGERPRINT}",
+        )
+    )
     assert _mismatch_message(_example()) == expected
 
 
@@ -225,3 +227,51 @@ def test_profile_identity_cli_refuses_linked_external_document(
         "error: target-profile document must be a regular file"
     )
     assert not result.out
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [
+        OSError,
+        profile_identity.ProfileIdentityCliError,
+        validator.ProfileValidationError,
+    ],
+)
+def test_profile_identity_cli_never_formats_foreign_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """Host/profile error hooks cannot conceal deterministic CLI rejection."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign profile identity error formatter executed")
+
+    foreign = type("ForeignIdentityFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe profile identity diagnostic")
+
+    def fail_load(_path: Path) -> None:
+        raise fault
+
+    monkeypatch.setattr(validator, "load_document", fail_load)
+    monkeypatch.setattr(sys, "argv", ["profile_identity", str(EXAMPLE_PATH)])
+    assert profile_identity.main() == 1
+    output = capsys.readouterr()
+    assert not output.out
+    assert "ForeignIdentityFault" in output.err
+
+
+def test_profile_identity_cli_native_failure_retains_diagnostic(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Exact built-in profile errors retain useful operator details."""
+    fault = validator.ProfileValidationError("external profile fingerprint mismatch")
+
+    def fail_load(_path: Path) -> None:
+        raise fault
+
+    monkeypatch.setattr(validator, "load_document", fail_load)
+    monkeypatch.setattr(sys, "argv", ["profile_identity", str(EXAMPLE_PATH)])
+    assert profile_identity.main() == 1
+    assert "external profile fingerprint mismatch" in capsys.readouterr().err
