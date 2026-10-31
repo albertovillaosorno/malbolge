@@ -38,6 +38,8 @@ use std::io::{self, Read as _};
 use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -47,6 +49,35 @@ const POLL_INTERVAL: Duration = Duration::from_millis(5);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_STATE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_DIAGNOSTIC_BYTES: usize = 8 * 1024;
+
+// Escaped descendants may retain stdout/stderr after their inspector is
+// reaped. Keep one permit owned by both readers until the last one exits.
+const MAX_INSPECTOR_PIPE_GROUPS: usize = 32;
+static ACTIVE_INSPECTOR_PIPE_GROUPS: AtomicUsize = AtomicUsize::new(0);
+
+struct InspectorPipePermit<'counter> {
+    counter: &'counter AtomicUsize,
+}
+
+impl<'counter> InspectorPipePermit<'counter> {
+    fn acquire(
+        counter: &'counter AtomicUsize,
+        limit: usize,
+    ) -> Result<Self, InspectorFailure> {
+        let _previous = counter
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+                active.checked_add(1).filter(|next| *next <= limit)
+            })
+            .map_err(|_active| InspectorFailure::Rejected)?;
+        Ok(Self { counter })
+    }
+}
+
+impl Drop for InspectorPipePermit<'_> {
+    fn drop(&mut self) {
+        let _previous = self.counter.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 /// Failure categories for an explicitly configured inspector child.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -91,6 +122,7 @@ struct ExtractRequest<'path> {
 fn drain_pipe(
     pipe: impl io::Read + Send + 'static,
     limit: usize,
+    permit: Arc<InspectorPipePermit<'static>>,
 ) -> Result<PipeReceiver, InspectorFailure> {
     let (sender, receiver) = mpsc::sync_channel(1);
     let maximum = u64::try_from(limit)
@@ -100,6 +132,7 @@ fn drain_pipe(
     let _reader = thread::Builder::new()
         .name(String::from("compiler-inspector-drain"))
         .spawn(move || {
+            let _permit = permit;
             let mut bytes = Vec::new();
             let result = pipe.take(maximum).read_to_end(&mut bytes);
             let _sent = sender.send(result.map(|_count| bytes));
@@ -184,6 +217,20 @@ fn extract_with_limits(
     request: ExtractRequest<'_>,
     limits: InspectorLimits,
 ) -> Result<Vec<u8>, InspectorFailure> {
+    extract_with_limits_and_capacity(
+        request,
+        limits,
+        &ACTIVE_INSPECTOR_PIPE_GROUPS,
+        MAX_INSPECTOR_PIPE_GROUPS,
+    )
+}
+
+fn extract_with_limits_and_capacity(
+    request: ExtractRequest<'_>,
+    limits: InspectorLimits,
+    counter: &'static AtomicUsize,
+    capacity: usize,
+) -> Result<Vec<u8>, InspectorFailure> {
     if limits.timeout.is_zero() {
         return Err(InspectorFailure::Rejected);
     }
@@ -197,6 +244,7 @@ fn extract_with_limits(
     if request.inspector == Path::new("-") {
         return Err(InspectorFailure::Rejected);
     }
+    let permit = Arc::new(InspectorPipePermit::acquire(counter, capacity)?);
     let started = Instant::now();
     let mut command = Command::new(request.interpreter);
     let _configured = command
@@ -218,8 +266,10 @@ fn extract_with_limits(
             child.stdout.take().ok_or(InspectorFailure::Rejected)?;
         let stderr_pipe =
             child.stderr.take().ok_or(InspectorFailure::Rejected)?;
-        let stdout = drain_pipe(stdout_pipe, limits.stdout)?;
-        let stderr = drain_pipe(stderr_pipe, limits.stderr)?;
+        let stdout =
+            drain_pipe(stdout_pipe, limits.stdout, Arc::clone(&permit))?;
+        let stderr =
+            drain_pipe(stderr_pipe, limits.stderr, Arc::clone(&permit))?;
         collect(
             &mut child,
             &PipeReceivers { stderr, stdout },

@@ -41,12 +41,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::process::id;
 use std::sync::atomic::{AtomicUsize, Ordering};
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::{
-    ExtractRequest, InspectorFailure, InspectorLimits, extract_with_limits,
+    ExtractRequest, InspectorFailure, InspectorLimits, InspectorPipePermit,
+    drain_pipe, extract_with_limits, extract_with_limits_and_capacity,
 };
 
 static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
@@ -480,4 +481,142 @@ fn rejects_descendant_inherited_pipe_after_inspector_exit() {
     );
     assert_eq!(observed, Err(InspectorFailure::Rejected));
     assert!(started.elapsed() < Duration::from_secs(3));
+}
+
+#[test]
+fn inspector_drain_capacity_rejects_before_spawn() {
+    static ACTIVE: AtomicUsize = AtomicUsize::new(0);
+    let held = InspectorPipePermit::acquire(&ACTIVE, 1);
+    assert!(held.is_ok(), "first inspector slot must be available");
+    let request = ExtractRequest {
+        codec: "compiler.test-state-v1",
+        inspector: Path::new("unused.py"),
+        interpreter: Path::new("/missing-inspector-executable-32714"),
+        progress: Path::new("unused.json"),
+    };
+    let budget = limits(32, 32, Duration::from_secs(1));
+    assert_eq!(
+        extract_with_limits_and_capacity(request, budget, &ACTIVE, 1),
+        Err(InspectorFailure::Rejected),
+        "exhausted slots must reject before child launch",
+    );
+    assert_eq!(ACTIVE.load(Ordering::Acquire), 1);
+    drop(held);
+    assert_eq!(
+        extract_with_limits_and_capacity(request, budget, &ACTIVE, 1),
+        Err(InspectorFailure::Launch),
+        "released slots must allow normal launch admission",
+    );
+    assert_eq!(ACTIVE.load(Ordering::Acquire), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn inspector_drain_lease_outlives_caller_until_pipe_eof() -> Result<(), String>
+{
+    use std::os::unix::net::UnixStream;
+    use std::sync::Arc;
+
+    static ACTIVE: AtomicUsize = AtomicUsize::new(0);
+    let (reader, writer) = UnixStream::pair()
+        .map_err(|error| format!("create blocking pipe: {error}"))?;
+    let held = Arc::new(
+        InspectorPipePermit::acquire(&ACTIVE, 1)
+            .map_err(|_error| String::from("acquire reader slot"))?,
+    );
+    let receiver = drain_pipe(reader, 32, Arc::clone(&held))
+        .map_err(|_error| String::from("spawn blocked reader"))?;
+    drop(held);
+    if ACTIVE.load(Ordering::Acquire) != 1
+        || InspectorPipePermit::acquire(&ACTIVE, 1).is_ok()
+    {
+        return Err(String::from("blocked reader lost its capacity slot"));
+    }
+    drop(writer);
+    let bytes = receiver
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|error| format!("reader did not close: {error}"))?
+        .map_err(|error| format!("reader failed: {error}"))?;
+    if !bytes.is_empty() {
+        return Err(String::from("empty pipe yielded unexpected bytes"));
+    }
+    wait_for_drain_release(&ACTIVE, 100, "reader completion")
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn escaped_inspector_descendant_keeps_slot_until_pipe_close()
+-> Result<(), String> {
+    static ACTIVE: AtomicUsize = AtomicUsize::new(0);
+    let nonce = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+    let script = temp_dir()
+        .join(format!("malbolge-typed-escaped-slot-{}-{nonce}.py", id()));
+    let marker = temp_dir().join(format!(
+        "malbolge-typed-escaped-slot-{}-{nonce}.ready",
+        id()
+    ));
+    let source = format!(
+        concat!(
+            "import subprocess,sys\nfrom pathlib import Path\n",
+            "subprocess.Popen([sys.executable, '-c', ",
+            "'import time; time.sleep(1.5)'], ",
+            "start_new_session=True)\n",
+            "Path({:?}).touch()\n",
+        ),
+        marker.display().to_string(),
+    );
+    write(&script, source)
+        .map_err(|error| format!("write inspector: {error}"))?;
+    let request = ExtractRequest {
+        codec: "compiler.test-state-v1",
+        inspector: &script,
+        interpreter: &repository_python(),
+        progress: Path::new("unread-progress.json"),
+    };
+    let rejected = extract_with_limits_and_capacity(
+        request,
+        limits(1024, 1024, Duration::from_millis(700)),
+        &ACTIVE,
+        1,
+    );
+    let launched = marker.exists();
+    remove_file(&script).map_err(|error| format!("remove fixture: {error}"))?;
+    if launched {
+        remove_file(&marker)
+            .map_err(|error| format!("remove marker: {error}"))?;
+    }
+    if !launched || rejected != Err(InspectorFailure::Rejected) {
+        return Err(format!("escaped child not exercised: {rejected:?}"));
+    }
+    if ACTIVE.load(Ordering::Acquire) != 1 {
+        return Err(String::from("escaped child pipe lost reserved slot"));
+    }
+    let unavailable = extract_with_limits_and_capacity(
+        ExtractRequest {
+            interpreter: Path::new("/missing-inspector-after-timeout"),
+            ..request
+        },
+        limits(32, 32, Duration::from_secs(1)),
+        &ACTIVE,
+        1,
+    );
+    if unavailable != Err(InspectorFailure::Rejected) {
+        return Err(format!("retry bypassed reserved slot: {unavailable:?}"));
+    }
+    wait_for_drain_release(&ACTIVE, 600, "escaped child EOF")
+}
+
+#[cfg(unix)]
+fn wait_for_drain_release(
+    counter: &AtomicUsize,
+    attempts: usize,
+    reason: &str,
+) -> Result<(), String> {
+    for _ in 0usize..attempts {
+        if counter.load(Ordering::Acquire) == 0 {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    Err(format!("{reason} did not release inspector capacity"))
 }

@@ -37,6 +37,8 @@ use std::io::{self, Read as _};
 use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -46,6 +48,35 @@ const CHILD_DEADLINE: Duration = Duration::from_secs(60);
 const STATE_LIMIT: usize = 64 * 1024 * 1024;
 const DIAGNOSTIC_LIMIT: usize = 8 * 1024;
 const EXTRACT_SWITCH: &str = "--extract-checkpoint";
+
+// Escaped descendants may retain stdout/stderr after their inspector is
+// reaped. Keep one permit owned by both readers until the last one exits.
+const MAX_TRANSPORT_PIPE_GROUPS: usize = 32;
+static ACTIVE_TRANSPORT_PIPE_GROUPS: AtomicUsize = AtomicUsize::new(0);
+
+struct TransportPipePermit<'counter> {
+    counter: &'counter AtomicUsize,
+}
+
+impl<'counter> TransportPipePermit<'counter> {
+    fn acquire(
+        counter: &'counter AtomicUsize,
+        limit: usize,
+    ) -> Result<Self, TransportError> {
+        let _previous = counter
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+                active.checked_add(1).filter(|next| *next <= limit)
+            })
+            .map_err(|_active| TransportError::Rejected)?;
+        Ok(Self { counter })
+    }
+}
+
+impl Drop for TransportPipePermit<'_> {
+    fn drop(&mut self) {
+        let _previous = self.counter.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 /// Transport outcome distinct from subsequent ternary-state admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -82,6 +113,11 @@ struct PipeEvent {
     kind: PipeKind,
 }
 
+struct PipeDelivery {
+    permit: Arc<TransportPipePermit<'static>>,
+    sender: Sender<PipeEvent>,
+}
+
 struct RequestedInspector<'path> {
     codec: &'path str,
     inspector: &'path Path,
@@ -93,7 +129,7 @@ fn receive_pipe(
     pipe: impl io::Read + Send + 'static,
     kind: PipeKind,
     ceiling: usize,
-    sender: Sender<PipeEvent>,
+    delivery: PipeDelivery,
 ) -> Result<(), TransportError> {
     let limit = u64::try_from(ceiling)
         .ok()
@@ -102,9 +138,10 @@ fn receive_pipe(
     let _thread = thread::Builder::new()
         .name(String::from("ternary-inspector-pipe"))
         .spawn(move || {
+            let _permit = delivery.permit;
             let mut bytes = Vec::new();
             let result = pipe.take(limit).read_to_end(&mut bytes);
-            let _delivered = sender.send(PipeEvent {
+            let _delivered = delivery.sender.send(PipeEvent {
                 bytes: result.map(|_read| bytes),
                 kind,
             });
@@ -200,6 +237,20 @@ fn extract_with_budget(
     request: &RequestedInspector<'_>,
     budget: TransportBudget,
 ) -> Result<Vec<u8>, TransportError> {
+    extract_with_budget_and_capacity(
+        request,
+        budget,
+        &ACTIVE_TRANSPORT_PIPE_GROUPS,
+        MAX_TRANSPORT_PIPE_GROUPS,
+    )
+}
+
+fn extract_with_budget_and_capacity(
+    request: &RequestedInspector<'_>,
+    budget: TransportBudget,
+    counter: &'static AtomicUsize,
+    capacity: usize,
+) -> Result<Vec<u8>, TransportError> {
     if budget.deadline.is_zero() {
         return Err(TransportError::Rejected);
     }
@@ -213,6 +264,7 @@ fn extract_with_budget(
     if request.inspector == Path::new("-") {
         return Err(TransportError::Rejected);
     }
+    let permit = Arc::new(TransportPipePermit::acquire(counter, capacity)?);
     let started = Instant::now();
     let mut command = Command::new(request.interpreter);
     let _configured = command
@@ -236,13 +288,19 @@ fn extract_with_budget(
             stdout,
             PipeKind::State,
             budget.state_bytes,
-            sender.clone(),
+            PipeDelivery {
+                permit: Arc::clone(&permit),
+                sender: sender.clone(),
+            },
         )?;
         receive_pipe(
             stderr,
             PipeKind::Diagnostic,
             budget.diagnostic_bytes,
-            sender,
+            PipeDelivery {
+                permit: Arc::clone(&permit),
+                sender,
+            },
         )?;
         collect(&mut child, &receiver, budget, started)
     })();

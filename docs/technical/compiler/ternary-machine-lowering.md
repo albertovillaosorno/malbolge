@@ -89,6 +89,13 @@ functions with separate guest byte effects and typed 16-bit operations.
 Every program is published through the real portable sidecar writer and
 restored from its actual immutable checkpoint generation.
 
+Ternary checkpoint extraction reserves one of 32 process-local pipe-worker
+permits before launching an inspector. Both drain threads retain the same
+permit until their last pipe closes, including after a caller deadline when
+a descendant escapes the inspector process group. Exhaustion rejects before
+launch rather than accumulating unbounded blocked readers. This limits host
+worker ownership but does not terminate deliberately escaped descendants.
+
 The inspector also rejects tampered inner checkpoint records with malformed
 metadata, forged function identities, unknown opcodes or invalid scalar
 trits even when they have been freshly published in a valid outer envelope.
