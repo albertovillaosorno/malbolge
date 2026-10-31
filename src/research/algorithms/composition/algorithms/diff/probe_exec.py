@@ -120,6 +120,21 @@ class PathArgument:
 ProbeArgument = str | PathArgument
 
 
+def _require_portable_probe_identifier(value: object, context: str) -> str:
+    if type(value) is not str or not value:
+        message = f"{context} must be a non-empty string"
+        raise ProbeProgramError(message)
+    if _NUL in value:
+        message = f"{context} must not contain NUL bytes"
+        raise ProbeProgramError(message)
+    try:
+        _ = value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        message = f"{context} must use portable UTF-8 text"
+        raise ProbeProgramError(message) from error
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class ToolExecutable:
     """Executable resolved through a logical consumer tool identifier."""
@@ -127,18 +142,10 @@ class ToolExecutable:
     tool_id: str
 
     def __post_init__(self) -> None:
-        """Require a non-empty logical tool identifier.
-
-        Raises:
-            ProbeProgramError: The tool identifier is empty.
-
-        """
-        if type(self.tool_id) is not str or not self.tool_id:
-            message = "probe tool identifier must be a non-empty string"
-            raise ProbeProgramError(message)
-        if _NUL in self.tool_id:
-            message = "probe tool identifier must not contain NUL bytes"
-            raise ProbeProgramError(message)
+        """Require a portable logical tool identifier."""
+        _ = _require_portable_probe_identifier(
+            self.tool_id, "probe tool identifier"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,9 +277,9 @@ class ProbeProgram:
             ProbeProgramError: Program identity or command sequence is empty.
 
         """
-        if type(self.probe_id) is not str or not self.probe_id:
-            message = "probe program identifier must be a non-empty string"
-            raise ProbeProgramError(message)
+        _ = _require_portable_probe_identifier(
+            self.probe_id, "probe program identifier"
+        )
         if type(self.commands) is not tuple:
             message = "probe commands must use the exact immutable tuple type"
             raise ProbeProgramError(message)
@@ -303,12 +310,9 @@ def _validate_tool_binding(binding: object) -> tuple[str, Path]:
         message = "probe tool binding must be an exact pair"
         raise ProbeProgramError(message)
     tool_id, tool_path = pair
-    if type(tool_id) is not str or not tool_id:
-        message = "probe tool identifiers must be non-empty strings"
-        raise ProbeProgramError(message)
-    if _NUL in tool_id:
-        message = "probe tool identifiers must not contain NUL bytes"
-        raise ProbeProgramError(message)
+    tool_id = _require_portable_probe_identifier(
+        tool_id, "probe tool identifier"
+    )
     _validate_path(tool_path, "probe tool path")
     return tool_id, cast("Path", tool_path)
 
@@ -367,9 +371,9 @@ class ProbeTranscript:
             ProbeProgramError: A transcript field has invalid runtime metadata.
 
         """
-        if type(self.probe_id) is not str or not self.probe_id:
-            message = "probe transcript identifier must be a non-empty string"
-            raise ProbeProgramError(message)
+        _ = _require_portable_probe_identifier(
+            self.probe_id, "probe transcript identifier"
+        )
         if type(self.digest) is not bytes or len(self.digest) != _SHA256_BYTES:
             message = "probe transcript digest must be exactly 32 bytes"
             raise ProbeProgramError(message)

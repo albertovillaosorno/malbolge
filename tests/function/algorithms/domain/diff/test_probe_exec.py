@@ -1543,6 +1543,25 @@ def test_probe_executable_launch_failure_is_wrapped(tmp_path: Path) -> None:
         _ = run_probe_program(program, context)
 
 
+@pytest.mark.parametrize("invalid", ["bad\x00id", "bad" + chr(0xD800)])
+def test_probe_logical_identifiers_require_portable_utf8(invalid: str) -> None:
+    """Reject unencodable or NUL-bearing probe identifiers."""
+    command = ProbeCommand(executable=ToolExecutable(_PYTHON_TOOL))
+    digest = hashlib.sha256(b"probe transcript").digest()
+    for build in (
+        lambda: ToolExecutable(invalid),
+        lambda: ProbeProgram(invalid, (command,)),
+        lambda: ProbeTranscript(invalid, digest, 0),
+        lambda: ProbeRunContext(
+            Path("source"),
+            Path("repository"),
+            ((invalid, Path(sys.executable)),),
+        ),
+    ):
+        with pytest.raises(ProbeProgramError, match="probe"):
+            _ = build()
+
+
 def test_probe_program_and_context_require_immutable_exact_records(
     tmp_path: Path,
 ) -> None:
