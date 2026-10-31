@@ -857,6 +857,11 @@ open.
 
 Canonical typed-IR durable state is already backend-identity neutral.
 
+The optimizer's upstream TOML loader also admits exact platform-native
+`pathlib.Path` inputs and rejects NUL or unencodable Unicode pathnames before
+filesystem calls. Valid POSIX `surrogateescape` byte paths continue to round
+trip unchanged, as do explicitly selected symlink aliases.
+
 The optimizer's upstream TOML search-configuration loader applies the same
 native-descriptor and native-`stat_result` admission before reading regular
 source fields or transferring stream ownership. A failed TOML stream transfer
@@ -887,6 +892,12 @@ through the CPU reference route, rejects unsupported algorithms and incompatible
 checkpoint state, and records checkpoint SHA-256 plus
 `evaluated-search-prefix-resume-v1` in resumed JSON output. Fresh-search JSON is
 unchanged.
+
+The optimizer search CLI additionally admits only native `list[str]` or
+`tuple[str, ...]` direct argument vectors (and a native process `sys.argv`)
+before invoking `argparse`. Non-string elements, hostile collection/string
+subclasses, and foreign vector objects return status 2 without invoking their
+indexing, equality, or iteration hooks.
 
 The optimizer's final JSON-line publication now requires the exact native
 integer character count from stdout and a native `None` flush completion before

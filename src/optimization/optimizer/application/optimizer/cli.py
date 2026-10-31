@@ -231,8 +231,20 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _parse_arguments(argv: Sequence[str] | None) -> _Arguments:
+    if argv is None:
+        if type(sys.argv) is not list:
+            message = "search CLI arguments require a native list or tuple of strings"
+            raise SearchCliError(message)
+        supplied = sys.argv[1:]
+    else:
+        supplied = argv
+    if type(supplied) not in {list, tuple} or any(
+        type(argument) is not str for argument in supplied
+    ):
+        message = "search CLI arguments require a native list or tuple of strings"
+        raise SearchCliError(message)
     arguments = _Arguments()
-    _ = _parser().parse_args(argv, namespace=arguments)
+    _ = _parser().parse_args(list(supplied), namespace=arguments)
     return arguments
 
 

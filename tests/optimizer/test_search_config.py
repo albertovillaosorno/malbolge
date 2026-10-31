@@ -583,3 +583,36 @@ def test_search_configuration_rejects_deep_toml_parser_stack_exhaustion(
         _ = path.write_text(deep, encoding="utf-8")
         with pytest.raises(SearchConfigurationError, match="recursion"):
             _ = load_search_configuration(path)
+
+
+@pytest.mark.parametrize("foreign_path", [None, "search.toml", b"search.toml", True])
+def test_search_configuration_load_rejects_foreign_path_before_file_calls(
+    foreign_path: object,
+) -> None:
+    """Direct library loads require an exact native filesystem path object."""
+    with pytest.raises(SearchConfigurationError, match="native path"):
+        _ = load_search_configuration(cast("Path", foreign_path))
+
+
+@pytest.mark.parametrize("bad_name", ["bad\0name.toml", "bad\ud800name.toml"])
+def test_search_configuration_load_rejects_unencodable_pathnames(
+    tmp_path: Path,
+    bad_name: str,
+) -> None:
+    """Malformed path spellings fail typed before performing filesystem reads."""
+    with pytest.raises(SearchConfigurationError, match="path"):
+        _ = load_search_configuration(tmp_path / bad_name)
+
+
+def test_search_configuration_load_preserves_surrogateescape_byte_path(
+    tmp_path: Path,
+) -> None:
+    """Valid POSIX byte-path aliases remain accepted during path admission."""
+    if os.name != "posix":
+        pytest.skip("POSIX byte pathname semantics required")
+    raw_name = os.fsdecode(b"search-\xff.toml")
+    path = tmp_path / raw_name
+    _ = path.write_text(_config(), encoding="utf-8")
+    parsed = load_search_configuration(path)
+    assert parsed.source == path.as_posix()
+    assert parsed.selection.backend_id == BACKEND

@@ -80,6 +80,7 @@ import pytest
 from scripts import progress_sidecar as progress
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from accelerator.cuda import CudaExactPrimitiveAdapter as CudaAdapter
     from accelerator.search_config import SearchConfiguration
 
@@ -1355,3 +1356,45 @@ def test_cli_rejects_foreign_binary_file_metadata_before_field_access(
     assert status == CONFIGURATION_ERROR
     assert not output
     assert "metadata" in error
+
+
+def test_search_cli_rejects_foreign_argument_vectors_before_argparse() -> None:
+    """Direct CLI callers cannot execute foreign comparison/iteration hooks."""
+    class HostileArguments(list[str]):
+        @override
+        def __iter__(self) -> Iterator[str]:
+            raise AssertionError("foreign CLI argument iteration executed")
+
+    class HostileText(str):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign CLI string conversion executed")
+
+    malformed: tuple[object, ...] = (
+        [42], [None], [b"--budget"], ["--config", 42],
+        (42,), "--budget", b"--budget", HostileArguments(["--help"]),
+        [HostileText("--help")],
+    )
+    for supplied in malformed:
+        output = StringIO()
+        diagnostic = StringIO()
+        with redirect_stdout(output), redirect_stderr(diagnostic):
+            status = main(cast("list[str] | tuple[str, ...]", supplied))
+        assert status == CONFIGURATION_ERROR
+        assert not output.getvalue()
+        assert "arguments" in diagnostic.getvalue()
+
+
+def test_search_cli_rejects_foreign_process_argv_before_argparse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The implicit process argv source has the same native-string boundary."""
+    output = StringIO()
+    diagnostic = StringIO()
+    with monkeypatch.context() as context:
+        context.setattr(sys, "argv", cast("list[str]", ["optimizer", 42]))
+        with redirect_stdout(output), redirect_stderr(diagnostic):
+            status = main(None)
+    assert status == CONFIGURATION_ERROR
+    assert not output.getvalue()
+    assert "arguments" in diagnostic.getvalue()

@@ -36,21 +36,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from pathlib import Path
 from stat import S_ISREG
 from struct import calcsize
 import tomllib
-from typing import TYPE_CHECKING
 from typing import cast
 
 from accelerator.search_selection import SearchSelection
 from accelerator.search_selection import SearchSelectionError
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 SEARCH_CONFIGURATION_SCHEMA = 1
 MAX_SEARCH_CONFIGURATION_BYTES = 1024 * 1024
 _MAX_NATIVE_DESCRIPTOR = (1 << (8 * calcsize("@i") - 1)) - 1
+_NATIVE_PATH_TYPE = type(Path("."))
 
 
 class SearchConfigurationError(ValueError):
@@ -244,6 +242,22 @@ def _read_config_bytes(path: Path) -> bytes:
         raise SearchConfigurationError(message) from error
 
 
+def _validated_configuration_path(path: Path) -> Path:
+    """Admit one exact native path without losing POSIX byte-path aliases."""
+    if type(path) is not _NATIVE_PATH_TYPE:
+        message = "search configuration requires a native path"
+        raise SearchConfigurationError(message)
+    if "\0" in str(path):
+        message = "search configuration path contains NUL"
+        raise SearchConfigurationError(message)
+    try:
+        _ = os.fsencode(path)
+    except (UnicodeError, ValueError) as error:
+        message = "search configuration path cannot be encoded"
+        raise SearchConfigurationError(message) from error
+    return path
+
+
 def load_search_configuration(path: Path) -> SearchConfiguration:
     """Load one versioned TOML search configuration from disk.
 
@@ -254,12 +268,13 @@ def load_search_configuration(path: Path) -> SearchConfiguration:
         SearchConfigurationError: Source, encoding, or TOML is invalid.
 
     """
+    admitted_path = _validated_configuration_path(path)
     try:
-        text = _read_config_bytes(path).decode("utf-8")
+        text = _read_config_bytes(admitted_path).decode("utf-8")
     except UnicodeDecodeError as error:
         message = f"invalid search configuration UTF-8: {error}"
         raise SearchConfigurationError(message) from error
-    return parse_search_configuration(text, source=path.as_posix())
+    return parse_search_configuration(text, source=admitted_path.as_posix())
 
 
 def parse_search_configuration(
