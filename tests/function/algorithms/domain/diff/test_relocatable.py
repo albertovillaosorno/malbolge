@@ -570,6 +570,26 @@ def test_relocatable_instruction_rejects_nonportable_paths(
         )
 
 
+@pytest.mark.parametrize("drive_path", ["C:/target", "D:relative"])
+def test_relocatable_instruction_rejects_windows_drive_paths(
+    drive_path: str,
+) -> None:
+    """Drive-absolute and drive-relative labels are not portable tree paths."""
+    with pytest.raises(RelocationError, match="unsafe relocatable tree path"):
+        _ = RelocatableInstruction(
+            output_path=drive_path,
+            source_path=None,
+            copy_candidate_file=False,
+            literal=b"target",
+        )
+    with pytest.raises(RelocationError, match="unsafe relocatable tree path"):
+        _ = RelocatableInstruction(
+            output_path="out.bin",
+            source_path=drive_path,
+            copy_candidate_file=True,
+        )
+
+
 def test_relocatable_plan_rejects_duplicate_output_destinations() -> None:
     """A staged file must have exactly one authorized output instruction."""
     first = RelocatableInstruction(
