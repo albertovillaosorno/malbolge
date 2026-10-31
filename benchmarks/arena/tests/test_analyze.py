@@ -42,6 +42,7 @@ import json
 import sys
 from typing import Any
 from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 
@@ -85,6 +86,7 @@ SUCCESS_OBSERVED = 5
 SUCCESS_ATTEMPTS = 10
 SUCCESS_INTERVAL_POLICY_KEY = "verification_success_interval_policy"
 SUCCESS_INTERVAL_KEY = "verification_success_probability_interval_95"
+UTF8_QUESTION = "évidence"
 
 
 def _observation(
@@ -356,6 +358,68 @@ def test_duplicate_keys_and_nonfinite_numbers_fail_closed(text: str) -> None:
     """JSON syntax must not obscure a measurement or study authority."""
     with pytest.raises(analyze.ArenaError, match=r"duplicate|nonfinite"):
         analyze.parse_document(text)
+
+
+@pytest.mark.parametrize(
+    "foreign",
+    [
+        b"{}",
+        bytearray(b"{}"),
+        None,
+        {},
+        1,
+    ],
+)
+def test_direct_json_parser_requires_exact_text(foreign: object) -> None:
+    """A direct parser must not silently decode byte-like foreign records."""
+    with pytest.raises(analyze.ArenaError, match="exact string"):
+        _ = analyze.parse_document(cast("str", foreign))
+
+
+@pytest.mark.parametrize(
+    "oversized",
+    [
+        " " * (analyze.MAX_INPUT_BYTES + 1),
+        "é" * (analyze.MAX_INPUT_BYTES // 2 + 1),
+    ],
+)
+def test_direct_json_parser_rejects_over_budget_before_decode(
+    monkeypatch: pytest.MonkeyPatch,
+    oversized: str,
+) -> None:
+    """Byte budget applies before JSON parser allocation or deep recursion."""
+    called = False
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        nonlocal called
+        _ = (args, kwargs)
+        called = True
+        message = "overlong direct JSON reached decoder"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(analyze.json, "loads", forbidden)
+    with pytest.raises(analyze.ArenaError, match=LARGE_INPUT_DIAGNOSTIC):
+        _ = analyze.parse_document(oversized)
+    assert not called
+
+
+def test_direct_json_parser_rejects_unencodable_text() -> None:
+    """Lone host surrogate characters cannot become a UTF-8 study wire."""
+    with pytest.raises(analyze.ArenaError, match="UTF-8") as rejection:
+        _ = analyze.parse_document("\ud800")
+    assert isinstance(rejection.value.__cause__, UnicodeEncodeError)
+
+
+def test_direct_json_parser_admits_exact_utf8_byte_ceiling() -> None:
+    """The direct parser accepts the same full-size ordinary-file budget."""
+    document = _document()
+    document["study"]["question"] = UTF8_QUESTION
+    original = json.dumps(document, ensure_ascii=False)
+    admitted = analyze.parse_document(
+        original
+        + " " * (analyze.MAX_INPUT_BYTES - len(original.encode("utf-8")))
+    )
+    assert admitted["study"]["question"] == UTF8_QUESTION
 
 
 def test_cli_prints_json_and_rejects_invalid_input(

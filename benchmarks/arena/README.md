@@ -19,7 +19,9 @@ when admission or comparison fails. Its input limit is 16 MiB. Direct
 study-file readers require an exact positive integer byte ceiling no higher
 than 16 MiB; malformed or larger ceilings reject before opening any path.
 Missing/invalid study paths and invalid UTF-8 fail through typed input errors,
-including when the admission functions are called directly.
+including when the admission functions are called directly. The direct JSON
+parser also requires exact UTF-8-encodable string input bounded to 16 MiB;
+byte-like arguments and oversized decoded text cannot bypass the file limit.
 Version-one input has one `study` and a nonempty `observations` array:
 
 ```json

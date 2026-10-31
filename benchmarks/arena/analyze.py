@@ -289,7 +289,22 @@ def _trial_key(row: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+def _admit_json_text(text: str) -> None:
+    if type(text) is not str:
+        _fail("arena JSON requires exact string input")
+    if len(text) > MAX_INPUT_BYTES:
+        _fail("arena JSON exceeds 16 MiB limit")
+    try:
+        byte_length = len(text.encode("utf-8"))
+    except UnicodeError as error:
+        message = "arena JSON input cannot be encoded as UTF-8"
+        raise ArenaError(message) from error
+    if byte_length > MAX_INPUT_BYTES:
+        _fail("arena JSON exceeds 16 MiB limit")
+
+
 def _decode_document(text: str) -> dict[str, Any]:
+    _admit_json_text(text)
     try:
         document = json.loads(
             text,
