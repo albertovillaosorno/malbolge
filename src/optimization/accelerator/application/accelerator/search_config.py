@@ -276,8 +276,14 @@ def parse_search_configuration(
         SearchConfigurationError: If TOML or required fields are invalid.
 
     """
+    if type(text) is not str:
+        message = "search configuration text must use the exact string type"
+        raise SearchConfigurationError(message)
     try:
         document = cast("object", tomllib.loads(text))
+    except RecursionError as error:
+        message = "invalid search configuration TOML: parser recursion limit exceeded"
+        raise SearchConfigurationError(message) from error
     except tomllib.TOMLDecodeError as error:
         message = f"invalid search configuration TOML: {error}"
         raise SearchConfigurationError(message) from error

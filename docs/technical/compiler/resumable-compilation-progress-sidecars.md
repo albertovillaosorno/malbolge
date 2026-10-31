@@ -862,7 +862,10 @@ native-descriptor and native-`stat_result` admission before reading regular
 source fields or transferring stream ownership. A failed TOML stream transfer
 closes its raw descriptor, preserves the primary failure over any secondary
 close fault, and exposes an exact configuration error (without changing the
-existing explicit symlink-alias behavior).
+existing explicit symlink-alias behavior). The direct TOML parser rejects
+non-native text and string subclasses before invoking `tomllib`, while deeply
+nested TOML that exhausts the parser stack returns an exact
+`SearchConfigurationError` rather than leaking `RecursionError` to the CLI.
 
 The external optimizer runner additionally admits exact native nonnegative
 C-int file descriptors for both binary problem inputs and resume checkpoint

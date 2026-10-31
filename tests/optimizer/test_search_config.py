@@ -553,3 +553,33 @@ def test_search_config_stream_interruption_closes_descriptor_before_reraising(
         if descriptor is not None:
             with contextlib.suppress(OSError):
                 os.close(descriptor)
+
+
+@pytest.mark.parametrize(
+    "foreign_text",
+    [b"schema_version = 1", True, 7, type("ForeignText", (str,), {})("schema_version = 1")],
+    ids=["bytes", "boolean", "integer", "string-subclass"],
+)
+def test_search_configuration_rejects_foreign_toml_text_before_parser(
+    foreign_text: object,
+) -> None:
+    """Direct TOML entry must not invoke foreign values or subclass hooks."""
+    with pytest.raises(SearchConfigurationError, match="text.*exact string"):
+        _ = parse_search_configuration(cast("str", foreign_text))
+
+
+@pytest.mark.parametrize("source_kind", ["direct", "file"])
+def test_search_configuration_rejects_deep_toml_parser_stack_exhaustion(
+    tmp_path: Path,
+    source_kind: str,
+) -> None:
+    """Deeply nested untrusted TOML must fail with a typed configuration error."""
+    deep = _config() + "nested = " + "[" * 512 + "0" + "]" * 512 + "\n"
+    if source_kind == "direct":
+        with pytest.raises(SearchConfigurationError, match="recursion"):
+            _ = parse_search_configuration(deep)
+    else:
+        path = tmp_path / SEARCH_CONFIG_SOURCE
+        _ = path.write_text(deep, encoding="utf-8")
+        with pytest.raises(SearchConfigurationError, match="recursion"):
+            _ = load_search_configuration(path)
