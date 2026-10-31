@@ -2058,3 +2058,93 @@ def test_target_reference_native_audit_failure_keeps_detail(
     ) as caught:
         target_echo_reference._audit_retained_study(tmp_path / "study.json")
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("kind", [OSError, ValueError, RuntimeError])
+def test_target_echo_setup_cleanup_bypasses_hostile_primary_note(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: type[Exception],
+) -> None:
+    """A foreign setup exception cannot replace the typed workspace rejection."""
+
+    class HostilePrimary(kind):
+        def add_note(self, note: str) -> None:
+            del note
+            raise AssertionError("foreign target setup add_note invoked")
+
+    primary = HostilePrimary("primary target workspace failure")
+    cleanup = ValueError("native cleanup failure")
+
+    def fail_mkdir(*_args: object, **_kwargs: object) -> None:
+        raise primary
+
+    def fail_cleanup(*_args: object, **_kwargs: object) -> None:
+        raise cleanup
+
+    monkeypatch.setattr(target_echo_reference.Path, "mkdir", fail_mkdir)
+    monkeypatch.setattr(target_echo_reference.shutil, "rmtree", fail_cleanup)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="initialization failed"
+    ) as caught:
+        target_echo_reference._initialize_workspace_folders(tmp_path, ("raw",))
+    assert caught.value.__cause__ is primary
+    assert "native cleanup failure" in primary.__notes__[0]
+
+
+@pytest.mark.parametrize("kind", [ValueError, RuntimeError, OSError])
+def test_target_echo_setup_cleanup_never_formats_foreign_secondary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: type[Exception],
+) -> None:
+    """Foreign cleanup diagnostics cannot supersede a primary setup error."""
+
+    class HostileCleanup(kind):
+        def __str__(self) -> str:
+            raise AssertionError("foreign target cleanup formatter invoked")
+
+    primary = OSError("primary target workspace failure")
+    cleanup = HostileCleanup("untrusted secondary failure")
+
+    def fail_mkdir(*_args: object, **_kwargs: object) -> None:
+        raise primary
+
+    def fail_cleanup(*_args: object, **_kwargs: object) -> None:
+        raise cleanup
+
+    monkeypatch.setattr(target_echo_reference.Path, "mkdir", fail_mkdir)
+    monkeypatch.setattr(target_echo_reference.shutil, "rmtree", fail_cleanup)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="initialization failed"
+    ) as caught:
+        target_echo_reference._initialize_workspace_folders(tmp_path, ("raw",))
+    assert caught.value.__cause__ is primary
+    assert "cleanup failed" in primary.__notes__[0]
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        target_echo_reference.TargetEchoStudyError,
+        analyze.ArenaError,
+        evidence.EvidenceError,
+        target_echo_audit.TargetEchoAuditError,
+        OSError,
+        report_output.ReportOutputError,
+    ],
+)
+def test_target_echo_safe_error_detail_does_not_format_hostile_native_argument(
+    kind: type[Exception],
+) -> None:
+    """An exact native error type does not authenticate its arguments."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("foreign target native argument formatter")
+
+    fault = kind(HostileArgument())
+    detail = target_echo_reference._safe_error_detail(
+        fault, trusted=target_echo_audit.TargetEchoAuditError
+    )
+    assert detail == kind.__name__

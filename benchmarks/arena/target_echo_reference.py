@@ -194,8 +194,19 @@ def _safe_error_detail(
         FileNotFoundError,
         sp.SubprocessError,
         sp.TimeoutExpired,
+        ValueError,
+        RuntimeError,
     ):
-        return str(error)
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+        if (
+            type(error) in (OSError, FileNotFoundError, PermissionError)
+            and len(arguments) == 2
+            and type(arguments[0]) is int
+            and type(arguments[1]) is str
+        ):
+            return f"{type(error).__name__}: [Errno {arguments[0]}] {arguments[1]}"
     return type(error).__name__
 
 
@@ -898,7 +909,11 @@ def _initialize_workspace_folders(directory: Path, names: tuple[str, ...]) -> No
         try:
             shutil.rmtree(directory)
         except (OSError, ValueError, RuntimeError) as cleanup_error:
-            error.add_note(f"target echo workspace cleanup failed: {cleanup_error}")
+            # Neither the primary nor the cleanup error may run foreign hooks.
+            detail = _safe_error_detail(cleanup_error)
+            BaseException.add_note(
+                error, f"target echo workspace cleanup failed: {detail}"
+            )
         message = "target echo study workspace initialization failed"
         raise TargetEchoStudyError(message) from error
 
