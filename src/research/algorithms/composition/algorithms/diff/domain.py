@@ -121,6 +121,20 @@ def _require_module_path_without_nul(path: Path) -> None:
         raise DomainContractError(message)
 
 
+def _reject_linked_module_ancestors(path: Path) -> None:
+    current = path.parent
+    while current != current.parent:
+        try:
+            mode = current.lstat().st_mode
+        except (OSError, ValueError) as error:
+            message = f"diff domain module parent status failed: {current!r}"
+            raise DomainContractError(message) from error
+        if S_ISLNK(mode) or current.is_junction():
+            message = f"diff domain module has a linked parent: {current!r}"
+            raise DomainContractError(message)
+        current = current.parent
+
+
 def _regular_module_path(path: Path) -> Path:
     _require_module_path_without_nul(path)
     try:
@@ -134,6 +148,7 @@ def _regular_module_path(path: Path) -> Path:
     if S_ISLNK(mode) or path.is_junction() or not S_ISREG(mode):
         message = f"diff domain module is not a regular file: {path}"
         raise DomainContractError(message)
+    _reject_linked_module_ancestors(path)
     try:
         return path.resolve(strict=True)
     except (OSError, ValueError) as error:

@@ -226,6 +226,43 @@ def test_missing_or_symlinked_domain_file_fails_closed(tmp_path: Path) -> None:
         _ = load_diff_domain(link)
 
 
+def test_domain_loader_rejects_linked_parent_directory(
+    tmp_path: Path,
+) -> None:
+    """Trusted local consumer policy cannot load through directory links."""
+    module = tmp_path / "real" / "domain.py"
+    module.parent.mkdir()
+    _write(module, _COMPLETE)
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(module.parent, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+
+    with pytest.raises(DomainContractError, match="linked parent"):
+        _ = load_diff_domain(alias / "domain.py")
+
+
+def test_domain_module_parent_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Do not ignore inaccessible ancestors of a trusted consumer module."""
+    module = tmp_path / "policy" / "domain.py"
+    module.parent.mkdir()
+    _write(module, _COMPLETE)
+    original_lstat = Path.lstat
+
+    def fail_parent_status(path: Path) -> object:
+        if path == module.parent:
+            message = "blocked consumer directory"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_parent_status)
+    with pytest.raises(DomainContractError, match="parent status failed"):
+        _ = load_diff_domain(module)
+
+
 def test_domain_file_status_error_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
