@@ -679,6 +679,18 @@ def _measured_limited(
                     ),
                     input_bytes=input_bytes,
                 )
+                # The transport is a dependency: only native, quota-bounded
+                # completion can support an RSS measurement. Compare status
+                # only after exact integer admission (bool is not an exit code).
+                if (
+                    type(result) is not sp.CompletedProcess
+                    or type(result.returncode) is not int
+                    or type(result.stdout) is not bytes
+                    or type(result.stderr) is not bytes
+                    or len(result.stdout) > DEFAULT_STDOUT_LIMIT
+                    or len(result.stderr) > DEFAULT_STDERR_LIMIT
+                ):
+                    _fail("bounded target GNU time returned invalid child completion")
                 if result.returncode != 0:
                     _fail("bounded target GNU time requires successful child exit")
                 raw = _rss_report_bytes(report)

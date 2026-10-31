@@ -2744,3 +2744,74 @@ def test_resource_tool_preflight_rejects_foreign_host_receipts(
     monkeypatch.setattr(target_process.os, "access", injected_access)
     with pytest.raises(target_process.TargetProcessError, match="inspection|physical"):
         target_process._system_tool(target_process.RSS_TOOL)
+
+
+class _ForeignMeasuredCompletion(sp.CompletedProcess[bytes]):
+    """An injected result must not execute foreign status accessors."""
+
+    def __getattribute__(self, name: str) -> object:
+        if name == "returncode":
+            pytest.fail("foreign measured returncode was accessed")
+        return super().__getattribute__(name)
+
+
+class _ForgedExitStatus(int):
+    """An integer subtype may pretend a failed process exited zero."""
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        pytest.fail("foreign measured status comparison executed")
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "foreign-completion",
+        "bool-status",
+        "foreign-status",
+        "foreign-stdout",
+        "oversized-stdout",
+        "foreign-stderr",
+        "oversized-stderr",
+    ],
+)
+def test_measured_rss_requires_exact_bounded_native_child_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A substituted child cannot attest successful bounded RSS execution."""
+    (tmp_path / ".temp").mkdir()
+    monkeypatch.setattr(target_process, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_process, "require_child_rss_measurement", lambda: None)
+    monkeypatch.setattr(target_process, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(target_process, "_rss_report_bytes", lambda _path: b"10\n")
+    fake: sp.CompletedProcess[bytes]
+    if kind == "foreign-completion":
+        fake = _ForeignMeasuredCompletion([sys.executable], 0, b"", b"")
+    else:
+        status = (
+            cast("int", False)
+            if kind == "bool-status"
+            else _ForgedExitStatus(7)
+            if kind == "foreign-status"
+            else 0
+        )
+        stdout = (
+            cast("bytes", _ForeignRssBytes(b""))
+            if kind == "foreign-stdout"
+            else b"x" * (target_process.DEFAULT_STDOUT_LIMIT + 1)
+            if kind == "oversized-stdout"
+            else b""
+        )
+        stderr = (
+            cast("bytes", _ForeignRssBytes(b""))
+            if kind == "foreign-stderr"
+            else b"x" * (target_process.DEFAULT_STDERR_LIMIT + 1)
+            if kind == "oversized-stderr"
+            else b""
+        )
+        fake = sp.CompletedProcess([sys.executable], status, stdout, stderr)
+    monkeypatch.setattr(target_process, "_run", lambda *_args, **_kwargs: fake)
+    with pytest.raises(
+        target_process.TargetProcessError, match="invalid child completion"
+    ):
+        target_process.invoke_limited_measured(_child("print('never')"))
