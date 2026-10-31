@@ -466,10 +466,11 @@ def validate_repository_manifest(path: Path) -> ExperimentManifest:
 
     """
     relative = _repository_relative(path)
-    if not path.is_file():
+    canonical_path = ROOT / relative
+    if not canonical_path.is_file():
         _fail(f"experiment manifest not found: {relative.as_posix()}")
-    manifest = parse_manifest(_read_utf8(path))
-    _validate_repository_identity(manifest, path)
+    manifest = parse_manifest(_read_utf8(canonical_path))
+    _validate_repository_identity(manifest, canonical_path)
     return manifest
 
 

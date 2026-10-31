@@ -46,9 +46,11 @@ Prior-work claims must resolve through canonical records under
 Experiment manifest schema v1 is validated by
 `src/automation/repository/composition/scripts/validate/experiment_manifest.py`.
 Manifest file loading rejects invalid UTF-8 through the stable experiment error
-boundary before TOML admission. TOML is the checked-in serialization,
-but the schema owns semantics independently of that format. Every research
-mirror carries `algorithms/<id>/experiment.toml` with:
+boundary before TOML admission. Repository-manifest validation normalizes
+working-directory-relative or absolute input paths to one in-root canonical
+path before reading and checking provenance. TOML remains the checked-in
+serialization, but the schema owns semantics independently of that format.
+Every research mirror carries `algorithms/<id>/experiment.toml` with:
 
 - `schema_version = 1`;
 - `[experiment]` identity, record kind, method class, and deterministic seed;

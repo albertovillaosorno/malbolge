@@ -37,6 +37,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+
 from scripts.validate import experiment_manifest as validator
 
 if TYPE_CHECKING:
@@ -143,6 +144,18 @@ def test_repository_experiment_manifests_are_schema_valid() -> None:
     """Every mirrored algorithm carries one valid version-one plan manifest."""
     manifests = validator.validate_repository()
     assert tuple(item.identifier for item in manifests) == EXPECTED_IDS
+
+
+def test_repo_relative_manifest_path_admits_canonical_identity() -> None:
+    """Relative and absolute spellings share one in-repository identity."""
+    absolute = (
+        validator.ROOT
+        / "src/research/algorithms/domain/algorithms/template/experiment.toml"
+    )
+    relative = absolute.relative_to(validator.ROOT)
+    assert validator.validate_repository_manifest(relative) == (
+        validator.validate_repository_manifest(absolute)
+    )
 
 
 def test_manifest_rejects_windows_drive_relative_path() -> None:
