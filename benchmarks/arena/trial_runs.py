@@ -81,7 +81,7 @@ def parse_trial_run(text: str) -> TrialRun:
     """
     try:
         document = tomllib.loads(text)
-    except tomllib.TOMLDecodeError as error:
+    except (ValueError, RecursionError) as error:
         message = f"invalid per-trial manifest TOML: {error}"
         raise TrialRunError(message) from error
     table = document.get(EXTENSION_NAME)

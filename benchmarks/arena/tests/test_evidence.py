@@ -47,9 +47,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from benchmarks.arena import analyze
+from benchmarks.arena import budget_links
 from benchmarks.arena import evidence
+from benchmarks.arena import trial_runs
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Iterator
     from os import stat_result
     from typing import IO
@@ -433,6 +436,47 @@ def test_direct_link_api_rejects_parent_traversal(tmp_path: Path) -> None:
     document["observations"][0]["experiment_manifest"] = "../escape.toml"
     with pytest.raises(evidence.EvidenceError, match="canonical relative"):
         evidence.validate_links(document, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("parser", "text", "expected"),
+    [
+        (
+            budget_links.parse_run_budgets,
+            "[budget]\nseconds = " + "1" * 4500 + "\nmemory_mib = 128\n",
+            (budget_links.BudgetLinkError, ValueError),
+        ),
+        (
+            trial_runs.parse_trial_run,
+            "[arena_trial]\nschema_version = 1\ntrial = "
+            + "1" * 4500
+            + '\nraw_sha256 = "'
+            + "a" * 64
+            + '"\n',
+            (trial_runs.TrialRunError, ValueError),
+        ),
+        (
+            budget_links.parse_run_budgets,
+            "[budget]\nseconds = " + "[" * 1000 + "1" + "]" * 1000,
+            (budget_links.BudgetLinkError, RecursionError),
+        ),
+        (
+            trial_runs.parse_trial_run,
+            "[arena_trial]\ntrial = " + "[" * 1000 + "1" + "]" * 1000,
+            (trial_runs.TrialRunError, RecursionError),
+        ),
+    ],
+    ids=["budget-integer", "trial-integer", "budget-depth", "trial-depth"],
+)
+def test_optional_run_extension_parser_contains_toml_capacity_failure(
+    parser: Callable[[str], object],
+    text: str,
+    expected: tuple[type[ValueError], type[Exception]],
+) -> None:
+    """Direct run extensions type TOML parser resource failures."""
+    with pytest.raises(expected[0], match=r"invalid .* TOML") as error:
+        parser(text)
+    assert isinstance(error.value.__cause__, expected[1])
 
 
 BUDGET_SECONDS = 1

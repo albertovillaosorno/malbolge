@@ -840,6 +840,8 @@ The original study records remain the result authority.
   extension under strict opt-in preflight. Synthetic regressions check
   distinct trial-run bindings, raw-file digests, complete shared CSVs, malformed
   trial/schema metadata, aggregate-manifest reuse, and fail-closed CLI output.
+  Direct extension parsing also types TOML integer-capacity and nesting-depth
+  failures rather than leaking host parser exceptions.
 - Version-two `arena-raw-v2` optionally carries per-trial `energy_uj`
   without changing v1 headers. Synthetic tests prove exact energy Pareto
   comparison and rejection of cross-version omissions, forged costs and
@@ -985,6 +987,8 @@ The original study records remain the result authority.
 - `benchmarks/arena/budget_links.py` optionally requires exact resource
   budget declarations from each linked run, rejecting missing/forged integers,
   unit mismatches, and one-unit study drift with fail-closed CLI regressions.
+  Its direct parser likewise rejects oversized integers and deeply nested
+  TOML through its typed budget-error boundary.
 - `benchmarks/arena/historical_pairs.py` replays the two retained classic
   five-pair research sources into arena reports. Source-backed regressions
   assert exact observed medians, paired results, fingerprints, and rejection

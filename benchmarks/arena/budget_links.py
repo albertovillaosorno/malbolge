@@ -77,7 +77,7 @@ def parse_run_budgets(text: str) -> RunBudgets:
     """
     try:
         document = tomllib.loads(text)
-    except tomllib.TOMLDecodeError as error:
+    except (ValueError, RecursionError) as error:
         message = f"invalid experiment run budget TOML: {error}"
         raise BudgetLinkError(message) from error
     budget = document.get("budget")
