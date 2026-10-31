@@ -94,6 +94,13 @@ the no-follow pathname immediately after opening; detached or replaced regular
 files fail closed at that point. All path components are also rechecked for
 links after opening: replacing a parent with a symlink could otherwise direct
 the open to a different regular inode that still matches its new pathname.
+On Linux, admission also compares the opened descriptor's `/proc/self/fd`
+pathname to the lexically normalized requested path. A transient parent link
+that directs the open to a separate hard link of the *same inode* therefore
+rejects, even when the parent has been restored before metadata admission.
+Missing descriptor-path evidence fails closed on Linux; non-Linux platforms
+retain the device/inode and post-open redirect checks but not this stronger
+hard-link-path guarantee. A check cannot prevent a later filesystem rewrite.
 
 Identity and path-link admission are repeated after the full payload has
 been read and before the admitted descriptor is closed. Concurrent pathname

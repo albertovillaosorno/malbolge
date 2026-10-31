@@ -6233,6 +6233,81 @@ def test_immutable_collision_rejects_named_pipe(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Requires Linux opened-descriptor pathname verification",
+)
+def test_progress_reader_rejects_transient_parent_redirect_to_same_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-inode hard links must not disguise a redirected open parent."""
+    expected_parent = tmp_path / "expected"
+    expected_parent.mkdir()
+    foreign_parent = tmp_path / "foreign"
+    foreign_parent.mkdir()
+    original_parent = tmp_path / "original-expected"
+    sidecar = _sidecar(expected_parent)
+    selected = Path(sidecar.progress_path)
+    _ = selected.write_bytes(progress.encode(sidecar))
+    outside = foreign_parent / selected.name
+    os.link(selected, outside)
+    assert selected.stat().st_ino == outside.stat().st_ino
+    original_open = os.open
+
+    def redirected_open(path: Path | str, flags: int, *args: int) -> int:
+        if Path(path) != selected:
+            return original_open(path, flags, *args)
+        _ = expected_parent.rename(original_parent)
+        expected_parent.symlink_to(foreign_parent, target_is_directory=True)
+        try:
+            descriptor = original_open(path, flags, *args)
+        finally:
+            expected_parent.unlink()
+            _ = original_parent.rename(expected_parent)
+        return descriptor
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", redirected_open)
+        with pytest.raises(ERROR, match="opened path"):
+            _ = progress.read(selected)
+
+    assert selected.read_bytes() == outside.read_bytes()
+    assert expected_parent.is_dir() and not expected_parent.is_symlink()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Requires Linux opened-descriptor pathname verification",
+)
+def test_progress_reader_fails_closed_without_linux_descriptor_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unreadable proc descriptor evidence is a typed read rejection."""
+    sidecar = _sidecar(tmp_path)
+    selected = Path(sidecar.progress_path)
+    _ = selected.write_bytes(progress.encode(sidecar))
+    original_readlink = os.readlink
+    descriptor_paths: list[str] = []
+
+    def missing_descriptor_path(path: str, *args: int) -> str:
+        if path.startswith("/proc/self/fd/"):
+            descriptor_paths.append(path)
+            raise OSError("injected unavailable proc descriptor path")
+        return original_readlink(path, *args)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "readlink", missing_descriptor_path)
+        with pytest.raises(ERROR, match="opened path cannot be verified"):
+            _ = progress.read(selected)
+    assert len(descriptor_paths) == 1
+    descriptor = int(descriptor_paths[0].rsplit("/", 1)[-1])
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(descriptor)
+    assert selected.read_bytes() == progress.encode(sidecar)
+
+
+@pytest.mark.skipif(
     os.name == progress.WINDOWS_PLATFORM,
     reason="Hard-link generation readers require POSIX filesystem semantics",
 )

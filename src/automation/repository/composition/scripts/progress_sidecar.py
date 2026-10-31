@@ -1758,6 +1758,18 @@ def _verify_opened_read_identity(
         or opened.st_ino != current.st_ino
     ):
         _fail(f"{context} path changed during {phase}")
+    if sys.platform.startswith("linux"):
+        # Device/inode checks cannot distinguish an open through a transient
+        # redirected ancestor from a hard link to the same regular inode.
+        try:
+            opened_path = os.readlink(f"/proc/self/fd/{descriptor}")
+        except OSError as error:
+            _fail_with_source(
+                f"{context} opened path cannot be verified: {error}", error
+            )
+        expected_path = os.path.abspath(path)  # ruff: ignore[os-path-abspath]
+        if opened_path != expected_path:
+            _fail(f"{context} opened path differs from requested path")
 
 
 def _read_regular_bytes(
