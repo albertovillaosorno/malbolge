@@ -1419,6 +1419,91 @@ def test_vm_step_receipt_admits_one_canonical_decimal() -> None:
     )
 
 
+def test_target_emitter_rejects_hostile_completion_before_stdout_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dependency result cannot claim emission via foreign stdout truthiness."""
+
+    class ForeignBytes(bytes):
+        def __bool__(self) -> bool:
+            pytest.fail("foreign emitter stdout truthiness executed")
+
+    path = tmp_path / "candidate.malbolge"
+    _ = path.write_bytes(b"!")
+    context = _synthetic_target_context(tmp_path, site="raw")
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_reference,
+        "_emit_attempt",
+        lambda *_args, **_kwargs: sp.CompletedProcess([], 0, ForeignBytes(), b""),
+    )
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="native child result"
+    ):
+        target_echo_reference._classify_attempt(path, context, ["input"], pairs=1)
+
+
+@pytest.mark.parametrize(
+    "bad_completion",
+    [
+        sp.CompletedProcess([], True, b"", b""),
+        sp.CompletedProcess([], 0, b"", None),
+        object(),
+    ],
+    ids=["boolean-status", "missing-stderr", "foreign-container"],
+)
+def test_target_emitter_rejects_non_native_process_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_completion: object
+) -> None:
+    """Bad process structures cannot become successful emitter receipts."""
+    path = tmp_path / "candidate.malbolge"
+    _ = path.write_bytes(b"!")
+    context = _synthetic_target_context(tmp_path, site="raw")
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_reference,
+        "_emit_attempt",
+        lambda *_args, **_kwargs: cast("sp.CompletedProcess[bytes]", bad_completion),
+    )
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="native child result"
+    ):
+        target_echo_reference._classify_attempt(path, context, ["input"], pairs=1)
+
+
+def test_target_guest_rejects_foreign_stdout_before_verifier_equality(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mocked guest cannot claim verified bytes through custom equality."""
+
+    class ForeignBytes(bytes):
+        def __eq__(self, other: object) -> bool:
+            del other
+            pytest.fail("foreign VM output equality executed")
+
+        __hash__ = bytes.__hash__
+
+    path = tmp_path / "candidate.malbolge"
+    _ = path.write_bytes(b"!")
+    context = _synthetic_target_context(tmp_path, site="raw")
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_reference,
+        "_emit_attempt",
+        lambda *_args, **_kwargs: sp.CompletedProcess([], 0, b"", b""),
+    )
+    monkeypatch.setattr(target_echo_reference, "_read_source_bytes", lambda *_a, **_k: b"!")
+    monkeypatch.setattr(
+        target_echo_reference,
+        "_run_guest",
+        lambda *_args, **_kwargs: sp.CompletedProcess([], 0, ForeignBytes(b"!"), b""),
+    )
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="native child result"
+    ):
+        target_echo_reference._classify_attempt(path, context, ["input"], pairs=1)
+
+
 def test_emitter_rejects_foreign_source_receipt_before_graphical_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -189,6 +189,25 @@ def _read_source_bytes(relative: str, *, limit: int) -> bytes:
     return raw
 
 
+def _admit_child_result(
+    result: sp.CompletedProcess[bytes],
+) -> sp.CompletedProcess[bytes]:
+    """Reject foreign transport results before interpreting child success.
+
+    Returns:
+        Native child exit status and exact binary stdout/stderr receipts.
+
+    """
+    if (
+        type(result) is not sp.CompletedProcess
+        or type(result.returncode) is not int
+        or type(result.stdout) is not bytes
+        or type(result.stderr) is not bytes
+    ):
+        _fail("target echo requires native child result receipts")
+    return result
+
+
 def _safe_error_detail(
     error: Exception, *, trusted: type[Exception] | None = None
 ) -> str:
@@ -599,7 +618,7 @@ def _classify_attempt(
     ]
     if context.layout_mode == FORWARD_SKIP_LAYOUT and operations[0] == JUMP_OPERATION:
         command.append("--auto-layout")
-    emitted = _emit_attempt(context, [*command, *operations])
+    emitted = _admit_child_result(_emit_attempt(context, [*command, *operations]))
     if emitted.returncode != 0 or emitted.stdout or not path.is_file():
         return "tool_failed", None, None
     source = _read_source_bytes(
@@ -614,7 +633,7 @@ def _classify_attempt(
         GRAPHICAL_LOW <= byte <= GRAPHICAL_HIGH for byte in source
     ):
         return analyze.VERIFIER_REJECTED, None, None
-    execution = _run_guest(context, path, pairs)
+    execution = _admit_child_result(_run_guest(context, path, pairs))
     expected = (
         bytes([CLASSIC_EOF_BYTE]) * pairs
         if context.input_mode == EOF_MODE
