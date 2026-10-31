@@ -358,11 +358,18 @@ WORKSPACE_SUBDIR_STAGE = "subdirectory"
 WORKSPACE_ERROR = "study workspace"
 
 
-@pytest.mark.parametrize("stage", [WORKSPACE_CREATE_STAGE, WORKSPACE_SUBDIR_STAGE])
+@pytest.mark.parametrize(
+    "error_type", [PermissionError, ValueError, RuntimeError]
+)
+@pytest.mark.parametrize(
+    "stage", [WORKSPACE_CREATE_STAGE, WORKSPACE_SUBDIR_STAGE]
+)
 def test_failed_workspace_setup_is_typed_and_removes_partial_study(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    *,
     stage: str,
+    error_type: type[Exception],
 ) -> None:
     """An unusable output folder cannot escape as raw OS failure or orphan."""
     emitter = tmp_path / "emitter"
@@ -381,7 +388,7 @@ def test_failed_workspace_setup_is_typed_and_removes_partial_study(
         def failed_creation(*args: object, **kwargs: object) -> str:
             _ = (args, kwargs)
             message = "injected workspace creation failure"
-            raise PermissionError(message)
+            raise error_type(message)
 
         monkeypatch.setattr(target_echo_reference.tempfile, "mkdtemp", failed_creation)
     else:
@@ -390,7 +397,7 @@ def test_failed_workspace_setup_is_typed_and_removes_partial_study(
         def failed_subdirectory(path: Path, *args: Any, **kwargs: Any) -> None:
             if path.name == "raw" and path.parent.name.startswith("arena-target-echo-"):
                 message = "injected workspace subdirectory failure"
-                raise PermissionError(message)
+                raise error_type(message)
             original_mkdir(path, *args, **kwargs)
 
         monkeypatch.setattr(type(tmp_path), "mkdir", failed_subdirectory)
@@ -399,8 +406,65 @@ def test_failed_workspace_setup_is_typed_and_removes_partial_study(
         target_echo_reference.TargetEchoStudyError, match=WORKSPACE_ERROR
     ) as failure:
         _ = target_echo_reference._prepare_context(emitter, runner)
-    assert isinstance(failure.value.__cause__, PermissionError)
+    assert isinstance(failure.value.__cause__, error_type)
     assert not list(temp_root.glob("arena-target-echo-*"))
+
+
+@pytest.mark.parametrize("error_type", [ValueError, RuntimeError])
+def test_target_echo_workspace_root_host_failures_are_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    error_type: type[Exception],
+) -> None:
+    """An unexpected root inspection failure cannot leak to callers."""
+
+    def faulty_lstat(path: Path) -> None:
+        _ = path
+        message = "injected workspace root inspection failure"
+        raise error_type(message)
+
+    monkeypatch.setattr(
+        target_echo_reference, "_admit_executable", lambda path: path
+    )
+    monkeypatch.setattr(target_echo_reference.Path, "lstat", faulty_lstat)
+    monkeypatch.setattr(target_echo_reference, "_TEMP", tmp_path)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match=r"repository \.temp"
+    ) as failure:
+        _ = target_echo_reference._prepare_context(tmp_path, tmp_path)
+    assert isinstance(failure.value.__cause__, error_type)
+
+
+@pytest.mark.parametrize("cleanup_type", [ValueError, RuntimeError])
+def test_target_echo_workspace_cleanup_preserves_primary_setup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cleanup_type: type[Exception],
+) -> None:
+    """Unexpected cleanup faults cannot hide an earlier failed mkdir."""
+
+    def faulty_mkdir(path: Path) -> None:
+        _ = path
+        message = "injected workspace subdirectory failure"
+        raise OSError(message)
+
+    def faulty_cleanup(path: Path) -> None:
+        _ = path
+        message = "injected workspace cleanup failure"
+        raise cleanup_type(message)
+
+    monkeypatch.setattr(target_echo_reference.Path, "mkdir", faulty_mkdir)
+    monkeypatch.setattr(target_echo_reference.shutil, "rmtree", faulty_cleanup)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="initialization failed",
+    ) as failure:
+        target_echo_reference._initialize_workspace_folders(tmp_path, ("raw",))
+    assert isinstance(failure.value.__cause__, OSError)
+    cleanup_note = "cleanup failed"
+    assert any(
+        cleanup_note in note for note in failure.value.__cause__.__notes__
+    )
 
 
 def test_optional_rss_workspace_failure_is_typed_and_cleans_partial_study(
