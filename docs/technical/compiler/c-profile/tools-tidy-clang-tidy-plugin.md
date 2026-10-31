@@ -46,6 +46,14 @@ headers, static libraries, CMake package metadata, and LLVM build tools
 extracted
 from the reviewed development artifact into `.dependencies/llvm-dev/22.1.8`.
 Neither path is inferred from an ambient host LLVM installation.
+Runtime toolchain readiness and Linux import reuse additionally require the
+exact LLVM version **and host-platform** bytes in the physical completion
+marker, plus non-redirected native Clang/clang-tidy/clang-format executables,
+neutral aliases, and (on Linux) both runtime shared libraries and the Clang
+resource directory. The marker is compared using a bounded nonblocking
+regular-file snapshot with inode and timestamp stability checks. Symlinks,
+missing binaries, forged markers, and stale imports cannot count as ready or
+be silently reused; an incomplete preexisting root fails closed.
 
 `tidy_toolchain.py` closes the manifest schema, rejects escaping paths, verifies
 required runtime/development files, checks the exact Clang and clang-tidy

@@ -39,6 +39,8 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import shutil
+from stat import S_ISDIR
+from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from typing import Final
 from typing import Never
@@ -90,6 +92,102 @@ def llvm_version_matches(version_text: str) -> bool:
 
     """
     return any(LLVM_VERSION in line for line in version_text.splitlines())
+
+
+def _unlinked_path(path: Path) -> bool:
+    try:
+        return not any(
+            part.is_symlink() or part.is_junction()
+            for part in (path, *path.parents)
+        )
+    except OSError, ValueError:
+        return False
+
+
+def _physical_file(path: Path) -> bool:
+    try:
+        return _unlinked_path(path) and S_ISREG(path.lstat().st_mode)
+    except OSError, ValueError:
+        return False
+
+
+def _physical_directory(path: Path) -> bool:
+    try:
+        return _unlinked_path(path) and S_ISDIR(path.lstat().st_mode)
+    except OSError, ValueError:
+        return False
+
+
+def _marker_bytes(platform_id: str) -> bytes:
+    return f"llvm={LLVM_VERSION}\nplatform={platform_id}\n".encode()
+
+
+def _marker_identity(status: os.stat_result) -> tuple[int, ...]:
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _stable_marker_descriptor(
+    path: Path,
+    admitted: tuple[int, ...],
+    expected: bytes,
+) -> bool:
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        before = _marker_identity(os.fstat(stream.fileno()))
+        content = stream.read(len(expected) + 1)
+        after = _marker_identity(os.fstat(stream.fileno()))
+    return before == admitted and after == admitted and content == expected
+
+
+def _valid_marker(root: Path, platform_id: str) -> bool:
+    marker = root / LLVM_IMPORT_MARKER
+    if not _physical_file(marker):
+        return False
+    expected = _marker_bytes(platform_id)
+    try:
+        initial = marker.lstat()
+        admitted = _marker_identity(initial)
+        return (
+            initial.st_size == len(expected)
+            and _stable_marker_descriptor(marker, admitted, expected)
+            and _physical_file(marker)
+            and _marker_identity(marker.lstat()) == admitted
+        )
+    except OSError, ValueError:
+        return False
+
+
+def _runtime_files(root: Path, platform_id: str) -> tuple[Path, ...]:
+    if platform_id == LINUX_PLATFORM:
+        binaries = tuple(root / "bin" / tool for tool in _TOOL_NAMES)
+        libraries = tuple(root / "lib" / name for name in _LLVM_LIBRARY_NAMES)
+        return (*binaries, *libraries)
+    return tuple(root / "bin" / f"{tool}.exe" for tool in _TOOL_NAMES)
+
+
+def _runtime_ready(root: Path, platform_id: str) -> bool:
+    if platform_id not in {LINUX_PLATFORM, WINDOWS_PLATFORM}:
+        return False
+    if not _valid_marker(root, platform_id):
+        return False
+    aliases = tuple(root / "jig-bin" / f"{tool}.bin" for tool in _TOOL_NAMES)
+    physical_files = (*aliases, *_runtime_files(root, platform_id))
+    return all(_physical_file(path) for path in physical_files) and (
+        platform_id != LINUX_PLATFORM
+        or _physical_directory(root / "lib/clang/22")
+    )
 
 
 def _link_or_copy(source: str, destination: str) -> str:
@@ -181,11 +279,7 @@ def _stage_linux_llvm(
         staged / "lib" / "clang" / "22",
     )
     _ = _write_linux_aliases(staged)
-    _ = (staged / LLVM_IMPORT_MARKER).write_text(
-        f"llvm={LLVM_VERSION}\nplatform={LINUX_PLATFORM}\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    _ = (staged / LLVM_IMPORT_MARKER).write_bytes(_marker_bytes(LINUX_PLATFORM))
 
 
 def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
@@ -197,9 +291,13 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     """
     _validate_observation(observation)
     destination = root / LLVM_ROOT
-    if (destination / LLVM_IMPORT_MARKER).is_file():
+    if _runtime_ready(destination, LINUX_PLATFORM):
         return destination
-    if destination.exists():
+    if (
+        destination.exists()
+        or destination.is_symlink()
+        or destination.is_junction()
+    ):
         _fail("repository-local LLVM exists without the exact import marker")
     staging = root / ".temp" / "llvm-import-linux-x86_64"
     if staging.exists():
@@ -233,11 +331,7 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
         if not alias.exists():
             _copy_file(source, alias)
         aliases.append(alias)
-    _ = (root / LLVM_IMPORT_MARKER).write_text(
-        f"llvm={LLVM_VERSION}\nplatform={WINDOWS_PLATFORM}\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    _ = (root / LLVM_IMPORT_MARKER).write_bytes(_marker_bytes(WINDOWS_PLATFORM))
     return tuple(aliases)
 
 
@@ -251,11 +345,7 @@ def inspect_llvm(root: Path, platform_id: str) -> LlvmReadiness:
     llvm_root = root / LLVM_ROOT
     alias_root = llvm_root / "jig-bin"
     clang = alias_root / "clang.bin"
-    aliases = tuple(alias_root / f"{tool}.bin" for tool in _TOOL_NAMES)
-    marker = llvm_root / LLVM_IMPORT_MARKER
-    supported = platform_id in {LINUX_PLATFORM, WINDOWS_PLATFORM}
-    complete = marker.is_file() and all(path.is_file() for path in aliases)
-    ready = supported and complete
+    ready = _runtime_ready(llvm_root, platform_id)
     detail = (
         "exact neutral LLVM 22.1.8 aliases are present"
         if ready
