@@ -270,7 +270,7 @@ def _output_mode(path: Path, description: str) -> int | None:
         return path.lstat().st_mode
     except FileNotFoundError:
         return None
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"Rust output {description} status failed: {path}: {error}"
         raise RustEmissionError(message) from error
 
@@ -316,7 +316,7 @@ def _prepare_output_path(output_path: Path) -> Path:
     _validate_output_parent_chain(output_path.parent)
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = (
             f"Rust output parent creation failed: {output_path.parent}: {error}"
         )

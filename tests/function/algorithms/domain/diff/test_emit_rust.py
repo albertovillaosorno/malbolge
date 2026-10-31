@@ -455,8 +455,13 @@ def test_writer_rejects_directory_output(tmp_path: Path) -> None:
     assert output.is_dir()
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_writer_wraps_output_status_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """An inaccessible output leaf stays inside RustEmissionError."""
     _, _, _, protected = _fixture(tmp_path)
@@ -466,12 +471,47 @@ def test_writer_wraps_output_status_failure(
     def fail_lstat(path: Path) -> object:
         if path == output:
             message = "blocked Rust output status"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_lstat(path)
 
     monkeypatch.setattr(Path, "lstat", fail_lstat)
     with pytest.raises(RustEmissionError, match="output file status failed"):
         write_rust_transform(protected, _PROFILE, output)
+
+
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
+def test_writer_wraps_output_parent_creation_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Invalid output parent creation fails before temporary publication."""
+    _, _, _, protected = _fixture(tmp_path)
+    parent = tmp_path / "generated"
+    output = parent / "main.rs"
+    original_mkdir = Path.mkdir
+
+    def fail_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        if path == parent:
+            message = "blocked Rust output parent creation"
+            raise failure_type(message)
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    with pytest.raises(
+        RustEmissionError, match="output parent creation failed"
+    ):
+        write_rust_transform(protected, _PROFILE, output)
+    assert not parent.exists(), "failed output creation left generated parent"
+    assert not output.exists(), "failed output creation published Rust"
 
 
 def test_writer_cleans_temporary_after_output_recheck_rejects(
