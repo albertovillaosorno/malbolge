@@ -104,6 +104,14 @@ immutable checkpoint publication, while a preceding staged-read failure stays
 primary and records the false closure as a secondary note. This supplements
 existing exception-path cleanup admission without changing committed bytes.
 
+Unadmitted raw descriptor cleanup during pointer reads, writer-lock opens,
+staging inode admission, and payload stream ownership transfer now checks
+that `os.close` returned native `None`. A foreign completion cannot replace
+the original open/read/staging failure: it adds a secondary diagnostic while
+preserving the primary error and avoiding publication. This covers both raw
+OS errors and false-success close receipts; twelve red-first tests exercise
+boolean, integer, and text receipts at all four cleanup entrypoints.
+
 Process-shared progress writer locks now reject nonnative stat metadata on
 pre-existing lock pathname preflight, the opened lock descriptor, and both
 pathname/descriptor identity checks after lock acquisition. A foreign receipt

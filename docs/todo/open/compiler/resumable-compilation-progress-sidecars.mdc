@@ -626,6 +626,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   `None` completion: six red-first forged-close success tests reject both
   pointer and immutable checkpoint publication, and two read-failure cases
   keep the original error primary with secondary close-receipt notes.
+  Raw descriptor cleanup on pointer-read, writer-lock, staging-identity and
+  payload stream-ownership admission failures now requires native `None`
+  close completion. Twelve red-first forged-receipt tests confirm the
+  original admission fault remains primary while a false close success is
+  recorded as a secondary note, without permitting publication.
   Process-shared writer locks now require native stat results across the
   existing path preflight, opened descriptor and acquired inode identity.
   Exclusive single-link lock ownership is now required both after lock

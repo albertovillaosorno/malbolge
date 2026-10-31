@@ -2193,6 +2193,83 @@ def test_read_rejects_foreign_path_type() -> None:
         _ = progress.read(cast("Path", cast("object", "not-a-path-object")))
 
 
+@pytest.mark.parametrize(
+    "site", ["reader", "writer-lock", "temporary", "payload"]
+)
+@pytest.mark.parametrize("receipt", [True, 3, "closed"])
+def test_raw_descriptor_cleanup_requires_native_close_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+    receipt: object,
+) -> None:
+    """Unproved cleanup is secondary evidence, never a replaced primary fault."""
+    source = ERROR("injected raw ownership failure")
+    original_close = os.close
+    original_fstat = os.fstat
+    opened: list[int] = []
+    path = tmp_path / "raw-ownership.bin"
+    if site == "reader":
+        path = progress.write_atomic(_sidecar(tmp_path))
+    if site in {"temporary", "payload"}:
+        opened.append(os.open(path, os.O_CREAT | os.O_RDWR, 0o600))
+
+    def fake_close(descriptor: int) -> object:
+        opened.append(descriptor)
+        _ = original_close(descriptor)
+        return receipt
+
+    def fail_stream(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise source
+
+    def fail_temporary_fstat(descriptor: int) -> os.stat_result:
+        if descriptor == opened[0]:
+            raise source
+        return original_fstat(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "close", fake_close)
+        if site == "temporary":
+            context.setattr(os, "fstat", fail_temporary_fstat)
+        elif site == "payload":
+            context.setattr(os, "fdopen", fail_stream)
+        else:
+            context.setattr(progress, "FileIO", fail_stream)
+        with pytest.raises(ERROR, match="injected raw ownership failure") as captured:
+            if site == "reader":
+                _ = progress.read(path)
+            elif site == "writer-lock":
+                opener = cast(
+                    "Callable[[Path], object]", vars(progress)["_open_regular_writer_lock"]
+                )
+                _ = opener(path)
+            elif site == "temporary":
+                inspect = cast(
+                    "Callable[[int], tuple[int, int]]",
+                    vars(progress)["_temporary_descriptor_identity"],
+                )
+                _ = inspect(opened[0])
+            else:
+                writer = cast("PayloadDescriptorWriter", vars(progress)["_write_payload_descriptor"])
+                writer(opened[0], b"bytes")
+    assert opened
+    assert len(set(opened)) == 1
+    for descriptor in opened:
+        with pytest.raises(OSError, match="Bad file descriptor"):
+            _ = original_fstat(descriptor)
+    labels = {
+        "reader": "read descriptor cleanup",
+        "writer-lock": "writer lock descriptor cleanup",
+        "temporary": "progress temporary cleanup",
+        "payload": "payload descriptor ownership cleanup",
+    }
+    assert captured.value is source or captured.value.__cause__ is source
+    assert getattr(source, "__notes__", None) == [
+        f"{labels[site]} also failed: raw descriptor close receipt must be None"
+    ]
+
+
 class ForeignOpenedDescriptor:
     """Foreign descriptor whose coercion must never reach OS operations."""
 
@@ -8602,9 +8679,9 @@ def test_staged_reader_false_close_receipt_preserves_primary_error(
             else:
                 _ = writer(destination, b"checkpoint", platform=os.name)
     assert captured.value is primary
+    close_receipt = "progress temporary descriptor close receipt must be None"
     assert getattr(primary, "__notes__", None) == [
-        "progress temporary descriptor close also failed: "
-        "progress temporary descriptor close receipt must be None"
+        f"progress temporary descriptor close also failed: {close_receipt}"
     ]
     assert not destination.exists()
 

@@ -1830,6 +1830,20 @@ def _admit_native_descriptor(receipt: object, context: str) -> int:
     return receipt
 
 
+def _close_raw_descriptor_preserving_primary(
+    descriptor: int, original_error: BaseException, context: str
+) -> None:
+    """Report unproved raw-descriptor cleanup without masking the cause."""
+    try:
+        if os.close(descriptor) is not None:
+            _fail("raw descriptor close receipt must be None")
+    except (OSError, ValueError, RuntimeError) as close_error:
+        BaseException.add_note(
+            original_error,
+            f"{context} also failed: {_host_error_detail(close_error)}"
+        )
+
+
 def _verify_opened_read_identity(
     path: Path,
     descriptor: int,
@@ -1897,13 +1911,9 @@ def _read_regular_bytes(
             _fail(f"{context} exceeds maximum byte length")
         stream = FileIO(descriptor, "rb", closefd=True)
     except BaseException as error:
-        try:
-            os.close(descriptor)
-        except (OSError, ValueError, RuntimeError) as close_error:
-            BaseException.add_note(
-                error,
-                f"read descriptor cleanup also failed: {_host_error_detail(close_error)}"
-            )
+        _close_raw_descriptor_preserving_primary(
+            descriptor, error, "read descriptor cleanup"
+        )
         raise
     return _read_stream_preserving_primary(
         stream,
@@ -2195,13 +2205,9 @@ def _open_regular_writer_lock(lock_path: Path) -> _LockStream:
             _fail(f"{context} must be a regular file")
         return FileIO(descriptor, "r+b", closefd=True)
     except BaseException as error:
-        try:
-            os.close(descriptor)
-        except (OSError, ValueError, RuntimeError) as close_error:
-            BaseException.add_note(
-                error,
-                f"writer lock descriptor cleanup also failed: {_host_error_detail(close_error)}"
-            )
+        _close_raw_descriptor_preserving_primary(
+            descriptor, error, "writer lock descriptor cleanup"
+        )
         raise
 
 
@@ -2389,13 +2395,9 @@ def _close_unadmitted_temporary(
     descriptor: int, error: BaseException
 ) -> None:
     """Preserve staging-admission failure over descriptor-close errors."""
-    try:
-        os.close(descriptor)
-    except (OSError, ValueError, RuntimeError) as close_error:
-        BaseException.add_note(
-            error,
-            f"progress temporary cleanup also failed: {_host_error_detail(close_error)}"
-        )
+    _close_raw_descriptor_preserving_primary(
+        descriptor, error, "progress temporary cleanup"
+    )
 
 
 def _temporary_descriptor_identity(descriptor: int) -> tuple[int, int]:
@@ -2716,14 +2718,9 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
     try:
         stream = os.fdopen(descriptor, "wb")
     except BaseException as error:
-        try:
-            os.close(descriptor)
-        except (OSError, ValueError, RuntimeError) as close_error:
-            note = (
-                "payload descriptor ownership cleanup also failed: "
-                f"{_host_error_detail(close_error)}"
-            )
-            BaseException.add_note(error, note)
+        _close_raw_descriptor_preserving_primary(
+            descriptor, error, "payload descriptor ownership cleanup"
+        )
         raise
     try:
         written = stream.write(payload)
