@@ -348,6 +348,103 @@ def test_noninteger_trial_count_rejects_before_native_or_output_setup(
         )
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [True, 0, b"/usr/bin/git", "", "git", "../git", "/usr/bin/git\0bad", "\ud800"],
+    ids=[
+        "boolean",
+        "integer",
+        "bytes",
+        "empty",
+        "relative",
+        "parent",
+        "nul",
+        "unicode",
+    ],
+)
+def test_reference_git_resolver_rejects_invalid_executable_before_launch(
+    monkeypatch: pytest.MonkeyPatch, invalid: object
+) -> None:
+    """Host Git identity must use an absolute, exact, encodable path."""
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("invalid Git resolver output launched subprocess")
+
+    monkeypatch.setattr(
+        reference_study.shutil, "which", lambda *_args, **_kwargs: invalid
+    )
+    monkeypatch.setattr(reference_study.sp, "run", forbidden)
+    with pytest.raises(reference_study.ReferenceStudyError, match="Git executable"):
+        reference_study._commit()  # ruff: ignore[private-member-access]
+
+
+@pytest.mark.parametrize(
+    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_reference_git_resolver_fault_preserves_typed_source_error(
+    monkeypatch: pytest.MonkeyPatch, failure_type: type[Exception]
+) -> None:
+    """Host tool selection faults must not escape source identity admission."""
+    message = "injected Git resolver failure"
+
+    def broken(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise failure_type(message)
+
+    monkeypatch.setattr(reference_study.shutil, "which", broken)
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="Git lookup"
+    ) as captured:
+        reference_study._commit()  # ruff: ignore[private-member-access]
+    assert type(captured.value.__cause__) is failure_type
+
+
+@pytest.mark.parametrize("bad_output", [None, True, b"0" * 40, "missing"])
+def test_reference_git_rejects_nontext_revision_receipts(
+    monkeypatch: pytest.MonkeyPatch, bad_output: object
+) -> None:
+    """A fake subprocess's malformed receipt cannot authorize producer output."""
+
+    def fake_run(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        if bad_output == "missing":
+            return object()
+        return type("FakeCompleted", (), {"stdout": bad_output})()
+
+    monkeypatch.setattr(reference_study.sp, "run", fake_run)
+    with pytest.raises(reference_study.ReferenceStudyError, match="source commit"):
+        reference_study._commit()  # ruff: ignore[private-member-access]
+
+
+@pytest.mark.parametrize(
+    "failure_type",
+    [
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        reference_study.sp.SubprocessError,
+    ],
+)
+def test_reference_git_process_fault_preserves_typed_source_error(
+    monkeypatch: pytest.MonkeyPatch, failure_type: type[Exception]
+) -> None:
+    """A host runner fault must not escape as an untyped producer failure."""
+
+    def broken(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise failure_type("injected Git execution failure")
+
+    monkeypatch.setattr(reference_study.sp, "run", broken)
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="cannot identify source commit"
+    ) as captured:
+        reference_study._commit()  # ruff: ignore[private-member-access]
+    assert type(captured.value.__cause__) is failure_type
+
+
 def test_host_reference_source_commit_preflight_does_not_orphan_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -91,9 +91,25 @@ def _quote(text: str) -> str:
 
 
 def _commit() -> str:
-    executable = shutil.which("git", path=os.defpath)
+    try:
+        executable = shutil.which("git", path=os.defpath)
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "host-C reference study Git lookup failed"
+        raise ReferenceStudyError(message) from error
     if executable is None:
         _fail("host-C reference study requires Git")
+    if (
+        type(executable) is not str
+        or not executable
+        or "\0" in executable
+        or not Path(executable).is_absolute()
+    ):
+        _fail("host-C reference study requires absolute Git executable")
+    try:
+        _ = os.fsencode(executable)
+    except UnicodeError as error:
+        message = "host-C reference study requires encodable Git executable"
+        raise ReferenceStudyError(message) from error
     # Caller Git selectors cannot redirect a source provenance lookup.
     clean_env = {
         name: value for name, value in os.environ.items() if not name.startswith("GIT_")
@@ -110,14 +126,21 @@ def _commit() -> str:
             text=True,
             timeout=5,
         )
-    except (OSError, sp.CalledProcessError, sp.TimeoutExpired) as error:
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        sp.SubprocessError,
+    ) as error:
         message = "host reference study cannot identify source commit"
         raise ReferenceStudyError(message) from error
-    commit = completed.stdout.strip()
-    if (
-        len(commit) != GIT_HASH_WIDTH
-        or not set(commit) <= analyze.SHA256_ALPHABET
-    ):
+    output = getattr(completed, "stdout", None)
+    if type(output) is not str:
+        _fail("host reference study has invalid source commit output")
+    commit = output.strip()
+    if len(commit) != GIT_HASH_WIDTH or not set(commit) <= analyze.SHA256_ALPHABET:
         _fail("host reference study has invalid source commit")
     return commit
 
