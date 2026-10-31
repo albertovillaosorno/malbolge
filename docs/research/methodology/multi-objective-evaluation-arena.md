@@ -887,6 +887,12 @@ The original study records remain the result authority.
   active challenge families pass real replay tests; injected wrong entry
   results, compiler stages, source mutations and oversized batches fail closed.
   The subprocess gate explicitly does not execute a compiler candidate.
+  Host-C reference measurement and independent rebuild now both read the
+  generated `oracle-check` executable through bounded regular-file evidence
+  admission. The child output-file limit (8 MiB) also caps retained executable
+  bytes. Symlinks, FIFOs, oversized, missing, or inode-swapped file paths fail
+  closed before reference artifact publication, without claiming immutable
+  filesystem snapshots or authenticating the host compiler.
 - `benchmarks/arena/challenge_bundles.py` optionally replays the original
   generator's exact source/oracle/manifest bytes against a bounded retained
   challenge bundle, binding workload digests to reproducible C source. Synthetic

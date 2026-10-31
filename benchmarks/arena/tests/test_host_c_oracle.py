@@ -42,7 +42,7 @@ import sys
 import time
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import pytest
 
@@ -111,6 +111,140 @@ def test_opt_in_native_reference_replays_two_modes_on_one_matched_case(
     assert checked["host_c_replay_modes"] == ["O0", "O2"]
     assert checked["host_c_replay_source_sha256"] == {PREFIX: _digest()}
     assert NO_CANDIDATE_SCOPE in checked["scope"]
+
+
+@pytest.mark.parametrize("route", ["rebuild", "measure"])
+@pytest.mark.parametrize("corruption", ["symlink", "oversized"])
+def test_host_c_reference_executable_rejects_unsafe_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    corruption: str,
+) -> None:
+    """Child-created executable bytes require bounded, physical read admission."""
+    external = tmp_path / "outside.bin"
+    _ = external.write_bytes(b"not an admitted executable")
+
+    def provide_invalid_artifact(directory: Path, mode: str) -> int:
+        del mode
+        destination = directory / "oracle-check"
+        if corruption == "symlink":
+            destination.symlink_to(external)
+        else:
+            with destination.open("wb") as stream:
+                _ = stream.truncate(host_c_oracle.CHILD_FILE_BYTES + 1)
+        return 1024
+
+    monkeypatch.setattr(host_c_oracle, "_replay_mode", provide_invalid_artifact)
+    identity = generate.ChallengeIdentity(
+        family=_case()["family"],
+        version=_case()["version"],
+        seed=_case()["seed"],
+        profile=PROFILE,
+        nodes=NODES,
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="executable"):
+        if route == "rebuild":
+            _ = host_c_oracle.rebuild_reference(identity, "-O0")
+        else:
+            _ = host_c_oracle.measure_reference(identity, "-O0")
+
+
+def test_host_c_reference_executable_returns_exact_bounded_bytes(
+    tmp_path: Path,
+) -> None:
+    """A physical compiled artifact keeps exact binary bytes including NUL."""
+    binary = b"\x00\xffEXE\x7f"
+    _ = (tmp_path / "oracle-check").write_bytes(binary)
+    assert host_c_oracle._read_reference_executable(tmp_path) == binary
+
+
+@pytest.mark.parametrize("bad_kind", ["absent", "directory", "empty"])
+def test_host_c_reference_executable_requires_nonempty_regular_path(
+    tmp_path: Path,
+    bad_kind: str,
+) -> None:
+    """A path missing executable bytes cannot be reported as a benchmark."""
+    destination = tmp_path / "oracle-check"
+    if bad_kind == "directory":
+        destination.mkdir()
+    elif bad_kind == "empty":
+        _ = destination.write_bytes(b"")
+    with pytest.raises(host_c_oracle.HostOracleError, match="executable"):
+        _ = host_c_oracle._read_reference_executable(tmp_path)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX FIFO fixture")
+def test_host_c_reference_executable_rejects_fifo_without_blocking(
+    tmp_path: Path,
+) -> None:
+    """No writer is needed to reject a replaced executable pipe."""
+    fifo = tmp_path / "oracle-check"
+    mkfifo = getattr(os, "mkfifo", None)
+    assert callable(mkfifo)
+    mkfifo(fifo)
+    with pytest.raises(host_c_oracle.HostOracleError, match="executable"):
+        _ = host_c_oracle._read_reference_executable(tmp_path)
+
+
+def test_host_c_reference_executable_rejects_equal_byte_inode_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even same-content replacement cannot bypass inode-bound evidence."""
+    target = tmp_path / "oracle-check"
+    _ = target.write_bytes(b"identical compiled output")
+    replacement = tmp_path / "replacement"
+    _ = replacement.write_bytes(target.read_bytes())
+    original_open = evidence.os.open
+
+    def replacing_open(path: str | os.PathLike[str], flags: int) -> int:
+        if Path(path) == target:
+            _ = replacement.replace(target)
+        return original_open(path, flags)
+
+    monkeypatch.setattr(evidence.os, "open", replacing_open)
+    with pytest.raises(host_c_oracle.HostOracleError, match="executable"):
+        _ = host_c_oracle._read_reference_executable(tmp_path)
+
+
+def test_host_c_reference_executable_rejects_inplace_rewrite_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-inode post-read mutation cannot enter retained reference bytes."""
+    target = tmp_path / "oracle-check"
+    _ = target.write_bytes(b"original-data")
+    original_read = evidence._read_complete
+
+    def rewriting_read(stream: IO[bytes], *, size: int, relative: str) -> bytes:
+        data = original_read(stream, size=size, relative=relative)
+        _ = target.write_bytes(b"changed!-data")
+        return data
+
+    monkeypatch.setattr(evidence, "_read_complete", rewriting_read)
+    with pytest.raises(host_c_oracle.HostOracleError, match="executable"):
+        _ = host_c_oracle._read_reference_executable(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_host_c_reference_executable_preserves_admission_failure_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Unexpected reader faults remain typed with their original evidence."""
+
+    def broken_reader(root: Path, relative: str, *, limit: int) -> bytes:
+        del root, relative, limit
+        raise fault("injected reference read failure")
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", broken_reader)
+    with pytest.raises(host_c_oracle.HostOracleError, match="executable") as error:
+        _ = host_c_oracle._read_reference_executable(tmp_path)
+    assert type(error.value.__cause__) is fault
 
 
 def test_host_c_replay_requires_canonical_bundle_preflight(

@@ -394,6 +394,31 @@ def _write_canonical_source(
     _ = (directory / "oracle-harness.c").write_bytes(_harness(generated.oracle))
 
 
+def _read_reference_executable(directory: Path) -> bytes:
+    """Admit a bounded, stable physical executable from a completed host stage.
+
+    Returns:
+        Exact bytes of the independently checked compiler output.
+
+    """
+    from benchmarks.arena import evidence  # ruff: ignore[import-outside-top-level]
+
+    try:
+        return evidence.read_bounded_regular(
+            directory, "oracle-check", limit=CHILD_FILE_BYTES
+        )
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        evidence.EvidenceError,
+    ) as error:
+        message = "host-C reference executable missing or unsafe"
+        raise HostOracleError(message) from error
+
+
 def rebuild_reference(
     identity: generate.ChallengeIdentity,
     mode: str,
@@ -415,7 +440,7 @@ def rebuild_reference(
         directory = Path(temporary)
         _write_canonical_source(directory, generated)
         _replay_mode(directory, mode)
-        return (directory / "oracle-check").read_bytes()
+        return _read_reference_executable(directory)
 
 
 def measure_reference(
@@ -442,7 +467,7 @@ def measure_reference(
         started = time.perf_counter_ns()
         peak_rss = _replay_mode(directory, mode)
         elapsed = time.perf_counter_ns() - started
-        artifact = (directory / "oracle-check").read_bytes()
+        artifact = _read_reference_executable(directory)
     return ReferenceMeasurement(
         elapsed_ns=elapsed,
         executable=artifact,
