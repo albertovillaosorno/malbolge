@@ -949,6 +949,8 @@ observations must also be a nonempty native list of native mappings with
 exactly typed case identities and metric values. A header-only CSV with no
 reported trials cannot produce a successful raw-row content fingerprint;
 foreign containers fail as typed raw-sample errors before CSV matching.
+The diagnostic source label must be an exact native string: foreign objects or
+string subclasses cannot supply formatting hooks to error messages.
 
 A separate `arena-raw-v2` schema adds the `energy_uj` CSV column in the
 alphabetical metrics sequence (after `artifact_bytes` and before `elapsed_ns`),
