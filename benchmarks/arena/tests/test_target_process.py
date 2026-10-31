@@ -1840,6 +1840,166 @@ def test_target_input_close_bypasses_foreign_primary_add_note(
     ]
 
 
+class _UnexpectedTargetCleanupError(Exception):
+    """Foreign cleanup code may throw outside the usual I/O error family."""
+
+    def __str__(self) -> str:
+        raise AssertionError("unexpected target cleanup formatter executed")
+
+
+@pytest.mark.parametrize("stage", ["group", "stream-closed", "stream-close"])
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetCleanupError]
+)
+def test_unexpected_child_cleanup_preserves_primary_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected cleanup errors never replace an existing child rejection."""
+    fault = fault_class("unexpected child cleanup")
+    attempts: list[str] = []
+
+    class BrokenStream:
+        @property
+        def closed(self) -> bool:
+            if stage == "stream-closed":
+                raise fault
+            return False
+
+        def close(self) -> None:
+            attempts.append("close")
+            if stage == "stream-close":
+                raise fault
+
+    class ChildProbe:
+        stdin = BrokenStream()
+        stdout = None
+        stderr = None
+
+    def broken_termination(_child: object) -> None:
+        attempts.append("terminate")
+        if stage == "group":
+            raise fault
+
+    monkeypatch.setattr(target_process, "_terminate_group", broken_termination)
+    primary = _HostilePrimaryTargetError("primary child output rejection")
+    with pytest.raises(
+        _HostilePrimaryTargetError, match="primary child"
+    ) as caught:
+        try:
+            raise primary
+        finally:
+            target_process._finish_child(  # ruff: ignore[private-member-access]
+                cast("sp.Popen[bytes]", ChildProbe())
+            )
+    assert caught.value is primary
+    assert any("cleanup also failed" in note for note in primary.__notes__)
+    assert attempts == (
+        ["terminate"] if stage == "stream-closed" else ["terminate", "close"]
+    )
+
+
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetCleanupError]
+)
+def test_unexpected_input_close_preserves_primary_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected input close cannot conceal the delivery rejection."""
+    fault = fault_class("unexpected input close")
+
+    class InputProbe:
+        def fileno(self) -> int:
+            return 1
+
+        def close(self) -> None:
+            raise fault
+
+    class ChildProbe:
+        stdin = InputProbe()
+
+    primary = _HostilePrimaryTargetError("primary input delivery rejection")
+
+    def reject_blocking(_descriptor: int, _blocking: bool) -> None:
+        raise primary
+
+    monkeypatch.setattr(target_process.os, "set_blocking", reject_blocking)
+    with pytest.raises(
+        _HostilePrimaryTargetError, match="primary input"
+    ) as caught:
+        target_process._send_input(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()), b""
+        )
+    assert caught.value is primary
+    assert any("input close also failed" in note for note in primary.__notes__)
+
+
+@pytest.mark.parametrize("stage", ["group", "stream-closed", "stream-close"])
+def test_unexpected_cleanup_without_primary_is_typed_and_causal(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Standalone cleanup faults cannot escape as foreign exceptions."""
+    fault = _UnexpectedTargetCleanupError("unexpected standalone cleanup")
+
+    class BrokenStream:
+        @property
+        def closed(self) -> bool:
+            if stage == "stream-closed":
+                raise fault
+            return False
+
+        def close(self) -> None:
+            if stage == "stream-close":
+                raise fault
+
+    class ChildProbe:
+        stdin = BrokenStream()
+        stdout = None
+        stderr = None
+
+    def terminate(_child: object) -> None:
+        if stage == "group":
+            raise fault
+
+    monkeypatch.setattr(target_process, "_terminate_group", terminate)
+    with pytest.raises(
+        target_process.TargetProcessError, match="cleanup"
+    ) as caught:
+        target_process._finish_child(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert caught.value.__cause__ is fault
+
+
+def test_unexpected_input_close_without_primary_is_typed_and_causal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unsuccessful input close cannot claim exact EOF delivery."""
+    fault = _UnexpectedTargetCleanupError("unexpected input close")
+
+    class InputProbe:
+        def fileno(self) -> int:
+            return 0
+
+        def close(self) -> None:
+            raise fault
+
+    class ChildProbe:
+        stdin = InputProbe()
+
+    monkeypatch.setattr(target_process.os, "set_blocking", lambda *_args: None)
+    with pytest.raises(
+        target_process.TargetProcessError, match="input pipe close"
+    ) as caught:
+        target_process._send_input(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()), b""
+        )
+    assert caught.value.__cause__ is fault
+
+
 def test_target_group_cleanup_bypasses_hostile_primary_and_direct_formatters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

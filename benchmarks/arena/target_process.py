@@ -330,7 +330,8 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
         primary = sys.exception()
         try:
             child.stdin.close()
-        except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        except Exception as error:
+            # Foreign stream adapters can fail with any ordinary exception.
             if primary is not None:
                 BaseException.add_note(
                     primary,
@@ -347,13 +348,16 @@ def _finish_child(child: sp.Popen[bytes]) -> None:
     cleanup_errors: list[Exception] = []
     try:
         _terminate_group(child)
-    except (OSError, ValueError, RuntimeError, sp.SubprocessError) as error:
+    except Exception as error:
         cleanup_errors.append(error)
     for stream in (child.stdin, child.stdout, child.stderr):
-        if stream is not None and not stream.closed:
+        if stream is not None:
             try:
-                stream.close()
-            except (OSError, ValueError, RuntimeError) as error:
+                if not stream.closed:
+                    stream.close()
+            except Exception as error:
+                # Preserve the primary failure even if close or its state
+                # inspection raises an unexpected ordinary exception.
                 cleanup_errors.append(error)
     if not cleanup_errors:
         return
