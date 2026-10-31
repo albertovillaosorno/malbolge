@@ -111,6 +111,45 @@ def test_nul_paths_fail_before_any_rename(
     assert not calls
 
 
+@pytest.mark.parametrize("bad_staging", [True, False])
+@pytest.mark.parametrize(
+    "host", [("posix", _LINUX_PLATFORM), (_WINDOWS_OS_NAME, "win32")]
+)
+def test_unencodable_paths_fail_before_any_rename(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    bad_staging: bool,
+    host: tuple[str, str],
+) -> None:
+    """Reject paths the host cannot encode before invoking rename."""
+    malformed = "invalid" + chr(0xD800)
+    host_encodable = True
+    try:
+        _ = os.fsencode(malformed)
+    except UnicodeError:
+        host_encodable = False
+    if host_encodable:
+        pytest.skip("host filesystem codec accepts the test surrogate")
+
+    staging = Path(malformed) if bad_staging else Path("staging")
+    destination = Path("destination") if bad_staging else Path(malformed)
+    calls: list[tuple[Path, Path]] = []
+
+    def record_rename(source: Path, target: Path) -> Path:
+        calls.append((source, target))
+        return target
+
+    monkeypatch.setattr(Path, "rename", record_rename)
+    monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
+    os_name, platform = host
+    with pytest.raises(OSError, match="filesystem-encodable") as invalid:
+        publication.publish_directory_no_replace(
+            staging, destination, os_name=os_name, platform=platform
+        )
+    assert invalid.value.errno == errno.EINVAL
+    assert not calls
+
+
 def test_windows_route_uses_path_rename(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

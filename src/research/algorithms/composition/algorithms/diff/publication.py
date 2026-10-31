@@ -96,6 +96,17 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
         )
 
 
+def _require_fs_encodable_path(path: Path) -> None:
+    try:
+        _ = os.fsencode(path)
+    except UnicodeError as error:
+        raise OSError(
+            errno.EINVAL,
+            "directory publication paths must be filesystem-encodable",
+            path,
+        ) from error
+
+
 def _validate_publication_inputs(
     staging: object,
     destination: object,
@@ -114,6 +125,8 @@ def _validate_publication_inputs(
             "directory publication paths must not contain NUL bytes",
             destination,
         )
+    _require_fs_encodable_path(staging)
+    _require_fs_encodable_path(destination)
     if type(os_name) is not str or type(platform) is not str:
         raise OSError(
             errno.EINVAL,
