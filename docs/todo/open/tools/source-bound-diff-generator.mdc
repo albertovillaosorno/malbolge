@@ -232,6 +232,10 @@ format.
   placement milestone rather than pretending byte relocation solves
   reformatting.
 
+- The no-replace directory publisher now rejects foreign `pathlib.Path`
+  subclasses for both staging and destination before any path conversion or
+  filesystem method can run. Two red-first regressions preserve exact native
+  path admission, host selector checks, and existing target collision behavior.
 - Generic mapped semantic placement now hashes canonical units, uniquely locates
   them
   in candidate source, maps them back to raw spans, preserves unrelated raw

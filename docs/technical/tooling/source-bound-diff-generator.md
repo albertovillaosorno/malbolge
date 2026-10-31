@@ -120,6 +120,12 @@ passthrough roots remain dynamic. The final check and rename are not atomic;
 external concurrent writers still need coordination. The no-replace
 directory publisher also rejects host selectors that disagree with the actual
 runtime OS, preventing a caller from selecting an overwrite-capable rename.
+The same publisher admits only the running host's exact native `pathlib.Path`
+type for both staging and destination before querying filesystem methods.
+Caller-defined `Path` subclasses may override path resolution, file status, or
+rename behavior and cannot establish publication authority. Two red-first
+regressions prove foreign path conversion does not run for either role, without
+relaxing the existing directory, host-selector, or no-replace admission rules.
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.

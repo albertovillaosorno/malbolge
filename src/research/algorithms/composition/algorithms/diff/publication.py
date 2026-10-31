@@ -166,10 +166,17 @@ def _validate_publication_inputs(
     os_name: object,
     platform: object,
 ) -> tuple[Path, Path, str, str]:
-    if not isinstance(staging, Path) or not isinstance(destination, Path):
+    # A Path subclass can override __fspath__, lstat or rename and redirect
+    # the publication operation. Admit only the host's exact native Path type
+    # before calling any path or filesystem method.
+    native_path_type = type(Path())
+    if (
+        type(staging) is not native_path_type
+        or type(destination) is not native_path_type
+    ):
         raise OSError(
             errno.EINVAL,
-            "directory publication paths must use pathlib Path",
+            "directory publication paths must use exact pathlib Path",
         )
     if _NUL in str(staging) or _NUL in str(destination):
         raise OSError(

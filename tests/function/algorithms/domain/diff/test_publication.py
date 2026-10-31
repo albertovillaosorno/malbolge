@@ -53,6 +53,35 @@ _OURS = b"ours"
 _FOREIGN = b"foreign"
 
 
+class _ForeignPath(type(Path())):
+    """A path subclass cannot supply independent filesystem evidence."""
+
+    def __fspath__(self) -> str:
+        message = "foreign filesystem path conversion was evaluated"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("foreign_staging", [False, True])
+def test_publication_rejects_foreign_path_subclasses_before_host_calls(
+    tmp_path: Path, *, foreign_staging: bool
+) -> None:
+    """An untrusted Path override must not reach a filesystem or C ABI call."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    original = staging if foreign_staging else destination
+    foreign = _ForeignPath(original)
+    candidate_staging = foreign if foreign_staging else staging
+    candidate_destination = destination if foreign_staging else foreign
+    with pytest.raises(OSError, match="pathlib Path") as invalid:
+        publication.publish_directory_no_replace(
+            candidate_staging, candidate_destination
+        )
+    assert invalid.value.errno == errno.EINVAL
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
 def test_publication_rejects_foreign_or_aliased_inputs() -> None:
     """Validate path and host metadata before any platform rename primitive."""
     staging = Path("staging")
