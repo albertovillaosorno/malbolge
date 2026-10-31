@@ -507,6 +507,18 @@ mutations after initial independent decode, including changes that occur while
 the Pareto comparison is assembled. A real 64-pair regression emits and replays
 129- and 193-cell programs across the classic 94-position decode phase wrap.
 
+Every target-audit retained-file read now requires exact native `bytes`
+within the requested limit before decoding, hashing, or comparison. Injected
+byte subclasses, mutable buffers, decoded text and oversized reader results
+reject rather than claiming checked source identity. A missing or unsafe RSS
+receipt is diagnosed by the receipt inventory before linked-byte snapshots.
+
+Unexpected ordinary host and parser faults at the public audit and CLI entry
+points are also typed rejections with safe diagnostics. The operator reports
+exit status two without claiming successful publication, although a partial
+stdout record cannot be rolled back. These are fail-closed admission checks,
+not authentication of historical measurements.
+
 The audit now pins the full original study JSON and all declared per-trial
 manifest/raw bytes before cross-record preflight. After assembling the offline
 comparison, it reopens every admitted input and verifies matching exact SHA-256
@@ -725,6 +737,13 @@ removed, or linked study path rejects without emitting results, including
 same-length in-place rewrites during slow evidence preflight. A same-byte
 replacement remains indistinguishable from its original inode. This is a
 bounded final check, not a lock or post-publication immutability claim.
+
+The standalone analyzer also requires an exact native bounded byte receipt
+from its study reader before UTF-8 decoding; a substituted reader cannot run a
+custom `decode()` hook or supply oversized data. The post-analysis study
+recheck requires exact native original source text before comparing content,
+so an overridden string comparison cannot conceal observed file drift.
+
 The study input reader now consumes the admitted inode size across bounded
 short chunks rather than interpreting one short read as a complete file.
 Premature EOF, nonbyte or overlong chunks, and five injected read-stream

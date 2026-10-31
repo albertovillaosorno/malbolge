@@ -288,6 +288,15 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   references reject without claiming historical execution attestation.
   Hostile inherited `GIT_DIR` or `GIT_OBJECT_DIRECTORY` cannot substitute
   another object's database for this local check.
+  The auditor now admits exact native bounded bytes at all retained-file read
+  sites before decoding or hashing, rejecting foreign buffer and subclass
+  receipts without granting false source provenance. It checks RSS inventory
+  before snapshot reads so absent receipts have specific audit failures.
+  Unexpected ordinary parser/host faults in its public audit and operator
+  paths become typed rejection or exit two without formatting foreign hooks.
+  The standalone analyzer separately requires native bounded study bytes and
+  original native source text before its final drift comparison. These checks
+  do not attest producer timing, source authorship or physical execution.
 - A bounded real host-C reference-study producer now measures pinned Clang
   `-O0` and `-O2` compile/link/oracle-run wall time and executable size on
   matched canonical challenge cases and difficulties. It retains actual native
