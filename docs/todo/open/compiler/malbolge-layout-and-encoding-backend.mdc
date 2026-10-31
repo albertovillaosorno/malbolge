@@ -278,13 +278,16 @@ emission.
   typed/CLI runner verifies 63 and 19. Twenty-nine outputs pass 23
   independent real-VM phases (not five through seven), retaining 19
   shortest distinct byte witnesses; typed/runner verifies 12 and 25.
+  Thirty outputs pass 22 independent real-VM phases (excluding four through
+  seven) and retain 20 distinct shortest nonzero bytes; typed/runner
+  verifies 55 and 150.
   All retained counts use shortest
   valid prefixes, reject unsupported values
   and counts, and verify real MCTI/MCTR file/stdin capsule publication with
   the guest VM.
   The full 256-byte admission domain, real CLI raw/capsule publisher, guest
   runner and zero-consumed-input checks preserve rejection of unsupported
-  values, foreign profiles and thirty or more outputs. This is not general
+  values, foreign profiles and thirty-one or more outputs. This is not general
   guest integer computation or proof of arbitrary output sequences.
 - The explicit `--identity-byte-trace` MCTI/MCTR file/stdin publisher
   admits latest-input signed/unsigned eight-bit SSA bitcasts through

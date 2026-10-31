@@ -722,6 +722,13 @@ instruction.
   and executed in the normative VM. Typed MCTI/MCTR and raw/capsule
   publication reject unseeded values and unproved output counts. This is
   not arbitrary literal materialization or guest byte storage.
+- A separately admitted thirty-output current-profile seed table now
+  verifies 22/26 real-VM phases (excluding four through seven) and 20
+  shortest distinct nonzero bytes. Canonical MCTI/MCTR and real runner
+  fixtures prove 55 and 150 with no guest input; byte 185 and byte 21
+  retain their earliest duplicated prefixes. Counts above thirty,
+  unseeded values and foreign profiles still reject. This does not
+  implement arbitrary guest constants or general C lowering.
 - Bounded third- and fourth-output literal rotation tables now prove 21 and
   24 distinct nonzero guest byte values respectively, each under its own
   positional `j`, `*`, repeated `<`, `v` source. An ignored optimized scan
