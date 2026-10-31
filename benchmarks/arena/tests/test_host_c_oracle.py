@@ -1576,6 +1576,83 @@ def test_hostile_path_cannot_impostor_kernel_limiter_or_rss_meter(
     assert 0 < peak <= host_c_oracle.CHILD_VIRTUAL_MEMORY_MIB * 1024 * 1024
 
 
+class _HostileCleanupArgument:
+    def __str__(self) -> str:
+        raise AssertionError("foreign cleanup argument formatter executed")
+
+
+@pytest.mark.parametrize(
+    "error_class",
+    [
+        host_c_oracle.HostOracleError,
+        OSError,
+        PermissionError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        AttributeError,
+    ],
+)
+def test_host_c_cleanup_diagnostic_never_formats_foreign_native_arguments(
+    error_class: type[Exception],
+) -> None:
+    """Even exact built-in error types can carry hostile argument objects."""
+    error = error_class(_HostileCleanupArgument())
+    assert host_c_oracle._cleanup_error_detail(error) == error_class.__name__
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (host_c_oracle.HostOracleError("native cleanup denied"), "native cleanup denied"),
+        (OSError(13, "permission denied"), "[Errno 13] permission denied"),
+        (ValueError("failed stage"), "failed stage"),
+    ],
+)
+def test_host_c_cleanup_diagnostic_retains_native_error_text(
+    error: Exception, expected: str
+) -> None:
+    """Only directly held native arguments can enter cleanup diagnostics."""
+    assert host_c_oracle._cleanup_error_detail(error) == expected
+
+
+def test_host_c_cleanup_diagnostic_rejects_foreign_errno_argument() -> None:
+    """Native OSError cannot include a hostile strerror value in a note."""
+    error = OSError(13, _HostileCleanupArgument())
+    assert host_c_oracle._cleanup_error_detail(error) == type(error).__name__
+
+
+def test_host_c_cleanup_diagnostic_bounds_and_sanitizes_native_message() -> None:
+    """A very long native error does not inject multiline cleanup annotations."""
+    error = host_c_oracle.HostOracleError("host\n" + "x" * 1000)
+    detail = host_c_oracle._cleanup_error_detail(error)
+    assert detail.startswith("host?xxx")
+    assert len(detail) == host_c_oracle.MAX_CLEANUP_DETAIL_CHARS
+    assert "\n" not in detail
+
+
+def test_host_c_child_cleanup_note_preserves_timeout_with_foreign_native_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed owned cleanup error cannot conceal the primary timeout."""
+    import subprocess as sp  # ruff: ignore[import-outside-top-level,suspicious-subprocess-import]
+
+    class ChildProbe:
+        def communicate(self, *, timeout: int) -> None:
+            raise sp.TimeoutExpired("host-child", timeout)
+
+    cleanup = host_c_oracle.HostOracleError(_HostileCleanupArgument())
+
+    def fail_cleanup(_child: object) -> int:
+        raise cleanup
+
+    monkeypatch.setattr(host_c_oracle, "_finish_child", fail_cleanup)
+    with pytest.raises(host_c_oracle.HostOracleError, match="timed out") as caught:
+        host_c_oracle._wait_child(cast("Any", ChildProbe()), "O0 compile")
+    assert isinstance(caught.value.__cause__, sp.TimeoutExpired)
+    assert any("HostOracleError" in note for note in caught.value.__notes__)
+
+
 def test_host_c_child_cleanup_note_never_formats_foreign_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

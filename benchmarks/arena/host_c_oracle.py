@@ -88,14 +88,19 @@ def _fail(message: str) -> Never:
     raise HostOracleError(message)
 
 
+MAX_CLEANUP_DETAIL_CHARS = 256
+
+
 def _cleanup_error_detail(error: Exception) -> str:
-    """Provide native cleanup detail without executing foreign formatters.
+    """Provide bounded native detail without formatting foreign arguments.
 
     Returns:
-        Built-in or exact owned error text; otherwise the exception type name.
+        Printable text held directly by a trusted exact error class, or its
+        class name if the arguments cannot be admitted.
 
     """
-    if type(error) in (
+    kind = type(error)
+    if kind in (
         HostOracleError,
         OSError,
         PermissionError,
@@ -104,8 +109,24 @@ def _cleanup_error_detail(error: Exception) -> str:
         RuntimeError,
         AttributeError,
     ):
-        return str(error)
-    return type(error).__name__
+        arguments = error.args
+        detail: str | None = None
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            detail = arguments[0]
+        elif (
+            kind in (OSError, PermissionError)
+            and len(arguments) == 2
+            and type(arguments[0]) is int
+            and 0 <= arguments[0] <= 65535
+            and type(arguments[1]) is str
+        ):
+            detail = f"[Errno {arguments[0]}] {arguments[1]}"
+        if detail:
+            return "".join(
+                character if " " <= character <= "~" else "?"
+                for character in detail[:MAX_CLEANUP_DETAIL_CHARS]
+            )
+    return kind.__name__
 
 
 def _require_local_scratch_root() -> None:
