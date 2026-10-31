@@ -1319,7 +1319,8 @@ def _validated_identity(value: object) -> ChallengeIdentity:
 
 
 def _validated_output_root(value: object) -> Path:
-    if not isinstance(value, Path):
+    # A Path subclass may override __fspath__/parent and redirect publication.
+    if type(value) is not type(Path()):
         message = "challenge output root must use pathlib Path"
         _fail(message)
     return value

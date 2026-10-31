@@ -1421,6 +1421,40 @@ def test_public_api_rejects_foreign_identity_and_output_types() -> None:
         )
 
 
+def test_public_writer_rejects_redirected_output_subclass_before_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign Path cannot redirect source publication outside its named root."""
+
+    class ForgedOutput(type(tmp_path)):
+        def __fspath__(self) -> str:
+            return str(tmp_path / "substituted-output")
+
+        @property
+        def parent(self) -> Path:
+            message = "forged path parent reached filesystem admission"
+            raise AssertionError(message)
+
+    output = ForgedOutput(tmp_path / "claimed-output")
+    assert str(output) == str(tmp_path / "claimed-output")
+    assert output.__fspath__() != str(output)
+
+    def forbidden_generation(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        message = "untrusted path reached challenge generation"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(_GENERATOR_MODULE, "generate", forbidden_generation)
+    with pytest.raises(
+        _GENERATOR_MODULE.ChallengeError,
+        match="output root must use pathlib Path",
+    ):
+        _GENERATOR_MODULE.write_challenge(_identity(), output)
+    assert not (tmp_path / "claimed-output").exists()
+    assert not (tmp_path / "substituted-output").exists()
+
+
 def test_invalid_identity_fails_closed() -> None:
     """Malformed or non-canonical identity dimensions never generate output."""
     invalid = (
