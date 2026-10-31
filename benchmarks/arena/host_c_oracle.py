@@ -134,14 +134,14 @@ def _require_local_scratch_root() -> None:
     """Admit a physical .temp directory before creating native workspaces."""
     try:
         compiler_available = _PINNED_CLANG.is_file()
-    except (OSError, ValueError, RuntimeError) as error:
+    except Exception as error:
         message = "pinned host-C compiler unavailable"
         raise HostOracleError(message) from error
     if not compiler_available:
         _fail("pinned host-C compiler or local temporary directory unavailable")
     try:
         mode = _TEMP.lstat().st_mode
-    except (OSError, ValueError, RuntimeError) as error:
+    except Exception as error:
         message = "host-C physical temporary directory unavailable"
         raise HostOracleError(message) from error
     # This is a static check, not a cross-process filesystem race guarantee.
@@ -191,7 +191,7 @@ def _system_tool(name: str) -> str | None:
     """
     try:
         resolved = shutil.which(name, path=SYSTEM_TOOL_SEARCH_PATH)
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         message = f"host-C resource tool lookup failed: {name}"
         raise HostOracleError(message) from error
     if resolved is None:
@@ -207,14 +207,7 @@ def _system_tool(name: str) -> str | None:
         _ = os.fsencode(resolved)
         mode = Path(resolved).lstat().st_mode
         executable = os.access(resolved, os.X_OK)
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-        UnicodeError,
-    ) as error:
+    except Exception as error:
         message = f"host-C resource tool path inspection failed: {name}"
         raise HostOracleError(message) from error
     if not stat.S_ISREG(mode) or not executable:
@@ -264,14 +257,7 @@ def _read_stage_rss(path: Path) -> int:
         raw = evidence.read_bounded_regular(
             path.parent, path.name, limit=RSS_REPORT_MAX_BYTES
         )
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-        evidence.EvidenceError,
-    ) as error:
+    except Exception as error:
         message = "host-C child RSS observation missing or unsafe"
         raise HostOracleError(message) from error
     if not raw.endswith(b"\n") or not _ascii_digits(raw[:-1]):
@@ -476,7 +462,7 @@ def _generate_canonical(
     except generate.ChallengeError as error:
         message = f"host-C {scope} identity cannot regenerate"
         raise HostOracleError(message) from error
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
         message = f"host-C {scope} regeneration dependency failed"
         raise HostOracleError(message) from error
     if type(generated) is not generate.GeneratedChallenge or any(
@@ -622,14 +608,7 @@ def _read_reference_executable(directory: Path) -> bytes:
         return evidence.read_bounded_regular(
             directory, "oracle-check", limit=CHILD_FILE_BYTES
         )
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-        evidence.EvidenceError,
-    ) as error:
+    except Exception as error:
         message = "host-C reference executable missing or unsafe"
         raise HostOracleError(message) from error
 

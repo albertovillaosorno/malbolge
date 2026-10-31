@@ -2050,3 +2050,56 @@ def test_host_c_unexpected_rss_unlink_fault_retains_primary_failure(
         monkeypatch.setattr(Path, "unlink", original_unlink)
         for report in tmp_path.glob("host-c-stage-rss-*"):
             report.unlink()
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    ["compiler", "scratch", "resource-tool", "canonical", "rss-read", "artifact-read"],
+)
+def test_host_c_preflight_contains_unexpected_foreign_dependency_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+) -> None:
+    """Foreign ordinary dependency faults must reject before host-C admission."""
+    fault = _ForeignHostTransportFault("foreign preflight details")
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    if boundary == "compiler":
+        original = Path.is_file
+
+        def compiler_probe(path: Path) -> bool:
+            if path == host_c_oracle._PINNED_CLANG:
+                raise fault
+            return original(path)
+
+        monkeypatch.setattr(Path, "is_file", compiler_probe)
+        action = host_c_oracle._require_local_scratch_root
+    elif boundary == "scratch":
+        original_lstat = Path.lstat
+
+        def scratch_probe(path: Path) -> os.stat_result:
+            if path == host_c_oracle._TEMP:
+                raise fault
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", scratch_probe)
+        action = host_c_oracle._require_local_scratch_root
+    elif boundary == "resource-tool":
+        monkeypatch.setattr(host_c_oracle.shutil, "which", fail)
+        action = lambda: host_c_oracle._system_tool("prlimit")
+    elif boundary == "canonical":
+        monkeypatch.setattr(generate, "generate", fail)
+        identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+        action = lambda: host_c_oracle._generate_canonical(identity, scope="reference")
+    elif boundary == "rss-read":
+        monkeypatch.setattr(evidence, "read_bounded_regular", fail)
+        action = lambda: host_c_oracle._read_stage_rss(tmp_path / "rss.txt")
+    else:
+        monkeypatch.setattr(evidence, "read_bounded_regular", fail)
+        action = lambda: host_c_oracle._read_reference_executable(tmp_path)
+    with pytest.raises(host_c_oracle.HostOracleError) as caught:
+        action()
+    assert caught.value.__cause__ is fault
