@@ -311,6 +311,20 @@ admission failure, rather than leaking staging ownership. Acquired-lock inode
 probes also convert those faults to typed rejections before publication.
 Mutable and immutable staging unlink failures of these types retain the
 original write failure or exact committed-generation evidence, respectively.
+
+The staged verification reader applies the same native error taxonomy at its
+nonfollowing `os.open`, nonfollowing pathname `stat`, and raw `os.close`
+boundaries. Unexpected `TypeError` or `AttributeError` cannot enter pointer or
+immutable generation publication. A completed staged byte check with an
+uncertain descriptor close remains rejected; a close failure after an earlier
+verification error becomes a secondary diagnostic instead of masking the
+primary rejection. The held writer-lock acquisition boundary similarly types
+unexpected native errors before entering the serialized publication body, and
+its stream-close failure stays secondary when acquisition already failed.
+Retained-immutable-stage alias discovery also treats unusual native
+`DirEntry.stat` exceptions as unverified entries. It never infers alias
+ownership from a failed probe; existing hard-link admission still blocks
+uncertain collisions from being reused as immutable payloads.
 Deterministic parent and regular-inode substitutions cover both progress-pointer
 and immutable checkpoint reads, including descriptor cleanup. A further
 read-completion regression replaces the progress parent with a linked directory

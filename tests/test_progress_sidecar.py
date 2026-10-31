@@ -7525,6 +7525,31 @@ def test_retained_alias_recovery_rejects_foreign_path_receipts(
     assert destination.stat().st_nlink == 2
 
 
+@pytest.mark.parametrize(
+    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_retained_alias_scan_rejects_failed_entry_stat(
+    failure_type: type[Exception],
+) -> None:
+    """Failed directory entry metadata cannot authorize staging recovery."""
+    matcher = cast(
+        "Callable[[os.DirEntry[str], str, tuple[int, int]], bool]",
+        vars(progress)["_matches_retained_immutable_stage"],
+    )
+    message = "injected retained alias stat failure"
+
+    class FailedEntry:
+        name: str = ".checkpoint.abcdefgh.tmp"
+
+        @staticmethod
+        def stat(*, follow_symlinks: bool = True) -> os.stat_result:
+            assert not follow_symlinks
+            raise failure_type(message)
+
+    entry = cast("os.DirEntry[str]", cast("object", FailedEntry()))
+    assert matcher(entry, ".checkpoint.", (1, 2)) is False
+
+
 def test_retained_alias_scan_rejects_foreign_entry_stat() -> None:
     """An untrusted directory entry cannot authenticate a retained stage."""
     matcher = cast(
@@ -8893,9 +8918,69 @@ def test_staged_reader_false_close_receipt_preserves_primary_error(
     assert not destination.exists()
 
 
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+@pytest.mark.parametrize("site", ["open", "path-stat"])
+@pytest.mark.parametrize("failure_type", [TypeError, AttributeError])
+def test_staging_reader_open_and_path_stat_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    site: str,
+    failure_type: type[Exception],
+) -> None:
+    """Unexpected host staging probes reject before publishing any artifact."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    message = "injected staging admission dependency failure"
+    actual_open = os.open
+    actual_stat = Path.stat
+    probes: list[str] = []
+
+    def failing_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        if Path(path).name.endswith(".tmp") and not flags & os.O_CREAT:
+            probes.append("open")
+            raise failure_type(message)
+        return actual_open(path, flags, mode)
+
+    def failing_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if (
+            path.name.endswith(".tmp")
+            and not follow_symlinks
+            and not probes
+        ):
+            probes.append("path-stat")
+            raise failure_type(message)
+        return actual_stat(path, follow_symlinks=follow_symlinks)
+
+    expected = (
+        "progress temporary cannot be verified"
+        if site == "open"
+        else "progress temporary identity cannot be verified"
+    )
+    with monkeypatch.context() as context:
+        if site == "open":
+            context.setattr(os, "open", failing_open)
+        else:
+            context.setattr(Path, "stat", failing_stat)
+        with pytest.raises(ERROR, match=expected) as captured:
+            _ = _publish_for_temporary_admission_test(kind, sidecar, destination)
+    assert message in str(captured.value)
+    assert probes == [site]
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.parametrize("failure_type", [RuntimeError, TypeError, AttributeError])
 def test_staged_reader_close_failure_rejects_immutable_publication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Successful content verification still requires clean reader closure."""
     destination = tmp_path / "checkpoint.bin"
@@ -8910,7 +8995,7 @@ def test_staged_reader_close_failure_rejects_immutable_publication(
         original_close(descriptor)
         if stat.S_ISREG(observed.st_mode) and observed.st_size == len(payload):
             failed = True
-            raise RuntimeError(close_failure)
+            raise failure_type(close_failure)
 
     with monkeypatch.context() as context:
         context.setattr(os, "close", reject_reader_close)
@@ -8918,15 +9003,17 @@ def test_staged_reader_close_failure_rejects_immutable_publication(
         with pytest.raises(ERROR, match="descriptor close failed") as captured:
             _ = writer(destination, payload, platform=os.name)
     assert failed
-    assert isinstance(captured.value.__cause__, RuntimeError)
+    assert isinstance(captured.value.__cause__, failure_type)
     assert close_failure in str(captured.value)
     assert not destination.exists()
     assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
 
 
+@pytest.mark.parametrize("failure_type", [RuntimeError, TypeError, AttributeError])
 def test_staged_reader_close_fault_cannot_mask_primary_read_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Content-read failure stays primary if descriptor cleanup also fails."""
     destination = tmp_path / "checkpoint.bin"
@@ -8939,7 +9026,7 @@ def test_staged_reader_close_fault_cannot_mask_primary_read_failure(
         observed = os.fstat(descriptor)
         original_close(descriptor)
         if stat.S_ISREG(observed.st_mode) and observed.st_size == len(payload):
-            raise RuntimeError(close_failure)
+            raise failure_type(close_failure)
 
     def reject_reader_read(descriptor: int, size: int) -> bytes:
         del descriptor, size
@@ -10132,7 +10219,9 @@ def test_writer_lock_wraps_descriptor_close_oserror(
         pass
 
 
-@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_writer_lock_preserves_acquire_failure_before_close_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

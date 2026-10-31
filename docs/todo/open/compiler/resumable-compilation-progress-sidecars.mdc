@@ -637,6 +637,14 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   These faults now preserve the original error and its secondary diagnostic,
   close unadmitted staging descriptors, reject lock admission before writing,
   and retain the exact committed immutable-generation path when appropriate.
+  Fourteen additional red-first cases prove native `TypeError`/`AttributeError`
+  containment at staged verifier reader open, nonfollowing pathname stat and
+  descriptor close, plus writer-lock acquisition with secondary close failure.
+  Both mutable and immutable publication reject these failures before commit;
+  prior staged read failures keep their original typed cause and close note.
+  Two more red-first alias-discovery probes reject native
+  `TypeError`/`AttributeError` directory-entry stat failures without
+  admitting unverified retained-stage ownership.
   Writer-lock opening now wraps unexpected native `TypeError`/`AttributeError`
   as typed prepublication errors. POSIX directory open, sync and close handle
   those types after generation publication: uncertain sync retains the

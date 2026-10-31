@@ -2304,7 +2304,7 @@ def _writer_lock(destination: Path) -> Generator[_LockStream]:
             release = _acquire_writer_lock(stream)
         except ProgressSidecarError:
             raise
-        except (OSError, ValueError, RuntimeError) as error:
+        except _OUTPUT_STREAM_ERRORS as error:
             _fail_with_source(
                 f"progress writer lock cannot be acquired: {_host_error_detail(error)}", error
             )
@@ -2508,7 +2508,7 @@ def _close_staged_reader(descriptor: int) -> None:
     try:
         if os.close(descriptor) is not None:
             _fail("progress temporary descriptor close receipt must be None")
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         if primary_error is not None:
             BaseException.add_note(
                 primary_error,
@@ -2537,7 +2537,7 @@ def _open_staged_reader(temporary: Path) -> int:
         )
     except ProgressSidecarError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         _fail_with_source(
             f"progress temporary cannot be verified: {_host_error_detail(error)}", error
         )
@@ -2550,7 +2550,7 @@ def _admit_temporary_path(
     _reject_path_redirect(temporary, "progress temporary")
     try:
         current = temporary.stat(follow_symlinks=False)
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         _fail_with_source(
             f"progress temporary identity cannot be verified: {_host_error_detail(error)}", error
         )
@@ -2794,7 +2794,7 @@ def _matches_retained_immutable_stage(
         observed = _admit_native_stat(
             entry.stat(follow_symlinks=False), "immutable staging alias"
         )
-    except (OSError, ValueError, RuntimeError):
+    except _OUTPUT_STREAM_ERRORS:
         return False
     return stat.S_ISREG(observed.st_mode) and (
         observed.st_dev,
