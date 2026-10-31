@@ -96,6 +96,7 @@ PATTERNED_STEPS_STUDY = "classic-patterned-byte-echo-steps-v2"
 STEPS_PREFIX = b"malbolge-steps-v1:"
 RUNTIME_STEPS = "runtime_steps"
 MAX_STEPS_DIGITS = 20
+MAX_STEPS_RECEIPT_BYTES = len(STEPS_PREFIX) + MAX_STEPS_DIGITS + 1
 LINEAR_LAYOUT = "linear"
 FORWARD_SKIP_LAYOUT = "forward-skip"
 LAYOUT_MODES = (LINEAR_LAYOUT, FORWARD_SKIP_LAYOUT)
@@ -413,6 +414,10 @@ def _input_bytes(pairs: int, mode: str) -> bytes:
 
 
 def _parse_step_receipt(stderr: bytes) -> int:
+    # A direct dependent child may return foreign bytes or fabricated length.
+    # Preflight exact native size before any prefix or numeric parsing hooks.
+    if type(stderr) is not bytes or len(stderr) > MAX_STEPS_RECEIPT_BYTES:
+        _fail("target VM requires native bounded step receipt")
     if (
         not stderr.startswith(STEPS_PREFIX)
         or not stderr.endswith(b"\n")

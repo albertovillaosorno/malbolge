@@ -1356,6 +1356,61 @@ def test_vm_step_receipt_rejects_ambiguous_or_unbounded_counter(
         target_echo_reference._parse_step_receipt(receipt)
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        None,
+        "malbolge-steps-v1:1\n",
+        bytearray(b"malbolge-steps-v1:1\n"),
+        memoryview(b"malbolge-steps-v1:1\n"),
+    ],
+    ids=["missing", "text", "mutable-bytes", "buffer-view"],
+)
+def test_vm_step_receipt_rejects_foreign_container_before_hooks(
+    invalid: object,
+) -> None:
+    """Non-native buffers cannot impersonate a canonical child step receipt."""
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="native bounded step receipt"
+    ):
+        target_echo_reference._parse_step_receipt(cast("bytes", invalid))
+
+
+def test_vm_step_receipt_rejects_hostile_bytes_subclass_before_prefix_hooks() -> None:
+    """A bytes subclass cannot override prefix admission semantics."""
+
+    class ForeignReceipt(bytes):
+        def startswith(self, *args: object, **kwargs: object) -> bool:
+            del args, kwargs
+            pytest.fail("foreign step-receipt prefix hook executed")
+
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="native bounded step receipt"
+    ):
+        target_echo_reference._parse_step_receipt(ForeignReceipt(b"malbolge-steps-v1:1\n"))
+
+
+def test_vm_step_receipt_rejects_oversize_before_parsing() -> None:
+    """A direct caller cannot drive unbounded receipt scanning."""
+    oversized = (
+        b"malbolge-steps-v1:"
+        + b"9" * (target_echo_reference.MAX_STEPS_DIGITS + 1)
+        + b"\n"
+    )
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="native bounded step receipt"
+    ):
+        target_echo_reference._parse_step_receipt(oversized)
+
+
+def test_vm_step_receipt_accepts_exact_maximum_digit_width() -> None:
+    """The preflight still permits canonical full-width step counts."""
+    digits = b"9" * target_echo_reference.MAX_STEPS_DIGITS
+    assert target_echo_reference._parse_step_receipt(
+        b"malbolge-steps-v1:" + digits + b"\n"
+    ) == int(digits)
+
+
 def test_vm_step_receipt_admits_one_canonical_decimal() -> None:
     """Canonical reporter wire bytes remain reproducible."""
     assert (
