@@ -174,6 +174,56 @@ def test_failed_workspace_setup_is_typed_and_removes_partial_study(
     assert not list(temp_root.glob("arena-target-echo-*"))
 
 
+def test_optional_rss_workspace_failure_is_typed_and_cleans_partial_study(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed optional receipt directory must not strand a study skeleton."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"emitter")
+    _ = runner.write_bytes(b"runner")
+    profile = target_echo_reference._ROOT / "malbolge.json"
+    _ = (tmp_path / "malbolge.json").write_bytes(profile.read_bytes())
+    temp_root = tmp_path / ".temp"
+    temp_root.mkdir()
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_echo_reference, "_TEMP", temp_root)
+    monkeypatch.setattr(target_echo_reference, "_commit", lambda: "a" * 40)
+    monkeypatch.setattr(
+        target_echo_reference.target_process,
+        "require_child_rss_measurement",
+        lambda: None,
+    )
+    original_mkdir = type(tmp_path).mkdir
+
+    def refuse_rss(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path.name == "rss" and path.parent.name.startswith("arena-target-echo-"):
+            message = "injected optional RSS directory failure"
+            raise PermissionError(message)
+        original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(tmp_path), "mkdir", refuse_rss)
+    plan = target_echo_reference.StudyPlan(
+        pairs=(1,),
+        trials=1,
+        input_mode=target_echo_reference.PATTERNED_MODE,
+        measure_steps=True,
+        layout_mode=target_echo_reference.FORWARD_SKIP_LAYOUT,
+        measure_verifier=True,
+        verifier_mode=target_echo_reference.REPLAY_VERIFIER_MODE,
+        limit_child_resources=True,
+        measure_child_rss=True,
+        retain_rss_stages=True,
+    )
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match=WORKSPACE_ERROR
+    ) as failure:
+        _ = target_echo_reference.run_study(plan, emitter=emitter, runner=runner)
+    assert isinstance(failure.value.__cause__, PermissionError)
+    assert not list(temp_root.glob("arena-target-echo-*"))
+
+
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlinks")
 def test_redirected_study_workspace_parent_refuses_external_output(
     tmp_path: Path,

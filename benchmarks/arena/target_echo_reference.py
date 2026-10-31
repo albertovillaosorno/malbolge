@@ -805,6 +805,22 @@ def _manifest(
     return text
 
 
+def _initialize_workspace_folders(directory: Path, names: tuple[str, ...]) -> None:
+    """Create study subdirectories with typed failure and owned cleanup."""
+    try:
+        for name in names:
+            (directory / name).mkdir()
+    except OSError as error:
+        # Only remove the unique study directory created by this invocation.
+        # A cleanup failure must not erase the original setup failure.
+        try:
+            shutil.rmtree(directory)
+        except OSError as cleanup_error:
+            error.add_note(f"target echo workspace cleanup failed: {cleanup_error}")
+        message = "target echo study workspace initialization failed"
+        raise TargetEchoStudyError(message) from error
+
+
 def _prepare_context(emitter: Path, runner: Path) -> _Context:
     emitter, runner = _admit_executable(emitter), _admit_executable(runner)
     try:
@@ -825,18 +841,7 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
     except OSError as error:
         message = "target echo study workspace creation failed"
         raise TargetEchoStudyError(message) from error
-    try:
-        for name in ("runs", "raw", "candidates"):
-            (directory / name).mkdir()
-    except OSError as error:
-        # Only remove the unique study directory created by this call.
-        # A cleanup failure must not erase the original setup failure.
-        try:
-            shutil.rmtree(directory)
-        except OSError as cleanup_error:
-            error.add_note(f"target echo workspace cleanup failed: {cleanup_error}")
-        message = "target echo study workspace initialization failed"
-        raise TargetEchoStudyError(message) from error
+    _initialize_workspace_folders(directory, ("runs", "raw", "candidates"))
     return _Context(
         directory=directory,
         prefix=directory.relative_to(_ROOT).as_posix(),
@@ -1177,7 +1182,7 @@ def run_study(
         retain_raw_rss=plan.retain_raw_rss,
     )
     if context.retain_rss_stages:
-        (context.directory / "rss").mkdir()
+        _initialize_workspace_folders(context.directory, ("rss",))
     observations = [
         _write_attempt(context, pairs, trial, algorithm=algorithm)
         for pairs in plan.pairs
