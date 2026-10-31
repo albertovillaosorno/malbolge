@@ -257,6 +257,18 @@ class ProtectedInstruction:
         )
 
 
+def _require_static_target_outside_passthrough(
+    target: TreeSnapshot, roots: tuple[str, ...]
+) -> None:
+    if any(
+        record.path == root or record.path.startswith(root + "/")
+        for record in target.files
+        for root in roots
+    ):
+        message = "protected static target conflicts with passthrough roots"
+        raise ProtectedPlanError(message)
+
+
 def _require_unique_instruction_outputs(
     instructions: tuple[ProtectedInstruction, ...],
 ) -> None:
@@ -309,6 +321,9 @@ class ProtectedMetadata:
             message = "protected passthrough roots must be non-empty strings"
             raise ProtectedPlanError(message)
         _require_utf8_roots(self.passthrough_roots)
+        _require_static_target_outside_passthrough(
+            self.target, self.passthrough_roots
+        )
 
 
 @dataclass(frozen=True, slots=True)

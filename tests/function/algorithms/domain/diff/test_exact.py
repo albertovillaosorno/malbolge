@@ -263,6 +263,16 @@ def test_exact_plan_is_deterministic(tmp_path: Path) -> None:
     )
 
 
+def test_exact_plan_rejects_static_target_inside_passthrough_root(
+    tmp_path: Path,
+) -> None:
+    """Static instructions cannot compete with dynamic passthrough copies."""
+    source, oracle = _synthetic_pair(tmp_path)
+    valid = build_exact_plan(source, oracle)
+    with pytest.raises(TreeModelError, match=r"static target.*passthrough"):
+        _ = replace(valid, passthrough_roots=("assets",))
+
+
 def test_exact_authoring_plan_rejects_duplicate_output_instructions(
     tmp_path: Path,
 ) -> None:

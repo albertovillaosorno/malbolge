@@ -383,6 +383,23 @@ def test_protected_passthrough_roots_reject_duplicates_or_overlaps(
         )
 
 
+def test_protected_metadata_rejects_static_target_in_passthrough(
+    tmp_path: Path,
+) -> None:
+    """Authenticated static output must not also be a dynamic source copy."""
+    _, _, _, _, protected = _protected(tmp_path)
+    passthrough = ("keep.bin",)
+    with pytest.raises(ProtectedPlanError, match=r"static target.*passthrough"):
+        _ = ProtectedMetadata(
+            source=protected.source,
+            target=protected.target,
+            instructions=protected.instructions,
+            passthrough_roots=passthrough,
+        )
+    with pytest.raises(ProtectedPlanError, match=r"static target.*passthrough"):
+        _ = replace(protected, passthrough_roots=passthrough)
+
+
 def test_protected_metadata_rejects_duplicate_output_instructions(
     tmp_path: Path,
 ) -> None:

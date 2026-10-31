@@ -331,6 +331,21 @@ class ExactAuthoringPlan:
             message = "exact plan instructions must match the target snapshot"
             raise TreeModelError(message)
         _require_passthrough_roots(self.passthrough_roots)
+        _require_static_target_outside_passthrough(
+            self.target, self.passthrough_roots
+        )
+
+
+def _require_static_target_outside_passthrough(
+    target: TreeSnapshot, roots: tuple[str, ...]
+) -> None:
+    if any(
+        record.path == root or record.path.startswith(root + "/")
+        for record in target.files
+        for root in roots
+    ):
+        message = "exact plan static target conflicts with passthrough roots"
+        raise TreeModelError(message)
 
 
 def _require_passthrough_roots(roots: object) -> None:
