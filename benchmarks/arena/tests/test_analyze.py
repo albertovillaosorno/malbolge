@@ -41,6 +41,7 @@ import copy
 import json
 import sys
 from typing import Any
+from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -1563,3 +1564,100 @@ def test_standalone_cli_success_intervals_are_explicitly_optional(
     )
     assert analyze.main() == 0
     assert json.loads(capsys.readouterr().out) == _success_report(document)
+
+
+@pytest.mark.parametrize("kind", [ValueError, RuntimeError])
+def test_read_input_does_not_format_foreign_study_file_error(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: type[Exception],
+) -> None:
+    """Foreign reader diagnostics cannot conceal a typed input rejection."""
+
+    class HostileStudyFileError(analyze.study_file.StudyFileError, kind):
+        def __str__(self) -> str:
+            raise AssertionError("foreign study file formatter invoked")
+
+    failure = HostileStudyFileError("unsafe reader message")
+
+    def fail_read(*_args: object, **_kwargs: object) -> bytes:
+        raise failure
+
+    monkeypatch.setattr(analyze.study_file, "read_study_bytes", fail_read)
+    with pytest.raises(
+        analyze.ArenaError, match="arena study input rejected"
+    ) as caught:
+        _ = analyze.read_input(cast("Path", "ignored.json"))
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize(
+    ("phase", "kind"),
+    [
+        ("input", analyze.ArenaError),
+        ("input", OSError),
+        ("input", UnicodeError),
+        ("output", analyze.report_output.ReportOutputError),
+    ],
+)
+def test_cli_does_not_format_foreign_boundary_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    phase: str,
+    kind: type[Exception],
+) -> None:
+    """Foreign input/output faults cannot replace the operator exit status."""
+
+    class HostileBoundaryError(kind):
+        def __str__(self) -> str:
+            raise AssertionError("foreign operator diagnostic formatter invoked")
+
+    failure = HostileBoundaryError("unsafe operator message")
+
+    def fail_boundary(*_args: object, **_kwargs: object) -> Never:
+        raise failure
+
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(_document()), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["arena", str(path)])
+    monkeypatch.setattr(
+        analyze if phase == "input" else analyze.report_output,
+        "read_input" if phase == "input" else "publish",
+        fail_boundary,
+    )
+    with pytest.raises(SystemExit) as caught:
+        analyze.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert output.err.startswith("arena:")
+    assert "unsafe operator message" not in output.err
+
+
+def test_cli_preserves_exact_native_input_and_output_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Local error details remain useful when their types are trustworthy."""
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(_document()), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["arena", str(path)])
+
+    def reject_input(_path: Path) -> Never:
+        raise analyze.ArenaError("exact local study failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(analyze, "read_input", reject_input)
+        with pytest.raises(SystemExit, match="2"):
+            analyze.main()
+    assert "exact local study failure" in capsys.readouterr().err
+
+    def reject_output(*_args: object) -> Never:
+        raise analyze.report_output.ReportOutputError("exact local output failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(analyze.report_output, "publish", reject_output)
+        with pytest.raises(SystemExit, match="2"):
+            analyze.main()
+    assert "exact local output failure" in capsys.readouterr().err

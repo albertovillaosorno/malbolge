@@ -917,7 +917,13 @@ def read_input(path: Path) -> str:
     try:
         data = study_file.read_study_bytes(path, limit=MAX_INPUT_BYTES)
     except study_file.StudyFileError as error:
-        raise ArenaError(str(error)) from error
+        # A foreign subclass may execute arbitrary code in its formatter.
+        detail = (
+            str(error)
+            if type(error) is study_file.StudyFileError
+            else "arena study input rejected"
+        )
+        raise ArenaError(detail) from error
     try:
         return data.decode("utf-8")
     except UnicodeError as error:
@@ -963,11 +969,33 @@ def main() -> int:
             annotate_success_intervals(report)
         require_unchanged_study_input(args.input, source)
     except (ArenaError, OSError, UnicodeError) as error:
-        parser.exit(2, f"arena: {error}\n")
+        # Keep useful native diagnostics; never execute a foreign formatter.
+        native_errors = (
+            ArenaError,
+            OSError,
+            FileNotFoundError,
+            PermissionError,
+            IsADirectoryError,
+            NotADirectoryError,
+            UnicodeError,
+            UnicodeDecodeError,
+            UnicodeEncodeError,
+        )
+        detail = (
+            str(error)
+            if type(error) in native_errors
+            else "arena input processing failed"
+        )
+        parser.exit(2, f"arena: {detail}\n")
     try:
         report_output.publish(report, sys.stdout)
     except report_output.ReportOutputError as error:
-        parser.exit(2, f"arena: {error}\n")
+        detail = (
+            str(error)
+            if type(error) is report_output.ReportOutputError
+            else "arena report output failed"
+        )
+        parser.exit(2, f"arena: {detail}\n")
     return 0
 
 
