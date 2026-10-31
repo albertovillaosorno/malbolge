@@ -578,6 +578,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   surrogate text, and directory-only names before pointer publication,
   without requiring that the source file exist or changing resume identity.
 
+  Progress pointer and checkpoint generation readers now require exact native
+  `os.stat_result` receipts for every filename/descriptor probe across open,
+  post-read and single-hard-link admission. Sixteen adversarial read-phase
+  regressions reject foreign stat objects before reading any forged property;
+  ordinary canonical and checkpoint reads preserve their existing behavior.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact

@@ -102,6 +102,15 @@ file requirement. Where available, POSIX nonblocking and no-follow flags
 prevent a FIFO or leaf symlink substituted during path admission from becoming
 trusted progress input.
 
+Progress-pointer and immutable checkpoint reads now require exact native
+`os.stat_result` metadata from every descriptor and pathname probe before
+accessing its fields. This applies to pre-open path admission, both descriptor
+identity checks, the initial/final read-size and timestamp checks, and the
+immutable member's single-link admission. A substituted foreign receipt fails
+with a typed sidecar error before its attributes can execute. These checks
+cannot authenticate a deliberately forged native result or prevent later
+filesystem changes.
+
 The open descriptor's device and inode must still match
 the no-follow pathname immediately after opening; detached or replaced regular
 files fail closed at that point. All path components are also rechecked for

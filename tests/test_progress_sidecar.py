@@ -2102,6 +2102,89 @@ def test_read_rejects_foreign_path_type() -> None:
         _ = progress.read(cast("Path", cast("object", "not-a-path-object")))
 
 
+@pytest.mark.parametrize("source", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("receipt_number", [1, 2, 3, 4])
+def test_progress_read_rejects_foreign_descriptor_stat_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    receipt_number: int,
+) -> None:
+    """Only native descriptor metadata can admit a durable read at any phase."""
+    checkpoint = b"opaque-checkpoint-state"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    destination = progress.write_checkpoint_generation(sidecar, checkpoint)
+    original_fstat = os.fstat
+    receipts = 0
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign descriptor metadata accessed: {field}")
+
+    def forged_fstat(descriptor: int) -> os.stat_result:
+        nonlocal receipts
+        receipts += 1
+        if receipts == receipt_number:
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_fstat(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fstat", forged_fstat)
+        with pytest.raises(ERROR, match="native os.stat_result"):
+            if source == "pointer":
+                _ = progress.read(destination)
+            else:
+                _ = progress.read_checkpoint_generation(sidecar)
+    assert receipts == receipt_number
+    assert destination.exists()
+
+
+@pytest.mark.parametrize(
+    ("source", "receipt_number"),
+    [("pointer", index) for index in range(1, 4)]
+    + [("checkpoint", index) for index in range(1, 6)],
+)
+def test_progress_read_rejects_foreign_path_stat_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    receipt_number: int,
+) -> None:
+    """Path metadata cannot impersonate a regular generation or pointer inode."""
+    checkpoint = b"opaque-checkpoint-state"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    destination = progress.write_checkpoint_generation(sidecar, checkpoint)
+    observed_path = (
+        destination if source == "pointer" else Path(sidecar.checkpoint_path or "")
+    )
+    original_stat = Path.stat
+    receipts = 0
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign path metadata accessed: {field}")
+
+    def forged_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal receipts
+        if path == observed_path:
+            receipts += 1
+            if receipts == receipt_number:
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "stat", forged_stat)
+        with pytest.raises(ERROR, match="native os.stat_result"):
+            if source == "pointer":
+                _ = progress.read(destination)
+            else:
+                _ = progress.read_checkpoint_generation(sidecar)
+    assert receipts == receipt_number
+    assert destination.exists()
+
+
 @pytest.mark.parametrize("operation", ["progress", "checkpoint", "partial", "read"])
 def test_public_progress_path_api_rejects_foreign_path_subclasses(
     tmp_path: Path,
