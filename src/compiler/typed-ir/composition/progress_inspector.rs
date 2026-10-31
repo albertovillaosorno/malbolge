@@ -277,7 +277,9 @@ fn extract_with_limits_and_capacity(
             started,
         )
     })();
-    if result.is_err() {
+    // Even a successful inspector can leave ordinary Linux-group descendants
+    // with redirected pipes. Other platforms retain failure-only cleanup.
+    if cfg!(target_os = "linux") || result.is_err() {
         terminate(&mut child);
     }
     result

@@ -288,6 +288,62 @@ fn rejects_completed_diagnostics_without_waiting_for_stdout_descendant() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn success_kills_redirected_stdio_descendant() -> Result<(), String> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("fixture clock failed: {error}"))?
+        .as_nanos();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(".temp");
+    let marker =
+        root.join(format!("inspector-success-orphan-{}-{nonce}.txt", id()));
+    let ready =
+        root.join(format!("inspector-success-launched-{}-{nonce}.txt", id()));
+    let child_code = format!(
+        concat!(
+            "import time,pathlib;time.sleep(1);",
+            "pathlib.Path({:?}).write_text('orphan')",
+        ),
+        marker.to_string_lossy(),
+    );
+    let script = format!(
+        concat!(
+            "import subprocess,sys,pathlib\n",
+            "subprocess.Popen([sys.executable,'-I','-c',{:?}],",
+            "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,",
+            "stderr=subprocess.DEVNULL)\n",
+            "pathlib.Path({:?}).write_text('ready')\n",
+            "sys.stdout.buffer.write(b'verified-state')\n",
+        ),
+        child_code,
+        ready.to_string_lossy(),
+    );
+    let observed =
+        inspect_script(&script, budget(1024, 1024, Duration::from_secs(5)));
+    let launched = ready.exists();
+    if launched {
+        remove_file(&ready)
+            .map_err(|error| format!("remove launch marker: {error}"))?;
+    }
+    thread::sleep(Duration::from_millis(1200));
+    let escaped = marker.exists();
+    if escaped {
+        remove_file(&marker)
+            .map_err(|error| format!("remove escaped marker: {error}"))?;
+    }
+    if observed != Ok(b"verified-state".to_vec()) || !launched || escaped {
+        return Err(format!(
+            concat!(
+                "successful inspector leaked same-group descendant: ",
+                "{:?}, launched={}, escaped={}",
+            ),
+            observed, launched, escaped,
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn kills_inherited_stdout_holder_after_rejected_diagnostics()
 -> Result<(), String> {
     let nonce = SystemTime::now()

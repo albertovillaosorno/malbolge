@@ -304,7 +304,9 @@ fn extract_with_budget_and_capacity(
         )?;
         collect(&mut child, &receiver, budget, started)
     })();
-    if result.is_err() {
+    // Even a successful inspector can leave ordinary Linux-group descendants
+    // with redirected pipes. Other platforms retain failure-only cleanup.
+    if cfg!(target_os = "linux") || result.is_err() {
         terminate(&mut child);
     }
     result

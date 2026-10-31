@@ -728,11 +728,12 @@ checkpoint bytes without the injected marker. Both compiler stages use
 separate temporary fixture namespaces for parallel-suite isolation.
 
 On Linux, both transports isolate each inspector in a new process group and
-terminate ordinary inherited-pipe descendants on timeout or overflow before
-reaping the direct child. Regression fixtures verify that descendants cannot
-write delayed markers after the deadline. Other platforms retain direct-child
-termination, and deliberately detached Linux sessions are outside this bounded
-process-group claim.
+terminate ordinary descendants after both successful and rejected extraction,
+including those that redirected all standard streams before the parent exited.
+Regression fixtures verify that inherited-pipe holders and redirected-pipe
+children cannot write delayed markers after a deadline or successful return.
+Other platforms retain direct-child termination, and deliberately detached
+Linux sessions are outside this bounded process-group claim.
 
 The product `malbolge` CLI now exposes
 `--checkpoint-info PROGRESS.json`,
