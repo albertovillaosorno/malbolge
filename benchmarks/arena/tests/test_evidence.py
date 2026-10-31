@@ -2743,3 +2743,74 @@ def test_evidence_rejects_foreign_descriptor_metadata_before_field_access(
     with pytest.raises(evidence.EvidenceError, match="invalid filesystem metadata"):
         evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
     assert calls == fstat_call
+
+
+class _ForeignEvidenceBytes(bytes):
+    """A foreign reader receipt may override decode or equality semantics."""
+
+    def decode(self, *args: Any, **kwargs: Any) -> str:
+        del args, kwargs
+        raise AssertionError("foreign evidence bytes decoder executed")
+
+
+@pytest.mark.parametrize("kind", ["foreign", "oversized"])
+@pytest.mark.parametrize(
+    "phase",
+    [
+        "manifest",
+        "raw-rows",
+        "bundle",
+        "manifest-recheck",
+        "raw-recheck",
+        "bundle-recheck",
+    ],
+)
+def test_evidence_consumers_read_only_exact_bounded_native_byte_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    kind: str,
+) -> None:
+    """Every consumer distrusts injected reader results before parsing/hash."""
+    document = sample_study(tmp_path)
+    context = evidence._EvidenceContext(
+        tmp_path, document["study"], {}, set(), set(), evidence.EvidencePolicy()
+    )
+    monkeypatch.setattr(evidence.raw_samples, "MAX_RAW_BYTES", 32)
+    monkeypatch.setitem(evidence.BUNDLE_FILE_LIMITS, "program.c", 32)
+    snapshot: evidence.EvidenceSnapshot | None = None
+    if phase == "manifest-recheck":
+        snapshots: list[evidence.EvidenceSnapshot] = []
+        evidence.validate_links(document, tmp_path, _snapshot_out=snapshots)
+        snapshot = snapshots[0]
+    elif phase == "raw-recheck":
+        snapshot = evidence.EvidenceSnapshot(
+            context, {"raw.csv": "a" * analyze.SHA256_HEX_LENGTH}, None
+        )
+    elif phase == "bundle-recheck":
+        snapshot = evidence.EvidenceSnapshot(
+            context,
+            None,
+            evidence._BundleInspection(
+                {}, {"bundle/program.c": "a" * analyze.SHA256_HEX_LENGTH}
+            ),
+        )
+
+    def forged_read(_root: Path, _relative: str, *, limit: int) -> bytes:
+        if kind == "oversized":
+            return b"x" * (limit + 1)
+        return cast("bytes", _ForeignEvidenceBytes(b"retained evidence"))
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", forged_read)
+    with pytest.raises(evidence.EvidenceError, match="invalid reader bytes"):
+        if phase == "manifest":
+            evidence._manifest(
+                tmp_path, "sample.toml", require_trial=False, require_budgets=False
+            )
+        elif phase == "raw-rows":
+            evidence._raw_contents(document, tmp_path)
+        elif phase == "bundle":
+            evidence._bundle_source(tmp_path, "bundle/program.c", limit=32)
+        else:
+            assert snapshot is not None
+            evidence.recheck_evidence_snapshot(snapshot)

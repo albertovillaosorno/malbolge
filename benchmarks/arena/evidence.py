@@ -333,6 +333,14 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     return data
 
 
+def _read_admitted(root: Path, relative: str, *, limit: int) -> bytes:
+    """Reject substituted reader receipts before parsing or hashing bytes."""
+    data = read_bounded_regular(root, relative, limit=limit)
+    if type(data) is not bytes or not data or len(data) > limit:
+        _fail(f"evidence invalid reader bytes: {relative}")
+    return data
+
+
 def _manifest(
     root: Path,
     relative: str,
@@ -340,7 +348,7 @@ def _manifest(
     require_trial: bool,
     require_budgets: bool,
 ) -> _ManifestLink:
-    data = read_bounded_regular(root, relative, limit=MAX_MANIFEST_BYTES)
+    data = _read_admitted(root, relative, limit=MAX_MANIFEST_BYTES)
     text = data.decode("utf-8")
     return _ManifestLink(
         source_sha256=sha256(data).hexdigest(),
@@ -523,7 +531,7 @@ def _raw_contents(
         groups.setdefault(row["raw_sample"], []).append(row)
     contents = {}
     for relative, rows in sorted(groups.items()):
-        raw = read_bounded_regular(
+        raw = _read_admitted(
             root,
             relative,
             limit=raw_samples.MAX_RAW_BYTES,
@@ -554,7 +562,7 @@ def _recheck_retained_links(
     # The parsed run manifest remains authoritative only while its retained
     # bytes agree with admission, including after optional host-C execution.
     for relative, link in sorted(context.manifests.items()):
-        now = read_bounded_regular(context.root, relative, limit=MAX_MANIFEST_BYTES)
+        now = _read_admitted(context.root, relative, limit=MAX_MANIFEST_BYTES)
         if sha256(now).hexdigest() != link.source_sha256:
             _fail(f"run manifest changed after admission: {relative}")
 
@@ -567,7 +575,7 @@ def _recheck_retained_links(
 
     # Strict mode reports and optionally links these exact source-byte hashes.
     for relative, expected in sorted(contents.items()):
-        now = read_bounded_regular(
+        now = _read_admitted(
             context.root, relative, limit=raw_samples.MAX_RAW_BYTES
         )
         if sha256(now).hexdigest() != expected:
@@ -580,7 +588,7 @@ def _bundle_source(
     *,
     limit: int,
 ) -> bytes:
-    return read_bounded_regular(root, relative, limit=limit)
+    return _read_admitted(root, relative, limit=limit)
 
 
 def _bundle_directory(case: dict[str, Any], relative_root: str) -> str:
