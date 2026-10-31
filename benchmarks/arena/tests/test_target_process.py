@@ -1213,6 +1213,92 @@ def test_real_child_launch_errors_are_typed_and_preserve_cause(
         assert isinstance(error.value.__cause__, expected)
 
 
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetHostFault]
+)
+def test_unexpected_launch_host_fault_is_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected subprocess construction faults retain typed launch errors."""
+    fault = fault_class("foreign launch fault")
+
+    def fail_launch(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    monkeypatch.setattr(target_process.sp, "Popen", fail_launch)
+    with pytest.raises(
+        target_process.TargetProcessError, match="launch"
+    ) as caught:
+        target_process.invoke(_child("print('never')"))
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetHostFault]
+)
+def test_unexpected_child_wait_host_fault_preserves_cause_and_reaps(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Unexpected child wait failures cannot claim a verified child status."""
+    fault = fault_class("foreign child wait fault")
+    real_wait = target_process.sp.Popen.wait
+    calls = 0
+
+    def fail_once(child: sp.Popen[bytes], timeout: float | None = None) -> int:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise fault
+        return real_wait(child, timeout=timeout)
+
+    monkeypatch.setattr(target_process.sp.Popen, "wait", fail_once)
+    with pytest.raises(
+        target_process.TargetProcessError, match="child wait"
+    ) as caught:
+        target_process.invoke(_child("print('finished')"), timeout_seconds=3)
+    assert caught.value.__cause__ is fault
+    assert calls >= 2
+
+
+@pytest.mark.parametrize(
+    "fault_class", [IndexError, _UnexpectedTargetHostFault]
+)
+def test_unexpected_input_delivery_host_fault_is_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_class: type[Exception],
+) -> None:
+    """Host pipe setup failures cannot evade the binary input contract."""
+    fault = fault_class("foreign input delivery fault")
+    closes = 0
+
+    class InputProbe:
+        def fileno(self) -> int:
+            return 1
+
+        def close(self) -> None:
+            nonlocal closes
+            closes += 1
+
+    class ChildProbe:
+        stdin = InputProbe()
+
+    def fail_blocking(_fd: int, _enabled: bool) -> None:
+        raise fault
+
+    monkeypatch.setattr(target_process.os, "set_blocking", fail_blocking)
+    with pytest.raises(
+        target_process.TargetProcessError, match="input delivery"
+    ) as caught:
+        target_process._send_input(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()), b""
+        )
+    assert caught.value.__cause__ is fault
+    assert closes == 1
+
+
 def test_exact_bounded_output_and_stderr_roundtrip() -> None:
     """Both separately bounded streams retain complete exact bytes."""
     result = target_process.invoke(

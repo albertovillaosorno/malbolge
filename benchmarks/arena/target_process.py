@@ -319,7 +319,10 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
     except BrokenPipeError as error:
         message = "bounded target input pipe closed before delivery"
         raise TargetProcessError(message) from error
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except TargetProcessError:
+        # Keep our own exact input-budget rejection rather than rewrapping it.
+        raise
+    except Exception as error:
         message = "bounded target input delivery failed"
         raise TargetProcessError(message) from error
     finally:
@@ -408,14 +411,8 @@ def _run(
             start_new_session=True,
             close_fds=True,
         )
-    except (
-        OSError,
-        ValueError,
-        TypeError,
-        RuntimeError,
-        AttributeError,
-        sp.SubprocessError,
-    ) as error:
+    except Exception as error:
+        # No child handle exists yet; retain the opaque launch fault as cause.
         message = "bounded target child launch failed"
         raise TargetProcessError(message) from error
     try:
@@ -428,7 +425,10 @@ def _run(
             raise sp.TimeoutExpired(command, limits.timeout_seconds)
         try:
             status = child.wait(timeout=remaining)
-        except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        except (sp.TimeoutExpired, TargetProcessError):
+            # An actual deadline or our own rejection remains authoritative.
+            raise
+        except Exception as error:
             message = "bounded target child wait failed"
             raise TargetProcessError(message) from error
         if (
