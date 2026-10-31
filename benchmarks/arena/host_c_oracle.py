@@ -137,15 +137,19 @@ def _require_local_scratch_root() -> None:
     except Exception as error:
         message = "pinned host-C compiler unavailable"
         raise HostOracleError(message) from error
+    if type(compiler_available) is not bool:
+        _fail("pinned host-C compiler returned invalid presence receipt")
     if not compiler_available:
         _fail("pinned host-C compiler or local temporary directory unavailable")
     try:
-        mode = _TEMP.lstat().st_mode
+        details = _TEMP.lstat()
     except Exception as error:
         message = "host-C physical temporary directory unavailable"
         raise HostOracleError(message) from error
+    if type(details) is not os.stat_result:
+        _fail("host-C physical temporary directory returned invalid metadata")
     # This is a static check, not a cross-process filesystem race guarantee.
-    if not stat.S_ISDIR(mode):
+    if not stat.S_ISDIR(details.st_mode):
         _fail("host-C physical temporary directory required")
 
 
@@ -205,8 +209,15 @@ def _system_tool(name: str) -> str | None:
         _fail(f"host-C resource tool has invalid executable path: {name}")
     try:
         _ = os.fsencode(resolved)
-        mode = Path(resolved).lstat().st_mode
+        details = Path(resolved).lstat()
+        if type(details) is not os.stat_result:
+            _fail(f"host-C resource tool path inspection invalid: {name}")
+        mode = details.st_mode
         executable = os.access(resolved, os.X_OK)
+        if type(executable) is not bool:
+            _fail(f"host-C resource tool access inspection invalid: {name}")
+    except HostOracleError:
+        raise
     except Exception as error:
         message = f"host-C resource tool path inspection failed: {name}"
         raise HostOracleError(message) from error

@@ -2348,3 +2348,70 @@ def test_host_c_preflight_contains_unexpected_foreign_dependency_failures(
     with pytest.raises(host_c_oracle.HostOracleError) as caught:
         action()
     assert caught.value.__cause__ is fault
+
+
+class _ForeignHostStat:
+    """A substituted filesystem receipt must not supply identity fields."""
+
+    def __getattribute__(self, name: str) -> object:
+        if name.startswith("st_"):
+            pytest.fail("foreign host-C stat field was accessed")
+        return super().__getattribute__(name)
+
+
+@pytest.mark.parametrize("phase", ["compiler-flag", "scratch-stat"])
+def test_host_c_scratch_preflight_requires_native_host_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Only native compiler presence and physical scratch metadata admit work."""
+    compiler = tmp_path / "compiler"
+    compiler.write_bytes(b"pinned test executable")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    original_is_file = Path.is_file
+    original_lstat = Path.lstat
+
+    def forged_file(path: Path) -> bool:
+        if phase == "compiler-flag" and path == compiler:
+            return cast("bool", cast("object", 1))
+        return original_is_file(path)
+
+    def forged_stat(path: Path) -> os.stat_result:
+        if phase == "scratch-stat" and path == scratch:
+            return cast("os.stat_result", cast("object", _ForeignHostStat()))
+        return original_lstat(path)
+
+    monkeypatch.setattr(host_c_oracle, "_PINNED_CLANG", compiler)
+    monkeypatch.setattr(host_c_oracle, "_TEMP", scratch)
+    monkeypatch.setattr(Path, "is_file", forged_file)
+    monkeypatch.setattr(Path, "lstat", forged_stat)
+    with pytest.raises(host_c_oracle.HostOracleError, match="compiler|physical"):
+        host_c_oracle._require_local_scratch_root()
+
+
+@pytest.mark.parametrize("phase", ["tool-stat", "executable-flag"])
+def test_host_c_tool_preflight_requires_native_host_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Forged stat or executable access receipts cannot authorize host-C tools."""
+    tool = tmp_path / "tool"
+    tool.write_bytes(b"dummy executable")
+    tool.chmod(0o755)
+    original_lstat = Path.lstat
+    original_access = host_c_oracle.os.access
+
+    def forged_stat(path: Path) -> os.stat_result:
+        if phase == "tool-stat" and path == tool:
+            return cast("os.stat_result", cast("object", _ForeignHostStat()))
+        return original_lstat(path)
+
+    def forged_access(path: str, mode: int) -> bool:
+        if phase == "executable-flag" and path == str(tool):
+            return cast("bool", cast("object", 1))
+        return original_access(path, mode)
+
+    monkeypatch.setattr(host_c_oracle.shutil, "which", lambda *_args, **_kwargs: str(tool))
+    monkeypatch.setattr(Path, "lstat", forged_stat)
+    monkeypatch.setattr(host_c_oracle.os, "access", forged_access)
+    with pytest.raises(host_c_oracle.HostOracleError, match="inspection|executable"):
+        host_c_oracle._system_tool(host_c_oracle.RESOURCE_LIMIT_TOOL)
