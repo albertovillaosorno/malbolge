@@ -341,3 +341,72 @@ fn equal_inode_parent_symlink_replacement_invalidates_shared_guard() -> Result<(
     assert!(coordinator.matches_shared(&guard));
     Ok(())
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "assert OS advisory lock behavior"
+)]
+fn separate_descriptor_cannot_bypass_live_exclusive_guard() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let path = fixture.path("coordinator.lock");
+    let coordinator = Coordination::new(path.clone());
+    let held = coordinator
+        .acquire_exclusive()
+        .map_err(|error| format!("exclusive guard: {error:?}"))?;
+    let challenger = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|error| error.to_string())?;
+    assert!(matches!(
+        challenger.try_lock(),
+        Err(fs::TryLockError::WouldBlock)
+    ));
+    assert!(matches!(
+        challenger.try_lock_shared(),
+        Err(fs::TryLockError::WouldBlock)
+    ));
+    drop(held);
+    challenger.try_lock().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "assert shared OS advisory lock behavior"
+)]
+fn shared_guards_coexist_and_block_other_exclusive_descriptors() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let path = fixture.path("coordinator.lock");
+    let original = Coordination::new(path.clone());
+    let copy = Coordination::new(path.clone());
+    let first = original
+        .acquire_shared()
+        .map_err(|error| format!("first shared guard: {error:?}"))?;
+    let second = copy
+        .acquire_shared()
+        .map_err(|error| format!("second shared guard: {error:?}"))?;
+    assert!(original.matches_shared(&first));
+    assert!(copy.matches_shared(&second));
+    let challenger = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|error| error.to_string())?;
+    assert!(matches!(
+        challenger.try_lock(),
+        Err(fs::TryLockError::WouldBlock)
+    ));
+    drop(first);
+    assert!(matches!(
+        challenger.try_lock(),
+        Err(fs::TryLockError::WouldBlock)
+    ));
+    drop(second);
+    challenger.try_lock().map_err(|error| error.to_string())?;
+    Ok(())
+}
