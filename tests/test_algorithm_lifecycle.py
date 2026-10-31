@@ -111,6 +111,30 @@ def _expect_failure(text: str, message: str) -> None:
     raise AssertionError(failure)
 
 
+def test_direct_lifecycle_toml_admits_only_bounded_exact_utf8() -> None:
+    """Direct TOML entry points use the same bounded wire-text boundary."""
+
+    class _ForgedText(str):  # ruff: ignore[subclass-builtin]
+        """An in-memory string with caller-controlled inherited behavior."""
+
+        __slots__ = ()
+
+    source = _base(validator.EXPERIMENTAL)
+    if not source.endswith("\n"):
+        source += "\n"
+    limit = validator.MAX_LIFECYCLE_BYTES
+    exact = source + "#" + "x" * (limit - len(source) - 1)
+    assert validator.parse_lifecycle(exact)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="byte limit"):
+        validator.parse_lifecycle(exact + "x")
+    with pytest.raises(validator.AlgorithmLifecycleError, match="byte limit"):
+        validator.parse_lifecycle(source + "#" + "é" * (limit // 2))
+    with pytest.raises(validator.AlgorithmLifecycleError, match="UTF-8"):
+        validator.parse_lifecycle(source + "#\ud800")
+    with pytest.raises(validator.AlgorithmLifecycleError, match="exact str"):
+        validator.parse_lifecycle(_ForgedText(source))
+
+
 def test_lifecycle_nested_array_parser_capacity_is_typed() -> None:
     """Deep but bounded TOML must not leak raw host RecursionError."""
     nested = "[" * 1000 + "1" + "]" * 1000

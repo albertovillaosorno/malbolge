@@ -230,7 +230,28 @@ def _enum(value: str, allowed: frozenset[str], context: str) -> str:
     return value
 
 
+def _admit_source_text(text: str, *, byte_limit: int) -> None:
+    """Require bounded exact UTF-8 text before the host TOML parser.
+
+    Raises:
+        ExperimentManifestError: Source admission failed.
+
+    """
+    if type(text) is not str:
+        _fail("TOML source requires exact str text")
+    if len(text) > byte_limit:
+        _fail("TOML source exceeds byte limit")
+    try:
+        encoded_size = len(text.encode("utf-8"))
+    except UnicodeEncodeError as error:
+        message = "TOML source requires strict UTF-8 text"
+        raise ExperimentManifestError(message) from error
+    if encoded_size > byte_limit:
+        _fail("TOML source exceeds byte limit")
+
+
 def _parse_document(text: str) -> dict[str, object]:
+    _admit_source_text(text, byte_limit=MAX_MANIFEST_BYTES)
     try:
         parsed = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:

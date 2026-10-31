@@ -363,6 +363,30 @@ def test_manifest_reader_rejects_in_place_change_after_read(
     assert modified
 
 
+def test_direct_experiment_toml_admits_only_bounded_exact_utf8() -> None:
+    """Direct TOML entry points use the same bounded wire-text boundary."""
+
+    class _ForgedText(str):  # ruff: ignore[subclass-builtin]
+        """An in-memory string with caller-controlled inherited behavior."""
+
+        __slots__ = ()
+
+    source = _run_manifest()
+    if not source.endswith("\n"):
+        source += "\n"
+    limit = validator.MAX_MANIFEST_BYTES
+    exact = source + "#" + "x" * (limit - len(source) - 1)
+    assert validator.parse_manifest(exact)
+    with pytest.raises(validator.ExperimentManifestError, match="byte limit"):
+        validator.parse_manifest(exact + "x")
+    with pytest.raises(validator.ExperimentManifestError, match="byte limit"):
+        validator.parse_manifest(source + "#" + "é" * (limit // 2))
+    with pytest.raises(validator.ExperimentManifestError, match="UTF-8"):
+        validator.parse_manifest(source + "#\ud800")
+    with pytest.raises(validator.ExperimentManifestError, match="exact str"):
+        validator.parse_manifest(_ForgedText(source))
+
+
 def test_manifest_nested_array_parser_capacity_is_typed() -> None:
     """Deep but bounded TOML must not leak raw host RecursionError."""
     nested = "[" * 1000 + "1" + "]" * 1000

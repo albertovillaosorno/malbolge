@@ -195,7 +195,28 @@ def _parse_date(table: dict[str, object], name: str, context: str) -> date:
     _fail(f"{context}.{name} must be a TOML local date")
 
 
+def _admit_source_text(text: str, *, byte_limit: int) -> None:
+    """Require bounded exact UTF-8 text before the host TOML parser.
+
+    Raises:
+        AlgorithmLifecycleError: Source admission failed.
+
+    """
+    if type(text) is not str:
+        _fail("TOML source requires exact str text")
+    if len(text) > byte_limit:
+        _fail("TOML source exceeds byte limit")
+    try:
+        encoded_size = len(text.encode("utf-8"))
+    except UnicodeEncodeError as error:
+        message = "TOML source requires strict UTF-8 text"
+        raise AlgorithmLifecycleError(message) from error
+    if encoded_size > byte_limit:
+        _fail("TOML source exceeds byte limit")
+
+
 def _parse_document(text: str) -> dict[str, object]:
+    _admit_source_text(text, byte_limit=MAX_LIFECYCLE_BYTES)
     try:
         parsed = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:
