@@ -91,6 +91,40 @@ REAL_PROFILE_PROVENANCE = (
 )
 
 
+@pytest.mark.parametrize("folder", ["runs", "raw", "candidates"])
+def test_target_audit_inventory_rejects_foreign_entry_before_traversing_rest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    folder: str,
+) -> None:
+    """A foreign file must fail before an unbounded directory is consumed."""
+    prefix = ".temp/arena-target-echo-inventory"
+    directory = tmp_path / prefix / folder
+    directory.mkdir(parents=True)
+    monkeypatch.setattr(audit, "_ROOT", tmp_path)
+    stem = "registered-trial"
+    registered = f"{stem}.malbolge" if folder == "candidates" else (
+        f"{stem}.toml" if folder == "runs" else f"{stem}.csv"
+    )
+    original_iterdir = type(tmp_path).iterdir
+
+    def hostile_directory(path: Path) -> Iterator[Path]:
+        if path != directory:
+            yield from original_iterdir(path)
+            return
+        yield directory / registered
+        yield directory / "foreign-file"
+        message = "auditor traversed foreign directory entries after rejection"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(type(tmp_path), "iterdir", hostile_directory)
+    with pytest.raises(audit.TargetEchoAuditError, match="unexpected"):
+        if folder == "candidates":
+            audit._candidate_files(prefix, {stem})
+        else:
+            audit._check_directory(prefix, folder, {registered})
+
+
 @pytest.mark.parametrize(
     ("field", "invalid"),
     [

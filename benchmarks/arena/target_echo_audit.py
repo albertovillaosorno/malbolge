@@ -615,7 +615,11 @@ def _check_directory(prefix: str, folder: str, expected: set[str]) -> None:
     parent = _ROOT / prefix / folder
     if parent.is_symlink() or not parent.is_dir():
         _fail(f"target audit requires ordinary {folder} directory")
-    names = {entry.name for entry in parent.iterdir()}
+    names: set[str] = set()
+    for entry in parent.iterdir():
+        if entry.name not in expected:
+            _fail(f"target audit has missing or unexpected {folder} files")
+        names.add(entry.name)
     if names != expected:
         _fail(f"target audit has missing or unexpected {folder} files")
     for name in names:
@@ -779,10 +783,12 @@ def _candidate_files(prefix: str, names: set[str]) -> None:
     directory = _ROOT / prefix / "candidates"
     if directory.is_symlink() or not directory.is_dir():
         _fail("target audit requires a real candidate directory")
-    observed = {path.name for path in directory.iterdir()}
     expected = {f"{stem}.malbolge" for stem in names}
-    if not observed <= expected:
-        _fail("target audit has unexpected candidate source files")
+    observed: set[str] = set()
+    for path in directory.iterdir():
+        if path.name not in expected:
+            _fail("target audit has unexpected candidate source files")
+        observed.add(path.name)
     for name in observed:
         _ = evidence.regular_path(
             _ROOT,
