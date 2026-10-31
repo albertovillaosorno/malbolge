@@ -1145,7 +1145,17 @@ def test_direct_raw_check_rejects_non_native_labels_before_diagnostics(
 
 
 @pytest.mark.parametrize(
-    "fault_type", [csv.Error, ValueError, TypeError, RuntimeError, RecursionError]
+    "fault_type",
+    [
+        csv.Error,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        RecursionError,
+        IndexError,
+        OverflowError,
+        Exception,
+    ],
 )
 def test_raw_csv_parser_faults_preserve_typed_failure_without_foreign_formatting(
     tmp_path: Path,

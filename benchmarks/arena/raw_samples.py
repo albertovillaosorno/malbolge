@@ -176,7 +176,9 @@ def _csv_rows(
         )
         message = f"{label}: invalid arena raw CSV quotes: {detail}"
         raise RawSampleError(message) from error
-    except (TypeError, ValueError, RuntimeError) as error:
+    except Exception as error:
+        # Unexpected ordinary CSV dependency faults must stay typed and must
+        # not invoke a foreign exception formatter while being rejected.
         message = f"{label}: invalid arena raw CSV parser: {type(error).__name__}"
         raise RawSampleError(message) from error
     return version, metrics, rows
