@@ -51,6 +51,9 @@ if TYPE_CHECKING:
     from algorithms.diff.mapped import MappedView
 
 _POSIX = "posix"
+_STAGE_MODULE = "module"
+_STAGE_PARENT = "parent"
+_STAGE_RESOLVED = "resolved"
 _COMPLETE = """def validate_source_provenance(root):
     return None
 
@@ -351,6 +354,81 @@ def test_domain_file_status_error_fails_closed(
 
     monkeypatch.setattr(Path, "lstat", fail_lstat)
     with pytest.raises(DomainContractError, match="status failed"):
+        _ = load_diff_domain(module)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (stage, failure_type)
+        for stage in (_STAGE_MODULE, _STAGE_PARENT, _STAGE_RESOLVED)
+        for failure_type in (ValueError, RuntimeError)
+    ],
+)
+def test_domain_module_metadata_failures_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, type[Exception]],
+) -> None:
+    """Malformed host metadata fails before trusted consumer code executes."""
+    stage, failure_type = case
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    original_lstat = Path.lstat
+    original_resolve = Path.resolve
+    blocked_path = {
+        _STAGE_MODULE: module,
+        _STAGE_PARENT: module.parent,
+    }.get(stage)
+
+    def blocked_lstat(path: Path) -> os.stat_result:
+        if path == blocked_path:
+            message = "injected metadata exception"
+            raise failure_type(message)
+        return original_lstat(path)
+
+    def blocked_resolve(path: Path, *, strict: bool = False) -> Path:
+        if stage == _STAGE_RESOLVED and path == module and strict:
+            message = "injected resolution exception"
+            raise failure_type(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "lstat", blocked_lstat)
+    monkeypatch.setattr(Path, "resolve", blocked_resolve)
+    with pytest.raises(
+        DomainContractError, match=r"status failed|resolution failed"
+    ):
+        _ = load_diff_domain(module)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (stage, failure_type)
+        for stage in (_STAGE_MODULE, _STAGE_PARENT)
+        for failure_type in (ValueError, RuntimeError)
+    ],
+)
+def test_domain_junction_status_failures_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, type[Exception]],
+) -> None:
+    """Junction inspection cannot leak host metadata failures."""
+    stage, failure_type = case
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    target = module if stage == _STAGE_MODULE else module.parent
+    original_is_junction = Path.is_junction
+
+    def blocked_is_junction(path: Path) -> bool:
+        if path == target:
+            message = "host junction check unavailable"
+            raise failure_type(message)
+        return original_is_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", blocked_is_junction)
+    with pytest.raises(DomainContractError, match="junction status failed"):
         _ = load_diff_domain(module)
 
 

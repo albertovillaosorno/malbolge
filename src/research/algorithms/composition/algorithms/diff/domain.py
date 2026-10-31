@@ -121,15 +121,23 @@ def _require_module_path_without_nul(path: Path) -> None:
         raise DomainContractError(message)
 
 
+def _module_is_junction(path: Path) -> bool:
+    try:
+        return path.is_junction()
+    except (OSError, ValueError, RuntimeError) as error:
+        message = f"diff domain module junction status failed: {path!r}"
+        raise DomainContractError(message) from error
+
+
 def _reject_linked_module_ancestors(path: Path) -> None:
     current = path.parent
     while current != current.parent:
         try:
             mode = current.lstat().st_mode
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, RuntimeError) as error:
             message = f"diff domain module parent status failed: {current!r}"
             raise DomainContractError(message) from error
-        if S_ISLNK(mode) or current.is_junction():
+        if S_ISLNK(mode) or _module_is_junction(current):
             message = f"diff domain module has a linked parent: {current!r}"
             raise DomainContractError(message)
         current = current.parent
@@ -142,16 +150,16 @@ def _regular_module_path(path: Path) -> Path:
     except FileNotFoundError as error:
         message = f"diff domain module is not a regular file: {path}"
         raise DomainContractError(message) from error
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"diff domain module status failed: {path!r}: {error!r}"
         raise DomainContractError(message) from error
-    if S_ISLNK(mode) or path.is_junction() or not S_ISREG(mode):
+    if S_ISLNK(mode) or _module_is_junction(path) or not S_ISREG(mode):
         message = f"diff domain module is not a regular file: {path}"
         raise DomainContractError(message)
     _reject_linked_module_ancestors(path)
     try:
         return path.resolve(strict=True)
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"diff domain module resolution failed: {path!r}: {error!r}"
         raise DomainContractError(message) from error
 
