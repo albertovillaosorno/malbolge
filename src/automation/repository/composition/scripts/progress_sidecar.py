@@ -2221,7 +2221,7 @@ def _release_writer_lock(release: Callable[[], None]) -> None:
 
 def _close_writer_lock_stream(stream: _LockStream) -> None:
     try:
-        stream.close()
+        _require_native_lock_receipt(stream.close(), "close")
     except ProgressSidecarError:
         raise
     except (OSError, ValueError, RuntimeError) as error:

@@ -12313,6 +12313,73 @@ def test_writer_lock_rejects_noncanonical_release_receipt_after_commit(
     assert progress.read(destination) == candidate
 
 
+@pytest.mark.parametrize("receipt", [False, True, 0, "closed"])
+def test_writer_lock_rejects_noncanonical_stream_close_receipt_after_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A false stream-close success cannot certify committed lock teardown."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    real_open = cast(
+        "Callable[[Path], BinaryIO]", vars(progress)["_open_writer_lock_stream"]
+    )
+    closed: list[object] = []
+
+    class ForgedCloseStream:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream: BinaryIO = stream
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def seek(self, offset: int, whence: int = 0) -> int:
+            return self.stream.seek(offset, whence)
+
+        def close(self) -> object:
+            self.stream.close()
+            closed.append(receipt)
+            return receipt
+
+    def forged_open(path: Path) -> ForgedCloseStream:
+        return ForgedCloseStream(real_open(path))
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_open_writer_lock_stream", forged_open)
+        with pytest.raises(
+            progress.ProgressSidecarCommittedError,
+            match="writer lock cleanup failed: .*close receipt",
+        ) as caught:
+            _ = progress.write_atomic(candidate)
+    assert closed == [receipt]
+    assert caught.value.published_path == destination
+    assert progress.read(destination) == candidate
+
+
+def test_writer_lock_forged_close_receipt_stays_secondary_to_body_failure() -> None:
+    """A false close receipt is diagnostic, not a replacement for body failure."""
+    helper = cast(
+        "Callable[[object], None]", vars(progress)["_close_writer_lock_preserving_primary"]
+    )
+    primary = progress.ProgressSidecarError("injected writer body failure")
+
+    class ForgedCloseStream:
+        @staticmethod
+        def close() -> bool:
+            return False
+
+    try:
+        raise primary
+    except progress.ProgressSidecarError:
+        helper(ForgedCloseStream())
+
+    close_message = "progress writer lock close receipt must be None"
+    assert getattr(primary, "__notes__", None) == [
+        f"writer lock close also failed: {close_message}"
+    ]
+
+
 @pytest.mark.parametrize("member", ["pointer", "checkpoint"])
 @pytest.mark.parametrize("receipt", [False, True, 0], ids=["false", "true", "zero"])
 def test_noncanonical_payload_sync_receipt_rejects_publication(

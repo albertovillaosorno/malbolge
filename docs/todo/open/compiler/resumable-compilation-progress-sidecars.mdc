@@ -631,9 +631,14 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   callback completion. Two additional red-first overflow cases constrain
   descriptor receipts to the native C `int` range before calling OS primitives.
   Positive native flock locking remains covered by the
-  existing cross-process contention and process-death tests. Two further
-  red-first fixtures prove a matching native metadata receipt with a forged
-  opened-directory or opened-FIFO type cannot authorize lock admission.
+  existing cross-process contention and process-death tests. Four red-first
+  stream-close receipt cases now require exact native `None` after durable
+  pointer publication, retaining committed-path evidence for forged boolean,
+  integer, or text completion; a separate primary-failure regression retains
+  the body error and reports forged closure only in a secondary note.
+  Two further red-first fixtures prove a matching native metadata receipt
+  with a forged opened-directory or opened-FIFO type cannot authorize lock
+  admission.
 
   Regular payload-file and POSIX parent-directory synchronization now also
   requires the native `None` `fsync` completion receipt. Eight red-first cases

@@ -542,6 +542,14 @@ Writer-lock release and close helpers also type unexpected `ValueError` and
 the committed-error cause still identifies the original raw cleanup fault
 rather than losing it inside the helper's typed wrapper.
 
+The lock stream's close result must also be the exact native `None` receipt:
+a boolean, integer, or text success claim cannot certify teardown. Four
+red-first post-commit regressions preserve the published pointer and raise
+`ProgressSidecarCommittedError` for forged close receipts; a separate
+prepublication regression preserves the original body error while attaching
+its forged close receipt as secondary evidence. Native stream closure remains
+unchanged for ordinary successes.
+
 An existing `ProgressSidecarError` raised by a lock-open or lock-acquire
 operation passes through unchanged, including its original identity and
 attached diagnostic notes. Raw host exceptions still receive the typed
