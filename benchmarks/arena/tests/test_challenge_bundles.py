@@ -246,6 +246,34 @@ def test_direct_bundle_rejects_unhashable_identity_fields(
         challenge_bundles.verify_bundle(case, PROFILE, files)
 
 
+@pytest.mark.parametrize(
+    "digest",
+    ["", "f" * 63, "F" * 64, "g" * 64, " " + "f" * 63],
+    ids=["empty", "short", "uppercase", "nonhex", "leading-space"],
+)
+def test_direct_bundle_rejects_noncanonical_digest_before_generation(
+    monkeypatch: pytest.MonkeyPatch,
+    digest: str,
+) -> None:
+    """A malformed workload digest must not trigger expensive regeneration."""
+    case, files = _direct_bundle()
+    case["workload_sha256"] = digest
+    called = False
+
+    def unexpectedly_generate(_identity: generate.ChallengeIdentity) -> None:
+        nonlocal called
+        called = True
+        message = "malformed workload digest reached canonical generation"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(generate, "generate", unexpectedly_generate)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="lowercase SHA-256"
+    ):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+    assert not called
+
+
 @pytest.mark.parametrize("sign", [1, -1], ids=["positive", "negative"])
 def test_direct_bundle_rejects_extreme_native_version_before_formatting(
     sign: int,
