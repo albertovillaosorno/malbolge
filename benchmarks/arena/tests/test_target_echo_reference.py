@@ -2638,6 +2638,56 @@ def test_target_reference_cli_never_formats_foreign_errors(
     assert "ForeignTargetReferenceFault" in output.err
 
 
+class _UnexpectedTargetCliFault(Exception):
+    def __str__(self) -> str:
+        raise AssertionError("foreign target operator error formatter executed")
+
+
+@pytest.mark.parametrize("stage", ["study", "publish"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError("unexpected target runtime failure"),
+        TypeError("unexpected target type failure"),
+        _UnexpectedTargetCliFault("untrusted target failure"),
+    ],
+    ids=["runtime", "type", "foreign-format-hook"],
+)
+def test_target_reference_cli_contains_unexpected_dependency_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stage: str,
+    failure: Exception,
+) -> None:
+    """Unexpected source and publisher faults remain nonzero and non-forgeable."""
+
+    def reject(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise failure
+
+    monkeypatch.setattr(sys, "argv", ["target-reference", "--pairs", "1"])
+    if stage == "study":
+        monkeypatch.setattr(target_echo_reference, "run_study", reject)
+    else:
+        monkeypatch.setattr(
+            target_echo_reference,
+            "run_study",
+            lambda *_a, **_k: (
+                target_echo_reference._ROOT / ".temp" / "mock-target-study",
+                {"observations": []},
+            ),
+        )
+        monkeypatch.setattr(report_output, "publish", reject)
+    with pytest.raises(SystemExit) as caught:
+        target_echo_reference.main()
+    assert caught.value.code == 2
+    result = capsys.readouterr()
+    assert not result.out
+    assert result.err.startswith("target echo reference: ")
+    if type(failure) is _UnexpectedTargetCliFault:
+        assert "_UnexpectedTargetCliFault" in result.err
+
+
 def test_target_reference_source_audit_never_formats_foreign_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

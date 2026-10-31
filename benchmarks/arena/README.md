@@ -704,7 +704,10 @@ unique Git-ignored `.temp/arena-target-echo-*/` directory. Their raw-byte
 hashes, declared resource budgets and per-trial identity are re-admitted
 through the normal arena evidence boundary, followed by a matched-cohort
 capacity/Pareto analysis. The CLI prints the local study path, not a
-performance verdict. An independent caller can inspect the resulting file:
+performance verdict. Unexpected ordinary producer and output-publisher errors
+exit with status two, never invoking foreign exception formatters; any prior
+retained evidence or partially emitted stdout cannot be rolled back.
+An independent caller can inspect the resulting file:
 
 ```sh
 python3.14 -B -m benchmarks.arena.analyze \

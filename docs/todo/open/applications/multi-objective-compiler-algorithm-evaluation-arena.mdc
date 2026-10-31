@@ -490,7 +490,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   without pretending that already-emitted text can be retracted. Unexpected
   ordinary producer or publisher dependency exceptions now also exit two
   without an unhandled traceback or foreign formatter calls; six red-first
-  regressions cover both phases and malformed exception hooks.
+  regressions cover both phases and malformed exception hooks. The separate
+  real target-echo reference CLI now likewise catches unexpected ordinary
+  producer and publisher errors without foreign formatting or false success;
+  another six red-first regressions check both operator paths.
 - Operator report output now requires exact text write counts and an explicit
   successful stdout flush across both arena CLI routes, rejecting malformed
   return values, truncation, and injected stream errors as nonzero exits.

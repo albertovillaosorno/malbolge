@@ -1412,15 +1412,9 @@ def main() -> int:
             },
             sys.stdout,
         )
-    except (
-        TargetEchoStudyError,
-        analyze.ArenaError,
-        evidence.EvidenceError,
-        experiment_manifest.ExperimentManifestError,
-        OSError,
-        sp.SubprocessError,
-        report_output.ReportOutputError,
-    ) as error:
+    except Exception as error:
+        # Unexpected ordinary producer/publisher faults still mean failure.
+        # The native-only diagnostic gate avoids foreign formatter hooks.
         parser.exit(2, f"target echo reference: {_safe_error_detail(error)}\n")
     return 0
 
