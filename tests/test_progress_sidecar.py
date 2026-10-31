@@ -61,6 +61,7 @@ from scripts import progress_sidecar as progress
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from collections.abc import Iterator
     from contextlib import AbstractContextManager
     from typing import BinaryIO
 
@@ -1400,6 +1401,50 @@ def test_operator_unexpected_diagnostic_sink_fault_keeps_status(
     with monkeypatch.context() as context:
         context.setattr(sys, "stderr", BrokenDiagnosticStream())
         assert progress.main(arguments) == (2 if mode == "usage" else 1)
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        [42],
+        [None],
+        [b"--help"],
+        ["--follow", 42],
+        ["--checkpoint-info", Path("foreign.progress.json")],
+        ["--extract-checkpoint", 42, "foreign.progress.json"],
+    ],
+)
+def test_operator_cli_rejects_non_string_argument_before_path_dispatch(
+    argv: list[object],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Direct callers cannot turn a bad argument into an untyped traceback."""
+    assert progress.main(cast("list[str]", argv)) == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "usage: progress_sidecar.py" in captured.err
+
+
+def test_operator_cli_rejects_hostile_argument_subclasses_before_methods(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Foreign CLI list/string subclasses cannot run comparison or iteration hooks."""
+    class HostileText(str):
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign string equality invoked")
+
+    class HostileArguments(list[str]):
+        @override
+        def __iter__(self) -> Iterator[str]:
+            raise AssertionError("foreign argument iteration invoked")
+
+    for arguments in ([HostileText("--help")], HostileArguments(["--help"])):
+        assert progress.main(cast("list[str]", arguments)) == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert captured.err.count("usage: progress_sidecar.py") == 2
 
 
 @pytest.mark.parametrize("reported", [None, True, 0, 5, 2**20])

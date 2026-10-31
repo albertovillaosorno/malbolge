@@ -3683,7 +3683,6 @@ def main(argv: list[str] | None = None) -> int:
         Process-style status code: zero on valid output, nonzero otherwise.
 
     """
-    arguments = list(sys.argv[1:] if argv is None else argv)
     usage = (
         "usage: progress_sidecar.py PROGRESS.json\n"
         "       progress_sidecar.py --checkpoint-info PROGRESS.json\n"
@@ -3691,6 +3690,12 @@ def main(argv: list[str] | None = None) -> int:
         "STATE_CODEC PROGRESS.json\n"
         "       progress_sidecar.py --follow PROGRESS.json\n"
     )
+    # Direct callers may supply arbitrary Python objects rather than native
+    # process argv strings. Admit them before equality or pathlib dispatch.
+    arguments = sys.argv[1:] if argv is None else argv
+    if type(arguments) is not list or any(type(item) is not str for item in arguments):
+        _write_error_diagnostic(usage)
+        return 2
     if arguments in (["-h"], ["--help"]):
         try:
             _write_operator_text(usage)

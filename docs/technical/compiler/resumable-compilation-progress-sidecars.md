@@ -895,6 +895,13 @@ prevent diagnostic delivery but cannot convert a rejected inspection,
 extraction, follow, help, or usage operation into an uncaught stream exception
 or successful exit. The original error status remains authoritative.
 
+Direct operator entry rejects a non-native argument vector or any non-native
+string argument before invoking string equality or constructing filesystem paths.
+Invalid direct-call arguments return usage status 2, including hostile list and
+string subclasses; valid process argv and exact native `list[str]` callers keep
+their existing help and inspection behavior. This checks input shape, not the
+trustworthiness of an otherwise well-formed filename.
+
 All operator modes now contain even unexpected ordinary dependency and stream
 exceptions at the outer CLI boundary. A failed inspection, checkpoint metadata
 read, binary extraction, follow, or help request returns status 1 with a
