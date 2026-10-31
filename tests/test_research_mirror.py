@@ -323,3 +323,114 @@ def test_output_policy_checks_directory_not_just_one_marker(
 
     _ = ignore_file.write_text("**/out/*\n", encoding="utf-8")
     assert validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("boundary", ["physical", "scan", "id", "discovery", "git"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_mirror_foreign_host_error_formatters_cannot_escape(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    boundary: str,
+    fault_type: type[Exception],
+) -> None:
+    """Host exceptions retain typed causes without caller-owned formatting."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("research mirror foreign exception formatting executed")
+
+    foreign = type("ForeignResearchMirrorFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("dangerous exception text")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    if boundary in {"physical", "scan", "id"}:
+        directory = tmp_path / "documents"
+        directory.mkdir()
+        child = directory / "fixture"
+        _ = child.write_text("fixture", encoding="utf-8")
+        original_lstat = Path.lstat
+        original_iterdir = Path.iterdir
+        if boundary in {"physical", "id"}:
+
+            def fail_lstat(path: Path) -> os.stat_result:
+                if path == child:
+                    raise fault
+                return original_lstat(path)
+
+            monkeypatch.setattr(Path, "lstat", fail_lstat)
+        else:
+
+            def fail_iterdir(path: Path) -> Iterator[Path]:
+                if path == directory:
+                    raise fault
+                return original_iterdir(path)
+
+            monkeypatch.setattr(Path, "iterdir", fail_iterdir)
+        with pytest.raises(
+            validator.ResearchMirrorError,
+            match=(
+                "status failed"
+                if boundary == "physical"
+                else "scan failed"
+                if boundary == "scan"
+                else "ID status failed"
+            ),
+        ) as caught:
+            if boundary == "physical":
+                validator._physical_status(  # pyright: ignore[reportPrivateUsage]
+                    child, "research document"
+                )
+            else:
+                validator._directory_ids(  # pyright: ignore[reportPrivateUsage]
+                    directory
+                )
+    elif boundary == "discovery":
+
+        def fail_discovery(_root: Path) -> None:
+            raise fault
+
+        monkeypatch.setattr(validator, "research_algorithm_directories", fail_discovery)
+        with pytest.raises(
+            validator.ResearchMirrorError, match="discovery failed"
+        ) as caught:
+            validator.validate_repository(_always_ignored)
+    else:
+        entry = validator.MirrorEntry(
+            document=tmp_path / "docs/fixture",
+            executable=tmp_path / "algorithms/fixture",
+            research_id="fixture",
+        )
+
+        def fail_git(*_args: object, **_kwargs: object) -> None:
+            raise fault
+
+        monkeypatch.setattr(sp, "run", fail_git)
+        with pytest.raises(
+            validator.ResearchMirrorError, match="Git ignore probe failed"
+        ) as caught:
+            validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is fault
+
+
+def test_mirror_native_host_error_diagnostic_remains_actionable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Exact built-in OSError text remains in typed failure diagnostics."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    entry = validator.MirrorEntry(
+        document=tmp_path / "docs/fixture",
+        executable=tmp_path / "algorithms/fixture",
+        research_id="fixture",
+    )
+    fault = OSError("native git executable unavailable")
+
+    def fail_git(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(sp, "run", fail_git)
+    with pytest.raises(
+        validator.ResearchMirrorError,
+        match="native git executable unavailable",
+    ) as caught:
+        validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is fault

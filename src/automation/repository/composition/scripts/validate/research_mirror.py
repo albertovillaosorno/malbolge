@@ -76,6 +76,18 @@ def _fail(message: str) -> Never:
     raise ResearchMirrorError(message)
 
 
+def _host_error_detail(error: Exception) -> str:
+    """Keep native host error details without invoking caller-owned hooks.
+
+    Returns:
+        Built-in diagnostic text or an untrusted exception type label.
+
+    """
+    if type(error) in (OSError, ValueError, TypeError, RuntimeError):
+        return str(error)
+    return type(error).__name__
+
+
 def _physical_status(path: Path, context: str) -> os.stat_result:
     """Check every in-root path component without following a redirect."""
     try:
@@ -91,8 +103,9 @@ def _physical_status(path: Path, context: str) -> os.stat_result:
         try:
             status = current.lstat()
             redirected = S_ISLNK(status.st_mode) or current.is_junction()
-        except (OSError, ValueError, RuntimeError) as error:
-            raise ResearchMirrorError(f"{context} status failed: {error}") from error
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            detail = _host_error_detail(error)
+            raise ResearchMirrorError(f"{context} status failed: {detail}") from error
         if redirected:
             _fail(f"{context} must not redirect: {relative.as_posix()}")
         if index != len(relative.parts) - 1 and not S_ISDIR(status.st_mode):
@@ -107,17 +120,19 @@ def _directory_ids(root: Path) -> frozenset[str]:
     identifiers: set[str] = set()
     try:
         children = tuple(root.iterdir())
-    except (OSError, ValueError, RuntimeError) as error:
-        raise ResearchMirrorError(f"research mirror scan failed: {error}") from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        raise ResearchMirrorError(f"research mirror scan failed: {detail}") from error
     for path in children:
         if path.name.startswith("."):
             continue
         try:
             status = path.lstat()
             redirected = S_ISLNK(status.st_mode) or path.is_junction()
-        except (OSError, ValueError, RuntimeError) as error:
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            detail = _host_error_detail(error)
             raise ResearchMirrorError(
-                f"research mirror ID status failed: {error}"
+                f"research mirror ID status failed: {detail}"
             ) from error
         if redirected:
             _fail(f"research mirror ID must not redirect: {path.name}")
@@ -164,9 +179,10 @@ def _entries() -> tuple[MirrorEntry, ...]:
         executable_by_id = dict(research_algorithm_directories(ROOT))
     except ResearchMirrorError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
         raise ResearchMirrorError(
-            f"research mirror discovery failed: {error}"
+            f"research mirror discovery failed: {detail}"
         ) from error
     research_ids = validate_id_sets(
         _directory_ids(DOCUMENT_ROOT),
@@ -208,8 +224,9 @@ def _out_is_ignored(entry: MirrorEntry) -> bool:
             check=False,
             shell=False,
         )
-    except (OSError, ValueError, RuntimeError) as error:
-        raise ResearchMirrorError(f"Git ignore probe failed: {error}") from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        raise ResearchMirrorError(f"Git ignore probe failed: {detail}") from error
     if completed.returncode not in {0, 1}:
         message = (
             "git check-ignore failed for research output probe: "
