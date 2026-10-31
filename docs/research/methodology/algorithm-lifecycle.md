@@ -49,8 +49,12 @@ Every executable research mirror with `experiment.toml` also carries
 Lifecycle file loading accepts at most 1 MiB from a stable regular-file
 descriptor, rejecting symlinked leaves, special files, file replacements, and
 invalid UTF-8 before TOML admission. The stable algorithm ID is bound to its
-research record and experiment manifest. Evidence references must be regular
+research record and experiment manifest. Decision dates require the exact TOML
+local-date value, excluding local and offset date-time values even though Python
+`datetime` derives from `date`. Evidence references must be regular
 files under the repository root, with no symlinked leaves or parent directories.
+Evidence paths reject TOML-escaped NUL bytes before host filesystem access,
+preventing raw path API errors from escaping lifecycle validation.
 On hosts with directory-relative file opening, checks pin every parent
 directory through the evidence admission; other hosts reject links during
 component-by-component path inspection.

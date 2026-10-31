@@ -34,18 +34,15 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
 from datetime import date
-import os
-from pathlib import Path
-from pathlib import PureWindowsPath
-from stat import S_ISDIR
-from stat import S_ISREG
-import sys
+from pathlib import Path, PureWindowsPath
+from stat import S_ISDIR, S_ISREG
+from typing import TYPE_CHECKING, Never, cast
+
 import tomllib
-from typing import Never
-from typing import TYPE_CHECKING
-from typing import cast
 
 from scripts.repository_root import repository_root
 from scripts.research_layout import research_algorithm_directories
@@ -62,13 +59,15 @@ PROMOTION_CANDIDATE = "promotion-candidate"
 PROMOTED = "promoted"
 REJECTED = "rejected"
 RETIRED = "retired"
-STATES = frozenset({
-    EXPERIMENTAL,
-    PROMOTION_CANDIDATE,
-    PROMOTED,
-    REJECTED,
-    RETIRED,
-})
+STATES = frozenset(
+    {
+        EXPERIMENTAL,
+        PROMOTION_CANDIDATE,
+        PROMOTED,
+        REJECTED,
+        RETIRED,
+    }
+)
 PROMOTION_STATES = frozenset({PROMOTION_CANDIDATE, PROMOTED, RETIRED})
 DECISION_STATES = frozenset({PROMOTED, REJECTED, RETIRED})
 PROMOTION_FIELDS = (
@@ -170,11 +169,11 @@ def _optional_string(
 
 
 def _relative_path(value: str, context: str) -> str:
+    if "\x00" in value:
+        _fail(f"{context} must not contain NUL")
     path = Path(value)
     windows_path = PureWindowsPath(value)
-    native_relative = (
-        not path.is_absolute() and PARENT_SEGMENT not in path.parts
-    )
+    native_relative = not path.is_absolute() and PARENT_SEGMENT not in path.parts
     windows_relative = (
         not windows_path.drive
         and not windows_path.root
@@ -191,7 +190,7 @@ def _evidence_path(table: dict[str, object], name: str, context: str) -> str:
 
 def _parse_date(table: dict[str, object], name: str, context: str) -> date:
     value = table.get(name)
-    if isinstance(value, date):
+    if type(value) is date:
         return value
     _fail(f"{context}.{name} must be a TOML local date")
 
@@ -215,9 +214,7 @@ def _promotion(
     table = _optional_table(document, "promotion")
     if state not in PROMOTION_STATES:
         if table is not None:
-            _fail(
-                f"lifecycle state {state} must not contain promotion evidence"
-            )
+            _fail(f"lifecycle state {state} must not contain promotion evidence")
         return None
     if table is None:
         _fail(f"lifecycle state {state} requires promotion evidence")
@@ -378,11 +375,7 @@ def _check_evidence_leaf(directory: int, name: str) -> None:
         OSError: The candidate is not a stable regular file.
 
     """
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_NONBLOCK", 0)
-    )
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     leaf = os.open(name, flags, dir_fd=directory)
     try:
         opened = os.fstat(leaf)
@@ -396,11 +389,7 @@ def _check_evidence_leaf(directory: int, name: str) -> None:
 
 def _evidence_descriptor_walk(parts: tuple[str, ...]) -> None:
     """Pin each directory while admitting one regular evidence leaf."""
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-    )
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     current = os.open(ROOT, flags)
     try:
         for part in parts[:-1]:
@@ -442,9 +431,7 @@ def _validate_evidence_paths(record: AlgorithmLifecycle) -> None:
     if record.decision is not None:
         _require_existing(record.decision.evidence, "decision")
         if record.decision.negative_results is not None:
-            _require_existing(
-                record.decision.negative_results, "negative results"
-            )
+            _require_existing(record.decision.negative_results, "negative results")
 
 
 def _read_lifecycle_bytes(
@@ -485,11 +472,7 @@ def _read_lifecycle_file(path: Path) -> bytes:
     admitted = path.lstat()
     if not S_ISREG(admitted.st_mode):
         _fail(f"algorithm lifecycle manifest must be regular: {path}")
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_NONBLOCK", 0)
-    )
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     descriptor = os.open(path, flags)
     with os.fdopen(descriptor, "rb") as stream:
         return _read_lifecycle_bytes(stream, admitted, path)
@@ -531,9 +514,7 @@ def validate_repository_lifecycle(path: Path) -> AlgorithmLifecycle:
             f"{record.identifier} != {algorithm_id}"
         )
         _fail(message)
-    expected_experiment = (
-        (path.parent / "experiment.toml").relative_to(ROOT).as_posix()
-    )
+    expected_experiment = (path.parent / "experiment.toml").relative_to(ROOT).as_posix()
     expected_research = f"docs/research/algorithms/{algorithm_id}/research.md"
     if record.experiment_manifest != expected_experiment:
         _fail("lifecycle experiment manifest does not match mirror identity")
@@ -575,9 +556,7 @@ def main() -> int:
     for record in records:
         states[record.state] = states.get(record.state, 0) + 1
     summary = ", ".join(f"{key}={states[key]}" for key in sorted(states))
-    _ = sys.stdout.write(
-        f"algorithm lifecycle valid: {len(records)} ({summary})\n"
-    )
+    _ = sys.stdout.write(f"algorithm lifecycle valid: {len(records)} ({summary})\n")
     return 0
 
 

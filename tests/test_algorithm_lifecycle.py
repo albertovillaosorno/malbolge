@@ -61,9 +61,7 @@ EXPECTED_IDS = (
 EVIDENCE = "docs/research/methodology/scientific-method.md"
 BENEFIT = "benchmarks/research/protocol/examples/deterministic.benchmark.toml"
 RESEARCH = "docs/research/algorithms/template/research.md"
-EXPERIMENT = (
-    "src/research/algorithms/domain/algorithms/template/experiment.toml"
-)
+EXPERIMENT = "src/research/algorithms/domain/algorithms/template/experiment.toml"
 
 
 def _base(state: str) -> str:
@@ -130,6 +128,16 @@ def test_every_research_mirror_has_explicit_experimental_lifecycle() -> None:
     assert {record.state for record in records} == {validator.EXPERIMENTAL}
 
 
+@pytest.mark.parametrize("field", ("research_record", "experiment_manifest"))
+def test_lifecycle_paths_reject_toml_escaped_nul(field: str) -> None:
+    """NUL cannot reach evidence path admission as an unhandled host error."""
+    value = RESEARCH if field == "research_record" else EXPERIMENT
+    text = _base(validator.EXPERIMENTAL).replace(
+        f'{field} = "{value}"', f'{field} = "docs/\\u0000evidence"'
+    )
+    _expect_failure(text, "must not contain NUL")
+
+
 def test_lifecycle_rejects_windows_drive_relative_path() -> None:
     """Drive-relative Windows syntax cannot redirect lifecycle evidence."""
     text = _base(validator.EXPERIMENTAL).replace(
@@ -177,15 +185,18 @@ def test_rejection_requires_retained_negative_results() -> None:
     )
 
 
-def test_retirement_requires_prior_gate_history_and_successor_identity() -> (
-    None
-):
-    """Retired algorithms keep promotion evidence and name their successor."""
-    text = (
-        _base(validator.RETIRED)
-        + _promotion()
-        + _decision(superseded_by=SUCCESSOR)
+@pytest.mark.parametrize("decided_on", ("2026-07-27T12:34:56", "2026-07-27T12:34:56Z"))
+def test_lifecycle_decision_requires_exact_local_date(decided_on: str) -> None:
+    """A TOML timestamp must not masquerade as the schema's local date."""
+    text = (_base(validator.REJECTED) + _decision(negative_results=BENEFIT)).replace(
+        f"decided_on = {DECISION_DATE}", f"decided_on = {decided_on}"
     )
+    _expect_failure(text, "decided_on must be a TOML local date")
+
+
+def test_retirement_requires_prior_gate_history_and_successor_identity() -> None:
+    """Retired algorithms keep promotion evidence and name their successor."""
+    text = _base(validator.RETIRED) + _promotion() + _decision(superseded_by=SUCCESSOR)
     record = validator.parse_lifecycle(text)
     assert record.promotion is not None
     assert record.decision is not None
@@ -197,9 +208,7 @@ def test_retirement_requires_prior_gate_history_and_successor_identity() -> (
     )
 
 
-def test_experimental_state_cannot_smuggle_promotion_or_decision_claims() -> (
-    None
-):
+def test_experimental_state_cannot_smuggle_promotion_or_decision_claims() -> None:
     """Experimental records do not masquerade as already promoted work."""
     _expect_failure(
         _base(validator.EXPERIMENTAL) + _promotion(),
@@ -213,11 +222,7 @@ def test_experimental_state_cannot_smuggle_promotion_or_decision_claims() -> (
 
 def test_superseded_by_is_reserved_for_retired_state() -> None:
     """Promotion and rejection cannot silently encode retirement."""
-    text = (
-        _base(validator.PROMOTED)
-        + _promotion()
-        + _decision(superseded_by="other")
-    )
+    text = _base(validator.PROMOTED) + _promotion() + _decision(superseded_by="other")
     _expect_failure(text, "superseded_by is valid only for retired")
 
 
@@ -277,9 +282,7 @@ def test_lifecycle_manifest_cannot_redirect_to_another_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The lifecycle file itself must not be a symlink to foreign content."""
-    manifest = _fixture_repository(
-        tmp_path, monkeypatch, _base(validator.EXPERIMENTAL)
-    )
+    manifest = _fixture_repository(tmp_path, monkeypatch, _base(validator.EXPERIMENTAL))
     source = tmp_path / "other.toml"
     _ = source.write_text(manifest.read_text())
     manifest.unlink()
@@ -293,9 +296,7 @@ def test_lifecycle_rejects_post_status_symlink_swap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A link switched after lstat cannot substitute equal TOML bytes."""
-    manifest = _fixture_repository(
-        tmp_path, monkeypatch, _base(validator.EXPERIMENTAL)
-    )
+    manifest = _fixture_repository(tmp_path, monkeypatch, _base(validator.EXPERIMENTAL))
     replacement = tmp_path / "replacement.toml"
     _ = replacement.write_text(manifest.read_text())
     original_lstat = Path.lstat
@@ -321,9 +322,7 @@ def test_lifecycle_rejects_oversized_manifest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A manifest above its size ceiling must fail before TOML decoding."""
-    manifest = _fixture_repository(
-        tmp_path, monkeypatch, _base(validator.EXPERIMENTAL)
-    )
+    manifest = _fixture_repository(tmp_path, monkeypatch, _base(validator.EXPERIMENTAL))
     _ = manifest.write_bytes(b"#" * (validator.MAX_LIFECYCLE_BYTES + 1))
     with pytest.raises(validator.AlgorithmLifecycleError, match="size limit"):
         _ = validator.validate_repository_lifecycle(manifest)
@@ -334,9 +333,7 @@ def test_lifecycle_parent_link_is_rejected_during_discovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A linked algorithm directory cannot supply a lifecycle identity."""
-    manifest = _fixture_repository(
-        tmp_path, monkeypatch, _base(validator.EXPERIMENTAL)
-    )
+    manifest = _fixture_repository(tmp_path, monkeypatch, _base(validator.EXPERIMENTAL))
     original = manifest.parent
     outside = tmp_path / "outside-algorithm"
     _ = original.rename(outside)
