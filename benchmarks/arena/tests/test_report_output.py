@@ -377,3 +377,46 @@ def test_caller_owned_stream_failure_is_typed_without_formatting(
     assert error.value.__cause__ is fault
     assert bool(output.records) is (phase == "flush")
     assert not output.flushed
+
+
+class _ForeignMetaclass(type):
+    """Caller-defined type equality must never run during native admission."""
+
+    def __eq__(cls, other: object) -> bool:
+        message = "caller-owned metaclass equality executed"
+        raise AssertionError(message)
+
+
+class _ForeignMetaclassValue(metaclass=_ForeignMetaclass):
+    """An unsupported report value with an overridable runtime type."""
+
+
+class _ForeignMetaclassDict(dict[str, object], metaclass=_ForeignMetaclass):
+    """A dict subclass whose metaclass replaces equality checks."""
+
+
+class _ForeignMetaclassString(str, metaclass=_ForeignMetaclass):
+    """A string subclass whose type equality is a caller-controlled hook."""
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {"data": _ForeignMetaclassValue()},
+        {"data": _ForeignMetaclassDict({"valid": "text"})},
+        {"data": _ForeignMetaclassString("value")},
+    ],
+    ids=["foreign-type", "dict-subclass-type", "string-subclass-type"],
+)
+def test_native_json_admission_never_calls_custom_metaclass_equality(
+    report: dict[str, object],
+) -> None:
+    """Even runtime type comparisons cannot invoke foreign equality hooks."""
+    output = _FakeStream("healthy")
+    with pytest.raises(
+        report_output.ReportOutputError, match="JSON serialization"
+    ) as error:
+        report_output.publish(report, output)
+    assert isinstance(error.value.__cause__, TypeError)
+    assert not output.records
+    assert not output.flushed

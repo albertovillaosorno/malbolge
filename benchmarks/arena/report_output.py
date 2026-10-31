@@ -92,7 +92,9 @@ def _admit_native_json(report: object) -> None:
     seen: set[int] = set()
     while pending:
         value = pending.pop()
-        if type(value) in (dict, list, tuple):
+        kind = type(value)
+        # Type identity cannot dispatch caller-owned metaclass equality.
+        if kind is dict or kind is list or kind is tuple:
             identity = id(value)
             if identity in seen:
                 continue
@@ -105,7 +107,7 @@ def _admit_native_json(report: object) -> None:
                 pending.append(child)
         elif type(value) is list or type(value) is tuple:
             pending.extend(value)
-        elif value is None or type(value) in (str, int, float, bool):
+        elif value is None or kind is str or kind is int or kind is float or kind is bool:
             continue
         else:
             message = "arena report requires native JSON values and containers"
