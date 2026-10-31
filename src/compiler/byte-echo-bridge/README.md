@@ -99,7 +99,7 @@ is implied.
 ### Verified nonzero byte literal rotation
 
 The separate opt-in `encode_rotated_byte_literal` admits exactly one
-`MaterializeU8(value)`, one to nine `ByteOutput`s of that SSA
+`MaterializeU8(value)`, one to ten `ByteOutput`s of that SSA
 identity, and `ReturnVoid`. For one output, it admits only these
 current-profile nonzero bytes: `4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22,
 23, 251, 253`. For exactly two identical outputs, a **different** table
@@ -119,6 +119,9 @@ outputs, 21 distinct witnessed bytes are `40, 41, 42, 55, 56, 57, 64, 65,
 66, 161, 162, 163, 175, 176, 177, 178, 197, 198, 199, 200, 201`.
 For exactly nine outputs, 21 witnessed values are `1, 2, 3, 4, 5, 6,
 7, 9, 10, 11, 18, 19, 20, 21, 22, 23, 142, 143, 144, 251, 252`.
+For exactly ten outputs, 25 witnessed values are `40, 41, 42, 55, 56,
+57, 64, 65, 66, 161, 162, 176, 178, 182, 183, 184, 185, 186, 187,
+191, 192, 193, 196, 200, 201`.
 
 A profile-specific *proposed* no-op prefix precedes `j`, `*`, the actual
 `<` outputs, and `v`. The canonical loader expands the complete graphical
@@ -129,7 +132,7 @@ data word into A, and the
 guest outputs emit the unchanged accumulator. The independent layout checker
 proves source/data separation and a fresh normative VM checks every emitted
 byte, exact halt, and zero input consumption before accepting a source.
-Other literals, zero/ten-or-more outputs, extra effects and foreign profiles
+Other literals, zero/eleven-or-more outputs, extra effects and foreign profiles
 reject.
 This does not implement arbitrary constants or an SSA byte register.
 
@@ -165,12 +168,12 @@ cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_five_output_rotation_witnesses -- --ignored
 ```
 
-Six- through nine-output witnesses independently repeat the same bounded
+Six- through ten-output witnesses independently repeat the same bounded
 `0..26` scan, with their own loader-expanded source. All 26 tested phases
 for each count emit identical nonzero bytes and terminate without input.
 The first successful witness per value yields 19 shortest prefixes for six
-outputs, 18 for seven, 21 for eight and 21 for nine. Reproduce the independent
-optimized scans with:
+outputs, 18 for seven, 21 for eight, 21 for nine and 25 for ten.
+Reproduce the independent optimized scans with:
 
 ```sh
 cargo test --release --locked --test rotated_byte_constant_bridge \
@@ -181,12 +184,14 @@ cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_eight_output_rotation_witnesses -- --ignored
 cargo test --release --locked --test rotated_byte_constant_bridge \
   independently_rederive_nine_output_rotation_witnesses -- --ignored
+cargo test --release --locked --test rotated_byte_constant_bridge \
+  independently_rederive_ten_output_rotation_witnesses -- --ignored
 ```
 
 Default regressions enumerate all 256 byte values separately for four,
-five, six, seven, eight and nine same-SSA outputs. They require
-24, 18, 19, 18, 21 and 21 shortest prefixes respectively, rejecting
-232, 238, 237, 238, 235 and 235 other byte values per count. The
+five, six, seven, eight, nine and ten same-SSA outputs. They require
+24, 18, 19, 18, 21, 21 and 25 shortest prefixes respectively, rejecting
+232, 238, 237, 238, 235, 235 and 231 other values per count. The
 canonical typed adapter, CLI publisher and real guest runner verify
 successful and rejected count-specific cases.
 

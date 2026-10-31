@@ -3748,11 +3748,19 @@ fn canonical_typed_rotated_literal_rejects_unwitnessed_output_counts() -> Result
     )) {
         return Err(String::from("typed ninth output admitted unwitnessed byte"));
     }
-    let tenth = wire(&typed_rotated_literal_module_with_outputs(144, 10)?)?;
-    if adapter::compile_canonical_typed_rotated_byte_literal(&tenth, current_profile())
+    let unsupported_tenth = wire(&typed_rotated_literal_module_with_outputs(144, 10)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&unsupported_tenth, current_profile())
+        != Err(TypedEchoAdapterError::Layout(
+            adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
+        ))
+    {
+        return Err(String::from("typed tenth output admitted unwitnessed byte"));
+    }
+    let eleventh = wire(&typed_rotated_literal_module_with_outputs(42, 11)?)?;
+    if adapter::compile_canonical_typed_rotated_byte_literal(&eleventh, current_profile())
         != Err(TypedEchoAdapterError::UnsupportedTypedIr)
     {
-        return Err(String::from("typed tenth output admitted"));
+        return Err(String::from("typed eleventh output admitted"));
     }
     Ok(())
 }
@@ -3972,6 +3980,15 @@ fn seeded_eight_output_literal_canonical_publisher_and_real_runner() -> Result<(
 fn seeded_nine_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
     let workspace = OwnedFixture::new()?;
     for case in [(144, 9, true, false, true), (1, 9, false, true, true)] {
+        verify_seeded_publisher_case(&workspace, case)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn seeded_ten_output_literal_canonical_publisher_and_real_runner() -> Result<(), String> {
+    let workspace = OwnedFixture::new()?;
+    for case in [(42, 10, true, false, true), (193, 10, false, true, true)] {
         verify_seeded_publisher_case(&workspace, case)?;
     }
     Ok(())

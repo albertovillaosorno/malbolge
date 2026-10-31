@@ -256,6 +256,36 @@ const SHORT_NONUPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
     (21, 25),
 ];
 
+// All 26 ten-output source phases, including a repeated byte witness.
+const SHORT_DECUPLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
+    (42, 0),
+    (176, 1),
+    (161, 2),
+    (40, 3),
+    (176, 4),
+    (162, 5),
+    (41, 6),
+    (178, 7),
+    (187, 8),
+    (66, 9),
+    (192, 10),
+    (185, 11),
+    (64, 12),
+    (191, 13),
+    (186, 14),
+    (65, 15),
+    (196, 16),
+    (184, 17),
+    (57, 18),
+    (201, 19),
+    (182, 20),
+    (55, 21),
+    (200, 22),
+    (183, 23),
+    (56, 24),
+    (193, 25),
+];
+
 const fn pos(byte: u32) -> InputSourcePosition {
     InputSourcePosition {
         byte,
@@ -753,6 +783,43 @@ fn nine_output_seed_table_admits_only_shortest_witnessed_bytes() -> Result<(), S
 }
 
 #[test]
+fn ten_output_seed_table_admits_only_shortest_witnessed_bytes() -> Result<(), String> {
+    check_repeated_output_seed_domain(10, SHORT_DECUPLE_ROTATION_WITNESSES)
+}
+
+#[test]
+fn witnessed_ten_output_literals_preserve_guest_computation() -> Result<(), String> {
+    for (byte, padding) in [(42, 0), (176, 1), (193, 25)] {
+        let layout = encode_rotated_byte_literal(&source(byte, 10)?, current_profile())
+            .map_err(|error| format!("seeded {byte} x10: {error:?}"))?;
+        if layout.source().len() != padding + 13
+            || layout.data_write_positions().iter().filter(|slot| slot.is_some()).count() != 1
+        {
+            return Err(format!("ten-output {byte} geometry drift"));
+        }
+        let mut vm = ProfileMachine::from_source(
+            current_profile(), layout.source(), vec![0, 255, 128],
+        ).map_err(|error| format!("guest {byte} x10: {error:?}"))?;
+        if !matches!(vm.run(layout.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { steps, .. })
+                if steps == layout.executed_code_positions().len())
+            || vm.input_consumed() != 0
+            || vm.output() != vec![byte; 10]
+        {
+            return Err(format!("ten-output guest literal {byte} diverged"));
+        }
+    }
+    for (byte, outputs) in [(144, 10), (42, 9), (42, 11)] {
+        if encode_rotated_byte_literal(&source(byte, outputs)?, current_profile())
+            != Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+        {
+            return Err(format!("unwitnessed literal {byte} x{outputs} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn witnessed_nine_output_literals_preserve_guest_computation() -> Result<(), String> {
     for (byte, padding) in [(144, 0), (22, 1), (1, 23)] {
         let layout = encode_rotated_byte_literal(&source(byte, 9)?, current_profile())
@@ -1130,6 +1197,45 @@ fn independently_rederive_nine_output_rotation_witnesses() -> Result<(), String>
     }
     if witnessed.as_slice() != SHORT_NONUPLE_ROTATION_WITNESSES {
         return Err(format!("nine-output source/VM witness drift: {witnessed:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "bounded ten-output rotation scan: run optimized with --ignored"]
+fn independently_rederive_ten_output_rotation_witnesses() -> Result<(), String> {
+    use bridge::layout::{LinearOpcode, encode_linear_layout};
+    use std::iter::repeat_n;
+
+    let mut witnessed = Vec::new();
+    for padding in 0..26 {
+        let mut operations = vec![LinearOpcode::NoOperation; padding];
+        operations.extend([LinearOpcode::RelocateDataPointer, LinearOpcode::RotateData]);
+        operations.extend(repeat_n(LinearOpcode::OutputByte, 10));
+        operations.push(LinearOpcode::Halt);
+        let Ok(layout) = encode_linear_layout(current_profile(), &operations) else {
+            continue;
+        };
+        let Ok(mut vm) =
+            ProfileMachine::from_source(current_profile(), layout.source(), Vec::new())
+        else {
+            continue;
+        };
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+        {
+            continue;
+        }
+        let Some((&first, rest)) = vm.output().split_first() else {
+            continue;
+        };
+        if first != 0 && rest.len() == 9 && rest.iter().all(|byte| *byte == first) {
+            witnessed.push((first, padding));
+        }
+    }
+    if witnessed.as_slice() != SHORT_DECUPLE_ROTATION_WITNESSES {
+        return Err(format!("ten-output source/VM witness drift: {witnessed:?}"));
     }
     Ok(())
 }
