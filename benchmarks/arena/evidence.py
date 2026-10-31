@@ -83,7 +83,7 @@ def _fail(message: str) -> Never:
 
 
 def _segments(relative: str) -> list[str]:
-    if not isinstance(relative, str) or not relative:
+    if type(relative) is not str or not relative:
         _fail("evidence requires a canonical relative path")
     if relative.startswith(("/", analyze.BACKSLASH)):
         _fail("evidence requires a canonical relative path")

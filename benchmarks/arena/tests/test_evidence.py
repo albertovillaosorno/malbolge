@@ -440,6 +440,67 @@ def test_direct_link_api_rejects_parent_traversal(tmp_path: Path) -> None:
         evidence.validate_links(document, tmp_path)
 
 
+class _ForgedParentSegment(str):  # ruff: ignore[subclass-builtin]
+    """Path traversal component whose equality check lies to the guard."""
+
+    __slots__ = ()
+
+    def __hash__(self) -> int:
+        """Ensure membership checks skip the real dot-dot string.
+
+        Returns:
+            An intentionally incorrect hash for the underlying value.
+
+        """
+        return hash("..") + 1
+
+    def __eq__(self, other: object) -> bool:
+        """Deny equality even when the underlying path is a parent.
+
+        Returns:
+            False, independent of the actual string value.
+
+        """
+        del other
+        return False
+
+
+class _ForgedRelative(str):  # ruff: ignore[subclass-builtin]
+    """Present safe lexical text while returning escaping path components."""
+
+    __slots__ = ()
+
+    def split(
+        self, sep: str | None = None, maxsplit: SupportsIndex = -1
+    ) -> list[str]:
+        """Return a fake traversal segment despite a benign source string.
+
+        Returns:
+            Deliberately inconsistent parts of the purported relative path.
+
+        """
+        del self, sep, maxsplit
+        return [_ForgedParentSegment(".."), "outside.txt"]
+
+
+@pytest.mark.parametrize("read_bytes", [False, True], ids=["path", "bytes"])
+def test_direct_evidence_path_admission_rejects_forged_str_parts(
+    tmp_path: Path,
+    *,
+    read_bytes: bool,
+) -> None:
+    """No direct caller can substitute escaped path parts for lexical text."""
+    admitted_root = tmp_path / "admitted"
+    admitted_root.mkdir()
+    _ = (tmp_path / "outside.txt").write_bytes(b"not-in-root")
+    relative = _ForgedRelative("safe.txt")
+    admit = (
+        evidence.read_bounded_regular if read_bytes else evidence.regular_path
+    )
+    with pytest.raises(evidence.EvidenceError, match="canonical relative"):
+        admit(admitted_root, relative, limit=100)
+
+
 @pytest.mark.parametrize(
     ("parser", "text", "expected"),
     [
