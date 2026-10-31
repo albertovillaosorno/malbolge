@@ -216,6 +216,126 @@ def test_stream_close_faults_preserve_primary_failure_and_attempt_all_closes(
     ) == 3
 
 
+class _HostileCleanupFault(RuntimeError):
+    """A foreign exception's string method must never be called."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign target cleanup exception formatted")
+
+
+class _HostileCleanupArg:
+    """Even native exception arguments may run arbitrary formatters."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign target cleanup argument formatted")
+
+
+def test_target_cleanup_native_oserror_with_hostile_filename_is_safe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even a native OSError can interpolate foreign filename metadata."""
+    cleanup_error = OSError(5, "native file cleanup failure")
+    cleanup_error.filename = _HostileCleanupArg()
+
+    class FaultyStream:
+        closed = False
+
+        def close(self) -> None:
+            raise cleanup_error
+
+    class ChildProbe:
+        stdin = FaultyStream()
+        stdout = None
+        stderr = None
+
+    monkeypatch.setattr(target_process, "_terminate_group", lambda _child: None)
+    with pytest.raises(target_process.TargetProcessError, match="primary") as raised:
+        try:
+            raise target_process.TargetProcessError("primary output rejection")
+        finally:
+            target_process._finish_child(  # ruff: ignore[private-member-access]
+                cast("sp.Popen[bytes]", ChildProbe())
+            )
+    assert any(
+        "native file cleanup failure" in note for note in raised.value.__notes__
+    )
+
+
+@pytest.mark.parametrize(
+    "cleanup_error",
+    [
+        _HostileCleanupFault("foreign stream failure"),
+        RuntimeError(_HostileCleanupArg()),
+    ],
+)
+def test_target_cleanup_failure_never_formats_foreign_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_error: RuntimeError,
+) -> None:
+    """Stream cleanup cannot replace a primary error or forge a clean exit."""
+
+    class FaultyStream:
+        closed = False
+
+        def close(self) -> None:
+            raise cleanup_error
+
+    class ChildProbe:
+        stdin = FaultyStream()
+        stdout = None
+        stderr = None
+
+    monkeypatch.setattr(target_process, "_terminate_group", lambda _child: None)
+    child = cast("sp.Popen[bytes]", ChildProbe())
+    with pytest.raises(target_process.TargetProcessError, match="primary") as raised:
+        try:
+            raise target_process.TargetProcessError("primary output rejection")
+        finally:
+            target_process._finish_child(child)  # ruff: ignore[private-member-access]
+    assert any("cleanup also failed" in note for note in raised.value.__notes__)
+
+    with pytest.raises(target_process.TargetProcessError, match="cleanup") as final:
+        target_process._finish_child(child)  # ruff: ignore[private-member-access]
+    assert final.value.__cause__ is cleanup_error
+
+
+@pytest.mark.parametrize(
+    "cleanup_error",
+    [
+        _HostileCleanupFault("foreign stream failure"),
+        RuntimeError(_HostileCleanupArg()),
+    ],
+)
+def test_input_cleanup_preserves_delivery_fault_with_hostile_close(
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_error: RuntimeError,
+) -> None:
+    """A hostile input close exception cannot replace the write failure."""
+
+    class FaultyStream:
+        def fileno(self) -> int:
+            return 1
+
+        def close(self) -> None:
+            raise cleanup_error
+
+    class ChildProbe:
+        stdin = FaultyStream()
+
+    def fail_write(descriptor: int, data: bytes) -> int:
+        del descriptor, data
+        raise OSError("primary delivery failed")
+
+    monkeypatch.setattr(target_process.os, "set_blocking", lambda *_args: None)
+    monkeypatch.setattr(target_process.os, "write", fail_write)
+    with pytest.raises(target_process.TargetProcessError, match="delivery") as raised:
+        target_process._send_input(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()), b"x"
+        )
+    assert type(raised.value.__cause__) is OSError
+    assert any("input close also failed" in note for note in raised.value.__notes__)
+
+
 def test_secondary_direct_reap_failure_remains_in_primary_diagnostics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -776,6 +896,45 @@ def test_measured_rss_cleanup_preserves_primary_child_failure(
     with pytest.raises(target_process.TargetProcessError, match="primary child") as failure:
         target_process.invoke_limited_measured(_child("pass"))
     assert any("RSS cleanup also failed" in note for note in failure.value.__notes__)
+
+
+@pytest.mark.parametrize(
+    "cleanup_error",
+    [
+        _HostileCleanupFault("foreign RSS cleanup"),
+        RuntimeError(_HostileCleanupArg()),
+    ],
+)
+def test_measured_rss_cleanup_preserves_primary_under_hostile_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_error: RuntimeError,
+) -> None:
+    """Foreign cleanup errors cannot mask a primary limited-child failure."""
+
+    class BrokenCleanupDirectory:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+
+        def __enter__(self) -> str:
+            return "/ignored-test-receipt-directory"
+
+        def __exit__(self, *args: object) -> None:
+            del args
+            raise cleanup_error
+
+    def failed_child(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise target_process.TargetProcessError("primary child capture failure")
+
+    monkeypatch.setattr(
+        target_process.tempfile, "TemporaryDirectory", BrokenCleanupDirectory
+    )
+    monkeypatch.setattr(target_process, "require_child_rss_measurement", lambda: None)
+    monkeypatch.setattr(target_process, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(target_process, "_run", failed_child)
+    with pytest.raises(target_process.TargetProcessError, match="primary child") as raised:
+        target_process.invoke_limited_measured(_child("pass"))
+    assert any("RSS cleanup also failed" in note for note in raised.value.__notes__)
 
 
 @pytest.mark.parametrize(

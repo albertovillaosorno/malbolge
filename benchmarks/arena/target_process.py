@@ -276,6 +276,31 @@ def _collect(
     return bytes(buffers[0]), bytes(buffers[1])
 
 
+def _cleanup_error_detail(error: BaseException) -> str:
+    # Cleanup failures may be provided by foreign stream and process wrappers.
+    # Only read inert message arguments from exact native exception types.
+    native = (
+        OSError,
+        PermissionError,
+        ProcessLookupError,
+        BrokenPipeError,
+        FileNotFoundError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        sp.SubprocessError,
+        TargetProcessError,
+    )
+    if type(error) in native and type(error.args) is tuple:
+        # OSError.__str__ can also interpolate its mutable filename fields.
+        # Extract only an inert native message argument, never the exception.
+        for argument in error.args:
+            if type(argument) is str and len(argument) <= 256:
+                return argument
+    return type(error).__name__
+
+
 def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
     if child.stdin is None:
         _fail("bounded target input requires an owned pipe")
@@ -299,7 +324,10 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
             child.stdin.close()
         except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
             if primary is not None:
-                primary.add_note(f"bounded target input close also failed: {error}")
+                primary.add_note(
+                    "bounded target input close also failed: "
+                + _cleanup_error_detail(error)
+                )
             else:
                 message = "bounded target input pipe close failed"
                 raise TargetProcessError(message) from error
@@ -322,14 +350,27 @@ def _finish_child(child: sp.Popen[bytes]) -> None:
         return
     if primary is not None:
         for error in cleanup_errors:
-            primary.add_note(f"bounded target cleanup also failed: {error}")
-            for detail in getattr(error, "__notes__", ()):
-                primary.add_note(f"bounded target cleanup detail: {detail}")
+            primary.add_note(
+                "bounded target cleanup also failed: "
+                + _cleanup_error_detail(error)
+            )
+            # Only native errors have trustworthy, inert note containers.
+            if type(error) in (OSError, PermissionError, TargetProcessError):
+                notes = getattr(error, "__notes__", ())
+                if type(notes) is list:
+                    for detail in notes:
+                        if type(detail) is str:
+                            primary.add_note(f"bounded target cleanup detail: {detail}")
         return
+    message = "bounded target cleanup failed: " + _cleanup_error_detail(
+        cleanup_errors[0]
+    )
+    failure = TargetProcessError(message)
     for error in cleanup_errors[1:]:
-        cleanup_errors[0].add_note(f"additional cleanup failure: {error}")
-    message = f"bounded target cleanup failed: {cleanup_errors[0]}"
-    raise TargetProcessError(message) from cleanup_errors[0]
+        failure.add_note(
+            f"additional cleanup failure: {_cleanup_error_detail(error)}"
+        )
+    raise failure from cleanup_errors[0]
 
 
 def _run(
@@ -596,7 +637,10 @@ def _measured_limited(
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         if primary is not None and error is not primary:
             # Directory cleanup must not replace the original child failure.
-            primary.add_note(f"bounded target RSS cleanup also failed: {error}")
+            primary.add_note(
+                "bounded target RSS cleanup also failed: "
+                + _cleanup_error_detail(error)
+            )
             raise primary from error
         message = "bounded target RSS directory access failed"
         raise TargetProcessError(message) from error
