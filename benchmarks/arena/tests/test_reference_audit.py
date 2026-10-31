@@ -39,8 +39,9 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+from dataclasses import replace
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -109,6 +110,59 @@ def _file_hashes(directory: Path) -> dict[str, str]:
         for path in directory.rglob("*")
         if path.is_file()
     }
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("replay_oracles", "false"),
+        ("replay_oracles", 0),
+        ("rebuild_binaries", "no"),
+        ("rebuild_binaries", 1),
+        ("require_source_commit_object", None),
+        ("require_source_commit_object", 1),
+        ("require_resource_controls_record", 0),
+        ("require_resource_controls_record", object()),
+    ],
+)
+def test_direct_host_c_audit_rejects_nonboolean_options_before_access(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+) -> None:
+    """Foreign option values must not opt in to native replay or emit claims."""
+    options = replace(reference_audit.AuditOptions(), **{field: invalid})
+
+    def forbidden_prefix(*args: object, **kwargs: object) -> str:
+        _ = (args, kwargs)
+        message = "invalid options reached path and native replay admission"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(reference_audit, "_prefix", forbidden_prefix)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="exact booleans"):
+        reference_audit.audit(
+            ".temp/arena-host-c-study-options/study.json", options=options
+        )
+
+
+@pytest.mark.parametrize("invalid", [None, False, 0, "disabled", object()])
+def test_direct_host_c_audit_rejects_foreign_option_container(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """A non-options object must fail before path or native tool admission."""
+
+    def forbidden_prefix(*args: object, **kwargs: object) -> str:
+        _ = (args, kwargs)
+        message = "foreign options reached audit path admission"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(reference_audit, "_prefix", forbidden_prefix)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="exact booleans"):
+        reference_audit.audit(
+            ".temp/arena-host-c-study-options/study.json",
+            options=cast("reference_audit.AuditOptions", invalid),
+        )
 
 
 def test_audit_reopens_real_study_without_timing_or_file_mutations(

@@ -125,6 +125,20 @@ def _fail(message: str) -> Never:
     raise ReferenceAuditError(message)
 
 
+def _admit_options(options: AuditOptions) -> None:
+    """Require precise opt-ins before any input reads or native child work."""
+    if type(options) is not AuditOptions or any(
+        type(value) is not bool
+        for value in (
+            options.replay_oracles,
+            options.rebuild_binaries,
+            options.require_source_commit_object,
+            options.require_resource_controls_record,
+        )
+    ):
+        _fail("host-C audit options require exact booleans")
+
+
 def _prefix(relative: str) -> str:
     if type(relative) is not str:
         _fail("host-C audit requires a canonical ignored study path")
@@ -600,6 +614,7 @@ def audit(
         ReferenceAuditError: Evidence is absent, malformed, or inconsistent.
 
     """
+    _admit_options(options)
     prefix = _prefix(relative_study)
     try:
         data = _admit_data(relative_study, prefix, options)

@@ -660,6 +660,10 @@ claimed SHA-1 resolves to a local Git **commit** object; default audits retain
 the claim without requiring a complete local Git history. Local object
 existence cannot authenticate the original measurement environment or prove
 that its code actually ran; that distinction is explicit in the report.
+Direct host-C audit calls additionally require an exact `AuditOptions` record
+with Boolean values for all four opt-in gates before reading study paths or
+starting native replay/builds. Truthy strings or integer substitutes cannot
+silently request execution or leak non-Boolean verification claims.
 
 The inspectable output preserves the observed capacity curves/frontiers but
 does not rerun elapsed-time measurements, authenticate the source producers,
