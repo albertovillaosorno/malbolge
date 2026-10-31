@@ -1582,6 +1582,55 @@ def test_evidence_stream_constructor_cleanup_cannot_mask_primary_error(
     ]
 
 
+class _UnformattableCleanupError(ValueError):
+    def __str__(self) -> str:
+        raise AssertionError("cleanup exception formatting is untrusted")
+
+
+class _UnformattableCleanupArgument:
+    def __str__(self) -> str:
+        raise AssertionError("cleanup exception argument formatting is untrusted")
+
+
+@pytest.mark.parametrize(
+    "cleanup_error",
+    [
+        _UnformattableCleanupError("foreign cleanup"),
+        ValueError(_UnformattableCleanupArgument()),
+    ],
+    ids=["foreign-exception-subclass", "native-error-with-foreign-argument"],
+)
+def test_evidence_descriptor_cleanup_never_formats_foreign_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_error: ValueError,
+) -> None:
+    """Hostile cleanup diagnostics must not replace descriptor open failures."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    actual_close = evidence.os.close
+
+    def reject_stream(*args: object, **kwargs: object) -> IO[bytes]:
+        del args, kwargs
+        raise RuntimeError("original evidence stream failure")
+
+    def fail_close(descriptor: int) -> None:
+        actual_close(descriptor)
+        raise cleanup_error
+
+    with monkeypatch.context() as context:
+        context.setattr(evidence.os, "fdopen", reject_stream)
+        context.setattr(evidence.os, "close", fail_close)
+        with pytest.raises(
+            evidence.EvidenceError, match="stream could not open"
+        ) as failure:
+            evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+    primary = failure.value.__cause__
+    assert type(primary) is RuntimeError
+    assert primary.args == ("original evidence stream failure",)
+    assert primary.__notes__ == ["evidence descriptor cleanup also failed"]
+
+
 class _ShortEvidenceReader:
     def __init__(self, stream: IO[bytes], *, premature_eof: bool) -> None:
         self.stream = stream
@@ -1724,6 +1773,39 @@ def test_evidence_stream_close_error_cannot_hide_primary_read_failure(
     assert error.value.__notes__ == [
         "evidence stream cleanup also failed: secondary evidence stream close failure"
     ]
+
+
+@pytest.mark.parametrize(
+    "cleanup_error",
+    [
+        _UnformattableCleanupError("foreign cleanup"),
+        ValueError(_UnformattableCleanupArgument()),
+    ],
+    ids=["foreign-exception-subclass", "native-error-with-foreign-argument"],
+)
+def test_evidence_stream_cleanup_never_formats_foreign_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_error: ValueError,
+) -> None:
+    """Hostile close diagnostics must not replace a typed read failure."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["raw_sample"]
+    original_open = evidence._open_evidence
+
+    @contextmanager
+    def fail_both(path: Path) -> Iterator[_FaultEvidenceReader]:
+        try:
+            with original_open(path) as stream:
+                yield _FaultEvidenceReader(stream, RuntimeError)
+        finally:
+            raise cleanup_error
+
+    monkeypatch.setattr(evidence, "_open_evidence", fail_both)
+    with pytest.raises(evidence.EvidenceError, match="read failed") as failure:
+        evidence.read_bounded_regular(tmp_path, relative, limit=1024)
+    assert type(failure.value.__cause__) is RuntimeError
+    assert failure.value.__notes__ == ["evidence stream cleanup also failed"]
 
 
 class _InvalidChunkEvidenceReader:

@@ -168,6 +168,23 @@ def _file_identity(details: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
+def _cleanup_note(prefix: str, error: Exception) -> str:
+    """Render only native string arguments from exact host error classes.
+
+    A foreign exception may override string conversion, and even an exact
+    native exception may contain an object with a hostile __str__ method.
+
+    Returns:
+        A safe cleanup diagnostic without inspecting foreign objects.
+
+    """
+    if type(error) in (OSError, ValueError, RuntimeError, TypeError, AttributeError):
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return f"{prefix}: {arguments[0]}"
+    return prefix
+
+
 def _open_evidence(path: Path) -> IO[bytes]:
     flags = (
         os.O_RDONLY
@@ -203,7 +220,9 @@ def _open_evidence(path: Path) -> IO[bytes]:
             TypeError,
             AttributeError,
         ) as close_error:
-            error.add_note(f"evidence descriptor cleanup also failed: {close_error}")
+            error.add_note(
+                _cleanup_note("evidence descriptor cleanup also failed", close_error)
+            )
         if isinstance(error, EvidenceError):
             raise error  # ruff: ignore[TRY201]
         message = f"evidence stream could not open: {path}"
@@ -273,7 +292,9 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         if primary is not None and error is not primary:
             # The stream's close error must not replace a rejected read.
-            primary.add_note(f"evidence stream cleanup also failed: {error}")
+            primary.add_note(
+                _cleanup_note("evidence stream cleanup also failed", error)
+            )
             error = primary
         if isinstance(error, EvidenceError):
             # It may be the earlier body exception, not the active close error.
