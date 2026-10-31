@@ -259,6 +259,23 @@ def test_behavior_containers_require_exact_records() -> None:
         )
 
 
+def test_behavior_threshold_rejects_huge_integer_fractions() -> None:
+    """Oversized integer thresholds fail through typed behavior policy."""
+    huge_values: tuple[int, int] = (10**400, 10**5000)
+    for huge in huge_values:
+        for invalid in (huge, -huge):
+            with pytest.raises(BehaviorPolicyError, match="finite fraction"):
+                _ = evaluate_behavior(_profile(), _observations(), invalid)
+
+
+def test_behavior_threshold_keeps_integral_endpoints() -> None:
+    """Both valid native-int endpoints still participate in comparisons."""
+    for admitted in (0, 1):
+        evidence = require_behavior(_profile(), _observations(), admitted)
+        assert evidence.admitted
+        assert math.isclose(evidence.similarity, 1.0)
+
+
 def test_behavior_evaluation_rejects_boolean_threshold_and_foreign_inputs() -> (
     None
 ):

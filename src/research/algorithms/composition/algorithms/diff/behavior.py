@@ -375,16 +375,18 @@ class BehaviorEvidence:
 
 def _validate_fraction(name: str, value: object) -> float:
     if type(value) is int:
-        number = float(value)
+        # Reject out-of-range integers before float conversion; arbitrary-sized
+        # values can otherwise overflow or fail decimal diagnostic formatting.
+        if _ZERO <= value <= _ONE:
+            return float(value)
     elif type(value) is float:
-        number = value
+        if math.isfinite(value) and _ZERO <= value <= _ONE:
+            return value
     else:
         message = f"{name} must be a finite numeric fraction in [0, 1]"
         raise BehaviorPolicyError(message)
-    if not math.isfinite(number) or number < _ZERO or number > _ONE:
-        message = f"{name} must be a finite fraction in [0, 1], got {value}"
-        raise BehaviorPolicyError(message)
-    return number
+    message = f"{name} must be a finite fraction in [0, 1]"
+    raise BehaviorPolicyError(message)
 
 
 def _observation_map(
