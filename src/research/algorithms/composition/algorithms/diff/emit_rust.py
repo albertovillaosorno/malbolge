@@ -346,14 +346,16 @@ def _claim_and_write_temporary(path: Path, source: str) -> None:
             owned = True
             _ = stream.write(source)
             stream.flush()
-    except OSError:
+    except OSError, ValueError, RuntimeError:
         if owned:
             _ = _cleanup_owned_temporary(path)
         raise
 
 
 def _raise_publication_error(
-    error: OSError, *, cleanup_error: str | None = None
+    error: OSError | ValueError | RuntimeError,
+    *,
+    cleanup_error: str | None = None,
 ) -> None:
     message = f"Rust transform publication failed: {error}"
     if cleanup_error is not None:
@@ -377,18 +379,18 @@ def write_rust_transform(
     temporary = _temporary_output_path(prepared_output)
     try:
         _claim_and_write_temporary(temporary, source)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         _raise_publication_error(error)
     try:
         _validate_output_leaf(prepared_output)
         _validate_output_parent_chain(prepared_output.parent)
         _ = temporary.replace(prepared_output)
-    except OSError as error:
-        cleanup_error = _cleanup_owned_temporary(temporary)
-        _raise_publication_error(error, cleanup_error=cleanup_error)
     except RustEmissionError as error:
         cleanup_error = _cleanup_owned_temporary(temporary)
         if cleanup_error is not None:
             message = f"{error}; temporary cleanup failed: {cleanup_error}"
             raise RustEmissionError(message) from error
         raise
+    except (OSError, ValueError, RuntimeError) as error:
+        cleanup_error = _cleanup_owned_temporary(temporary)
+        _raise_publication_error(error, cleanup_error=cleanup_error)

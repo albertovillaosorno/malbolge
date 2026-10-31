@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import os
 from pathlib import Path
@@ -57,6 +58,10 @@ from algorithms.diff.source_binding import SourceBindingPolicy
 import pytest
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from collections.abc import Generator
+    from typing import IO
+
     from algorithms.diff.protected import ProtectedExactPlan
 
 _CONTEXT = b"synthetic-rust-emitter-v1"
@@ -84,6 +89,7 @@ _LEGACY_TEMP = b"legacy-temp"
 _FOREIGN_TEMP = b"foreign-temp"
 _LINK_TARGET = b"link-target"
 _TEMP_COLLISION_ID = "collision-id"
+_EXCLUSIVE_CREATE_MODE = "x"
 _LATE_OUTPUT_RECHECK = 2
 _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
@@ -93,6 +99,27 @@ _SINGLE_CHUNK_NONCE_MARKER = (
 def _expect(condition: object, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+class _BrokenStagedRustWriter:
+    def __init__(
+        self,
+        stream: IO[str],
+        failure_type: type[Exception],
+        written: list[str],
+    ) -> None:
+        self.stream: IO[str] = stream
+        self.failure_type: type[Exception] = failure_type
+        self.written: list[str] = written
+
+    def write(self, source: str) -> int:
+        _ = self.stream.write(source[:5])
+        self.written.append(source[:5])
+        message = "blocked Rust staging write"
+        raise self.failure_type(message)
+
+    def flush(self) -> None:
+        self.stream.flush()
 
 
 def _blocks(label: str) -> bytes:
@@ -468,6 +495,83 @@ def test_writer_cleans_temporary_after_output_recheck_rejects(
     with pytest.raises(RustEmissionError, match="must not be linked"):
         write_rust_transform(protected, _PROFILE, output)
     assert not output.exists()
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
+
+
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
+def test_writer_cleans_owned_temporary_after_replace_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Failed publication cannot leave an owned staging file behind."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    original_replace = Path.replace
+    attempted: list[Path] = []
+
+    def reject_replace(path: Path, target: Path) -> Path:
+        if target == output:
+            attempted.append(path)
+            assert path.exists(), "fixture missed staged Rust source"
+            message = "blocked Rust output publication"
+            raise failure_type(message)
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", reject_replace)
+    with pytest.raises(RustEmissionError, match="publication failed"):
+        write_rust_transform(protected, _PROFILE, output)
+    assert attempted, "fixture did not reach atomic publication"
+    assert not output.exists(), "failed emission published output"
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
+
+
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
+def test_writer_cleans_owned_temporary_after_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Post-claim write failures must remove only the owned temporary."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    template_loader = cast(
+        "Callable[[], str]", vars(emit_rust_module)["_runtime_template_text"]
+    )
+    template = template_loader()
+    monkeypatch.setattr(
+        emit_rust_module, "_runtime_template_text", lambda: template
+    )
+    original_open = Path.open
+    wrote: list[str] = []
+
+    @contextmanager
+    def fail_after_open(
+        path: Path,
+        mode: str = "r",
+        *,
+        encoding: str | None = None,
+        newline: str | None = None,
+    ) -> Generator[IO[str] | _BrokenStagedRustWriter]:
+        with original_open(
+            path, mode, encoding=encoding, newline=newline
+        ) as stream:
+            if mode == _EXCLUSIVE_CREATE_MODE:
+                yield _BrokenStagedRustWriter(
+                    cast("IO[str]", stream), failure_type, wrote
+                )
+            else:
+                yield cast("IO[str]", stream)
+
+    monkeypatch.setattr(Path, "open", fail_after_open)
+    with pytest.raises(RustEmissionError, match="publication failed"):
+        write_rust_transform(protected, _PROFILE, output)
+    assert wrote, "fixture did not write to the owned temporary"
+    assert not output.exists(), "failed emission published output"
     assert not list(tmp_path.glob(".generated.rs.*.tmp"))
 
 
