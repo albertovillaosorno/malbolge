@@ -824,7 +824,11 @@ instruction.
   26 bounded no-op phases, yielding 25 distinct nonzero byte witnesses and
   rejecting the other 231 possible byte values for exactly 22 outputs.
   Typed MCTI/MCTR, capsule CLI and real runner prove repeated outputs for
-  values 64 and 18; twenty-three or more outputs remain excluded.
+  values 64 and 18. A separate twenty-three-output source/VM scan
+  validates 26 bounded phases, admitting 21 distinct nonzero bytes and
+  rejecting the other 235 values for this exact output count. Canonical
+  MCTI/MCTR, capsule CLI and runner prove values 251 and 27, while
+  twenty-four or more outputs remain excluded.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper
