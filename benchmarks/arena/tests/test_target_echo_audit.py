@@ -238,6 +238,168 @@ def test_direct_forward_candidate_rejects_foreign_or_unbounded_inputs(
         )
 
 
+class _UntrustedReplayTuple(tuple):  # ruff: ignore[subclass-builtin]
+    """Foreign parameter tuple can trap unpacking before read admission."""
+
+    def __iter__(self) -> Any:
+        message = "foreign replay tuple iterator executed"
+        raise AssertionError(message)
+
+
+class _UntrustedReplayList(list[bytes]):
+    """Reject caller-owned mutable witness containers before iterating."""
+
+    def __iter__(self) -> Any:
+        message = "foreign replay list iterator executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    ("source", "runner", "case", "settings"),
+    [
+        (None, audit._ROOT / "runner", (1, audit.WALK), (104, False, False, None)),
+        (
+            Path("relative.malbolge"),
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (104, False, False, None),
+        ),
+        (
+            Path("/tmp/outside.malbolge"),
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (104, False, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            object(),
+            (1, audit.WALK),
+            (104, False, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            Path("relative-runner"),
+            (1, audit.WALK),
+            (104, False, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            _UntrustedReplayTuple((1, audit.WALK)),
+            (104, False, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1,),
+            (104, False, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (True, audit.WALK),
+            (104, False, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (10**16, audit.WALK),
+            (104, False, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, _UntrustedAlgorithm(audit.WALK)),
+            (104, False, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            _UntrustedReplayTuple((104, False, False, None)),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (104, False, False),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (104, 1, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (104, False, "false", None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (True, False, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (103, False, False, None),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (104, False, False, []),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (104, False, True, []),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (104, True, True, _UntrustedReplayList([])),
+        ),
+        (
+            audit._ROOT / "test.malbolge",
+            audit._ROOT / "runner",
+            (1, audit.WALK),
+            (104, True, True, [object()]),
+        ),
+    ],
+)
+def test_direct_forward_replay_rejects_untrusted_shape_before_io(
+    monkeypatch: pytest.MonkeyPatch,
+    source: object,
+    runner: object,
+    case: object,
+    settings: object,
+) -> None:
+    """Direct second-VM replay cannot execute caller hooks or read first."""
+
+    def forbidden_read(*args: object, **kwargs: object) -> bytes:
+        _ = (args, kwargs)
+        message = "invalid replay options reached retained source reader"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(audit.evidence, "read_bounded_regular", forbidden_read)
+    with pytest.raises(audit.TargetEchoAuditError, match="target replay"):
+        audit.check_forward_vm_replay(
+            cast("Path", source),
+            cast("Path", runner),
+            case=cast("tuple[int, str]", case),
+            replay_options=cast(
+                "tuple[int | None, bool, bool, list[bytes] | None]", settings
+            ),
+        )
+
+
 @pytest.mark.parametrize(
     ("payload", "source_error"),
     [

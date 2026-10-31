@@ -1001,23 +1001,60 @@ def check_forward_vm_replay(
     Returns:
         Observed verifier VM RSS bytes only when explicitly measured.
 
+    Raises:
+        TargetEchoAuditError: The path, geometry, or replay policy is invalid.
+
     """
+    native_path = type(Path())
+    if (
+        type(source) is not native_path
+        or not source.is_absolute()
+        or not source.is_relative_to(_ROOT)
+        or type(runner) is not native_path
+        or not runner.is_absolute()
+    ):
+        _fail("target replay requires native absolute source and runner paths")
+    if type(case) is not tuple or len(case) != 2:
+        _fail("target replay requires an exact bounded case pair")
     pairs, algorithm = case
-    steps, limit_child_resources, measure_rss = replay_options[:3]
+    if (
+        type(pairs) is not int
+        or not 1 <= pairs <= producer.MAX_PAIRS
+        or type(algorithm) is not str
+        or algorithm not in FORWARD_ALGORITHMS
+    ):
+        _fail("target replay requires a canonical bounded case")
+    if type(replay_options) is not tuple or len(replay_options) != 4:
+        _fail("target replay requires an exact four-field replay policy")
+    steps, limit_child_resources, measure_rss, raw_rss = replay_options
+    expected_steps = 2 * pairs + (102 if algorithm == WALK else 4)
+    if type(steps) is not int or steps != expected_steps:
+        _fail("target replay requested inconsistent guest instruction count")
+    if (
+        type(limit_child_resources) is not bool
+        or type(measure_rss) is not bool
+        or (measure_rss and not limit_child_resources)
+    ):
+        _fail("target replay requires consistent exact resource booleans")
+    if raw_rss is not None and (
+        not measure_rss
+        or type(raw_rss) is not list
+        or len(raw_rss)
+        > producer.MAX_LEVELS * producer.MAX_TRIALS * producer.RSS_MEASURED_STAGES
+        or any(type(entry) is not bytes for entry in raw_rss)
+    ):
+        _fail("target replay requires a bounded native raw RSS witness list")
     relative = source.relative_to(_ROOT).as_posix()
     original = evidence.read_bounded_regular(
         _ROOT, relative, limit=producer.MAX_TARGET_BYTES
     )
     check_forward_candidate_source(original, pairs=pairs, algorithm=algorithm)
-    expected_steps = 2 * pairs + (102 if algorithm == WALK else 4)
-    if type(steps) is not int or steps != expected_steps:
-        _fail("target replay requested inconsistent guest instruction count")
     payload = _pattern_bytes(pairs)
     peak = _replay_forward_result(
         (runner, source),
         payload,
         steps=steps,
-        options=(limit_child_resources, measure_rss, replay_options[3]),
+        options=(limit_child_resources, measure_rss, raw_rss),
     )
     _assert_forward_source_stable(source, original)
     return peak
