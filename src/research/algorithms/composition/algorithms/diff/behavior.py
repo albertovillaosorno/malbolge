@@ -354,6 +354,7 @@ def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
         message = "behavior correction routes must be disjoint"
         raise BehaviorPolicyError(message)
     _ = _require_string_tuple(evidence.reasons, "behavior evidence reasons")
+    _validate_behavior_evidence_binding(evidence)
 
 
 @dataclass(frozen=True, slots=True)
@@ -366,6 +367,9 @@ class BehaviorEvidence:
     corrections_to_apply: tuple[str, ...]
     corrections_to_skip: tuple[str, ...]
     reasons: tuple[str, ...]
+    profile: BehaviorProfile
+    observations: BehaviorObservations
+    minimum_similarity: float
 
     def __post_init__(self) -> None:
         """Require internally coherent aggregated behavior evidence."""
@@ -489,6 +493,57 @@ def _bug_routing(
     return tuple(apply), tuple(skip), tuple(reasons)
 
 
+def _behavior_decision(
+    profile: BehaviorProfile,
+    observations: BehaviorObservations,
+    minimum_similarity: float,
+) -> tuple[int, tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    matched, identity_reasons = _identity_evidence(profile, observations)
+    reasons = list(identity_reasons)
+    if matched / len(profile.identity) < minimum_similarity:
+        reasons.append("insufficient behavior identity similarity")
+    reasons.extend(_compatibility_reasons(profile, observations))
+    apply, skip, bug_reasons = _bug_routing(profile, observations)
+    reasons.extend(bug_reasons)
+    return matched, apply, skip, tuple(reasons)
+
+
+def _require_behavior_evidence_sources(evidence: BehaviorEvidence) -> None:
+    if type(evidence.profile) is not BehaviorProfile:
+        message = "behavior evidence requires exact BehaviorProfile"
+        raise BehaviorPolicyError(message)
+    if type(evidence.observations) is not BehaviorObservations:
+        message = "behavior evidence requires exact BehaviorObservations"
+        raise BehaviorPolicyError(message)
+
+
+def _validate_behavior_evidence_binding(evidence: BehaviorEvidence) -> None:
+    _require_behavior_evidence_sources(evidence)
+    minimum = _validate_fraction(
+        "behavior evidence minimum_similarity", evidence.minimum_similarity
+    )
+    matched, apply, skip, reasons = _behavior_decision(
+        evidence.profile, evidence.observations, minimum
+    )
+    if (
+        matched != evidence.matched_identity_probes
+        or len(evidence.profile.identity) != evidence.total_identity_probes
+    ):
+        message = "behavior evidence probe counts do not match observations"
+        raise BehaviorPolicyError(message)
+    if (apply, skip) != (
+        evidence.corrections_to_apply,
+        evidence.corrections_to_skip,
+    ):
+        message = (
+            "behavior evidence correction routes do not match observations"
+        )
+        raise BehaviorPolicyError(message)
+    if reasons != evidence.reasons:
+        message = "behavior evidence reasons do not match observations"
+        raise BehaviorPolicyError(message)
+
+
 def evaluate_behavior(
     profile: BehaviorProfile,
     observations: BehaviorObservations,
@@ -519,22 +574,20 @@ def evaluate_behavior(
     validated_minimum = _validate_fraction(
         "minimum_similarity", minimum_similarity
     )
-    matched, identity_reasons = _identity_evidence(profile, observations)
+    matched, apply, skip, reasons = _behavior_decision(
+        profile, observations, validated_minimum
+    )
     total = len(profile.identity)
-    similarity = matched / total
-    reasons = list(identity_reasons)
-    if similarity < validated_minimum:
-        reasons.append("insufficient behavior identity similarity")
-    reasons.extend(_compatibility_reasons(profile, observations))
-    apply, skip, bug_reasons = _bug_routing(profile, observations)
-    reasons.extend(bug_reasons)
     return BehaviorEvidence(
-        similarity=similarity,
+        similarity=matched / total,
         matched_identity_probes=matched,
         total_identity_probes=total,
         corrections_to_apply=apply,
         corrections_to_skip=skip,
-        reasons=tuple(reasons),
+        reasons=reasons,
+        profile=profile,
+        observations=observations,
+        minimum_similarity=validated_minimum,
     )
 
 

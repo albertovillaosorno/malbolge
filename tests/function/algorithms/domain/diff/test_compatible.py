@@ -45,7 +45,16 @@ from algorithms.diff import compatible as compatible_module
 from algorithms.diff.admission import AdmissionError
 from algorithms.diff.admission import AdmissionPolicy
 from algorithms.diff.admission import identity_tree
-from algorithms.diff.behavior import BehaviorEvidence
+from algorithms.diff.behavior import BehaviorObservations
+from algorithms.diff.behavior import BehaviorProfile
+from algorithms.diff.behavior import BugObservation
+from algorithms.diff.behavior import BugProbe
+from algorithms.diff.behavior import BugState
+from algorithms.diff.behavior import CompatibilityObservation
+from algorithms.diff.behavior import CompatibilityProbe
+from algorithms.diff.behavior import IdentityObservation
+from algorithms.diff.behavior import IdentityProbe
+from algorithms.diff.behavior import evaluate_behavior
 from algorithms.diff.compatible import CompatibleBuildRequest
 from algorithms.diff.compatible import CompatibleCorrectionBinding
 from algorithms.diff.compatible import CompatibleFileKind
@@ -65,6 +74,7 @@ import pytest
 
 if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityTree
+    from algorithms.diff.behavior import BehaviorEvidence
     from algorithms.diff.compatible import CompatibleAuthoringPlan
     from algorithms.diff.compatible import Mapper
     from algorithms.diff.compatible import Postcondition
@@ -135,14 +145,36 @@ def _behavior(
     apply: tuple[str, ...] = (),
     skip: tuple[str, ...] = (),
 ) -> BehaviorEvidence:
-    return BehaviorEvidence(
-        similarity=1.0 if admitted else 0.0,
-        matched_identity_probes=1 if admitted else 0,
-        total_identity_probes=1,
-        corrections_to_apply=apply,
-        corrections_to_skip=skip,
-        reasons=() if admitted else ("synthetic behavior rejection",),
+    corrections = tuple(sorted((*apply, *skip)))
+    bugs = tuple(
+        BugProbe(probe_id=f"bug-{correction}", correction_id=correction)
+        for correction in corrections
     )
+    profile = BehaviorProfile(
+        identity=(IdentityProbe("identity", b"expected"),),
+        compatibility=(CompatibilityProbe("compatible"),),
+        bugs=bugs,
+    )
+    observations = BehaviorObservations(
+        identity=(
+            IdentityObservation(
+                "identity", b"expected" if admitted else b"wrong"
+            ),
+        ),
+        compatibility=(CompatibilityObservation("compatible", admitted),),
+        bugs=tuple(
+            BugObservation(
+                probe_id=bug.probe_id,
+                state=(
+                    BugState.PRESENT
+                    if bug.correction_id in apply
+                    else BugState.FIXED
+                ),
+            )
+            for bug in bugs
+        ),
+    )
+    return evaluate_behavior(profile, observations, minimum_similarity=0.80)
 
 
 def _roots(tmp_path: Path) -> tuple[Path, Path]:

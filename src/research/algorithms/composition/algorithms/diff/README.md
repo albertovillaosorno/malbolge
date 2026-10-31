@@ -152,6 +152,11 @@ still establish its intended admission policy and source provenance.
 ## Implemented Behavior Semantics
 
 `behavior.py` models deterministic behavior profiles and candidate observations.
+`BehaviorEvidence` retains its profile, observations, and similarity threshold so
+in-memory direct construction revalidates the canonical rejection reasons,
+identity probe counts, and apply/skip routing; passing evidence cannot be forged
+by rewriting those summary fields alone. These records do not authenticate
+external probe execution or the source of supplied observations.
 Identity probes must all execute; successful identity observations contribute
 equally to the configured behavior-similarity threshold. Compatibility probes
 are

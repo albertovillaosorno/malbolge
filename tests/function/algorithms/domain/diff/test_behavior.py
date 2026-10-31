@@ -32,6 +32,7 @@
 
 """Synthetic tests for generic behavior-probe admission semantics."""
 
+from dataclasses import replace
 import math
 from typing import cast
 
@@ -100,11 +101,17 @@ def _observations(
 def test_behavior_evidence_rejects_incoherent_direct_construction() -> None:
     """Aggregated evidence cannot forge impossible local invariants."""
     with pytest.raises(BehaviorPolicyError, match=r"similarity.*probe counts"):
-        _ = BehaviorEvidence(0.5, 1, 1, (), (), ())
+        _ = BehaviorEvidence(
+            0.5, 1, 1, (), (), (), _profile(), _observations(), 0.80
+        )
     with pytest.raises(BehaviorPolicyError, match="cannot exceed total"):
-        _ = BehaviorEvidence(1.0, 2, 1, (), (), ())
+        _ = BehaviorEvidence(
+            1.0, 2, 1, (), (), (), _profile(), _observations(), 0.80
+        )
     with pytest.raises(BehaviorPolicyError, match="disjoint"):
-        _ = BehaviorEvidence(1.0, 1, 1, ("fix",), ("fix",), ())
+        _ = BehaviorEvidence(
+            1.0, 1, 1, ("fix",), ("fix",), (), _profile(), _observations(), 0.80
+        )
     with pytest.raises(BehaviorPolicyError, match="immutable tuple"):
         _ = BehaviorEvidence(
             1.0,
@@ -113,6 +120,90 @@ def test_behavior_evidence_rejects_incoherent_direct_construction() -> None:
             cast("tuple[str, ...]", cast("object", ["fix"])),
             (),
             (),
+            _profile(),
+            _observations(),
+            _MINIMUM_BEHAVIOR_SIMILARITY,
+        )
+
+
+def test_direct_behavior_evidence_cannot_erase_compatibility_failure() -> None:
+    """Reconstructing evidence cannot turn failed preconditions into success."""
+    rejected = evaluate_behavior(
+        _profile(),
+        _observations(compatible=False),
+        _MINIMUM_BEHAVIOR_SIMILARITY,
+    )
+    assert not rejected.admitted
+    with pytest.raises(BehaviorPolicyError, match="behavior evidence reasons"):
+        _ = replace(rejected, reasons=())
+
+
+def test_direct_behavior_evidence_cannot_change_bug_route() -> None:
+    """Correction application must reflect the original bug probe result."""
+    fixed = evaluate_behavior(
+        _profile(),
+        _observations(bug_state=BugState.FIXED),
+        _MINIMUM_BEHAVIOR_SIMILARITY,
+    )
+    assert fixed.admitted
+    with pytest.raises(BehaviorPolicyError, match=r"behavior evidence.*route"):
+        _ = replace(
+            fixed,
+            corrections_to_apply=("fix-bug",),
+            corrections_to_skip=(),
+        )
+
+
+def test_direct_behavior_evidence_cannot_lower_threshold() -> None:
+    """Evidence must retain the threshold that caused an admission failure."""
+    rejected = evaluate_behavior(
+        _profile(), _observations(identity_matches=4), 1.0
+    )
+    with pytest.raises(BehaviorPolicyError, match="behavior evidence reasons"):
+        _ = replace(rejected, reasons=())
+
+
+def test_direct_behavior_evidence_cannot_hide_unknown_bug() -> None:
+    """Unknown historical defects may not be admitted via edited evidence."""
+    rejected = evaluate_behavior(
+        _profile(),
+        _observations(bug_state=BugState.UNKNOWN),
+        _MINIMUM_BEHAVIOR_SIMILARITY,
+    )
+    with pytest.raises(BehaviorPolicyError, match="behavior evidence reasons"):
+        _ = replace(rejected, reasons=())
+
+
+def test_direct_behavior_evidence_rejects_foreign_inputs() -> None:
+    """Evidence rejects foreign profiles, observations, and thresholds."""
+    evidence = evaluate_behavior(
+        _profile(), _observations(), _MINIMUM_BEHAVIOR_SIMILARITY
+    )
+    with pytest.raises(BehaviorPolicyError, match="exact BehaviorProfile"):
+        _ = replace(evidence, profile=cast("BehaviorProfile", object()))
+    with pytest.raises(BehaviorPolicyError, match="exact BehaviorObservations"):
+        _ = replace(
+            evidence, observations=cast("BehaviorObservations", object())
+        )
+    invalid_threshold: object = True
+    with pytest.raises(BehaviorPolicyError, match="minimum_similarity"):
+        _ = replace(
+            evidence, minimum_similarity=cast("float", invalid_threshold)
+        )
+
+
+def test_direct_behavior_evidence_rejects_observation_count_forgery() -> None:
+    """A changed summary cannot invent successful identity executions."""
+    rejected = evaluate_behavior(
+        _profile(),
+        _observations(identity_matches=4),
+        _MINIMUM_BEHAVIOR_SIMILARITY,
+    )
+    with pytest.raises(BehaviorPolicyError, match="probe counts"):
+        _ = replace(
+            rejected,
+            similarity=1.0,
+            matched_identity_probes=5,
         )
 
 
