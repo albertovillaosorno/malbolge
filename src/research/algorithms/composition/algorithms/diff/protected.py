@@ -280,6 +280,18 @@ def _require_unique_instruction_outputs(
         raise ProtectedPlanError(message)
 
 
+def _require_instructions_match_target(
+    instructions: tuple[ProtectedInstruction, ...], target: TreeSnapshot
+) -> None:
+    authored_outputs = tuple(
+        (item.output_path, item.expected_sha256) for item in instructions
+    )
+    target_outputs = tuple((item.path, item.sha256) for item in target.files)
+    if authored_outputs != target_outputs:
+        message = "protected instructions must match the target snapshot"
+        raise ProtectedPlanError(message)
+
+
 @dataclass(frozen=True, slots=True)
 class ProtectedMetadata:
     """Authenticated static metadata for one protected exact plan."""
@@ -314,6 +326,7 @@ class ProtectedMetadata:
             )
             raise ProtectedPlanError(message)
         _require_unique_instruction_outputs(self.instructions)
+        _require_instructions_match_target(self.instructions, self.target)
         if type(self.passthrough_roots) is not tuple:
             message = "protected passthrough roots must use an immutable tuple"
             raise ProtectedPlanError(message)

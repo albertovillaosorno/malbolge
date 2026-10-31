@@ -72,6 +72,10 @@ if TYPE_CHECKING:
 _CONTEXT = b"synthetic-protected-exact-v1"
 _BLOCK_COUNT = 48
 _PASSTHROUGH_RUNTIME_DATA = b"runtime-data"
+_MISSING = "missing"
+_REORDERED = "reordered"
+_WRONG_DIGEST = "wrong-digest"
+_EXTRA = "extra"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -420,6 +424,37 @@ def test_protected_metadata_rejects_duplicate_output_instructions(
         _ = replace(protected, instructions=duplicate)
 
 
+@pytest.mark.parametrize(
+    "mutation", [_MISSING, _REORDERED, _WRONG_DIGEST, _EXTRA]
+)
+def test_protected_metadata_rejects_target_instruction_mismatch(
+    tmp_path: Path, mutation: str
+) -> None:
+    """A protected plan must keep a one-to-one ordered target file mapping."""
+    _, _, _, _, protected = _protected(tmp_path)
+    instructions = list(protected.instructions)
+    if mutation == _MISSING:
+        _ = instructions.pop()
+    elif mutation == _REORDERED:
+        instructions[0], instructions[1] = instructions[1], instructions[0]
+    elif mutation == _WRONG_DIGEST:
+        instructions[0] = replace(instructions[0], expected_sha256="0" * 64)
+    else:
+        instructions.append(
+            replace(instructions[0], output_path="extra-target.bin")
+        )
+    mismatched = tuple(instructions)
+
+    with pytest.raises(ProtectedPlanError, match="match the target snapshot"):
+        _ = ProtectedMetadata(
+            source=protected.source,
+            target=protected.target,
+            instructions=mismatched,
+        )
+    with pytest.raises(ProtectedPlanError, match="match the target snapshot"):
+        _ = replace(protected, instructions=mismatched)
+
+
 def test_protected_metadata_requires_exact_runtime_records(
     tmp_path: Path,
 ) -> None:
@@ -572,7 +607,7 @@ def test_metadata_tampering_is_bound_as_aead_aad(tmp_path: Path) -> None:
     """Reject changed protected instruction metadata before materialization."""
     source, _, source_files, _, protected = _protected(tmp_path)
     first = protected.instructions[0]
-    changed = replace(first, expected_sha256="0" * 64)
+    changed = replace(first, source_path="move-from.bin")
     tampered = replace(
         protected,
         instructions=(changed, *protected.instructions[1:]),
