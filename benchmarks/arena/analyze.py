@@ -828,14 +828,41 @@ def analyze(
 
 
 def annotate_success_intervals(report: dict[str, Any]) -> None:
-    """Add a separately requested confidence view without changing ranking."""
-    for point in report["capacity_curve"]:
-        point["verification_success_probability_interval_95"] = (
-            success_intervals.success_interval_95(
-                point["verified"],
-                point["attempts"],
-            )
-        )
+    """Add optional confidence bounds only after all points pass admission.
+
+    Direct callers must provide native report containers and consistent count
+    pairs. Invalid late points cannot leave an earlier point annotated, and
+    caller-defined container methods must never execute during annotation.
+
+    Raises:
+        ArenaError: The report has invalid shapes or verification counts.
+
+    """
+    if type(report) is not dict or any(type(key) is not str for key in report):
+        _fail("success interval annotation requires a native report mapping")
+    points = report.get("capacity_curve")
+    if type(points) is not list or not points:
+        _fail("success interval annotation requires a nonempty native capacity list")
+    counts: list[tuple[int, int]] = []
+    for point in points:
+        if type(point) is not dict or any(type(key) is not str for key in point):
+            _fail("success interval annotation requires native capacity points")
+        verified = point.get("verified")
+        attempts = point.get("attempts")
+        if (
+            type(verified) is not int
+            or type(attempts) is not int
+            or attempts < 1
+            or not 0 <= verified <= attempts
+        ):
+            _fail("success interval annotation requires consistent integer counts")
+        counts.append((verified, attempts))
+    intervals = [
+        success_intervals.success_interval_95(verified, attempts)
+        for verified, attempts in counts
+    ]
+    for point, interval in zip(points, intervals, strict=True):
+        point["verification_success_probability_interval_95"] = interval
     report["verification_success_interval_policy"] = {
         "method": "conservative-grid-Clopper-Pearson-exact-binomial",
         "requested_confidence": [19, 20],

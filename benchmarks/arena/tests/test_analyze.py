@@ -1316,6 +1316,73 @@ def _success_report(document: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
+@pytest.mark.parametrize(
+    "kind",
+    ["root-map", "capacity-list", "point-map", "point-key"],
+)
+def test_success_annotation_rejects_foreign_shapes_before_hooks(kind: str) -> None:
+    """A direct caller cannot inject container hooks into inference output."""
+    report = _run(_document())
+    point = report["capacity_curve"][0]
+    if kind == "root-map":
+        report = _HostileMap(report)
+    elif kind == "capacity-list":
+        report["capacity_curve"] = _HostileList(report["capacity_curve"])
+    elif kind == "point-map":
+        report["capacity_curve"][1] = _HostileMap(report["capacity_curve"][1])
+    else:
+        target = report["capacity_curve"][1]
+        target[_HostileKey("foreign")] = None
+    _HostileKey.armed = True
+    try:
+        with pytest.raises(analyze.ArenaError, match="success interval"):
+            analyze.annotate_success_intervals(report)
+    finally:
+        _HostileKey.armed = False
+    assert SUCCESS_INTERVAL_KEY not in point
+    assert SUCCESS_INTERVAL_POLICY_KEY not in report
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("verified", True),
+        ("verified", "1"),
+        ("verified", -1),
+        ("verified", 3),
+        ("attempts", False),
+        ("attempts", "2"),
+        ("attempts", 0),
+        ("attempts", -1),
+        ("attempts", 2.0),
+    ],
+)
+def test_success_annotation_rejects_invalid_counts_atomically(
+    field: str,
+    invalid: object,
+) -> None:
+    """A late invalid point cannot leave a partially annotated report."""
+    report = _run(_document())
+    first, second = report["capacity_curve"][:2]
+    second[field] = invalid
+    with pytest.raises(analyze.ArenaError, match="success interval"):
+        analyze.annotate_success_intervals(report)
+    assert SUCCESS_INTERVAL_KEY not in first
+    assert SUCCESS_INTERVAL_KEY not in second
+    assert SUCCESS_INTERVAL_POLICY_KEY not in report
+
+
+def test_success_annotation_rejects_missing_counts_before_mutation() -> None:
+    """Missing success counts fail through the typed analyzer boundary."""
+    report = _run(_document())
+    first, second = report["capacity_curve"][:2]
+    del second["verified"]
+    with pytest.raises(analyze.ArenaError, match="success interval"):
+        analyze.annotate_success_intervals(report)
+    assert SUCCESS_INTERVAL_KEY not in first
+    assert SUCCESS_INTERVAL_POLICY_KEY not in report
+
+
 def test_success_interval_covers_all_attempts() -> None:
     """A reported success probability includes failed attempts."""
     document = _repeated_success_study(10)
