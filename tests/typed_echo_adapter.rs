@@ -98,10 +98,6 @@ impl OwnedFixture {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "owned fixture directory cleanup"
-)]
 impl Drop for OwnedFixture {
     fn drop(&mut self) {
         drop(fs::remove_dir_all(&self.root));

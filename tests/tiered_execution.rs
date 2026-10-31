@@ -121535,16 +121535,21 @@ fn cached_retry_file_blob_store_does_not_follow_symlink_on_load()
     }
     fs::remove_file(&fixture.destination)
         .map_err(|error| format!("remove link fixture: {error}"))?;
+    #[expect(
+        clippy::create_dir,
+        reason = "test requires failure if this fixture path already exists"
+    )]
     fs::create_dir(&fixture.destination)
         .map_err(|error| format!("create directory source: {error}"))?;
-    let restored = blob_persistence::restore_blob(&mut store, maximum_bytes);
+    let directory_restore =
+        blob_persistence::restore_blob(&mut store, maximum_bytes);
     if !matches!(
-        restored,
+        directory_restore,
         Err(BlobPersistenceError::Store(
             NativeContinuationFileBlobStoreError::NonRegularSource
         ))
     ) {
-        return Err(format!("blob restore accepted directory: {restored:?}"));
+        return Err(format!("blob restore accepted directory: {directory_restore:?}"));
     }
     remove_file_blob_store_fixture(&fixture.directory)
 }

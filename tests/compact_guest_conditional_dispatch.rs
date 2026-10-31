@@ -81,10 +81,6 @@ impl CapsuleFixture {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "owned short-lived test fixture cleanup"
-)]
 impl Drop for CapsuleFixture {
     fn drop(&mut self) {
         drop(fs::remove_dir_all(&self.root));

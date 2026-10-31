@@ -59,7 +59,6 @@ impl Fixture {
     }
 }
 
-#[expect(clippy::missing_trait_methods, reason = "Fixture owns cleanup")]
 impl Drop for Fixture {
     fn drop(&mut self) {
         drop(fs::remove_dir_all(&self.0));
@@ -309,10 +308,6 @@ fn opened_member_parent_alias_replacement_with_same_inode_is_rejected() -> Resul
 
 #[cfg(target_os = "linux")]
 #[test]
-#[expect(
-    clippy::panic_in_result_fn,
-    reason = "stable parent aliases remain valid"
-)]
 fn stable_parent_alias_keeps_matching_opened_dentry() -> Result<(), String> {
     let fixture = Fixture::new()?;
     let original = fixture.0.join("actual");
