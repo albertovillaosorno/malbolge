@@ -2376,7 +2376,7 @@ def _cleanup_mutable_temporary(
         if not _owned_temporary_still_named(temporary, identity):
             return
         temporary.unlink(missing_ok=True)
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         if primary_error is not None:
             BaseException.add_note(
                 primary_error,
@@ -2405,7 +2405,7 @@ def _temporary_descriptor_identity(descriptor: int) -> tuple[int, int]:
     _ = _admit_native_descriptor(descriptor, "progress temporary")
     try:
         opened = _admit_native_stat(os.fstat(descriptor), "progress temporary")
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         _close_unadmitted_temporary(descriptor, error)
         _fail_with_source(
             f"progress temporary descriptor cannot be inspected: {_host_error_detail(error)}",
@@ -3206,7 +3206,7 @@ def _validate_existing_pointer(
         _ = destination.stat(follow_symlinks=False)
     except ProgressSidecarError:
         raise
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         if type(error) is FileNotFoundError:
             return
         _fail_with_source(

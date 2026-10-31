@@ -254,6 +254,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and sidecar writer faults after a generation commit; each original ordinary
   dependency exception remains the committed-error cause, and retained-stage
   retry recovery stays admissible without publishing an unverified pointer,
+  fourteen red-first pointer/immutable `IndexError`/`OverflowError` staging
+  cases close an unadmitted fresh temporary descriptor, keep secondary close
+  and mutable-unlink errors behind the original failure, and type pointer
+  preflight rejection without starting any generation publication; unknown-
+  inode stage pathnames remain untouched to protect foreign replacements,
   writing with raw-descriptor ownership cleanup on stream-open failure and
   primary-error preservation through descriptor close, no mutable
   temp unlink after replacement, and primary-error preservation when mutable

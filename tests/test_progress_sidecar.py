@@ -14683,3 +14683,160 @@ def test_unexpected_immutable_postlink_probe_keeps_published_member(
     assert captured.value.__cause__ is fault
     assert destination.read_bytes() == checkpoint
     assert not Path(sidecar.progress_path).exists()
+
+
+@pytest.mark.parametrize("publication", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+@pytest.mark.parametrize("close_fault", [False, True])
+def test_unexpected_fresh_temporary_descriptor_fault_closes_raw_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publication: str,
+    fault_type: type[Exception],
+    close_fault: bool,
+) -> None:
+    """An untrusted mkstemp fstat fault cannot leak a newly owned raw fd."""
+    checkpoint = b"staging-not-published"
+    sidecar = _sidecar(tmp_path)
+    if publication == "checkpoint":
+        sidecar = _checkpointed(sidecar, checkpoint=checkpoint, partial=None)
+    original_mkstemp = cast("Callable[..., tuple[int, str]]", tempfile.mkstemp)
+    original_fstat = os.fstat
+    original_close = os.close
+    staged_descriptors: list[int] = []
+    staged_names: list[Path] = []
+    closed: list[int] = []
+    source = fault_type("fresh temporary descriptor metadata fault")
+    secondary = OverflowError("secondary raw descriptor cleanup fault")
+
+    def tracked_mkstemp(**kwargs: object) -> tuple[int, str]:
+        descriptor, name = original_mkstemp(**kwargs)
+        staged_descriptors.append(descriptor)
+        staged_names.append(Path(name))
+        return descriptor, name
+
+    def failing_fstat(descriptor: int) -> os.stat_result:
+        if descriptor in staged_descriptors:
+            raise source
+        return original_fstat(descriptor)
+
+    def tracked_close(descriptor: int) -> None:
+        result = original_close(descriptor)
+        if descriptor in staged_descriptors:
+            closed.append(descriptor)
+            if close_fault:
+                raise secondary
+        return result
+
+    with monkeypatch.context() as context:
+        context.setattr(tempfile, "mkstemp", tracked_mkstemp)
+        context.setattr(os, "fstat", failing_fstat)
+        context.setattr(os, "close", tracked_close)
+        with pytest.raises(
+            ERROR, match="progress temporary descriptor cannot be inspected"
+        ) as captured:
+            if publication == "pointer":
+                _ = progress.write_atomic(sidecar)
+            else:
+                _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert len(staged_descriptors) == len(staged_names) == 1
+    assert closed == staged_descriptors
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = original_fstat(staged_descriptors[0])
+    assert captured.value.__cause__ is source
+    expected_notes = (
+        ["progress temporary cleanup also failed: OverflowError"]
+        if close_fault
+        else None
+    )
+    assert getattr(source, "__notes__", None) == expected_notes
+    assert getattr(captured.value, "__notes__", None) == expected_notes
+    assert not Path(sidecar.progress_path).exists()
+    if publication == "checkpoint":
+        assert sidecar.checkpoint_path is not None
+        assert not Path(sidecar.checkpoint_path).exists()
+    # An unverified inode is intentionally not unlinked by the publisher.
+    assert staged_names[0].is_file()
+    staged_names[0].unlink()
+
+
+@pytest.mark.parametrize("secondary_type", [IndexError, OverflowError])
+def test_unexpected_mutable_stage_cleanup_keeps_primary_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    secondary_type: type[Exception],
+) -> None:
+    """An unexpected unlink error never hides the failed staged file sync."""
+    sidecar = _sidecar(tmp_path)
+    original_unlink = Path.unlink
+    original_sync = os.fsync
+    primary = IndexError("primary staged file sync failure")
+    secondary = secondary_type("secondary staged unlink failure")
+    staged_names: list[Path] = []
+
+    def failing_sync(descriptor: int) -> None:
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise primary
+        return original_sync(descriptor)
+
+    def failing_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        if path.name.endswith(".tmp"):
+            staged_names.append(path)
+            raise secondary
+        return original_unlink(path, missing_ok=missing_ok)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsync", failing_sync)
+        context.setattr(Path, "unlink", failing_unlink)
+        with pytest.raises(ERROR, match="progress sidecar publication failed") as captured:
+            _ = progress.write_atomic(sidecar)
+    assert captured.value.__context__ is primary
+    assert getattr(primary, "__notes__", None) == [
+        f"mutable temporary cleanup also failed: {secondary_type.__name__}"
+    ]
+    assert len(staged_names) == 1
+    assert staged_names[0].is_file()
+    assert not Path(sidecar.progress_path).exists()
+    staged_names[0].unlink()
+
+
+@pytest.mark.parametrize("publication", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_unexpected_pointer_preflight_fault_fails_before_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publication: str,
+    fault_type: type[Exception],
+) -> None:
+    """A pointer metadata fault cannot begin an unverified generation write."""
+    sidecar = _sidecar(tmp_path)
+    checkpoint = b"preflight-only-generation"
+    if publication == "checkpoint":
+        sidecar = _checkpointed(sidecar, checkpoint=checkpoint, partial=None)
+    destination = Path(sidecar.progress_path)
+    fault = fault_type("unexpected pointer path stat failure")
+    original_stat = Path.stat
+    triggered = False
+
+    def failing_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal triggered
+        if path == destination and not follow_symlinks and not triggered:
+            triggered = True
+            raise fault
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "stat", failing_stat)
+        with pytest.raises(ERROR, match="progress pointer preflight failed") as captured:
+            if publication == "pointer":
+                _ = progress.write_atomic(sidecar)
+            else:
+                _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert triggered
+    assert captured.value.__cause__ is fault
+    assert not destination.exists()
+    if publication == "checkpoint":
+        assert sidecar.checkpoint_path is not None
+        assert not Path(sidecar.checkpoint_path).exists()
