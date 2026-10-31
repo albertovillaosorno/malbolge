@@ -12179,7 +12179,7 @@ def test_writer_lock_rejects_forged_release_callback_completion_after_commit(
 
         def release() -> None:
             genuine_release()
-            return cast("None", False)
+            return cast("None", cast("object", False))
 
         return release
 
@@ -12214,7 +12214,7 @@ def test_writer_lock_rejects_nonregular_opened_native_receipt(
     def acquire_and_mark(stream: object) -> Callable[[], None]:
         nonlocal lock_descriptor
         release = actual_acquire(stream)
-        lock_descriptor = cast("int", stream.fileno())
+        lock_descriptor = cast("BinaryIO", stream).fileno()
         return release
 
     def forge_opened_type(descriptor: int) -> os.stat_result:
