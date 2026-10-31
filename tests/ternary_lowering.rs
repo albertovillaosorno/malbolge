@@ -21291,6 +21291,42 @@ fn machine_io_cells_round_trip_every_decode_phase() -> Result<(), String> {
 }
 
 #[test]
+fn machine_io_encoder_rejects_out_of_profile_code_addresses() -> Result<(), String> {
+    let profile = current_profile();
+    let projection = current_profile_io();
+    let decoder = VmProfileInstructionDecoder;
+    let last = profile.memory_words() - 1;
+    if projection.eof_word != last {
+        return Err(String::from("current profile word-address bound drifted"));
+    }
+    for semantic in [
+        RuntimeIntrinsicOperation::InputWord,
+        RuntimeIntrinsicOperation::OutputByte,
+    ] {
+        let operation = realize_runtime_io(semantic, &projection)
+            .map_err(|error| format!("realize machine I/O: {error:?}"))?;
+        let encoded = encode_machine_io(operation, last, &decoder, &projection)
+            .map_err(|error| format!("encode final profile address: {error:?}"))?;
+        if encoded.code_pointer != last
+            || decoder.decode(u32::from(encoded.source_cell), last)
+                != Some(operation.instruction)
+        {
+            return Err(String::from("last profile code cell did not round trip"));
+        }
+        for impossible in [profile.memory_words(), u32::MAX] {
+            if encode_machine_io(operation, impossible, &decoder, &projection)
+                != Err(MachineIoEncodingError::InvalidCodePointer)
+            {
+                return Err(format!(
+                    "out-of-profile code address {impossible} was not rejected"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn machine_io_encoder_rejects_broken_decoder_ports() -> Result<(), String> {
     let operation = realize_runtime_io(
         RuntimeIntrinsicOperation::InputWord,

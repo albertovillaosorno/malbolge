@@ -153,7 +153,10 @@ instruction.
   decode phases for both current-profile I/O operations and reject missing or
   ambiguous inverse decoders. Before inverse encoding, independent profile
   realization now rejects forged instruction/opcode, input/output kind, EOF
-  state, and malformed projected profiles.
+  state, and malformed projected profiles. A red-first boundary regression now
+  also proves the encoder refuses code pointers beyond the selected profile's
+  last word (`memory_words` and `u32::MAX`) while preserving successful
+  inverse decoding at the final valid code position for both I/O operations.
 - The typed semantic slice lowers exact `i32` bitwise AND, OR, and XOR,
   plus validated `i32`-to-`u8` truncation. Canonical round trips preserve SSA
   operands, return values, and provenance; direct runtime-helper call

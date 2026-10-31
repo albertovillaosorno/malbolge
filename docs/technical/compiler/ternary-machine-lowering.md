@@ -932,7 +932,13 @@ state, as well as invalid profile projections, fail before source-cell
 selection. It then exhausts graphical ASCII `33..126` through the canonical
 instruction-decoder port and requires exactly one source cell whose VM decode
 equals the admitted operation. The compiler therefore does not copy XLAT1.
-Missing or ambiguous inverse encodings fail closed.
+Missing or ambiguous inverse encodings fail closed. Before querying the
+decoder, the encoder also checks that the selected code pointer lies in the
+current profile's addressable word domain `0..=EOF_WORD` (the canonical
+all-two-trit EOF sentinel is the last memory address). This rejects memory-
+external positions that would otherwise pass the 94-phase inverse-decoding
+check, including `memory_words` and `u32::MAX`, without changing any in-range
+encoding.
 
 A separate startup port accepts a heap extent only after another stage has
 resolved its guest logical location. Startup planning validates the exact
@@ -1486,6 +1492,10 @@ success,
   through an inbound decoder port. Tests exhaust all 94 decode phases for both
   profile-derived I/O operations and prove every emitted cell is graphical and
   decodes back exactly; missing or ambiguous decoder behavior fails closed.
+  Boundary evidence additionally accepts the last addressable profile word for
+  both I/O operations and rejects `memory_words` and `u32::MAX` positions before
+  inverse decoding, rather than treating a repeating 94-phase code as proof
+  that a requested memory cell actually exists.
 - Low-byte helper-path evidence admits a valid typed-IR `i32` AND plus
   `i32`-to-`u8` truncation sequence, canonicalizes/restores it exactly, lowers
   it

@@ -50,6 +50,8 @@ const GRAPHICAL_START: u8 = 33;
 pub enum MachineIoEncodingError {
     /// More than one graphical source cell decoded to the requested operation.
     AmbiguousEncoding,
+    /// The requested code pointer is beyond the selected profile's memory.
+    InvalidCodePointer,
     /// A caller-supplied machine operation does not match the selected profile.
     InvalidOperation,
     /// The target-profile I/O projection is not admissible.
@@ -79,6 +81,12 @@ pub fn encode_machine_io(
         .map_err(|_error| MachineIoEncodingError::InvalidProfile)?;
     if operation != expected {
         return Err(MachineIoEncodingError::InvalidOperation);
+    }
+    // The canonical current profile's all-two-trit EOF word is its last
+    // addressable memory word. A decode phase alone does not prove a position
+    // exists in the actual machine (including at u32::MAX).
+    if code_pointer > profile.eof_word {
+        return Err(MachineIoEncodingError::InvalidCodePointer);
     }
     let mut selected = None;
     for cell in GRAPHICAL_START..=GRAPHICAL_END {
