@@ -842,3 +842,100 @@ def test_historical_cli_requires_confirmed_report_output(
     diagnostic = capsys.readouterr().err
     assert "arena historical evidence:" in diagnostic
     assert "stdout" in diagnostic
+
+
+@pytest.mark.parametrize("kind", [csv.Error, ValueError, KeyError])
+def test_historical_native_parser_arguments_are_not_formatted(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    kind: type[Exception],
+) -> None:
+    """Exact parser errors may still carry an untrusted diagnostic object."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("foreign historical parser argument formatter")
+
+    fault = kind(HostileArgument())
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    if kind is csv.Error:
+        monkeypatch.setattr(historical_pairs.csv, "DictReader", fail)
+        with pytest.raises(historical_pairs.HistoricalEvidenceError) as caught:
+            historical_pairs._csv_rows(
+                "repetition,strategy_id\n0,baseline\n",
+                registered_fields=historical_pairs.REGISTERED_RAW_COLUMNS[
+                    "prefix_decomposition_measurement"
+                ],
+                expected_rows=1,
+            )
+    else:
+        monkeypatch.setattr(historical_pairs, "_build_report", fail)
+        with pytest.raises(historical_pairs.HistoricalEvidenceError) as caught:
+            historical_pairs.build_report(tmp_path, BASE + PREFIX)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        historical_pairs.HistoricalEvidenceError,
+        historical_pairs.experiment_manifest.ExperimentManifestError,
+        historical_pairs.benchmark_protocol.BenchmarkProtocolError,
+        historical_pairs.report_output.ReportOutputError,
+        OSError,
+        UnicodeError,
+    ],
+)
+@pytest.mark.parametrize("hostile_class", [True, False])
+def test_historical_cli_rejects_hostile_error_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    kind: type[Exception],
+    hostile_class: bool,
+) -> None:
+    """Foreign exception subclasses and exact class hostile args keep exit two."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("hostile native argument formatter executed")
+
+    class HostileClass(kind):
+        def __str__(self) -> str:
+            raise AssertionError("hostile exception subclass formatter executed")
+
+    fault = (
+        HostileClass("untrusted detail")
+        if hostile_class
+        else kind(HostileArgument())
+    )
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(historical_pairs, "build_report", fail)
+    monkeypatch.setattr(sys, "argv", ["historical-pairs", BASE + PREFIX])
+    with pytest.raises(SystemExit) as caught:
+        historical_pairs.main()
+    assert caught.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.err.startswith("arena historical evidence:")
+    assert not captured.out
+
+
+def test_historical_cli_keeps_exact_native_failure_text(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A literal local failure retains its information for operators."""
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise historical_pairs.HistoricalEvidenceError("exact local source rejection")
+
+    monkeypatch.setattr(historical_pairs, "build_report", fail)
+    monkeypatch.setattr(sys, "argv", ["historical-pairs", BASE + PREFIX])
+    with pytest.raises(SystemExit, match="2"):
+        historical_pairs.main()
+    assert "exact local source rejection" in capsys.readouterr().err

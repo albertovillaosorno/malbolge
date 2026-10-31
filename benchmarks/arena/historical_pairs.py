@@ -115,6 +115,24 @@ def _fail(message: str) -> Never:
     raise HistoricalEvidenceError(message)
 
 
+def _native_error_detail(error: Exception, *trusted: type[Exception]) -> str:
+    """Render only exact native errors carrying literal safe arguments."""
+    if type(error) in trusted:
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            if type(error) is KeyError:
+                return repr(arguments[0])
+            return arguments[0]
+        if (
+            type(error) in (OSError, FileNotFoundError, PermissionError)
+            and len(arguments) == 2
+            and type(arguments[0]) is int
+            and type(arguments[1]) is str
+        ):
+            return f"{type(error).__name__}: [Errno {arguments[0]}] {arguments[1]}"
+    return type(error).__name__
+
+
 def _source(root: Path, relative: str) -> tuple[str, str]:
     raw = evidence.read_bounded_regular(
         root,
@@ -209,7 +227,7 @@ def _csv_rows(
     except HistoricalEvidenceError:
         raise
     except csv.Error as error:
-        detail = str(error) if type(error) is csv.Error else type(error).__name__
+        detail = _native_error_detail(error, csv.Error)
         message = f"malformed historical raw CSV: {detail}"
         raise HistoricalEvidenceError(message) from error
     except (TypeError, ValueError, RuntimeError) as error:
@@ -658,11 +676,7 @@ def build_report(root: Path, relative: str) -> dict[str, Any]:
             experiment_manifest.ExperimentManifestError,
             benchmark_protocol.BenchmarkProtocolError,
         )
-        diagnostic = (
-            str(error)
-            if type(error) in native_parser_errors
-            else type(error).__name__
-        )
+        diagnostic = _native_error_detail(error, *native_parser_errors)
         message = f"historical paired source inconsistent: {diagnostic}"
         raise HistoricalEvidenceError(message) from error
 
@@ -689,7 +703,22 @@ def main() -> int:
         OSError,
         UnicodeError,
     ) as error:
-        parser.exit(2, f"arena historical evidence: {error}\n")
+        detail = _native_error_detail(
+            error,
+            HistoricalEvidenceError,
+            experiment_manifest.ExperimentManifestError,
+            benchmark_protocol.BenchmarkProtocolError,
+            report_output.ReportOutputError,
+            OSError,
+            FileNotFoundError,
+            PermissionError,
+            IsADirectoryError,
+            NotADirectoryError,
+            UnicodeError,
+            UnicodeDecodeError,
+            UnicodeEncodeError,
+        )
+        parser.exit(2, f"arena historical evidence: {detail}\n")
     return 0
 
 
