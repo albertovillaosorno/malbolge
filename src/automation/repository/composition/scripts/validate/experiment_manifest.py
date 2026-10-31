@@ -542,7 +542,16 @@ def _read_manifest_bytes(path: Path) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except BaseException:
+        # Ownership transfers only after fdopen succeeds. Preserve the cause.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+    with stream:
         if _manifest_identity(os.fstat(stream.fileno())) != expected:
             _fail("experiment manifest changed before read")
         raw = stream.read(MAX_MANIFEST_BYTES + 1)
@@ -559,8 +568,12 @@ def _read_manifest_bytes(path: Path) -> bytes:
 def _read_utf8(path: Path) -> str:
     try:
         raw = _read_manifest_bytes(path)
-    except OSError as error:
-        _fail(f"experiment manifest cannot be read: {error}")
+    except ExperimentManifestError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise ExperimentManifestError(
+            f"experiment manifest cannot be read: {error}"
+        ) from error
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -576,7 +589,13 @@ def validate_repository_manifest(path: Path) -> ExperimentManifest:
     """
     relative = _repository_relative(path)
     canonical_path = ROOT / relative
-    if not canonical_path.is_file():
+    try:
+        exists = canonical_path.is_file()
+    except (OSError, ValueError, RuntimeError) as error:
+        raise ExperimentManifestError(
+            f"experiment manifest cannot be inspected: {error}"
+        ) from error
+    if not exists:
         _fail(f"experiment manifest not found: {relative.as_posix()}")
     manifest = parse_manifest(_read_utf8(canonical_path))
     _validate_repository_identity(manifest, canonical_path)

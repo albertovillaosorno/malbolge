@@ -363,6 +363,117 @@ def test_manifest_reader_rejects_in_place_change_after_read(
     assert modified
 
 
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_repository_manifest_inspection_failures_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Malformed host filesystem failures cannot escape public admission."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    source = tmp_path / "source.toml"
+    _ = source.write_bytes(b"manifest = 1\n")
+    real_is_file = Path.is_file
+
+    def fault_is_file(path: Path) -> bool:
+        if path == source:
+            raise fault_type("injected is_file fault")
+        return real_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", fault_is_file)
+    with pytest.raises(
+        validator.ExperimentManifestError,
+        match="experiment manifest cannot be inspected",
+    ):
+        _ = validator.validate_repository_manifest(source)
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation", ("lstat", "is_symlink", "is_junction", "open", "fstat", "fdopen")
+)
+def test_manifest_reader_host_failures_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """An untrusted host failure cannot bypass the manifest error boundary."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    source = tmp_path / "source.toml"
+    _ = source.write_bytes(b"manifest = 1\n")
+    if operation in {"lstat", "is_symlink", "is_junction"}:
+        original = {
+            "lstat": Path.lstat,
+            "is_symlink": Path.is_symlink,
+            "is_junction": Path.is_junction,
+        }[operation]
+
+        def fault_path(path: Path) -> os.stat_result | bool:
+            if path == source:
+                raise fault_type(f"injected {operation} fault")
+            return original(path)
+
+        monkeypatch.setattr(Path, operation, fault_path)
+    elif operation == "open":
+        original_open = os.open
+
+        def fault_open(path: Path, flags: int) -> int:
+            if path == source:
+                raise fault_type("injected open fault")
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fault_open)
+    elif operation == "fstat":
+
+        def fault_fstat(_descriptor: int) -> os.stat_result:
+            raise fault_type("injected fstat fault")
+
+        monkeypatch.setattr(os, "fstat", fault_fstat)
+    else:
+
+        def fault_fdopen(_descriptor: int, _mode: str) -> object:
+            raise fault_type("injected fdopen fault")
+
+        monkeypatch.setattr(os, "fdopen", fault_fdopen)
+    with pytest.raises(
+        validator.ExperimentManifestError,
+        match="experiment manifest cannot be read",
+    ):
+        _ = validator.validate_repository_manifest(source)
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+def test_manifest_fdopen_failure_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A failed stream wrapper must not leak the private opened descriptor."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    source = tmp_path / "source.toml"
+    _ = source.write_bytes(b"manifest = 1\n")
+    real_open = os.open
+    opened: list[int] = []
+
+    def track_open(path: Path, flags: int) -> int:
+        descriptor = real_open(path, flags)
+        if path == source:
+            opened.append(descriptor)
+        return descriptor
+
+    def fault_fdopen(_descriptor: int, _mode: str) -> object:
+        raise fault_type("injected fdopen fault")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", fault_fdopen)
+    with pytest.raises(validator.ExperimentManifestError):
+        _ = validator.validate_repository_manifest(source)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
 def test_direct_experiment_toml_admits_only_bounded_exact_utf8() -> None:
     """Direct TOML entry points use the same bounded wire-text boundary."""
 
