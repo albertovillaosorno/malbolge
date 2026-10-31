@@ -858,7 +858,8 @@ def validate_links(
         _fail("host-C oracle replay requires --challenge-root")
     try:
         document = analyze.admit_document(document)
-    except analyze.ArenaError as error:
+    except Exception as error:
+        # Preserve typed preflight admission for unexpected dependency faults.
         detail = _native_error_detail(error, analyze.ArenaError)
         message = f"linked arena evidence invalid: {detail}"
         raise EvidenceError(message) from error
@@ -899,18 +900,8 @@ def validate_links(
         )
         snapshot = EvidenceSnapshot(context, contents, bundle_inspection)
         recheck_evidence_snapshot(snapshot)
-    except (
-        OSError,
-        UnicodeError,
-        RuntimeError,
-        EvidenceError,
-        experiment_manifest.ExperimentManifestError,
-        raw_samples.RawSampleError,
-        trial_runs.TrialRunError,
-        budget_links.BudgetLinkError,
-        challenge_bundles.ChallengeBundleError,
-        host_c_oracle.HostOracleError,
-    ) as error:
+    except Exception as error:
+        # Foreign parser/checker faults must not escape the evidence boundary.
         detail = _native_error_detail(
             error,
             EvidenceError,
@@ -1000,7 +991,8 @@ def main() -> int:
         if len(snapshots) != 1:
             _fail("evidence preflight did not retain an input snapshot")
         recheck_evidence_snapshot(snapshots[0])
-    except (analyze.ArenaError, EvidenceError, OSError, UnicodeError) as error:
+    except Exception as error:
+        # Operator failures are typed and never render foreign exception hooks.
         detail = _native_error_detail(
             error,
             analyze.ArenaError,

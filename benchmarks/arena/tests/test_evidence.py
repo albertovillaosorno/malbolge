@@ -2332,6 +2332,10 @@ def test_bounded_evidence_reader_types_late_path_stat_faults(
         ("links", UnicodeError),
         ("links", RuntimeError),
         ("links", evidence.experiment_manifest.ExperimentManifestError),
+        ("document", IndexError),
+        ("document", _UnanticipatedEvidenceError),
+        ("links", IndexError),
+        ("links", _UnanticipatedEvidenceError),
     ],
 )
 def test_validate_links_does_not_format_foreign_dependency_failure(
@@ -2362,7 +2366,15 @@ def test_validate_links_does_not_format_foreign_dependency_failure(
 
 
 @pytest.mark.parametrize(
-    "kind", [analyze.ArenaError, evidence.EvidenceError, OSError, UnicodeError]
+    "kind",
+    [
+        analyze.ArenaError,
+        evidence.EvidenceError,
+        OSError,
+        UnicodeError,
+        IndexError,
+        _UnanticipatedEvidenceError,
+    ],
 )
 def test_evidence_cli_does_not_format_foreign_input_failure(
     tmp_path: Path,
