@@ -136,7 +136,26 @@ def _admit_command(command: list[str]) -> None:
 
 def _system_tool(name: str) -> str | None:
     """Resolve OS-owned resource tools without trusting a caller's PATH."""
-    return shutil.which(name, path=SYSTEM_TOOL_SEARCH_PATH)
+    try:
+        resolved = shutil.which(name, path=SYSTEM_TOOL_SEARCH_PATH)
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = f"bounded target system tool lookup failed: {name}"
+        raise TargetProcessError(message) from error
+    if resolved is None:
+        return None
+    if (
+        type(resolved) is not str
+        or not resolved
+        or NUL_CHARACTER in resolved
+        or not Path(resolved).is_absolute()
+    ):
+        _fail(f"bounded target system tool has invalid executable path: {name}")
+    try:
+        _ = os.fsencode(resolved)
+    except UnicodeError as error:
+        message = f"bounded target system tool has unencodable path: {name}"
+        raise TargetProcessError(message) from error
+    return resolved
 
 
 def _limited_command(command: list[str], *, enforce: bool) -> list[str]:

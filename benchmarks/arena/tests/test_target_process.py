@@ -1119,6 +1119,79 @@ def test_missing_limiter_cannot_launch_limited_target(
         target_process.invoke_limited(_child("print('never')"))
 
 
+@pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="uses Linux tools")
+@pytest.mark.parametrize("tool", [target_process.LIMITER_NAME, target_process.RSS_TOOL])
+@pytest.mark.parametrize(
+    "invalid_path",
+    [
+        True,
+        0,
+        b"/usr/bin/prlimit",
+        "",
+        "prlimit",
+        "../prlimit",
+        "/usr/bin/prlimit\0bad",
+        "\ud800",
+    ],
+    ids=[
+        "boolean",
+        "integer",
+        "bytes",
+        "empty",
+        "relative",
+        "parent",
+        "nul",
+        "unicode",
+    ],
+)
+def test_resource_preflight_rejects_invalid_tool_resolution(
+    monkeypatch: pytest.MonkeyPatch, tool: str, invalid_path: object
+) -> None:
+    """A fabricated resolver return cannot claim resource control readiness."""
+    original = target_process.shutil.which
+
+    def malformed(name: str, *, path: str | None = None) -> str | None:
+        if name == tool:
+            return cast("str", invalid_path)
+        return original(name, path=path)
+
+    monkeypatch.setattr(target_process.shutil, "which", malformed)
+    probe = (
+        target_process.require_child_resource_controls
+        if tool == target_process.LIMITER_NAME
+        else target_process.require_child_rss_measurement
+    )
+    with pytest.raises(target_process.TargetProcessError, match="system tool"):
+        probe()
+
+
+@pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="uses Linux tools")
+@pytest.mark.parametrize("tool", [target_process.LIMITER_NAME, target_process.RSS_TOOL])
+@pytest.mark.parametrize(
+    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_resource_preflight_types_host_tool_resolution_faults(
+    monkeypatch: pytest.MonkeyPatch, tool: str, failure_type: type[Exception]
+) -> None:
+    """Host resolver faults remain typed tool failures before any child work."""
+    original = target_process.shutil.which
+
+    def failing(name: str, *, path: str | None = None) -> str | None:
+        if name == tool:
+            raise failure_type("injected host tool lookup failure")
+        return original(name, path=path)
+
+    monkeypatch.setattr(target_process.shutil, "which", failing)
+    probe = (
+        target_process.require_child_resource_controls
+        if tool == target_process.LIMITER_NAME
+        else target_process.require_child_rss_measurement
+    )
+    with pytest.raises(target_process.TargetProcessError, match="system tool") as error:
+        probe()
+    assert isinstance(error.value.__cause__, failure_type)
+
+
 @pytest.mark.skipif(
     sys.platform != LINUX_PLATFORM or not PRLIMIT_AVAILABLE,
     reason="requires Linux with util-linux prlimit",
