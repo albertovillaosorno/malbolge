@@ -862,8 +862,9 @@ C-int file descriptors for both binary problem inputs and resume checkpoint
 files before any `fdopen` ownership transfer. Boolean, negative, text, foreign
 integer-subclass, and overflowing open receipts fail with configuration status
 without touching an unrelated host descriptor. Native descriptors still require
-the existing stable regular-file inode/size/timestamp checks; an integer alone
-is not filesystem provenance. If binary stream ownership transfer fails, the
+the existing stable regular-file inode/size/timestamp checks; pathname and
+opened-descriptor metadata must also be exact native `os.stat_result` receipts
+before inspecting fields. An integer alone is not filesystem provenance. If binary stream ownership transfer fails, the
 runner closes the still-owned raw descriptor and preserves the original failure
 over any secondary close error. This applies to both problem and checkpoint
 inputs and does not grant the resumed evidence acceptance authority.

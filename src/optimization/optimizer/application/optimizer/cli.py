@@ -513,6 +513,9 @@ def _cli_source_identity(status: os.stat_result, label: str) -> tuple[int, ...]:
         SearchCliError: CLI input is not a regular file.
 
     """
+    if type(status) is not os.stat_result:
+        message = f"{label} returned non-native file metadata"
+        raise SearchCliError(message)
     if not S_ISREG(status.st_mode):
         message = f"{label} must be a regular file"
         raise SearchCliError(message)

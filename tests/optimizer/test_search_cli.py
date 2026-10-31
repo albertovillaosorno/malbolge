@@ -1301,3 +1301,57 @@ def test_cli_preserves_configuration_failure_when_stderr_unavailable(
     with monkeypatch.context() as context:
         context.setattr(sys, "stderr", BrokenDiagnostic())
         assert main(("--budget", "invalid")) == CONFIGURATION_ERROR
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+@pytest.mark.parametrize("probe", ["preflight", "opened"])
+def test_cli_rejects_foreign_binary_file_metadata_before_field_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+    probe: str,
+) -> None:
+    """Foreign stat receipts must not impersonate a stable regular input."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    real_path_stat = Path.stat
+    real_open = os.open
+    real_fstat = os.fstat
+    selected_descriptor: int | None = None
+    rejected_receipt = False
+
+    class ForeignStat:
+        @override
+        def __getattribute__(self, name: str) -> object:
+            del name
+            raise AssertionError("foreign stat fields were accessed")
+
+    def fake_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        nonlocal rejected_receipt
+        if path == selected and probe == "preflight":
+            rejected_receipt = True
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return real_path_stat(path, follow_symlinks=follow_symlinks)
+
+    def fake_open(path: Path, flags: int) -> int:
+        nonlocal selected_descriptor
+        descriptor = real_open(path, flags)
+        if path == selected:
+            selected_descriptor = descriptor
+        return descriptor
+
+    def fake_fstat(descriptor: int) -> os.stat_result:
+        nonlocal rejected_receipt
+        if descriptor == selected_descriptor and probe == "opened":
+            rejected_receipt = True
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    monkeypatch.setattr(os, "open", fake_open)
+    monkeypatch.setattr(os, "fstat", fake_fstat)
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert rejected_receipt
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert "metadata" in error
