@@ -36,11 +36,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from scripts.bootstrap import llvm_development_validation
+
 from scripts.validate import tidy_toolchain
 
 if TYPE_CHECKING:
@@ -72,9 +74,7 @@ def _identity(tmp_path: Path) -> tidy_toolchain.ToolchainIdentity:
         asset_sha256=asset.sha256,
         asset_size_bytes=asset.size_bytes,
         development_assets=(asset,),
-        required_development_files=(
-            Path("include/clang/AST/AST.h"),
-        ),
+        required_development_files=(Path("include/clang/AST/AST.h"),),
     )
 
 
@@ -158,3 +158,137 @@ def test_provision_is_marker_bound_and_idempotent(tmp_path: Path) -> None:
     assert marker.is_file()
     staging = tmp_path / ".temp/llvm-development-provision-linux-x86_64"
     assert not staging.exists()
+
+
+def _provisioned_identity(tmp_path: Path) -> tidy_toolchain.ToolchainIdentity:
+    identity = _identity(tmp_path)
+    _ = llvm_development_validation.provision_development_identity(
+        tmp_path,
+        identity,
+        downloader=_downloader([]),
+        extractor=_extract_headers,
+    )
+    return identity
+
+
+def test_development_marker_rejects_linked_leaf(tmp_path: Path) -> None:
+    """An exact marker reached via symlink cannot authorize a package root."""
+    identity = _provisioned_identity(tmp_path)
+    marker = (
+        identity.development_root
+        / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    )
+    relocated = marker.with_name("real-marker.json")
+    _ = marker.replace(relocated)
+    try:
+        _ = marker.symlink_to(relocated)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    assert not llvm_development_validation.development_root_matches(identity)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="without the exact provision marker",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path,
+            identity,
+            downloader=_downloader([]),
+            extractor=_extract_headers,
+        )
+
+
+def test_development_marker_rejects_development_root_alias(
+    tmp_path: Path,
+) -> None:
+    """A linked development root cannot replace published physical state."""
+    identity = _provisioned_identity(tmp_path)
+    original = identity.development_root
+    relocated = original.with_name("relocated-development")
+    _ = original.replace(relocated)
+    try:
+        _ = original.symlink_to(relocated, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    assert not llvm_development_validation.development_root_matches(identity)
+
+
+def test_development_marker_rejects_required_header_symlink(
+    tmp_path: Path,
+) -> None:
+    """Ready evidence requires real extracted headers, not aliases."""
+    identity = _provisioned_identity(tmp_path)
+    header = identity.development_root / "include/clang/AST/AST.h"
+    relocated = header.with_suffix(".physical")
+    _ = header.replace(relocated)
+    try:
+        _ = header.symlink_to(relocated)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    assert not llvm_development_validation.development_root_matches(identity)
+
+
+def test_development_marker_rejects_required_header_parent_alias(
+    tmp_path: Path,
+) -> None:
+    """An alias in required include ancestry cannot satisfy readiness."""
+    identity = _provisioned_identity(tmp_path)
+    directory = identity.development_root / "include/clang/AST"
+    relocated = directory.with_name("AST-physical")
+    _ = directory.replace(relocated)
+    try:
+        _ = directory.symlink_to(relocated, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    assert not llvm_development_validation.development_root_matches(identity)
+
+
+def test_development_marker_rejects_same_byte_inode_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing an admitted marker before open invalidates readiness."""
+    identity = _provisioned_identity(tmp_path)
+    marker = (
+        identity.development_root
+        / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    )
+    replacement = marker.with_name("replacement-marker.json")
+    _ = replacement.write_bytes(marker.read_bytes())
+    real_open = os.open
+
+    def swap_before_open(path: Path, flags: int) -> int:
+        if path == marker:
+            _ = replacement.replace(marker)
+        return real_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_before_open)
+    assert not llvm_development_validation.development_root_matches(identity)
+
+
+def test_development_marker_rejects_oversized_marker(tmp_path: Path) -> None:
+    """Unbounded local marker content must not be read into memory."""
+    identity = _provisioned_identity(tmp_path)
+    marker = (
+        identity.development_root
+        / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    )
+    with marker.open("wb") as stream:
+        _ = stream.truncate(2_000_000)
+    assert not llvm_development_validation.development_root_matches(identity)
+
+
+def test_development_marker_rejects_fifo_without_blocking(
+    tmp_path: Path,
+) -> None:
+    """A pipe substituted for the marker never waits for an external writer."""
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFO unsupported")
+    identity = _provisioned_identity(tmp_path)
+    marker = (
+        identity.development_root
+        / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    )
+    marker.unlink()
+    mkfifo(marker)
+    assert not llvm_development_validation.development_root_matches(identity)

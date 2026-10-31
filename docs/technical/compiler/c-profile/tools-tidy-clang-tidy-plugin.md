@@ -57,6 +57,15 @@ descriptor (no-follow opening where supported) and rejects source replacement
 or modification during streaming. Neither check accepts linked evidence paths
 or treats a matching hash as permission to replace inputs.
 
+Linux LLVM development RPM publication also requires a physical, unlinked
+completion marker and physical regular required headers under the tracked
+repository-local development root. Marker content is compared to the exact
+expected identity using a bounded, nonblocking descriptor read with inode,
+size, and timestamp checks before and after. A symlinked root, redirected
+include ancestor, altered marker, or incomplete extraction is not admitted as
+ready; an existing incomplete root must be repaired explicitly rather than
+silently using ambient headers or repeating a network download.
+
 ### Windows plugin host
 
 LLVM documents out-of-tree clang-tidy checks as shared-library plugins loaded

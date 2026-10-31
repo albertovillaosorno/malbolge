@@ -38,10 +38,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 from pathlib import PurePosixPath
 from pathlib import PureWindowsPath
 import shutil
+from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from typing import Final
 from typing import Never
@@ -264,12 +266,100 @@ def _marker_bytes(identity: tidy_toolchain.ToolchainIdentity) -> bytes:
             for asset in identity.development_assets
         ],
     }
-    rendered = json.dumps(
-        document,
-        sort_keys=True,
-        separators=(",", ":"),
-    ) + "\n"
+    rendered = (
+        json.dumps(
+            document,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    )
     return rendered.encode("utf-8")
+
+
+def _direct_regular(path: Path) -> bool:
+    """Check physical regular-file readiness without following links.
+
+    Returns:
+        True only for an unlinked leaf with nonredirecting ancestors.
+
+    """
+    try:
+        return (
+            not path.is_symlink()
+            and not path.is_junction()
+            and not any(
+                parent.is_symlink() or parent.is_junction()
+                for parent in path.parents
+            )
+            and S_ISREG(path.lstat().st_mode)
+        )
+    except OSError, ValueError:
+        return False
+
+
+def _marker_identity(status: os.stat_result) -> tuple[int, ...]:
+    """Capture the exact marker inode and mutation-sensitive metadata.
+
+    Returns:
+        Device, inode, size, and modification metadata.
+
+    """
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _marker_descriptor_matches(
+    path: Path,
+    identity: tuple[int, ...],
+    expected: bytes,
+) -> bool:
+    """Read only the exact expected marker length from one stable inode.
+
+    Returns:
+        True only when the opened descriptor yields unchanged pinned bytes.
+
+    """
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        before = _marker_identity(os.fstat(stream.fileno()))
+        contents = stream.read(len(expected) + 1)
+        after = _marker_identity(os.fstat(stream.fileno()))
+    return before == identity and after == identity and contents == expected
+
+
+def _exact_marker_matches(marker: Path, expected: bytes) -> bool:
+    """Compare a bounded, nonblocking marker snapshot to pinned identity.
+
+    Returns:
+        True only for a stable exact byte match from one physical marker.
+
+    """
+    if not _direct_regular(marker):
+        return False
+    try:
+        initial = marker.lstat()
+        admitted = _marker_identity(initial)
+        return (
+            S_ISREG(initial.st_mode)
+            and initial.st_size == len(expected)
+            and _marker_descriptor_matches(marker, admitted, expected)
+            and _direct_regular(marker)
+            and _marker_identity(marker.lstat()) == admitted
+        )
+    except OSError, ValueError:
+        return False
 
 
 def development_root_matches(
@@ -282,17 +372,12 @@ def development_root_matches(
 
     """
     marker = identity.development_root / LLVM_DEVELOPMENT_MARKER
-    if not marker.is_file():
+    if not _exact_marker_matches(marker, _marker_bytes(identity)):
         return False
-    try:
-        marker_matches = marker.read_bytes() == _marker_bytes(identity)
-    except OSError:
-        return False
-    required = all(
-        (identity.development_root / relative).is_file()
+    return all(
+        _direct_regular(identity.development_root / relative)
         for relative in identity.required_development_files
     )
-    return marker_matches and required
 
 
 def _prepare_staging(staging: Path) -> None:
@@ -344,8 +429,8 @@ def provision_development_identity(
         return identity.development_root
     if identity.development_root.exists():
         _fail("LLVM development root exists without the exact provision marker")
-    staging = root / ".temp" / (
-        f"llvm-development-provision-{identity.platform_id}"
+    staging = (
+        root / ".temp" / (f"llvm-development-provision-{identity.platform_id}")
     )
     staged_root = staging / "development"
     _prepare_staging(staging)
