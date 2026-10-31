@@ -856,6 +856,31 @@ def test_direct_bounded_evidence_reader_rejects_invalid_limits_before_access(
         )
 
 
+@pytest.mark.parametrize("read_bytes", [False, True], ids=["path", "bytes"])
+def test_direct_evidence_limit_cannot_exceed_registered_maximum_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    read_bytes: bool,
+) -> None:
+    """An oversized caller cap cannot turn a bounded reader into bulk I/O."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"bounded")
+    reader = evidence.read_bounded_regular if read_bytes else evidence.regular_path
+    maximum = analyze.MAX_INPUT_BYTES
+
+    def forbidden_segments(*args: object, **kwargs: object) -> list[str]:
+        _ = (args, kwargs)
+        message = "oversized reader budget reached filesystem access"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(evidence, "_segments", forbidden_segments)
+        with pytest.raises(evidence.EvidenceError, match="byte limit"):
+            reader(tmp_path, "raw.csv", limit=maximum + 1)
+    expected = b"bounded" if read_bytes else tmp_path / "raw.csv"
+    assert reader(tmp_path, "raw.csv", limit=maximum) == expected
+
+
 @pytest.mark.parametrize(
     "invalid_limit", [False, True, 0, -1, float("nan"), float("inf"), 1.5, "8", _ForeignLimit(8)]
 )

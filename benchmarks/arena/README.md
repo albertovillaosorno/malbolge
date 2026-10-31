@@ -132,6 +132,13 @@ original cause preserved, without invoking caller-defined error formatting.
 An already-emitted prefix on a failed output stream **cannot be rolled back**;
 this is a reliable success/failure signal, not atomic stdout publication.
 
+The shared direct evidence reader and optional `regular_path` byte ceiling
+reject limits above 16 MiB before filesystem access. This hard maximum prevents
+callers from turning the bounded reader into an unbounded bulk-file API; all
+registered run, raw, challenge and reference files read through this API
+fit below it.
+The no-limit `regular_path` mode checks file presence but never reads bytes.
+
 Both arena CLI entrypoints now read the caller's study JSON through a
 bounded descriptor-owner. It checks the initial regular-file metadata against
 the opened descriptor, then rechecks device/inode/size and nanosecond

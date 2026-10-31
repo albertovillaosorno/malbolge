@@ -59,6 +59,7 @@ from benchmarks.arena import report_output
 from benchmarks.arena import trial_runs
 
 MAX_MANIFEST_BYTES = 1 * 1024 * 1024
+MAX_EVIDENCE_BYTES = analyze.MAX_INPUT_BYTES
 BUNDLE_FILE_LIMITS = {
     "program.c": challenge_bundles.MAX_SOURCE_BYTES,
     "oracle.bin": challenge_bundles.ORACLE_BYTES,
@@ -118,8 +119,8 @@ def _segments(relative: str) -> list[str]:
 
 
 def _admit_byte_limit(limit: int) -> None:
-    if type(limit) is not int or limit < 1:
-        _fail("evidence byte limit must be an exact positive integer")
+    if type(limit) is not int or not 1 <= limit <= MAX_EVIDENCE_BYTES:
+        _fail("evidence byte limit must be an exact positive integer up to 16 MiB")
 
 
 def _admit_root(root: Path) -> None:

@@ -1086,6 +1086,10 @@ The original study records remain the result authority.
   File-stream read exceptions (including malformed custom stream failures)
   retain a typed evidence rejection and the original failure cause, so an
   audit cannot accidentally bypass its declared failure boundary.
+- The shared direct evidence reader and optional path-size admission now
+  reject caller byte limits above 16 MiB before any filesystem access. Red-first
+  tests cover both entrypoints and preserve valid 16-MiB maximum requests;
+  this limits allocation exposure without authenticating retained evidence.
 - `benchmarks/arena/budget_links.py` optionally requires exact resource
   budget declarations from each linked run, rejecting missing/forged integers,
   unit mismatches, and one-unit study drift with fail-closed CLI regressions.
