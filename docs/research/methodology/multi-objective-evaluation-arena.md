@@ -635,7 +635,11 @@ Successful native binaries are also independently re-admitted against the
 original exact path, size and SHA-256 identity after any optional rebuild,
 oracle replay and report analysis; overwritten binaries cannot retain a
 successful checked-artifact count. The second bounded read costs additional
-I/O but never executes a retained binary.
+I/O but never executes a retained binary. The artifact-index, failure-detail,
+and resource-control JSON sidecars are likewise fingerprinted from the exact
+bytes parsed and rechecked after report assembly. Optional legacy sidecars
+admitted as absent must still be absent at the final check; insertion,
+removal or byte mutation fails closed.
 These repeated reads detect observed drift, not an atomic filesystem
 snapshot or authenticated historical authorship.
 It also requires the producer's fixed run method, implementation/configuration
@@ -878,7 +882,9 @@ The original study records remain the result authority.
   binary evidence, then reports the observed frontier without remeasurement.
   Optional canonical host oracle replay is separate. Real-study tamper tests
   reject drift in raw CSVs, run manifests, challenge oracles, binary hashes,
-  stage identities, and malformed artifact indices.
+  stage identities, and malformed artifact indices. Sidecar-drift regressions
+  also reject post-admission changes to all three JSON receipts, including
+  newly created or removed optional failure records.
 - `benchmarks/arena/reference_study.py` records real pinned host-C reference
   time, native executable sizes, exact binary hashes and versioned trial files
   across multiple canonical difficulties and matched `-O0`/`-O2` arms.

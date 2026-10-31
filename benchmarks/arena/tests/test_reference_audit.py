@@ -770,6 +770,51 @@ def test_host_c_audit_rejects_retained_binary_rewrite_during_audit(
         reference_audit.audit(relative)
 
 
+@pytest.mark.parametrize(
+    "sidecar",
+    ["artifacts", "failures", "resource-controls", "removed-failures", "new-failures"],
+)
+def test_host_c_audit_rejects_sidecar_drift_after_analysis(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    sidecar: str,
+) -> None:
+    """Reports cannot outlive the exact metadata bytes used at admission."""
+    directory, relative = live_pilot
+    failure_path = directory / "failures.json"
+    if sidecar == "new-failures":
+        failure_path.unlink()
+    original_analyze = analyze.analyze
+
+    def mutate_after_analysis(document: dict[str, Any]) -> dict[str, Any]:
+        report = original_analyze(document)
+        if sidecar == "removed-failures":
+            failure_path.unlink()
+        elif sidecar == "new-failures":
+            _ = failure_path.write_text(
+                json.dumps({"schema_version": 1, "failures": {"forged": "failed"}}),
+                encoding="utf-8",
+            )
+        else:
+            path = directory / f"{sidecar}.json"
+            retained = json.loads(path.read_text(encoding="utf-8"))
+            if sidecar == "artifacts":
+                first = next(iter(retained.values()))
+                first["sha256"] = "0" * 64
+            elif sidecar == "failures":
+                retained["failures"]["forged"] = "failed"
+            else:
+                retained["cpu_seconds"] += 1
+            _ = path.write_text(json.dumps(retained), encoding="utf-8")
+        return report
+
+    monkeypatch.setattr(analyze, "analyze", mutate_after_analysis)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="sidecar.*changed during audit"
+    ):
+        reference_audit.audit(relative)
+
+
 def test_opt_in_git_object_check_rejects_missing_recorded_commit(
     live_pilot: tuple[Path, str],
 ) -> None:

@@ -109,6 +109,7 @@ class _AuditData:
     commit: str
     resource_record_version: int
     manifest_fingerprints: dict[str, bytes]
+    sidecar_fingerprints: dict[str, bytes | None]
     study_fingerprint: bytes
 
 
@@ -157,10 +158,12 @@ def _reject_nonfinite(value: str) -> Never:
     _fail(f"host-C retained JSON has nonfinite number: {value}")
 
 
-def _read_json(relative: str, *, limit: int) -> object:
+def _read_json(
+    relative: str, *, limit: int, fingerprints: dict[str, bytes | None]
+) -> object:
     raw = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
     try:
-        return json.loads(
+        parsed = json.loads(
             raw.decode("utf-8"),
             object_pairs_hook=_unique_pairs,
             parse_constant=_reject_nonfinite,
@@ -170,6 +173,8 @@ def _read_json(relative: str, *, limit: int) -> object:
     except (UnicodeError, ValueError, RecursionError) as error:
         message = f"host-C retained JSON is not valid: {relative}"
         raise ReferenceAuditError(message) from error
+    fingerprints[relative] = sha256(raw).digest()
+    return parsed
 
 
 def _load_study(relative: str) -> tuple[dict[str, Any], bytes]:
@@ -331,6 +336,34 @@ def _require_unchanged_manifests(fingerprints: dict[str, bytes]) -> None:
             _fail("host-C run manifest changed during audit")
 
 
+def _require_unchanged_sidecars(
+    prefix: str, fingerprints: dict[str, bytes | None]
+) -> None:
+    """Bind optional and required receipts to their originally parsed bytes."""
+    for leaf, limit in (
+        (ARTIFACT_LEAF, MAX_ARTIFACT_INDEX_BYTES),
+        (FAILURES_LEAF, MAX_FAILURES_BYTES),
+        (RESOURCE_CONTROLS_LEAF, MAX_RESOURCE_CONTROLS_BYTES),
+    ):
+        relative = f"{prefix}/{leaf}"
+        if relative not in fingerprints:
+            _fail("host-C audit missing admitted sidecar identity")
+        original = fingerprints[relative]
+        if original is None:
+            try:
+                (_ROOT / relative).lstat()
+            except FileNotFoundError:
+                continue
+            _fail(f"host-C retained sidecar changed during audit: {relative}")
+        try:
+            current = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
+        except (OSError, evidence.EvidenceError) as error:
+            message = f"host-C retained sidecar changed during audit: {relative}"
+            raise ReferenceAuditError(message) from error
+        if sha256(current).digest() != original:
+            _fail(f"host-C retained sidecar changed during audit: {relative}")
+
+
 def _require_git_commit(commit: str) -> None:
     executable = shutil.which("git", path=os.defpath)
     if executable is None:
@@ -364,6 +397,7 @@ def _valid_failure_version(version: object) -> bool:
 def _check_retained_failures(
     document: dict[str, Any],
     prefix: str,
+    fingerprints: dict[str, bytes | None],
 ) -> int:
     relative = f"{prefix}/{FAILURES_LEAF}"
     path = _ROOT / relative
@@ -374,8 +408,9 @@ def _check_retained_failures(
     if not path.exists() and not path.is_symlink():
         if has_failure:
             _fail("host-C reference failure details file is missing")
+        fingerprints[relative] = None
         return 0  # Pre-extension all-success pilot is still admissible.
-    source = _read_json(relative, limit=MAX_FAILURES_BYTES)
+    source = _read_json(relative, limit=MAX_FAILURES_BYTES, fingerprints=fingerprints)
     if (
         not isinstance(source, dict)
         or set(source) != {"schema_version", "failures"}
@@ -421,14 +456,18 @@ def _check_resource_controls(
     prefix: str,
     *,
     required: bool,
+    fingerprints: dict[str, bytes | None],
 ) -> int:
     relative = f"{prefix}/{RESOURCE_CONTROLS_LEAF}"
     path = _ROOT / relative
     if not path.exists() and not path.is_symlink():
         if required:
             _fail("host-C reference resource-control record is missing")
+        fingerprints[relative] = None
         return 0  # Legacy measurements predate controlled child launches.
-    recorded = _read_json(relative, limit=MAX_RESOURCE_CONTROLS_BYTES)
+    recorded = _read_json(
+        relative, limit=MAX_RESOURCE_CONTROLS_BYTES, fingerprints=fingerprints
+    )
     if not isinstance(recorded, dict):
         _fail("host-C reference child resource-control policy differs")
     version = recorded.get("schema_version")
@@ -461,10 +500,12 @@ def _admit_data(
             require_host_c_challenge_oracle=options.replay_oracles,
         ),
     )
+    sidecar_fingerprints: dict[str, bytes | None] = {}
     artifacts = _check_artifact_index(
         _read_json(
             f"{prefix}/{ARTIFACT_LEAF}",
             limit=MAX_ARTIFACT_INDEX_BYTES,
+            fingerprints=sidecar_fingerprints,
         ),
         document,
     )
@@ -472,10 +513,13 @@ def _admit_data(
         document,
         artifacts,
     )
-    failed_diagnostics = _check_retained_failures(document, prefix)
+    failed_diagnostics = _check_retained_failures(
+        document, prefix, sidecar_fingerprints
+    )
     resource_record = _check_resource_controls(
         prefix,
         required=options.require_resource_controls_record,
+        fingerprints=sidecar_fingerprints,
     )
     if (
         document["study"]["objectives"] == CURRENT_OBJECTIVES
@@ -491,6 +535,7 @@ def _admit_data(
         commit,
         resource_record,
         manifest_fingerprints,
+        sidecar_fingerprints,
         study_fingerprint,
     )
 
@@ -559,6 +604,7 @@ def audit(
         )
         report = analyze.analyze(data.document)
         _require_unchanged_manifests(data.manifest_fingerprints)
+        _require_unchanged_sidecars(prefix, data.sidecar_fingerprints)
         current = evidence.read_bounded_regular(
             _ROOT, relative_study, limit=analyze.MAX_INPUT_BYTES
         )
