@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from dataclasses import replace
 from enum import StrEnum
 import hashlib
+import os
 from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
@@ -208,6 +209,34 @@ class _MaterializeContext:
 def _validate_request_path(value: object, context: str) -> None:
     if not isinstance(value, Path):
         message = f"{context} must use pathlib Path"
+        raise CompatiblePlanError(message)
+    raw = str(value)
+    if _NUL in raw:
+        message = f"{context} path cannot contain NUL"
+        raise CompatiblePlanError(message)
+    try:
+        _ = raw.encode("utf-8")
+        _ = os.fsencode(value)
+    except UnicodeError as error:
+        message = f"{context} path cannot be encoded"
+        raise CompatiblePlanError(message) from error
+
+
+def _resolve_request_root(path: Path, context: str) -> Path:
+    try:
+        return path.resolve()
+    except (OSError, ValueError, RuntimeError) as error:
+        message = f"compatible {context} root resolution failed: {error}"
+        raise CompatiblePlanError(message) from error
+
+
+def _require_output_outside_candidate(
+    request: CompatibleMaterializeRequest,
+) -> None:
+    candidate = _resolve_request_root(request.candidate_root, "candidate")
+    output = _resolve_request_root(request.output_root, "output")
+    if output.is_relative_to(candidate):
+        message = "compatible output root must remain outside candidate tree"
         raise CompatiblePlanError(message)
 
 
@@ -1262,6 +1291,7 @@ def materialize_compatible_plan(
 
     """
     request = _require_materialize_request(request)
+    _require_output_outside_candidate(request)
     admitted = _admit(request)
     _require_correction_routes(request.plan, request.behavior)
     candidate = _snapshot_compatible_tree(request.candidate_root, "candidate")

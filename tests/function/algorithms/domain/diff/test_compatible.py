@@ -610,6 +610,75 @@ def test_compatible_request_envelopes_reject_foreign_fields(
         _ = replace(request, postcondition=cast("Postcondition", object()))
 
 
+@pytest.mark.parametrize("unsafe_name", ["nul\x00path", "unicode\ud800path"])
+def test_compatible_request_rejects_nonportable_root_paths(
+    tmp_path: Path, unsafe_name: str
+) -> None:
+    """Reject unrepresentable authoring and runtime roots at construction."""
+    source, oracle = _roots(tmp_path)
+    build = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    malformed = tmp_path / unsafe_name
+    for field in ("source_root", "oracle_root"):
+        with pytest.raises(CompatiblePlanError, match="root path"):
+            _ = replace(build, **{field: malformed})
+
+    plan = build_compatible_plan(build)
+    candidate = _candidate(tmp_path)
+    request = _request(candidate, plan, tmp_path / "out")
+    for field in ("candidate_root", "output_root"):
+        with pytest.raises(CompatiblePlanError, match="root path"):
+            _ = replace(request, **{field: malformed})
+
+
+def test_compatible_output_cannot_be_nested_inside_candidate(
+    tmp_path: Path,
+) -> None:
+    """Avoid creating transient staging artifacts in admitted source input."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    original = snapshot_tree(candidate)
+    output = candidate / "nested" / "out"
+
+    with pytest.raises(CompatiblePlanError, match=r"output root.*candidate"):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    _expect(snapshot_tree(candidate) == original, "candidate was modified")
+    _expect(not output.exists(), "nested output was published")
+    _expect(
+        not (candidate / "nested/.out.compatible-staging").exists(),
+        "candidate staging was left in source",
+    )
+
+
+def test_compatible_output_alias_cannot_target_candidate(
+    tmp_path: Path,
+) -> None:
+    """A linked output parent cannot conceal a candidate-tree destination."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    alias = tmp_path / "candidate-alias"
+    try:
+        alias.symlink_to(candidate, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    original = snapshot_tree(candidate)
+    output = alias / "out"
+
+    with pytest.raises(CompatiblePlanError, match=r"output root.*candidate"):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    _expect(snapshot_tree(candidate) == original, "candidate was modified")
+    _expect(not output.exists(), "aliased output was published")
+    _expect(
+        not (candidate / ".out.compatible-staging").exists(),
+        "candidate staging was left through alias",
+    )
+
+
 def test_compatible_public_apis_reject_foreign_request_records(
     tmp_path: Path,
 ) -> None:
