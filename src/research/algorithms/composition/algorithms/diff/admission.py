@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -79,6 +80,7 @@ def _is_portable_relative_path(path: str) -> bool:
     candidate = PurePosixPath(path)
     return (
         not candidate.is_absolute()
+        and not PureWindowsPath(path).drive
         and _PARENT not in candidate.parts
         and candidate.as_posix() == path
     )

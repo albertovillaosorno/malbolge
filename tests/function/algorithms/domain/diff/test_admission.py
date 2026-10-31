@@ -368,7 +368,9 @@ def test_identity_records_reject_foreign_runtime_types() -> None:
         })
 
 
-@pytest.mark.parametrize("unsafe_path", ["src/\x00.c", "src/\ud800.c"])
+@pytest.mark.parametrize(
+    "unsafe_path", ["src/\x00.c", "src/\ud800.c", "C:/drive.c", "C:relative.c"]
+)
 def test_identity_paths_reject_nonportable_names(unsafe_path: str) -> None:
     """Malformed path metadata must fail before source binding and encoding."""
     with pytest.raises(AdmissionPolicyError, match="invalid identity path"):
