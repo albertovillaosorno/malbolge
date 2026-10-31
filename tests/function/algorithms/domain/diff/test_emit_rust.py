@@ -934,6 +934,46 @@ def test_writer_rejects_short_or_invalid_staging_write_count(
     assert not list(tmp_path.glob(".generated.rs.*.tmp"))
 
 
+@pytest.mark.parametrize("cleanup_error", [ValueError, RuntimeError])
+def test_writer_preserves_primary_error_after_invalid_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_error: type[Exception],
+) -> None:
+    """Broken host cleanup cannot mask an already failed publication."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    original_unlink = Path.unlink
+    original_replace = Path.replace
+    attempted: list[Path] = []
+
+    def reject_replace(path: Path, target: Path) -> Path:
+        if target == output:
+            attempted.append(path)
+            message = "blocked atomic Rust output publication"
+            raise RuntimeError(message)
+        return original_replace(path, target)
+
+    def reject_cleanup(path: Path, *, missing_ok: bool = False) -> None:
+        if path in attempted:
+            message = "injected cleanup failure"
+            raise cleanup_error(message)
+        original_unlink(path, missing_ok=missing_ok)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", reject_replace)
+        patch.setattr(Path, "unlink", reject_cleanup)
+        with pytest.raises(
+            RustEmissionError,
+            match=r"publication failed.*temporary cleanup failed",
+        ):
+            write_rust_transform(protected, _PROFILE, output)
+    assert len(attempted) == 1
+    assert not output.exists()
+    assert attempted[0].is_file()
+    attempted[0].unlink()
+
+
 def test_writer_preserves_legacy_fixed_temporary_file(tmp_path: Path) -> None:
     """A stale legacy temp cannot be deleted by a new Rust emission."""
     _, _, _, protected = _fixture(tmp_path)

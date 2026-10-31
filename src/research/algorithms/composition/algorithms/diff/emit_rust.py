@@ -340,7 +340,7 @@ def _cleanup_owned_temporary(path: Path) -> str | None:
         path.unlink()
     except FileNotFoundError:
         return None
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         return str(error)
     return None
 
