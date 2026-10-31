@@ -32,8 +32,11 @@ tests, verifier integration, and Git-ignored local `out/` artifacts.
 enforces the repository shape. The shared research layout discovery also
 rejects linked algorithm directories and redirected in-root directory
 ancestors before admitting an `experiment.toml` identity. Every direct
-research ID under either mirror root must exist on both sides. The documentation
-half requires `README.md` and `research.md`; the executable half requires
+research ID under either mirror root must exist on both sides. The special
+composition state-graph experiment and domain algorithm directories must not
+publish the same research ID: discovery rejects a collision instead of silently
+replacing either physical experiment. The documentation half requires
+`README.md` and `research.md`; the executable half requires
 `README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via
 `check-ignore --no-index`, whether `algorithms/<id>/out/` itself is ignored.
 A rule matching only a synthetic child filename cannot satisfy this

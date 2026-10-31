@@ -131,3 +131,17 @@ def test_linked_state_graph_directory_is_not_discovered(tmp_path: Path) -> None:
     state_graph.symlink_to(outside, target_is_directory=True)
     with pytest.raises(OSError, match="redirect"):
         _ = research_layout.research_algorithm_directories(tmp_path)
+
+
+def test_domain_and_composition_research_id_collision_fails_closed(
+    tmp_path: Path,
+) -> None:
+    """Two physical experiments cannot silently share one stable research ID."""
+    domain = _domain_root(tmp_path) / research_layout.STATE_GRAPH_ID
+    domain.mkdir(parents=True)
+    _ = (domain / "experiment.toml").write_text("schema_version = 1\n")
+    composition = tmp_path / "src/research/algorithms/composition/state-graph"
+    composition.mkdir(parents=True)
+    _ = (composition / "experiment.toml").write_text("schema_version = 1\n")
+    with pytest.raises(OSError, match="duplicate research algorithm ID"):
+        _ = research_layout.research_algorithm_directories(tmp_path)

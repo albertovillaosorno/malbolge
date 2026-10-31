@@ -34,9 +34,7 @@
 
 from __future__ import annotations
 
-from stat import S_ISDIR
-from stat import S_ISLNK
-from stat import S_ISREG
+from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -95,9 +93,7 @@ def research_algorithm_directories(root: Path) -> tuple[tuple[str, Path], ...]:
     """
     domain_root = root / "src/research/algorithms/domain/algorithms"
     if not _unlinked_directory(root, domain_root):
-        message = (
-            f"research domain directory missing or not regular: {domain_root}"
-        )
+        message = f"research domain directory missing or not regular: {domain_root}"
         raise OSError(message)
     entries = {
         directory.name: directory
@@ -106,6 +102,12 @@ def research_algorithm_directories(root: Path) -> tuple[tuple[str, Path], ...]:
     }
     state_graph = root / "src/research/algorithms/composition/state-graph"
     if _manifest_is_file(state_graph / "experiment.toml", root):
+        if STATE_GRAPH_ID in entries:
+            message = (
+                "duplicate research algorithm ID across domain and "
+                f"composition experiments: {STATE_GRAPH_ID}"
+            )
+            raise OSError(message)
         entries[STATE_GRAPH_ID] = state_graph
     return tuple(sorted(entries.items()))
 
