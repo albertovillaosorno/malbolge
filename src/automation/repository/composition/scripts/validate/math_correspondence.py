@@ -34,23 +34,31 @@
 
 from __future__ import annotations
 
-import re
-import sys
 from dataclasses import dataclass
-from pathlib import Path, PureWindowsPath
-from stat import S_ISDIR, S_ISLNK, S_ISREG
-from typing import Never, cast
-
+import os
+from pathlib import Path
+from pathlib import PureWindowsPath
+import re
+from stat import S_ISDIR
+from stat import S_ISLNK
+from stat import S_ISREG
+import sys
 import tomllib
+from typing import Never
+from typing import cast
 
 from scripts.repository_root import repository_root
 
 ROOT = repository_root(Path(__file__))
 MANIFEST = (
-    ROOT / "src/specification/formal-model/math/specification" / "correspondence.toml"
+    ROOT
+    / "src/specification/formal-model/math/specification"
+    / "correspondence.toml"
 )
 MATH_ROOT = ROOT / "src/specification/formal-model/math"
 SCHEMA_VERSION = 1
+MAX_CORRESPONDENCE_SOURCE_BYTES = 4 * 1024 * 1024
+TEX_EXTENSION = ".tex"
 PARENT_SEGMENT = ".."
 ALGORITHMS_SEGMENT = "algorithms"
 TESTS_SEGMENT = "tests"
@@ -145,8 +153,36 @@ def _exact_keys(
     _fail(message)
 
 
-def _physical_repository_path(path: Path, context: str, *, directory: bool) -> None:
-    """Reject aliases and special files throughout a repository evidence path."""
+def _require_physical_member(
+    path: Path,
+    context: str,
+    relative: Path,
+    *,
+    directory: bool,
+) -> None:
+    """Check one physical component without following aliases."""
+    try:
+        status = path.lstat()
+    except FileNotFoundError:
+        _fail(f"{context} does not exist: {relative.as_posix()}")
+    except OSError as error:
+        _fail(f"{context} status failed: {error}")
+    if S_ISLNK(status.st_mode) or path.is_junction():
+        _fail(f"{context} must not redirect: {relative.as_posix()}")
+    admitted = (
+        S_ISDIR(status.st_mode) if directory else S_ISREG(status.st_mode)
+    )
+    if not admitted:
+        _fail(f"{context} must be a physical regular artifact: {path}")
+
+
+def _physical_repository_path(
+    path: Path,
+    context: str,
+    *,
+    directory: bool,
+) -> None:
+    """Reject aliases and special files throughout an evidence path."""
     try:
         relative = path.relative_to(ROOT)
     except ValueError:
@@ -157,28 +193,122 @@ def _physical_repository_path(path: Path, context: str, *, directory: bool) -> N
         _fail(f"{context} must name a regular repository file: {path}")
     current = ROOT
     for index, component in enumerate(relative.parts):
-        current = current / component
-        try:
-            status = current.lstat()
-        except FileNotFoundError:
-            _fail(f"{context} does not exist: {relative.as_posix()}")
-        except OSError as error:
-            _fail(f"{context} status failed: {error}")
-        if S_ISLNK(status.st_mode) or current.is_junction():
-            _fail(f"{context} must not redirect: {relative.as_posix()}")
-        expects_directory = directory if index == len(relative.parts) - 1 else True
-        expected = (
-            S_ISDIR(status.st_mode) if expects_directory else S_ISREG(status.st_mode)
+        current /= component
+        is_parent = index != len(relative.parts) - 1
+        _require_physical_member(
+            current, context, relative, directory=is_parent or directory
         )
-        if not expected:
-            _fail(f"{context} must be a physical regular artifact: {path}")
+
+
+def _source_fingerprint(
+    status: os.stat_result,
+    context: str,
+) -> tuple[int, ...]:
+    """Validate a regular source and capture mutation-sensitive identity.
+
+    Returns:
+        Device, inode, byte count, and modification/change timestamps.
+
+    """
+    if not S_ISREG(status.st_mode):
+        _fail(f"{context} must be a physical regular artifact")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _read_source_descriptor(
+    path: Path,
+    context: str,
+    descriptor: int,
+    *,
+    expected: tuple[int, ...],
+) -> bytes:
+    """Verify that one opened source remains the same named regular file.
+
+    Returns:
+        The exact stable physical bytes read from that descriptor.
+
+    """
+    with os.fdopen(descriptor, "rb") as stream:
+        if _source_fingerprint(os.fstat(stream.fileno()), context) != expected:
+            _fail(f"{context} changed before read")
+        payload = stream.read(MAX_CORRESPONDENCE_SOURCE_BYTES + 1)
+        if len(payload) != expected[2]:
+            _fail(f"{context} changed during read or exceeds byte limit")
+        if (
+            _source_fingerprint(os.fstat(stream.fileno()), context) != expected
+            or _source_fingerprint(path.lstat(), context) != expected
+        ):
+            _fail(f"{context} changed during read")
+        _physical_repository_path(path, context, directory=False)
+        return payload
+
+
+def _read_source_bytes(path: Path, context: str) -> bytes:
+    """Read bounded, unredirected source bytes with physical admission.
+
+    Returns:
+        Exact source bytes from one stable, named regular file.
+
+    """
+    _physical_repository_path(path, context, directory=False)
+    admitted = path.lstat()
+    expected = _source_fingerprint(admitted, context)
+    if admitted.st_size > MAX_CORRESPONDENCE_SOURCE_BYTES:
+        _fail(f"{context} exceeds byte limit")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    return _read_source_descriptor(
+        path, context, descriptor, expected=expected
+    )
 
 
 def _read_source_text(path: Path, context: str) -> str:
     try:
-        return path.read_text(encoding="utf-8")
+        payload = _read_source_bytes(path, context)
+        return payload.decode("utf-8")
     except UnicodeDecodeError as error:
         _fail(f"invalid {context} UTF-8: {error}")
+    except OSError as error:
+        _fail(f"cannot read {context}: {error}")
+
+
+def _admit_tex_candidate(parent: Path, name: str) -> Path | None:
+    """Admit a TeX file or reject a linked non-TeX directory.
+
+    Returns:
+        A physical TeX file, or ``None`` for other regular files.
+
+    """
+    candidate = parent / name
+    if candidate.suffix == TEX_EXTENSION:
+        _physical_repository_path(candidate, "equation source", directory=False)
+        return candidate
+    if candidate.is_symlink() and candidate.is_dir():
+        _fail(f"mathematics directory must not redirect: {candidate}")
+    return None
+
+
+def _append_tex_candidates(
+    parent: Path,
+    filenames: list[str],
+    sources: list[Path],
+) -> None:
+    """Collect admitted TeX files from one physical directory."""
+    for name in filenames:
+        candidate = _admit_tex_candidate(parent, name)
+        if candidate is not None:
+            sources.append(candidate)
 
 
 def _tex_sources() -> tuple[Path, ...]:
@@ -189,18 +319,14 @@ def _tex_sources() -> tuple[Path, ...]:
         _fail(f"mathematics evidence scan failed: {error}")
 
     for parent, directories, filenames in MATH_ROOT.walk(on_error=fail_walk):
-        _physical_repository_path(parent, "mathematics directory", directory=True)
+        _physical_repository_path(
+            parent, "mathematics directory", directory=True
+        )
         for name in directories:
             _physical_repository_path(
                 parent / name, "mathematics directory", directory=True
             )
-        for name in filenames:
-            candidate = parent / name
-            if candidate.suffix == ".tex":
-                _physical_repository_path(candidate, "equation source", directory=False)
-                sources.append(candidate)
-            elif candidate.is_symlink() and candidate.is_dir():
-                _fail(f"mathematics directory must not redirect: {candidate}")
+        _append_tex_candidates(parent, filenames, sources)
     return tuple(sorted(sources))
 
 
@@ -325,7 +451,8 @@ def _validate_entry_references(
             _fail(f"equation label is not unique in source: {entry.label}")
         for evidence in entry.evidence:
             if not _test_exists(evidence):
-                _fail(f"evidence test not found: {evidence.path}::{evidence.test}")
+                source = f"{evidence.path}::{evidence.test}"
+                _fail(f"evidence test not found: {source}")
     return frozenset(labels)
 
 
@@ -363,7 +490,9 @@ def validate_repository() -> tuple[Correspondence, ...]:
         Stable correspondence entries after all repository checks succeed.
 
     """
-    _physical_repository_path(MANIFEST, "correspondence manifest", directory=False)
+    _physical_repository_path(
+        MANIFEST, "correspondence manifest", directory=False
+    )
     return validate_text(_read_source_text(MANIFEST, "correspondence manifest"))
 
 

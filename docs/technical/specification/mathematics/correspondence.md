@@ -39,9 +39,12 @@ Renaming/removing an equation or a test therefore breaks correspondence instead
 of silently leaving stale documentation.
 The validator requires physical in-repository regular manifest, equation, and
 evidence files and rejects redirected source ancestors, including symlinked
-math directories. Malformed UTF-8 is reported as a typed correspondence error.
-These are admission checks, not a claim of atomicity against subsequent
-filesystem mutation.
+math directories. The validator reads at most 4 MiB per source, using stable
+regular-file descriptors and verifying inode, size and timestamps before and
+after reads. A parent changed into a symlink, or a source replaced during a
+read, cannot supply equation or test evidence. Malformed UTF-8 remains a typed
+correspondence error. These are read-time checks, not a claim that files can
+never change after validation finishes.
 
 ### Current promoted equations
 
