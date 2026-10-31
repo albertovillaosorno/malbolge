@@ -35,13 +35,11 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import cast
 
 import pytest
 from scripts.bootstrap import llvm_validation
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 LINUX_PLATFORM = "linux-x86_64"
 WINDOWS_PLATFORM = "windows-x86_64"
@@ -462,3 +460,95 @@ def test_windows_aliases_preflight_checks_all_existing_members(
     assert not (root / "jig-bin/clang.bin").exists()
     assert not (root / "jig-bin/clang-tidy.bin").exists()
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+
+
+_INVALID_COUNTS = ("short", "overlong", "boolean", "missing")
+_CLANG_ALIAS = "clang.bin"
+
+
+def _invalid_count(kind: str, expected: int) -> int:
+    """Simulate an invalid host write result.
+
+    Returns:
+        Short, overstated, boolean, or missing acknowledgement.
+
+    """
+    values: dict[str, object] = {
+        "short": expected - 1,
+        "overlong": expected + 1,
+        "boolean": True,
+        "missing": None,
+    }
+    return cast("int", values[kind])
+
+
+def _mock_bad_marker_write(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_count: str,
+) -> None:
+    real_write = Path.write_bytes
+
+    def wrong_write(path: Path, data: bytes) -> int:
+        if path.name == llvm_validation.LLVM_IMPORT_MARKER:
+            _ = real_write(path, data[:-1])
+            return _invalid_count(invalid_count, len(data))
+        return real_write(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", wrong_write)
+
+
+@pytest.mark.parametrize("invalid_count", list(_INVALID_COUNTS))
+def test_linux_import_rejects_incomplete_wrapper_acknowledgement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_count: str,
+) -> None:
+    """An incomplete wrapper write must not publish an LLVM toolchain."""
+    observation = _host_observation(tmp_path)
+    real_write = Path.write_text
+
+    def wrong_write(
+        path: Path,
+        data: str,
+        *,
+        encoding: str,
+        newline: str,
+    ) -> int:
+        if path.name == _CLANG_ALIAS:
+            _ = real_write(path, data[:-1], encoding=encoding, newline=newline)
+            return _invalid_count(invalid_count, len(data))
+        return real_write(path, data, encoding=encoding, newline=newline)
+
+    monkeypatch.setattr(Path, "write_text", wrong_write)
+    with pytest.raises(llvm_validation.LlvmImportError, match="write count"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
+@pytest.mark.parametrize("invalid_count", list(_INVALID_COUNTS))
+def test_linux_import_rejects_incomplete_marker_acknowledgement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_count: str,
+) -> None:
+    """An incomplete import marker must not commit a Linux runtime."""
+    observation = _host_observation(tmp_path)
+    _mock_bad_marker_write(monkeypatch, invalid_count)
+    with pytest.raises(llvm_validation.LlvmImportError, match="write count"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
+@pytest.mark.parametrize("invalid_count", list(_INVALID_COUNTS))
+def test_windows_aliases_reject_incomplete_marker_acknowledgement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_count: str,
+) -> None:
+    """A partial marker write cannot authorize a Windows LLVM alias set."""
+    root = _windows_tool_bundle(tmp_path)
+    _mock_bad_marker_write(monkeypatch, invalid_count)
+    with pytest.raises(llvm_validation.LlvmImportError, match="write count"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+    assert not llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready

@@ -234,17 +234,34 @@ def _linux_wrapper(tool: str) -> str:
     ))
 
 
+def _write_linux_alias(path: Path, text: str) -> None:
+    """Require the complete wrapper before admitting it as an executable."""
+    written = path.write_text(text, encoding="utf-8", newline="\n")
+    if type(written) is not int or written != len(text):
+        _fail(f"LLVM wrapper write count mismatch: {path.name}")
+
+
+def _write_import_marker(root: Path, platform_id: str) -> None:
+    """Publish a complete marker or fail without retaining a partial one."""
+    marker = root / LLVM_IMPORT_MARKER
+    content = _marker_bytes(platform_id)
+    written = marker.write_bytes(content)
+    if type(written) is int and written == len(content):
+        return
+    try:
+        marker.unlink(missing_ok=True)
+    except (OSError, ValueError) as error:
+        _fail(f"LLVM marker write count mismatch; cleanup failed: {error}")
+    _fail("LLVM marker write count mismatch")
+
+
 def _write_linux_aliases(root: Path) -> tuple[Path, ...]:
     aliases: list[Path] = []
     alias_root = root / "jig-bin"
     alias_root.mkdir(parents=True, exist_ok=True)
     for tool in _TOOL_NAMES:
         alias = alias_root / f"{tool}.bin"
-        _ = alias.write_text(
-            _linux_wrapper(tool),
-            encoding="utf-8",
-            newline="\n",
-        )
+        _write_linux_alias(alias, _linux_wrapper(tool))
         alias.chmod(0o755)
         aliases.append(alias)
     return tuple(aliases)
@@ -290,7 +307,7 @@ def _stage_linux_llvm(
         staged / "lib" / "clang" / "22",
     )
     _ = _write_linux_aliases(staged)
-    _ = (staged / LLVM_IMPORT_MARKER).write_bytes(_marker_bytes(LINUX_PLATFORM))
+    _write_import_marker(staged, LINUX_PLATFORM)
 
 
 def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
@@ -384,7 +401,7 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
     for source, alias in pairs:
         if not alias.exists():
             _copy_file(source, alias)
-    _ = (root / LLVM_IMPORT_MARKER).write_bytes(_marker_bytes(WINDOWS_PLATFORM))
+    _write_import_marker(root, WINDOWS_PLATFORM)
     return tuple(alias for _, alias in pairs)
 
 
