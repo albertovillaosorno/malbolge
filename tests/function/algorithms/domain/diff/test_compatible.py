@@ -353,6 +353,25 @@ def test_compatible_materialization_rejects_post_snapshot_linked_candidate(
     _expect(not request.output_root.exists(), "linked candidate was published")
 
 
+def test_compatible_metadata_rejects_nul_paths_before_placement() -> None:
+    """A NUL path cannot escape admission as a raw filesystem ValueError."""
+    nul_path = "code\x00shadow.src"
+    with pytest.raises(CompatiblePlanError, match="unsafe compatible"):
+        _ = CompatibleInstruction(
+            output_path=nul_path,
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=b"target",
+        )
+    with pytest.raises(CompatiblePlanError, match="unsafe compatible"):
+        _ = CompatibleInstruction(
+            output_path="code.src",
+            kind=CompatibleFileKind.COPY_CANDIDATE,
+            source_path=nul_path,
+        )
+    with pytest.raises(CompatiblePlanError, match="unsafe compatible"):
+        _ = CompatibleCorrectionBinding(nul_path, 0, "fix")
+
+
 def test_compatible_instruction_rejects_foreign_metadata() -> None:
     """Reject malformed direct instruction evidence at construction time."""
     with pytest.raises(CompatiblePlanError, match="output path"):

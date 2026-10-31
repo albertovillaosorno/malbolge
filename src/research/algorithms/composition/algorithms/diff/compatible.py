@@ -74,6 +74,7 @@ _STAGING_SUFFIX = ".compatible-staging"
 _PARENT = ".."
 _DOT = "."
 _BACKSLASH = "\\"
+_NUL = "\x00"
 _HEX_DIGITS = frozenset("0123456789abcdef")
 
 Mapper = Callable[[str, bytes], MappedView | None]
@@ -612,6 +613,7 @@ def _validate_relative_path(relative_path: str) -> str:
     unsafe = (
         not relative_path
         or _BACKSLASH in relative_path
+        or _NUL in relative_path
         or relative_path == _DOT
         or candidate.is_absolute()
         or _PARENT in candidate.parts
