@@ -605,6 +605,13 @@ def check_retained_failures(
     return len(failures)
 
 
+def _write_retained_text(path: Path, content: str) -> None:
+    """Require complete text writes before admitting a retained study."""
+    written = path.write_text(content, encoding="utf-8")
+    if type(written) is not int or written != len(content):
+        _fail(f"host-C retained {path.name} has invalid write count")
+
+
 def _run_study(root: Path, plan: StudyPlan, *, commit: str) -> dict[str, Any]:
     environment = _Env(
         root=root,
@@ -624,7 +631,8 @@ def _run_study(root: Path, plan: StudyPlan, *, commit: str) -> dict[str, Any]:
     _verify_report(environment, document)
     _ = check_retained_artifacts(document, artifacts)
     _ = check_retained_failures(document, environment.failures)
-    _ = (root / "failures.json").write_text(
+    _write_retained_text(
+        root / "failures.json",
         json.dumps(
             {
                 "schema_version": 1,
@@ -634,24 +642,23 @@ def _run_study(root: Path, plan: StudyPlan, *, commit: str) -> dict[str, Any]:
             sort_keys=True,
         )
         + "\n",
-        encoding="utf-8",
     )
-    _ = (root / "resource-controls.json").write_text(
+    _write_retained_text(
+        root / "resource-controls.json",
         json.dumps(
             host_c_oracle.resource_controls_record(),
             indent=2,
             sort_keys=True,
         )
         + "\n",
-        encoding="utf-8",
     )
-    _ = (root / "artifacts.json").write_text(
+    _write_retained_text(
+        root / "artifacts.json",
         json.dumps(artifacts, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
     )
-    _ = (root / "study.json").write_text(
+    _write_retained_text(
+        root / "study.json",
         json.dumps(document, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
     )
     return document
 

@@ -122,6 +122,53 @@ def test_real_host_c_reference_pilot_links_all_trial_evidence() -> None:
 
 
 @pytest.mark.parametrize(
+    "sidecar",
+    ["failures.json", "resource-controls.json", "artifacts.json", "study.json"],
+)
+@pytest.mark.parametrize("bad_count", [None, True, -1, 1, 1_000_000])
+def test_reference_retained_sidecars_reject_incomplete_write_acknowledgement(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    sidecar: str,
+    bad_count: object,
+) -> None:
+    """A short or foreign host write cannot publish a successful study."""
+    root = tmp_path / "study"
+    root.mkdir()
+    original_write = type(root).write_text
+
+    def faulty_write(
+        path: Path,
+        content: str,
+        encoding: str | None = None,
+    ) -> int:
+        if path.name == sidecar:
+            _ = original_write(path, content[:1], encoding=encoding)
+            return cast("int", bad_count)
+        return original_write(path, content, encoding=encoding)
+
+    monkeypatch.setattr(reference_study, "_ROOT", tmp_path)
+    monkeypatch.setattr(type(root), "write_text", faulty_write)
+    monkeypatch.setattr(reference_study, "_write_case", lambda *_: ([], {}))
+    monkeypatch.setattr(reference_study, "_verify_report", lambda *_: None)
+    monkeypatch.setattr(
+        reference_study, "check_retained_artifacts", lambda *_: 0
+    )
+    monkeypatch.setattr(
+        reference_study, "check_retained_failures", lambda *_: 0
+    )
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="write count"
+    ):
+        _ = reference_study._run_study(  # ruff: ignore[private-member-access]
+            root,
+            reference_study.StudyPlan(FAMILY, (4,), 7, 1),
+            commit="0" * 40,
+        )
+
+
+@pytest.mark.parametrize(
     "plan",
     [
         reference_study.StudyPlan(FAMILY, (), 7, 1),
