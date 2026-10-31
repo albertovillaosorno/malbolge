@@ -27,9 +27,12 @@ as `program.malbolge.checkpoint.00000000000000000001` and
 pointer to the latest committed generation. A persistent
 `program.malbolge.progress.json.lock` file coordinates sidecar writers; its
 contents carry no recovery semantics and the operating-system lock is released
-when the owning process exits. The final requested path is never replaced until
-
-the artifact is complete and independently verified.
+when the owning process exits. If the pointer basename plus `.lock` exceeds
+255 filesystem-encoded bytes, the lock instead uses
+`.progress-lock-<full-64-hex-SHA256>.lock` in the same directory, hashing the
+original pointer basename bytes. Existing shorter lock names remain unchanged.
+The final requested path is never replaced until the artifact is complete and
+independently verified.
 
 ## Current Behavior
 
@@ -1028,11 +1031,15 @@ these selectors once a product C-to-Malbolge pipeline exists.
   never an identity authority: retained aliases still require the original
   regular inode, exact content, link count and eight-character stage token.
   Valid long target names no longer fail solely because their temporary
-  name would exceed the filesystem's per-component length limit; target
-  and writer-lock filenames must still be individually representable.
-  The digest and prefix threshold operate on filesystem-encoded basename
-  bytes, not Unicode code-point counts. Positive recovery fixtures include
-  long multibyte UTF-8 basenames and POSIX `surrogateescape` filenames.
+  name would exceed the filesystem's per-component length limit. A mutable
+  pointer with a valid 253- to 255-byte basename also receives a compact,
+  stable 64-hex-digit SHA-256 sibling lock instead of an overlong `.lock`
+  suffix. Shorter pointer basenames continue sharing their legacy lock path.
+  Both digest thresholds operate on filesystem-encoded basename bytes;
+  distinct long multibyte names and cross-process lock contention are tested.
+  Stage recovery also uses bytes, not Unicode code-point counts. Positive
+  recovery fixtures include long multibyte UTF-8 and POSIX `surrogateescape`
+  basenames.
   A full checkpoint/partial/pointer publication fixture also exercises a
   long output whose immutable member names remain valid but whose old
   staged names exceeded POSIX component limits.

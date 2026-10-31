@@ -3338,12 +3338,13 @@ def test_read_rejects_linked_progress_parent(tmp_path: Path) -> None:
 @pytest.mark.skipif(
     os.name == progress.WINDOWS_PLATFORM, reason="POSIX filename budget"
 )
+@pytest.mark.parametrize("stem_length", [224, 227])
 def test_long_valid_output_basename_publishes_progress_pointer(
-    tmp_path: Path,
+    tmp_path: Path, stem_length: int
 ) -> None:
     """A valid final/lock basename must not overflow staging names."""
     original = _sidecar(tmp_path)
-    output = tmp_path / ("o" * 224 + ".malbolge")
+    output = tmp_path / ("o" * stem_length + ".malbolge")
     destination = progress.progress_path(output)
     # These are valid 255-byte POSIX components despite an overlong stage.
     assert (
@@ -3362,6 +3363,70 @@ def test_long_valid_output_basename_publishes_progress_pointer(
         destination.name,
         f"{destination.name}.lock",
     ])
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX filename budget"
+)
+@pytest.mark.parametrize("stem_length", [230, 232])
+def test_long_valid_progress_basename_uses_short_writer_lock(
+    tmp_path: Path, stem_length: int
+) -> None:
+    """A 253/255-byte valid pointer must not require an oversized lock name."""
+    base = _sidecar(tmp_path)
+    output = tmp_path / ("o" * stem_length + ".malbolge")
+    destination = progress.progress_path(output)
+    assert len(os.fsencode(destination.name)) <= POSIX_FILENAME_COMPONENT_MAX_BYTES
+    assert (
+        len(os.fsencode(f"{destination.name}.lock"))
+        > POSIX_FILENAME_COMPONENT_MAX_BYTES
+    )
+    candidate = replace(
+        base, output_path=str(output), progress_path=str(destination)
+    )
+    assert progress.write_atomic(candidate) == destination
+    assert progress.read(destination) == candidate
+    locks = [member for member in tmp_path.iterdir() if member != destination]
+    assert len(locks) == 1
+    lock = locks[0]
+    assert lock.name.startswith(".progress-lock-")
+    assert lock.name.endswith(".lock")
+    assert len(os.fsencode(lock.name)) <= POSIX_FILENAME_COMPONENT_MAX_BYTES
+    assert lock.is_file()
+    assert progress.write_atomic(candidate) == destination
+    assert lock.is_file()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX filename budget"
+)
+def test_compact_writer_locks_distinguish_utf8_output_names(
+    tmp_path: Path,
+) -> None:
+    """Distinct multibyte names use independent stable byte-derived locks."""
+    base = _sidecar(tmp_path)
+    lock_path = cast("Callable[[Path], Path]", vars(progress)["_writer_lock_path"])
+    destinations: list[Path] = []
+    for character in ("é", "ñ"):
+        output = tmp_path / (character * 114 + ".malbolge")
+        destination = progress.progress_path(output)
+        assert len(os.fsencode(destination.name)) <= POSIX_FILENAME_COMPONENT_MAX_BYTES
+        assert (
+            len(os.fsencode(f"{destination.name}.lock"))
+            > POSIX_FILENAME_COMPONENT_MAX_BYTES
+        )
+        candidate = replace(
+            base, output_path=str(output), progress_path=str(destination)
+        )
+        assert progress.write_atomic(candidate) == destination
+        assert progress.read(destination) == candidate
+        destinations.append(destination)
+    first, second = (lock_path(path) for path in destinations)
+    assert first != second
+    assert first.is_file()
+    assert second.is_file()
+    assert lock_path(destinations[0]) == first
+    assert lock_path(destinations[1]) == second
 
 
 @pytest.mark.skipif(
@@ -8927,11 +8992,18 @@ def _terminate_child(process: sp.Popen[bytes]) -> None:
         _ = process.wait(timeout=10)
 
 
+@pytest.mark.parametrize("long_basename", [False, True])
 def test_writer_lock_serializes_cross_process_sidecar_updates(
-    tmp_path: Path,
+    tmp_path: Path, long_basename: bool
 ) -> None:
     """A competing writer cannot enter while another process owns the lock."""
-    destination = tmp_path / PROGRESS_NAME
+    if long_basename and os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("POSIX filename budget")
+    destination = (
+        tmp_path / ("o" * 232 + ".malbolge.progress.json")
+        if long_basename
+        else tmp_path / PROGRESS_NAME
+    )
     signals = _writer_lock_signals(tmp_path)
     environment = _subprocess_environment()
     holder = _spawn_writer_lock(
@@ -8959,7 +9031,8 @@ def test_writer_lock_serializes_cross_process_sidecar_updates(
         _ = signals.release.write_text("release", encoding="utf-8")
         stdout, stderr = holder.communicate(timeout=10)
         assert holder.returncode == 0, (stdout, stderr)
-    assert Path(f"{destination}.lock").is_file()
+    lock_path = cast("Callable[[Path], Path]", vars(progress)["_writer_lock_path"])
+    assert lock_path(destination).is_file()
 
 
 class CloseFailingStream:

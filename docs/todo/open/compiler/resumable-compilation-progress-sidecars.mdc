@@ -161,7 +161,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   staging-alias scans escape glob metacharacters in literal output names,
   long valid mutable and immutable destinations now share a bounded
   compact digest staging prefix with collision-independent inode admission
-  and crash-alias recovery; ordinary literal staging names remain stable,
+  and crash-alias recovery; valid progress pointers too long for a sibling
+  `.lock` suffix use a full-digest, byte-derived persistent lock name, with
+  byte-boundary, multibyte isolation, and cross-process contention regressions;
+  ordinary literal staging names remain stable,
   including recovery of long multibyte UTF-8 and POSIX `surrogateescape`
   basenames using the underlying filesystem byte spelling,
   and an integrated long-output checkpoint/partial/pointer round trip,

@@ -103,6 +103,7 @@ _MAX_SIDECAR_BYTES: Final = 1_048_576
 _RAW_READ_CHUNK_BYTES: Final = 65_536
 _MAX_NATIVE_FILE_DESCRIPTOR: Final = (1 << (8 * calcsize("@i") - 1)) - 1
 _MAX_STAGING_PREFIX_BYTES: Final = 128
+_MAX_PORTABLE_FILENAME_COMPONENT_BYTES: Final = 255
 _STAGING_DIGEST_HEX_CHARS: Final = 24
 _JOB_IDENTITY_FIELD_COUNT: Final = 3
 WINDOWS_PLATFORM: Final = "nt"
@@ -2084,7 +2085,19 @@ def _confirm_publication_durability(
 
 
 def _writer_lock_path(destination: Path) -> Path:
-    return Path(f"{destination}.lock")
+    """Keep the single persistent lock name valid for long pointer basenames.
+
+    A portable pointer basename can fill the entire POSIX 255-byte component
+    budget. Its legacy ``.lock`` suffix would then exceed that budget, so
+    derive a stable, full-digest name in the same directory. Existing shorter
+    lock names retain their original on-disk coordination identity.
+
+    """
+    direct = f"{destination.name}.lock"
+    if len(os.fsencode(direct)) <= _MAX_PORTABLE_FILENAME_COMPONENT_BYTES:
+        return destination.with_name(direct)
+    digest = sha256(os.fsencode(destination.name)).hexdigest()
+    return destination.with_name(f".progress-lock-{digest}.lock")
 
 
 def _require_native_lock_receipt(receipt: object, action: str) -> None:
