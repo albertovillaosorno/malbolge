@@ -283,16 +283,47 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
 
 
 def _commit() -> str:
+    """Bind the source revision only through an admitted physical Git tool.
+
+    Resolver, process and malformed host receipts are typed before any native
+    benchmark workspace is allocated.
+
+    Returns:
+        The exact lowercase 40-character Git source commit identity.
+
+    """
     try:
         git = shutil.which("git", path=os.defpath)
-        if git is None:
-            _fail("target echo reference requires Git")
-        # Source revision must belong to this checkout, not an ambient Git dir.
-        clean_env = {
-            name: value
-            for name, value in os.environ.items()
-            if not name.startswith("GIT_")
-        }
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "target echo source revision Git lookup failed"
+        raise TargetEchoStudyError(message) from error
+    if git is None:
+        _fail("target echo reference requires Git")
+    if type(git) is not str or not git or "\0" in git or not Path(git).is_absolute():
+        _fail("target echo source revision has invalid Git executable path")
+    try:
+        _ = os.fsencode(git)
+        mode = Path(git).lstat().st_mode
+        executable = os.access(git, os.X_OK)
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        UnicodeError,
+    ) as error:
+        message = "target echo source revision Git executable unavailable"
+        raise TargetEchoStudyError(message) from error
+    if not stat.S_ISREG(mode) or not executable:
+        _fail("target echo source revision Git executable is not an ordinary file")
+    # Source revision must belong to this checkout, not an ambient Git dir.
+    clean_env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("GIT_")
+    }
+    try:
         output = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [git, "rev-parse", "HEAD"],
             cwd=_ROOT,
@@ -303,9 +334,23 @@ def _commit() -> str:
             timeout=5,
             text=True,
         )
-    except (OSError, sp.SubprocessError) as error:
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        sp.SubprocessError,
+    ) as error:
         message = "target echo reference cannot bind source revision"
         raise TargetEchoStudyError(message) from error
+    if (
+        type(output) is not sp.CompletedProcess
+        or type(output.returncode) is not int
+        or output.returncode != 0
+        or type(output.stdout) is not str
+    ):
+        _fail("target echo reference has invalid Git revision receipt")
     commit = output.stdout.strip()
     if (
         len(commit) != COMMIT_HEX_WIDTH

@@ -313,6 +313,115 @@ PREFLIGHT_REJECTED = "preflight rejected"
 
 
 @pytest.mark.parametrize(
+    "receipt", ["", "relative/git", "bad\0path", b"/usr/bin/git", False, 7],
+    ids=["empty", "relative", "nul", "bytes", "boolean", "integer"],
+)
+def test_target_echo_commit_rejects_invalid_git_resolver_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Source-commit admission never launches a noncanonical Git executable."""
+    monkeypatch.setattr(
+        target_echo_reference.shutil,
+        "which",
+        lambda *_args, **_kwargs: cast("str", receipt),
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unadmitted Git path reached process execution")
+
+    monkeypatch.setattr(target_echo_reference.sp, "run", forbidden)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="Git"):
+        target_echo_reference._commit()
+
+
+@pytest.mark.parametrize("kind", ["missing", "directory", "nonexecutable", "symlink"])
+def test_target_echo_commit_rejects_unsafe_git_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A resolver's path receipt must name an actual physical executable."""
+    git = tmp_path / "git"
+    if kind == "directory":
+        git.mkdir()
+    elif kind == "nonexecutable":
+        _ = git.write_bytes(b"not executable")
+        git.chmod(0o600)
+    elif kind == "symlink":
+        target = tmp_path / "real-git"
+        _ = target.write_bytes(b"#!/bin/sh\nexit 0\n")
+        target.chmod(0o700)
+        git.symlink_to(target)
+    monkeypatch.setattr(
+        target_echo_reference.shutil, "which", lambda *_args, **_kwargs: str(git)
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unsafe Git path reached process execution")
+
+    monkeypatch.setattr(target_echo_reference.sp, "run", forbidden)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="Git"):
+        target_echo_reference._commit()
+
+
+@pytest.mark.parametrize(
+    "failure", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_target_echo_commit_types_git_resolver_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[Exception],
+) -> None:
+    """Host lookup faults remain within the typed source-revision boundary."""
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise failure("host resolver failed")
+
+    monkeypatch.setattr(target_echo_reference.shutil, "which", broken)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="revision") as caught:
+        target_echo_reference._commit()
+    assert isinstance(caught.value.__cause__, failure)
+
+
+@pytest.mark.parametrize(
+    "failure", [ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_target_echo_commit_types_git_transport_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[Exception],
+) -> None:
+    """A trusted executable still cannot leak malformed host subprocess faults."""
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise failure("Git subprocess unavailable")
+
+    monkeypatch.setattr(target_echo_reference.sp, "run", broken)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="revision") as caught:
+        target_echo_reference._commit()
+    assert isinstance(caught.value.__cause__, failure)
+
+
+@pytest.mark.parametrize(
+    ("status", "stdout"),
+    [(0, None), (0, b"x" * 40), (1, "a" * 40), (True, "a" * 40)],
+    ids=["missing-stdout", "byte-stdout", "nonzero-exit", "boolean-exit"],
+)
+def test_target_echo_commit_rejects_noncanonical_git_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    status: object,
+    stdout: object,
+) -> None:
+    """Only an actual successful native Git revision text is reportable."""
+    monkeypatch.setattr(
+        target_echo_reference.sp,
+        "run",
+        lambda *_args, **_kwargs: sp.CompletedProcess(
+            ["git"], cast("int", status), cast("str", stdout), ""
+        ),
+    )
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="Git revision"):
+        target_echo_reference._commit()
+
+
+@pytest.mark.parametrize(
     "stage", [PROFILE_PREFLIGHT, REVISION_PREFLIGHT, TOOL_IDENTITY_PREFLIGHT]
 )
 def test_failed_preflight_does_not_create_retained_target_study(
