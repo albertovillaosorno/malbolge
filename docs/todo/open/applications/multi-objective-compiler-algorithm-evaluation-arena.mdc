@@ -506,11 +506,24 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   Forty-two forged-return site cases, missing/ineligible controls, a hostile
   helper failure, an aliased-receipt mutation and both CLI no-JSON regressions
   fail closed. The statistical calculation is not independently certified.
+  Median interval helper inputs now use isolated copies of observed costs,
+  preventing hostile helper-side mutation from rewriting the admitted source
+  ordering or fabricating a confidence interval; red-first direct and CLI
+  regressions cover this boundary without asserting sampling independence.
 - Explicit study-wide Holm-Bonferroni correction now adjusts nonnull paired
   asymmetry and non-tied cost-sign probabilities across all comparisons and
   difficulties in exact rational arithmetic, preserving raw p-values. The
   correction refuses missing paired-test opt-in and never claims to repair
   dependence, invalid sampling or unauthenticated measurements.
+  The returned Holm helper family now undergoes an independent exact
+  rank/prefix-maximum check, with native list/Fraction types, complete family
+  cardinality, and bounded output required before any paired test is mutated.
+  The raw family is retained independently from a helper-mutable argument.
+  Red-first partial-publication and source-family mutation, forged-but-in-range,
+  malformed-helper and hostile-exception regressions plus both no-JSON
+  CLI paths pass. Accepted
+  rational values are copied into the report; no marginal p-value authority is
+  inferred from the correction receipt.
 - Both standalone and evidence-aware arena JSON input now admit a bounded
   regular descriptor with before/after inode identity and timestamp checks,
   plus nonblocking/no-follow opens on capable hosts. Synthetic regular-file,

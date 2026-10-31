@@ -898,6 +898,15 @@ It retains unadjusted fractions alongside exact adjusted fractions, reports
 the total family size, and treats tied p-values consistently. The direct
 statistical port admits only exact `Fraction` probabilities in `[0, 1]`, so
 nonfinite floats and truthy integer substitutes cannot enter the correction.
+The analyzer independently checks the returned helper receipt against the
+complete input family, retained separately from the helper's mutable input:
+an exact native list with one rational value per hypothesis, bounded
+probabilities, and the complete rank-ordered prefix-maximum
+Holm correction (including ties). It rejects all malformed or forged entries
+before annotating any paired test. Unexpected helper exceptions retain a typed
+failure with the original cause; the accepted report owns numeric copies and
+neither CLI publishes JSON on rejection. This validates correction arithmetic,
+not the underlying marginal p-values or sampling assumptions.
 Holm controls family-wise error under arbitrary test dependence *only when*
 its marginal p-values are valid. It does not establish pair independence, honest verifier
 execution, representative workload selection, or physical timing validity;
@@ -1130,6 +1139,10 @@ The original study records remain the result authority.
   tests for small/large samples, ties, negative costs and sample bounds.
   Malformed, noninteger cost inputs yield no inferential interval instead of
   numeric endpoints or leaked sorting errors.
+  The analyzer supplies a defensive copy of each original trial-cost sample to
+  the median interval helper. A helper mutating its input cannot rewrite the
+  sample against which reported endpoints are admitted; red-first direct and
+  CLI regressions cover forged values and benign reordering.
   Both analyzer CLIs expose this as an optional view only; default reports and
   existing frontier rankings remain unchanged.
 - An additional opt-in accelerator identity gate rejects mixed declared

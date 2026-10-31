@@ -2615,3 +2615,245 @@ def test_paired_receipt_preserves_exact_valid_probability_at_boundaries(
     expected = analyze.paired_exact_tests.two_sided_sign_test(left, right)
     assert expected is not None
     assert analyze._paired_sign_receipt(left, right) == expected
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing",
+        "extra",
+        "tuple",
+        "foreign-list",
+        "boolean",
+        "float",
+        "out-of-range",
+        "forged-exact",
+        "wrong-rank",
+    ],
+)
+def test_holm_receipt_rejects_foreign_or_forged_results_atomically(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    """A helper's output cannot publish fictitious corrected probabilities."""
+    from fractions import Fraction
+
+    class ForeignList(list[Fraction]):
+        pass
+
+    original = analyze.multiplicity.holm_adjusted
+    comparison = {
+        "verification_asymmetry_test": {"p_two_sided": [1, 32]},
+        "cost_differences": {
+            "elapsed_ns": {"paired_sign_test": {"p_two_sided": [1, 2]}},
+            "artifact_bytes": {"paired_sign_test": {"p_two_sided": [1, 4]}},
+        },
+    }
+    records = analyze._paired_test_records(
+        [comparison], ["elapsed_ns", "artifact_bytes"]
+    )
+    assert len(records) == 3
+
+    def forged(raw: list[Fraction]) -> object:
+        valid = original(raw)
+        options: dict[str, object] = {
+            "missing": valid[:-1],
+            "extra": [*valid, Fraction(1)],
+            "tuple": tuple(valid),
+            "foreign-list": ForeignList(valid),
+            "boolean": [True, *valid[1:]],
+            "float": [0.5, *valid[1:]],
+            "out-of-range": [Fraction(2), *valid[1:]],
+            "forged-exact": [Fraction(1)] * len(valid),
+            "wrong-rank": [valid[-1], *valid[1:]],
+        }
+        return options[fault]
+
+    monkeypatch.setattr(analyze.multiplicity, "holm_adjusted", forged)
+    with pytest.raises(analyze.ArenaError, match="Holm receipt"):
+        analyze._adjust_paired_tests(
+            [comparison], ["elapsed_ns", "artifact_bytes"]
+        )
+    assert all(HOLM_FIELD not in record for record in records)
+
+
+def test_holm_receipt_types_foreign_computation_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opaque helper exceptions retain cause without leaking host messages."""
+
+    class HostileHolmError(RuntimeError):
+        def __str__(self) -> str:
+            raise AssertionError("formatted an untrusted Holm exception")
+
+    injected = HostileHolmError("private host detail")
+
+    def fail(_raw: object) -> Never:
+        raise injected
+
+    monkeypatch.setattr(analyze.multiplicity, "holm_adjusted", fail)
+    document = analyze.parse_document(json.dumps(_repeated_success_study(12)))
+    with pytest.raises(
+        analyze.ArenaError, match="Holm adjustment computation failed"
+    ) as caught:
+        analyze.analyze(
+            document, paired_exact_tests_enabled=True, adjust_paired_tests=True
+        )
+    assert caught.value.__cause__ is injected
+
+
+@pytest.mark.parametrize("cli", ["standalone", "linked-evidence"])
+def test_holm_receipt_clis_reject_forged_adjustment_without_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cli: str,
+) -> None:
+    """A forged Holm helper cannot publish a standalone or linked report."""
+    from fractions import Fraction
+
+    from benchmarks.arena import evidence
+    from benchmarks.arena.tests.test_evidence import sample_study
+
+    document = (
+        _repeated_success_study(12)
+        if cli == "standalone"
+        else sample_study(tmp_path)
+    )
+    path = tmp_path / "study.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        analyze.multiplicity,
+        "holm_adjusted",
+        lambda raw: [Fraction(0)] * max(1, len(raw)),
+    )
+    if cli == "standalone":
+        args = [
+            "arena", str(path), "--paired-exact-tests", "--adjust-paired-tests"
+        ]
+        entry = analyze.main
+    else:
+        args = [
+            "arena-evidence",
+            str(path),
+            "--root",
+            str(tmp_path),
+            "--paired-exact-tests",
+            "--adjust-paired-tests",
+        ]
+        entry = evidence.main
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit, match="2"):
+        entry()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "Holm receipt" in output.err
+
+
+def test_holm_receipt_preserves_valid_exact_corrections_and_owns_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid real helper data survives; mutations cannot rewrite output."""
+    from fractions import Fraction
+
+    original = analyze.multiplicity.holm_adjusted
+    retained: list[list[Fraction]] = []
+
+    def borrowed(raw: list[Fraction]) -> list[Fraction]:
+        result = original(raw)
+        retained.append(result)
+        return result
+
+    monkeypatch.setattr(analyze.multiplicity, "holm_adjusted", borrowed)
+    report = _adjusted_paired_report(_two_difficulty_cost_study())
+    comparisons = report["paired_baseline_comparisons"]
+    assert retained and len(retained[0]) == MULTI_HYPOTHESIS_COUNT
+    assert all(
+        comparison["cost_differences"][objective][PAIRED_SIGN_TEST][HOLM_FIELD]
+        == [1, 512]
+        for comparison in comparisons
+        for objective in ("elapsed_ns", "artifact_bytes")
+    )
+    retained[0][:] = [Fraction(1)] * len(retained[0])
+    assert all(
+        comparison["cost_differences"][objective][PAIRED_SIGN_TEST][HOLM_FIELD]
+        == [1, 512]
+        for comparison in comparisons
+        for objective in ("elapsed_ns", "artifact_bytes")
+    )
+
+
+def test_holm_helper_cannot_rewrite_its_input_family(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A helper mutating its argument must not rewrite raw evidence identity."""
+    from fractions import Fraction
+
+    original = analyze.multiplicity.holm_adjusted
+    comparison = {
+        "verification_asymmetry_test": {"p_two_sided": [1, 32]},
+        "cost_differences": {
+            "elapsed_ns": {"paired_sign_test": {"p_two_sided": [1, 2]}},
+        },
+    }
+    records = analyze._paired_test_records([comparison], ["elapsed_ns"])
+
+    def tamper(raw: list[Fraction]) -> list[Fraction]:
+        raw[:] = [Fraction(1)] * len(raw)
+        return original(raw)
+
+    monkeypatch.setattr(analyze.multiplicity, "holm_adjusted", tamper)
+    with pytest.raises(analyze.ArenaError, match="Holm receipt"):
+        analyze._adjust_paired_tests([comparison], ["elapsed_ns"])
+    assert all(HOLM_FIELD not in record for record in records)
+
+
+@pytest.mark.parametrize("mutation", ["forged-values", "reordered-values"])
+def test_median_interval_helper_cannot_mutate_admitted_samples(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """An inferential helper cannot mutate the observations it is checked against."""
+    original = analyze.median_intervals.median_interval_95
+    observed = list(range(100, 110))
+    baseline = observed.copy()
+
+    def mutate(values: list[int]) -> analyze.median_intervals.MedianInterval | None:
+        if mutation == "forged-values":
+            values[:] = [10_000] * len(values)
+        else:
+            values.reverse()
+        return original(values)
+
+    monkeypatch.setattr(analyze.median_intervals, "median_interval_95", mutate)
+    if mutation == "forged-values":
+        with pytest.raises(analyze.ArenaError, match="median interval receipt"):
+            analyze._median_interval_receipt(observed)
+    else:
+        assert analyze._median_interval_receipt(observed) == original(baseline)
+    assert observed == baseline
+
+
+def test_median_interval_cli_rejects_mutated_helper_sample_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Adversarial interval construction cannot silently change CLI evidence."""
+    original = analyze.median_intervals.median_interval_95
+
+    def mutate(values: list[int]) -> analyze.median_intervals.MedianInterval | None:
+        values[:] = [1_000_000] * len(values)
+        return original(values)
+
+    monkeypatch.setattr(analyze.median_intervals, "median_interval_95", mutate)
+    path = tmp_path / "intervals.json"
+    _ = path.write_text(json.dumps(_repeated_success_study(10)), encoding="utf-8")
+    monkeypatch.setattr(
+        sys, "argv", ["arena", str(path), "--median-intervals-95"]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        analyze.main()
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "median interval receipt" in captured.err

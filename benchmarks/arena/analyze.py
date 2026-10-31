@@ -501,7 +501,9 @@ def _median_interval_receipt(values: list[int]) -> dict[str, Any] | None:
 
     """
     try:
-        receipt: object = median_intervals.median_interval_95(values)
+        # Preserve the original admitted trial costs for receipt validation.
+        # The inferential helper only receives an isolated, mutable copy.
+        receipt: object = median_intervals.median_interval_95(values.copy())
     except Exception as error:
         message = "median interval computation failed"
         raise ArenaError(message) from error
@@ -843,13 +845,47 @@ def _paired_test_records(
     return records
 
 
+def _admit_holm_receipt(
+    raw: list[Fraction],
+    receipt: object,
+) -> list[Fraction]:
+    """Require one exact native Holm adjustment before report mutation."""
+    if (
+        type(receipt) is not list
+        or len(receipt) != len(raw)
+        or any(type(value) is not Fraction for value in receipt)
+    ):
+        _fail("Holm receipt has invalid native family shape")
+    if any(not 0 <= value <= 1 for value in receipt):
+        _fail("Holm receipt has invalid rational probability")
+
+    # The helper computes candidates; this small exact order-statistic check
+    # independently admits the whole returned family, including tied ranks.
+    # Verify all entries before publishing even the first adjusted value.
+    required = Fraction(0)
+    for rank, (index, probability) in enumerate(
+        sorted(enumerate(raw), key=lambda item: (item[1], item[0]))
+    ):
+        required = max(required, min(Fraction(1), (len(raw) - rank) * probability))
+        if receipt[index] != required:
+            _fail("Holm receipt differs from exact family correction")
+    return list(receipt)
+
+
 def _adjust_paired_tests(
     comparisons: list[dict[str, Any]],
     objectives: list[str],
 ) -> int:
     records = _paired_test_records(comparisons, objectives)
     raw = [Fraction(*record["p_two_sided"]) for record in records]
-    adjusted = multiplicity.holm_adjusted(raw)
+    try:
+        # The helper must not gain ownership of the independently admitted
+        # family used to verify its own result.
+        untrusted: object = multiplicity.holm_adjusted(raw.copy())
+    except Exception as error:
+        message = "Holm adjustment computation failed"
+        raise ArenaError(message) from error
+    adjusted = _admit_holm_receipt(raw, untrusted)
     for record, probability in zip(records, adjusted, strict=True):
         record["p_holm_adjusted"] = _exact_pair(probability)
     return len(records)
