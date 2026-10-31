@@ -108,6 +108,11 @@ forged valid integer describes the same file across separate observations.
 The post-lock inode receipt must also still describe a regular descriptor,
 independently of the regular path, even if a forged native `stat_result`
 claims identical device and inode values for a directory or special file.
+Both the opened and nonfollowing pathname lock inode must also have exactly
+one hard link. An externally named alias rejects publication at acquisition
+or the post-staging recheck, while preserving the persistent lock inode and
+unrelated alias. A late alias can still race after the final observation;
+these checks do not establish atomic isolation from hostile directory writers.
 
 Progress writers also require native `os.stat_result` for the initially
 created staging descriptor and each staged pathname/descriptor size and inode

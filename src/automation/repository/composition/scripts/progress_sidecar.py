@@ -2256,6 +2256,8 @@ def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
         or opened.st_ino != current.st_ino
     ):
         _fail("progress writer lock path changed during acquisition")
+    if opened.st_nlink != 1 or current.st_nlink != 1:
+        _fail("progress writer lock has an external hard link")
 
 
 @contextmanager

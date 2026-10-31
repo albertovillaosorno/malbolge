@@ -3516,6 +3516,69 @@ def test_write_atomic_rejects_linked_progress_path(tmp_path: Path) -> None:
     assert foreign.read_bytes() == payload
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX external lock inode alias requires hard-link semantics",
+)
+def test_writer_lock_rejects_external_hard_link_before_publication(
+    tmp_path: Path,
+) -> None:
+    """A separately named lock inode cannot certify serialized publication."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    lock_path = Path(f"{destination}.lock")
+    marker = b"existing-writer-lock"
+    _ = lock_path.write_bytes(marker)
+    alias = tmp_path / "external-lock-alias"
+    os.link(lock_path, alias)
+
+    with pytest.raises(ERROR, match="writer lock has an external hard link"):
+        _ = progress.write_atomic(sidecar)
+    assert lock_path.read_bytes() == alias.read_bytes() == marker
+    assert lock_path.stat().st_nlink == 2
+    assert not destination.exists()
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX external lock inode alias requires hard-link semantics",
+)
+def test_writer_lock_rejects_late_hard_link_added_during_staging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-staging lock recheck must reject a newly linked lock inode."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    lock_path = Path(f"{destination}.lock")
+    alias = tmp_path / "late-lock-alias"
+    original_mkstemp = tempfile.mkstemp
+    injected = False
+
+    def stage_and_link(
+        *, prefix: str, suffix: str, **options: Path
+    ) -> tuple[int, str]:
+        nonlocal injected
+        descriptor, name = original_mkstemp(
+            dir=options["dir"], prefix=prefix, suffix=suffix
+        )
+        os.link(lock_path, alias)
+        injected = True
+        return descriptor, name
+
+    with monkeypatch.context() as context:
+        context.setattr(tempfile, "mkstemp", stage_and_link)
+        with pytest.raises(ERROR, match="writer lock has an external hard link"):
+            _ = progress.write_atomic(sidecar)
+    assert injected
+    assert lock_path.stat().st_nlink == 2
+    assert alias.stat().st_ino == lock_path.stat().st_ino
+    assert not destination.exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
+        [lock_path.name, alias.name]
+    )
+
+
 def test_write_atomic_rejects_linked_writer_lock(tmp_path: Path) -> None:
     """A linked lock leaf cannot redirect process serialization."""
     sidecar = _sidecar(tmp_path)

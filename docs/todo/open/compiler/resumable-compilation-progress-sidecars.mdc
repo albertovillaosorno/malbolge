@@ -602,6 +602,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
 
   Process-shared writer locks now require native stat results across the
   existing path preflight, opened descriptor and acquired inode identity.
+  Exclusive single-link lock ownership is now required both after lock
+  acquisition and after staging, with red-first external hard-link and
+  deterministic late-alias rejection before pointer publication.
   Four adversarial lock fixtures prove every foreign receipt rejects before
   its fields are accessed, without advancing publication or altering
   positive native locking behavior.
