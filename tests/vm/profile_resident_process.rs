@@ -36,6 +36,7 @@
 
 use std::ffi::OsString;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use malbolge::{
     BatchExecutionOrigin, ProfileBatchRequest, ProfileBatchResult,
@@ -93,6 +94,31 @@ sys.stdout.buffer.write(b"x" * 300000)
 sys.stdout.buffer.flush()
 "#;
 
+const BLOCKED_WRITER_WORKER: &str = "
+import time
+# Never read stdin; the full-profile request must not block its writer.
+time.sleep(8)
+";
+
+#[cfg(target_os = "linux")]
+const INHERITED_STDOUT_WORKER: &str = r#"
+import subprocess
+import sys
+sys.stdin.buffer.read()
+subprocess.Popen(
+    [sys.executable, "-c", "import time; time.sleep(8)"],
+    stdin=subprocess.DEVNULL, stdout=sys.stdout, stderr=subprocess.DEVNULL,
+)
+# Direct child exits successfully, but its ordinary descendant owns stdout.
+"#;
+
+const SILENT_WORKER: &str = "
+import sys
+import time
+sys.stdin.buffer.read()
+time.sleep(8)
+";
+
 const UNAVAILABLE_WORKER: &str = r#"
 import sys
 sys.stdin.buffer.read()
@@ -146,6 +172,65 @@ fn process_backend_treats_explicit_unavailable_as_fallback() -> TestResult {
     compare_single(&observed, &expected, "resident process unavailable state")
 }
 
+#[test]
+fn process_backend_deadline_bounds_blocked_stdin_write() -> TestResult {
+    // Canonical N15 is substantially larger than the host pipe buffer.
+    let machine = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        b"QP",
+        Vec::new(),
+    ))?;
+    assert_deadline_fallback_with_request(
+        BLOCKED_WRITER_WORKER,
+        "blocked stdin",
+        ProfileBatchRequest::from_machine(machine, 0),
+    )
+}
+
+#[test]
+fn process_backend_deadline_bounds_silent_child_output() -> TestResult {
+    assert_deadline_fallback(SILENT_WORKER, "silent stdout")
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn process_backend_deadline_bounds_inherited_stdout_after_child_exit()
+-> TestResult {
+    assert_deadline_fallback(INHERITED_STDOUT_WORKER, "inherited stdout")
+}
+
+fn assert_deadline_fallback(script: &str, context: &str) -> TestResult {
+    assert_deadline_fallback_with_request(
+        script,
+        context,
+        derived_zero_step_request()?,
+    )
+}
+
+fn assert_deadline_fallback_with_request(
+    script: &str,
+    context: &str,
+    request: ProfileBatchRequest,
+) -> TestResult {
+    let expected = execute_profile_batch(vec![request.clone()]);
+    let mut backend = timed_python_backend(script, Duration::from_millis(150));
+    let started = Instant::now();
+    let (observed, report) =
+        execute_profile_batch_with_backend_report(vec![request], &mut backend);
+    let elapsed = started.elapsed();
+    check_equal(
+        &report.origins(),
+        &(&[BatchExecutionOrigin::SafeRustFallback][..]),
+        context,
+    )?;
+    check_equal(
+        &(elapsed < Duration::from_secs(4)),
+        &true,
+        &format!("{context}: fallback must not wait for child sleep"),
+    )?;
+    compare_single(&observed, &expected, context)
+}
+
 fn compare_single(
     observed: &[ProfileBatchResult],
     expected: &[ProfileBatchResult],
@@ -186,10 +271,21 @@ fn derived_zero_step_request() -> TestResult<ProfileBatchRequest> {
 fn python_backend(
     script: &str,
 ) -> ProfileResidentTransportBackend<ProfileResidentProcessTransport> {
+    ProfileResidentTransportBackend::new(python_transport(script))
+}
+
+fn python_transport(script: &str) -> ProfileResidentProcessTransport {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let transport =
-        ProfileResidentProcessTransport::new(validation_python(root))
-            .argument(OsString::from("-c"))
-            .argument(OsString::from(script));
-    ProfileResidentTransportBackend::new(transport)
+    ProfileResidentProcessTransport::new(validation_python(root))
+        .argument(OsString::from("-c"))
+        .argument(OsString::from(script))
+}
+
+fn timed_python_backend(
+    script: &str,
+    timeout: Duration,
+) -> ProfileResidentTransportBackend<ProfileResidentProcessTransport> {
+    ProfileResidentTransportBackend::new(
+        python_transport(script).exchange_timeout(timeout),
+    )
 }

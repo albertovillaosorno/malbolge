@@ -91,7 +91,15 @@ resident wire port. `ProfileResidentTransportBackend` bridges that transport to
 `ProfileBatchExecutionBackend`, keeping VM authority reconstruction in the
 application layer. The process transport launches one explicitly configured
 child per homogeneous attempt, bounds stdout by the maximum valid response, and
-decodes MBPRN2 framing.
+decodes MBPRN2 framing. A default 60-second wall-clock deadline includes
+process launch, request writing, response reading, and child termination; an
+explicit per-transport duration can tighten or relax it, with zero rejecting
+before launch. Expired, failed, or malformed exchanges fall back to safe Rust.
+Linux workers use an isolated process group so ordinary descendants cannot
+keep inherited pipes open after timeout. A per-process limit of eight in-flight
+exchange workers remains held until each worker actually releases its pipes,
+including escaped descendants after the synchronous caller has timed out.
+This bounds retained blocked workers, not detached processes outside the group.
 
 Explicit `UNAVAILABLE`, launch/I/O failure, oversized output, malformed framing,
 or invalid completions remain performance-only fallback conditions. The
