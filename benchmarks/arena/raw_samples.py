@@ -182,6 +182,7 @@ def _admit_observation_containers(
     message = f"{label}: raw CSV requires native nonempty observation rows"
     if type(observations) is not list or not observations:
         _fail(message)
+    seen_trials: set[tuple[str, str, int, int, int, int]] = set()
     for row in observations:
         if (
             type(row) is not dict
@@ -215,6 +216,19 @@ def _admit_observation_containers(
             or any(type(quantity) is not int for quantity in metrics.values())
         ):
             _fail(message)
+        # A self-consistent repeated CSV/observation pair is still only one
+        # reported attempt. Match the analyzer's case/trial uniqueness key.
+        trial_key = (
+            row["algorithm"],
+            case["family"],
+            case["version"],
+            case["difficulty"],
+            case["seed"],
+            row["trial"],
+        )
+        if trial_key in seen_trials:
+            _fail(f"{label}: duplicate reported trial identity")
+        seen_trials.add(trial_key)
 
 
 def check_rows(

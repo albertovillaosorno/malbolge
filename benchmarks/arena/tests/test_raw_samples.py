@@ -237,6 +237,26 @@ def test_direct_raw_checker_rejects_non_native_or_empty_observation_rows(
         )
 
 
+@pytest.mark.parametrize(
+    "variant", ["identical", "conflicting-metrics", "conflicting-workload"]
+)
+def test_direct_raw_checker_rejects_duplicate_reported_trial_identities(
+    tmp_path: Path,
+    variant: str,
+) -> None:
+    """A self-consistent duplicated raw row is not a second independent trial."""
+    first = sample_study(tmp_path)["observations"][0]
+    repeated = copy.deepcopy(first)
+    if variant == "conflicting-metrics":
+        repeated["metrics"]["elapsed_ns"] += 1
+    elif variant == "conflicting-workload":
+        repeated["case"]["workload_sha256"] = "a" * 64
+    rows = [first, repeated]
+    raw = _render(rows)
+    with pytest.raises(raw_samples.RawSampleError, match="duplicate reported trial"):
+        raw_samples.check_rows(raw, rows, ROOT_LABEL)
+
+
 def test_strict_raw_sample_rechecked_after_report_assembly(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
