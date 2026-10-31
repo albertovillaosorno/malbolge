@@ -36,11 +36,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import PurePosixPath
 from typing import cast
 
 _ZERO = 0
 _SHA256_HEX_LENGTH = 64
 _HEX_DIGITS = frozenset("0123456789abcdef")
+_BACKSLASH = "\\"
+_NUL = "\x00"
+_PARENT = ".."
+_DOT = "."
 
 
 class TreeModelError(ValueError):
@@ -53,6 +58,24 @@ def _validate_sha256_hex(value: object, context: str) -> None:
         raise TreeModelError(message)
     if any(char not in _HEX_DIGITS for char in value):
         message = f"{context} must be 64 lowercase hex digits"
+        raise TreeModelError(message)
+
+
+def _require_canonical_relative_path(value: object, context: str) -> None:
+    if type(value) is not str or not value:
+        message = f"{context} must be a canonical relative path"
+        raise TreeModelError(message)
+    path = PurePosixPath(value)
+    unsafe = (
+        _BACKSLASH in value
+        or _NUL in value
+        or value == _DOT
+        or path.is_absolute()
+        or _PARENT in path.parts
+        or path.as_posix() != value
+    )
+    if unsafe:
+        message = f"{context} must be a canonical relative path"
         raise TreeModelError(message)
 
 
@@ -71,9 +94,7 @@ class FileRecord:
             TreeModelError: Snapshot metadata uses an invalid runtime value.
 
         """
-        if type(self.path) is not str or not self.path:
-            message = "file record path must be a non-empty string"
-            raise TreeModelError(message)
+        _require_canonical_relative_path(self.path, "file record path")
         _validate_sha256_hex(self.sha256, "file record sha256")
         if type(self.size) is not int or self.size < _ZERO:
             message = "file record size must be a non-negative integer"
@@ -175,20 +196,21 @@ def _validate_exact_segments(value: object) -> None:
 
 
 def _validate_exact_instruction_metadata(instruction: ExactInstruction) -> None:
-    if type(instruction.output_path) is not str or not instruction.output_path:
-        message = "exact instruction output path must be a non-empty string"
-        raise TreeModelError(message)
+    _require_canonical_relative_path(
+        instruction.output_path,
+        "exact instruction output path",
+    )
     if type(instruction.kind) is not ExactInstructionKind:
         message = "exact instruction kind must use the exact enum type"
         raise TreeModelError(message)
     _validate_sha256_hex(
         instruction.expected_sha256, "exact instruction sha256"
     )
-    if instruction.source_path is not None and (
-        type(instruction.source_path) is not str or not instruction.source_path
-    ):
-        message = "exact instruction source path must be non-empty or None"
-        raise TreeModelError(message)
+    if instruction.source_path is not None:
+        _require_canonical_relative_path(
+            instruction.source_path,
+            "exact instruction source path",
+        )
     if (
         instruction.literal is not None
         and type(instruction.literal) is not bytes
@@ -289,11 +311,12 @@ class ExactAuthoringPlan:
         ):
             message = "exact plan instructions must be exact immutable records"
             raise TreeModelError(message)
-        if type(self.passthrough_roots) is not tuple:
-            message = "exact plan passthrough roots must use an immutable tuple"
-            raise TreeModelError(message)
-        if any(
-            type(root) is not str or not root for root in self.passthrough_roots
-        ):
-            message = "exact plan passthrough roots must be non-empty strings"
-            raise TreeModelError(message)
+        _require_passthrough_roots(self.passthrough_roots)
+
+
+def _require_passthrough_roots(roots: object) -> None:
+    if type(roots) is not tuple:
+        message = "exact plan passthrough roots must use an immutable tuple"
+        raise TreeModelError(message)
+    for root in cast("tuple[object, ...]", roots):
+        _require_canonical_relative_path(root, "exact plan passthrough root")

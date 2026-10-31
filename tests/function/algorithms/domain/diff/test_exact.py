@@ -54,9 +54,14 @@ from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import materialize_exact_plan
 from algorithms.diff.exact import snapshot_tree
 from algorithms.diff.exact import snapshot_tree_excluding
+from algorithms.diff.model import ExactAuthoringPlan
+from algorithms.diff.model import ExactInstruction
 from algorithms.diff.model import ExactInstructionKind
+from algorithms.diff.model import FileRecord
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
+from algorithms.diff.model import TreeModelError
+from algorithms.diff.model import TreeSnapshot
 import pytest
 
 _MOVED_SOURCE = "rename-me.txt"
@@ -106,6 +111,41 @@ def _synthetic_pair(tmp_path: Path) -> tuple[Path, Path]:
         _PATCH_PREFIX + _PATCH_INSERTION + _PATCH_SUFFIX,
     )
     return source, oracle
+
+
+@pytest.mark.parametrize(
+    "invalid_path",
+    ["../escape", "/absolute", "src//file", "src\\file", "src\x00file"],
+)
+def test_exact_authoring_metadata_rejects_noncanonical_paths(
+    invalid_path: str,
+) -> None:
+    """Direct model construction rejects invalid tree paths before any I/O."""
+    expected_sha256 = "0" * 64
+    with pytest.raises(TreeModelError, match="canonical relative"):
+        _ = FileRecord(path=invalid_path, sha256=expected_sha256, size=0)
+    with pytest.raises(TreeModelError, match="canonical relative"):
+        _ = ExactInstruction(
+            output_path=invalid_path,
+            kind=ExactInstructionKind.LITERAL_ORACLE,
+            expected_sha256=expected_sha256,
+            literal=b"",
+        )
+    with pytest.raises(TreeModelError, match="canonical relative"):
+        _ = ExactInstruction(
+            output_path="output.bin",
+            kind=ExactInstructionKind.COPY_SOURCE,
+            expected_sha256=expected_sha256,
+            source_path=invalid_path,
+        )
+    empty = TreeSnapshot(files=())
+    with pytest.raises(TreeModelError, match="canonical relative"):
+        _ = ExactAuthoringPlan(
+            source=empty,
+            target=empty,
+            instructions=(),
+            passthrough_roots=(invalid_path,),
+        )
 
 
 def test_exact_plan_reconstructs_synthetic_tree_byte_for_byte(
