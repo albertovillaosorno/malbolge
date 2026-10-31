@@ -210,10 +210,18 @@ def _reject_nonfinite(value: str) -> Never:
     _fail(f"host-C retained JSON has nonfinite number: {value}")
 
 
+def _read_bounded_evidence(relative: str, *, limit: int) -> bytes:
+    """Admit exact bounded native reader bytes before hashing or interpretation."""
+    raw = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
+    if type(raw) is not bytes or len(raw) > limit:
+        _fail(f"host-C retained evidence requires exact bounded bytes: {relative}")
+    return raw
+
+
 def _read_json(
     relative: str, *, limit: int, fingerprints: dict[str, bytes | None]
 ) -> object:
-    raw = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
+    raw = _read_bounded_evidence(relative, limit=limit)
     try:
         parsed = json.loads(
             raw.decode("utf-8"),
@@ -231,8 +239,7 @@ def _read_json(
 
 
 def _load_study(relative: str) -> tuple[dict[str, Any], bytes]:
-    raw = evidence.read_bounded_regular(
-        _ROOT,
+    raw = _read_bounded_evidence(
         relative,
         limit=analyze.MAX_INPUT_BYTES,
     )
@@ -383,8 +390,7 @@ def _recorded_source_commit(
     fingerprints: dict[str, bytes] = {}
     paths = {row["experiment_manifest"] for row in document["observations"]}
     for relative in sorted(paths):
-        data = evidence.read_bounded_regular(
-            _ROOT,
+        data = _read_bounded_evidence(
             relative,
             limit=evidence.MAX_MANIFEST_BYTES,
         )
@@ -412,9 +418,7 @@ def _recorded_source_commit(
 def _require_unchanged_manifests(fingerprints: dict[str, bytes]) -> None:
     """Reject retained run-manifest drift across a host-C audit pass."""
     for relative, fingerprint in sorted(fingerprints.items()):
-        data = evidence.read_bounded_regular(
-            _ROOT, relative, limit=evidence.MAX_MANIFEST_BYTES
-        )
+        data = _read_bounded_evidence(relative, limit=evidence.MAX_MANIFEST_BYTES)
         if sha256(data).digest() != fingerprint:
             _fail("host-C run manifest changed during audit")
 
@@ -442,7 +446,7 @@ def _require_unchanged_sidecars(
                 raise ReferenceAuditError(message) from error
             _fail(f"host-C retained sidecar changed during audit: {relative}")
         try:
-            current = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
+            current = _read_bounded_evidence(relative, limit=limit)
         except Exception as error:
             # An unanticipated bounded-reader fault must not leak as a raw
             # exception or invoke foreign exception diagnostic hooks.
@@ -694,8 +698,7 @@ def _rebuild_reference_binaries(
                 profile=reference_study.PROFILE,
             )
             built[key] = host_c_oracle.rebuild_reference(identity, mode)
-        retained = evidence.read_bounded_regular(
-            _ROOT,
+        retained = _read_bounded_evidence(
             artifacts[row["experiment_manifest"]]["path"],
             limit=reference_study.MAX_ARTIFACT_BYTES,
         )
@@ -737,9 +740,7 @@ def audit(
         evidence.recheck_evidence_snapshot(data.evidence_snapshot)
         _require_unchanged_manifests(data.manifest_fingerprints)
         _require_unchanged_sidecars(prefix, data.sidecar_fingerprints)
-        current = evidence.read_bounded_regular(
-            _ROOT, relative_study, limit=analyze.MAX_INPUT_BYTES
-        )
+        current = _read_bounded_evidence(relative_study, limit=analyze.MAX_INPUT_BYTES)
         if sha256(current).digest() != data.study_fingerprint:
             _fail("host-C retained study JSON changed during audit")
         # Recheck original native binary claims after any optional rebuild or

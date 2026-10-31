@@ -40,6 +40,7 @@ import json
 import shutil
 import sys
 from dataclasses import replace
+from types import SimpleNamespace
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, cast
 
@@ -1843,3 +1844,138 @@ def test_host_c_audit_native_failure_retains_causal_details(
     ) as caught:
         reference_audit.audit(".temp/arena-host-c-study-native/study.json")
     assert caught.value.__cause__ is fault
+
+
+class _ForeignRetainedBytes(bytes):
+    """A dependency may return bytes-shaped data with hostile Python methods."""
+
+    def decode(self, *args: object, **kwargs: object) -> str:
+        del args, kwargs
+        raise AssertionError("foreign retained bytes decoder was executed")
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        return True
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+    def __len__(self) -> int:
+        raise AssertionError("foreign retained bytes length was executed")
+
+
+@pytest.mark.parametrize("receipt_type", ["foreign", "oversized"])
+@pytest.mark.parametrize(
+    "entrypoint", ["json", "study", "manifest", "manifest-recheck", "sidecar-recheck"]
+)
+def test_host_c_audit_rejects_non_native_or_oversized_evidence_reader_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+    receipt_type: str,
+) -> None:
+    """No retained parser or fingerprint may consume unadmitted reader objects."""
+    root = ".temp/arena-host-c-study-evidence-receipt"
+    manifest_path = f"{root}/runs/one.toml"
+    artifact_path = f"{root}/artifacts.json"
+    body = b"{}"
+
+    def fake_read(_root: object, _relative: str, *, limit: int) -> bytes:
+        if receipt_type == "foreign":
+            return _ForeignRetainedBytes(body)
+        return body + b" " * (limit - len(body) + 1)
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", fake_read)
+    if entrypoint == "json":
+        callback = lambda: reference_audit._read_json(
+            artifact_path, limit=16, fingerprints={}
+        )
+    elif entrypoint == "study":
+        monkeypatch.setattr(analyze, "parse_document", lambda _: {})
+        callback = lambda: reference_audit._load_study(f"{root}/study.json")
+    elif entrypoint == "manifest":
+        record = SimpleNamespace(
+            implementation=reference_audit.PRODUCER_IMPLEMENTATION,
+            configuration=reference_audit.PRODUCER_CONFIGURATION,
+            method_class=reference_audit.PRODUCER_METHOD_CLASS,
+            output=root,
+            run=SimpleNamespace(
+                commit="a" * 40, accelerator=reference_audit.PRODUCER_ACCELERATOR
+            ),
+        )
+        monkeypatch.setattr(
+            reference_audit.experiment_manifest, "parse_manifest", lambda _: record
+        )
+        callback = lambda: reference_audit._recorded_source_commit(
+            {"observations": [{"experiment_manifest": manifest_path}]},
+            require_git_object=False,
+        )
+    elif entrypoint == "manifest-recheck":
+        fingerprints = {manifest_path: sha256(body).digest()}
+        # A forged hash-matching subclass must never count as fresh evidence.
+        callback = lambda: reference_audit._require_unchanged_manifests(fingerprints)
+    else:
+        fingerprints_sidecars: dict[str, bytes | None] = {
+            artifact_path: sha256(body).digest(),
+            f"{root}/failures.json": None,
+            f"{root}/resource-controls.json": None,
+        }
+        callback = lambda: reference_audit._require_unchanged_sidecars(
+            root, fingerprints_sidecars
+        )
+
+    expected = (
+        "sidecar changed during audit"
+        if entrypoint == "sidecar-recheck"
+        else "bounded bytes"
+    )
+    with pytest.raises(reference_audit.ReferenceAuditError, match=expected) as caught:
+        callback()
+    if entrypoint == "sidecar-recheck":
+        assert isinstance(caught.value.__cause__, reference_audit.ReferenceAuditError)
+        assert "bounded bytes" in str(caught.value.__cause__)
+
+
+def test_host_c_rebuild_cannot_accept_foreign_binary_equality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A malicious bytes subclass must not certify an unrelated rebuilt binary."""
+    row = {
+        "algorithm": reference_study.BASELINE,
+        "outcome": analyze.VERIFIED,
+        "experiment_manifest": "recorded.toml",
+        "case": {"family": FAMILY, "version": 1, "seed": 7, "difficulty": 4},
+    }
+    monkeypatch.setattr(host_c_oracle, "rebuild_reference", lambda *_args: b"genuine")
+    monkeypatch.setattr(
+        evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: _ForeignRetainedBytes(b"different"),
+    )
+    with pytest.raises(reference_audit.ReferenceAuditError, match="bounded bytes"):
+        reference_audit._rebuild_reference_binaries(
+            {"observations": [row]},
+            {"recorded.toml": {"path": "fake-bin", "sha256": "ignored"}},
+        )
+
+
+def test_host_c_study_final_reread_rejects_foreign_bytes_receipt(
+    live_pilot: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A report cannot use a hash-equivalent, foreign late study read."""
+    _, relative = live_pilot
+    original_read = evidence.read_bounded_regular
+    study_reads = 0
+
+    def fake_last_study_read(root: Path, path: str, *, limit: int) -> bytes:
+        nonlocal study_reads
+        raw = original_read(root, path, limit=limit)
+        if path == relative:
+            study_reads += 1
+            if study_reads > 1:
+                return _ForeignRetainedBytes(raw)
+        return raw
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", fake_last_study_read)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="bounded bytes"):
+        reference_audit.audit(relative)
