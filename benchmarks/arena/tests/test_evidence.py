@@ -1787,3 +1787,98 @@ def test_evidence_cli_success_intervals_remain_downstream_of_source_links(
         "baseline",
         "candidate",
     ]
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+@pytest.mark.parametrize("stage", ["root-resolve", "segment-lstat", "leaf-lstat"])
+def test_direct_evidence_path_inspection_faults_remain_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+    stage: str,
+) -> None:
+    """Unreliable host path inspection must not leak raw host exceptions."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"raw evidence")
+    original_resolve = Path.resolve
+    original_lstat = Path.lstat
+    if stage == "segment-lstat":
+        directory = tmp_path / "nested"
+        directory.mkdir()
+        _ = (directory / "raw.csv").write_bytes(b"nested raw evidence")
+        target = directory
+        relative = "nested/raw.csv"
+    else:
+        target = tmp_path if stage == "root-resolve" else tmp_path / "raw.csv"
+        relative = "raw.csv"
+
+    def failing_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == target:
+            raise fault("injected evidence root resolve failure")
+        return original_resolve(path, strict=strict)
+
+    def failing_lstat(path: Path, *args: object, **kwargs: object) -> object:
+        if path == target:
+            raise fault("injected evidence path stat failure")
+        return original_lstat(path, *args, **kwargs)
+
+    if stage == "root-resolve":
+        monkeypatch.setattr(Path, "resolve", failing_resolve)
+    else:
+        monkeypatch.setattr(Path, "lstat", failing_lstat)
+    with pytest.raises(evidence.EvidenceError, match="path inspection") as failure:
+        evidence.regular_path(tmp_path, relative, limit=1024)
+    assert type(failure.value.__cause__) is fault
+
+
+@pytest.mark.parametrize("fault", [ValueError, RuntimeError, TypeError, AttributeError])
+def test_evidence_raw_descriptor_open_failures_remain_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """A failing host open rejects before any stream is constructed."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"raw evidence")
+
+    def failing_open(*args: object, **kwargs: object) -> int:
+        del args, kwargs
+        raise fault("injected evidence descriptor open failure")
+
+    monkeypatch.setattr(evidence.os, "open", failing_open)
+    with pytest.raises(
+        evidence.EvidenceError, match="could not open safely"
+    ) as failure:
+        evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+    assert type(failure.value.__cause__) is fault
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+@pytest.mark.parametrize("target_call", [3, 6], ids=["pre-open", "post-read"])
+def test_bounded_evidence_reader_types_late_path_stat_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+    target_call: int,
+) -> None:
+    """A path disappearing after regular-path admission is a typed failure."""
+    target = tmp_path / "raw.csv"
+    _ = target.write_bytes(b"raw evidence")
+    original_lstat = Path.lstat
+    lookups = 0
+
+    def failing_lstat(path: Path, *args: object, **kwargs: object) -> object:
+        nonlocal lookups
+        if path == target:
+            lookups += 1
+            if lookups == target_call:
+                raise fault("injected evidence late path stat failure")
+        return original_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", failing_lstat)
+    with pytest.raises(evidence.EvidenceError, match="path inspection") as failure:
+        evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+    assert lookups == target_call
+    assert type(failure.value.__cause__) is fault

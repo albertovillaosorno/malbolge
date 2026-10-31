@@ -111,6 +111,18 @@ def _admit_root(root: Path) -> None:
         _fail("evidence root requires an exact native Path")
 
 
+def _path_lstat(path: Path, relative: str) -> os.stat_result:
+    """Return a physical path receipt through the evidence error boundary."""
+    try:
+        return path.lstat()
+    except FileNotFoundError:
+        # Preserve the missing-source contract for historical import callers.
+        raise
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = f"evidence path inspection failed: {relative}"
+        raise EvidenceError(message) from error
+
+
 def regular_path(
     root: Path,
     relative: str,
@@ -126,13 +138,19 @@ def regular_path(
     if limit is not None:
         _admit_byte_limit(limit)
     _admit_root(root)
-    current = root.resolve(strict=True)
+    try:
+        current = root.resolve(strict=True)
+    except FileNotFoundError:
+        raise
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = f"evidence path inspection failed: {relative}"
+        raise EvidenceError(message) from error
     for segment in _segments(relative):
         current /= segment
-        mode = current.lstat().st_mode
+        mode = _path_lstat(current, relative).st_mode
         if stat.S_ISLNK(mode):
             _fail(f"evidence symlink is not admitted: {relative}")
-    details = current.lstat()
+    details = _path_lstat(current, relative)
     if not stat.S_ISREG(details.st_mode) or details.st_size == 0:
         _fail(f"evidence must be a nonempty ordinary file: {relative}")
     if limit is not None and details.st_size > limit:
@@ -159,7 +177,7 @@ def _open_evidence(path: Path) -> IO[bytes]:
     )
     try:
         descriptor = os.open(path, flags)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         message = f"evidence file could not open safely: {path}"
         raise EvidenceError(message) from error
     try:
@@ -233,7 +251,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     """
     _admit_byte_limit(limit)
     path = regular_path(root, relative, limit=limit)
-    original = path.lstat()
+    original = _path_lstat(path, relative)
     primary: Exception | None = None
     try:
         with _open_evidence(path) as stream:
@@ -263,7 +281,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
         message = f"evidence stream access failed: {relative}"
         raise EvidenceError(message) from error
     final_path = regular_path(root, relative, limit=limit)
-    if _file_identity(final_path.lstat()) != _file_identity(opened):
+    if _file_identity(_path_lstat(final_path, relative)) != _file_identity(opened):
         _fail(f"evidence path changed during read: {relative}")
     if len(data) > limit:
         _fail(f"evidence exceeds byte limit: {relative}")
@@ -857,6 +875,7 @@ def validate_links(
         OSError,
         UnicodeError,
         RuntimeError,
+        EvidenceError,
         experiment_manifest.ExperimentManifestError,
         raw_samples.RawSampleError,
         trial_runs.TrialRunError,
