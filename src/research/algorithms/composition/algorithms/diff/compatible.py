@@ -1022,7 +1022,11 @@ def _materialize_exact(
     if _sha256(candidate) != instruction.source_sha256:
         message = "opaque compatible source changed beyond exact-gated support"
         raise CompatiblePlanError(message)
-    return _exact_bytes(candidate, instruction.exact)
+    transformed = _exact_bytes(candidate, instruction.exact)
+    if _sha256(transformed) != instruction.exact.expected_sha256:
+        message = "compatible exact-gated output differs from target snapshot"
+        raise CompatiblePlanError(message)
+    return transformed
 
 
 def _materialize_literal(

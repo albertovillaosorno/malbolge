@@ -740,6 +740,46 @@ def test_compatible_plan_rejects_forged_topology_and_bindings(
         _ = replace(plan, instructions=tuple(forged_instructions))
 
 
+def test_compatible_exact_gate_verifies_output_bytes(
+    tmp_path: Path,
+) -> None:
+    """A forged exact payload cannot publish bytes outside target evidence."""
+    plan = _plan(tmp_path)
+    exact_index = next(
+        index
+        for index, instruction in enumerate(plan.instructions)
+        if instruction.kind is CompatibleFileKind.EXACT_GATED
+    )
+    exact_instruction = plan.instructions[exact_index]
+    if exact_instruction.exact is None:
+        pytest.fail("expected exact gated instruction")
+    forged_exact = replace(
+        exact_instruction.exact,
+        kind=ExactInstructionKind.LITERAL_ORACLE,
+        source_path=None,
+        literal=b"forged output",
+        segments=(),
+    )
+    forged_instructions = list(plan.instructions)
+    forged_instructions[exact_index] = replace(
+        exact_instruction,
+        exact=forged_exact,
+    )
+    forged_plan = replace(plan, instructions=tuple(forged_instructions))
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+
+    with pytest.raises(CompatiblePlanError, match="exact-gated output"):
+        _ = materialize_compatible_plan(
+            _request(candidate, forged_plan, output)
+        )
+    _expect(not output.exists(), "forged exact payload was published")
+    _expect(
+        not (tmp_path / ".out.compatible-staging").exists(),
+        "forged exact staging remained",
+    )
+
+
 def test_compatible_mapper_failures_stay_inside_plan_boundary(
     tmp_path: Path,
 ) -> None:
