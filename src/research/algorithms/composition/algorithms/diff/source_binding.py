@@ -50,6 +50,7 @@ import hashlib
 import hmac
 import math
 from pathlib import PurePosixPath
+from pathlib import PureWindowsPath
 from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import IdentityTree
@@ -516,6 +517,9 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
             "source-binding policy must use the exact SourceBindingPolicy type"
         )
         raise SourceBindingPolicyError(message)
+    if any(PureWindowsPath(item.path).drive for item in reference.files):
+        message = "source-binding reference path cannot have a Windows drive"
+        raise SourceBindingPolicyError(message)
 
 
 def _validate_bind_secret(secret: object, context: object) -> None:
@@ -593,6 +597,12 @@ def bind_secret(
     )
 
 
+def _require_no_windows_drive(value: str) -> None:
+    if PureWindowsPath(value).drive:
+        message = "source-binding share path cannot have a Windows drive"
+        raise SourceBindingError(message)
+
+
 def _validate_share_path(value: object) -> None:
     if type(value) is not str or not value:
         message = "source-binding share path must be a non-empty string"
@@ -605,6 +615,7 @@ def _validate_share_path(value: object) -> None:
     except UnicodeEncodeError as error:
         message = "source-binding share path must be UTF-8 encodable"
         raise SourceBindingError(message) from error
+    _require_no_windows_drive(value)
     path = PurePosixPath(value)
     unsafe = _BACKSLASH in value or value == _DOT or path.is_absolute()
     noncanonical = _PARENT in path.parts or path.as_posix() != value

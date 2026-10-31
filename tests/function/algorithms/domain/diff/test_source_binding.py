@@ -417,6 +417,37 @@ def test_recovery_rejects_impossible_share_file_topology() -> None:
             _ = recover_secret(malformed, cast("IdentityTree", object()))
 
 
+def test_binding_rejects_windows_drive_prefixed_paths() -> None:
+    """Windows-absolute and drive-relative paths cannot bind source files."""
+    for drive_path in ("C:/unsafe.c", "C:unsafe.c"):
+        files = _files("reference")
+        files[drive_path] = files.pop("src/file-0.c")
+        reference = identity_tree(files)
+        with pytest.raises(SourceBindingPolicyError, match="drive"):
+            _ = bind_secret(
+                reference, _SECRET, policy=_policy(), context=_CONTEXT
+            )
+
+
+def test_recovery_rejects_windows_drive_prefixed_share_paths() -> None:
+    """Portable bindings reject Windows drive paths before candidate use."""
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    for drive_path in ("C:/unsafe.c", "C:unsafe.c"):
+        malformed = replace(
+            binding,
+            shares=(
+                replace(binding.shares[0], source_path=drive_path),
+                *binding.shares[1:],
+            ),
+        )
+        with pytest.raises(SourceBindingError, match="drive"):
+            _ = validate_threshold_binding(malformed)
+        with pytest.raises(SourceBindingError, match="drive"):
+            _ = recover_secret(malformed, cast("IdentityTree", object()))
+
+
 def test_recovery_rejects_malformed_share_metadata() -> None:
     """Every serialized share is canonical even when enough peers remain."""
     reference = _reference()
