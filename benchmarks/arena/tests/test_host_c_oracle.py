@@ -1033,6 +1033,45 @@ def test_host_direct_timeout_retry_requires_native_void_kill_receipt(
     assert events == ["group", "wait", "kill", "wait"]
 
 
+def test_host_foreign_wait_timeout_cannot_certify_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged timeout still triggers a bounded reap but cannot certify exit."""
+    import subprocess as sp  # ruff: ignore[import-outside-top-level,suspicious-subprocess-import]
+
+    class ForeignWaitTimeout(sp.TimeoutExpired):
+        def __str__(self) -> str:
+            raise AssertionError("foreign timeout formatter executed")
+
+    fault = ForeignWaitTimeout("untrusted-child", 1)
+    events: list[str] = []
+
+    class ChildProbe:
+        returncode = 0
+        waits = 0
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == 1
+            self.waits += 1
+            events.append("wait")
+            if self.waits == 1:
+                raise fault
+            return 0
+
+        def kill(self) -> None:
+            events.append("kill")
+
+    monkeypatch.setattr(
+        host_c_oracle,
+        "_kill_child_group",
+        lambda _child: events.append("group"),
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="cleanup failed") as error:
+        host_c_oracle._finish_child(cast("Any", ChildProbe()))
+    assert error.value.__cause__ is fault
+    assert events == ["group", "wait", "kill", "wait"]
+
+
 @pytest.mark.parametrize("timeout", [False, True])
 def test_host_cleanup_reaps_direct_child_when_group_signal_refused(
     monkeypatch: pytest.MonkeyPatch,

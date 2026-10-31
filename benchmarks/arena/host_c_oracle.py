@@ -300,7 +300,12 @@ def _finish_child(child: sp.Popen[bytes]) -> int:
             failures.append(direct_error)
     try:
         reaped = child.wait(timeout=1)
-    except sp.TimeoutExpired:
+    except sp.TimeoutExpired as error:
+        # A foreign timeout subclass is not trusted evidence of ordinary
+        # deadline exhaustion. Still attempt bounded direct kill and reap,
+        # but never report a clean exit when the first wait was untrusted.
+        if type(error) is not sp.TimeoutExpired:
+            failures.append(error)
         # The original group may have become unavailable while its direct
         # child is still alive; retry one bounded direct kill and reap.
         try:
