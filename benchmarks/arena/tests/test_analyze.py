@@ -2007,3 +2007,225 @@ def test_direct_input_reader_types_unanticipated_dependency_fault(
     with pytest.raises(analyze.ArenaError, match="arena study input rejected") as caught:
         analyze.read_input(cast("Path", "ignored.json"))
     assert caught.value.__cause__ is failure
+
+
+class _ForeignSuccessInterval(dict[str, object]):
+    """A forged confidence bound must not execute mapping iteration hooks."""
+
+    def __iter__(self):  # type: ignore[override]
+        raise AssertionError("foreign confidence mapping iterator executed")
+
+
+class _ForeignSuccessKey(str):
+    """A colliding endpoint label cannot execute an equality override."""
+
+    def __hash__(self) -> int:
+        return hash("lower")
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign confidence key equality executed")
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        None,
+        True,
+        "present",
+        {"lower": [0, 1]},
+        {"lower": [0, 1], "upper": [1, 1], "sample_count": 3, "verified": 2},
+        {"lower": [0, 1], "upper": [1, 1], "sample_count": 2, "verified": 1},
+        {"lower": (0, 1), "upper": [1, 1], "sample_count": 2, "verified": 2},
+        {"lower": [True, 1], "upper": [1, 1], "sample_count": 2, "verified": 2},
+        {"lower": [1, 0], "upper": [1, 1], "sample_count": 2, "verified": 2},
+        {"lower": [-1, 1], "upper": [1, 1], "sample_count": 2, "verified": 2},
+        {"lower": [2, 1], "upper": [1, 1], "sample_count": 2, "verified": 2},
+        {"lower": [1, 5], "upper": [1, 1], "sample_count": 2, "verified": 2},
+        {"lower": [2, 4], "upper": [1, 1], "sample_count": 2, "verified": 2},
+        {"lower": [0, 1], "upper": [0, 1], "sample_count": 2, "verified": 2},
+        _ForeignSuccessInterval({"lower": [0, 1]}),
+        {
+            _ForeignSuccessKey("lower"): [0, 1],
+            "upper": [1, 1],
+            "sample_count": 2,
+            "verified": 2,
+        },
+    ],
+    ids=[
+        "missing",
+        "boolean",
+        "text",
+        "missing-fields",
+        "wrong-attempts",
+        "wrong-verified",
+        "tuple-endpoint",
+        "boolean-endpoint",
+        "zero-denominator",
+        "negative-numerator",
+        "over-unity",
+        "nongrid-denominator",
+        "unreduced-fraction",
+        "misses-observed-success",
+        "foreign-mapping",
+        "foreign-key",
+    ],
+)
+def test_success_annotation_rejects_forged_statistical_receipts_atomically(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A late forged statistical result cannot leave earlier points annotated."""
+    report = _run(_document())
+    original = analyze.success_intervals.success_interval_95
+    calls = 0
+
+    def substituted(verified: int, attempts: int) -> object:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return original(verified, attempts)
+        return receipt
+
+    monkeypatch.setattr(analyze.success_intervals, "success_interval_95", substituted)
+    with pytest.raises(analyze.ArenaError, match="success interval receipt"):
+        analyze.annotate_success_intervals(report)
+    assert all(SUCCESS_INTERVAL_KEY not in point for point in report["capacity_curve"])
+    assert SUCCESS_INTERVAL_POLICY_KEY not in report
+    assert calls == 2
+
+
+def test_success_annotation_types_unanticipated_statistics_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dependency exception with hostile formatting remains a typed cause."""
+    report = _run(_document())
+
+    class ForeignStatisticsError(RuntimeError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign statistics error was formatted")
+
+    injected = ForeignStatisticsError("unsafe argument")
+
+    def fail(_verified: int, _attempts: int) -> Never:
+        raise injected
+
+    monkeypatch.setattr(analyze.success_intervals, "success_interval_95", fail)
+    with pytest.raises(
+        analyze.ArenaError, match="success interval computation failed"
+    ) as error:
+        analyze.annotate_success_intervals(report)
+    assert error.value.__cause__ is injected
+    assert all(SUCCESS_INTERVAL_KEY not in point for point in report["capacity_curve"])
+    assert SUCCESS_INTERVAL_POLICY_KEY not in report
+
+
+def test_success_annotation_rejects_fabricated_oversized_interval_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Over-limit attempts cannot be assigned an inferential probability."""
+    report = _run(_document())
+    point = report["capacity_curve"][0]
+    attempts = analyze.success_intervals.MAX_ATTEMPTS + 1
+    point["attempts"] = attempts
+    point["verified"] = attempts
+    point["success_fraction"] = [attempts, attempts]
+    point["outcomes"][analyze.VERIFIED] = attempts
+    original = analyze.success_intervals.success_interval_95
+
+    def fabricated(verified: int, total: int) -> object:
+        if total == attempts:
+            return {
+                "lower": [1, 1],
+                "upper": [1, 1],
+                "sample_count": total,
+                "verified": verified,
+            }
+        return original(verified, total)
+
+    monkeypatch.setattr(analyze.success_intervals, "success_interval_95", fabricated)
+    with pytest.raises(analyze.ArenaError, match="success interval receipt"):
+        analyze.annotate_success_intervals(report)
+    assert all(SUCCESS_INTERVAL_KEY not in point for point in report["capacity_curve"])
+    assert SUCCESS_INTERVAL_POLICY_KEY not in report
+
+
+def test_success_annotation_preserves_unavailable_overlimit_interval() -> None:
+    """Beyond the registered sample cap, null remains an honest no-estimate."""
+    report = _run(_document())
+    point = report["capacity_curve"][0]
+    attempts = analyze.success_intervals.MAX_ATTEMPTS + 1
+    point["attempts"] = attempts
+    point["verified"] = attempts
+    point["success_fraction"] = [attempts, attempts]
+    point["outcomes"][analyze.VERIFIED] = attempts
+    analyze.annotate_success_intervals(report)
+    assert point[SUCCESS_INTERVAL_KEY] is None
+    assert report[SUCCESS_INTERVAL_POLICY_KEY]["maximum_attempts"] == attempts - 1
+    assert all(SUCCESS_INTERVAL_KEY in point for point in report["capacity_curve"])
+
+
+@pytest.mark.parametrize("cli", ["standalone", "linked-evidence"])
+def test_both_arena_clis_refuse_forged_success_interval_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cli: str,
+) -> None:
+    """A serializable but fabricated CI cannot become an operator report."""
+    from benchmarks.arena import evidence
+    from benchmarks.arena.tests.test_evidence import sample_study
+
+    document = _document() if cli == "standalone" else sample_study(tmp_path)
+    study = tmp_path / "study.json"
+    _ = study.write_text(json.dumps(document), encoding="utf-8")
+    malformed = {"lower": [1, 0], "upper": [1, 1], "sample_count": 2, "verified": 2}
+    monkeypatch.setattr(
+        analyze.success_intervals,
+        "success_interval_95",
+        lambda *_args: malformed,
+    )
+    if cli == "standalone":
+        argv = ["arena", str(study), "--success-intervals-95"]
+        entry = analyze.main
+    else:
+        argv = [
+            "arena-evidence",
+            str(study),
+            "--root",
+            str(tmp_path),
+            "--success-intervals-95",
+        ]
+        entry = evidence.main
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit, match="2"):
+        entry()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "success interval receipt" in output.err
+
+
+def test_success_interval_receipts_are_copied_before_annotation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later mutation of a helper-owned receipt cannot rewrite published CI."""
+    report = _run(_document())
+    original = analyze.success_intervals.success_interval_95
+    returned: list[analyze.success_intervals.SuccessInterval] = []
+
+    def borrowed(
+        verified: int, attempts: int
+    ) -> analyze.success_intervals.SuccessInterval | None:
+        receipt = original(verified, attempts)
+        if receipt is not None:
+            returned.append(receipt)
+        return receipt
+
+    monkeypatch.setattr(analyze.success_intervals, "success_interval_95", borrowed)
+    analyze.annotate_success_intervals(report)
+    first = report["capacity_curve"][0][SUCCESS_INTERVAL_KEY]
+    expected = copy.deepcopy(first)
+    assert returned
+    returned[0]["lower"][1] = 0
+    returned[0]["sample_count"] = -5
+    assert first == expected

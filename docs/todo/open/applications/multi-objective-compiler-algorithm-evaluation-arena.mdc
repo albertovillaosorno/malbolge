@@ -538,6 +538,13 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   bounds. It rejects empty and over-limit sample populations instead of
   fabricating inference, while documenting the unverified iid Bernoulli and
   verifier assumptions. Independent exact reference and both-CLI tests pass.
+  The annotation boundary now also requires exact native interval receipts,
+  matched reported counts, reduced rational grid endpoints and containment of
+  the observed fraction. Sixteen late forged-result cases, a hostile helper
+  failure, over-limit controls and both-CLI no-JSON regressions reject without
+  partially annotating a report. A separate red-first receipt-alias test
+  proves later helper-side mutation cannot rewrite published interval metadata;
+  no independent math attestation is claimed.
 - The host-C reference-study producer's operator JSON now uses the same
   checked stdout publisher and fails nonzero on incomplete writes or flush,
   without pretending that already-emitted text can be retracted. Unexpected

@@ -111,6 +111,14 @@ nominal Pareto rankings or the default JSON schema. Direct annotation of
 in-memory reports also requires exact native success fractions and a complete
 nonnegative outcome tally equal to the reported attempts and verified count;
 a contradictory late point rejects without partially attaching intervals.
+The annotator now also admits only native helper receipts with matching
+sample counts, reduced in-grid rational endpoints and bounds containing the
+observed success fraction. Missing intervals below the 512-attempt cap,
+spurious intervals above it and unexpected helper exceptions fail atomically
+through the typed analyzer boundary before either CLI can publish JSON.
+The returned interval is copied into an owned native record, preventing later
+helper-side mutation of the report. These guards do not independently verify
+binomial-tail mathematics, sampling assumptions or source authenticity.
 
 The Pareto relation
 minimizes declared costs and maximizes verified trial count inside each matched

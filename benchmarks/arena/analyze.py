@@ -873,6 +873,62 @@ def analyze(
     return report
 
 
+def _admit_success_interval_receipt(
+    receipt: object, verified: int, attempts: int
+) -> dict[str, Any] | None:
+    """Validate bounded, canonical inferential metadata before publication.
+
+    Returns:
+        An owned canonical interval record, or unavailable beyond the cap.
+
+    """
+    if attempts > success_intervals.MAX_ATTEMPTS:
+        if receipt is not None:
+            _fail("success interval receipt exceeds supported attempts")
+        return None
+    fields = {"lower", "upper", "sample_count", "verified"}
+    if (
+        type(receipt) is not dict
+        or any(type(name) is not str for name in receipt)
+        or set(receipt) != fields
+        or type(receipt["sample_count"]) is not int
+        or receipt["sample_count"] != attempts
+        or type(receipt["verified"]) is not int
+        or receipt["verified"] != verified
+    ):
+        _fail("success interval receipt has invalid native count identity")
+    endpoints: list[Fraction] = []
+    for name in ("lower", "upper"):
+        pair = receipt[name]
+        if (
+            type(pair) is not list
+            or len(pair) != 2
+            or any(type(number) is not int for number in pair)
+        ):
+            _fail("success interval receipt requires native rational endpoints")
+        numerator, denominator = pair
+        if (
+            not 0 <= numerator <= denominator <= success_intervals.GRID_DENOMINATOR
+            or denominator == 0
+            or success_intervals.GRID_DENOMINATOR % denominator != 0
+        ):
+            _fail("success interval receipt has invalid rational endpoint")
+        normalized = Fraction(numerator, denominator)
+        if [normalized.numerator, normalized.denominator] != pair:
+            _fail("success interval receipt has noncanonical rational endpoint")
+        endpoints.append(normalized)
+    if not endpoints[0] <= Fraction(verified, attempts) <= endpoints[1]:
+        _fail("success interval receipt excludes observed success fraction")
+    # Do not retain borrowed mutable dictionaries or endpoint lists. The
+    # supplier may still hold references after annotation has succeeded.
+    return {
+        "lower": [endpoints[0].numerator, endpoints[0].denominator],
+        "upper": [endpoints[1].numerator, endpoints[1].denominator],
+        "sample_count": attempts,
+        "verified": verified,
+    }
+
+
 def annotate_success_intervals(report: dict[str, Any]) -> None:
     """Add optional confidence bounds only after all points pass admission.
 
@@ -921,10 +977,18 @@ def annotate_success_intervals(report: dict[str, Any]) -> None:
         ):
             _fail("success interval annotation requires consistent outcome totals")
         counts.append((verified, attempts))
-    intervals = [
-        success_intervals.success_interval_95(verified, attempts)
-        for verified, attempts in counts
-    ]
+    intervals: list[dict[str, Any] | None] = []
+    for verified, attempts in counts:
+        try:
+            raw_interval = success_intervals.success_interval_95(verified, attempts)
+        except Exception as error:
+            # Dependency failures cannot escape into operator output or use
+            # an untrusted exception's diagnostic formatting hooks.
+            message = "success interval computation failed"
+            raise ArenaError(message) from error
+        intervals.append(
+            _admit_success_interval_receipt(raw_interval, verified, attempts)
+        )
     for point, interval in zip(points, intervals, strict=True):
         point["verification_success_probability_interval_95"] = interval
     report["verification_success_interval_policy"] = {
