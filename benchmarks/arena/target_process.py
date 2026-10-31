@@ -44,7 +44,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 from time import monotonic
+from typing import Callable
 from typing import Never
+from typing import cast
 
 _ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TIMEOUT_SECONDS = 15
@@ -210,6 +212,19 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
         raise TargetProcessError(message) from error
     if type(pid) is not int or pid <= 0:
         _fail("bounded target cleanup requires a positive native PID")
+    # A positive forged child PID could still equal our own process group.
+    # Signaling -pid in that case kills the caller and its ordinary peers.
+    try:
+        # POSIX-only hook: the cross-platform type stubs omit getpgid.
+        group_reader = cast("Callable[[int], object]", getattr(os, "getpgid"))
+        caller_group = group_reader(0)
+    except Exception as error:
+        message = "bounded target cleanup cannot inspect caller process group"
+        raise TargetProcessError(message) from error
+    if type(caller_group) is not int or caller_group <= 0:
+        _fail("bounded target cleanup has invalid caller process group")
+    if pid == caller_group:
+        _fail("bounded target cleanup refuses caller process group")
     group_error: Exception | None = None
     try:
         signal_receipt: object = os.kill(-pid, GROUP_KILL_SIGNAL)

@@ -125,6 +125,39 @@ def test_group_cleanup_signal_error_is_typed_after_child_exit(
     assert isinstance(error.value.__cause__, PermissionError)
 
 
+@pytest.mark.parametrize("active", [False, True])
+def test_child_pid_equal_to_own_group_cannot_signal_caller(
+    monkeypatch: pytest.MonkeyPatch, active: bool
+) -> None:
+    """Even a positive native PID must never target our own process group."""
+    events: list[str] = []
+
+    class ChildProbe:
+        pid = 12345
+
+        def poll(self) -> int | None:
+            events.append("poll")
+            return None if active else 0
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self) -> int:
+            events.append("wait")
+            return 0
+
+    def observe_signal(_group: int, _signal: int) -> None:
+        events.append("dangerous-signal")
+
+    monkeypatch.setattr(target_process.os, "getpgid", lambda _pid: 12345)
+    monkeypatch.setattr(target_process.os, "kill", observe_signal)
+    with pytest.raises(target_process.TargetProcessError, match="caller process group"):
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert events == []
+
+
 @pytest.mark.parametrize("pid", [None, False, True, 0, -1, -2, 1.5, "42"])
 @pytest.mark.parametrize("active", [False, True])
 def test_invalid_child_pid_never_signals_unrelated_process_group(
