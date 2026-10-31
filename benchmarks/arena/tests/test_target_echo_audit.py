@@ -1923,6 +1923,58 @@ def test_target_audit_git_object_rejects_noncanonical_process_receipt(
         audit._require_git_commit("a" * 40)
 
 
+class _HostileGitCommand(list[str]):
+    """Hostile returned arguments cannot define equality for source identity."""
+
+    def __eq__(self, other: object) -> bool:
+        raise AssertionError("foreign target Git command equality hook executed")
+
+
+@pytest.mark.parametrize(
+    "argument_kind", ["other", "tuple", "hostile", "string", "missing"]
+)
+def test_target_audit_git_rejects_forged_child_command_receipt(
+    monkeypatch: pytest.MonkeyPatch, argument_kind: str
+) -> None:
+    """The actual launched local Git command must own the object-type response."""
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        returned: object = (
+            ["other-git", "cat-file", "-t", "a" * 40]
+            if argument_kind == "other"
+            else tuple(command)
+            if argument_kind == "tuple"
+            else _HostileGitCommand(command)
+            if argument_kind == "hostile"
+            else "git cat-file"
+            if argument_kind == "string"
+            else None
+        )
+        return sp.CompletedProcess(cast("Any", returned), 0, b"commit\n", b"")
+
+    monkeypatch.setattr(audit.sp, "run", forged)
+    with pytest.raises(audit.TargetEchoAuditError, match="Git commit object"):
+        audit._require_git_commit("a" * 40)
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [b"commit", b" commit\n", b"commit\n\n", b"commit \n"],
+    ids=["missing-newline", "leading-space", "extra-newline", "trailing-space"],
+)
+def test_target_audit_git_rejects_noncanonical_object_type_line(
+    monkeypatch: pytest.MonkeyPatch, stdout: bytes
+) -> None:
+    """Malformed but strip-equivalent object-type text is not admissible."""
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        return sp.CompletedProcess(command, 0, stdout, b"")
+
+    monkeypatch.setattr(audit.sp, "run", forged)
+    with pytest.raises(audit.TargetEchoAuditError, match="Git commit object"):
+        audit._require_git_commit("a" * 40)
+
+
 class _HostileGitStat:
     """A foreign lstat result cannot authorize a Git executable."""
 

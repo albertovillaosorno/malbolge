@@ -752,9 +752,10 @@ def _require_git_commit(commit: str) -> None:
     except Exception as error:
         message = "target audit Git environment inspection failed"
         raise TargetEchoAuditError(message) from error
+    command = [executable, "cat-file", "-t", commit]
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [executable, "cat-file", "-t", commit],
+            command,
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             check=False,
@@ -774,10 +775,13 @@ def _require_git_commit(commit: str) -> None:
         raise TargetEchoAuditError(message) from error
     if (
         type(completed) is not sp.CompletedProcess
+        or type(completed.args) is not list
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != command
         or type(completed.returncode) is not int
         or completed.returncode != 0
         or type(completed.stdout) is not bytes
-        or completed.stdout.strip() != GIT_COMMIT_TYPE
+        or completed.stdout != GIT_COMMIT_TYPE + b"\n"
         or type(completed.stderr) is not bytes
         or completed.stderr != b""
     ):
