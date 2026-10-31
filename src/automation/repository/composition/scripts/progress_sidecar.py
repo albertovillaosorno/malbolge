@@ -2010,9 +2010,10 @@ def _open_durability_directory(path: Path) -> int:
 
 
 def _verify_durability_directory(path: Path, descriptor: int) -> None:
-    _reject_path_redirect(path, "progress durability directory")
-    opened = os.fstat(descriptor)
-    current = path.stat(follow_symlinks=False)
+    context = "progress durability directory"
+    _reject_path_redirect(path, context)
+    opened = _admit_native_stat(os.fstat(descriptor), context)
+    current = _admit_native_stat(path.stat(follow_symlinks=False), context)
     same_inode = (
         opened.st_dev == current.st_dev and opened.st_ino == current.st_ino
     )

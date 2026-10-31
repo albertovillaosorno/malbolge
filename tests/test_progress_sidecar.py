@@ -5083,6 +5083,80 @@ def test_checkpoint_durability_rejects_real_parent_inode_replacement(
     assert not Path(candidate.progress_path).exists()
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX directory durability receipt admission is platform-specific",
+)
+@pytest.mark.parametrize("publication", ["pointer", "checkpoint"])
+@pytest.mark.parametrize("receipt_kind", ["descriptor", "path"])
+@pytest.mark.parametrize("phase", [1, 2])
+def test_durability_rejects_foreign_directory_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publication: str,
+    receipt_kind: str,
+    phase: int,
+) -> None:
+    """Neither directory fsync phase can trust foreign inode metadata."""
+    parent = tmp_path / "job"
+    parent.mkdir()
+    sidecar = _sidecar(parent)
+    checkpoint = b"checkpoint-state"
+    candidate = _checkpointed(sidecar, checkpoint=checkpoint, partial=None)
+    destination = (
+        Path(sidecar.progress_path)
+        if publication == "pointer"
+        else Path(candidate.checkpoint_path or "")
+    )
+    original_fstat = os.fstat
+    original_stat = Path.stat
+    receipts = 0
+
+    class ForeignStat:
+        def __getattr__(self, field: str) -> object:
+            raise AssertionError(f"foreign durability metadata accessed: {field}")
+
+    def foreign_fstat(descriptor: int) -> os.stat_result:
+        nonlocal receipts
+        native = original_fstat(descriptor)
+        if stat.S_ISDIR(native.st_mode):
+            receipts += 1
+            if receipts == phase:
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return native
+
+    def foreign_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal receipts
+        native = original_stat(path, follow_symlinks=follow_symlinks)
+        if path == parent and not follow_symlinks:
+            receipts += 1
+            if receipts == phase:
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return native
+
+    with monkeypatch.context() as context:
+        if receipt_kind == "descriptor":
+            context.setattr(os, "fstat", foreign_fstat)
+        else:
+            context.setattr(Path, "stat", foreign_stat)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="native os.stat_result",
+        ) as captured:
+            if publication == "pointer":
+                _ = progress.write_atomic(sidecar)
+            else:
+                _ = progress.write_checkpoint_generation(candidate, checkpoint)
+    assert receipts == phase
+    assert captured.value.published_path == destination
+    assert destination.is_file()
+    if publication == "checkpoint":
+        assert destination.read_bytes() == checkpoint
+        assert not Path(sidecar.progress_path).exists()
+
+
 def _mock_directory_descriptor(
     context: pytest.MonkeyPatch, path: Path, descriptor: int
 ) -> None:

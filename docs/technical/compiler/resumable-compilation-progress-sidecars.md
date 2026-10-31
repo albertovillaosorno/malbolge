@@ -124,6 +124,13 @@ files fail closed at that point. All path components are also rechecked for
 links after opening: replacing a parent with a symlink could otherwise direct
 the open to a different regular inode that still matches its new pathname.
 
+Publication durability admission now requires exact native directory-stat
+receipts both before and after the parent-directory fsync. A foreign descriptor
+or no-follow pathname receipt fails before any metadata field access. Pointer
+and checkpoint publishers retain their precise committed-path evidence and
+report uncertain durability instead of claiming a successful publication;
+these checks do not prevent races after the final admission.
+
 On Linux, admission also compares the opened descriptor's `/proc/self/fd`
 pathname to the lexically normalized requested path. A transient parent link
 that directs the open to a separate hard link of the *same inode* therefore
