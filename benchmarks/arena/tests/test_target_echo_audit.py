@@ -2047,6 +2047,24 @@ def test_target_audit_cli_never_formats_foreign_errors(
     assert "ForeignTargetAuditCliFault" in output.err
 
 
+def test_target_audit_native_target_process_error_preserves_safe_detail() -> None:
+    """Trusted bounded-process rejection keeps a useful native reason."""
+    reason = "bounded target child resource controls require prlimit"
+    error = target_process.TargetProcessError(reason)
+    assert audit._safe_error_detail(error) == reason
+
+
+def test_target_audit_native_process_error_never_formats_foreign_argument() -> None:
+    """A native exception class does not authenticate foreign message values."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("foreign target process argument formatter executed")
+
+    error = target_process.TargetProcessError(HostileArgument())
+    assert audit._safe_error_detail(error) == "TargetProcessError"
+
+
 def test_target_audit_native_error_keeps_detail_and_cause(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

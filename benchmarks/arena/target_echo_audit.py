@@ -161,6 +161,11 @@ def _safe_error_detail(error: Exception) -> str:
         Trusted error text or the name of an untrusted exception type.
 
     """
+    if type(error) is target_process.TargetProcessError:
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+        return type(error).__name__
     if type(error) in (
         TargetEchoAuditError,
         report_output.ReportOutputError,
