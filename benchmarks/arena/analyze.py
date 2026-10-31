@@ -823,7 +823,11 @@ def read_input(path: Path) -> str:
         data = study_file.read_study_bytes(path, limit=MAX_INPUT_BYTES)
     except study_file.StudyFileError as error:
         raise ArenaError(str(error)) from error
-    return data.decode("utf-8")
+    try:
+        return data.decode("utf-8")
+    except UnicodeError as error:
+        message = "arena study input is not valid UTF-8"
+        raise ArenaError(message) from error
 
 
 def require_unchanged_study_input(path: Path, original: str) -> None:

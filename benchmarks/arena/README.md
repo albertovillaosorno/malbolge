@@ -18,6 +18,8 @@ The command prints deterministic JSON, or exits with code 2 without a report
 when admission or comparison fails. Its input limit is 16 MiB. Direct
 study-file readers require an exact positive integer byte ceiling no higher
 than 16 MiB; malformed or larger ceilings reject before opening any path.
+Missing/invalid study paths and invalid UTF-8 fail through typed input errors,
+including when the admission functions are called directly.
 Version-one input has one `study` and a nonempty `observations` array:
 
 ```json

@@ -54,6 +54,7 @@ if TYPE_CHECKING:
 
 STABLE_INPUT = "source.json"
 STUDY_SAMPLE = b"staged"
+INVALID_UTF8 = b"invalid-\xff-utf8"
 SUBSTITUTED = "other.json"
 CHANGED_OPEN = "changed between path and open"
 CHANGED_READ = "changed during read"
@@ -131,6 +132,41 @@ def test_exact_declared_study_budget_still_reads_normal_file(
     ) == STUDY_SAMPLE
     with pytest.raises(study_file.StudyFileError, match="exceeds"):
         _ = study_file.read_study_bytes(path, limit=len(STUDY_SAMPLE) - 1)
+
+
+@pytest.mark.parametrize("missing_parent", [False, True])
+def test_direct_study_reader_and_analyzer_type_missing_paths(
+    tmp_path: Path,
+    *,
+    missing_parent: bool,
+) -> None:
+    """Unavailable input cannot leak host path errors to a direct caller."""
+    path = tmp_path / "missing"
+    if missing_parent:
+        path /= STABLE_INPUT
+    with pytest.raises(study_file.StudyFileError, match="access") as reader:
+        _ = study_file.read_study_bytes(path, limit=1024)
+    assert isinstance(reader.value.__cause__, FileNotFoundError)
+    with pytest.raises(analyze.ArenaError, match="access") as analyzer:
+        _ = analyze.read_input(path)
+    assert isinstance(analyzer.value.__cause__, study_file.StudyFileError)
+
+
+def test_direct_reader_types_invalid_path_argument() -> None:
+    """A foreign pathname is rejected through the same admission boundary."""
+    with pytest.raises(study_file.StudyFileError, match="access") as result:
+        _ = study_file.read_study_bytes(cast("Path", "not-a-path"), limit=1024)
+    assert isinstance(result.value.__cause__, AttributeError)
+
+
+def test_direct_analyzer_types_invalid_utf8_input(tmp_path: Path) -> None:
+    """Uninterpretable bytes cannot escape the arena input error type."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(INVALID_UTF8)
+    assert study_file.read_study_bytes(path, limit=1024) == INVALID_UTF8
+    with pytest.raises(analyze.ArenaError, match="UTF-8") as result:
+        _ = analyze.read_input(path)
+    assert isinstance(result.value.__cause__, UnicodeDecodeError)
 
 
 def _same_length_study_rewrite(path: Path) -> None:

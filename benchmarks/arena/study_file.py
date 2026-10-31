@@ -212,14 +212,7 @@ def _admit_completion(
         _fail("arena input read ended before declared file size")
 
 
-def read_study_bytes(path: Path, *, limit: int) -> bytes:
-    """Read one file without trusting mutable pathname evidence.
-
-    Returns:
-        Exact bytes from a regular descriptor that remained path-bound.
-
-    """
-    _admit_limit(limit)
+def _read_admitted_study(path: Path, *, limit: int) -> bytes:
     before = _admit_path(path, limit)
     original_parent = _parent_identity(path)
     # Even if a different parent resolves to a hard link of the same inode,
@@ -239,3 +232,29 @@ def read_study_bytes(path: Path, *, limit: int) -> bytes:
     if _parent_identity(path) != original_parent:
         _fail("arena input parent directory changed")
     return data
+
+
+def read_study_bytes(path: Path, *, limit: int) -> bytes:
+    """Read a bounded ordinary file under one typed admission boundary.
+
+    Returns:
+        Exact bytes from a regular descriptor that remained path-bound.
+
+    Raises:
+        StudyFileError: Invalid limit, path, stream, or observed drift.
+
+    """
+    _admit_limit(limit)
+    try:
+        return _read_admitted_study(path, limit=limit)
+    except StudyFileError:
+        raise
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+    ) as error:
+        message = "arena input path access failed"
+        raise StudyFileError(message) from error
