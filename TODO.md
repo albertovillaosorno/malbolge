@@ -61,6 +61,15 @@ instruction.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/ternary-machine-lowering.mdc](docs/todo/open/compiler/ternary-machine-lowering.mdc)
 
+### TODO - Malbolge layout and encoding backend
+
+Implement address-sensitive instruction layout, self-modification planning,
+encoding, jumps, data placement, runtime linkage, and final `.malbolge`
+emission.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc](docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc)
+
 ### TODO - Ahead-of-execution native translation
 
 Make verified ahead-of-execution translation the primary native path.
@@ -77,14 +86,6 @@ code-size explosion or compilation cost.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/compact-guest-bytecode-strategy.mdc](docs/todo/open/compiler/compact-guest-bytecode-strategy.mdc)
 
-### TODO - Malbolge layout and encoding backend
-
-Implement address-sensitive instruction layout, self-modification planning,
-encoding, jumps, data placement, runtime linkage, and final `.malbolge`
-emission.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc](docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc)
 
 
 ## P3 — Optimization, proof, and reusable scale
