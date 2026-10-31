@@ -104,9 +104,17 @@ def parse_trial_run(text: str) -> TrialRun:
         raise TrialRunError(message) from error
     if type(document) is not dict:
         _fail("invalid per-trial manifest TOML root")
+    if any(type(key) is not str for key in document):
+        _fail("per-trial manifest TOML requires native string keys")
     table = document.get(EXTENSION_NAME)
-    if type(table) is not dict or set(table) != EXTENSION_FIELDS:
-        _fail("arena_trial requires exact schema_version/trial/raw_sha256")
+    if (
+        type(table) is not dict
+        or any(type(key) is not str for key in table)
+        or set(table) != EXTENSION_FIELDS
+    ):
+        _fail(
+            "arena_trial requires exact schema_version/trial/raw_sha256 and native string keys"
+        )
     version = table["schema_version"]
     if type(version) is not int or version != SCHEMA_VERSION:
         _fail("arena_trial requires schema_version = 1")

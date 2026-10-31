@@ -52,6 +52,7 @@ import pytest
 from benchmarks.arena import analyze
 from benchmarks.arena import evidence
 from benchmarks.arena import raw_samples
+from benchmarks.arena import trial_runs
 from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
@@ -1279,3 +1280,34 @@ def test_csv_parser_native_exception_does_not_format_foreign_argument(
     with pytest.raises(raw_samples.RawSampleError, match="arena raw CSV") as caught:
         raw_samples.check_rows(raw, [record], ROOT_LABEL)
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("scope", ["root", "extension"])
+def test_trial_run_rejects_foreign_toml_mapping_keys_before_comparison(
+    monkeypatch: pytest.MonkeyPatch, scope: str
+) -> None:
+    """A foreign TOML dependency cannot trigger equality when admitting keys."""
+
+    class CollidingKey:
+        def __hash__(self) -> int:
+            return hash("arena_trial" if scope == "root" else "trial")
+
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign TOML key equality executed")
+
+    extension: dict[object, object] = {
+        "schema_version": 1,
+        "trial": 0,
+        "raw_sha256": "a" * 64,
+    }
+    if scope == "root":
+        document: dict[object, object] = {CollidingKey(): extension}
+    else:
+        del extension["trial"]
+        extension[CollidingKey()] = 0
+        document = {"arena_trial": extension}
+
+    monkeypatch.setattr(trial_runs.tomllib, "loads", lambda _: document)
+    with pytest.raises(trial_runs.TrialRunError, match="native.*keys"):
+        trial_runs.parse_trial_run("[arena_trial]\ntrial = 0\n")
