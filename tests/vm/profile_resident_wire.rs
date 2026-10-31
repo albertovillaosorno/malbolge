@@ -107,6 +107,47 @@ fn resident_wire_decodes_complete_result_and_rejects_framing_drift()
 }
 
 #[test]
+fn resident_wire_rejects_forged_counts_before_allocation() -> TestResult {
+    let mut response = Vec::new();
+    response.extend_from_slice(&PROFILE_RESIDENT_WIRE_MAGIC);
+    push_u32(&mut response, RESPONSE_RESULTS);
+    push_u32(&mut response, u32::MAX);
+    check_equal(
+        &decode_profile_resident_response(&response, GEOMETRY.memory_words),
+        &Err(ProfileResidentWireError::ReadFailure),
+        "resident wire forged result count",
+    )?;
+
+    response.truncate(PROFILE_RESIDENT_WIRE_MAGIC.len() + 4);
+    push_u32(&mut response, 1);
+    for _scalar in 0u8..11 {
+        push_u32(&mut response, 0);
+    }
+    check_equal(
+        &decode_profile_resident_response(&response, u32::MAX),
+        &Err(ProfileResidentWireError::ReadFailure),
+        "resident wire forged memory words",
+    )
+}
+
+#[test]
+fn resident_wire_encoder_rejects_forged_geometry_before_allocation() -> TestResult {
+    let memory = [0u32; 1];
+    let forged = ProfileResidentWireGeometry {
+        memory_words: u32::MAX,
+        ..GEOMETRY
+    };
+    check_equal(
+        &encode_profile_resident_batch(&[request(&memory, forged)]),
+        &Err(ProfileResidentWireError::MemoryLengthMismatch {
+            expected: u32::MAX,
+            observed: memory.len(),
+        }),
+        "resident wire forged geometry allocation",
+    )
+}
+
+#[test]
 fn resident_wire_response_limit_tracks_possible_output() -> TestResult {
     let memory = vec![0u32; 243];
     let admitted = request(&memory, GEOMETRY);

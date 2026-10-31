@@ -39,6 +39,7 @@ pub const PROFILE_RESIDENT_WIRE_MAGIC: [u8; 8] = *b"MBPRN2\0\0";
 
 const RESPONSE_RESULTS: u32 = 0;
 const RESPONSE_UNAVAILABLE: u32 = 1;
+const RESULT_FIXED_U32_FIELDS: usize = 11;
 
 /// Failure to encode or decode the resident profile wire contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -251,6 +252,10 @@ impl<'wire> WireReader<'wire> {
         Self { bytes, offset: 0 }
     }
 
+    const fn remaining(&self) -> usize {
+        self.bytes.len().saturating_sub(self.offset)
+    }
+
     fn take(
         &mut self,
         count: usize,
@@ -278,6 +283,12 @@ impl<'wire> WireReader<'wire> {
         &mut self,
         count: usize,
     ) -> Result<Vec<u32>, ProfileResidentWireError> {
+        let required = count
+            .checked_mul(size_of::<u32>())
+            .ok_or(ProfileResidentWireError::ReadFailure)?;
+        if required > self.remaining() {
+            return Err(ProfileResidentWireError::ReadFailure);
+        }
         let mut words = Vec::with_capacity(count);
         for _word in 0..count {
             words.push(self.u32()?);
@@ -316,6 +327,20 @@ pub fn decode_profile_resident_response(
     }
     let memory_len = usize::try_from(memory_words)
         .map_err(|_error| ProfileResidentWireError::CounterOverflow)?;
+    if count != 0 {
+        // Every result has eleven scalars and a complete resident memory.
+        // Reject impossible framing before reserving attacker-sized vectors.
+        let minimum_result_bytes = memory_len
+            .checked_add(RESULT_FIXED_U32_FIELDS)
+            .and_then(|words| words.checked_mul(size_of::<u32>()))
+            .ok_or(ProfileResidentWireError::ReadFailure)?;
+        let minimum_batch_bytes = count
+            .checked_mul(minimum_result_bytes)
+            .ok_or(ProfileResidentWireError::ReadFailure)?;
+        if minimum_batch_bytes > reader.remaining() {
+            return Err(ProfileResidentWireError::ReadFailure);
+        }
+    }
     let mut results = Vec::with_capacity(count);
     for _item in 0..count {
         results.push(decode_result(&mut reader, memory_len)?);
@@ -361,7 +386,7 @@ pub fn profile_resident_response_byte_limit(
             .checked_add(request.step_budget)
             .ok_or(ProfileResidentWireError::CounterOverflow)?;
         let _output_capacity = usize_u32(output_capacity)?;
-        let fixed = 11usize
+        let fixed = RESULT_FIXED_U32_FIELDS
             .checked_mul(size_of::<u32>())
             .ok_or(ProfileResidentWireError::CounterOverflow)?;
         let item = fixed
@@ -390,15 +415,26 @@ pub fn encode_profile_resident_batch(
     };
     let memory_len = usize::try_from(geometry.memory_words())
         .map_err(|_error| ProfileResidentWireError::CounterOverflow)?;
+    let request_count = usize_u32(requests.len())?;
+    for request in requests {
+        if request.memory.len() != memory_len {
+            return Err(ProfileResidentWireError::MemoryLengthMismatch {
+                expected: geometry.memory_words(),
+                observed: request.memory.len(),
+            });
+        }
+    }
     let capacity = requests
         .len()
-        .saturating_mul(memory_len.saturating_mul(size_of::<u32>()))
-        .saturating_add(1024);
+        .checked_mul(memory_len)
+        .and_then(|words| words.checked_mul(size_of::<u32>()))
+        .and_then(|bytes| bytes.checked_add(1024))
+        .ok_or(ProfileResidentWireError::CounterOverflow)?;
     let mut bytes = Vec::with_capacity(capacity);
     bytes.extend_from_slice(&PROFILE_RESIDENT_WIRE_MAGIC);
     for value in geometry_values(geometry)
         .into_iter()
-        .chain([usize_u32(requests.len())?])
+        .chain([request_count])
     {
         push_u32(&mut bytes, value);
     }

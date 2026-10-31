@@ -94,10 +94,14 @@ resident wire port. `ProfileResidentTransportBackend` bridges that transport to
 `ProfileBatchExecutionBackend`, keeping VM authority reconstruction in the
 application layer. The process transport launches one explicitly configured
 child per homogeneous attempt, bounds stdout by the maximum valid response, and
-decodes MBPRN2 framing. A default 60-second wall-clock deadline includes
-process launch, request writing, response reading, and child termination; an
-explicit per-transport duration can tighten or relax it, with zero rejecting
-before launch. Expired, failed, or malformed exchanges fall back to safe Rust.
+decodes MBPRN2 framing. The wire codec checks declared result counts, resident
+memory lengths, and fixed result framing against available bytes before
+reserving decode vectors; request encoding checks real memory lengths before
+reserving geometry-derived buffers. A default 60-second wall-clock deadline
+includes process launch, request writing, response reading, and child
+termination. An explicit per-transport duration can tighten or relax the
+deadline, with zero rejecting before launch. Expired, failed, or malformed
+exchanges fall back to safe Rust.
 Linux workers use an isolated process group so ordinary descendants cannot
 keep inherited pipes open after timeout. A per-process limit of eight in-flight
 exchange workers remains held until each worker actually releases its pipes,
