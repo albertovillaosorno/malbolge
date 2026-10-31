@@ -78,6 +78,19 @@ STALE_LAUNCHER_BYTES = b"stale"
 GIT_VERSION = "2.55.0"
 GIT_BYTES = b"git-2.55.0"
 GIT_HELPER_BYTES = b"git-helper"
+GIT_MARKER_BYTES = b"malbolge-git-import/v1\n"
+RUST_MARKER_BYTES = b"malbolge-rust-toolchain-import/v1\n"
+MARKER_SHORT = "short"
+MARKER_SAME_LENGTH = "same-length"
+MARKER_LONG = "long"
+IMPORT_MARKER_CASES = (
+    (project.GIT_IMPORT_MARKER, GIT_MARKER_BYTES, project.git_import_complete),
+    (
+        project.RUST_IMPORT_MARKER,
+        RUST_MARKER_BYTES,
+        project.rust_toolchain_import_complete,
+    ),
+)
 WINDOWS_PYTHON = "python.exe"
 WINDOWS_PYTHON_LAUNCHER = "python-jig.cmd"
 WINDOWS_PYTEST = "pytest.exe"
@@ -2091,6 +2104,78 @@ def test_git_import_preserves_runtime_tree_and_neutral_alias(
         destination / "libexec/git-core/git-remote-http"
     ).read_bytes() == GIT_HELPER_BYTES
     assert project.git_import_complete(destination)
+
+
+@pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)
+@pytest.mark.parametrize(
+    "mutation", [MARKER_SHORT, MARKER_SAME_LENGTH, MARKER_LONG]
+)
+def test_import_completion_rejects_corrupt_marker_bytes(
+    tmp_path: Path,
+    scenario: tuple[str, bytes, Callable[[Path], bool]],
+    *,
+    mutation: str,
+) -> None:
+    """Crash-left or forged marker bytes never imply native import readiness."""
+    name, expected, check = scenario
+    marker = tmp_path / name
+    if mutation == MARKER_SHORT:
+        corrupt = expected[:1]
+    elif mutation == MARKER_SAME_LENGTH:
+        corrupt = b"x" * len(expected)
+    else:
+        corrupt = expected + b"extra"
+    _ = marker.write_bytes(corrupt)
+    assert not check(tmp_path)
+
+
+@pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)
+def test_import_completion_rejects_linked_marker(
+    tmp_path: Path,
+    scenario: tuple[str, bytes, Callable[[Path], bool]],
+) -> None:
+    """A linked marker is not evidence of an owned imported toolchain."""
+    name, expected, check = scenario
+    foreign = tmp_path / "other"
+    _ = foreign.write_bytes(expected)
+    marker = tmp_path / name
+    try:
+        marker.symlink_to(foreign)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    assert not check(tmp_path)
+
+
+@pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)
+def test_import_completion_rejects_fifo_marker(
+    tmp_path: Path,
+    scenario: tuple[str, bytes, Callable[[Path], bool]],
+) -> None:
+    """An import readiness query never blocks opening a named pipe."""
+    mkfifo = cast("Callable[[Path], None] | None", getattr(os, "mkfifo", None))
+    if mkfifo is None:
+        pytest.skip("FIFO unsupported on this platform")
+    name, _, check = scenario
+    mkfifo(tmp_path / name)
+    assert not check(tmp_path)
+
+
+@pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)
+def test_import_completion_rejects_linked_parent(
+    tmp_path: Path,
+    scenario: tuple[str, bytes, Callable[[Path], bool]],
+) -> None:
+    """A redirected toolchain root cannot supply import readiness bytes."""
+    name, expected, check = scenario
+    real = tmp_path / "actual"
+    real.mkdir()
+    _ = (real / name).write_bytes(expected)
+    alias = tmp_path / "linked"
+    try:
+        alias.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+    assert not check(alias)
 
 
 @pytest.mark.parametrize("bad_write_count", [1, None, True, -1, 1_000_000])

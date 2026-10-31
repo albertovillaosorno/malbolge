@@ -616,14 +616,35 @@ def git_version_line_matches(required: str, version_line: str) -> bool:
     return observed == required or observed.startswith(f"{required}.")
 
 
+def _import_completion_marker_matches(marker: Path, expected: bytes) -> bool:
+    """Read an exact owned regular marker, never a symlink or a FIFO.
+
+    Returns:
+        True only for bounded, unchanged completion bytes from one inode.
+
+    """
+    try:
+        observed = marker.lstat()
+        if not stat.S_ISREG(observed.st_mode) or observed.st_size != len(
+            expected
+        ):
+            return False
+        return _read_authority_bytes(marker) == expected
+    except OSError, ValueError, RuntimeError:
+        return False
+
+
 def git_import_complete(git_root: Path) -> bool:
     """Return whether one imported Git installation reached its final marker.
 
     Returns:
-        True only after the import completion marker is present.
+        True only when a stable, unlinked marker has exact expected bytes.
 
     """
-    return (git_root / GIT_IMPORT_MARKER).is_file()
+    return _import_completion_marker_matches(
+        git_root / GIT_IMPORT_MARKER,
+        b"malbolge-git-import/v1\n",
+    )
 
 
 def _write_import_completion_marker(marker: Path, content: str) -> None:
@@ -733,10 +754,13 @@ def rust_toolchain_import_complete(toolchain_root: Path) -> bool:
     """Return whether one imported toolchain reached its final marker.
 
     Returns:
-        True only after the import completion marker is present.
+        True only when a stable, unlinked marker has exact expected bytes.
 
     """
-    return (toolchain_root / RUST_IMPORT_MARKER).is_file()
+    return _import_completion_marker_matches(
+        toolchain_root / RUST_IMPORT_MARKER,
+        b"malbolge-rust-toolchain-import/v1\n",
+    )
 
 
 def _rust_linux_linker_environment(platform_id: str) -> str | None:
