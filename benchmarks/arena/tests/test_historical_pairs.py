@@ -72,6 +72,85 @@ def _result(name: str) -> dict:
     return historical_pairs.build_report(REPO, BASE + name)
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [None, b"", bytearray(b"evidence"), memoryview(b"evidence"), "evidence", 7],
+    ids=["missing", "empty", "mutable", "view", "text", "integer"],
+)
+def test_historical_source_rejects_non_native_reader_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: object,
+) -> None:
+    """Substituted bounded readers cannot certify foreign evidence objects."""
+    monkeypatch.setattr(
+        historical_pairs.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: cast("bytes", invalid),
+    )
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="exact nonempty bounded bytes"
+    ):
+        historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
+
+
+def test_historical_source_rejects_bytes_subclass_before_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bytes subclass must not manufacture decoded historical evidence."""
+
+    class ForeignBytes(bytes):
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            del encoding, errors
+            pytest.fail("foreign historical source decode executed")
+
+    monkeypatch.setattr(
+        historical_pairs.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: ForeignBytes(b"false evidence"),
+    )
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="exact nonempty bounded bytes"
+    ):
+        historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
+
+
+def test_historical_source_rejects_oversized_reader_receipt_before_hash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An injected reader cannot skip the source's four-MiB budget."""
+    receipt = b"x" * (historical_pairs.MAX_SOURCE_BYTES + 1)
+    monkeypatch.setattr(
+        historical_pairs.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: receipt,
+    )
+
+    def forbidden_hash(_value: bytes) -> None:
+        pytest.fail("oversized historical source reached hash")
+
+    monkeypatch.setattr(historical_pairs, "sha256", forbidden_hash)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="exact nonempty bounded bytes"
+    ):
+        historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
+
+
+def test_historical_source_preserves_native_bounded_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordinary evidence preserves the exact decoded text and fingerprint."""
+    receipt = b"source-reported\n"
+    monkeypatch.setattr(
+        historical_pairs.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: receipt,
+    )
+    assert historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv") == (
+        receipt.decode("utf-8"),
+        sha256(receipt).hexdigest(),
+    )
+
+
 def _copy_source(tmp_path: Path, name: str) -> Path:
     directory = tmp_path / TEMP
     directory.mkdir(parents=True)

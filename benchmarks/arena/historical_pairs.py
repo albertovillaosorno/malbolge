@@ -139,6 +139,10 @@ def _source(root: Path, relative: str) -> tuple[str, str]:
         relative,
         limit=MAX_SOURCE_BYTES,
     )
+    # The bounded reader is a dependency, not proof about its own result.
+    # Validate its exact receipt before decoding or hashing source evidence.
+    if type(raw) is not bytes or not 0 < len(raw) <= MAX_SOURCE_BYTES:
+        _fail("historical source requires exact nonempty bounded bytes")
     return raw.decode("utf-8"), sha256(raw).hexdigest()
 
 
