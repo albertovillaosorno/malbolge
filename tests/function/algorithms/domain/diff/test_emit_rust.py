@@ -543,6 +543,64 @@ def test_emitted_rust_does_not_publish_inside_candidate_source(
     _expect(not output.exists(), "runtime published output under source")
 
 
+def test_emitted_rust_accepts_bare_relative_output_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A simple relative output name must not require a named parent."""
+    source, oracle, _, protected = _fixture(tmp_path)
+    rust_source = tmp_path / "relative-output.rs"
+    executable = tmp_path / "relative-output.exe"
+    _ = rust_source.write_text(
+        emit_rust_transform(protected, _PROFILE),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(compiled.returncode == 0, "relative-output fixture did not compile")
+    monkeypatch.chdir(tmp_path)
+
+    completed = _run(executable, source, Path("relative-out"))
+
+    _expect(
+        completed.returncode == 0,
+        "bare relative output failed: "
+        + completed.stderr.decode(errors="replace"),
+    )
+    _expect(
+        snapshot_tree(tmp_path / "relative-out") == snapshot_tree(oracle),
+        "relative generated output differs from oracle",
+    )
+
+
+def test_emitted_rust_rejects_relative_output_inside_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The source containment guard must resolve relative CLI destinations."""
+    source, _, _, protected = _fixture(tmp_path)
+    before = snapshot_tree(source)
+    rust_source = tmp_path / "relative-source-boundary.rs"
+    executable = tmp_path / "relative-source-boundary.exe"
+    _ = rust_source.write_text(
+        emit_rust_transform(protected, _PROFILE),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(
+        compiled.returncode == 0,
+        "relative boundary fixture did not compile",
+    )
+    monkeypatch.chdir(source)
+
+    completed = _run(executable, source, Path("relative-out"))
+
+    _expect(completed.returncode != 0, "relative output inside source admitted")
+    _expect(snapshot_tree(source) == before, "relative output mutated source")
+    _expect(not (source / "relative-out").exists(), "relative output published")
+
+
 def test_emitted_rust_rejects_existing_output_root(tmp_path: Path) -> None:
     """Never merge a generated result into an existing output tree."""
     source, _, _, protected = _fixture(tmp_path)
