@@ -36,8 +36,8 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+from pathlib import Path
 
 import pytest
 
@@ -557,6 +557,40 @@ def test_guest_runtime_sanitizers(tmp_path: Path) -> None:
     )
     assert format_executed.returncode == 0, (
         format_executed.stdout + format_executed.stderr
+    )
+
+    # A binary128 decimal exponent can use four digits. Keep the decimal
+    # conformance vectors under sanitizer coverage so a reversed-digit buffer
+    # regression cannot pass simply because its output still looks correct.
+    decimal_executable = tmp_path / "guest-decimal-sanitized.exe"
+    decimal_compiled = run_command(
+        (
+            str(CLANG),
+            "-std=c23",
+            "-fno-builtin",
+            "-fsanitize=address,undefined",
+            *STRICT_WARNINGS,
+            f"-I{INCLUDE}",
+            str(FORMAT_SOURCE),
+            str(FORMAT_PARSE_SOURCE),
+            str(DECIMAL_EXACT_SOURCE),
+            str(FORMAT_DECIMAL_SOURCE),
+            str(FORMAT_DECIMAL_HARNESS),
+            "-o",
+            str(decimal_executable),
+        ),
+        ROOT,
+    )
+    assert decimal_compiled.returncode == 0, (
+        decimal_compiled.stdout + decimal_compiled.stderr
+    )
+    decimal_executed = run_command(
+        (str(decimal_executable),),
+        tmp_path,
+        env=sanitizer_env,
+    )
+    assert decimal_executed.returncode == 0, (
+        decimal_executed.stdout + decimal_executed.stderr
     )
 
 
