@@ -354,6 +354,35 @@ def test_host_c_reference_rejects_hostile_identity_fields_before_generation(
         _ = host_c_oracle._reference_source(identity, "-O0")
 
 
+@pytest.mark.parametrize("operation", ["replay", "rebuild", "measure"])
+@pytest.mark.parametrize("fault", ["setup", "source-write"])
+def test_direct_host_oracle_workspace_faults_are_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    fault: str,
+) -> None:
+    """Storage failure never escapes the host-C oracle's typed error boundary."""
+    error = OSError("simulated host-C workspace I/O failure")
+
+    def fail(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise error
+
+    if fault == "setup":
+        monkeypatch.setattr(host_c_oracle.tempfile, "TemporaryDirectory", fail)
+    else:
+        monkeypatch.setattr(Path, "write_bytes", fail)
+    identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    with pytest.raises(host_c_oracle.HostOracleError, match="workspace") as caught:
+        if operation == "replay":
+            _ = host_c_oracle.replay_one(_case(), PROFILE, _digest())
+        elif operation == "rebuild":
+            _ = host_c_oracle.rebuild_reference(identity, "-O0")
+        else:
+            _ = host_c_oracle.measure_reference(identity, "-O0")
+    assert caught.value.__cause__ is error
+
+
 @pytest.mark.parametrize(
     "bad_case",
     [

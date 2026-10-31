@@ -403,17 +403,21 @@ def replay_one(
     if not _PINNED_CLANG.is_file() or not _TEMP.is_dir():
         _fail("pinned host-C compiler or local temporary directory unavailable")
     generated = _canonical_payload(case, profile, source_sha256)
-    with tempfile.TemporaryDirectory(
-        prefix="arena-host-c-oracle-",
-        dir=_TEMP,
-    ) as temporary:
-        directory = Path(temporary)
-        _ = (directory / "program.c").write_bytes(generated.source)
-        _ = (directory / "oracle-harness.c").write_bytes(
-            _harness(generated.oracle)
-        )
-        for mode in OPTIMIZATION_MODES:
-            _replay_mode(directory, mode)
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="arena-host-c-oracle-",
+            dir=_TEMP,
+        ) as temporary:
+            directory = Path(temporary)
+            _ = (directory / "program.c").write_bytes(generated.source)
+            _ = (directory / "oracle-harness.c").write_bytes(
+                _harness(generated.oracle)
+            )
+            for mode in OPTIMIZATION_MODES:
+                _replay_mode(directory, mode)
+    except OSError as error:
+        message = "host-C oracle workspace creation, I/O, or cleanup failed"
+        raise HostOracleError(message) from error
     return source_sha256
 
 
@@ -489,14 +493,18 @@ def rebuild_reference(
 
     """
     generated = _reference_source(identity, mode)
-    with tempfile.TemporaryDirectory(
-        prefix="arena-host-c-rebuild-",
-        dir=_TEMP,
-    ) as temporary:
-        directory = Path(temporary)
-        _write_canonical_source(directory, generated)
-        _replay_mode(directory, mode)
-        return _read_reference_executable(directory)
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="arena-host-c-rebuild-",
+            dir=_TEMP,
+        ) as temporary:
+            directory = Path(temporary)
+            _write_canonical_source(directory, generated)
+            _replay_mode(directory, mode)
+            return _read_reference_executable(directory)
+    except OSError as error:
+        message = "host-C reference workspace creation, I/O, or cleanup failed"
+        raise HostOracleError(message) from error
 
 
 def measure_reference(
@@ -514,16 +522,20 @@ def measure_reference(
 
     """
     generated = _reference_source(identity, mode)
-    with tempfile.TemporaryDirectory(
-        prefix="arena-host-c-measure-",
-        dir=_TEMP,
-    ) as temporary:
-        directory = Path(temporary)
-        _write_canonical_source(directory, generated)
-        started = time.perf_counter_ns()
-        peak_rss = _replay_mode(directory, mode)
-        elapsed = time.perf_counter_ns() - started
-        artifact = _read_reference_executable(directory)
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="arena-host-c-measure-",
+            dir=_TEMP,
+        ) as temporary:
+            directory = Path(temporary)
+            _write_canonical_source(directory, generated)
+            started = time.perf_counter_ns()
+            peak_rss = _replay_mode(directory, mode)
+            elapsed = time.perf_counter_ns() - started
+            artifact = _read_reference_executable(directory)
+    except OSError as error:
+        message = "host-C reference workspace creation, I/O, or cleanup failed"
+        raise HostOracleError(message) from error
     return ReferenceMeasurement(
         elapsed_ns=elapsed,
         executable=artifact,
