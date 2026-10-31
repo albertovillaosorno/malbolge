@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
 
+from algorithms.diff import provenance as provenance_module
 from algorithms.diff.provenance import SourcePin
 from algorithms.diff.provenance import SourcePinError
 from algorithms.diff.provenance import SourcePinEvidence
@@ -118,6 +119,40 @@ def test_source_snapshot_rejects_non_utf8_walk_filename(
         os.close(descriptor)
     with pytest.raises(SourcePinError, match="UTF-8"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
+
+
+def test_source_pin_rejects_linked_directory_after_enumeration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reject aliases introduced between path discovery and file reads."""
+    _write(tmp_path, "src/nested/source.c", b"source bytes")
+    original_pinned_files = cast(
+        "Callable[[Path, tuple[str, ...]], tuple[Path, ...]]",
+        vars(provenance_module)["_pinned_files"],
+    )
+    changed = False
+
+    def replace_after_discovery(
+        root: Path, roots: tuple[str, ...]
+    ) -> tuple[Path, ...]:
+        nonlocal changed
+        files = original_pinned_files(root, roots)
+        _ = (root / "src/nested").rename(root / "src/actual")
+        try:
+            (root / "src/nested").symlink_to(
+                root / "src/actual", target_is_directory=True
+            )
+        except OSError:
+            pytest.skip("directory symlinks unavailable")
+        changed = True
+        return files
+
+    monkeypatch.setattr(
+        provenance_module, "_pinned_files", replace_after_discovery
+    )
+    with pytest.raises(SourcePinError, match="symlink"):
+        _ = source_snapshot_evidence(tmp_path, ("src",))
+    _expect(changed, "post-enumeration alias fixture was not installed")
 
 
 def test_source_pin_evidence_rejects_malformed_direct_construction() -> None:

@@ -319,7 +319,8 @@ def _resolved_source_root(root: Path) -> Path:
         raise SourcePinError(message) from error
 
 
-def _read_pinned_source(path: Path, relative: str) -> bytes:
+def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:
+    _require_unlinked_parent_components(root, relative)
     try:
         return read_exact_regular_file(path, "pinned source")
     except ExactTreeError as error:
@@ -349,7 +350,7 @@ def source_snapshot_evidence(
     for path in files:
         relative_text = path.relative_to(resolved_root).as_posix()
         relative = _utf8_pinned_path(relative_text)
-        data = _read_pinned_source(path, relative_text)
+        data = _read_pinned_source(resolved_root, path, relative_text)
         digest.update(_frame(relative))
         digest.update(_frame(hashlib.sha256(data).digest()))
     return SourcePinEvidence(
