@@ -162,6 +162,25 @@ def _validate_path(value: object, name: str) -> None:
         raise ValueError(message) from error
 
 
+def _resolve_recipe_path(path: Path, name: str) -> Path:
+    try:
+        return path.resolve()
+    except (OSError, RuntimeError) as error:
+        message = f"{name} could not be resolved safely"
+        raise ValueError(message) from error
+
+
+def _validate_output_location(recipe: DiffRecipe) -> None:
+    output = _resolve_recipe_path(recipe.output_algorithm, "output_algorithm")
+    for name, root in (
+        ("source_root", recipe.source_root),
+        ("oracle_root", recipe.oracle_root),
+    ):
+        if output.is_relative_to(_resolve_recipe_path(root, name)):
+            message = f"output_algorithm must be outside {name}"
+            raise ValueError(message)
+
+
 def _validate_recipe_paths(recipe: DiffRecipe) -> None:
     for value, name in (
         (recipe.source_root, "source_root"),
@@ -171,6 +190,7 @@ def _validate_recipe_paths(recipe: DiffRecipe) -> None:
         _validate_path(value, name)
     if recipe.domain_module is not None:
         _validate_path(recipe.domain_module, "domain_module")
+    _validate_output_location(recipe)
 
 
 def _validate_profile_text(value: object) -> None:

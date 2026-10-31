@@ -238,6 +238,53 @@ def test_generator_rejects_nonportable_profile_before_work(
     )
 
 
+@pytest.mark.parametrize("input_name", ["source_root", "oracle_root"])
+def test_generator_never_publishes_inside_input_trees(
+    tmp_path: Path,
+    input_name: str,
+) -> None:
+    """A generated transform must not become a source or oracle input file."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    input_root = {
+        "source_root": recipe.source_root,
+        "oracle_root": recipe.oracle_root,
+    }[input_name]
+    destination = input_root / "nested" / "generated.rs"
+    before = {
+        path.relative_to(input_root): path.read_bytes()
+        for path in input_root.rglob("*")
+        if path.is_file()
+    }
+    with pytest.raises(ValueError, match=f"output_algorithm.*{input_name}"):
+        write_algorithm(replace(recipe, output_algorithm=destination))
+    after = {
+        path.relative_to(input_root): path.read_bytes()
+        for path in input_root.rglob("*")
+        if path.is_file()
+    }
+    _expect(before == after, "generated transform mutated input files")
+    _expect(not destination.exists(), "generated transform published in input")
+
+
+def test_generator_rejects_linked_output_alias_into_source(
+    tmp_path: Path,
+) -> None:
+    """A parent symlink cannot conceal a destination inside the input tree."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    link = tmp_path / "source-link"
+    try:
+        link.symlink_to(recipe.source_root, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink fixture unavailable")
+    destination = link / "generated.rs"
+    with pytest.raises(ValueError, match=r"output_algorithm.*source_root"):
+        write_algorithm(replace(recipe, output_algorithm=destination))
+    _expect(
+        not (recipe.source_root / "generated.rs").exists(),
+        "linked generated transform modified the source tree",
+    )
+
+
 def test_compatible_mode_runs_domain_preflight_then_fails_emission(
     tmp_path: Path,
 ) -> None:
