@@ -36,24 +36,23 @@ from __future__ import annotations
 
 from os import stat_result
 from pathlib import Path
-from stat import S_IFDIR
-from stat import S_IFLNK
-from typing import TYPE_CHECKING
-from typing import cast
+from stat import S_IFDIR, S_IFLNK
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Never
 
 import pytest
+
 from scripts.validate import bibliography as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 C_RECORD = ROOT / "docs" / "bibliography" / "languages" / "c.md"
-EXPECTED_RECORDS = 54
+EXPECTED_RECORDS = 55
 EXPECTED_BASELINE = 44
 EXPECTED_VALIDATION_PACKAGES = 9
-EXPECTED_DURABLE_REFERENCES = 20
+EXPECTED_DURABLE_REFERENCES = 21
 PYTEST_CACHE_DIRECTORY = ".pytest_cache"
 MISSING_COVERAGE_MESSAGE = "lack bibliography coverage"
 DUPLICATE_IDENTITY_MESSAGE = "duplicate stable identifier"

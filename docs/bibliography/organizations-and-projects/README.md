@@ -15,6 +15,7 @@ Repository policy, legal conclusions, or research conclusions.
 ## Contents
 
 - `andrew-cooke-malbolge.md`
+- `dannybaanks.md`
 - `github-linguist.md`
 - `id-software-doom.md`
 - `internet-archive-wayback-machine.md`
