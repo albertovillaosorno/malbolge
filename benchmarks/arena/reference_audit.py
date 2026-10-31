@@ -433,10 +433,15 @@ def _require_unchanged_sidecars(
                 (_ROOT / relative).lstat()
             except FileNotFoundError:
                 continue
+            except Exception as error:
+                message = f"host-C retained sidecar changed during audit: {relative}"
+                raise ReferenceAuditError(message) from error
             _fail(f"host-C retained sidecar changed during audit: {relative}")
         try:
             current = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
-        except (OSError, evidence.EvidenceError) as error:
+        except Exception as error:
+            # An unanticipated bounded-reader fault must not leak as a raw
+            # exception or invoke foreign exception diagnostic hooks.
             message = f"host-C retained sidecar changed during audit: {relative}"
             raise ReferenceAuditError(message) from error
         if sha256(current).digest() != original:

@@ -870,6 +870,72 @@ def test_host_c_audit_rejects_sidecar_drift_after_analysis(
         reference_audit.audit(relative)
 
 
+class _ForeignSidecarReaderFault(IndexError):
+    """A substituted dependency exception cannot render its own diagnostic."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign retained sidecar exception formatted")
+
+
+@pytest.mark.parametrize(
+    "fault_type", [ValueError, RuntimeError, TypeError, _ForeignSidecarReaderFault]
+)
+def test_late_host_c_sidecar_read_faults_remain_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A failed late read must not publish an untyped audit exception."""
+    fault = fault_type("unanticipated sidecar reread failure")
+
+    def fail_read(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", fail_read)
+    prefix = ".temp/arena-host-c-study-failure"
+    fingerprints: dict[str, bytes | None] = {
+        f"{prefix}/{leaf}": b"original"
+        for leaf in (
+            reference_audit.ARTIFACT_LEAF,
+            reference_audit.FAILURES_LEAF,
+            reference_audit.RESOURCE_CONTROLS_LEAF,
+        )
+    }
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="sidecar changed during audit"
+    ) as caught:
+        reference_audit._require_unchanged_sidecars(prefix, fingerprints)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError, _ForeignSidecarReaderFault])
+def test_absent_host_c_sidecar_probe_faults_remain_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """An inaccessible previously missing sidecar fails without raw host errors."""
+    fault = fault_type("unanticipated sidecar absence probe")
+
+    class FailingPath:
+        def lstat(self) -> None:
+            raise fault
+
+    class FailingRoot:
+        def __truediv__(self, _: str) -> FailingPath:
+            return FailingPath()
+
+    monkeypatch.setattr(reference_audit, "_ROOT", FailingRoot())
+    prefix = ".temp/arena-host-c-study-absent-probe"
+    fingerprints: dict[str, bytes | None] = {
+        f"{prefix}/{reference_audit.ARTIFACT_LEAF}": None,
+    }
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="sidecar changed during audit"
+    ) as caught:
+        reference_audit._require_unchanged_sidecars(prefix, fingerprints)
+    assert caught.value.__cause__ is fault
+
+
 @pytest.mark.parametrize(
     "source",
     ["raw", "program.c", "oracle.bin", "manifest.json"],
