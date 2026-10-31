@@ -93,7 +93,9 @@ def parse_run_budgets(text: str) -> RunBudgets:
     _admit_text(text)
     try:
         document = tomllib.loads(text)
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
+        # The parser is a dependency: all ordinary faults must stay typed.
+        # Preserve the cause without invoking foreign exception formatters.
         message = "invalid experiment run budget TOML"
         raise BudgetLinkError(message) from error
     if type(document) is not dict:

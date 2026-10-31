@@ -97,7 +97,9 @@ def parse_trial_run(text: str) -> TrialRun:
     _admit_text(text)
     try:
         document = tomllib.loads(text)
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
+        # The parser is a dependency: all ordinary faults must stay typed.
+        # Preserve the cause without invoking foreign exception formatters.
         message = "invalid per-trial manifest TOML"
         raise TrialRunError(message) from error
     if type(document) is not dict:

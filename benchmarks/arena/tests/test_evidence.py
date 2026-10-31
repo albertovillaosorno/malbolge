@@ -962,7 +962,10 @@ def test_direct_run_extension_parser_admits_only_bounded_exact_utf8_text(
     ],
     ids=["budget", "trial"],
 )
-@pytest.mark.parametrize("fault_type", [OSError, RuntimeError, TypeError, AttributeError])
+@pytest.mark.parametrize(
+    "fault_type",
+    [OSError, RuntimeError, TypeError, AttributeError, IndexError, OverflowError],
+)
 def test_direct_run_extensions_type_toml_host_failures(
     monkeypatch: pytest.MonkeyPatch,
     parser: Callable[[str], object],
@@ -972,6 +975,39 @@ def test_direct_run_extensions_type_toml_host_failures(
 ) -> None:
     """Host parser failures become typed extension errors with original cause."""
     fault = fault_type("injected TOML parser failure")
+
+    def fail_parse(_value: str) -> None:
+        raise fault
+
+    monkeypatch.setattr(budget_links.tomllib, "loads", fail_parse)
+    with pytest.raises(error_type, match=r"invalid .* TOML") as caught:
+        parser(valid)
+    assert caught.value.__cause__ is fault
+
+
+class _UnexpectedHostileTomlError(Exception):
+    """An unanticipated parser error must not control error formatting."""
+
+    def __str__(self) -> str:
+        raise AssertionError("unexpected foreign TOML formatter was invoked")
+
+
+@pytest.mark.parametrize(
+    ("parser", "valid", "error_type"),
+    [
+        (budget_links.parse_run_budgets, BUDGET_MANIFEST, budget_links.BudgetLinkError),
+        (trial_runs.parse_trial_run, TRIAL_MANIFEST, trial_runs.TrialRunError),
+    ],
+    ids=["budget", "trial"],
+)
+def test_direct_run_extensions_type_unexpected_foreign_parser_fault(
+    monkeypatch: pytest.MonkeyPatch,
+    parser: Callable[[str], object],
+    valid: str,
+    error_type: type[ValueError],
+) -> None:
+    """Unexpected ordinary dependency faults stay typed with the exact cause."""
+    fault = _UnexpectedHostileTomlError("opaque parser failure")
 
     def fail_parse(_value: str) -> None:
         raise fault
