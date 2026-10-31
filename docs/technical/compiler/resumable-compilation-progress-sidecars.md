@@ -916,9 +916,10 @@ these selectors once a product C-to-Malbolge pipeline exists.
   A mismatched, oversized, or concurrently rewritten collision leaves the
   suspected alias untouched; a
   foreign alias without that narrow recovery path remains rejected. Recovery
-  scans escape the destination's literal filename before applying the suffix
-  wildcard: `?`, `*`, and `[` in a valid POSIX filename cannot match unrelated
-  siblings and cause their hard links to be removed.
+  inventories at most 4,096 physical directory entries, counting unrelated
+  siblings; a larger inventory fails closed without unlinking a retained alias.
+  It matches the destination's literal filename and exact staging suffix:
+  `?`, `*`, and `[` in a valid POSIX filename are never treated as wildcards.
 
   Furthermore, recovery accepts only the eight-character
   lowercase/digit/underscore temporary token

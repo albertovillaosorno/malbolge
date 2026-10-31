@@ -5909,6 +5909,57 @@ def test_retained_alias_recovery_matches_literal_destination(
 
 @pytest.mark.skipif(
     os.name == progress.WINDOWS_PLATFORM,
+    reason="Retained staging aliases require POSIX hard-link semantics",
+)
+def test_retained_alias_discovery_admits_exact_directory_budget(
+    tmp_path: Path,
+) -> None:
+    """A final eligible entry remains recoverable at the admission ceiling."""
+    destination = tmp_path / "checkpoint"
+    alias = tmp_path / f".{destination.name}.abcdefgh.tmp"
+    payload = b"recoverable-state"
+    _ = destination.write_bytes(payload)
+    os.link(destination, alias)
+    # Destination, retained alias, and the retry's temporary complete 4,096.
+    for index in range(4_093):
+        _ = (tmp_path / f"unrelated-{index:04d}").touch()
+
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    assert writer(destination, payload, platform=os.name) == destination
+    assert destination.read_bytes() == payload
+    assert not alias.exists()
+    expected_links = 1
+    assert destination.stat().st_nlink == expected_links
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Retained staging aliases require POSIX hard-link semantics",
+)
+def test_retained_alias_discovery_bounds_directory_inventory(
+    tmp_path: Path,
+) -> None:
+    """A crowded directory cannot impose an unlimited crash-recovery scan."""
+    destination = tmp_path / "checkpoint"
+    alias = tmp_path / f".{destination.name}.abcdefgh.tmp"
+    payload = b"recoverable-state"
+    _ = destination.write_bytes(payload)
+    os.link(destination, alias)
+    # Destination, retained alias, and the retry's stage bring 4,094 to 4,097.
+    for index in range(4_094):
+        _ = (tmp_path / f"unrelated-{index:04d}").touch()
+
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    with pytest.raises(ERROR, match="staging alias directory scan exceeds"):
+        _ = writer(destination, payload, platform=os.name)
+    assert destination.read_bytes() == payload
+    assert alias.read_bytes() == payload
+    expected_links = 2
+    assert destination.stat().st_nlink == expected_links
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
     reason="Hard-link collision requires POSIX filesystem semantics",
 )
 @pytest.mark.parametrize(

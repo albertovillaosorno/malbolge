@@ -47,7 +47,6 @@ from dataclasses import fields
 from datetime import UTC
 from datetime import datetime
 from enum import Enum
-from glob import escape as escape_glob
 from hashlib import sha256
 from importlib import import_module
 from io import FileIO
@@ -2565,8 +2564,39 @@ def _admit_collided_immutable_inode(destination: Path) -> os.stat_result:
 
 
 _RETAINED_STAGING_LINK_COUNT = 2
+# Collision repair inspects physical directory entries, including unrelated
+# names: a large hostile sibling inventory must not force an unbounded walk.
+_MAX_RETAINED_STAGING_DIRECTORY_ENTRIES = 4_096
 # Python 3.14's mkstemp candidate alphabet is not arbitrary glob text.
 _RETAINED_STAGING_TOKEN = re.compile(r"[a-z0-9_]{8}")
+
+
+def _matches_retained_immutable_stage(
+    entry: os.DirEntry[str], prefix: str, identity: tuple[int, int]
+) -> bool:
+    """Check one literal-pattern, regular, same-inode staging entry.
+
+    Returns:
+        Whether this entry is a candidate retained alias.
+
+    """
+    name = entry.name
+    if not (
+        name.startswith(prefix)
+        and name.endswith(".tmp")
+        and _RETAINED_STAGING_TOKEN.fullmatch(
+            name[len(prefix) : -len(".tmp")]
+        ) is not None
+    ):
+        return False
+    try:
+        observed = entry.stat(follow_symlinks=False)
+    except (OSError, ValueError, RuntimeError):
+        return False
+    return stat.S_ISREG(observed.st_mode) and (
+        observed.st_dev,
+        observed.st_ino,
+    ) == identity
 
 
 def _find_retained_immutable_stage(
@@ -2580,21 +2610,12 @@ def _find_retained_immutable_stage(
     """
     matches: list[Path] = []
     raw_prefix = f".{destination.name}."
-    literal_prefix = escape_glob(raw_prefix)
-    for candidate in destination.parent.glob(f"{literal_prefix}*.tmp"):
-        token = candidate.name.removeprefix(raw_prefix).removesuffix(".tmp")
-        if _RETAINED_STAGING_TOKEN.fullmatch(token) is None:
-            continue
-        try:
-            observed = candidate.stat(follow_symlinks=False)
-        except OSError, ValueError, RuntimeError:
-            observed = None
-        if (
-            observed is not None
-            and stat.S_ISREG(observed.st_mode)
-            and (observed.st_dev, observed.st_ino) == identity
-        ):
-            matches.append(candidate)
+    with os.scandir(destination.parent) as entries:
+        for count, entry in enumerate(entries, start=1):
+            if count > _MAX_RETAINED_STAGING_DIRECTORY_ENTRIES:
+                _fail("immutable staging alias directory scan exceeds budget")
+            if _matches_retained_immutable_stage(entry, raw_prefix, identity):
+                matches.append(destination.parent / entry.name)
     return matches[0] if len(matches) == 1 else None
 
 
