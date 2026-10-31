@@ -745,6 +745,9 @@ def _map_semantic_output(
     if type(mapped) is not MappedView:
         message = "semantic mapper must return the exact MappedView type"
         raise SemanticPlacementError(message)
+    if mapped.raw != output:
+        message = "semantic mapper must describe the actual output bytes"
+        raise SemanticPlacementError(message)
     return mapped
 
 

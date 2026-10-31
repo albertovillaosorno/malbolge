@@ -157,6 +157,21 @@ def test_retokenization_rejects_unsafe_insertion_seam() -> None:
         _ = apply_semantic_plan(candidate, plan, _map)
 
 
+def test_semantic_mapper_cannot_substitute_foreign_raw_source() -> None:
+    """Post-edit digests must describe the actual output, not another file."""
+    source = _map(b"a;")
+    target = _map(b"a b;")
+    candidate = _map(b"a;")
+    plan = build_semantic_plan(source, target, context_units=1)
+    expected_but_unpublished = _map(b"a b;")
+
+    def foreign_raw_mapper(_: bytes) -> MappedView:
+        return expected_but_unpublished
+
+    with pytest.raises(SemanticPlacementError, match="actual output bytes"):
+        _ = apply_semantic_plan(candidate, plan, foreign_raw_mapper)
+
+
 def test_semantic_mapper_failure_is_contained() -> None:
     """Map failures after edits stay inside semantic placement diagnostics."""
     source = _map(b"alpha = old ; omega")
