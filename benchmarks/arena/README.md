@@ -258,6 +258,15 @@ additional byte on either stream, a cumulative wall timeout, and
 ordinary pipe-retaining descendants. Cleanup signals the original isolated
 process group and reaps the direct child; detached descendants and any
 physical memory or CPU budget enforcement remain outside this claim.
+Cleanup treats only an exact native `ProcessLookupError` as a genuinely
+absent process or group. POSIX signal and direct-child kill acknowledgements
+must be `None`; direct-child `poll()` must return `None` or an exact integer,
+and `wait()` must return an exact integer (not a boolean). Any foreign
+exception subclass, malformed status, or forged acknowledgement rejects the
+attempt as a typed cleanup failure. A malformed `poll()` still triggers the
+direct kill and reap fallback before rejection. This guards against false
+producer success from untrusted host receipts; it does **not** prove that
+all descendants were contained or terminated.
 Direct target subprocess calls additionally admit at most 512 arguments and
 16 KiB of filesystem-encoded argument bytes (including NUL terminators).
 Unencodable host argument strings, oversized lists and oversized encoded
