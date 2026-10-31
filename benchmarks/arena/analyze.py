@@ -324,8 +324,16 @@ def _decode_document(text: str) -> object:
         raise ArenaError(message) from error
 
 
-def _admit_document(document: object) -> dict[str, Any]:
-    """Apply identical schema and trial admission to wire and in-memory APIs."""
+def admit_document(document: object) -> dict[str, Any]:
+    """Admit exact native JSON shape and reported trial identities.
+
+    Returns:
+        The structurally checked input mapping, not authenticated evidence.
+
+    Raises:
+        ArenaError: Reported fields or trial identities are invalid.
+
+    """
     root = _mapping(
         document,
         {"schema_version", "study", "observations"},
@@ -360,7 +368,7 @@ def parse_document(text: str) -> dict[str, Any]:
         A structurally admitted study; references are not authenticated.
 
     """
-    return _admit_document(_decode_document(text))
+    return admit_document(_decode_document(text))
 
 
 def _case_key(row: dict[str, Any]) -> tuple[Any, ...]:
@@ -758,7 +766,7 @@ def analyze(
         )
     ):
         _fail("arena inference options require exact booleans")
-    _ = _admit_document(document)
+    _ = admit_document(document)
     study = document["study"]
     objectives: list[str] = study["objectives"]
     policy = _AnalysisPolicy(

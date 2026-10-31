@@ -433,6 +433,48 @@ def test_cli_cross_checks_before_reporting(
 
 
 @pytest.mark.parametrize(
+    ("violation", "diagnostic"),
+    [
+        ("schema", "unsupported arena schema version"),
+        ("duplicate", "duplicate algorithm/case/trial"),
+        ("verdict", "inconsistent independent verifier evidence"),
+        ("budget", "verified elapsed time exceeds study budget"),
+        ("root_extra", "root: expected fields"),
+        ("root_foreign", "root: expected fields"),
+    ],
+)
+def test_direct_evidence_requires_admitted_arena_document_before_file_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    violation: str,
+    diagnostic: str,
+) -> None:
+    """A direct link check cannot certify malformed or duplicated trial data."""
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("unadmitted source reached retained evidence files")
+
+    monkeypatch.setattr(evidence, "_admit_observation", forbidden)
+    document = sample_study(tmp_path)
+    row = document["observations"][0]
+    if violation == "schema":
+        document["schema_version"] = 2
+    elif violation == "duplicate":
+        document["observations"].append(row.copy())
+    elif violation == "verdict":
+        row["verifier_verdict"] = analyze.NOT_RUN
+    elif violation == "budget":
+        row["metrics"]["elapsed_ns"] = document["study"]["budget"]["time_ns"] + 1
+    elif violation == "root_extra":
+        document["unregistered"] = "untrusted"
+    else:
+        document = cast("dict[str, Any]", [])
+    with pytest.raises(evidence.EvidenceError, match=diagnostic):
+        evidence.validate_links(document, tmp_path)
+
+
+@pytest.mark.parametrize(
     "flag",
     [
         "require_raw_rows",
@@ -542,7 +584,7 @@ def test_direct_link_api_rejects_parent_traversal(tmp_path: Path) -> None:
     """Even a caller bypassing schema admission cannot read a parent path."""
     document = sample_study(tmp_path)
     document["observations"][0]["experiment_manifest"] = "../escape.toml"
-    with pytest.raises(evidence.EvidenceError, match="canonical relative"):
+    with pytest.raises(evidence.EvidenceError, match="canonical repository-relative"):
         evidence.validate_links(document, tmp_path)
 
 

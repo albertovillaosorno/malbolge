@@ -753,6 +753,11 @@ def validate_links(
     _admit_policy(policy)
     if policy.require_host_c_challenge_oracle and policy.challenge_root is None:
         _fail("host-C oracle replay requires --challenge-root")
+    try:
+        document = analyze.admit_document(document)
+    except analyze.ArenaError as error:
+        message = f"linked arena evidence invalid: {error}"
+        raise EvidenceError(message) from error
     context = _EvidenceContext(
         root,
         document["study"],
