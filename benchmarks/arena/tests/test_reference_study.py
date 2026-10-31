@@ -140,6 +140,80 @@ def test_invalid_study_plan_fails_before_creating_output(
         reference_study.run_study(plan)
 
 
+@pytest.mark.parametrize(
+    "foreign",
+    [None, {}, object()],
+)
+def test_direct_host_reference_rejects_foreign_plan_before_native_probe(
+    foreign: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Direct callers cannot use a foreign plan to reach host tools."""
+
+    def forbidden_probe() -> None:
+        pytest.fail("foreign plan reached native resource admission")
+
+    monkeypatch.setattr(
+        host_c_oracle, "require_child_resource_controls", forbidden_probe
+    )
+    with pytest.raises(reference_study.ReferenceStudyError, match="exact StudyPlan"):
+        reference_study.run_study(cast("reference_study.StudyPlan", foreign))
+
+
+@pytest.mark.parametrize(
+    "foreign",
+    [None, 3, [4], ("4",), (True,), ([4],), (object(),)],
+)
+def test_direct_host_reference_rejects_foreign_difficulties_before_native_probe(
+    foreign: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed and unhashable difficulty collections fail as typed errors."""
+
+    def forbidden_probe() -> None:
+        pytest.fail("foreign difficulties reached native resource admission")
+
+    monkeypatch.setattr(
+        host_c_oracle, "require_child_resource_controls", forbidden_probe
+    )
+    plan = reference_study.StudyPlan(
+        FAMILY, cast("tuple[int, ...]", foreign), 7, 1
+    )
+    with pytest.raises(reference_study.ReferenceStudyError, match="integer tuple"):
+        reference_study.run_study(plan)
+
+
+@pytest.mark.parametrize(
+    ("family", "seed", "difficulties"),
+    [
+        (None, 7, (4,)),
+        ("invalid-family", 7, (4,)),
+        (FAMILY, -1, (4,)),
+        (FAMILY, True, (4,)),
+        (FAMILY, 7, (513,)),
+    ],
+)
+def test_invalid_host_reference_identity_rejects_before_native_probe(
+    family: object,
+    seed: object,
+    difficulties: tuple[int, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid generated workloads never trigger host resource discovery."""
+
+    def forbidden_probe() -> None:
+        pytest.fail("invalid challenge identity reached native resource admission")
+
+    monkeypatch.setattr(
+        host_c_oracle, "require_child_resource_controls", forbidden_probe
+    )
+    plan = reference_study.StudyPlan(
+        cast("str", family), difficulties, cast("int", seed), 1
+    )
+    with pytest.raises(ValueError):
+        reference_study.run_study(plan)
+
+
 @pytest.mark.parametrize("trial_count", [True, 1.5, "2", None])
 def test_noninteger_trial_count_rejects_before_native_or_output_setup(
     trial_count: object,

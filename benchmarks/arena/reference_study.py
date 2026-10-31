@@ -600,6 +600,12 @@ def _run_study(root: Path, plan: StudyPlan) -> dict[str, Any]:
 
 
 def _validate_plan_shape(plan: StudyPlan) -> None:
+    if type(plan) is not StudyPlan:
+        _fail("host-C reference requires an exact StudyPlan")
+    if type(plan.difficulties) is not tuple or any(
+        type(nodes) is not int for nodes in plan.difficulties
+    ):
+        _fail("host-C reference difficulty levels require an exact integer tuple")
     if not plan.difficulties or len(plan.difficulties) > MAX_DIFFICULTIES:
         _fail("host-C reference requires one to four difficulty levels")
     if len(set(plan.difficulties)) != len(plan.difficulties):
@@ -610,11 +616,6 @@ def _validate_plan_shape(plan: StudyPlan) -> None:
 
 def _validate_plan(plan: StudyPlan) -> None:
     _validate_plan_shape(plan)
-    try:
-        host_c_oracle.require_child_resource_controls()
-    except host_c_oracle.HostOracleError as error:
-        message = f"host-C reference requires enforced child limits: {error}"
-        raise ReferenceStudyError(message) from error
     for nodes in plan.difficulties:
         _ = generate.ChallengeIdentity(
             plan.family,
@@ -625,6 +626,11 @@ def _validate_plan(plan: StudyPlan) -> None:
         ).validate()
         if nodes > host_c_oracle.MAX_REPLAY_NODES:
             _fail("host-C reference exceeds 512-node limit")
+    try:
+        host_c_oracle.require_child_resource_controls()
+    except host_c_oracle.HostOracleError as error:
+        message = f"host-C reference requires enforced child limits: {error}"
+        raise ReferenceStudyError(message) from error
 
 
 def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
