@@ -97,11 +97,13 @@ def parse_trial_run(text: str) -> TrialRun:
     _admit_text(text)
     try:
         document = tomllib.loads(text)
-    except (ValueError, RecursionError) as error:
-        message = f"invalid per-trial manifest TOML: {error}"
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "invalid per-trial manifest TOML"
         raise TrialRunError(message) from error
+    if type(document) is not dict:
+        _fail("invalid per-trial manifest TOML root")
     table = document.get(EXTENSION_NAME)
-    if not isinstance(table, dict) or set(table) != EXTENSION_FIELDS:
+    if type(table) is not dict or set(table) != EXTENSION_FIELDS:
         _fail("arena_trial requires exact schema_version/trial/raw_sha256")
     version = table["schema_version"]
     if type(version) is not int or version != SCHEMA_VERSION:

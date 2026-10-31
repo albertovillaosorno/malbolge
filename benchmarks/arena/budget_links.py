@@ -93,11 +93,13 @@ def parse_run_budgets(text: str) -> RunBudgets:
     _admit_text(text)
     try:
         document = tomllib.loads(text)
-    except (ValueError, RecursionError) as error:
-        message = f"invalid experiment run budget TOML: {error}"
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        message = "invalid experiment run budget TOML"
         raise BudgetLinkError(message) from error
+    if type(document) is not dict:
+        _fail("invalid experiment run budget TOML root")
     budget = document.get("budget")
-    if not isinstance(budget, dict):
+    if type(budget) is not dict:
         _fail("experiment run budget table is missing")
     return RunBudgets(
         time_ns=_positive_integer(budget, "seconds") * NANOSECONDS_PER_SECOND,

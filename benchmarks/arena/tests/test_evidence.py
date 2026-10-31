@@ -950,6 +950,153 @@ def test_direct_run_extension_parser_admits_only_bounded_exact_utf8_text(
             parser(cast("str", foreign))
 
 
+@pytest.mark.parametrize(
+    ("parser", "valid", "error_type"),
+    [
+        (
+            budget_links.parse_run_budgets,
+            BUDGET_MANIFEST,
+            budget_links.BudgetLinkError,
+        ),
+        (trial_runs.parse_trial_run, TRIAL_MANIFEST, trial_runs.TrialRunError),
+    ],
+    ids=["budget", "trial"],
+)
+@pytest.mark.parametrize("fault_type", [OSError, RuntimeError, TypeError, AttributeError])
+def test_direct_run_extensions_type_toml_host_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    parser: Callable[[str], object],
+    valid: str,
+    error_type: type[ValueError],
+    fault_type: type[Exception],
+) -> None:
+    """Host parser failures become typed extension errors with original cause."""
+    fault = fault_type("injected TOML parser failure")
+
+    def fail_parse(_value: str) -> None:
+        raise fault
+
+    monkeypatch.setattr(budget_links.tomllib, "loads", fail_parse)
+    with pytest.raises(error_type, match=r"invalid .* TOML") as caught:
+        parser(valid)
+    assert caught.value.__cause__ is fault
+
+
+class _HostileTomlError(ValueError):
+    """An injected parser failure with an unsafe diagnostic hook."""
+
+    def __str__(self) -> str:
+        message = "foreign TOML exception formatting executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    ("parser", "valid", "error_type"),
+    [
+        (
+            budget_links.parse_run_budgets,
+            BUDGET_MANIFEST,
+            budget_links.BudgetLinkError,
+        ),
+        (trial_runs.parse_trial_run, TRIAL_MANIFEST, trial_runs.TrialRunError),
+    ],
+    ids=["budget", "trial"],
+)
+def test_direct_run_extensions_never_format_toml_parser_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    parser: Callable[[str], object],
+    valid: str,
+    error_type: type[ValueError],
+) -> None:
+    """A parser diagnostic hook cannot replace the typed rejection."""
+    fault = _HostileTomlError("injected TOML parser failure")
+
+    def fail_parse(_value: str) -> None:
+        raise fault
+
+    monkeypatch.setattr(budget_links.tomllib, "loads", fail_parse)
+    with pytest.raises(error_type, match=r"invalid .* TOML") as caught:
+        parser(valid)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
+    ("parser", "valid", "error_type"),
+    [
+        (
+            budget_links.parse_run_budgets,
+            BUDGET_MANIFEST,
+            budget_links.BudgetLinkError,
+        ),
+        (trial_runs.parse_trial_run, TRIAL_MANIFEST, trial_runs.TrialRunError),
+    ],
+    ids=["budget", "trial"],
+)
+@pytest.mark.parametrize("bad_root", [None, [], 42])
+def test_direct_run_extensions_reject_malformed_toml_root(
+    monkeypatch: pytest.MonkeyPatch,
+    parser: Callable[[str], object],
+    valid: str,
+    error_type: type[ValueError],
+    bad_root: object,
+) -> None:
+    """A malformed dependency result must not escape through .get access."""
+    monkeypatch.setattr(budget_links.tomllib, "loads", lambda _value: bad_root)
+    with pytest.raises(error_type, match=r"invalid .* TOML root"):
+        parser(valid)
+
+
+class _HostileTomlTable(dict[str, object]):
+    """A foreign mapping cannot supply parser-created manifest fields."""
+
+    def get(self, _key: str, _default: object = None) -> object:
+        message = "foreign TOML mapping access executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    ("parser", "valid", "error_type", "table_name", "diagnostic"),
+    [
+        (
+            budget_links.parse_run_budgets,
+            BUDGET_MANIFEST,
+            budget_links.BudgetLinkError,
+            "budget",
+            "budget table is missing",
+        ),
+        (
+            trial_runs.parse_trial_run,
+            TRIAL_MANIFEST,
+            trial_runs.TrialRunError,
+            "arena_trial",
+            "arena_trial requires exact",
+        ),
+    ],
+    ids=["budget", "trial"],
+)
+@pytest.mark.parametrize("foreign_part", ["root", "table"])
+def test_direct_run_extensions_reject_foreign_parser_mappings(
+    monkeypatch: pytest.MonkeyPatch,
+    parser: Callable[[str], object],
+    valid: str,
+    error_type: type[ValueError],
+    table_name: str,
+    diagnostic: str,
+    foreign_part: str,
+) -> None:
+    """Only native TOML maps can enter run identity and budget admission."""
+    table = _HostileTomlTable()
+    returned: object = (
+        _HostileTomlTable({table_name: {}})
+        if foreign_part == "root"
+        else {table_name: table}
+    )
+    monkeypatch.setattr(budget_links.tomllib, "loads", lambda _value: returned)
+    expected = "invalid .* TOML root" if foreign_part == "root" else diagnostic
+    with pytest.raises(error_type, match=expected):
+        parser(valid)
+
+
 BUDGET_SECONDS = 1
 BUDGET_MEMORY_MIB = 128
 BYTES_PER_MIB = 1_048_576
