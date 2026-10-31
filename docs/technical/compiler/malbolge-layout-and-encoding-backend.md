@@ -115,8 +115,15 @@ before and after its bounded read, rejecting observed inode replacement or
 same-sized in-place rewrites even if the original byte count still matches.
 On POSIX the admission compares device/inode and nanosecond modification and
 change stamps; Windows uses available file identity and write/change stamps.
-A stable symlink to a regular source remains valid. These checks reject
-observed concurrent drift, not changes after the final admission check.
+A stable symlink to a regular source remains valid. On Linux the reader
+also resolves the initial canonical wire path and checks the actual opened
+file pathname through `/proc/self/fd` before and after the bounded read. This
+rejects parent-directory symlink redirection to an outside hard link of the
+same original inode during an injected read, even when every timestamp, byte
+and inode check remains equal. Unavailable descriptor-path evidence rejects;
+other platforms retain their metadata-based contract. These checks reject
+observed concurrent drift, not changes after the final admission check or
+atomic source snapshots against a racing writer.
 
 The publisher creates a new same-directory staging file, flushes/syncs and
 rereads its exact graphical bytes through the original read/write descriptor,

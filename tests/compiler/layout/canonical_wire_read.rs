@@ -145,6 +145,64 @@ fn stable_regular_file_symlink_remains_admitted() -> Result<(), String> {
     Ok(())
 }
 
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "test asserts path provenance")]
+fn redirected_parent_equal_inode_must_not_admit_wire() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let parent = fixture.path("inside");
+    let outside = fixture.path("outside");
+    let parked = fixture.path("parked");
+    fs::create_dir_all(&parent).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&outside).map_err(|error| error.to_string())?;
+    let wire = parent.join("wire.mctr");
+    fs::write(&wire, b"abcdefgh").map_err(|error| error.to_string())?;
+    fs::hard_link(&wire, outside.join("wire.mctr"))
+        .map_err(|error| error.to_string())?;
+    let result = read_canonical_wire_with_reader(&wire, "ternary", |file, bytes| {
+        read_and_then(file, bytes, || {
+            fs::rename(&parent, &parked)?;
+            std::os::unix::fs::symlink(&outside, &parent)
+        })
+    });
+    fs::remove_file(&parent).map_err(|error| error.to_string())?;
+    fs::rename(&parked, &parent).map_err(|error| error.to_string())?;
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("opened path changed")),
+        "redirected equal-inode canonical wire was admitted: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&wire).map_err(|error| error.to_string())?,
+        b"abcdefgh"
+    );
+    Ok(())
+}
+
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "test asserts stable parent alias")]
+fn stable_parent_symlink_remains_admitted() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let directory = fixture.path("actual");
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let source = directory.join("wire.mctr");
+    fs::write(&source, b"abcdefgh").map_err(|error| error.to_string())?;
+    let alias = fixture.path("alias");
+    std::os::unix::fs::symlink(&directory, &alias)
+        .map_err(|error| error.to_string())?;
+    let bytes = read_canonical_wire_with_reader(
+        &alias.join("wire.mctr"),
+        "ternary",
+        |file, bytes| read_and_then(file, bytes, || Ok(())),
+    )?;
+    assert_eq!(bytes, b"abcdefgh");
+    Ok(())
+}
+
 #[test]
 #[expect(clippy::panic_in_result_fn, reason = "test asserts admission behavior")]
 fn unchanged_file_remains_admitted() -> Result<(), String> {

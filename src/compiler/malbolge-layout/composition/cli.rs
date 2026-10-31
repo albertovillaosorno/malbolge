@@ -528,8 +528,17 @@ fn read_canonical_wire_with_reader(
             ));
         }
     }
+    // A changed parent may lead through a symlink to another hard link of
+    // the exact same inode. Metadata equality alone cannot bind that path.
+    // Linux exposes the actual opened dentry through /proc/self/fd; check
+    // it both before and after the caller-supplied bounded reader.
+    #[cfg(target_os = "linux")]
+    let expected_opened_path = fs::canonicalize(path)
+        .map_err(|error| format!("cannot resolve canonical {kind} path: {error}"))?;
     let mut file = open_canonical_file(path)
         .map_err(|error| format!("cannot open canonical {kind} wire: {error}"))?;
+    #[cfg(target_os = "linux")]
+    verify_opened_canonical_path(&file, &expected_opened_path, kind)?;
     let metadata = file
         .metadata()
         .map_err(|error| format!("cannot inspect canonical {kind} wire: {error}"))?;
@@ -563,7 +572,25 @@ fn read_canonical_wire_with_reader(
     {
         return Err(String::from("canonical wire changed during read"));
     }
+    #[cfg(target_os = "linux")]
+    verify_opened_canonical_path(&file, &expected_opened_path, kind)?;
     Ok(bytes)
+}
+
+#[cfg(target_os = "linux")]
+fn verify_opened_canonical_path(
+    file: &fs::File,
+    expected: &Path,
+    kind: &str,
+) -> Result<(), String> {
+    use std::os::fd::AsRawFd as _;
+    let descriptor_path = format!("/proc/self/fd/{}", file.as_raw_fd());
+    let opened_path = fs::read_link(descriptor_path)
+        .map_err(|error| format!("cannot inspect canonical {kind} opened path: {error}"))?;
+    if opened_path != expected {
+        return Err(String::from("canonical wire opened path changed during read"));
+    }
+    Ok(())
 }
 
 fn read_canonical_stdin(kind: &str) -> Result<Vec<u8>, String> {
