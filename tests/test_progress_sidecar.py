@@ -10956,3 +10956,103 @@ def test_monotonic_timer_rejects_invalid_phases_and_clock_samples() -> None:
         _ = timer.switch(cast("progress.TimingPhase", cast("object", "paused")))
     with pytest.raises(ERROR, match="moved backward"):
         _ = timer.snapshot()
+
+
+class _HostilePrimaryNoteError(progress.ProgressSidecarError):
+    """Foreign primary exception must not control secondary cleanup logging."""
+
+    @override
+    def add_note(self, note: str) -> None:
+        del note
+        raise AssertionError("foreign primary add_note was invoked")
+
+
+def test_unadmitted_temporary_cleanup_bypasses_primary_add_note_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A secondary descriptor-close fault never replaces staging rejection."""
+    path = tmp_path / "staging.tmp"
+    descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+    original_close = os.close
+    closed: list[int] = []
+    failure = _HostilePrimaryNoteError("original staging rejection")
+
+    def close_with_error(fd: int) -> None:
+        original_close(fd)
+        closed.append(fd)
+        raise OSError("secondary descriptor close error")
+
+    helper = cast(
+        "Callable[[int, BaseException], None]",
+        vars(progress)["_close_unadmitted_temporary"],
+    )
+    with monkeypatch.context() as context:
+        context.setattr(os, "close", close_with_error)
+        helper(descriptor, failure)
+    assert closed == [descriptor]
+    assert failure.__notes__ == [
+        "progress temporary cleanup also failed: secondary descriptor close error"
+    ]
+    with pytest.raises(OSError):
+        _ = os.fstat(descriptor)
+
+
+def test_read_descriptor_cleanup_bypasses_primary_add_note_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign failing stream constructors retain original cause despite close."""
+    destination = progress.write_atomic(_sidecar(tmp_path))
+    failure = _HostilePrimaryNoteError("original reader construction rejection")
+    original_close = os.close
+
+    def fail_stream(_descriptor: int, _mode: str, *, closefd: bool) -> None:
+        assert closefd
+        raise failure
+
+    def close_with_error(descriptor: int) -> None:
+        original_close(descriptor)
+        raise OSError("secondary reader descriptor close failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", fail_stream)
+        context.setattr(os, "close", close_with_error)
+        with pytest.raises(ERROR, match="original reader construction") as caught:
+            _ = progress.read(destination)
+    assert caught.value is failure
+    assert failure.__notes__ == [
+        "read descriptor cleanup also failed: secondary reader descriptor close failure"
+    ]
+
+
+def test_mutable_cleanup_preserves_foreign_primary_add_note_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A secondary unlink error never conceals the original write error."""
+    temporary = tmp_path / "owned-temporary.tmp"
+    _ = temporary.write_bytes(b"staged")
+    snapshot = temporary.stat()
+    identity = (snapshot.st_dev, snapshot.st_ino)
+    failure = _HostilePrimaryNoteError("original mutable publication rejected")
+    actual_unlink = Path.unlink
+
+    def fail_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        if path == temporary:
+            raise OSError("secondary temporary unlink failure")
+        actual_unlink(path, missing_ok=missing_ok)
+
+    helper = cast(
+        "Callable[..., None]", vars(progress)["_cleanup_mutable_temporary"]
+    )
+    with monkeypatch.context() as context:
+        context.setattr(Path, "unlink", fail_unlink)
+        try:
+            raise failure
+        except progress.ProgressSidecarError:
+            helper(temporary, replaced=False, identity=identity)
+    assert temporary.exists()
+    assert failure.__notes__ == [
+        "mutable temporary cleanup also failed: secondary temporary unlink failure"
+    ]

@@ -566,7 +566,7 @@ class ProgressWriteLimiter:
                     error.published_path, now, validated
                 )
             except ProgressSidecarCommittedError as clock_error:
-                error.add_note(f"limiter clock also failed: {_host_error_detail(clock_error)}")
+                BaseException.add_note(error, f"limiter clock also failed: {_host_error_detail(clock_error)}")
             raise
         self._record_committed(destination, now, validated)
         return destination
@@ -1870,7 +1870,8 @@ def _read_regular_bytes(
         try:
             os.close(descriptor)
         except (OSError, ValueError, RuntimeError) as close_error:
-            error.add_note(
+            BaseException.add_note(
+                error,
                 f"read descriptor cleanup also failed: {_host_error_detail(close_error)}"
             )
         raise
@@ -1959,7 +1960,8 @@ def _read_stream_preserving_primary(
             stream.close()
         except BaseException as error:
             if primary_error is not None:
-                primary_error.add_note(
+                BaseException.add_note(
+                    primary_error,
                     f"read stream close also failed: {_host_error_detail(error)}"
                 )
             else:
@@ -2031,7 +2033,8 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
             os.close(descriptor)
         except (OSError, ValueError, RuntimeError) as error:
             if sync_error is not None:
-                sync_error.add_note(
+                BaseException.add_note(
+                    sync_error,
                     f"directory descriptor close also failed: {_host_error_detail(error)}"
                 )
             else:
@@ -2113,7 +2116,8 @@ def _open_regular_writer_lock(lock_path: Path) -> _LockStream:
         try:
             os.close(descriptor)
         except (OSError, ValueError, RuntimeError) as close_error:
-            error.add_note(
+            BaseException.add_note(
+                error,
                 f"writer lock descriptor cleanup also failed: {_host_error_detail(close_error)}"
             )
         raise
@@ -2163,7 +2167,7 @@ def _release_writer_lock_preserving_primary(
         _release_writer_lock(release)
     except (ProgressSidecarError, ValueError, RuntimeError) as error:
         if primary_error is not None:
-            primary_error.add_note(f"writer lock release also failed: {_host_error_detail(error)}")
+            BaseException.add_note(primary_error, f"writer lock release also failed: {_host_error_detail(error)}")
             return
         raise
 
@@ -2174,7 +2178,7 @@ def _close_writer_lock_preserving_primary(stream: _LockStream) -> None:
         _close_writer_lock_stream(stream)
     except (ProgressSidecarError, ValueError, RuntimeError) as error:
         if primary_error is not None:
-            primary_error.add_note(f"writer lock close also failed: {_host_error_detail(error)}")
+            BaseException.add_note(primary_error, f"writer lock close also failed: {_host_error_detail(error)}")
             return
         raise
 
@@ -2280,7 +2284,8 @@ def _cleanup_mutable_temporary(
         temporary.unlink(missing_ok=True)
     except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
-            primary_error.add_note(
+            BaseException.add_note(
+                primary_error,
                 f"mutable temporary cleanup also failed: {_host_error_detail(error)}"
             )
             return
@@ -2294,7 +2299,8 @@ def _close_unadmitted_temporary(
     try:
         os.close(descriptor)
     except (OSError, ValueError, RuntimeError) as close_error:
-        error.add_note(
+        BaseException.add_note(
+            error,
             f"progress temporary cleanup also failed: {_host_error_detail(close_error)}"
         )
 
@@ -2406,7 +2412,8 @@ def _close_staged_reader(descriptor: int) -> None:
         os.close(descriptor)
     except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
-            primary_error.add_note(
+            BaseException.add_note(
+                primary_error,
                 f"progress temporary descriptor close also failed: {_host_error_detail(error)}"
             )
         else:
@@ -2598,7 +2605,7 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
                 "payload descriptor ownership cleanup also failed: "
                 f"{_host_error_detail(close_error)}"
             )
-            error.add_note(note)
+            BaseException.add_note(error, note)
         raise
     try:
         written = stream.write(payload)
@@ -2611,7 +2618,8 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
             stream.close()
         except BaseException as error:
             if primary_error is not None:
-                primary_error.add_note(
+                BaseException.add_note(
+                    primary_error,
                     f"payload descriptor close also failed: {_host_error_detail(error)}"
                 )
             else:
@@ -2794,7 +2802,8 @@ def _cleanup_immutable_temporary(
         temporary.unlink(missing_ok=True)
     except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
-            primary_error.add_note(
+            BaseException.add_note(
+                primary_error,
                 f"immutable temporary cleanup also failed: {_host_error_detail(error)}"
             )
             return
