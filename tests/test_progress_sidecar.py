@@ -7506,6 +7506,56 @@ def test_progress_reader_fails_closed_without_linux_descriptor_path(
 
 
 @pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Requires Linux opened-descriptor pathname verification",
+)
+@pytest.mark.parametrize("member", ["pointer", "checkpoint"])
+def test_progress_reader_rejects_foreign_linux_descriptor_path_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+) -> None:
+    """A lying str subclass cannot certify the opened descriptor path."""
+    checkpoint = b"portable-state"
+    sidecar = _sidecar(tmp_path)
+    if member == "pointer":
+        selected = progress.write_atomic(sidecar)
+    else:
+        sidecar = _checkpointed(sidecar, checkpoint=checkpoint, partial=None)
+        _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+        assert sidecar.checkpoint_path is not None
+        selected = Path(sidecar.checkpoint_path)
+    original_bytes = selected.read_bytes()
+    original_readlink = os.readlink
+    observed: list[str] = []
+
+    class LyingDescriptorPath(str):
+        @override
+        def __ne__(self, other: object) -> bool:
+            return False
+
+    def forged_descriptor_path(path: str, *args: int) -> str:
+        if path.startswith("/proc/self/fd/"):
+            observed.append(path)
+            return LyingDescriptorPath("/foreign/unrelated-inode")
+        return original_readlink(path, *args)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "readlink", forged_descriptor_path)
+        with pytest.raises(ERROR, match="opened path"):
+            if member == "pointer":
+                _ = progress.read(selected)
+            else:
+                _ = progress.read_checkpoint_generation(sidecar)
+
+    assert len(observed) == 1
+    descriptor = int(observed[0].rsplit("/", 1)[-1])
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(descriptor)
+    assert selected.read_bytes() == original_bytes
+
+
+@pytest.mark.skipif(
     os.name == progress.WINDOWS_PLATFORM,
     reason="Hard-link generation readers require POSIX filesystem semantics",
 )

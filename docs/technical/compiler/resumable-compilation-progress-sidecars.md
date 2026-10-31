@@ -183,9 +183,12 @@ On Linux, admission also compares the opened descriptor's `/proc/self/fd`
 pathname to the lexically normalized requested path. A transient parent link
 that directs the open to a separate hard link of the *same inode* therefore
 rejects, even when the parent has been restored before metadata admission.
-Missing descriptor-path evidence fails closed on Linux; non-Linux platforms
-retain the device/inode and post-open redirect checks but not this stronger
-hard-link-path guarantee. A check cannot prevent a later filesystem rewrite.
+Missing descriptor-path evidence fails closed on Linux, as do forged
+non-native pathname receipts: a string subclass cannot override equality to
+certify an unrelated opened descriptor. Both pointer and checkpoint readers
+exercise this boundary. Non-Linux platforms retain the device/inode and
+post-open redirect checks but not this stronger hard-link-path guarantee.
+A check cannot prevent a later filesystem rewrite.
 
 Identity and path-link admission are repeated after the full payload has
 been read and before the admitted descriptor is closed. Concurrent pathname

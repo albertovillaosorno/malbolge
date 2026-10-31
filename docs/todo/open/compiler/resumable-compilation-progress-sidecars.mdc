@@ -89,6 +89,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   immutable target races away, direct-construction type admission,
   referenced-generation validation before pointer replacement, regular-file
   read descriptor/path inode identity matching against replacement or unlink,
+  Linux descriptor path admission now additionally requires an exact native
+  string receipt; two red-first pointer/checkpoint regressions reject a foreign
+  string subclass that fakes path inequality without losing descriptor cleanup,
   and pre/post read size and nanosecond modification/change-time admission for
   same-inode rewrite detection, bounded raw reads consume short chunks until
   completion and reject premature EOF before the admitted inode size,

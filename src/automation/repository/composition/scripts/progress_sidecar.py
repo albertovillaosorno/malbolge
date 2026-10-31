@@ -1850,6 +1850,10 @@ def _verify_opened_read_identity(
             _fail_with_source(
                 f"{context} opened path cannot be verified: {_host_error_detail(error)}", error
             )
+        # Do not dispatch a foreign string subclass's comparison methods at
+        # the trusted descriptor-path admission boundary.
+        if type(opened_path) is not str:
+            _fail(f"{context} opened path must use an exact native string")
         expected_path = os.path.abspath(path)  # ruff: ignore[os-path-abspath]
         if opened_path != expected_path:
             _fail(f"{context} opened path differs from requested path")
