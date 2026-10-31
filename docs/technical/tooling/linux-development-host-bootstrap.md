@@ -57,9 +57,12 @@ repository-local versioned roots. Missing Rustup channels are observations only;
 bootstrap does not download them.
 
 Jig `check` can resolve ChkTeX through ambient `PATH` even when `doctor`
-correctly identifies the configured repository-local executable. A user-local
-ChkTeX 1.7.10 may therefore shadow pinned 1.7.9 and abort the gate. Linux
-validation now supports `python3.14 -B -m scripts.validate.jig_runner check`.
+correctly identifies the configured repository-local executable. The declared
+ChkTeX version is now 1.7.10; an older system 1.7.9 executable cannot satisfy
+that authority. Install a verified native 1.7.10 executable as the physical,
+executable `.dependencies/bin/chktex` file (not a symlink or a wrapper pointing
+to an older system binary). Confirm its `--version` output before validation.
+Linux validation supports `python3.14 -B -m scripts.validate.jig_runner check`.
 This entrypoint constrains tool lookup to `.dependencies/bin` and the system
 default, without altering the installed Jig, its policies, or its exit status.
 

@@ -11,8 +11,8 @@ target = "basedpyright"
 template = "{version}"
 
 [authority.chktex]
-current = "1.7.9"
-stable = "1.7.9"
+current = "1.7.10"
+stable = "1.7.10"
 
 [authority.chktex.projection.tool]
 kind = "tool"
