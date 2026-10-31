@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -80,6 +81,8 @@ _CLOSE_FAILURE_NOTE = "descriptor close also failed"
 _TREE_FILE_CONTEXT = "tree file"
 _COPY_SIZE_CASE = "copy-size"
 _PATCH_RANGE_CASE = "patch-range"
+_LITERAL_SIZE_CASE = "literal-size"
+_LITERAL_DIGEST_CASE = "literal-digest"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -408,7 +411,10 @@ def test_direct_exact_plan_rejects_impossible_static_source_references(
             FileRecord("src/b.bin", "b" * 64, 2),
         )
     )
-    target_size = 5 if variant == _COPY_SIZE_CASE else 4
+    target_size = {
+        _COPY_SIZE_CASE: 5,
+        _PATCH_RANGE_CASE: 2,
+    }.get(variant, 4)
     target = TreeSnapshot(files=(FileRecord("out.bin", "a" * 64, target_size),))
     source_path = {
         "missing-source": "src/missing.bin",
@@ -430,6 +436,54 @@ def test_direct_exact_plan_rejects_impossible_static_source_references(
             source_path=source_path,
         )
     with pytest.raises(TreeModelError, match=expected):
+        _ = ExactAuthoringPlan(
+            source=source,
+            target=target,
+            instructions=(instruction,),
+        )
+
+
+@pytest.mark.parametrize(
+    ("invalid_case", "error_fragment"),
+    [
+        ("literal-size", "literal-oracle size"),
+        ("literal-digest", "literal-oracle digest"),
+        ("patch-size", "patch-source size"),
+    ],
+)
+def test_direct_exact_plan_rejects_impossible_output_lengths_and_digest(
+    invalid_case: str,
+    error_fragment: str,
+) -> None:
+    """Fully known output bytes must agree with the static target snapshot."""
+    raw_literal = b"literal"
+    literal_sha256 = hashlib.sha256(raw_literal).hexdigest()
+    source = TreeSnapshot(files=(FileRecord("src.bin", "a" * 64, 4),))
+    if invalid_case in {_LITERAL_SIZE_CASE, _LITERAL_DIGEST_CASE}:
+        target_size = len(raw_literal) + int(invalid_case == _LITERAL_SIZE_CASE)
+        target_digest = (
+            "b" * 64 if invalid_case == _LITERAL_DIGEST_CASE else literal_sha256
+        )
+        instruction = ExactInstruction(
+            output_path="out.bin",
+            kind=ExactInstructionKind.LITERAL_ORACLE,
+            expected_sha256=target_digest,
+            literal=raw_literal,
+        )
+    else:
+        target_size = 8
+        target_digest = "b" * 64
+        instruction = ExactInstruction(
+            output_path="out.bin",
+            kind=ExactInstructionKind.PATCH_SOURCE,
+            expected_sha256=target_digest,
+            source_path="src.bin",
+            segments=(SourceSlice(offset=0, length=4), OracleLiteral(b"more!")),
+        )
+    target = TreeSnapshot(
+        files=(FileRecord("out.bin", target_digest, target_size),)
+    )
+    with pytest.raises(TreeModelError, match=error_fragment):
         _ = ExactAuthoringPlan(
             source=source,
             target=target,

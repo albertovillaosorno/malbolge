@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import hashlib
 from pathlib import PurePosixPath
 from pathlib import PureWindowsPath
 from typing import cast
@@ -402,11 +403,64 @@ def _require_static_instruction_consistency(
         raise TreeModelError(message)
 
 
+def _exact_segment_length(segment: ExactSegment) -> int:
+    """Count bytes contributed by a source slice or oracle literal.
+
+    Returns:
+        Number of output bytes from this exact segment.
+
+    """
+    if isinstance(segment, SourceSlice):
+        return segment.length
+    return len(segment.data)
+
+
+def _require_literal_output_consistency(
+    literal: bytes | None, target: FileRecord
+) -> None:
+    """Validate complete oracle literals against static output metadata.
+
+    Raises:
+        TreeModelError: Literal length or SHA-256 contradicts its target.
+
+    """
+    if literal is None:
+        return
+    if len(literal) != target.size:
+        message = f"exact plan literal-oracle size differs: {target.path}"
+        raise TreeModelError(message)
+    if hashlib.sha256(literal).hexdigest() != target.sha256:
+        message = f"exact plan literal-oracle digest differs: {target.path}"
+        raise TreeModelError(message)
+
+
+def _require_exact_output_consistency(
+    instruction: ExactInstruction,
+    target: FileRecord,
+) -> None:
+    """Validate target sizes and hashes that need no source bytes.
+
+    Raises:
+        TreeModelError: Exact output metadata contradicts literal content.
+
+    """
+    if instruction.kind is ExactInstructionKind.PATCH_SOURCE:
+        reconstructed_size = sum(
+            _exact_segment_length(segment) for segment in instruction.segments
+        )
+        if reconstructed_size != target.size:
+            message = f"exact plan patch-source size differs: {target.path}"
+            raise TreeModelError(message)
+    _require_literal_output_consistency(instruction.literal, target)
+
+
 def _require_static_source_references(plan: ExactAuthoringPlan) -> None:
     """Reject impossible static copy and byte-slice instructions."""
     source_by_path = {record.path: record for record in plan.source.files}
     target_by_path = {record.path: record for record in plan.target.files}
     for instruction in plan.instructions:
+        target = target_by_path[instruction.output_path]
+        _require_exact_output_consistency(instruction, target)
         path = instruction.source_path
         if path is None:
             continue
@@ -414,9 +468,7 @@ def _require_static_source_references(plan: ExactAuthoringPlan) -> None:
             path, source_by_path, plan.passthrough_roots
         )
         if source is not None:
-            _require_static_instruction_consistency(
-                instruction, source, target_by_path[instruction.output_path]
-            )
+            _require_static_instruction_consistency(instruction, source, target)
 
 
 def _require_static_target_outside_passthrough(
