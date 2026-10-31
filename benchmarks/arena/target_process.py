@@ -361,7 +361,13 @@ def _run(
         remaining = deadline - monotonic()
         if remaining <= 0:
             raise sp.TimeoutExpired(command, limits.timeout_seconds)
-        status = child.wait(timeout=remaining)
+        try:
+            status = child.wait(timeout=remaining)
+        except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+            message = "bounded target child wait failed"
+            raise TargetProcessError(message) from error
+        if type(status) is not int:
+            _fail("bounded target child wait returned noncanonical exit status")
         return sp.CompletedProcess(command, status, stdout, stderr)
     finally:
         _finish_child(child)

@@ -1391,3 +1391,50 @@ def test_hostile_path_cannot_replace_limiter_or_peak_rss_meter(
     assert measured.returncode == 0
     assert measured.stdout == expected
     assert 0 < peak <= target_process.CHILD_VIRTUAL_MEMORY_BYTES
+
+
+@pytest.mark.parametrize(
+    "fault", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
+def test_child_wait_host_failure_is_typed_without_success_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """A completed pipe cannot turn a failed wait into a verified child exit."""
+    real_wait = target_process.sp.Popen.wait
+    calls = 0
+
+    def fail_first_wait(child: sp.Popen[bytes], timeout: float | None = None) -> int:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise fault("injected child exit wait failure")
+        return real_wait(child, timeout=timeout)
+
+    monkeypatch.setattr(target_process.sp.Popen, "wait", fail_first_wait)
+    with pytest.raises(target_process.TargetProcessError, match="child wait") as failure:
+        target_process.invoke(_child("print('completed')"), timeout_seconds=3)
+    assert type(failure.value.__cause__) is fault
+    assert calls >= 2  # The direct child was still reaped during cleanup.
+
+
+@pytest.mark.parametrize("status", [None, False, True, "0", 0.0, object()])
+def test_child_wait_noncanonical_status_cannot_claim_completion(
+    monkeypatch: pytest.MonkeyPatch,
+    status: object,
+) -> None:
+    """A fabricated zero-like status cannot impersonate a successful exit."""
+    real_wait = target_process.sp.Popen.wait
+    calls = 0
+
+    def forge_first_wait(child: sp.Popen[bytes], timeout: float | None = None) -> object:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return status
+        return real_wait(child, timeout=timeout)
+
+    monkeypatch.setattr(target_process.sp.Popen, "wait", forge_first_wait)
+    with pytest.raises(target_process.TargetProcessError, match="exit status"):
+        target_process.invoke(_child("print('completed')"), timeout_seconds=3)
+    assert calls >= 2
