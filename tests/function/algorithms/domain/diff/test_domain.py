@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import replace
 import os
 from pathlib import Path
+import sys
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -174,6 +175,24 @@ def test_direct_domain_bundle_rejects_foreign_hook(tmp_path: Path) -> None:
                 "Callable[[str, bytes], MappedView | None]", object()
             ),
         )
+
+
+def test_rejected_domain_module_is_not_left_registered(tmp_path: Path) -> None:
+    """A rejected hook bundle cannot persist as an importable module."""
+    module = tmp_path / "incomplete.py"
+    _write(
+        module,
+        _COMPLETE.replace("def build_behavior_programs():", "def other():"),
+    )
+    before = frozenset(sys.modules)
+
+    with pytest.raises(DomainContractError, match="build_behavior_programs"):
+        _ = load_diff_domain(module)
+
+    registered = frozenset(sys.modules) - before
+    assert not any(
+        name.startswith("_malbolge_diff_domain_") for name in registered
+    )
 
 
 def test_missing_required_hook_fails_closed(tmp_path: Path) -> None:

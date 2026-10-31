@@ -196,6 +196,21 @@ def load_diff_domain(path: object) -> DiffDomain:
         message = "diff domain module path must use pathlib Path"
         raise DomainContractError(message)
     module = _load_module(path)
+    try:
+        return _validated_domain(module)
+    except Exception:
+        if sys.modules.get(module.__name__) is module:
+            _ = sys.modules.pop(module.__name__, None)
+        raise
+
+
+def _validated_domain(module: ModuleType) -> DiffDomain:
+    """Require a fully valid hook bundle before retaining a loaded module.
+
+    Returns:
+        Validated domain hooks ready for use.
+
+    """
     return DiffDomain(
         validate_source_provenance=cast(
             "Callable[[Path], SourcePinEvidence]",
