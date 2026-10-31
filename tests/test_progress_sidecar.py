@@ -5181,6 +5181,56 @@ def test_checkpoint_generation_rejects_boolean_stream_write_count(
     with pytest.raises(OSError, match="Bad file descriptor"):
         _ = os.fstat(opened[0])
 
+@pytest.mark.parametrize("publication", ["checkpoint", "pointer"])
+def test_progress_payload_write_rejects_hostile_count_without_formatting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publication: str,
+) -> None:
+    """Untrusted write results cannot format arbitrary objects on failure."""
+
+    class HostileCount:
+        def __str__(self) -> str:
+            raise AssertionError("untrusted write count was formatted")
+
+        def __repr__(self) -> str:
+            raise AssertionError("untrusted write count was represented")
+
+    class HostileCountStream(BooleanWriteStream):
+        @override
+        def write(self, payload: bytes) -> int:
+            del payload
+            return cast("int", cast("object", HostileCount()))
+
+    opened: list[int] = []
+
+    def hostile_fdopen(descriptor: int, mode: str) -> HostileCountStream:
+        assert mode == "wb"
+        opened.append(descriptor)
+        return HostileCountStream(descriptor, False)
+
+    checkpoint = b"durable-checkpoint-bytes"
+    sidecar = _sidecar(tmp_path)
+    if publication == "checkpoint":
+        sidecar = _checkpointed(sidecar, checkpoint=checkpoint, partial=None)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fdopen", hostile_fdopen)
+        with pytest.raises(ERROR, match="short payload write"):
+            if publication == "checkpoint":
+                _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+            else:
+                _ = progress.write_atomic(sidecar)
+
+    assert opened
+    for descriptor in opened:
+        with pytest.raises(OSError, match="Bad file descriptor"):
+            _ = os.fstat(descriptor)
+    assert not Path(sidecar.progress_path).exists()
+    if publication == "checkpoint":
+        assert not Path(sidecar.checkpoint_path or "").exists()
+    assert not tuple(tmp_path.glob(".*.tmp"))
+
 
 def test_checkpoint_generation_rejects_short_stream_write(
     tmp_path: Path,
