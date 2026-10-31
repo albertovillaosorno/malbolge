@@ -76,6 +76,9 @@ SCHEMA_FIELD = '"schema":"malbolge-progress-v1"'
 PROGRESS_NAME = "program.malbolge.progress.json"
 SIDECAR_WIRE_LIMIT = 1_048_576
 RAW_READ_CHUNK_BYTES = 65_536
+POSIX_FILENAME_COMPONENT_MAX_BYTES = 255
+COMPACT_STAGE_PREFIX_THRESHOLD_BYTES = 128
+EXTERNALLY_LINKED_INODE_COUNT = 2
 CHECKPOINT_NAME = "program.malbolge.checkpoint.00000000000000000001"
 PARTIAL_NAME = "program.malbolge.partial.00000000000000000001"
 OUTPUT_CHANGE = "output"
@@ -3332,7 +3335,9 @@ def test_read_rejects_linked_progress_parent(tmp_path: Path) -> None:
     assert real.read_bytes() == payload
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX filename budget")
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX filename budget"
+)
 def test_long_valid_output_basename_publishes_progress_pointer(
     tmp_path: Path,
 ) -> None:
@@ -3341,8 +3346,13 @@ def test_long_valid_output_basename_publishes_progress_pointer(
     output = tmp_path / ("o" * 224 + ".malbolge")
     destination = progress.progress_path(output)
     # These are valid 255-byte POSIX components despite an overlong stage.
-    assert len(os.fsencode(destination.name)) <= 255
-    assert len(os.fsencode(f"{destination.name}.lock")) <= 255
+    assert (
+        len(os.fsencode(destination.name)) <= POSIX_FILENAME_COMPONENT_MAX_BYTES
+    )
+    assert (
+        len(os.fsencode(f"{destination.name}.lock"))
+        <= POSIX_FILENAME_COMPONENT_MAX_BYTES
+    )
     candidate = replace(
         original, output_path=str(output), progress_path=str(destination)
     )
@@ -3354,13 +3364,17 @@ def test_long_valid_output_basename_publishes_progress_pointer(
     ])
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX filename budget")
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX filename budget"
+)
 def test_long_valid_immutable_basename_publishes_and_reuses_generation(
     tmp_path: Path,
 ) -> None:
     """An immutable generation can use a long valid final filename."""
     destination = tmp_path / ("c" * 236 + ".checkpoint")
-    assert len(os.fsencode(destination.name)) <= 255
+    assert (
+        len(os.fsencode(destination.name)) <= POSIX_FILENAME_COMPONENT_MAX_BYTES
+    )
     writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
     payload = b"long-destination-durable-state"
     assert writer(destination, payload, platform=os.name) == destination
@@ -3536,7 +3550,7 @@ def test_writer_lock_rejects_external_hard_link_before_publication(
     with pytest.raises(ERROR, match="writer lock has an external hard link"):
         _ = progress.write_atomic(sidecar)
     assert lock_path.read_bytes() == alias.read_bytes() == marker
-    assert lock_path.stat().st_nlink == 2
+    assert lock_path.stat().st_nlink == EXTERNALLY_LINKED_INODE_COUNT
     assert not destination.exists()
 
 
@@ -3574,7 +3588,7 @@ def test_writer_lock_rejects_late_hard_link_added_during_staging(
         ):
             _ = progress.write_atomic(sidecar)
     assert injected
-    assert lock_path.stat().st_nlink == 2
+    assert lock_path.stat().st_nlink == EXTERNALLY_LINKED_INODE_COUNT
     assert alias.stat().st_ino == lock_path.stat().st_ino
     assert not destination.exists()
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted([
@@ -6696,17 +6710,14 @@ def test_compact_stage_recovery_hashes_filesystem_filename_bytes(
 ) -> None:
     """Long encoded names recover the digest stage, not a character prefix."""
     destination = tmp_path / basename
-    assert len(os.fsencode(destination.name)) > 128
+    encoded_basename = os.fsencode(destination.name)
+    assert len(encoded_basename) > COMPACT_STAGE_PREFIX_THRESHOLD_BYTES
     payload = b"long-encoded-durable-generation"
     try:
         _ = destination.write_bytes(payload)
     except OSError as error:
         pytest.skip(f"byte-oriented filesystem filename unavailable: {error}")
-    prefix = (
-        ".progress-"
-        + sha256(os.fsencode(destination.name)).hexdigest()[:24]
-        + "."
-    )
+    prefix = ".progress-" + sha256(encoded_basename).hexdigest()[:24] + "."
     alias = tmp_path / f"{prefix}abcdefgh.tmp"
     os.link(destination, alias)
     writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
@@ -6716,7 +6727,9 @@ def test_compact_stage_recovery_hashes_filesystem_filename_bytes(
     assert not alias.exists()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link recovery")
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX hard-link recovery"
+)
 def test_long_compact_stage_alias_recovered_only_for_own_inode(
     tmp_path: Path,
 ) -> None:
@@ -6739,7 +6752,9 @@ def test_long_compact_stage_alias_recovered_only_for_own_inode(
     assert [path.name for path in tmp_path.iterdir()] == [destination.name]
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link recovery")
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX hard-link recovery"
+)
 def test_long_compact_stage_pattern_cannot_recover_foreign_alias(
     tmp_path: Path,
 ) -> None:
@@ -6758,7 +6773,7 @@ def test_long_compact_stage_pattern_cannot_recover_foreign_alias(
     with pytest.raises(ERROR, match="external hard link"):
         _ = writer(destination, payload, platform=os.name)
     assert destination.read_bytes() == foreign.read_bytes() == payload
-    assert destination.stat().st_nlink == 2
+    assert destination.stat().st_nlink == EXTERNALLY_LINKED_INODE_COUNT
 
 
 @pytest.mark.skipif(
