@@ -380,9 +380,24 @@ def latex_compiler(
         Absolute or PATH-resolved `pdflatex` executable.
 
     """
-    compiler = lookup(LATEX_COMPILER)
+    try:
+        compiler = lookup(LATEX_COMPILER)
+    except (OSError, ValueError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"LaTeX compiler lookup failed: {error}"
+        ) from error
     if compiler is None:
         _fail(f"LaTeX compiler not found: {LATEX_COMPILER}")
+    if type(compiler) is not str or not compiler or not Path(compiler).is_absolute():
+        _fail("LaTeX compiler resolver must return an absolute executable path")
+    try:
+        executable = Path(compiler).is_file() and os.access(compiler, os.X_OK)
+    except (OSError, ValueError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"LaTeX compiler status failed: {error}"
+        ) from error
+    if not executable:
+        _fail(f"LaTeX compiler is not an executable file: {compiler}")
     return compiler
 
 
@@ -409,10 +424,26 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
     )
     temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-            written = stream.write(log)
-        if written != len(log):
-            _fail(f"incomplete LaTeX build log write: {log_path}")
+        try:
+            try:
+                stream = os.fdopen(descriptor, "w", encoding="utf-8", newline="\n")
+            except (OSError, ValueError, RuntimeError):
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+                raise
+            with stream:
+                written = stream.write(log)
+                if type(written) is not int or written != len(log):
+                    _fail(f"incomplete LaTeX build log write: {log_path}")
+                stream.flush()
+        except MathSpecificationError:
+            raise
+        except (OSError, ValueError, RuntimeError) as error:
+            raise MathSpecificationError(
+                f"mathematics build log write failed: {log_path}: {error}"
+            ) from error
         _reject_cache_redirects(log_path.parent)
         _admit_math_build_log(log_path)
         _ = temporary.replace(log_path)
@@ -440,14 +471,25 @@ def _compile_document(source: Path) -> None:
     ]
     # Repository-controlled TeX flags/source names; argv is explicit, no shell.
     # jig-ignore-next-line: indivisible reviewed identifier
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        command,
-        cwd=source.parent,
-        check=False,
-        capture_output=True,
-        shell=False,
-        text=True,
-    )
+    try:
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            command,
+            cwd=source.parent,
+            check=False,
+            capture_output=True,
+            shell=False,
+            text=True,
+        )
+    except (OSError, ValueError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"LaTeX compiler execution failed: {error}"
+        ) from error
+    if (
+        type(completed.returncode) is not int
+        or not isinstance(completed.stdout, str)
+        or not isinstance(completed.stderr, str)
+    ):
+        _fail("malformed LaTeX compiler process receipt")
     log = completed.stdout + completed.stderr
     _write_math_build_log(log_path, log)
     if completed.returncode != 0:

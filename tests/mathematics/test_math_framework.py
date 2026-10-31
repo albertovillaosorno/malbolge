@@ -570,6 +570,252 @@ def _compile_math_source(source: Path) -> None:
     compilation(source)
 
 
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_math_log_wrapper_failure_releases_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """An unwrapped temporary log descriptor cannot remain owned or linked."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    owned: list[int] = []
+
+    def fail_fdopen(descriptor: int, *_args: object, **_kwargs: object) -> object:
+        owned.append(descriptor)
+        raise fault_type("injected log wrapper failure")
+
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    with pytest.raises(validator.MathSpecificationError, match="log"):
+        validator._write_math_build_log(log, COMPILED_LOG_TEXT)
+    assert len(owned) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(owned[0])
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    assert tuple(log.parent.iterdir()) == (log,)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_math_log_write_failure_preserves_prior_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Stream writes that fail do not replace the previous build log."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    original_fdopen = os.fdopen
+
+    class FailingWriteStream:
+        def __init__(self, descriptor: int) -> None:
+            self.stream = original_fdopen(
+                descriptor, "w", encoding="utf-8", newline="\n"
+            )
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def write(self, _text: str) -> int:
+            raise fault_type("injected math log write failure")
+
+        def flush(self) -> None:
+            self.stream.flush()
+
+    monkeypatch.setattr(
+        os,
+        "fdopen",
+        lambda descriptor, *_args, **_kwargs: FailingWriteStream(descriptor),
+    )
+    with pytest.raises(validator.MathSpecificationError, match="log"):
+        validator._write_math_build_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    assert tuple(log.parent.iterdir()) == (log,)
+
+
+@pytest.mark.parametrize("reported", [None, True, 1.0, "1"])
+def test_math_log_rejects_noninteger_write_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reported: object,
+) -> None:
+    """A forged length receipt cannot publish an empty or truncated log."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    original_fdopen = os.fdopen
+
+    class ForgedWriteStream:
+        def __init__(self, descriptor: int) -> None:
+            self.stream = original_fdopen(
+                descriptor, "w", encoding="utf-8", newline="\n"
+            )
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def write(self, _text: str) -> object:
+            return reported
+
+        def flush(self) -> None:
+            self.stream.flush()
+
+    monkeypatch.setattr(
+        os,
+        "fdopen",
+        lambda descriptor, *_args, **_kwargs: ForgedWriteStream(descriptor),
+    )
+    with pytest.raises(validator.MathSpecificationError, match="log"):
+        validator._write_math_build_log(log, "x")
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    assert tuple(log.parent.iterdir()) == (log,)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_math_log_flush_failure_preserves_prior_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A failed explicit flush cannot publish an unpersisted build receipt."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    original_fdopen = os.fdopen
+
+    class FailingFlushStream:
+        def __init__(self, descriptor: int) -> None:
+            self.stream = original_fdopen(
+                descriptor, "w", encoding="utf-8", newline="\n"
+            )
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def write(self, text: str) -> int:
+            return self.stream.write(text)
+
+        def flush(self) -> None:
+            raise fault_type("injected math log flush failure")
+
+    monkeypatch.setattr(
+        os,
+        "fdopen",
+        lambda descriptor, *_args, **_kwargs: FailingFlushStream(descriptor),
+    )
+    with pytest.raises(validator.MathSpecificationError, match="log"):
+        validator._write_math_build_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    assert tuple(log.parent.iterdir()) == (log,)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_math_latex_subprocess_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """TeX process transport failure never publishes a successful log."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+
+    def fail_run(*_args: object, **_kwargs: object) -> object:
+        raise fault_type("injected LaTeX runner fault")
+
+    monkeypatch.setattr(sp, "run", fail_run)
+    with pytest.raises(validator.MathSpecificationError, match="LaTeX"):
+        _compile_math_source(source)
+    assert not log.exists()
+
+
+@pytest.mark.parametrize("field", ["returncode", "stdout", "stderr"])
+@pytest.mark.parametrize("malformed", [None, False, b"bytes"])
+def test_math_latex_malformed_process_receipts_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    malformed: object,
+) -> None:
+    """A malformed successful exit or nontext log cannot count as a build."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+    parts: dict[str, object] = {"returncode": 0, "stdout": "ok", "stderr": ""}
+    parts[field] = malformed
+    monkeypatch.setattr(
+        sp,
+        "run",
+        lambda *_args, **_kwargs: sp.CompletedProcess(
+            args=["pdflatex"],
+            returncode=cast("int", parts["returncode"]),
+            stdout=parts["stdout"],
+            stderr=parts["stderr"],
+        ),
+    )
+    with pytest.raises(validator.MathSpecificationError, match="LaTeX"):
+        _compile_math_source(source)
+    assert not log.exists()
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_math_latex_compiler_lookup_host_faults_are_typed(
+    fault_type: type[Exception],
+) -> None:
+    """An unexpected PATH resolver fault is a controlled tooling error."""
+
+    def fail_lookup(_name: str) -> str | None:
+        raise fault_type("injected pdflatex lookup fault")
+
+    with pytest.raises(validator.MathSpecificationError, match="LaTeX"):
+        _ = validator.latex_compiler(fail_lookup)
+
+
+def test_math_latex_compiler_accepts_existing_absolute_executable() -> None:
+    """A validated absolute executable retains its PATH resolver identity."""
+    import sys
+
+    assert validator.latex_compiler(lambda _name: sys.executable) == sys.executable
+
+
+def test_math_latex_compiler_rejects_nonexecutable_file(
+    tmp_path: Path,
+) -> None:
+    """An absolute but nonexecutable file is not a compiler authority."""
+    candidate = tmp_path / "pdflatex"
+    _ = candidate.write_text("not executable", encoding="utf-8")
+    with pytest.raises(validator.MathSpecificationError, match="executable"):
+        _ = validator.latex_compiler(lambda _name: str(candidate))
+
+
+def test_math_latex_nonzero_exit_retains_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real integer failure status publishes only its failure diagnostics."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        sp,
+        "run",
+        lambda *_args, **_kwargs: sp.CompletedProcess(
+            args=["pdflatex"], returncode=12, stdout="failure out", stderr=" ERR"
+        ),
+    )
+    with pytest.raises(validator.MathSpecificationError, match="exit=12"):
+        _compile_math_source(source)
+    assert log.read_text(encoding="utf-8") == "failure out ERR"
+
+
+@pytest.mark.parametrize("malformed", ["", "pdflatex", 7, b"/tmp/pdflatex"])
+def test_math_latex_compiler_rejects_malformed_resolver_path(
+    malformed: object,
+) -> None:
+    """Resolver receipts must identify an actual absolute executable file."""
+    with pytest.raises(validator.MathSpecificationError, match="LaTeX"):
+        _ = validator.latex_compiler(lambda _name: cast("str", malformed))
+
+
 def test_math_log_rejects_existing_link_before_compiler(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
