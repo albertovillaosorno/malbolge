@@ -484,7 +484,11 @@ Two successful four-byte streams per canonical program agree with
 independently encoded direct source. A separate host admission matrix
 rejects every other loader-valid operand rank, selected code/payload
 forgeries, truncated/overlong source, unsupported original counts and
-foreign canonical identities. Mutating only fourth operand 81 to 97
+foreign canonical identities. A complete 6,524-case Hamming-one sweep
+independently rejects all seven alternative loader-valid glyphs at every
+source position in each of the four bound programs; this is only a
+single-cell attack domain, not a proof against arbitrary forgeries.
+Mutating only fourth operand 81 to 97
 makes a genuine three-pair guest execute a fourth echo while host
 admission rejects the provenance mismatch.
 

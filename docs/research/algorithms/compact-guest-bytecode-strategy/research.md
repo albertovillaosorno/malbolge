@@ -623,6 +623,9 @@ Four canonical original counts independently pass SHA-256 source/profile
 binding before emission; independent admission reconstructs the
 supplied descriptor, checks all three loaded operand words and rejects
 unsupported counts or changes to code, operands, CEB2 or source extent.
+The checker also rejects all 6,524 one-cell loader-admissible alternatives
+(four sources, 233 cells, seven alternate graphical glyphs each). This
+is an exhaustive Hamming-one test, not a cryptographic soundness proof.
 Real normative VM traces confirm every reached guest `i` data read,
 selected C successor and code-only post-jump XLAT2 encryption. All
 102 source-bound data words remain unchanged after execution; binary

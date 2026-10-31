@@ -1797,3 +1797,48 @@ fn four_way_real_cli_capsules_match_independent_direct_vm_on_stdin_boundaries() 
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "bounded entire graphical Hamming-one domain"
+)]
+fn four_way_every_loader_admissible_single_cell_substitution_is_rejected() -> Result<(), String> {
+    let mut substitutions = 0usize;
+    for pairs in [1u32, 2, 3, 4] {
+        let (original, source) = canonical_four_way_source(pairs)?;
+        assert_eq!(source.len(), quadruple::SOURCE_CELLS);
+        for (position, &original_glyph) in source.iter().enumerate() {
+            let phase = u32::try_from(position).map_err(|error| error.to_string())?;
+            let mut tested_at_position = 0usize;
+            for replacement in (33u8..=126).filter(|&value| {
+                value != original_glyph
+                    && matches!(
+                        decode_profile_instruction(u32::from(value), phase),
+                        Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+                    )
+            }) {
+                let mut mutated = source.clone();
+                *mutated.get_mut(position).ok_or("source index")? = replacement;
+                assert!(
+                    quadruple::admit_quadruple_echo_dispatch(
+                        &original,
+                        current_profile(),
+                        &mutated
+                    )
+                    .is_err(),
+                    "single-cell graphical forgery must reject n={pairs} position={position} \
+                     original={original_glyph} replacement={replacement}"
+                );
+                tested_at_position += 1;
+                substitutions += 1;
+            }
+            assert_eq!(
+                tested_at_position, 7,
+                "all seven other loader-valid glyphs are checked at every position"
+            );
+        }
+    }
+    assert_eq!(substitutions, 4 * quadruple::SOURCE_CELLS * 7);
+    Ok(())
+}
