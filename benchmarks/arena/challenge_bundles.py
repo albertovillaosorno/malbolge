@@ -102,7 +102,10 @@ def _regenerate(
     except generate.ChallengeError as error:
         message = "challenge identity cannot regenerate"
         raise ChallengeBundleError(message) from error
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
+        # The canonical generator is a dependency, not an exception authority.
+        # Unexpected ordinary faults must also fail through the typed replay
+        # boundary, without formatting caller-defined exception hooks.
         message = "challenge canonical regeneration dependency failed"
         raise ChallengeBundleError(message) from error
     # Only exact native generator output can serve as comparison evidence.

@@ -370,7 +370,15 @@ def test_direct_bundle_replay_accepts_exact_payload() -> None:
 
 @pytest.mark.parametrize(
     "fault_type",
-    [OSError, ValueError, RuntimeError, TypeError, AttributeError],
+    [
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        IndexError,
+        OverflowError,
+    ],
 )
 def test_direct_bundle_replay_types_generator_host_faults(
     monkeypatch: pytest.MonkeyPatch,
@@ -387,6 +395,32 @@ def test_direct_bundle_replay_types_generator_host_faults(
     with pytest.raises(
         challenge_bundles.ChallengeBundleError,
         match="challenge.*regeneration",
+    ) as caught:
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+    assert caught.value.__cause__ is fault
+
+
+class _UnexpectedHostileGeneratorError(Exception):
+    """A canonical dependency may raise a custom ordinary failure."""
+
+    def __str__(self) -> str:
+        raise AssertionError("unexpected generator failure formatter executed")
+
+
+def test_direct_bundle_types_unexpected_foreign_generator_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom dependency failures retain a cause without invoking its hooks."""
+    case, files = _direct_bundle()
+    fault = _UnexpectedHostileGeneratorError("opaque host fault")
+
+    def fail_generation(_identity: generate.ChallengeIdentity) -> None:
+        raise fault
+
+    monkeypatch.setattr(generate, "generate", fail_generation)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError,
+        match="challenge canonical regeneration dependency failed",
     ) as caught:
         challenge_bundles.verify_bundle(case, PROFILE, files)
     assert caught.value.__cause__ is fault
