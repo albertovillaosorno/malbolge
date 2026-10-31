@@ -807,7 +807,12 @@ def _manifest(
 
 def _prepare_context(emitter: Path, runner: Path) -> _Context:
     emitter, runner = _admit_executable(emitter), _admit_executable(runner)
-    if not _TEMP.is_dir():
+    try:
+        workspace = _TEMP.lstat()
+    except OSError as error:
+        message = "target echo reference requires repository .temp directory"
+        raise TargetEchoStudyError(message) from error
+    if not stat.S_ISDIR(workspace.st_mode):
         _fail("target echo reference requires repository .temp directory")
     # Validate identity before retaining any study output.
     profile = target_profile.load_document(_ROOT / "malbolge.json")

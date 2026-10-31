@@ -174,6 +174,36 @@ def test_failed_workspace_setup_is_typed_and_removes_partial_study(
     assert not list(temp_root.glob("arena-target-echo-*"))
 
 
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlinks")
+def test_redirected_study_workspace_parent_refuses_external_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A linked .temp cannot redirect retained evidence outside the checkout."""
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    emitter = root / "emitter"
+    runner = root / "runner"
+    _ = emitter.write_bytes(b"emitter")
+    _ = runner.write_bytes(b"runner")
+    profile = target_echo_reference._ROOT / "malbolge.json"
+    _ = (root / "malbolge.json").write_bytes(profile.read_bytes())
+    linked_temp = root / ".temp"
+    linked_temp.symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(target_echo_reference, "_ROOT", root)
+    monkeypatch.setattr(target_echo_reference, "_TEMP", linked_temp)
+    monkeypatch.setattr(target_echo_reference, "_commit", lambda: "a" * 40)
+
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match=r"repository \.temp directory",
+    ):
+        _ = target_echo_reference._prepare_context(emitter, runner)
+    assert not list(outside.iterdir())
+
+
 @pytest.mark.skipif(
     not hasattr(os, "mkfifo") or not getattr(os, "O_NONBLOCK", 0),
     reason="FIFO test needs POSIX nonblocking descriptor opens",
