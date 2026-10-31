@@ -95,6 +95,8 @@ _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
 )
 _INVALID_BINDING_MARKER = b"invalid generated binding"
+_LATE_SOURCE_DRIFT_MARKER = b"source tree changed during materialization"
+_LATE_SOURCE_MUTATION = b"late mutation"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -413,6 +415,95 @@ def test_emitted_rust_rejects_binding_threshold_under_file_minimum(
         "runtime did not reject invalid binding header",
     )
     _expect(not output.exists(), "invalid binding published output")
+
+
+def _inject_source_mutation_after_staging(
+    generated: str, relative_path: str
+) -> str:
+    seam = "        .and_then(|()| {\n"
+    _expect(generated.count(seam) == 1, "publication seam changed")
+    injection = (
+        seam
+        + (
+            "            fs::write("
+            f'source.join("{relative_path}"), b"late mutation")\n'
+        )
+        + (
+            "                .map_err(|e| "
+            'format!("test mutation failed: {e}"))?;\n'
+        )
+    )
+    return generated.replace(seam, injection, 1)
+
+
+def test_emitted_rust_rechecks_source_before_final_publication(
+    tmp_path: Path,
+) -> None:
+    """Reject persistent source drift between staging and publication."""
+    source, _, _, protected = _fixture(tmp_path)
+    generated = emit_rust_transform(protected, _PROFILE)
+    rust_source = tmp_path / "late-source.rs"
+    executable = tmp_path / "late-source"
+    output = tmp_path / "late-out"
+    _ = rust_source.write_text(
+        _inject_source_mutation_after_staging(generated, "keep.bin"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(
+        compiled.returncode == 0,
+        "late-mutation runtime failed to compile: "
+        + compiled.stderr.decode(errors="replace"),
+    )
+    completed = _run(executable, source, output)
+    _expect(completed.returncode != 0, "late source drift published output")
+    _expect(
+        _LATE_SOURCE_DRIFT_MARKER in completed.stderr,
+        "late source drift did not fail through source verification",
+    )
+    _expect(not output.exists(), "late source drift published output")
+    _expect(
+        not (tmp_path / ".late-out.diff-staging").exists(),
+        "late source drift left an owned staging directory",
+    )
+
+
+def test_emitted_rust_allows_late_passthrough_change(
+    tmp_path: Path,
+) -> None:
+    """The post-staging static check excludes dynamic passthrough files."""
+    source, oracle, _, protected = _fixture(tmp_path)
+    rust_source = tmp_path / "late-passthrough.rs"
+    executable = tmp_path / "late-passthrough"
+    output = tmp_path / "passthrough-out"
+    _ = rust_source.write_text(
+        _inject_source_mutation_after_staging(
+            emit_rust_transform(protected, _PROFILE), "external/game.bin"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(
+        compiled.returncode == 0,
+        "late passthrough runtime failed to compile: "
+        + compiled.stderr.decode(errors="replace"),
+    )
+    completed = _run(executable, source, output)
+    _expect(
+        completed.returncode == 0,
+        "dynamic passthrough drift was rejected: "
+        + completed.stderr.decode(errors="replace"),
+    )
+    _expect(
+        (source / "external/game.bin").read_bytes() == _LATE_SOURCE_MUTATION,
+        "late passthrough mutation did not execute",
+    )
+    _expect(
+        snapshot_tree(output) == snapshot_tree(oracle),
+        "late dynamic change modified the already-staged output",
+    )
 
 
 def test_emitter_wraps_runtime_template_read_failure(

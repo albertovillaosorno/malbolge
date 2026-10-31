@@ -1303,6 +1303,13 @@ fn materialize(
     let staging = prepare_staging(output)?;
     let result = populate_staging(source, &staging, metadata, plaintext)
         .and_then(|()| {
+            if snapshot_tree_excluding(source, &metadata.passthrough_roots)?
+                != metadata.source
+            {
+                return Err(String::from(
+                    "source tree changed during materialization",
+                ));
+            }
             fs::rename(&staging, output).map_err(|e| {
                 format!("cannot publish staging {}: {e}", staging.display())
             })

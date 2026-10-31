@@ -523,7 +523,12 @@ runtime uses a fixed-limb implementation, derives raw anchor evidence from the
 actual
 candidate source tree, authenticates the payload before publication, and is the
 current
-distributable exact-baseline format. Compatible/fuzzy emission remains
+distributable exact-baseline format. After staging, it rechecks the exact static
+source snapshot before publication and excludes authenticated dynamic
+passthrough roots from that comparison. This catches persistent source drift
+throughout staging; concurrent writers can still race the final check and
+rename because the filesystem operation is not an atomic input snapshot.
+Compatible/fuzzy emission remains
 fail-closed
 until the runtime can reproduce consumer-selected canonical identity, structural
 and
