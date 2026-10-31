@@ -898,7 +898,12 @@ response decoder also checks the entire request-bounded frame before allocating
 memory words, including the output suffix and any trailing bytes. The codec
 rejects malformed magic, zero mapping identity, noncanonical pointer flags,
 shape drift, truncation, and trailing bytes without spawning a process or
-gaining semantic authority.
+gaining semantic authority. All three response operations (size bound, encoder,
+and decoder) now re-admit the original request's memory, input, and output
+capacities against its owned buffers before reading or emitting response data.
+A red-first in-process fixture forged each declared original capacity while
+reusing a valid child response and proved typed shape rejection at every seam.
+This does not replace independent native-call semantic verification.
 
 `PreparedVerifiedDirectInvocation` reconstructs complete key identity using the
 verified artifact target, rejects program drift, and denies the deoptimization

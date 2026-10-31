@@ -255,6 +255,7 @@ pub fn decode_native_process_call_response(
     bytes: &[u8],
     request: &NativeProcessCallRequest,
 ) -> Result<NativeProcessCallResponse, NativeProcessCallWireError> {
+    validate_request_shape(request)?;
     let mut reader = WireReader::new(bytes);
     if reader.take(NATIVE_PROCESS_CALL_WIRE_MAGIC.len())?
         != NATIVE_PROCESS_CALL_WIRE_MAGIC
@@ -330,6 +331,7 @@ pub fn encode_native_process_call_response(
     request: &NativeProcessCallRequest,
     response: &NativeProcessCallResponse,
 ) -> Result<Vec<u8>, NativeProcessCallWireError> {
+    validate_request_shape(request)?;
     validate_response_shape(request, response)?;
     let capacity = native_process_call_response_byte_limit(request)?;
     let mut bytes = Vec::with_capacity(capacity);
@@ -372,6 +374,7 @@ pub fn native_process_call_request_byte_len(
 pub fn native_process_call_response_byte_limit(
     request: &NativeProcessCallRequest,
 ) -> Result<usize, NativeProcessCallWireError> {
+    validate_request_shape(request)?;
     payload_byte_len(
         NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES,
         request.memory().len(),
@@ -496,3 +499,7 @@ const fn validate_response_shape(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../../../../../tests/tiered/process_call_wire_request.rs"]
+mod request_shape_tests;

@@ -533,6 +533,11 @@ A distinct single-resident lease cache
   not child-controlled capacity fields; malformed identity, flags, shape,
   truncation, and trailing bytes fail closed. The codec itself owns no process
   or platform operation; the retained session and concrete worker follow below.
+  Response sizing, encoding, and decoding additionally require the original
+  request's memory, input, and output capacity declarations to match its owned
+  buffers. Three red-first forged-request cases reject all response operations
+  before they can admit otherwise valid child bytes; semantic verification
+  remains independent.
 
   Forged `u64::MAX` returned memory-word and input-capacity counts now traverse
   fixed-size MBNPC1 decoding but are rejected by the structural verifier
