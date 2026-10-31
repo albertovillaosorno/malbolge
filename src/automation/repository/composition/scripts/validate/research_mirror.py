@@ -34,18 +34,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
+import os
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed Git argv, never a shell command.
 import sys
-from typing import Never
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from pathlib import Path
+from stat import S_ISDIR, S_ISLNK, S_ISREG
+from typing import TYPE_CHECKING, Never
 
 from scripts.repository_root import repository_root
-from scripts.research_layout import research_algorithm_directories
-from scripts.research_layout import research_algorithm_test_directory
+from scripts.research_layout import (
+    research_algorithm_directories,
+    research_algorithm_test_directory,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -73,14 +76,46 @@ def _fail(message: str) -> Never:
     raise ResearchMirrorError(message)
 
 
+def _physical_status(path: Path, context: str) -> os.stat_result:
+    """Check every in-root path component without following a redirect."""
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError:
+        _fail(f"{context} must be under the repository root: {path}")
+    if ".." in relative.parts:
+        _fail(f"{context} must not escape the repository root: {path}")
+    current = ROOT
+    status = None
+    for index, component in enumerate(relative.parts):
+        current = current / component
+        try:
+            status = current.lstat()
+        except OSError as error:
+            _fail(f"{context} status failed: {error}")
+        if S_ISLNK(status.st_mode) or current.is_junction():
+            _fail(f"{context} must not redirect: {relative.as_posix()}")
+        if index != len(relative.parts) - 1 and not S_ISDIR(status.st_mode):
+            _fail(f"{context} ancestor must be a directory: {relative.as_posix()}")
+    if status is None:
+        _fail(f"{context} cannot be the repository root")
+    return status
+
+
 def _directory_ids(root: Path) -> frozenset[str]:
-    if not root.is_dir():
-        _fail(f"research mirror root not found: {root}")
-    return frozenset(
-        path.name
-        for path in root.iterdir()
-        if path.is_dir() and not path.name.startswith(".")
-    )
+    _require_directory(root, "research mirror root")
+    identifiers: set[str] = set()
+    for path in root.iterdir():
+        if path.name.startswith("."):
+            continue
+        try:
+            status = path.lstat()
+        except OSError as error:
+            _fail(f"research mirror ID status failed: {error}")
+        if S_ISLNK(status.st_mode) or path.is_junction():
+            _fail(f"research mirror ID must not redirect: {path.name}")
+        if S_ISDIR(status.st_mode):
+            identifiers.add(path.name)
+    return frozenset(identifiers)
 
 
 def validate_id_sets(
@@ -133,12 +168,14 @@ def _entries() -> tuple[MirrorEntry, ...]:
 
 
 def _require_directory(path: Path, context: str) -> None:
-    if not path.is_dir():
+    status = _physical_status(path, context)
+    if not S_ISDIR(status.st_mode):
         _fail(f"{context} directory not found: {path.relative_to(ROOT)}")
 
 
 def _require_file(path: Path, context: str) -> None:
-    if not path.is_file():
+    status = _physical_status(path, context)
+    if not S_ISREG(status.st_mode):
         _fail(f"{context} file not found: {path.relative_to(ROOT)}")
 
 

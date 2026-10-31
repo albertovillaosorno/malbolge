@@ -34,6 +34,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from scripts.validate import research_mirror as validator
 
 ALGORITHMS_DIRECTORY = "algorithms"
@@ -107,3 +111,57 @@ def test_unknown_executable_algorithm_still_fails_closed() -> None:
         frozenset((*EXPECTED_IDS, "diff", "doom", "mystery"))
     )
     _expect_id_failure(frozenset(EXPECTED_IDS), executable_ids)
+
+
+@pytest.mark.parametrize(
+    "redirect",
+    ("research-file", "executable-readme", "document-directory", "test-directory"),
+)
+def test_mirror_rejects_redirected_evidence(
+    redirect: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Outside aliases must not fulfill the physical research mirror contract."""
+    documents = tmp_path / "docs/research/algorithms"
+    document = documents / "fixture"
+    executable = tmp_path / "src/research/algorithms/domain/algorithms/fixture"
+    test_directory = tmp_path / "tests/function/algorithms/domain/fixture"
+    for directory in (document, executable, test_directory):
+        directory.mkdir(parents=True)
+    for filename in ("README.md", "research.md"):
+        (document / filename).write_text("fixture", encoding="utf-8")
+    for filename in ("README.md", "experiment.toml", "lifecycle.toml"):
+        (executable / filename).write_text("fixture", encoding="utf-8")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "DOCUMENT_ROOT", documents)
+    assert validator.validate_repository(_always_ignored) == ("fixture",)
+
+    if redirect == "document-directory":
+        victim = document
+    elif redirect == "test-directory":
+        victim = test_directory
+    elif redirect == "research-file":
+        victim = document / "research.md"
+    else:
+        victim = executable / "README.md"
+    outside = tmp_path / "outside" / victim.name
+    outside.parent.mkdir(exist_ok=True)
+    victim.rename(outside)
+    victim.symlink_to(outside, target_is_directory=outside.is_dir())
+    with pytest.raises(validator.ResearchMirrorError, match="redirect"):
+        _ = validator.validate_repository(_always_ignored)
+
+
+def test_mirror_rejects_directory_id_symlink(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A redirected research ID cannot enumerate as a direct physical ID."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (documents / "alias").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(validator.ResearchMirrorError, match="redirect"):
+        _ = validator._directory_ids(documents)

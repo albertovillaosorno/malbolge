@@ -63,6 +63,9 @@ genuine research question.
   was written first.
 - Mirror drift, documentation-only research, executable-only research, missing
   experiment/test structure, and tracked local-output policy fail validation.
+- Required document/executable/test paths are physical in-repository regular
+  files and directories; symlink and junction aliases (including parent
+  components and direct research IDs) never satisfy the mirror contract.
 - Multiple implementation languages can coexist under one algorithm identity.
 
 ## Rejected Alternatives
