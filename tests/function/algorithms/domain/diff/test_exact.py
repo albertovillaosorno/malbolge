@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 from pathlib import Path
 import shutil
@@ -73,6 +74,8 @@ _RUNTIME_DATA = b"runtime-data"
 _RUNTIME_EXTRA = b"runtime-extra"
 _FOREIGN_OUTPUT = b"foreign"
 _POSIX_OS_NAME = "posix"
+_MISSING_PLAN_TARGET = "missing"
+_EXTRA_PLAN_TARGET = "extra"
 _CLOSE_FAILURE_NOTE = "descriptor close also failed"
 
 
@@ -273,6 +276,32 @@ def test_exact_authoring_plan_rejects_duplicate_output_instructions(
             source=valid.source,
             target=valid.target,
             instructions=(*valid.instructions, duplicate),
+            passthrough_roots=valid.passthrough_roots,
+        )
+
+
+@pytest.mark.parametrize("variant", ["missing", "extra", "digest"])
+def test_exact_plan_requires_exact_target_instruction_mapping(
+    tmp_path: Path,
+    variant: str,
+) -> None:
+    """Direct plans cannot defer target/instruction mismatch until staging."""
+    source, oracle = _synthetic_pair(tmp_path)
+    valid = build_exact_plan(source, oracle)
+    if variant == _MISSING_PLAN_TARGET:
+        instructions = valid.instructions[:-1]
+    elif variant == _EXTRA_PLAN_TARGET:
+        additional = replace(valid.instructions[0], output_path="unlisted.bin")
+        instructions = (*valid.instructions, additional)
+    else:
+        wrong = replace(valid.instructions[0], expected_sha256="0" * 64)
+        instructions = (wrong, *valid.instructions[1:])
+
+    with pytest.raises(TreeModelError, match="target snapshot"):
+        _ = ExactAuthoringPlan(
+            source=valid.source,
+            target=valid.target,
+            instructions=instructions,
             passthrough_roots=valid.passthrough_roots,
         )
 

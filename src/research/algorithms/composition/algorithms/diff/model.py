@@ -320,6 +320,16 @@ class ExactAuthoringPlan:
         if len(paths) != len(set(paths)):
             message = "exact plan requires unique output paths"
             raise TreeModelError(message)
+        authored_outputs = tuple(
+            (item.output_path, item.expected_sha256)
+            for item in self.instructions
+        )
+        target_outputs = tuple(
+            (item.path, item.sha256) for item in self.target.files
+        )
+        if authored_outputs != target_outputs:
+            message = "exact plan instructions must match the target snapshot"
+            raise TreeModelError(message)
         _require_passthrough_roots(self.passthrough_roots)
 
 
