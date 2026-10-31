@@ -1187,6 +1187,67 @@ def test_snapshot_read_error_remains_primary_after_close_failure(
     )
 
 
+@pytest.mark.parametrize("secondary_kind", ["native", "foreign", "hostile-args"])
+def test_exact_descriptor_close_cannot_override_original_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    secondary_kind: str,
+) -> None:
+    """Never format foreign cleanup faults or invoke primary note overrides."""
+    leaf = tmp_path / "leaf"
+    _ = leaf.write_bytes(b"payload")
+
+    def reject_note(self: BaseException, note: str) -> None:
+        del self, note
+        raise AssertionError("foreign primary note hook executed")
+
+    primary_type = type(
+        "ForeignExactReadError", (ExactTreeError,), {"add_note": reject_note}
+    )
+    primary = primary_type("rejected original descriptor read")
+
+    class ForeignCloseError(OSError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign close formatter executed")
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("foreign close argument formatter executed")
+
+    secondary = {
+        "native": OSError("native close failure"),
+        "foreign": ForeignCloseError("foreign close failure"),
+        "hostile-args": OSError(HostileArgument()),
+    }[secondary_kind]
+    original_close = os.close
+
+    def fail_read(descriptor: int, count: int) -> bytes:
+        del descriptor, count
+        raise primary
+
+    def fail_close(descriptor: int) -> None:
+        original_close(descriptor)
+        raise secondary
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "read", fail_read)
+        patch.setattr(os, "close", fail_close)
+        with pytest.raises(ExactTreeError) as caught:
+            exact_module.read_exact_regular_file(leaf, "tree entry")
+
+    _expect(caught.value is primary, "cleanup replaced primary file error")
+    notes = cast("list[str]", getattr(primary, "__notes__", []))
+    _expect(
+        len(notes) == 1 and _CLOSE_FAILURE_NOTE in notes[0],
+        "native cleanup note missing from original error",
+    )
+    if secondary_kind == "native":
+        _expect(
+            "native close failure" in notes[0],
+            "trusted native close detail was lost",
+        )
+
+
 def test_snapshot_rejects_file_swapped_to_symlink_after_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

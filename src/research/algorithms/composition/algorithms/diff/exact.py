@@ -340,10 +340,18 @@ def _read_bound_file(path: Path, context: str) -> bytes:
         try:
             os.close(descriptor)
         except BaseException as error:
-            if primary is not None:
-                primary.add_note(f"file descriptor close also failed: {error}")
-            else:
+            if primary is None:
                 raise
+            # Cleanup is secondary: never call foreign exception formatters or
+            # an overridden primary.add_note hook while reporting the failure.
+            detail = type(error).__name__
+            if type(error) in (OSError, ValueError, RuntimeError):
+                arguments = error.args
+                if len(arguments) == 1 and type(arguments[0]) is str:
+                    detail = arguments[0]
+            BaseException.add_note(
+                primary, f"file descriptor close also failed: {detail}"
+            )
 
 
 def read_exact_regular_file(path: Path, context: str) -> bytes:
