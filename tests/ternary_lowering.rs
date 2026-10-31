@@ -21417,6 +21417,49 @@ fn raw_machine_io_rejects_eof_sentinel_overlapping_successful_bytes() -> Result<
 }
 
 #[test]
+fn raw_machine_io_rejects_non_ternary_eof_word_geometry() -> Result<(), String> {
+    let original = current_profile_io();
+    let decoder = VmProfileInstructionDecoder;
+    // The raw EOF marker is the all-two-trit word for a target memory width.
+    // Out-of-byte-domain values alone do not establish that property.
+    for eof_word in [
+        256u32,
+        257,
+        258,
+        727,
+        729,
+        original.eof_word.saturating_sub(1),
+        original.eof_word.saturating_add(1),
+        u32::MAX,
+    ] {
+        let mut projected = original.clone();
+        projected.eof_word = eof_word;
+        for intrinsic in [
+            RuntimeIntrinsicOperation::InputWord,
+            RuntimeIntrinsicOperation::OutputByte,
+        ] {
+            if realize_runtime_io(intrinsic, &projected)
+                != Err(RuntimeIoRealizationError::InvalidProjection)
+            {
+                return Err(format!(
+                    "non-ternary EOF word {eof_word} admitted for {intrinsic:?}"
+                ));
+            }
+            let canonical = realize_runtime_io(intrinsic, &original)
+                .map_err(|error| format!("realize valid I/O: {error:?}"))?;
+            if encode_machine_io(canonical, 0, &decoder, &projected)
+                != Err(MachineIoEncodingError::InvalidProfile)
+            {
+                return Err(format!(
+                    "non-ternary EOF word {eof_word} reached source-cell encoding"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn current_profile_realizes_runtime_io_from_authority() -> Result<(), String> {
     let profile = current_profile();
     let projection = current_profile_io();

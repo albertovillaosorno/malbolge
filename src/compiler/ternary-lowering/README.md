@@ -237,9 +237,13 @@ A separate runtime-intrinsic port admits only the exact
 lowering them to distinct raw `InputWord` and `OutputByte` pre-layout semantics.
 A target-profile port then copies canonical I/O instruction bytes and EOF state
 from the admitted profile descriptor and realizes those operations without
-hardcoded opcode characters. An instruction-decoder port lets lowering invert
-the canonical VM decode relation without copying XLAT1, producing one unique
-graphical source cell for an already-selected code position.
+hardcoded opcode characters. Realization rejects EOF words inside the
+successful-byte range or outside the all-two-trit geometry (`3^n - 1`), for
+both input and output operations. This guards projection consistency but does
+not authenticate the complete profile descriptor or its memory width. An
+instruction-decoder port lets lowering invert the canonical VM decode relation
+without copying XLAT1, producing one unique graphical source cell for an
+already-selected code position.
 
 Startup planning now accepts only a layout-resolved guest heap extent, validates
 the canonical ABI pointer encoding plus runtime heap geometry, and emits exactly

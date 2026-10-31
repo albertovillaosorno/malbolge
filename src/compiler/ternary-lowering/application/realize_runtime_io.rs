@@ -34,9 +34,7 @@
 
 //! Profile-bound realization of raw byte-I/O runtime semantics.
 
-use super::model::{
-    MachineIoKind, MachineIoOperation, RuntimeIntrinsicOperation,
-};
+use super::model::{MachineIoKind, MachineIoOperation, RuntimeIntrinsicOperation};
 use super::target_profile_input::TargetProfileIo;
 
 const TARGET_PROFILE: &str = "malbolge-2026";
@@ -48,6 +46,21 @@ pub enum RuntimeIoRealizationError {
     InvalidProjection,
     /// Target profile is not the reviewed current language profile.
     UnsupportedProfile,
+}
+
+// An all-two-trit word has value 3^n - 1. Check its geometry without
+// importing a VM descriptor or treating the supplied profile as authenticated.
+const fn is_all_two_trit_word(word: u32) -> bool {
+    let Some(mut memory_words) = word.checked_add(1) else {
+        return false;
+    };
+    while memory_words > 1 {
+        if !memory_words.is_multiple_of(3) {
+            return false;
+        }
+        memory_words = memory_words.div_euclid(3);
+    }
+    true
 }
 
 /// Realizes one raw runtime intrinsic semantic operation under a target
@@ -65,10 +78,12 @@ pub fn realize_runtime_io(
         return Err(RuntimeIoRealizationError::UnsupportedProfile);
     }
     // Successful input bytes occupy 0..=255. The raw profile EOF sentinel
-    // must not alias one of them, even when realizing an output-only effect:
-    // downstream machine operations still carry this projected profile.
+    // must not alias one of them and must be an all-two-trit word. Enforce
+    // both even for output-only effects: downstream operations still carry
+    // this projection, which is not full profile descriptor authentication.
     if profile.input_instruction == profile.output_instruction
         || u8::try_from(profile.eof_word).is_ok()
+        || !is_all_two_trit_word(profile.eof_word)
     {
         return Err(RuntimeIoRealizationError::InvalidProjection);
     }
