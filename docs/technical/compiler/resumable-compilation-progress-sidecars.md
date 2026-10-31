@@ -877,6 +877,15 @@ checkpoint state, and records checkpoint SHA-256 plus
 `evaluated-search-prefix-resume-v1` in resumed JSON output. Fresh-search JSON is
 unchanged.
 
+The optimizer's final JSON-line publication now requires the exact native
+integer character count from stdout and a native `None` flush completion before
+reporting successful search. Short, absent, boolean, exaggerated, or otherwise
+foreign write/flush receipts fail with status 2. Unexpected ordinary stdout
+write or flush faults also become typed failures rather than tracebacks. A
+partial record cannot be retracted and must not be treated as accepted evidence
+when the command exits nonzero. Error diagnostics are best-effort and flushed;
+a broken stderr sink cannot turn a rejection into a success or traceback.
+
 Direct Python `read()` permits copies of sidecar records used as crash
 fixture inputs, preserving the original declared progress path without
 publishing state. Operator CLI inspection instead requires the supplied file

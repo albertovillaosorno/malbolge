@@ -479,7 +479,28 @@ def _cuda_resume_execution(
 
 
 def _write_error(error: object) -> None:
-    _ = sys.stderr.write(f"error: {error}\n")
+    """Preserve the already-rejected status even if stderr is unusable."""
+    try:
+        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.flush()
+    except Exception:  # noqa: BLE001 - diagnostic delivery is best effort
+        return
+
+
+def _write_search_record(rendered: str) -> None:
+    """Confirm full JSON-line output before declaring a search successful."""
+    record = f"{rendered}\n"
+    try:
+        written = sys.stdout.write(record)
+        if type(written) is not int or written != len(record):
+            raise SearchCliError("search stdout wrote incomplete JSON evidence")
+        if sys.stdout.flush() is not None:
+            raise SearchCliError("search stdout returned invalid flush receipt")
+    except SearchCliError:
+        raise
+    except Exception as error:  # noqa: BLE001 - all ordinary sink faults fail closed
+        message = f"search stdout failed: {type(error).__name__}"
+        raise SearchCliError(message) from error
 
 
 def _cli_source_identity(status: os.stat_result, label: str) -> tuple[int, ...]:
@@ -636,10 +657,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         arguments = _parse_arguments(argv)
         rendered = _execute_arguments(arguments)
+        _write_search_record(rendered)
     except (AcceleratorError, OSError, ValueError) as error:
         _write_error(error)
         return CONFIGURATION_ERROR
-    _ = sys.stdout.write(f"{rendered}\n")
     return 0
 
 

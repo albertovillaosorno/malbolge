@@ -47,6 +47,7 @@ import sys
 from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 from unittest import SkipTest
 
 from accelerator.cpu import CpuExactPrimitiveAdapter
@@ -1173,3 +1174,130 @@ def test_cli_fdopen_failure_releases_binary_source_descriptor(
         if opened_descriptor is not None:
             with suppress(OSError):
                 os.close(opened_descriptor)
+
+
+def _write_failure_cli_args(tmp_path: Path) -> tuple[str, ...]:
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    return (
+        "--config", str(config), "--problem", str(problem),
+        "--budget", "5", "--resume-checkpoint", str(checkpoint),
+    )
+
+
+@pytest.mark.parametrize("claimed", [None, True, False, -1, 0, 1_000_000])
+def test_cli_rejects_incomplete_search_json_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    claimed: object,
+) -> None:
+    """Operator success requires the full text write, not a forged count."""
+    class BrokenOutput(StringIO):
+        flush_calls: int = 0
+
+        @override
+        def write(self, content: str) -> int:
+            del content
+            return cast("int", claimed)
+
+        @override
+        def flush(self) -> None:
+            self.flush_calls += 1
+            super().flush()
+
+    output = BrokenOutput()
+    diagnostic = StringIO()
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", output)
+        context.setattr(sys, "stderr", diagnostic)
+        status = main(_write_failure_cli_args(tmp_path))
+    assert status == CONFIGURATION_ERROR
+    assert not output.getvalue()
+    assert output.flush_calls == 0
+    assert "stdout" in diagnostic.getvalue()
+
+
+@pytest.mark.parametrize("claimed", [False, True, -1, 0, "done"])
+def test_cli_rejects_noncanonical_search_json_flush(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    claimed: object,
+) -> None:
+    """A nonnative flush receipt cannot certify output completion."""
+    class BrokenOutput(StringIO):
+        flush_calls: int = 0
+
+        @override
+        def flush(self) -> None:
+            self.flush_calls += 1
+            return cast("None", claimed)
+
+    output = BrokenOutput()
+    diagnostic = StringIO()
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", output)
+        context.setattr(sys, "stderr", diagnostic)
+        status = main(_write_failure_cli_args(tmp_path))
+    assert status == CONFIGURATION_ERROR
+    assert output.getvalue().endswith("\n")
+    assert output.flush_calls == 1
+    assert "stdout" in diagnostic.getvalue()
+
+
+@pytest.mark.parametrize("phase", ["write", "flush"])
+@pytest.mark.parametrize("failure", [OSError, ValueError, RuntimeError, IndexError])
+def test_cli_contains_search_json_output_dependency_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    failure: type[Exception],
+) -> None:
+    """Ordinary output faults cannot exit with success or an uncaught error."""
+    class BrokenOutput(StringIO):
+        flush_calls: int = 0
+
+        @override
+        def write(self, content: str) -> int:
+            if phase == "write":
+                raise failure("untrusted output write fault")
+            return super().write(content)
+
+        @override
+        def flush(self) -> None:
+            self.flush_calls += 1
+            if phase == "flush":
+                raise failure("untrusted output flush fault")
+            super().flush()
+
+    output = BrokenOutput()
+    diagnostic = StringIO()
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stdout", output)
+        context.setattr(sys, "stderr", diagnostic)
+        status = main(_write_failure_cli_args(tmp_path))
+    assert status == CONFIGURATION_ERROR
+    assert output.flush_calls == (0 if phase == "write" else 1)
+    assert "stdout" in diagnostic.getvalue()
+
+
+@pytest.mark.parametrize("phase", ["write", "flush"])
+def test_cli_preserves_configuration_failure_when_stderr_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """An unavailable diagnostic sink cannot erase a rejected CLI request."""
+    class BrokenDiagnostic(StringIO):
+        @override
+        def write(self, content: str) -> int:
+            if phase == "write":
+                raise OSError("stderr write unavailable")
+            return super().write(content)
+
+        @override
+        def flush(self) -> None:
+            if phase == "flush":
+                raise ValueError("stderr flush unavailable")
+            super().flush()
+
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stderr", BrokenDiagnostic())
+        assert main(("--budget", "invalid")) == CONFIGURATION_ERROR
