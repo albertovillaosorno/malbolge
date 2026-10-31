@@ -34,9 +34,13 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import BinaryIO
 
 import pytest
 
@@ -162,6 +166,115 @@ def test_lifecycle_file_rejects_invalid_utf8(tmp_path: Path) -> None:
         match="invalid algorithm lifecycle UTF-8",
     ):
         _ = validator.validate_repository_lifecycle(path)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("operation", ("lstat", "open", "fdopen", "fstat", "read"))
+def test_lifecycle_manifest_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """Malformed filesystem errors cannot bypass lifecycle file admission."""
+    manifest = tmp_path / "lifecycle.toml"
+    _ = manifest.write_text(_base(validator.EXPERIMENTAL), encoding="utf-8")
+    if operation == "lstat":
+        original_lstat = Path.lstat
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            if path == manifest:
+                raise fault_type("injected lifecycle lstat fault")
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    elif operation == "open":
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == manifest:
+                raise fault_type("injected lifecycle open fault")
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    elif operation == "fdopen":
+
+        def fail_fdopen(_descriptor: int, _mode: str) -> object:
+            raise fault_type("injected lifecycle fdopen fault")
+
+        monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    elif operation == "fstat":
+
+        def fail_fstat(_descriptor: int) -> os.stat_result:
+            raise fault_type("injected lifecycle fstat fault")
+
+        monkeypatch.setattr(os, "fstat", fail_fstat)
+    else:
+
+        def fail_read(_stream: BinaryIO, _status: os.stat_result, _path: Path) -> bytes:
+            raise fault_type("injected lifecycle read fault")
+
+        monkeypatch.setattr(validator, "_read_lifecycle_bytes", fail_read)
+    with pytest.raises(
+        validator.AlgorithmLifecycleError,
+        match="algorithm lifecycle manifest cannot be read",
+    ):
+        _ = validator.validate_repository_lifecycle(manifest)
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+def test_lifecycle_fdopen_failure_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """An incomplete lifecycle stream wrapper releases the file descriptor."""
+    manifest = tmp_path / "lifecycle.toml"
+    _ = manifest.write_text(_base(validator.EXPERIMENTAL), encoding="utf-8")
+    original_open = os.open
+    opened: list[int] = []
+
+    def track_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        if path == manifest:
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(_descriptor: int, _mode: str) -> object:
+        raise fault_type("injected lifecycle fdopen fault")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    with pytest.raises(validator.AlgorithmLifecycleError):
+        _ = validator.validate_repository_lifecycle(manifest)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+def test_lifecycle_evidence_host_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Host descriptor walk failure must not leak from evidence checking."""
+    root = tmp_path / "root"
+    proof = root / "docs/proof.md"
+    proof.parent.mkdir(parents=True)
+    _ = proof.write_text("evidence", encoding="utf-8")
+    monkeypatch.setattr(validator, "ROOT", root)
+
+    def fail_walk(_parts: tuple[str, ...]) -> None:
+        raise fault_type("injected evidence descriptor fault")
+
+    monkeypatch.setattr(validator, "_evidence_descriptor_walk", fail_walk)
+    with pytest.raises(
+        validator.AlgorithmLifecycleError, match="evidence not admitted"
+    ):
+        validator._require_existing(  # pyright: ignore[reportPrivateUsage]
+            "docs/proof.md", "research record"
+        )
 
 
 def test_every_research_mirror_has_explicit_experimental_lifecycle() -> None:

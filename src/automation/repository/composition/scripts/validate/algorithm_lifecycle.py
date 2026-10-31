@@ -433,9 +433,11 @@ def _require_existing(relative: str, context: str) -> None:
             _evidence_descriptor_walk(parts)
         else:
             _evidence_fallback(parts)
-    except OSError as error:
+    except AlgorithmLifecycleError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} evidence not admitted: {relative}: {error}"
-        _fail(message)
+        raise AlgorithmLifecycleError(message) from error
 
 
 def _validate_evidence_paths(record: AlgorithmLifecycle) -> None:
@@ -497,7 +499,16 @@ def _read_lifecycle_file(path: Path) -> bytes:
         _fail(f"algorithm lifecycle manifest must be regular: {path}")
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except BaseException:
+        # Stream ownership starts only if wrapping the descriptor succeeds.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+    with stream:
         return _read_lifecycle_bytes(stream, admitted, path)
 
 
@@ -510,8 +521,12 @@ def _read_utf8(path: Path) -> str:
     """
     try:
         raw = _read_lifecycle_file(path)
-    except OSError as error:
-        _fail(f"algorithm lifecycle manifest cannot be read: {path}: {error}")
+    except AlgorithmLifecycleError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise AlgorithmLifecycleError(
+            f"algorithm lifecycle manifest cannot be read: {path}: {error}"
+        ) from error
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError as error:
