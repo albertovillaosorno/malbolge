@@ -644,6 +644,37 @@ def test_measured_child_rejects_malformed_original_command_before_tools(
     assert not tools_called
 
 
+@pytest.mark.parametrize("workspace_kind", ["symlink", "file", "missing"])
+def test_measured_rss_workspace_refuses_redirected_or_non_directory_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    workspace_kind: str,
+) -> None:
+    """GNU time cannot allocate its private receipts outside physical .temp."""
+    workspace = tmp_path / ".temp"
+    if workspace_kind == "symlink":
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        workspace.symlink_to(outside, target_is_directory=True)
+    elif workspace_kind == "file":
+        workspace.write_bytes(b"not a directory")
+
+    def forbidden_directory(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        pytest.fail("RSS report workspace admitted untrusted storage")
+
+    monkeypatch.setattr(target_process, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_process, "require_child_rss_measurement", lambda: None
+    )
+    monkeypatch.setattr(target_process, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(
+        target_process.tempfile, "TemporaryDirectory", forbidden_directory
+    )
+    with pytest.raises(target_process.TargetProcessError, match="RSS workspace"):
+        target_process.invoke_limited_measured(_child("pass"))
+
+
 @pytest.mark.parametrize("phase", ["constructor", "enter", "exit"])
 def test_measured_rss_directory_fault_is_typed(
     monkeypatch: pytest.MonkeyPatch,

@@ -43,6 +43,7 @@ import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from stat import S_ISDIR
 from time import monotonic
 from typing import Never
 
@@ -488,6 +489,22 @@ def _rss_report(path: Path) -> int:
     return _parse_rss_report(_rss_report_bytes(path))
 
 
+def _rss_workspace() -> Path:
+    """Admit a physical repository scratch directory before RSS reporting.
+
+    This rejects a stable symlink redirect, not an atomic filesystem race.
+    """
+    workspace = _ROOT / ".temp"
+    try:
+        details = workspace.lstat()
+    except OSError as error:
+        message = "bounded target RSS workspace cannot be inspected"
+        raise TargetProcessError(message) from error
+    if not S_ISDIR(details.st_mode):
+        _fail("bounded target RSS workspace must be a physical directory")
+    return workspace
+
+
 def _measured_limited(
     command: list[str],
     *,
@@ -498,6 +515,7 @@ def _measured_limited(
     # temporary RSS report directory. _run repeats admission at launch.
     _admit_limits(timeout_seconds, DEFAULT_STDOUT_LIMIT, DEFAULT_STDERR_LIMIT)
     _admit_command(command)
+    workspace = _rss_workspace()
     require_child_rss_measurement()
     time_executable = _system_tool(RSS_TOOL)
     if time_executable is None:
@@ -505,7 +523,7 @@ def _measured_limited(
     primary: BaseException | None = None
     try:
         with tempfile.TemporaryDirectory(
-            dir=_ROOT / ".temp", prefix="arena-child-rss-"
+            dir=workspace, prefix="arena-child-rss-"
         ) as folder:
             try:
                 report = Path(folder) / "rss.txt"

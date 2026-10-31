@@ -514,7 +514,10 @@ with GNU time recording each stage's `ru_maxrss` in KiB. The new cost is the
 to bytes.
 
 Each measurement file is short-lived and is deleted; it is not a
-retained or independently authenticated original measurement receipt. Exact
+retained or independently authenticated original measurement receipt. RSS
+sampling requires a physical repository `.temp` directory and refuses stable
+symlink redirection before host-tool discovery; this is not atomic protection
+against concurrent filesystem swaps. Exact
 RSS-measured subprocess variants also validate the caller's original
 nonempty string command vector before consulting host measurement utilities;
 foreign arguments and embedded NUL reject without a child launch. Exact
