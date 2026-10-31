@@ -1222,3 +1222,71 @@ def test_unexpected_path_stat_error_is_typed(
         ) as caught:
             study_file.read_study_bytes(path, limit=1024 * 1024)
     assert caught.value.__cause__ is fault
+
+
+class _ForeignStudyStat:
+    """Forged filesystem metadata must not be queried for its fields."""
+
+    @override
+    def __getattribute__(self, name: str) -> object:
+        raise AssertionError(f"foreign stat metadata field was consumed: {name}")
+
+
+@pytest.mark.parametrize(
+    "phase",
+    [
+        "initial-path",
+        "parent",
+        "opened-descriptor",
+        "closed-descriptor",
+        "final-path",
+    ],
+)
+def test_study_reader_rejects_foreign_filesystem_metadata_before_field_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """Injected metadata may not decide file type, size, or identity."""
+    path = tmp_path / STABLE_INPUT
+    _ = _study(path)
+    actual_lstat = type(path).lstat
+    actual_stat = type(path).stat
+    actual_fstat = study_file.os.fstat
+    lstat_calls = 0
+    fstat_calls = 0
+
+    def injected_lstat(target: Path) -> os.stat_result:
+        nonlocal lstat_calls
+        if target == path:
+            lstat_calls += 1
+            if (phase == "initial-path" and lstat_calls == 1) or (
+                phase == "final-path" and lstat_calls == 2
+            ):
+                return cast("os.stat_result", cast("object", _ForeignStudyStat()))
+        return actual_lstat(target)
+
+    def injected_stat(
+        target: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if phase == "parent" and target == path.parent:
+            return cast("os.stat_result", cast("object", _ForeignStudyStat()))
+        return actual_stat(target, follow_symlinks=follow_symlinks)
+
+    def injected_fstat(fd: int) -> os.stat_result:
+        nonlocal fstat_calls
+        fstat_calls += 1
+        if (phase == "opened-descriptor" and fstat_calls == 1) or (
+            phase == "closed-descriptor" and fstat_calls == 2
+        ):
+            return cast("os.stat_result", cast("object", _ForeignStudyStat()))
+        return actual_fstat(fd)
+
+    with monkeypatch.context() as context:
+        context.setattr(type(path), "lstat", injected_lstat)
+        context.setattr(type(path), "stat", injected_stat)
+        context.setattr(study_file.os, "fstat", injected_fstat)
+        with pytest.raises(
+            study_file.StudyFileError, match="invalid file metadata"
+        ):
+            study_file.read_study_bytes(path, limit=1024 * 1024)

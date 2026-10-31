@@ -50,7 +50,16 @@ class StudyFileError(ValueError):
     """An arena input file cannot be admitted as stable regular bytes."""
 
 
+def _native_stat(info: os.stat_result) -> os.stat_result:
+    # Filesystem calls normally return an exact native stat_result. Reject a
+    # substituted dependency receipt before consulting attacker-owned fields.
+    if type(info) is not os.stat_result:
+        _fail("arena input returned invalid file metadata")
+    return info
+
+
 def _identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
+    info = _native_stat(info)
     return (
         info.st_dev,
         info.st_ino,
@@ -75,13 +84,14 @@ def _parent_identity(path: Path) -> tuple[int, int]:
     except Exception as error:
         message = "arena input parent directory changed"
         raise StudyFileError(message) from error
+    parent = _native_stat(parent)
     if not stat.S_ISDIR(parent.st_mode):
         _fail("arena input parent directory changed")
     return parent.st_dev, parent.st_ino
 
 
 def _admit_path(path: Path, limit: int) -> os.stat_result:
-    original = path.lstat()
+    original = _native_stat(path.lstat())
     if not stat.S_ISREG(original.st_mode):
         _fail("arena input must be a regular file, not a link or device")
     if original.st_size > limit:
@@ -160,7 +170,7 @@ def _read_descriptor(
     try:
         with _open_study(path) as stream:
             try:
-                opened = os.fstat(stream.fileno())
+                opened = _native_stat(os.fstat(stream.fileno()))
                 if not stat.S_ISREG(opened.st_mode) or (
                     _identity(opened) != _identity(before)
                 ):
@@ -168,7 +178,7 @@ def _read_descriptor(
                 if opened.st_size > limit:
                     _fail("arena input exceeds 16 MiB limit")
                 data = _read_complete(stream, size=opened.st_size)
-                completed = os.fstat(stream.fileno())
+                completed = _native_stat(os.fstat(stream.fileno()))
                 if _identity(completed) != _identity(opened):
                     _fail("arena input changed during read")
             except Exception as error:
@@ -193,7 +203,7 @@ def _admit_completion(
     *,
     limit: int,
 ) -> None:
-    after = path.lstat()
+    after = _native_stat(path.lstat())
     if not stat.S_ISREG(after.st_mode) or _identity(after) != _identity(opened):
         _fail("arena input path changed during read")
     if len(data) > limit:
