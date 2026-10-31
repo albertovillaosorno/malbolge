@@ -486,30 +486,43 @@ def _measured_limited(
     time_executable = _system_tool(RSS_TOOL)
     if time_executable is None:
         _fail("bounded target peak RSS requires GNU time")
-    with tempfile.TemporaryDirectory(
-        dir=_ROOT / ".temp", prefix="arena-child-rss-"
-    ) as folder:
-        report = Path(folder) / "rss.txt"
-        result = _run(
-            [
-                time_executable,
-                "--format=%M",
-                "--output",
-                str(report),
-                "--",
-                *_limited_command(command, enforce=True),
-            ],
-            limits=_ProcessLimits(
-                timeout_seconds,
-                DEFAULT_STDOUT_LIMIT,
-                DEFAULT_STDERR_LIMIT,
-            ),
-            input_bytes=input_bytes,
-        )
-        if result.returncode != 0:
-            _fail("bounded target GNU time requires successful child exit")
-        raw = _rss_report_bytes(report)
-        return result, _parse_rss_report(raw), raw
+    primary: BaseException | None = None
+    try:
+        with tempfile.TemporaryDirectory(
+            dir=_ROOT / ".temp", prefix="arena-child-rss-"
+        ) as folder:
+            try:
+                report = Path(folder) / "rss.txt"
+                result = _run(
+                    [
+                        time_executable,
+                        "--format=%M",
+                        "--output",
+                        str(report),
+                        "--",
+                        *_limited_command(command, enforce=True),
+                    ],
+                    limits=_ProcessLimits(
+                        timeout_seconds,
+                        DEFAULT_STDOUT_LIMIT,
+                        DEFAULT_STDERR_LIMIT,
+                    ),
+                    input_bytes=input_bytes,
+                )
+                if result.returncode != 0:
+                    _fail("bounded target GNU time requires successful child exit")
+                raw = _rss_report_bytes(report)
+                return result, _parse_rss_report(raw), raw
+            except BaseException as error:
+                primary = error
+                raise
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+        if primary is not None and error is not primary:
+            # Directory cleanup must not replace the original child failure.
+            primary.add_note(f"bounded target RSS cleanup also failed: {error}")
+            raise primary from error
+        message = "bounded target RSS directory access failed"
+        raise TargetProcessError(message) from error
 
 
 def invoke_limited_measured(

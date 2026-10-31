@@ -576,6 +576,74 @@ def test_measured_child_rejects_malformed_original_command_before_tools(
     assert not tools_called
 
 
+@pytest.mark.parametrize("phase", ["constructor", "enter", "exit"])
+def test_measured_rss_directory_fault_is_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """Storage setup/cleanup failures cannot escape raw host exceptions."""
+
+    class BrokenDirectory:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            _ = (args, kwargs)
+            if phase == "constructor":
+                raise OSError("injected RSS directory creation failure")
+
+        def __enter__(self) -> str:
+            if phase == "enter":
+                raise OSError("injected RSS directory entry failure")
+            return "/ignored-test-receipt-directory"
+
+        def __exit__(self, *args: object) -> None:
+            _ = args
+            if phase == "exit":
+                raise OSError("injected RSS directory cleanup failure")
+
+    def completed(*args: object, **kwargs: object) -> sp.CompletedProcess[bytes]:
+        _ = (args, kwargs)
+        return sp.CompletedProcess([sys.executable], 0, b"", b"")
+
+    monkeypatch.setattr(target_process.tempfile, "TemporaryDirectory", BrokenDirectory)
+    monkeypatch.setattr(target_process, "require_child_rss_measurement", lambda: None)
+    monkeypatch.setattr(target_process, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(target_process, "_run", completed)
+    monkeypatch.setattr(target_process, "_rss_report_bytes", lambda _path: b"10\n")
+    with pytest.raises(target_process.TargetProcessError, match="RSS directory") as failure:
+        target_process.invoke_limited_measured(_child("pass"))
+    assert isinstance(failure.value.__cause__, OSError)
+
+
+def test_measured_rss_cleanup_preserves_primary_child_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A secondary temp cleanup error cannot hide a primary subprocess error."""
+
+    class BrokenCleanupDirectory:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            _ = (args, kwargs)
+
+        def __enter__(self) -> str:
+            return "/ignored-test-receipt-directory"
+
+        def __exit__(self, *args: object) -> None:
+            _ = args
+            raise OSError("injected secondary RSS cleanup failure")
+
+    def failed_child(*args: object, **kwargs: object) -> sp.CompletedProcess[bytes]:
+        _ = (args, kwargs)
+        raise target_process.TargetProcessError("primary child capture failure")
+
+    monkeypatch.setattr(
+        target_process.tempfile, "TemporaryDirectory", BrokenCleanupDirectory
+    )
+    monkeypatch.setattr(target_process, "require_child_rss_measurement", lambda: None)
+    monkeypatch.setattr(target_process, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(target_process, "_run", failed_child)
+    with pytest.raises(target_process.TargetProcessError, match="primary child") as failure:
+        target_process.invoke_limited_measured(_child("pass"))
+    assert any("RSS cleanup also failed" in note for note in failure.value.__notes__)
+
+
 @pytest.mark.parametrize(
     ("launcher", "uses_input"),
     [
