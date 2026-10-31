@@ -1837,7 +1837,7 @@ def _close_raw_descriptor_preserving_primary(
     try:
         if os.close(descriptor) is not None:
             _fail("raw descriptor close receipt must be None")
-    except (OSError, ValueError, RuntimeError) as close_error:
+    except _OUTPUT_STREAM_ERRORS as close_error:
         BaseException.add_note(
             original_error,
             f"{context} also failed: {_host_error_detail(close_error)}"
@@ -2282,7 +2282,7 @@ def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
         )
     except ProgressSidecarError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         _fail(f"progress writer lock identity cannot be verified: {_host_error_detail(error)}")
     if not stat.S_ISREG(opened.st_mode):
         _fail("progress writer lock opened descriptor must be a regular file")
@@ -2381,7 +2381,7 @@ def _cleanup_mutable_temporary(
         if not _owned_temporary_still_named(temporary, identity):
             return
         temporary.unlink(missing_ok=True)
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         if primary_error is not None:
             BaseException.add_note(
                 primary_error,
@@ -2410,7 +2410,7 @@ def _temporary_descriptor_identity(descriptor: int) -> tuple[int, int]:
     _ = _admit_native_descriptor(descriptor, "progress temporary")
     try:
         opened = _admit_native_stat(os.fstat(descriptor), "progress temporary")
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         _close_unadmitted_temporary(descriptor, error)
         _fail_with_source(
             f"progress temporary descriptor cannot be inspected: {_host_error_detail(error)}",
@@ -2930,7 +2930,7 @@ def _cleanup_immutable_temporary(
         if not _owned_temporary_still_named(temporary, identity):
             return
         temporary.unlink(missing_ok=True)
-    except (OSError, ValueError, RuntimeError) as error:
+    except _OUTPUT_STREAM_ERRORS as error:
         if primary_error is not None:
             BaseException.add_note(
                 primary_error,

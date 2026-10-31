@@ -300,10 +300,17 @@ Descriptor cleanup diagnostics remain inspectable without replacing the
 stable public failure category.
 
 Raw-descriptor cleanup during failed read-stream or writer-lock stream
-construction follows the same precedence, including `ValueError` or
-`RuntimeError` from `os.close`. Exact stream-construction errors remain
-primary even after the failed raw close; writer locks cannot enter the
-serialization region on that path.
+construction follows the same precedence, including `ValueError`,
+`RuntimeError`, `TypeError`, and `AttributeError` from `os.close`. Exact
+stream-construction errors remain primary even after the failed raw close;
+writer locks cannot enter the serialization region on that path. The same
+secondary-error rule covers staged descriptor ownership transfer and payload
+stream construction. Unexpected `TypeError` or `AttributeError` from the
+initial temporary-descriptor stat closes that descriptor and returns a typed
+admission failure, rather than leaking staging ownership. Acquired-lock inode
+probes also convert those faults to typed rejections before publication.
+Mutable and immutable staging unlink failures of these types retain the
+original write failure or exact committed-generation evidence, respectively.
 Deterministic parent and regular-inode substitutions cover both progress-pointer
 and immutable checkpoint reads, including descriptor cleanup. A further
 read-completion regression replaces the progress parent with a linked directory

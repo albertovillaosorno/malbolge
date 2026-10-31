@@ -631,6 +631,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   close completion. Twelve red-first forged-receipt tests confirm the
   original admission fault remains primary while a false close success is
   recorded as a secondary note, without permitting publication.
+  Eighteen further red-first cases cover native `TypeError` and
+  `AttributeError` in raw-descriptor close, acquired-lock inode probing,
+  initial staging descriptor stat and mutable/immutable temporary cleanup.
+  These faults now preserve the original error and its secondary diagnostic,
+  close unadmitted staging descriptors, reject lock admission before writing,
+  and retain the exact committed immutable-generation path when appropriate.
   Writer-lock opening now wraps unexpected native `TypeError`/`AttributeError`
   as typed prepublication errors. POSIX directory open, sync and close handle
   those types after generation publication: uncertain sync retains the

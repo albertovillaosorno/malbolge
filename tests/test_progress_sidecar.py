@@ -3482,8 +3482,8 @@ def test_progress_read_closes_descriptor_on_stream_open_failure(
 
 
 @pytest.mark.parametrize(
-    "close_type", [OSError, ValueError, RuntimeError],
-    ids=["os-error", "value-error", "runtime-error"],
+    "close_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError],
+    ids=["os-error", "value-error", "runtime-error", "type-error", "attribute-error"],
 )
 def test_progress_read_preserves_stream_failure_before_close_failure(
     tmp_path: Path,
@@ -3521,8 +3521,8 @@ def test_progress_read_preserves_stream_failure_before_close_failure(
 
 
 @pytest.mark.parametrize(
-    "close_type", [ValueError, RuntimeError],
-    ids=["value-error", "runtime-error"],
+    "close_type", [ValueError, RuntimeError, TypeError, AttributeError],
+    ids=["value-error", "runtime-error", "type-error", "attribute-error"],
 )
 def test_read_stream_open_retains_primary_when_raw_cleanup_is_non_oserror(
     tmp_path: Path,
@@ -4651,8 +4651,8 @@ def test_writer_lock_closes_rejected_open_descriptor(
 
 
 @pytest.mark.parametrize(
-    "close_type", [ValueError, RuntimeError],
-    ids=["value-error", "runtime-error"],
+    "close_type", [ValueError, RuntimeError, TypeError, AttributeError],
+    ids=["value-error", "runtime-error", "type-error", "attribute-error"],
 )
 def test_writer_lock_stream_open_retains_primary_on_unusual_fd_close(
     tmp_path: Path,
@@ -4693,7 +4693,7 @@ def test_writer_lock_stream_open_retains_primary_on_unusual_fd_close(
         assert not destination.exists()
 
 
-@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError, TypeError, AttributeError])
 def test_writer_lock_identity_probe_failure_is_typed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -6326,7 +6326,9 @@ def test_directory_close_failure_preserves_primary_sync_failure(
     assert getattr(primary_error, "__notes__", None) == [expected_note]
 
 
-@pytest.mark.parametrize("cleanup_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "cleanup_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_payload_descriptor_fdopen_failure_closes_raw_descriptor(
     monkeypatch: pytest.MonkeyPatch,
     cleanup_type: type[Exception],
@@ -6909,7 +6911,9 @@ def test_partial_generation_reports_committed_durability_failure(
     assert progress.read(destination) == sidecar
 
 
-@pytest.mark.parametrize("cleanup_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "cleanup_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_checkpoint_generation_reports_committed_temp_cleanup_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -8995,6 +8999,8 @@ def _inject_temporary_descriptor_admission_failure(
     context: pytest.MonkeyPatch,
     staged_descriptors: list[int],
     message: str,
+    *,
+    failure_type: type[Exception] = OSError,
 ) -> None:
     original_mkstemp = tempfile.mkstemp
     original_fstat = os.fstat
@@ -9010,7 +9016,7 @@ def _inject_temporary_descriptor_admission_failure(
 
     def fail_staged_fstat(descriptor: int) -> os.stat_result:
         if descriptor in staged_descriptors:
-            raise OSError(message)
+            raise failure_type(message)
         return original_fstat(descriptor)
 
     context.setattr(tempfile, "mkstemp", tracked_mkstemp)
@@ -9062,12 +9068,16 @@ def _publish_for_temporary_admission_test(
     return writer(destination, b"expected-checkpoint", platform=os.name)
 
 
+@pytest.mark.parametrize(
+    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
 @pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
 def test_temporary_descriptor_admission_failure_closes_raw_fd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
     kind: str,
+    failure_type: type[Exception],
 ) -> None:
     """Failure before writer stream ownership must close mkstemp's fd."""
     staged_descriptors: list[int] = []
@@ -9081,7 +9091,7 @@ def test_temporary_descriptor_admission_failure_closes_raw_fd(
 
     with monkeypatch.context() as context:
         _inject_temporary_descriptor_admission_failure(
-            context, staged_descriptors, message
+            context, staged_descriptors, message, failure_type=failure_type
         )
         with pytest.raises(ERROR, match=message):
             _ = _publish_for_temporary_admission_test(
@@ -10698,7 +10708,9 @@ def test_write_atomic_preserves_write_before_close_failure(
     assert not Path(candidate.progress_path).exists()
 
 
-@pytest.mark.parametrize("cleanup_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "cleanup_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_write_atomic_preserves_primary_before_cleanup_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
