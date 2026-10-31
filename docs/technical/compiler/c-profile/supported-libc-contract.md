@@ -30,6 +30,11 @@ This contract governs:
 - `tests/tidy/libc/` and `tests/tidy/libc-rejected/` as executable boundary
   fixtures.
 
+The source-level libc preflight reads a stable regular-file snapshot through a
+no-follow descriptor and rechecks its bytes, inode, extent, and timestamps
+after Clang AST parsing. File replacement or concurrent source edits invalidate
+the analysis, including a same-byte replacement with a different inode.
+
 This contract lane does not own heap/stream integration, formatting, or runtime
 scratch/startup realization. Those facilities consume the completed
 `guest-runtime-and-allocator` semantics downstream.

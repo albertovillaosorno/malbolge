@@ -638,3 +638,41 @@ def test_manual_validator_runs_libc_preflight_before_tidy() -> None:
     assert rejected.returncode == 1
     assert c_libc_source.DIAGNOSTIC_UNAVAILABLE in rejected.stderr
     assert MALLOC_ROUTINE in rejected.stderr
+
+
+def test_libc_preflight_rejects_source_rewrite_during_ast(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Guest libc AST must not refer to bytes changed after snapshot."""
+    source = tmp_path / "rewritten.c"
+    _ = source.write_text("int one;\n", encoding="utf-8")
+
+    def rewrite_source(_path: Path, _config: object) -> object:
+        _ = (_path, _config)
+        _ = source.write_text("int two;\n", encoding="utf-8")
+        return {}
+
+    monkeypatch.setattr(c_libc_source, "_run_ast", rewrite_source)
+    with pytest.raises(c_libc_source.LibcSourceError, match="changed"):
+        _ = c_libc_source.analyze_source(source)
+
+
+def test_libc_preflight_rejects_same_byte_inode_swap_during_ast(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-byte regular source substitution invalidates the libc AST."""
+    source = tmp_path / "swapped.c"
+    content = "int one;\n"
+    _ = source.write_text(content, encoding="utf-8")
+
+    def swap_source(_path: Path, _config: object) -> object:
+        _ = (_path, _config)
+        source.unlink()
+        _ = source.write_text(content, encoding="utf-8")
+        return {}
+
+    monkeypatch.setattr(c_libc_source, "_run_ast", swap_source)
+    with pytest.raises(c_libc_source.LibcSourceError, match="changed"):
+        _ = c_libc_source.analyze_source(source)
