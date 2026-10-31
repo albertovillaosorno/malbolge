@@ -151,11 +151,12 @@ def test_unencodable_paths_fail_before_any_rename(
 
 
 def test_windows_route_uses_path_rename(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Route Windows publication through the host no-overwrite rename API."""
-    staging = Path("staging")
-    destination = Path("destination")
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    destination = tmp_path / "destination"
     calls: list[tuple[Path, Path]] = []
 
     def record_rename(path: Path, target: Path) -> Path:
@@ -169,10 +170,13 @@ def test_windows_route_uses_path_rename(
     assert calls == [(staging, destination)]
 
 
-def test_linux_route_uses_renameat2(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_linux_route_uses_renameat2(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Route Linux publication through renameat2 with no-replace semantics."""
-    staging = Path("staging")
-    destination = Path("destination")
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    destination = tmp_path / "destination"
     calls: list[tuple[Path, Path]] = []
 
     def record_rename(source: Path, target: Path) -> None:
@@ -185,12 +189,14 @@ def test_linux_route_uses_renameat2(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls == [(staging, destination)]
 
 
-def test_unsupported_host_fails_closed() -> None:
+def test_unsupported_host_fails_closed(tmp_path: Path) -> None:
     """Do not emulate atomic no-replace semantics on an unsupported host."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
     with pytest.raises(OSError, match="unsupported") as caught:
         publication.publish_directory_no_replace(
-            Path("staging"),
-            Path("destination"),
+            staging,
+            tmp_path / "destination",
             os_name="posix",
             platform="unsupported",
         )
@@ -215,3 +221,32 @@ def test_host_collision_preserves_both_directories(tmp_path: Path) -> None:
 
     assert (staging / "ours.txt").read_bytes() == _OURS
     assert (destination / "foreign.txt").read_bytes() == _FOREIGN
+
+
+@pytest.mark.parametrize("staging_is_file", [True, False])
+def test_publication_rejects_non_directory_staging(
+    tmp_path: Path, *, staging_is_file: bool
+) -> None:
+    """Never publish a regular file or a symlink as a staged directory."""
+    if os.name != _WINDOWS_OS_NAME and sys.platform != _LINUX_PLATFORM:
+        pytest.skip("host has no supported no-replace directory primitive")
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    if staging_is_file:
+        _ = staging.write_bytes(_OURS)
+    else:
+        directory = tmp_path / "actual-directory"
+        directory.mkdir()
+        try:
+            staging.symlink_to(directory, target_is_directory=True)
+        except OSError as error:
+            pytest.skip(f"symlink creation unavailable: {error}")
+
+    with pytest.raises(OSError, match=r"staging.*directory") as rejected:
+        publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.ENOTDIR
+    if staging_is_file:
+        assert staging.read_bytes() == _OURS
+    else:
+        assert staging.is_symlink()
+    assert not destination.exists()

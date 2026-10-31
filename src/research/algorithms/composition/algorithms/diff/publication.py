@@ -39,6 +39,7 @@ import ctypes
 import errno
 import os
 from pathlib import Path
+import stat
 import sys
 from typing import Final
 from typing import Protocol
@@ -107,6 +108,21 @@ def _require_fs_encodable_path(path: Path) -> None:
         ) from error
 
 
+def _require_staging_directory(staging: Path) -> None:
+    """Reject non-directory payloads before a no-replace filesystem rename.
+
+    Raises:
+        OSError: Staging is missing or not a real directory.
+
+    """
+    if not stat.S_ISDIR(staging.lstat().st_mode):
+        raise OSError(
+            errno.ENOTDIR,
+            "staging must be an existing directory, not a file or symlink",
+            staging,
+        )
+
+
 def _validate_publication_inputs(
     staging: object,
     destination: object,
@@ -138,6 +154,7 @@ def _validate_publication_inputs(
             "directory publication staging and destination must differ",
             destination,
         )
+    _require_staging_directory(staging)
     return staging, destination, os_name, platform
 
 
