@@ -721,7 +721,7 @@ def _require_git_commit(commit: str) -> None:
         _fail("target audit Git commit object executable path invalid")
     try:
         _ = os.fsencode(executable)
-        mode = Path(executable).lstat().st_mode
+        metadata = Path(executable).lstat()
         allowed = os.access(executable, os.X_OK)
     except (
         OSError,
@@ -733,12 +733,25 @@ def _require_git_commit(commit: str) -> None:
     ) as error:
         message = "target audit Git commit object executable unavailable"
         raise TargetEchoAuditError(message) from error
-    if not stat.S_ISREG(mode) or not allowed:
+    if type(metadata) is not os.stat_result:
+        _fail("target audit Git commit object requires native executable metadata")
+    if not stat.S_ISREG(metadata.st_mode) or allowed is not True:
         _fail("target audit Git commit object requires physical executable")
     # Ambient Git object/database selectors cannot redirect local admission.
-    clean_env = {
-        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
-    }
+    # Reject foreign environment names before their startswith hooks can forge
+    # the exclusion of GIT_* controls or inject foreign subprocess values.
+    try:
+        clean_env: dict[str, str] = {}
+        for name, value in os.environ.items():
+            if type(name) is not str or type(value) is not str:
+                _fail("target audit Git environment requires native strings")
+            if not name.startswith("GIT_"):
+                clean_env[name] = value
+    except TargetEchoAuditError:
+        raise
+    except Exception as error:
+        message = "target audit Git environment inspection failed"
+        raise TargetEchoAuditError(message) from error
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [executable, "cat-file", "-t", commit],
@@ -765,6 +778,8 @@ def _require_git_commit(commit: str) -> None:
         or completed.returncode != 0
         or type(completed.stdout) is not bytes
         or completed.stdout.strip() != GIT_COMMIT_TYPE
+        or type(completed.stderr) is not bytes
+        or completed.stderr != b""
     ):
         _fail("target audit source revision is not a local Git commit object")
 

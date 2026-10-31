@@ -1923,6 +1923,116 @@ def test_target_audit_git_object_rejects_noncanonical_process_receipt(
         audit._require_git_commit("a" * 40)
 
 
+class _HostileGitStat:
+    """A foreign lstat result cannot authorize a Git executable."""
+
+    @property
+    def st_mode(self) -> int:
+        pytest.fail("foreign Git stat metadata reached field inspection")
+
+
+def test_target_audit_git_rejects_foreign_lstat_before_field_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Git provenance cannot use fabricated executable metadata."""
+    git = tmp_path / "git"
+    git.write_bytes(b"executable")
+    git.chmod(0o700)
+    native_lstat = audit.Path.lstat
+    monkeypatch.setattr(audit.shutil, "which", lambda *_a, **_kw: str(git))
+
+    def hostile_lstat(path: Path) -> os.stat_result:
+        if path == git:
+            return cast("os.stat_result", cast("object", _HostileGitStat()))
+        return native_lstat(path)
+
+    monkeypatch.setattr(audit.Path, "lstat", hostile_lstat)
+    with pytest.raises(audit.TargetEchoAuditError, match="Git"):
+        audit._require_git_commit("a" * 40)
+
+
+@pytest.mark.parametrize("access", [None, 0, 1, "yes", object()])
+def test_target_audit_git_requires_native_executable_access_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, access: object
+) -> None:
+    """A truthy foreign access result is not proof of executable status."""
+    git = tmp_path / "git"
+    git.write_bytes(b"executable")
+    git.chmod(0o700)
+    monkeypatch.setattr(audit.shutil, "which", lambda *_a, **_kw: str(git))
+    monkeypatch.setattr(audit.os, "access", lambda *_a, **_kw: access)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("foreign Git access receipt reached subprocess")
+
+    monkeypatch.setattr(audit.sp, "run", forbidden)
+    with pytest.raises(audit.TargetEchoAuditError, match="Git"):
+        audit._require_git_commit("a" * 40)
+
+
+class _HostileGitEnvKey(str):
+    """A string subclass can forge a GIT_* exclusion check."""
+
+    def startswith(self, *_args: object, **_kwargs: object) -> bool:
+        pytest.fail("foreign Git environment key hook executed")
+
+
+class _HostileGitEnvValue(str):
+    """A nonnative process environment value is not admissible."""
+
+
+@pytest.mark.parametrize("field", ["key", "value"])
+def test_target_audit_git_rejects_foreign_environment_before_child(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Foreign Git selectors cannot redirect local object-store admission."""
+    if field == "key":
+        foreign: dict[str, str] = {_HostileGitEnvKey("GIT_DIR"): "/elsewhere"}
+    else:
+        foreign = {"PATH": _HostileGitEnvValue("/untrusted")}
+    monkeypatch.setattr(audit.os, "environ", foreign)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("foreign Git environment reached subprocess")
+
+    monkeypatch.setattr(audit.sp, "run", forbidden)
+    with pytest.raises(audit.TargetEchoAuditError, match="Git environment"):
+        audit._require_git_commit("a" * 40)
+
+
+@pytest.mark.parametrize("failure_type", [OSError, RuntimeError, ValueError])
+def test_target_audit_git_environment_iteration_faults_stay_typed(
+    monkeypatch: pytest.MonkeyPatch, failure_type: type[Exception]
+) -> None:
+    """Environment inspection faults cannot become untyped Git exceptions."""
+    fault = failure_type("injected Git environment iteration failure")
+
+    class BrokenEnvironment(dict[str, str]):
+        def items(self):  # type: ignore[override]
+            raise fault
+
+    monkeypatch.setattr(audit.os, "environ", BrokenEnvironment())
+    with pytest.raises(audit.TargetEchoAuditError, match="Git environment") as caught:
+        audit._require_git_commit("a" * 40)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("stderr", [None, False, 0, "warning", b"warning"])
+def test_target_audit_git_requires_exact_empty_binary_stderr_receipt(
+    monkeypatch: pytest.MonkeyPatch, stderr: object
+) -> None:
+    """A success-looking Git stdout cannot hide a noncanonical error channel."""
+    monkeypatch.setattr(
+        audit.sp,
+        "run",
+        lambda *_a, **_kw: sp.CompletedProcess(
+            ["git"], 0, b"commit\n", cast("bytes", stderr)
+        ),
+    )
+    with pytest.raises(audit.TargetEchoAuditError, match="Git commit object"):
+        audit._require_git_commit("a" * 40)
+
+
 def test_opt_in_git_object_admission_confirms_real_source_revision(
     retained: tuple[Path, dict[str, Any], str],
 ) -> None:
