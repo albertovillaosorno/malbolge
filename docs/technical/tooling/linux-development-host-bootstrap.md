@@ -56,23 +56,42 @@ Matching Git and already-installed Rustup channels are imported below
 repository-local versioned roots. Missing Rustup channels are observations only;
 bootstrap does not download them.
 
-Jig `check` can resolve ChkTeX through ambient `PATH` even when `doctor`
-correctly identifies the configured repository-local executable. The declared
-ChkTeX version is now 1.7.10; an older system 1.7.9 executable cannot satisfy
-that authority. Install a verified native 1.7.10 executable as the physical,
-executable `.dependencies/bin/chktex` file (not a symlink or a wrapper pointing
-to an older system binary). Confirm its `--version` output before validation.
-Linux validation supports `python3.14 -B -m scripts.validate.jig_runner check`.
-This entrypoint constrains tool lookup to `.dependencies/bin` and the system
-default, without altering the installed Jig, its policies, or its exit status.
+Jig `doctor` checks the configured repository-local ChkTeX launcher, but
+Jig `check` independently attests the first eligible **external** `chktex`
+on `PATH`: it excludes executables inside the repository before selecting
+an external candidate and regenerates `.dependencies/bin/chktex` as an
+attested launcher. The declared version is 1.7.10, so the system 1.7.9 at
+`/usr/bin/chktex` does not satisfy the check even when the local launcher
+reports 1.7.10. Replacing the generated repository launcher with a native
+binary does not resolve the external-tool attestation.
+
+For a host whose default system ChkTeX is older, install a verified, direct
+executable ChkTeX 1.7.10 **outside the repository**, such as
+`$HOME/.local/bin/chktex`, and confirm its `--version` output. Opt in to that
+specific external directory when running validation, for example:
+
+```sh
+PYTHONPATH=src/automation/repository/composition \
+MALBOLGE_JIG_EXTERNAL_TOOL_BIN="$HOME/.local/bin" \
+python3.14 -B -m scripts.validate.jig_runner check
+```
+
+The runner admits only one absolute, nonredirected external directory with a
+physical executable `chktex`; it rejects symlinks in either path, missing
+executables, path-list injection and directories inside the repository. The
+explicit directory sits after `.dependencies/bin` and before the system
+default on the child `PATH`. With no opt-in, the original pinned-and-system
+selection remains unchanged. Jig still owns version/digest attestation,
+launcher regeneration, validation policy and exact exit status; the runner
+does not bypass any tool proof. Prefer a dedicated directory containing only
+the intended external tool if additional user-local commands should not be
+visible to Jig.
 
 The same entrypoint supports `doctor` and `validate` and fails if either pinned
-ChkTeX or LaTeXmk launcher is missing. Jig validates launcher admission as
-physical executable regular files with no symlink/junction in the file or any
-ancestor directory. Redirected paths and nonregular nodes (including FIFOs)
-fail before the validation `PATH` is constructed; a linked alias cannot silently
-substitute an ambient version for the repository-pinned launcher. Set
-`PYTHONPATH=src/automation/repository/composition` before invoking it.
+ChkTeX or LaTeXmk launcher is missing. The runner preflights its configured
+launchers as physical executable regular files with no symlink/junction in the
+file or any ancestor directory. Redirected paths and nonregular nodes
+(including FIFOs) fail before constructing the validation `PATH`.
 
 Jig consumes only repository-local validation aliases. Linux Rust linking
 receives a generated `cc` adapter that names the observed host linker explicitly

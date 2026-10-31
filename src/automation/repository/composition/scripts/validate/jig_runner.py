@@ -36,11 +36,11 @@ from __future__ import annotations
 
 import argparse
 import os
-from pathlib import Path
 import shutil
-from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from pathlib import Path
+from stat import S_ISREG
 from typing import cast
 
 from scripts.repository_root import repository_root
@@ -49,6 +49,7 @@ ROOT = repository_root(Path(__file__))
 COMMANDS = ("check", "doctor", "validate")
 PINNED_TOOLS = ("chktex", "latexmk")
 LINUX_PLATFORM = "linux"
+EXTERNAL_TOOL_BIN_VARIABLE = "MALBOLGE_JIG_EXTERNAL_TOOL_BIN"
 
 
 class JigRunnerError(RuntimeError):
@@ -84,6 +85,40 @@ def _regular_executable(path: Path) -> bool:
         return False
 
 
+def _external_tool_bin(root: Path, directory: str) -> Path:
+    """Admit a single direct native-tool directory outside this repository.
+
+    Returns:
+        The already-installed external directory; its tools remain subject
+        to Jig's own digest and version attestation.
+
+    Raises:
+        JigRunnerError: The opt-in directory or its ChkTeX is not a direct,
+            physically executable external path.
+
+    """
+    message = "invalid external Jig validation tool directory"
+    try:
+        candidate = Path(directory)
+        if (
+            not candidate.is_absolute()
+            or os.pathsep in directory
+            or ".." in candidate.parts
+            or not _unredirected_launcher(candidate)
+            or not candidate.is_dir()
+            or candidate.resolve().is_relative_to(root.resolve())
+        ):
+            raise JigRunnerError(message)
+        executable = candidate / "chktex"
+        if not _unredirected_launcher(executable) or not _regular_executable(
+            executable
+        ):
+            raise JigRunnerError(message)
+    except (OSError, ValueError) as error:
+        raise JigRunnerError(message) from error
+    return candidate
+
+
 def jig_environment(root: Path, inherited: dict[str, str]) -> dict[str, str]:
     """Put pinned host tools before ambient executable aliases.
 
@@ -107,9 +142,17 @@ def jig_environment(root: Path, inherited: dict[str, str]) -> dict[str, str]:
             message = f"missing executable Jig validation tool: {launcher}"
             raise JigRunnerError(message)
     environment = dict(inherited)
-    # Jig's external-tool discovery also probes PATH. A user-local version
-    # may override the configured tool path, so remove ambient aliases.
-    environment["PATH"] = f"{pinned_bin}{os.pathsep}{os.defpath}"
+    # Jig attests external native ChkTeX outside this repository, even though
+    # its generated launcher lives inside .dependencies/bin. Keep untrusted
+    # ambient aliases out; allow only one explicitly selected external bin
+    # before the ordinary system lookup. Jig owns the actual version proof.
+    external = inherited.get(EXTERNAL_TOOL_BIN_VARIABLE)
+    approved = (
+        f"{_external_tool_bin(root, external)}{os.pathsep}"
+        if external is not None
+        else ""
+    )
+    environment["PATH"] = f"{pinned_bin}{os.pathsep}{approved}{os.defpath}"
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["RUFF_CACHE_DIR"] = str(root / ".cache/ruff")
     return environment

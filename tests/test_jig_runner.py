@@ -37,8 +37,7 @@ from __future__ import annotations
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import TYPE_CHECKING
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -51,6 +50,12 @@ pytestmark = pytest.mark.skipif(
     sys.platform != jig_runner.LINUX_PLATFORM,
     reason="repository Jig runner uses Linux pinned tools",
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_external_tool_bin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Do not inherit a live Jig opt-in into default-path unit fixtures."""
+    monkeypatch.delenv(jig_runner.EXTERNAL_TOOL_BIN_VARIABLE, raising=False)
 
 
 def _pinned_launchers(root: Path) -> Path:
@@ -84,6 +89,60 @@ def test_environment_precedes_ambient_host_tools(tmp_path: Path) -> None:
         "PATH": "/host/local/bin:/usr/bin",
         "MARKER": "preserved",
     }
+
+
+def test_explicit_external_tool_bin_precedes_system_without_shifting_pinned(
+    tmp_path: Path,
+) -> None:
+    """Jig may attest an opt-in native tool outside the repository root."""
+    pinned = _pinned_launchers(tmp_path)
+    external = tmp_path.parent / "external-jig-native-tool"
+    external.mkdir()
+    tool = external / "chktex"
+    _ = tool.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    tool.chmod(0o700)
+    variable = "MALBOLGE_JIG_EXTERNAL_TOOL_BIN"
+    inherited = {"PATH": "/untrusted/bin", variable: str(external)}
+    environment = jig_runner.jig_environment(tmp_path, inherited)
+    assert environment["PATH"] == (
+        f"{pinned}{os.pathsep}{external}{os.pathsep}{os.defpath}"
+    )
+    assert environment[variable] == str(external)
+    assert inherited["PATH"] == "/untrusted/bin"
+
+
+@pytest.mark.parametrize("invalid", ["relative", "/tmp/first:/tmp/second", "../escape"])
+def test_external_tool_bin_rejects_ambiguous_paths(
+    tmp_path: Path, invalid: str
+) -> None:
+    """The opt-in is exactly one absolute directory, never PATH injection."""
+    _ = _pinned_launchers(tmp_path)
+    with pytest.raises(jig_runner.JigRunnerError, match="external.*directory"):
+        _ = jig_runner.jig_environment(
+            tmp_path,
+            {"MALBOLGE_JIG_EXTERNAL_TOOL_BIN": invalid},
+        )
+
+
+def test_external_tool_bin_rejects_repository_and_linked_locations(
+    tmp_path: Path,
+) -> None:
+    """External tool authority cannot resolve through the project or symlinks."""
+    _ = _pinned_launchers(tmp_path)
+    external = tmp_path.parent / "external-tool-real"
+    external.mkdir()
+    tool = external / "chktex"
+    _ = tool.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    tool.chmod(0o700)
+    linked = tmp_path.parent / "external-tool-linked"
+    linked.symlink_to(external, target_is_directory=True)
+    variable = "MALBOLGE_JIG_EXTERNAL_TOOL_BIN"
+    for invalid in [tmp_path / ".dependencies/bin", linked, tmp_path.parent / "absent"]:
+        with pytest.raises(jig_runner.JigRunnerError, match="external.*directory"):
+            _ = jig_runner.jig_environment(tmp_path, {variable: str(invalid)})
+    tool.chmod(0o600)
+    with pytest.raises(jig_runner.JigRunnerError, match="external.*directory"):
+        _ = jig_runner.jig_environment(tmp_path, {variable: str(external)})
 
 
 def test_environment_rejects_missing_or_nonexecutable_alias(
@@ -188,12 +247,14 @@ def test_runner_keeps_exact_jig_command_and_status(
         **options: object,
     ) -> sp.CompletedProcess[str]:
         environment = cast("dict[str, str]", options["env"])
-        observed.append((
-            args,
-            options["cwd"],
-            environment["PATH"],
-            options["shell"],
-        ))
+        observed.append(
+            (
+                args,
+                options["cwd"],
+                environment["PATH"],
+                options["shell"],
+            )
+        )
         assert options["check"] is False
         return sp.CompletedProcess(args, exit_code)
 
@@ -357,7 +418,9 @@ def test_runner_rejects_foreign_child_completion(
         _ = jig_runner.run_jig("check", root=tmp_path)
 
 
-@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError, TypeError, AttributeError])
+@pytest.mark.parametrize(
+    "fault_type", [ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_runner_types_host_launch_faults(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -374,12 +437,16 @@ def test_runner_types_host_launch_faults(
         raise fault
 
     monkeypatch.setattr("scripts.validate.jig_runner.sp.run", fail_launch)
-    with pytest.raises(jig_runner.JigRunnerError, match="external Jig execution failed") as caught:
+    with pytest.raises(
+        jig_runner.JigRunnerError, match="external Jig execution failed"
+    ) as caught:
         _ = jig_runner.run_jig("check", root=tmp_path)
     assert caught.value.__cause__ is fault
 
 
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+)
 def test_runner_types_executable_discovery_faults(
     monkeypatch: pytest.MonkeyPatch,
     fault_type: type[Exception],
