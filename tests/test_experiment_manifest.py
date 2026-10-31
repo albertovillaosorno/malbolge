@@ -363,6 +363,13 @@ def test_manifest_reader_rejects_in_place_change_after_read(
     assert modified
 
 
+def test_manifest_nested_array_parser_capacity_is_typed() -> None:
+    """Deep but bounded TOML must not leak raw host RecursionError."""
+    nested = "[" * 1000 + "1" + "]" * 1000
+    text = _run_manifest() + "\nparser_probe = " + nested + "\n"
+    _expect_failure(text, "invalid TOML exceeds host parser capacity")
+
+
 def test_manifest_oversized_decimal_token_fails_typed() -> None:
     """Host parser digit limits cannot leak untyped ValueErrors."""
     limit = sys.get_int_max_str_digits()

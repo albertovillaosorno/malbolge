@@ -83,10 +83,48 @@ EXTRA_ARTIFACT = "extra"
 POSIX_PLATFORM = "posix"
 NOT_AUTHENTICATED = "not authenticated"
 AUDIT_MESSAGE = "target audit"
+RSS_RUN_RELATIVE = "run.toml"
 BAD_PROFILE_PROVENANCE = 'implementation = "forged/fake_compiler.py"'
 REAL_PROFILE_PROVENANCE = (
     'implementation = "benchmarks/arena/target_echo_reference.py"'
 )
+
+
+@pytest.mark.parametrize(
+    ("payload", "source_error"),
+    [
+        (b"parser_probe = " + b"[" * 1000 + b"1" + b"]" * 1000, RecursionError),
+        (b"parser_probe = " + b"9" * 5000, ValueError),
+    ],
+    ids=["array-depth", "integer-digits"],
+)
+def test_retained_rss_extension_contains_toml_parser_capacity_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: bytes,
+    source_error: type[Exception],
+) -> None:
+    """Run RSS sidecars cannot leak raw TOML host-capacity exceptions."""
+    manifest = b"[arena_rss]\n" + payload
+
+    def read_manifest(root: Path, relative: str, *, limit: int) -> bytes:
+        """Supply the adversarial bounded run bytes, not fixture disk state.
+
+        Returns:
+            Hostile but below-limit TOML source bytes.
+
+        """
+        assert root == audit._ROOT
+        assert relative == RSS_RUN_RELATIVE
+        assert limit == evidence.MAX_MANIFEST_BYTES
+        return manifest
+
+    monkeypatch.setattr(audit.evidence, "read_bounded_regular", read_manifest)
+    with pytest.raises(
+        audit.TargetEchoAuditError,
+        match="target RSS run manifest is invalid TOML",
+    ) as error:
+        audit._rss_digest({"experiment_manifest": RSS_RUN_RELATIVE}, version=1)
+    assert type(error.value.__cause__) is source_error
 
 
 @pytest.mark.skipif(

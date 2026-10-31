@@ -1134,7 +1134,7 @@ def _rss_digest(
     )
     try:
         table = tomllib.loads(manifest.decode("utf-8")).get(RSS_HASH_TABLE)
-    except (tomllib.TOMLDecodeError, UnicodeError) as error:
+    except (ValueError, RecursionError, UnicodeError) as error:
         message = "target RSS run manifest is invalid TOML"
         raise TargetEchoAuditError(message) from error
     if version is None:

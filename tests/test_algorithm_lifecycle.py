@@ -111,6 +111,13 @@ def _expect_failure(text: str, message: str) -> None:
     raise AssertionError(failure)
 
 
+def test_lifecycle_nested_array_parser_capacity_is_typed() -> None:
+    """Deep but bounded TOML must not leak raw host RecursionError."""
+    nested = "[" * 1000 + "1" + "]" * 1000
+    text = _base(validator.EXPERIMENTAL) + "\nparser_probe = " + nested + "\n"
+    _expect_failure(text, "invalid TOML exceeds host parser capacity")
+
+
 def test_lifecycle_decimal_digit_limit_fails_typed() -> None:
     """Host parser capacity cannot escape as a raw integer ValueError."""
     limit = sys.get_int_max_str_digits()

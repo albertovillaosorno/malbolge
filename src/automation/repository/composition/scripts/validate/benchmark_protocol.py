@@ -245,7 +245,7 @@ def _parse_document(text: str) -> dict[str, object]:
         parsed = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:
         _fail(f"invalid TOML: {error}")
-    except ValueError:
+    except (ValueError, RecursionError):
         _fail("invalid TOML exceeds host parser capacity")
     document = _mapping(parsed, "benchmark")
     version = document.get("schema_version")

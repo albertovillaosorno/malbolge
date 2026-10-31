@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 import pytest
 
 from benchmarks.arena import historical_pairs
+from scripts.validate import benchmark_protocol
 
 REPO = Path(__file__).resolve().parents[3]
 PREFIX = "2026-09-04-classic-prefix-decomposition-linux"
@@ -406,10 +407,17 @@ def test_historical_source_changes_during_report_are_rejected(
         historical_pairs.build_report(tmp_path, TEMP)
 
 
-@pytest.mark.parametrize("filename", ["experiment.toml", "benchmark.toml"])
+@pytest.mark.parametrize(
+    ("filename", "source_error"),
+    [
+        ("experiment.toml", RecursionError),
+        ("benchmark.toml", benchmark_protocol.BenchmarkProtocolError),
+    ],
+)
 def test_nested_historical_toml_capacity_failure_is_typed(
     tmp_path: Path,
     filename: str,
+    source_error: type[Exception],
 ) -> None:
     """A bounded source TOML cannot leak parser recursion into the operator."""
     root = _copy_source(tmp_path, PREFIX)
@@ -424,7 +432,7 @@ def test_nested_historical_toml_capacity_failure_is_typed(
         match=HISTORICAL_SOURCE_INCONSISTENT,
     ) as error:
         historical_pairs.build_report(tmp_path, TEMP)
-    assert isinstance(error.value.__cause__, RecursionError)
+    assert isinstance(error.value.__cause__, source_error)
 
 
 def test_historical_cli_rejects_deep_toml_without_partial_stdout(
