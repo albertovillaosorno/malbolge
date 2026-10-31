@@ -64,7 +64,11 @@ def _fail(message: str) -> Never:
 
 
 def _bounded_case(case: dict[str, Any]) -> None:
-    if type(case) is not dict or set(case) != CASE_FIELDS:
+    if (
+        type(case) is not dict
+        or any(type(key) is not str for key in case)
+        or set(case) != CASE_FIELDS
+    ):
         _fail("challenge replay requires an exact arena case")
     if (
         type(case["family"]) is not str
@@ -98,7 +102,11 @@ def _regenerate(
 
 
 def _admit_files(files: dict[str, bytes]) -> None:
-    if type(files) is not dict or set(files) != set(BUNDLE_FILES):
+    if (
+        type(files) is not dict
+        or any(type(key) is not str for key in files)
+        or set(files) != set(BUNDLE_FILES)
+    ):
         _fail("challenge bundle must include all three canonical files")
     if any(type(files[name]) is not bytes for name in BUNDLE_FILES):
         _fail("challenge bundle payloads must be byte strings")

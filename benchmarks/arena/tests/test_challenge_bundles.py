@@ -283,6 +283,33 @@ def test_direct_bundle_rejects_foreign_numeric_identity_before_generation(
         challenge_bundles.verify_bundle(case, PROFILE, files)
 
 
+class _HostileKey(str):  # ruff: ignore[subclass-builtin]
+    """Foreign dict keys can run equality methods during set comparisons."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        message = "caller-owned mapping key equality executed"
+        raise AssertionError(message)
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize("kind", ["case", "bundle"])
+def test_direct_bundle_rejects_non_native_mapping_keys_before_comparison(
+    kind: str,
+) -> None:
+    """Native JSON object keys only; never invoke foreign key equality hooks."""
+    case, files = _direct_bundle()
+    if kind == "case":
+        case[_HostileKey("version")] = case.pop("version")
+        diagnostic = "challenge"
+    else:
+        files[_HostileKey("oracle.bin")] = files.pop("oracle.bin")
+        diagnostic = "bundle"
+    with pytest.raises(challenge_bundles.ChallengeBundleError, match=diagnostic):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
 @pytest.mark.parametrize(
     ("member", "limit"),
     [
