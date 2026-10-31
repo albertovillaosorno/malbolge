@@ -4169,6 +4169,157 @@ def test_source_path_retains_valid_posix_byte_backed_provenance(
     )
 
 
+@pytest.mark.parametrize("kind", [ValueError, RecursionError])
+def test_progress_json_host_decoder_error_does_not_invoke_foreign_formatter(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: type[Exception],
+) -> None:
+    """A foreign decoder's formatter must not replace typed JSON rejection."""
+
+    class HostileDecoderError(kind):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign JSON exception formatter was invoked")
+
+    failure = HostileDecoderError("untrusted parser fault")
+
+    def fail_json(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    with monkeypatch.context() as context:
+        context.setattr(json, "loads", fail_json)
+        with pytest.raises(ERROR, match="invalid progress JSON") as caught:
+            _ = progress.loads("{}")
+    assert caught.value.__context__ is failure or caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize("kind", [ValueError, RecursionError])
+def test_checkpoint_json_host_decoder_error_does_not_invoke_foreign_formatter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: type[Exception],
+) -> None:
+    """Portable checkpoint decoding retains typed errors on foreign parser faults."""
+
+    class HostileDecoderError(kind):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign checkpoint exception formatter invoked")
+
+    checkpoint = b"{}\n"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    failure = HostileDecoderError("untrusted checkpoint parser fault")
+
+    def fail_json(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    with monkeypatch.context() as context:
+        context.setattr(json, "loads", fail_json)
+        with pytest.raises(ERROR, match="invalid checkpoint JSON") as caught:
+            _ = progress.decode_portable_checkpoint(sidecar, "test-codec", checkpoint)
+    assert caught.value.__context__ is failure or caught.value.__cause__ is failure
+
+
+def test_progress_parser_rejects_builtin_error_with_foreign_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even built-in exceptions may contain untrusted formatted arguments."""
+
+    class HostileArgument:
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign exception argument was formatted")
+
+    failure = ValueError(HostileArgument())
+
+    def fail_json(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    with monkeypatch.context() as context:
+        context.setattr(json, "loads", fail_json)
+        with pytest.raises(ERROR, match="invalid progress JSON: ValueError") as caught:
+            _ = progress.loads("{}")
+    assert caught.value.__context__ is failure or caught.value.__cause__ is failure
+
+
+def test_read_preserves_primary_error_under_hostile_filesystem_formatter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign filesystem failure cannot replace the typed read category."""
+
+    class HostileReadError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign file error formatter invoked")
+
+        @override
+        def __getattribute__(self, name: str) -> object:
+            if name == "__notes__":
+                raise AssertionError("foreign notes accessor invoked")
+            return cast("object", super().__getattribute__(name))
+
+    failure = HostileReadError("untrusted filesystem failure")
+
+    def fail_read(*_args: object, **_kwargs: object) -> bytes:
+        raise failure
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_read_regular_bytes", fail_read)
+        with pytest.raises(ERROR, match="progress sidecar is unavailable") as caught:
+            _ = progress.read(tmp_path / PROGRESS_NAME)
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize(
+    "mode", ["inspect", "checkpoint-info", "extract", "follow", "help"]
+)
+def test_cli_rejection_never_formats_hostile_progress_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+) -> None:
+    """Operator paths must retain nonzero status for hostile typed errors."""
+
+    class HostileProgressError(progress.ProgressSidecarError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign progress error formatter invoked")
+
+    def fail_admission(*_args: object, **_kwargs: object) -> object:
+        raise HostileProgressError("invalid progress pointer")
+
+    invocations = {
+        "inspect": ["missing.progress.json"],
+        "checkpoint-info": ["--checkpoint-info", "missing.progress.json"],
+        "extract": ["--extract-checkpoint", "test-codec", "missing.progress.json"],
+        "follow": ["--follow", "missing.progress.json"],
+        "help": ["--help"],
+    }
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_read_canonical_pointer", fail_admission)
+        if mode == "help":
+            context.setattr(progress, "_write_operator_text", fail_admission)
+        assert progress.main(invocations[mode]) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "HostileProgressError" in captured.err
+
+
+def test_progress_parser_retains_native_json_diagnostics() -> None:
+    """Native JSON parser detail remains useful for malformed input."""
+    with pytest.raises(ERROR, match="Expecting property name enclosed"):
+        _ = progress.loads("{")
+
+
+def test_checkpoint_parser_retains_native_json_diagnostics(tmp_path: Path) -> None:
+    """Native checkpoint JSON rejections retain original decoder details."""
+    checkpoint = b"{"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    with pytest.raises(ERROR, match="Expecting property name enclosed"):
+        _ = progress.decode_portable_checkpoint(sidecar, "test-codec", checkpoint)
+
+
 def test_deep_json_progress_parser_and_cli_fail_closed(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -10734,6 +10885,57 @@ def test_monotonic_timer_contains_foreign_clock_failures() -> None:
     )
     with pytest.raises(ERROR, match="clock must be callable"):
         _ = direct.snapshot()
+
+
+def test_foreign_clock_and_follow_wait_formatters_cannot_mask_failures(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Callback errors are classified without invoking foreign __str__."""
+
+    class HostileCallbackError(RuntimeError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign callback formatter invoked")
+
+    failure = HostileCallbackError("untrusted callback message")
+
+    def fail_clock() -> int:
+        raise failure
+
+    with pytest.raises(ERROR, match="monotonic clock failed") as caught:
+        _ = progress.ProgressTimer.start(clock=fail_clock)
+    assert caught.value.__context__ is failure or caught.value.__cause__ is failure
+
+    path = progress.write_atomic(_sidecar(tmp_path))
+
+    def fail_wait(_interval: float) -> None:
+        raise failure
+
+    follow = cast("Callable[..., int]", vars(progress)["_follow_path"])
+    assert follow(path, wait=fail_wait) == 1
+    captured = capsys.readouterr()
+    assert captured.out == progress.render_summary(_sidecar(tmp_path))
+    assert FOLLOW_FAILED_PREFIX in captured.err
+    assert "progress follow wait failed" in captured.err
+
+
+def test_builtin_clock_exception_with_hostile_argument_is_typed() -> None:
+    """Native exception wrappers do not authorize foreign argument hooks."""
+
+    class HostileArgument:
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("hostile callback error argument formatted")
+
+    failure = RuntimeError(HostileArgument())
+
+    def fail_clock() -> int:
+        raise failure
+
+    with pytest.raises(ERROR, match="monotonic clock failed: RuntimeError") as caught:
+        _ = progress.ProgressTimer.start(clock=fail_clock)
+    assert caught.value.__context__ is failure or caught.value.__cause__ is failure
 
 
 def test_monotonic_timer_rejects_invalid_phases_and_clock_samples() -> None:

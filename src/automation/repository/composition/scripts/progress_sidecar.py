@@ -230,7 +230,7 @@ def _sample_clock(clock: object) -> int:
     except ProgressSidecarError:
         raise
     except _CALLBACK_ERRORS as error:
-        _fail(f"monotonic clock failed: {error}")
+        _fail(f"monotonic clock failed: {_host_error_detail(error)}")
     return _monotonic_sample(value)
 
 
@@ -499,7 +499,7 @@ class ProgressWriteLimiter:
         except ProgressSidecarError as error:
             message = (
                 "progress sidecar committed but limiter clock failed: "
-                f"{error}"
+                f"{_host_error_detail(error)}"
             )
             raise ProgressSidecarCommittedError(message, path) from error
 
@@ -566,7 +566,7 @@ class ProgressWriteLimiter:
                     error.published_path, now, validated
                 )
             except ProgressSidecarCommittedError as clock_error:
-                error.add_note(f"limiter clock also failed: {clock_error}")
+                error.add_note(f"limiter clock also failed: {_host_error_detail(clock_error)}")
             raise
         self._record_committed(destination, now, validated)
         return destination
@@ -668,12 +668,81 @@ def _fail(message: str) -> Never:
     raise ProgressSidecarError(message)
 
 
+def _host_error_detail(error: BaseException) -> str:
+    """Render trusted native error detail without running foreign formatters.
+
+    Returns:
+        A native exception's message, or only the foreign exception type.
+
+    """
+    kind = type(error)
+    arguments = cast("tuple[object, ...]", BaseException.__getattribute__(error, "args"))
+    native_types = (
+        OSError,
+        FileNotFoundError,
+        FileExistsError,
+        PermissionError,
+        IsADirectoryError,
+        NotADirectoryError,
+        BlockingIOError,
+        BrokenPipeError,
+        TimeoutError,
+        ValueError,
+        RecursionError,
+        RuntimeError,
+        AttributeError,
+        TypeError,
+        UnicodeEncodeError,
+        UnicodeDecodeError,
+        BinasciiError,
+        _DirectoryCloseAfterSyncError,
+        ProgressSidecarError,
+        ProgressSidecarCommittedError,
+        ProgressSidecarDurabilityError,
+    )
+    if kind in native_types and all(
+        type(arg) in (str, int, bytes, type(None)) for arg in arguments
+    ):
+        if isinstance(error, OSError) and not all(
+            type(value) in (str, bytes, type(None))
+            for value in (
+                cast("object", error.filename),
+                cast("object", error.filename2),
+                error.strerror,
+            )
+        ):
+            return kind.__name__
+        if isinstance(error, (UnicodeEncodeError, UnicodeDecodeError)) and not (
+            type(error.encoding) is str
+            and type(error.reason) is str
+            and type(error.start) is int
+            and type(error.end) is int
+            and type(error.object) in (str, bytes)
+        ):
+            return kind.__name__
+        return str(error)
+    if isinstance(error, json.JSONDecodeError) and kind is json.JSONDecodeError and (
+        type(error.msg) is str
+        and type(error.doc) is str
+        and type(error.pos) is int
+        and type(error.lineno) is int
+        and type(error.colno) is int
+    ):
+        return str(error)
+    return kind.__name__
+
+
 def _fail_with_source(message: str, source: Exception) -> Never:
     """Wrap untrusted I/O while retaining its cause and close-failure notes."""
     failure = ProgressSidecarError(message)
-    notes = cast("list[str]", getattr(source, "__notes__", []))
-    for note in notes:
-        failure.add_note(note)
+    try:
+        notes: object = cast("object", BaseException.__getattribute__(source, "__notes__"))
+    except BaseException:
+        notes = None
+    if type(notes) is list:
+        for note in cast("list[object]", notes):
+            if type(note) is str:
+                failure.add_note(note)
     raise failure from source
 
 
@@ -690,7 +759,7 @@ def _admit_filesystem_path(text: str, context: str) -> str:
         _ = text.encode("utf-8", errors="surrogateescape")
         _ = os.fsencode(text)
     except UnicodeEncodeError as error:
-        _fail(f"{context} cannot be encoded for filesystem access: {error}")
+        _fail(f"{context} cannot be encoded for filesystem access: {_host_error_detail(error)}")
     return text
 
 
@@ -863,7 +932,7 @@ def _decode_portable_checkpoint_document(
     try:
         text = checkpoint.decode("utf-8")
     except UnicodeDecodeError as error:
-        _fail(f"invalid checkpoint UTF-8: {error}")
+        _fail(f"invalid checkpoint UTF-8: {_host_error_detail(error)}")
     try:
         parsed = cast(
             "object",
@@ -872,7 +941,7 @@ def _decode_portable_checkpoint_document(
     except ProgressSidecarError:
         raise
     except (ValueError, RecursionError) as error:
-        _fail(f"invalid checkpoint JSON: {error}")
+        _fail(f"invalid checkpoint JSON: {_host_error_detail(error)}")
     return _portable_checkpoint_from_document(
         _mapping(parsed, "portable checkpoint"),
     )
@@ -915,7 +984,7 @@ def _decode_checkpoint_payload(envelope: PortableCheckpoint) -> bytes:
     try:
         payload = b64decode(envelope.payload_base64, validate=True)
     except (BinasciiError, ValueError) as error:
-        _fail(f"checkpoint payload_base64 is invalid: {error}")
+        _fail(f"checkpoint payload_base64 is invalid: {_host_error_detail(error)}")
     if b64encode(payload).decode("ascii") != envelope.payload_base64:
         _fail("checkpoint payload_base64 is not canonical")
     if "sha256:" + sha256(payload).hexdigest() != envelope.payload_sha256:
@@ -1094,7 +1163,7 @@ def _timestamp(value: object, context: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(text.removesuffix("Z") + "+00:00")
     except ValueError as error:
-        _fail(f"{context} is not a valid UTC timestamp: {error}")
+        _fail(f"{context} is not a valid UTC timestamp: {_host_error_detail(error)}")
     if parsed.tzinfo != UTC:
         _fail(f"{context} must be UTC")
     return parsed
@@ -1727,7 +1796,7 @@ def loads(text: str) -> ProgressSidecar:
     except ProgressSidecarError:
         raise
     except (ValueError, RecursionError) as error:
-        _fail(f"invalid progress JSON: {error}")
+        _fail(f"invalid progress JSON: {_host_error_detail(error)}")
     sidecar = validate(_from_document(_mapping(parsed, "progress sidecar")))
     # A short noncanonical UTF-8 spelling may expand beyond the canonical
     # ensure-ASCII pointer budget after decoding (e.g. multibyte text).
@@ -1750,7 +1819,7 @@ def _verify_opened_read_identity(
     try:
         current = path.stat(follow_symlinks=False)
     except OSError as error:
-        _fail(f"{context} path identity cannot be verified: {error}")
+        _fail(f"{context} path identity cannot be verified: {_host_error_detail(error)}")
     if (
         not stat.S_ISREG(current.st_mode)
         or opened.st_dev != current.st_dev
@@ -1764,7 +1833,7 @@ def _verify_opened_read_identity(
             opened_path = os.readlink(f"/proc/self/fd/{descriptor}")
         except OSError as error:
             _fail_with_source(
-                f"{context} opened path cannot be verified: {error}", error
+                f"{context} opened path cannot be verified: {_host_error_detail(error)}", error
             )
         expected_path = os.path.abspath(path)  # ruff: ignore[os-path-abspath]
         if opened_path != expected_path:
@@ -1802,7 +1871,7 @@ def _read_regular_bytes(
             os.close(descriptor)
         except (OSError, ValueError, RuntimeError) as close_error:
             error.add_note(
-                f"read descriptor cleanup also failed: {close_error}"
+                f"read descriptor cleanup also failed: {_host_error_detail(close_error)}"
             )
         raise
     return _read_stream_preserving_primary(
@@ -1891,7 +1960,7 @@ def _read_stream_preserving_primary(
         except BaseException as error:
             if primary_error is not None:
                 primary_error.add_note(
-                    f"read stream close also failed: {error}"
+                    f"read stream close also failed: {_host_error_detail(error)}"
                 )
             else:
                 raise
@@ -1914,11 +1983,11 @@ def read(path: Path) -> ProgressSidecar:
             admitted_path, "progress sidecar", max_bytes=_MAX_SIDECAR_BYTES
         ).decode("utf-8-sig")
     except UnicodeDecodeError as error:
-        _fail(f"invalid progress UTF-8: {error}")
+        _fail(f"invalid progress UTF-8: {_host_error_detail(error)}")
     except ProgressSidecarError:
         raise
     except _READ_STREAM_ERRORS as error:
-        _fail_with_source(f"progress sidecar is unavailable: {error}", error)
+        _fail_with_source(f"progress sidecar is unavailable: {_host_error_detail(error)}", error)
     return loads(text)
 
 
@@ -1963,10 +2032,10 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
         except (OSError, ValueError, RuntimeError) as error:
             if sync_error is not None:
                 sync_error.add_note(
-                    f"directory descriptor close also failed: {error}"
+                    f"directory descriptor close also failed: {_host_error_detail(error)}"
                 )
             else:
-                message = f"directory descriptor close failed: {error}"
+                message = f"directory descriptor close failed: {_host_error_detail(error)}"
                 raise _DirectoryCloseAfterSyncError(message) from error
 
 
@@ -1981,13 +2050,13 @@ def _confirm_publication_durability(
     except _DirectoryCloseAfterSyncError as error:
         message = (
             f"{context} committed durably but directory close failed: "
-            f"{error}"
+            f"{_host_error_detail(error)}"
         )
         raise ProgressSidecarCommittedError(message, published_path) from error
     except (OSError, ValueError, RuntimeError) as error:
         message = (
             f"{context} committed but durability confirmation failed: "
-            f"{error}"
+            f"{_host_error_detail(error)}"
         )
         raise ProgressSidecarDurabilityError(message, published_path) from error
 
@@ -2045,7 +2114,7 @@ def _open_regular_writer_lock(lock_path: Path) -> _LockStream:
             os.close(descriptor)
         except (OSError, ValueError, RuntimeError) as close_error:
             error.add_note(
-                f"writer lock descriptor cleanup also failed: {close_error}"
+                f"writer lock descriptor cleanup also failed: {_host_error_detail(close_error)}"
             )
         raise
 
@@ -2060,7 +2129,7 @@ def _open_writer_lock_stream(lock_path: Path) -> _LockStream:
         raise
     except (OSError, ValueError, RuntimeError) as error:
         _fail_with_source(
-            f"progress writer lock cannot be opened: {error}", error
+            f"progress writer lock cannot be opened: {_host_error_detail(error)}", error
         )
 
 
@@ -2071,7 +2140,7 @@ def _release_writer_lock(release: Callable[[], None]) -> None:
         raise
     except (OSError, ValueError, RuntimeError) as error:
         _fail_with_source(
-            f"progress writer lock cannot be released: {error}", error
+            f"progress writer lock cannot be released: {_host_error_detail(error)}", error
         )
 
 
@@ -2082,7 +2151,7 @@ def _close_writer_lock_stream(stream: _LockStream) -> None:
         raise
     except (OSError, ValueError, RuntimeError) as error:
         _fail_with_source(
-            f"progress writer lock cannot be closed: {error}", error
+            f"progress writer lock cannot be closed: {_host_error_detail(error)}", error
         )
 
 
@@ -2094,7 +2163,7 @@ def _release_writer_lock_preserving_primary(
         _release_writer_lock(release)
     except (ProgressSidecarError, ValueError, RuntimeError) as error:
         if primary_error is not None:
-            primary_error.add_note(f"writer lock release also failed: {error}")
+            primary_error.add_note(f"writer lock release also failed: {_host_error_detail(error)}")
             return
         raise
 
@@ -2105,7 +2174,7 @@ def _close_writer_lock_preserving_primary(stream: _LockStream) -> None:
         _close_writer_lock_stream(stream)
     except (ProgressSidecarError, ValueError, RuntimeError) as error:
         if primary_error is not None:
-            primary_error.add_note(f"writer lock close also failed: {error}")
+            primary_error.add_note(f"writer lock close also failed: {_host_error_detail(error)}")
             return
         raise
 
@@ -2117,7 +2186,7 @@ def _verify_acquired_writer_lock(lock_path: Path, stream: _LockStream) -> None:
         opened = os.fstat(stream.fileno())
         current = lock_path.stat(follow_symlinks=False)
     except (OSError, ValueError, RuntimeError) as error:
-        _fail(f"progress writer lock identity cannot be verified: {error}")
+        _fail(f"progress writer lock identity cannot be verified: {_host_error_detail(error)}")
     if (
         not stat.S_ISREG(current.st_mode)
         or opened.st_dev != current.st_dev
@@ -2136,7 +2205,7 @@ def _writer_lock(destination: Path) -> Generator[_LockStream]:
             raise
         except (OSError, ValueError, RuntimeError) as error:
             _fail_with_source(
-                f"progress writer lock cannot be acquired: {error}", error
+                f"progress writer lock cannot be acquired: {_host_error_detail(error)}", error
             )
         try:
             _verify_acquired_writer_lock(_writer_lock_path(destination), stream)
@@ -2161,7 +2230,7 @@ def _writer_publication_lock(destination: Path) -> Generator[_LockStream]:
             raise
         message = (
             "progress sidecar committed durably but writer lock cleanup "
-            f"failed: {error}"
+            f"failed: {_host_error_detail(error)}"
         )
         source = (
             error.__cause__
@@ -2212,7 +2281,7 @@ def _cleanup_mutable_temporary(
     except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
             primary_error.add_note(
-                f"mutable temporary cleanup also failed: {error}"
+                f"mutable temporary cleanup also failed: {_host_error_detail(error)}"
             )
             return
         raise
@@ -2226,7 +2295,7 @@ def _close_unadmitted_temporary(
         os.close(descriptor)
     except (OSError, ValueError, RuntimeError) as close_error:
         error.add_note(
-            f"progress temporary cleanup also failed: {close_error}"
+            f"progress temporary cleanup also failed: {_host_error_detail(close_error)}"
         )
 
 
@@ -2242,7 +2311,7 @@ def _temporary_descriptor_identity(descriptor: int) -> tuple[int, int]:
     except (OSError, ValueError, RuntimeError) as error:
         _close_unadmitted_temporary(descriptor, error)
         _fail_with_source(
-            f"progress temporary descriptor cannot be inspected: {error}",
+            f"progress temporary descriptor cannot be inspected: {_host_error_detail(error)}",
             error,
         )
     if not stat.S_ISREG(opened.st_mode):
@@ -2338,11 +2407,11 @@ def _close_staged_reader(descriptor: int) -> None:
     except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
             primary_error.add_note(
-                f"progress temporary descriptor close also failed: {error}"
+                f"progress temporary descriptor close also failed: {_host_error_detail(error)}"
             )
         else:
             _fail_with_source(
-                f"progress temporary descriptor close failed: {error}", error
+                f"progress temporary descriptor close failed: {_host_error_detail(error)}", error
             )
 
 
@@ -2361,7 +2430,7 @@ def _open_staged_reader(temporary: Path) -> int:
         return os.open(temporary, flags)
     except (OSError, ValueError, RuntimeError) as error:
         _fail_with_source(
-            f"progress temporary cannot be verified: {error}", error
+            f"progress temporary cannot be verified: {_host_error_detail(error)}", error
         )
 
 
@@ -2374,7 +2443,7 @@ def _admit_temporary_path(
         current = temporary.stat(follow_symlinks=False)
     except (OSError, ValueError, RuntimeError) as error:
         _fail_with_source(
-            f"progress temporary identity cannot be verified: {error}", error
+            f"progress temporary identity cannot be verified: {_host_error_detail(error)}", error
         )
     _admit_temporary_inode(current, identity, expected_size)
 
@@ -2402,7 +2471,7 @@ def _verify_written_temporary(
             raise
         except _READ_STREAM_ERRORS as error:
             _fail_with_source(
-                f"progress temporary verification failed: {error}", error
+                f"progress temporary verification failed: {_host_error_detail(error)}", error
             )
     finally:
         _close_staged_reader(descriptor)
@@ -2430,7 +2499,7 @@ def _confirm_mutable_postpublication_identity(
     except _OUTPUT_STREAM_ERRORS as error:
         message = (
             "progress sidecar committed durably but final identity "
-            f"admission failed: {error}"
+            f"admission failed: {_host_error_detail(error)}"
         )
         raise ProgressSidecarCommittedError(message, destination) from error
 
@@ -2527,7 +2596,7 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
         except (OSError, ValueError, RuntimeError) as close_error:
             note = (
                 "payload descriptor ownership cleanup also failed: "
-                f"{close_error}"
+                f"{_host_error_detail(close_error)}"
             )
             error.add_note(note)
         raise
@@ -2543,7 +2612,7 @@ def _write_payload_descriptor(descriptor: int, payload: bytes) -> None:
         except BaseException as error:
             if primary_error is not None:
                 primary_error.add_note(
-                    f"payload descriptor close also failed: {error}"
+                    f"payload descriptor close also failed: {_host_error_detail(error)}"
                 )
             else:
                 raise
@@ -2686,7 +2755,7 @@ def _admit_existing_immutable(
         )
         final = _admit_collided_immutable_inode(destination)
     except OSError as error:
-        _fail(f"immutable progress payload publication failed: {error}")
+        _fail(f"immutable progress payload publication failed: {_host_error_detail(error)}")
     if (initial.st_dev, initial.st_ino) != (final.st_dev, final.st_ino):
         _fail("immutable progress payload collision inode changed")
     if existing != payload:
@@ -2707,7 +2776,7 @@ def _publish_immutable_payload(
     except FileExistsError:
         return _admit_existing_immutable(destination, payload)
     except OSError as error:
-        _fail(f"immutable progress payload publication failed: {error}")
+        _fail(f"immutable progress payload publication failed: {_host_error_detail(error)}")
     return None
 
 
@@ -2726,13 +2795,13 @@ def _cleanup_immutable_temporary(
     except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
             primary_error.add_note(
-                f"immutable temporary cleanup also failed: {error}"
+                f"immutable temporary cleanup also failed: {_host_error_detail(error)}"
             )
             return
         if durable:
             message = (
                 "immutable progress payload committed durably but temporary "
-                f"cleanup failed: {error}"
+                f"cleanup failed: {_host_error_detail(error)}"
             )
             raise ProgressSidecarCommittedError(message, destination) from error
         raise
@@ -2756,7 +2825,7 @@ def _confirm_immutable_postcleanup_identity(
     except _OUTPUT_STREAM_ERRORS as error:
         message = (
             "immutable progress payload committed durably but final "
-            f"identity admission failed: {error}"
+            f"identity admission failed: {_host_error_detail(error)}"
         )
         raise ProgressSidecarCommittedError(message, destination) from error
 
@@ -2800,7 +2869,7 @@ def _write_immutable(
         except _OUTPUT_STREAM_ERRORS as error:
             message = (
                 "immutable progress payload committed but published inode "
-                f"cannot be identified: {error}"
+                f"cannot be identified: {_host_error_detail(error)}"
             )
             raise ProgressSidecarCommittedError(message, destination) from error
         _confirm_publication_durability(
@@ -2895,7 +2964,7 @@ def _read_payload(
     except ProgressSidecarError:
         raise
     except _READ_STREAM_ERRORS as error:
-        _fail_with_source(f"{context} payload is unavailable: {error}", error)
+        _fail_with_source(f"{context} payload is unavailable: {_host_error_detail(error)}", error)
     return payload
 
 
@@ -2979,7 +3048,7 @@ def write_atomic(sidecar: ProgressSidecar) -> Path:
             # any secondary reader-close notes. Do not rewrap this typed error.
             raise
         except _OUTPUT_STREAM_ERRORS as error:
-            _fail(f"progress sidecar publication failed: {error}")
+            _fail(f"progress sidecar publication failed: {_host_error_detail(error)}")
 
 
 def _validate_existing_pointer(
@@ -2990,7 +3059,7 @@ def _validate_existing_pointer(
     except FileNotFoundError:
         return
     except OSError as error:
-        _fail(f"progress pointer preflight failed: {error}")
+        _fail(f"progress pointer preflight failed: {_host_error_detail(error)}")
     _ = validate_transition(read(destination), sidecar)
 
 
@@ -3039,12 +3108,12 @@ def _raise_generation_publication_failure(
     if checkpoint_committed:
         message = (
             "checkpoint progress payload committed durably but later "
-            f"generation member publication failed: {error}"
+            f"generation member publication failed: {_host_error_detail(error)}"
         )
         raise ProgressSidecarCommittedError(message, checkpoint_path) from error
     if isinstance(error, ProgressSidecarError):
         raise error
-    _fail(f"immutable progress payload publication failed: {error}")
+    _fail(f"immutable progress payload publication failed: {_host_error_detail(error)}")
 
 
 def _publish_generation_payloads(
@@ -3109,7 +3178,7 @@ def write_checkpoint_generation(
     except (ProgressSidecarError, ValueError, RuntimeError) as error:
         message = (
             "generation payload committed durably but progress sidecar "
-            f"publication failed: {error}"
+            f"publication failed: {_host_error_detail(error)}"
         )
         raise ProgressSidecarCommittedError(
             message,
@@ -3289,7 +3358,7 @@ def _write_binary_stdout(payload: bytes) -> None:
         raise
     except _OUTPUT_STREAM_ERRORS as error:
         _fail_with_source(
-            f"portable checkpoint extraction stdout failed: {error}", error
+            f"portable checkpoint extraction stdout failed: {_host_error_detail(error)}", error
         )
 
 
@@ -3309,7 +3378,7 @@ def _write_operator_text(text: str) -> None:
     except ProgressSidecarError:
         raise
     except _OUTPUT_STREAM_ERRORS as error:
-        _fail_with_source(f"progress operator stdout failed: {error}", error)
+        _fail_with_source(f"progress operator stdout failed: {_host_error_detail(error)}", error)
 
 
 def _write_error_diagnostic(message: str) -> None:
@@ -3355,7 +3424,7 @@ def _checkpoint_info_path(path: Path) -> int:
         )
         _write_operator_text(render_checkpoint_metadata(metadata))
     except (OSError, ProgressSidecarError) as error:
-        message = f"portable checkpoint inspection failed: {error}\n"
+        message = f"portable checkpoint inspection failed: {_host_error_detail(error)}\n"
         _write_error_diagnostic(message)
         return 1
     return 0
@@ -3366,7 +3435,7 @@ def _extract_checkpoint_path(path: Path, state_codec: str) -> int:
         payload = _portable_payload_from_path(path, state_codec)
         _write_binary_stdout(payload)
     except (OSError, ProgressSidecarError) as error:
-        message = f"portable checkpoint extraction failed: {error}\n"
+        message = f"portable checkpoint extraction failed: {_host_error_detail(error)}\n"
         _write_error_diagnostic(message)
         return 1
     return 0
@@ -3377,7 +3446,7 @@ def _inspect_path(path: Path) -> int:
         sidecar = _read_canonical_pointer(path)
         _write_operator_text(render_summary(sidecar))
     except (OSError, ProgressSidecarError) as error:
-        message = f"progress sidecar inspection failed: {error}\n"
+        message = f"progress sidecar inspection failed: {_host_error_detail(error)}\n"
         _write_error_diagnostic(message)
         return 1
     return 0
@@ -3389,7 +3458,7 @@ def _follow_wait(wait: Callable[[float], None]) -> None:
     except ProgressSidecarError:
         raise
     except _CALLBACK_ERRORS as error:
-        _fail(f"progress follow wait failed: {error}")
+        _fail(f"progress follow wait failed: {_host_error_detail(error)}")
 
 
 def _next_observed_change(
@@ -3426,7 +3495,7 @@ def _follow_path(
     try:
         return _follow_validated_path(path, wait)
     except (OSError, ProgressSidecarError) as error:
-        message = f"progress sidecar follow failed: {error}\n"
+        message = f"progress sidecar follow failed: {_host_error_detail(error)}\n"
         _write_error_diagnostic(message)
         return 1
 
@@ -3474,7 +3543,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             _write_operator_text(usage)
         except ProgressSidecarError as error:
-            _write_error_diagnostic(f"progress sidecar help failed: {error}\n")
+            _write_error_diagnostic(f"progress sidecar help failed: {_host_error_detail(error)}\n")
             return 1
         return 0
     return _dispatch_inspection(arguments, usage)
