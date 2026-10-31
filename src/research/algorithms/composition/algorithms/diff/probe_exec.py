@@ -683,18 +683,26 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
         ValueError,
         subprocess.TimeoutExpired,
     ) as error:
-        message = f"probe direct child reaping failed: {error}"
+        message = "probe direct child reaping failed: " + _safe_probe_error_detail(error)
         raise ProbeExecutionError(message) from error
     if direct_error is not None:
-        message = f"probe direct child termination failed: {direct_error}"
+        message = (
+            "probe direct child termination failed: "
+            + _safe_probe_error_detail(direct_error)
+        )
         failure = ProbeExecutionError(message)
         if group_error is not None:
-            failure.add_note(
-                f"probe process group cleanup failed: {group_error}"
+            BaseException.add_note(
+                failure,
+                "probe process group cleanup failed: "
+                + _safe_probe_error_detail(group_error),
             )
         raise failure from direct_error
     if group_error is not None:
-        message = f"probe process group cleanup failed: {group_error}"
+        message = (
+            "probe process group cleanup failed: "
+            + _safe_probe_error_detail(group_error)
+        )
         raise ProbeExecutionError(message) from group_error
 
 

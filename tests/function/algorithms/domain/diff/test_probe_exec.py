@@ -908,6 +908,61 @@ def test_probe_child_cleanup_keeps_foreign_primary(
         _expect("native child cleanup denied" in notes[0], "native note detail lost")
 
 
+@pytest.mark.skipif(os.name != _POSIX_OS_NAME, reason="POSIX child group branch")
+@pytest.mark.parametrize("site", ["reap", "group", "direct", "group-note"])
+@pytest.mark.parametrize("fault_kind", ["foreign", "hostile-args", "native"])
+def test_probe_child_stop_never_formats_foreign_host_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+    fault_kind: str,
+) -> None:
+    """Reaping, group and child kill diagnostics remain typed and causal."""
+
+    class ForeignStopError(OSError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign stop formatter executed")
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("foreign stop argument formatter executed")
+
+    fault = {
+        "foreign": ForeignStopError("foreign stop denied"),
+        "hostile-args": OSError(HostileArgument()),
+        "native": OSError("native stop denied"),
+    }[fault_kind]
+    group_error = fault if site in ("group", "group-note") else None
+    direct_error = fault if site == "direct" else None
+    if site == "direct":
+        group_error = OSError("native group stop denied")
+    if site == "group-note":
+        direct_error = OSError("native child stop denied")
+
+    class FakeChild:
+        def wait(self, *, timeout: float | None = None) -> int:
+            del timeout
+            if site == "reap":
+                raise fault
+            return 0
+
+    with monkeypatch.context() as patch:
+        patch.setattr(probe_exec_module, "_signal_probe_group", lambda *_: group_error)
+        patch.setattr(probe_exec_module, "_kill_direct_probe_child", lambda *_: direct_error)
+        with pytest.raises(ProbeExecutionError) as caught:
+            probe_exec_module._stop_child(cast("Popen[bytes]", FakeChild()))
+
+    if site == "group-note":
+        _expect(caught.value.__cause__ is direct_error, "direct failure lost")
+        notes = cast("list[str]", getattr(caught.value, "__notes__", []))
+        _expect(len(notes) == 1 and "group cleanup" in notes[0], "group note lost")
+        if fault_kind == "native":
+            _expect("native stop denied" in notes[0], "native group note lost")
+    else:
+        _expect(caught.value.__cause__ is fault, "host stop failure cause lost")
+        if fault_kind == "native":
+            _expect("native stop denied" in str(caught.value), "native detail lost")
+
+
 @pytest.mark.parametrize("site", ["launch", "worker"])
 @pytest.mark.parametrize("fault_kind", ["foreign", "hostile-args", "native"])
 def test_probe_host_launch_and_worker_failures_reject_foreign_hooks(
