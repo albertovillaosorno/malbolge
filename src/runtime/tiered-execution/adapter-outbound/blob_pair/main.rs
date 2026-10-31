@@ -1387,9 +1387,10 @@ fn open_pair_source(path: &Path) -> io::Result<File> {
     use std::os::unix::fs::OpenOptionsExt as _;
 
     const LINUX_O_NONBLOCK: i32 = 1 << 11;
+    const LINUX_O_NOFOLLOW: i32 = 1 << 17;
     OpenOptions::new()
         .read(true)
-        .custom_flags(LINUX_O_NONBLOCK)
+        .custom_flags(LINUX_O_NONBLOCK | LINUX_O_NOFOLLOW)
         .open(path)
 }
 
@@ -1440,13 +1441,26 @@ fn pair_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
 fn verify_pair_source(path: &Path, opened: &File, before: &fs::Metadata) -> io::Result<()> {
     let descriptor = opened.metadata()?;
     let pathname = fs::symlink_metadata(path)?;
-    if pair_metadata_matches(before, &descriptor)
-        && pair_metadata_matches(before, &pathname)
+    if !pair_metadata_matches(before, &descriptor)
+        || !pair_metadata_matches(before, &pathname)
     {
-        Ok(())
-    } else {
-        Err(io::Error::from(ErrorKind::InvalidData))
+        return Err(io::Error::from(ErrorKind::InvalidData));
     }
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::fd::AsRawFd as _;
+
+        // Inode and change stamps alone do not identify the opened dentry:
+        // a parent symlink can redirect the pathname to another hard link
+        // of the same immutable inode without changing that inode's stamps.
+        let descriptor_path = format!("/proc/self/fd/{}", opened.as_raw_fd());
+        let opened_path = fs::read_link(descriptor_path)?;
+        let current_path = fs::canonicalize(path)?;
+        if opened_path != current_path {
+            return Err(io::Error::from(ErrorKind::InvalidData));
+        }
+    }
+    Ok(())
 }
 
 fn open_bounded_pair_source(path: &Path) -> io::Result<(File, fs::Metadata)> {

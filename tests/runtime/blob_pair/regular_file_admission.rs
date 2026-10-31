@@ -253,3 +253,75 @@ fn member_fifo_rejects_before_open() -> Result<(), String> {
     );
     Ok(())
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "reject stale same-inode dentry")]
+fn opened_member_dentry_replacement_with_same_inode_is_rejected() -> Result<(), String> {
+    let fixture = Fixture::new()?;
+    let source = fixture.0.join("member");
+    let alternate = fixture.0.join("alternate");
+    let parked = fixture.0.join("parked");
+    fs::write(&source, b"unchanged").map_err(|error| error.to_string())?;
+    let initial = fs::symlink_metadata(&source).map_err(|error| error.to_string())?;
+    let opened = File::open(&source).map_err(|error| error.to_string())?;
+    verify_pair_source(&source, &opened, &initial).map_err(|error| error.to_string())?;
+    fs::hard_link(&source, &alternate).map_err(|error| error.to_string())?;
+    fs::rename(&source, &parked).map_err(|error| error.to_string())?;
+    fs::rename(&alternate, &source).map_err(|error| error.to_string())?;
+    assert_eq!(
+        verify_pair_source(&source, &opened, &initial)
+            .err()
+            .map(|error| error.kind()),
+        Some(ErrorKind::InvalidData),
+        "a renamed-and-relinked source cannot retain its old read authority"
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "reject parent alias replacement")]
+fn opened_member_parent_alias_replacement_with_same_inode_is_rejected() -> Result<(), String> {
+    let fixture = Fixture::new()?;
+    let directory = fixture.0.join("original");
+    let foreign = fixture.0.join("foreign");
+    let parked = fixture.0.join("parked");
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&foreign).map_err(|error| error.to_string())?;
+    let source = directory.join("member");
+    fs::write(&source, b"unchanged").map_err(|error| error.to_string())?;
+    fs::hard_link(&source, foreign.join("member")).map_err(|error| error.to_string())?;
+    let initial = fs::symlink_metadata(&source).map_err(|error| error.to_string())?;
+    let opened = File::open(&source).map_err(|error| error.to_string())?;
+    verify_pair_source(&source, &opened, &initial).map_err(|error| error.to_string())?;
+    fs::rename(&directory, &parked).map_err(|error| error.to_string())?;
+    symlink(&foreign, &directory).map_err(|error| error.to_string())?;
+    assert_eq!(
+        verify_pair_source(&source, &opened, &initial)
+            .err()
+            .map(|error| error.kind()),
+        Some(ErrorKind::InvalidData),
+        "a replaced symlink parent to a same-inode hard link cannot authorize the old read"
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "stable parent aliases remain valid"
+)]
+fn stable_parent_alias_keeps_matching_opened_dentry() -> Result<(), String> {
+    let fixture = Fixture::new()?;
+    let original = fixture.0.join("actual");
+    let alias = fixture.0.join("alias");
+    fs::create_dir_all(&original).map_err(|error| error.to_string())?;
+    symlink(&original, &alias).map_err(|error| error.to_string())?;
+    fs::write(original.join("member"), b"unchanged").map_err(|error| error.to_string())?;
+    let path = alias.join("member");
+    let (opened, initial) = open_bounded_pair_source(&path).map_err(|error| error.to_string())?;
+    verify_pair_source(&path, &opened, &initial).map_err(|error| error.to_string())?;
+    Ok(())
+}
