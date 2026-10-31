@@ -219,8 +219,9 @@ format.
   stable
   source ranges and rejects missing/ambiguous boundaries before output. Output
   roots resolving inside the candidate source, including linked ancestors, now
-  reject before staging; concurrent external writers remain uncoordinated. A
-  synthetic
+  reject before staging; concurrent external writers remain uncoordinated.
+  Direct plan construction rejects ancestor-overlapping output file paths, and
+  source/output instruction labels reject Windows drive prefixes. A synthetic
   boundary-change test deliberately still fails, defining the next mapped-token
   C
   placement milestone rather than pretending byte relocation solves

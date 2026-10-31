@@ -529,6 +529,9 @@ also resolves candidate and output roots and rejects output paths inside the
 candidate tree, including linked-parent aliases. This prevents ordinary output
 publication from mutating its source. Concurrent filesystem writers can still
 race a non-atomic input snapshot or path check and require coordination.
+Direct relocatable plan construction rejects output file paths that also name
+ancestor directories of other output files. Source and output instruction
+labels reject Windows drive-absolute and drive-relative forms before placement.
 
 This is deliberately a placement primitive, not compatible admission. Synthetic
 tests
