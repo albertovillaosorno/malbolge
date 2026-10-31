@@ -37,25 +37,22 @@
 from __future__ import annotations
 
 import copy
-from hashlib import sha256
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
-import tomllib
-from typing import Any
-from typing import TYPE_CHECKING
+from hashlib import sha256
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import pytest
+import tomllib
 
-from benchmarks.arena import analyze
-from benchmarks.arena import evidence
+from benchmarks.arena import analyze, evidence, target_process
 from benchmarks.arena import target_echo_audit as audit
 from benchmarks.arena import target_echo_reference as producer
-from benchmarks.arena import target_process
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -90,6 +87,60 @@ BAD_PROFILE_PROVENANCE = 'implementation = "forged/fake_compiler.py"'
 REAL_PROFILE_PROVENANCE = (
     'implementation = "benchmarks/arena/target_echo_reference.py"'
 )
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "mkfifo") or not getattr(os, "O_NONBLOCK", 0),
+    reason="FIFO test needs POSIX nonblocking descriptor opens",
+)
+def test_tool_fingerprint_rejects_fifo_substitution_without_blocking(
+    tmp_path: Path,
+) -> None:
+    """An admitted executable replaced by a FIFO fails before stream reads."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"trusted-emitter")
+    _ = runner.write_bytes(b"trusted-runner")
+    emitter.unlink()
+    mkfifo = getattr(os, "mkfifo", None)
+    assert callable(mkfifo)
+    mkfifo(emitter)
+    with pytest.raises(audit.TargetEchoAuditError, match="target audit executable identity changed"):
+        audit._tool_identity(emitter, runner)
+
+
+def test_tool_fingerprint_preserves_stable_byte_identity(tmp_path: Path) -> None:
+    """Descriptor hashing preserves existing size-prefixed toolchain digests."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter_bytes = b"trusted-emitter"
+    runner_bytes = b"trusted-runner"
+    _ = emitter.write_bytes(emitter_bytes)
+    _ = runner.write_bytes(runner_bytes)
+    expected = sha256()
+    for data in (emitter_bytes, runner_bytes):
+        expected.update(len(data).to_bytes(8, "big"))
+        expected.update(data)
+    assert audit._tool_identity(emitter, runner) == (
+        "local-compiler-vm-sha256:" + expected.hexdigest()
+    )
+
+
+def test_tool_fingerprint_rejects_symlink_substitution_after_admission(
+    tmp_path: Path,
+) -> None:
+    """A linked executable cannot impersonate a previously admitted tool."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    foreign = tmp_path / "foreign"
+    _ = emitter.write_bytes(b"trusted-emitter")
+    _ = runner.write_bytes(b"trusted-runner")
+    _ = foreign.write_bytes(b"foreign-emitter")
+    assert audit._admit_tool(emitter) == emitter
+    emitter.unlink()
+    emitter.symlink_to(foreign)
+    with pytest.raises(audit.TargetEchoAuditError, match="target audit executable identity changed"):
+        audit._tool_identity(emitter, runner)
 
 
 @pytest.fixture

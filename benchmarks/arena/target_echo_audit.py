@@ -790,13 +790,58 @@ def _admit_tool(path: Path) -> Path:
     return path
 
 
+def _tool_file_identity(details: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        details.st_dev,
+        details.st_ino,
+        details.st_size,
+        details.st_mtime_ns,
+        details.st_ctime_ns,
+    )
+
+
 def _tool_identity(emitter: Path, runner: Path) -> str:
+    # Hash admitted regular descriptors, not a newly followed pathname.
+    # The same size framing preserves all prior toolchain digest values.
     digest = sha256()
     for path in (emitter, runner):
-        digest.update(path.stat().st_size.to_bytes(8, "big"))
-        with path.open("rb") as stream:
-            while chunk := stream.read(1024 * 1024):
-                digest.update(chunk)
+        try:
+            original = path.lstat()
+            if not stat.S_ISREG(original.st_mode) or original.st_size <= 0:
+                _fail("target audit executable identity changed")
+            flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(
+                os, "O_NOFOLLOW", 0
+            )
+            descriptor = os.open(path, flags)
+            try:
+                opened = os.fstat(descriptor)
+                if not stat.S_ISREG(opened.st_mode) or (
+                    _tool_file_identity(opened) != _tool_file_identity(original)
+                ):
+                    _fail("target audit executable identity changed")
+                digest.update(opened.st_size.to_bytes(8, "big"))
+                remaining = opened.st_size
+                while remaining:
+                    chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+                    if not chunk:
+                        _fail("target audit executable identity changed")
+                    digest.update(chunk)
+                    remaining -= len(chunk)
+                if os.read(descriptor, 1) or (
+                    _tool_file_identity(os.fstat(descriptor))
+                    != _tool_file_identity(opened)
+                ):
+                    _fail("target audit executable identity changed")
+            finally:
+                os.close(descriptor)
+            latest = path.lstat()
+            if not stat.S_ISREG(latest.st_mode) or (
+                _tool_file_identity(latest) != _tool_file_identity(original)
+            ):
+                _fail("target audit executable identity changed")
+        except OSError as error:
+            message = "target audit executable identity changed"
+            raise TargetEchoAuditError(message) from error
     return "local-compiler-vm-sha256:" + digest.hexdigest()
 
 

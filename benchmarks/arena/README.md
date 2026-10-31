@@ -221,7 +221,12 @@ The runner checks complete stdout against the expected bytes; mismatches
 remain `verifier_rejected`, and launcher failures, stream overruns and
 child timeouts remain `tool_failed`, never credited as successes. It also
 checks exact source length, graphical byte domain, the per-attempt output
-path, and exact executable identity before/after the study.
+path, and exact executable identity before/after the study. Producer and
+independent replay auditor fingerprint executable bytes through regular,
+non-following descriptors with nonblocking POSIX opens and device/inode/size/
+change-time rechecks. This rejects a linked or FIFO executable substituted
+after path admission; the byte fingerprint does not attest which executable
+was actually run or prevent later tool replacement.
 
 After the producer calls the independent retained-study auditor, it reopens
 `study.json` through the same bounded, link-rejecting regular-file reader and
