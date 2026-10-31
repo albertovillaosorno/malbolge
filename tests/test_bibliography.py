@@ -464,3 +464,73 @@ def test_source_record_rejects_linked_parent_after_discovery(
         match=r"bibliography (paths must not redirect|evidence)",
     ):
         _ = validate_records()
+
+
+@pytest.mark.parametrize("phase", ["resolve", "read"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_bibliography_host_faults_never_format_foreign_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    fault_type: type[Exception],
+) -> None:
+    """Filesystem error subclasses remain typed without executing __str__."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign bibliography exception formatter executed")
+
+    foreign = type(
+        "ForeignBibliographyHostFault", (fault_type,), {"__str__": unsafe_str}
+    )
+    fault = foreign("unsafe filesystem detail")
+    source = tmp_path / "evidence.md"
+    _ = source.write_text("bibliography evidence", encoding="utf-8")
+    if phase == "resolve":
+        original_resolve = Path.resolve
+
+        def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+            if path == source:
+                raise fault
+            return original_resolve(path, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", fail_resolve)
+    else:
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == source:
+                raise fault
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match=f"evidence {'resolution' if phase == 'resolve' else 'read'} failed",
+    ) as caught:
+        validator._read_regular_text(source)  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is fault
+
+
+def test_bibliography_native_host_diagnostic_remains_actionable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exact built-in I/O error still exposes useful host detail."""
+    source = tmp_path / "evidence.md"
+    _ = source.write_text("bibliography evidence", encoding="utf-8")
+    fault = OSError("native bibliography read unavailable")
+    original_open = os.open
+
+    def fail_open(path: Path, flags: int) -> int:
+        if path == source:
+            raise fault
+        return original_open(path, flags)
+
+    monkeypatch.setattr(os, "open", fail_open)
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match="native bibliography read unavailable",
+    ) as caught:
+        validator._read_regular_text(source)  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is fault

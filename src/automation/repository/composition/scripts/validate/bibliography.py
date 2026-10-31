@@ -205,6 +205,18 @@ def _fail(message: str) -> Never:
     raise BibliographyValidationError(message)
 
 
+def _host_error_detail(error: Exception) -> str:
+    """Keep native errors useful without invoking foreign exception hooks.
+
+    Returns:
+        Trusted built-in error text or an external exception type label.
+
+    """
+    if type(error) in (OSError, ValueError, TypeError, RuntimeError):
+        return str(error)
+    return type(error).__name__
+
+
 def _relative(path: Path) -> str:
     return path.relative_to(BIBLIOGRAPHY_ROOT).as_posix()
 
@@ -300,9 +312,10 @@ def _require_unlinked_path(path: Path) -> None:
     """Reject evidence path components redirected through directory links."""
     try:
         physical = path.resolve(strict=True)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
         raise BibliographyValidationError(
-            f"bibliography evidence resolution failed: {path}: {error}"
+            f"bibliography evidence resolution failed: {path}: {detail}"
         ) from error
     if physical != path:
         _fail(f"bibliography evidence path redirects: {path}")
@@ -335,9 +348,10 @@ def _read_regular_bytes(path: Path) -> bytes:
             return _read_open_evidence(stream, admitted, path)
     except BibliographyValidationError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
         raise BibliographyValidationError(
-            f"bibliography evidence read failed: {path}: {error}"
+            f"bibliography evidence read failed: {path}: {detail}"
         ) from error
 
 
