@@ -1650,3 +1650,60 @@ def test_host_reference_workspace_cleanup_never_dispatches_primary_add_note(
         reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
     assert caught.value.__cause__ is primary
     assert primary.__notes__ == ["host-C workspace cleanup also failed: cleanup failed"]
+
+
+class _ForgedArtifactLength(bytes):
+    """Foreign bytes may lie about their native buffer length."""
+
+    def __len__(self) -> int:
+        return 1
+
+
+@pytest.mark.parametrize("receipt_type", ["forged-length", "oversized"])
+def test_retained_artifact_rejects_foreign_or_oversized_evidence_receipt(
+    monkeypatch: pytest.MonkeyPatch, receipt_type: str
+) -> None:
+    """A replaced bounded reader cannot authenticate fabricated artifact sizes."""
+    monkeypatch.setattr(reference_study, "MAX_ARTIFACT_BYTES", 4)
+    actual = (
+        _ForgedArtifactLength(b"forged")
+        if receipt_type == "forged-length"
+        else b"longer"
+    )
+    claimed_size = 1 if receipt_type == "forged-length" else len(actual)
+    row = {
+        "experiment_manifest": ".temp/probe/runs/candidate.toml",
+        "metrics": {"artifact_bytes": claimed_size},
+    }
+    entry = {
+        "path": ".temp/probe/candidates/candidate",
+        "sha256": sha256(actual).hexdigest(),
+    }
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: actual
+    )
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="exact bounded bytes"
+    ):
+        reference_study._checked_artifact(row, entry)
+
+
+def test_retained_artifact_native_bounded_reader_receipt_remains_admissible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A genuine byte string retains its normal digest and size identity."""
+    raw = b"valid"
+    monkeypatch.setattr(reference_study, "MAX_ARTIFACT_BYTES", len(raw))
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: raw
+    )
+    reference_study._checked_artifact(
+        {
+            "experiment_manifest": ".temp/probe/runs/candidate.toml",
+            "metrics": {"artifact_bytes": len(raw)},
+        },
+        {
+            "path": ".temp/probe/candidates/candidate",
+            "sha256": sha256(raw).hexdigest(),
+        },
+    )

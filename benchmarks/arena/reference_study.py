@@ -553,6 +553,8 @@ def _checked_artifact(
         if (detail := _native_error_detail(error)) is not None:
             message += f": {detail}"
         raise ReferenceStudyError(message) from error
+    if type(actual) is not bytes or len(actual) > MAX_ARTIFACT_BYTES:
+        _fail("host-C retained artifact requires exact bounded bytes")
     if sha256(actual).hexdigest() != entry["sha256"]:
         _fail("host-C retained executable differs from its SHA-256 claim")
     if len(actual) != row["metrics"]["artifact_bytes"]:
