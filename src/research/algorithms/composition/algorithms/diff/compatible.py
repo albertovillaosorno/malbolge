@@ -704,7 +704,7 @@ def _path_present(path: Path, context: str) -> bool:
         _ = path.lstat()
     except FileNotFoundError:
         return False
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} status failed: {path}: {error}"
         raise CompatiblePlanError(message) from error
     return True
@@ -725,7 +725,7 @@ def _write_compatible_bytes(path: Path, data: bytes, context: str) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_bytes(data)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} write failed: {path}: {error}"
         raise CompatiblePlanError(message) from error
 
@@ -1272,7 +1272,7 @@ def _cleanup_compatible_staging(path: Path) -> str | None:
         shutil.rmtree(path)
     except FileNotFoundError:
         return None
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         return str(error)
     return None
 

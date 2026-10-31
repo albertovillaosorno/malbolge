@@ -1105,8 +1105,13 @@ def test_compatible_materialization_wraps_path_resolution_error(
     )
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_compatible_cleanup_failure_preserves_primary_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """Cleanup failure augments rather than replaces the staging write error."""
     plan = _plan(tmp_path)
@@ -1124,7 +1129,7 @@ def test_compatible_cleanup_failure_preserves_primary_error(
     def fail_cleanup(path: Path) -> None:
         _ = path
         message = "blocked compatible cleanup"
-        raise PermissionError(message)
+        raise failure_type(message)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
     monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
@@ -1135,8 +1140,13 @@ def test_compatible_cleanup_failure_preserves_primary_error(
         _ = materialize_compatible_plan(_request(candidate, plan, output))
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_compatible_staging_status_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """An inaccessible staging path cannot masquerade as absent."""
     plan = _plan(tmp_path)
@@ -1148,7 +1158,7 @@ def test_compatible_staging_status_error_fails_closed(
     def fail_lstat(path: Path) -> object:
         if path == staging:
             message = "blocked compatible staging status"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_lstat(path)
 
     monkeypatch.setattr(Path, "lstat", fail_lstat)
@@ -1157,8 +1167,13 @@ def test_compatible_staging_status_error_fails_closed(
     _expect(not output.exists(), "status failure published compatible output")
 
 
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_compatible_output_write_error_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
 ) -> None:
     """A staging write failure remains inside CompatiblePlanError."""
     plan = _plan(tmp_path)
@@ -1170,7 +1185,7 @@ def test_compatible_output_write_error_fails_closed(
     def fail_write(path: Path, data: bytes) -> int:
         if path == blocked:
             message = "blocked compatible output write"
-            raise PermissionError(message)
+            raise failure_type(message)
         return original_write(path, data)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
