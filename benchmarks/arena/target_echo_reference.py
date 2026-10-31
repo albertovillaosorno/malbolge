@@ -809,17 +809,22 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
     emitter, runner = _admit_executable(emitter), _admit_executable(runner)
     if not _TEMP.is_dir():
         _fail("target echo reference requires repository .temp directory")
+    # Validate identity before retaining any study output.
+    profile = target_profile.load_document(_ROOT / "malbolge.json")
+    fingerprint = target_profile.profile_fingerprint(profile, PROFILE)
+    commit = _commit()
+    host = platform.platform()
+    toolchain = _tool_identity(emitter, runner)
     directory = Path(tempfile.mkdtemp(prefix="arena-target-echo-", dir=_TEMP))
     for name in ("runs", "raw", "candidates"):
         (directory / name).mkdir()
-    profile = target_profile.load_document(_ROOT / "malbolge.json")
     return _Context(
         directory=directory,
         prefix=directory.relative_to(_ROOT).as_posix(),
-        fingerprint=target_profile.profile_fingerprint(profile, PROFILE),
-        commit=_commit(),
-        host=platform.platform(),
-        toolchain=_tool_identity(emitter, runner),
+        fingerprint=fingerprint,
+        commit=commit,
+        host=host,
+        toolchain=toolchain,
         emitter=emitter,
         runner=runner,
     )

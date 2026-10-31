@@ -77,6 +77,53 @@ PATTERNED_DIRECT_BYTES = 131
 PATTERNED_PADDED_BYTES = 196
 
 
+PROFILE_PREFLIGHT = "profile"
+REVISION_PREFLIGHT = "revision"
+TOOL_IDENTITY_PREFLIGHT = "tool_identity"
+PREFLIGHT_REJECTED = "preflight rejected"
+
+
+@pytest.mark.parametrize(
+    "stage", [PROFILE_PREFLIGHT, REVISION_PREFLIGHT, TOOL_IDENTITY_PREFLIGHT]
+)
+def test_failed_preflight_does_not_create_retained_target_study(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Rejected setup cannot leave orphan study directories or partial runs."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"emitter")
+    _ = runner.write_bytes(b"runner")
+    profile = target_echo_reference._ROOT / "malbolge.json"
+    _ = (tmp_path / "malbolge.json").write_bytes(profile.read_bytes())
+    temp_root = tmp_path / ".temp"
+    temp_root.mkdir()
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_echo_reference, "_TEMP", temp_root)
+    monkeypatch.setattr(target_echo_reference, "_commit", lambda: "a" * 40)
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        _ = (args, kwargs)
+        raise target_echo_reference.TargetEchoStudyError(PREFLIGHT_REJECTED)
+
+    if stage == PROFILE_PREFLIGHT:
+        monkeypatch.setattr(
+            target_echo_reference.target_profile, "load_document", refuse
+        )
+    elif stage == REVISION_PREFLIGHT:
+        monkeypatch.setattr(target_echo_reference, "_commit", refuse)
+    else:
+        monkeypatch.setattr(target_echo_reference, "_tool_identity", refuse)
+
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match=PREFLIGHT_REJECTED
+    ):
+        _ = target_echo_reference._prepare_context(emitter, runner)
+    assert not list(temp_root.glob("arena-target-echo-*"))
+
+
 @pytest.mark.skipif(
     not hasattr(os, "mkfifo") or not getattr(os, "O_NONBLOCK", 0),
     reason="FIFO test needs POSIX nonblocking descriptor opens",
