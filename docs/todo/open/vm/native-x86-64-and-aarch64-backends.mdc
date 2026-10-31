@@ -2262,6 +2262,13 @@ input/jump-code, input/jump-data, input/no-operation,
   into two distinct mappings owned by the concrete process worker, applies both
   steps exactly, and releases the aggregate sequence through that same child.
 
+  Native MBNPC1 request framing now rejects input-consumed and output-written
+  cursors beyond their original declared capacities. In-process request
+  sizing/encoding, raw request decoding, and all three request-bound response
+  seams fail with typed cursor errors before payload admission.
+  Red-first fixtures cover one-past-capacity, `u64::MAX`, and exact-boundary
+  acceptance for both counters. Child responses remain independently verified.
+
   A weighted exact-key FIFO reuses complete loaded chains without refreshing
   hits. Positive limits cover entries
   and can also cover live mappings plus admitted mapped bytes. Candidate weight

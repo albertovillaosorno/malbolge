@@ -27,7 +27,7 @@
 // - Usage:
 //   - A process adapter encodes requests and bounds/decodes child responses.
 // - Defaults:
-//   - Invalid magic, identity, shape, flags, truncation, or trailing data
+//   - Invalid magic, identity, shape, progress, flags, or framing
 //     fails.
 //
 
@@ -53,12 +53,16 @@ pub const NATIVE_PROCESS_CALL_RESPONSE_FIXED_BYTES: usize = 74;
 pub enum NativeProcessCallWireError {
     /// A declared capacity cannot be represented or its byte size overflowed.
     CounterOverflow,
+    /// The request input-consumed cursor exceeds its scalar input capacity.
+    InputCursor,
     /// The request input payload differs from its scalar input capacity.
     InputLength,
     /// A mapping identity decoded as zero.
     MappingIdentity,
     /// The memory payload differs from the required guest-memory capacity.
     MemoryLength,
+    /// The request output-written cursor exceeds its scalar output capacity.
+    OutputCursor,
     /// The output payload differs from the required output capacity.
     OutputLength,
     /// The response pointer-integrity field is not canonical boolean encoding.
@@ -85,6 +89,9 @@ impl Display for NativeProcessCallWireError {
             Self::CounterOverflow => {
                 f.write_str("native process wire counter overflowed")
             },
+            Self::InputCursor => {
+                f.write_str("native process wire input cursor exceeds capacity")
+            },
             Self::InputLength => {
                 f.write_str("native process wire input length drifted")
             },
@@ -93,6 +100,11 @@ impl Display for NativeProcessCallWireError {
             },
             Self::MemoryLength => {
                 f.write_str("native process wire memory length drifted")
+            },
+            Self::OutputCursor => {
+                f.write_str(
+                    "native process wire output cursor exceeds capacity"
+                )
             },
             Self::OutputLength => {
                 f.write_str("native process wire output length drifted")
@@ -211,6 +223,7 @@ pub fn decode_native_process_call_request(
     let mapping_id = decode_mapping_id(&mut reader)?;
     let entry_offset = usize_from_u64(reader.u64()?)?;
     let state = decode_state(&mut reader)?;
+    validate_request_progress(state)?;
     let memory_words = usize_from_u64(state.memory_words())?;
     let input_len = usize_from_u64(state.input_len())?;
     let output_capacity = usize_from_u64(state.output_capacity())?;
@@ -468,6 +481,18 @@ fn usize_from_u64(value: u64) -> Result<usize, NativeProcessCallWireError> {
         .map_err(|_error| NativeProcessCallWireError::CounterOverflow)
 }
 
+const fn validate_request_progress(
+    state: NativeProcessCallState,
+) -> Result<(), NativeProcessCallWireError> {
+    if state.input_consumed() > state.input_len() {
+        return Err(NativeProcessCallWireError::InputCursor);
+    }
+    if state.output_len() > state.output_capacity() {
+        return Err(NativeProcessCallWireError::OutputCursor);
+    }
+    Ok(())
+}
+
 fn validate_request_shape(
     request: &NativeProcessCallRequest,
 ) -> Result<(), NativeProcessCallWireError> {
@@ -484,6 +509,7 @@ fn validate_request_shape(
     if output_capacity != request.output().len() {
         return Err(NativeProcessCallWireError::OutputLength);
     }
+    validate_request_progress(state)?;
     Ok(())
 }
 

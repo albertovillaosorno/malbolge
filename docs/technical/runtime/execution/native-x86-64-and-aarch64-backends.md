@@ -903,6 +903,15 @@ and decoder) now re-admit the original request's memory, input, and output
 capacities against its owned buffers before reading or emitting response data.
 A red-first in-process fixture forged each declared original capacity while
 reusing a valid child response and proved typed shape rejection at every seam.
+Original MBNPC1 requests now also require the scalar input-consumed cursor
+to be at most the declared input length and the scalar output-written cursor
+to be at most the declared output capacity. In-process request encoding,
+request sizing, response sizing/encoding/decoding, and raw request decoding all
+reject over-capacity cursors with distinct typed errors. The decoder checks
+progress immediately after the fixed state header, before copying payloads.
+The regression covers one-past-capacity and `u64::MAX` for both cursors, plus
+exactly-at-capacity success, without granting wire framing semantic authority.
+
 This does not replace independent native-call semantic verification.
 
 `PreparedVerifiedDirectInvocation` reconstructs complete key identity using the
