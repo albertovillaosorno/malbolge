@@ -434,6 +434,201 @@ def test_missing_guest_source_fails_closed(tmp_path: Path) -> None:
         _ = c_abi_source.analyze_source(missing)
 
 
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation", ("lstat", "open", "fdopen", "fstat", "read", "post_lstat")
+)
+def test_guest_source_host_file_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """Source descriptor admission must normalize unexpected host failures."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    if operation in {"lstat", "post_lstat"}:
+        original_lstat = Path.lstat
+        calls = 0
+
+        def fail_lstat(path: Path) -> os.stat_result:
+            nonlocal calls
+            if path == source:
+                calls += 1
+                if operation == "lstat" or calls == 2:
+                    raise fault_type("injected source lstat failure")
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_lstat)
+    elif operation == "open":
+        original_open = os.open
+
+        def fail_open(path: Path, flags: int) -> int:
+            if path == source:
+                raise fault_type("injected source open failure")
+            return original_open(path, flags)
+
+        monkeypatch.setattr(os, "open", fail_open)
+    elif operation == "fdopen":
+
+        def fail_fdopen(_descriptor: int, _mode: str) -> object:
+            raise fault_type("injected source fdopen failure")
+
+        monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    elif operation == "fstat":
+
+        def fail_fstat(_descriptor: int) -> os.stat_result:
+            raise fault_type("injected source fstat failure")
+
+        monkeypatch.setattr(os, "fstat", fail_fstat)
+    else:
+
+        def fail_read(*_arguments: object) -> object:
+            raise fault_type("injected source read failure")
+
+        monkeypatch.setattr(c_abi_source, "_snapshot_open_source", fail_read)
+    with pytest.raises(
+        c_abi_source.SourceAnalysisError, match="failed to read guest C"
+    ):
+        _ = c_abi_source._source_snapshot(source)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+def test_guest_source_fdopen_failure_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A source stream wrapper failure must not leak its raw descriptor."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    original_open = os.open
+    opened: list[int] = []
+
+    def track_open(path: Path, flags: int) -> int:
+        descriptor = original_open(path, flags)
+        if path == source:
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(_descriptor: int, _mode: str) -> object:
+        raise fault_type("injected source fdopen failure")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    with pytest.raises(c_abi_source.SourceAnalysisError):
+        _ = c_abi_source._source_snapshot(source)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("location", ["source", "clang"])
+def test_guest_source_resolve_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    location: str,
+) -> None:
+    """Path resolution errors are typed before Clang can use stale input."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    clang = tmp_path / "clang"
+    target = source if location == "source" else clang
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, strict: bool = False) -> Path:
+        if path == target:
+            raise fault_type("injected source resolve failure")
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="resolve"):
+        _ = c_abi_source.analyze_source(source, clang=clang)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("target", ["source", "clang"])
+def test_guest_source_preflight_stat_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    target: str,
+) -> None:
+    """Clang/source status exceptions cannot escape the tooling boundary."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    clang = tmp_path / "clang"
+    _ = clang.write_bytes(b"fake clang")
+    faulty = source if target == "source" else clang
+    original_is_file = Path.is_file
+
+    def fail_is_file(path: Path) -> bool:
+        if path == faulty:
+            raise fault_type("injected preflight status failure")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", fail_is_file)
+    monkeypatch.setattr(
+        c_abi_source, "_clang_identity", lambda _clang: "clang version 22.1.8"
+    )
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="status"):
+        c_abi_source._require_ast_inputs(source, clang)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("query", ["version", "ast"])
+def test_guest_source_clang_transport_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    query: str,
+) -> None:
+    """Host transport failures cannot turn into uncaught tool tracebacks."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+
+    def fail_run(*_args: object, **_kwargs: object) -> object:
+        raise fault_type("injected clang subprocess failure")
+
+    monkeypatch.setattr(c_abi_source.sp, "run", fail_run)
+    if query == "version":
+        operation = lambda: c_abi_source._clang_identity(source)
+    else:
+        monkeypatch.setattr(c_abi_source, "_require_ast_inputs", lambda *_: None)
+        operation = lambda: c_abi_source._run_ast(source, source, "target")
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="Clang"):
+        _ = operation()
+
+
+@pytest.mark.parametrize("query", ["version", "ast"])
+@pytest.mark.parametrize("malformed", [None, b"not text", 42])
+def test_guest_source_clang_nontext_receipts_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    malformed: object,
+) -> None:
+    """A successful exit code without decoded text is not valid AST evidence."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    monkeypatch.setattr(
+        c_abi_source.sp,
+        "run",
+        lambda *_args, **_kwargs: sp.CompletedProcess(
+            ["clang"], 0, stdout=malformed, stderr=""
+        ),
+    )
+    if query == "version":
+        operation = lambda: c_abi_source._clang_identity(source)
+    else:
+        monkeypatch.setattr(c_abi_source, "_require_ast_inputs", lambda *_: None)
+        operation = lambda: c_abi_source._run_ast(source, source, "target")
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="Clang"):
+        _ = operation()
+
+
 def test_abi_preflight_rejects_source_rewrite_during_ast(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

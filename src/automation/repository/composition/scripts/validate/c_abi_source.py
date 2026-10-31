@@ -35,16 +35,14 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import json
 import os
-from pathlib import Path
-from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import Never
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass
+from pathlib import Path
+from stat import S_ISREG
+from typing import TYPE_CHECKING, Never, cast
 
 if TYPE_CHECKING:
     from os import stat_result
@@ -103,8 +101,7 @@ class AbiDiagnostic:
 
         """
         return (
-            f"{self.path}:{self.line}:{self.column}: error: "
-            f"{self.code} {self.message}"
+            f"{self.path}:{self.line}:{self.column}: error: {self.code} {self.message}"
         )
 
 
@@ -185,6 +182,25 @@ def _ast_command(source: Path, clang: Path, target: str) -> list[str]:
     ]
 
 
+def _checked_clang_output(
+    completed: sp.CompletedProcess[str],
+    context: str,
+) -> tuple[str, str]:
+    """Admit only a decoded, integer-exit Clang process receipt.
+
+    Returns:
+        Stdout and stderr from one valid subprocess receipt.
+
+    """
+    if (
+        type(completed.returncode) is not int
+        or not isinstance(completed.stdout, str)
+        or not isinstance(completed.stderr, str)
+    ):
+        _fail(f"malformed Clang {context} process receipt")
+    return completed.stdout, completed.stderr
+
+
 def _clang_identity(clang: Path) -> str:
     try:
         # jig-ignore-next-line: indivisible reviewed identifier
@@ -197,20 +213,29 @@ def _clang_identity(clang: Path) -> str:
             errors="replace",
             shell=False,
         )
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         _fail(f"failed to execute Clang version query {clang}: {error}")
+    stdout, stderr = _checked_clang_output(completed, "version")
     if completed.returncode != 0:
         _fail(f"Clang version query failed for {clang}")
-    return completed.stdout + chr(10) + completed.stderr
+    return stdout + chr(10) + stderr
 
 
 def _require_ast_inputs(source: Path, clang: Path) -> None:
-    if not clang.is_file():
+    try:
+        clang_is_file = clang.is_file()
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail(f"Clang status failed for {clang}: {error}")
+    if not clang_is_file:
         _fail(f"pinned Clang not found: {clang}")
     expected = f"clang version {PINNED_LLVM_VERSION}"
     if expected not in _clang_identity(clang):
         _fail(f"Clang must report {expected}: {clang}")
-    if not source.is_file():
+    try:
+        source_is_file = source.is_file()
+    except (OSError, ValueError, RuntimeError) as error:
+        _fail(f"source status failed for {source}: {error}")
+    if not source_is_file:
         _fail(f"source is not a regular file: {source}")
 
 
@@ -237,12 +262,13 @@ def _run_ast(source: Path, clang: Path, target: str) -> JsonObject:
             errors="replace",
             shell=False,
         )
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         _fail(f"failed to execute Clang AST parse {clang}: {error}")
+    stdout, stderr = _checked_clang_output(completed, "AST")
     if completed.returncode != 0:
-        detail = completed.stderr.strip()
+        detail = stderr.strip()
         _fail(detail or f"Clang AST parse failed for {source}")
-    return _parse_ast_output(completed.stdout, source)
+    return _parse_ast_output(stdout, source)
 
 
 def _line_column_from_offset(
@@ -267,9 +293,7 @@ def _location_candidates(node: JsonObject) -> tuple[JsonObject, ...]:
     if direct is not None:
         result.append(direct)
     raw_range = _location_mapping(node.get("range"))
-    begin = (
-        None if raw_range is None else _location_mapping(raw_range.get("begin"))
-    )
+    begin = None if raw_range is None else _location_mapping(raw_range.get("begin"))
     if begin is not None:
         result.append(begin)
     return tuple(result)
@@ -317,9 +341,7 @@ def _candidate_line_column(
     if _invalid_source_offset(context, path, offset):
         return None, None, offset
     if line is None and offset is not None and path == context.source:
-        line, derived_column = _line_column_from_offset(
-            context.source_bytes, offset
-        )
+        line, derived_column = _line_column_from_offset(context.source_bytes, offset)
     if column is None:
         column = derived_column
     if inherited is not None:
@@ -658,15 +680,25 @@ def _source_snapshot(source: Path) -> _SourceSnapshot:
     try:
         admitted = source.lstat()
         flags = (
-            os.O_RDONLY
-            | getattr(os, "O_NOFOLLOW", 0)
-            | getattr(os, "O_NONBLOCK", 0)
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
         )
         descriptor = os.open(source, flags)
-        with os.fdopen(descriptor, "rb") as stream:
+        try:
+            stream = os.fdopen(descriptor, "rb")
+        except (OSError, ValueError, RuntimeError):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            raise
+        with stream:
             return _snapshot_open_source(stream, source, admitted)
-    except OSError as error:
-        _fail(f"failed to read guest C source {source}: {error}")
+    except SourceAnalysisError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise SourceAnalysisError(
+            f"failed to read guest C source {source}: {error}"
+        ) from error
 
 
 def analyze_source(
@@ -681,7 +713,12 @@ def analyze_source(
         The stable source-located ABI diagnostics, if any.
 
     """
-    resolved = source.resolve()
+    try:
+        resolved = source.resolve()
+    except (OSError, ValueError, RuntimeError) as error:
+        raise SourceAnalysisError(
+            f"failed to resolve guest C source {source}: {error}"
+        ) from error
     active_projection = projection or c_abi.canonical_projection()
     snapshot = _source_snapshot(resolved)
     source_bytes = snapshot.content
@@ -689,7 +726,13 @@ def analyze_source(
         _ = source_bytes.decode("utf-8")
     except UnicodeDecodeError as error:
         _fail(f"invalid guest-C UTF-8 in {resolved}: {error}")
-    ast = _run_ast(resolved, clang.resolve(), active_projection.clang_target)
+    try:
+        resolved_clang = clang.resolve()
+    except (OSError, ValueError, RuntimeError) as error:
+        raise SourceAnalysisError(
+            f"failed to resolve Clang path {clang}: {error}"
+        ) from error
+    ast = _run_ast(resolved, resolved_clang, active_projection.clang_target)
     if snapshot != _source_snapshot(resolved):
         _fail(f"guest C source changed during AST analysis: {resolved}")
     diagnostics: list[AbiDiagnostic] = []
