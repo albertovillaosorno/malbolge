@@ -406,6 +406,59 @@ def test_historical_source_changes_during_report_are_rejected(
 
 
 @pytest.mark.parametrize(
+    "error_type",
+    [ValueError, TypeError, KeyError, RecursionError, historical_pairs.HistoricalEvidenceError],
+)
+def test_historical_parser_fault_rejects_hostile_exception_formatters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+) -> None:
+    """A foreign parser exception cannot execute its formatter on rejection."""
+
+    def dangerous_str(self: Exception) -> str:
+        del self
+        message = "foreign parser exception formatter executed"
+        raise AssertionError(message)
+
+    hostile_type = type("HostileHistoricalFault", (error_type,), {"__str__": dangerous_str})
+    fault = hostile_type("untrusted source exception")
+
+    def broken(root: Path, relative: str) -> dict[str, Any]:
+        del root, relative
+        raise fault
+
+    monkeypatch.setattr(historical_pairs, "_build_report", broken)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError,
+        match=HISTORICAL_SOURCE_INCONSISTENT,
+    ) as caught:
+        historical_pairs.build_report(tmp_path, BASE + PREFIX)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
+    "error",
+    [ValueError("native syntax failure"), historical_pairs.HistoricalEvidenceError("missing trial")],
+)
+def test_historical_native_parser_fault_retains_useful_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+) -> None:
+    """Known built-in and project exceptions retain the original reason."""
+
+    def broken(root: Path, relative: str) -> dict[str, Any]:
+        del root, relative
+        raise error
+
+    monkeypatch.setattr(historical_pairs, "_build_report", broken)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match=str(error)) as caught:
+        historical_pairs.build_report(tmp_path, BASE + PREFIX)
+    assert caught.value.__cause__ is error
+
+
+@pytest.mark.parametrize(
     ("filename", "source_error"),
     [
         ("experiment.toml", RecursionError),

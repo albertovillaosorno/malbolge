@@ -628,7 +628,27 @@ def build_report(root: Path, relative: str) -> dict[str, Any]:
         RecursionError,
         csv.Error,
     ) as error:
-        message = f"historical paired source inconsistent: {error}"
+        # Foreign exception subtypes may run arbitrary code in __str__.
+        # Preserve useful diagnostics for exact native parser errors only.
+        native_parser_errors = (
+            KeyError,
+            TypeError,
+            ValueError,
+            RecursionError,
+            csv.Error,
+            tomllib.TOMLDecodeError,
+            HistoricalEvidenceError,
+            evidence.EvidenceError,
+            analyze.ArenaError,
+            experiment_manifest.ExperimentManifestError,
+            benchmark_protocol.BenchmarkProtocolError,
+        )
+        diagnostic = (
+            str(error)
+            if type(error) in native_parser_errors
+            else type(error).__name__
+        )
+        message = f"historical paired source inconsistent: {diagnostic}"
         raise HistoricalEvidenceError(message) from error
 
 
