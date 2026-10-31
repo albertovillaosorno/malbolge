@@ -931,6 +931,93 @@ def test_snapshot_entry_status_errors_fail_closed(
         _ = snapshot_tree(root)
 
 
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize("is_root", [True, False])
+def test_snapshot_host_status_exceptions_fail_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+    *,
+    is_root: bool,
+) -> None:
+    """Host status exceptions cannot bypass exact-tree admission errors."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    blocked = root if is_root else root / "payload.bin"
+    if not is_root:
+        _ = blocked.write_bytes(b"payload")
+    original_lstat = Path.lstat
+
+    def fail_status(path: Path) -> os.stat_result:
+        if path == blocked:
+            message = "host metadata status broke"
+            raise failure_type(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_status)
+    context = "tree root" if is_root else "tree entry"
+    with pytest.raises(ExactTreeError, match=f"{context} status failed"):
+        _ = snapshot_tree(root)
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize("excluded", [False, True])
+def test_snapshot_host_walk_exceptions_fail_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+    *,
+    excluded: bool,
+) -> None:
+    """A failed full or excluded recursive traversal rejects source identity."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    _ = (root / "payload.bin").write_bytes(b"payload")
+
+    def fail_walk(
+        path: Path,
+        *,
+        top_down: bool = True,
+        on_error: Callable[[OSError], object] | None = None,
+        follow_symlinks: bool = False,
+    ) -> object:
+        _ = path, top_down, on_error, follow_symlinks
+        message = "host tree walker broke"
+        raise failure_type(message)
+
+    monkeypatch.setattr(Path, "walk", fail_walk)
+
+    def run_snapshot() -> TreeSnapshot:
+        if excluded:
+            return snapshot_tree_excluding(root, ("unused",))
+        return snapshot_tree(root)
+
+    with pytest.raises(ExactTreeError, match="tree traversal failed"):
+        _ = run_snapshot()
+
+
+@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+def test_snapshot_host_junction_exceptions_fail_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Link-classification failures cannot authorize a supposed tree root."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    original_junction = Path.is_junction
+
+    def fail_junction(path: Path) -> bool:
+        if path == root:
+            message = "host junction classification broke"
+            raise failure_type(message)
+        return original_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", fail_junction)
+    with pytest.raises(ExactTreeError, match="tree redirect status failed"):
+        _ = snapshot_tree(root)
+
+
 def test_snapshot_entry_read_errors_fail_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

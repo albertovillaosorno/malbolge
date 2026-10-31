@@ -59,6 +59,8 @@ from algorithms.diff.model import TreeSnapshot
 from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from algorithms.diff.model import ExactSegment
 
 _BACKSLASH = "\\"
@@ -186,16 +188,25 @@ def _filter_snapshot(
     )
 
 
-def _raise_tree_walk_error(error: OSError) -> None:
+def _raise_tree_walk_error(error: OSError | ValueError | RuntimeError) -> None:
     message = f"tree traversal failed: {error}"
     raise ExactTreeError(message) from error
 
 
+def _walk_tree(
+    root: Path,
+) -> Iterator[tuple[Path, list[str], list[str]]]:
+    try:
+        yield from root.walk(on_error=_raise_tree_walk_error)
+    except ExactTreeError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        _raise_tree_walk_error(error)
+
+
 def _tree_paths(root: Path) -> tuple[Path, ...]:
     paths: list[Path] = []
-    for directory, directories, filenames in root.walk(
-        on_error=_raise_tree_walk_error
-    ):
+    for directory, directories, filenames in _walk_tree(root):
         paths.extend(directory / name for name in directories)
         paths.extend(directory / name for name in filenames)
     return tuple(sorted(paths))
@@ -243,10 +254,7 @@ def _tree_paths_excluding(
     root: Path, roots: tuple[str, ...]
 ) -> tuple[Path, ...]:
     paths: list[Path] = []
-    for directory, directories, filenames in root.walk(
-        top_down=True,
-        on_error=_raise_tree_walk_error,
-    ):
+    for directory, directories, filenames in _walk_tree(root):
         paths.extend(
             _prune_excluded_directories(
                 root, directory, directories, roots=roots
@@ -261,13 +269,17 @@ def _entry_mode(path: Path, context: str) -> int | None:
         return path.lstat().st_mode
     except FileNotFoundError:
         return None
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} status failed: {error}"
         raise ExactTreeError(message) from error
 
 
 def _is_redirect(path: Path, mode: int) -> bool:
-    return S_ISLNK(mode) or path.is_junction()
+    try:
+        return S_ISLNK(mode) or path.is_junction()
+    except (OSError, ValueError, RuntimeError) as error:
+        message = f"tree redirect status failed: {path}: {error}"
+        raise ExactTreeError(message) from error
 
 
 def _file_identity(status: os.stat_result) -> tuple[int, ...]:
