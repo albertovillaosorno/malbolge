@@ -478,6 +478,9 @@ def _measured_limited(
     input_bytes: bytes | None,
     timeout_seconds: float,
 ) -> tuple[sp.CompletedProcess[bytes], int, bytes]:
+    # Reject invalid deadlines before probing host tools or creating a
+    # temporary RSS report directory. _run repeats admission at launch.
+    _admit_limits(timeout_seconds, DEFAULT_STDOUT_LIMIT, DEFAULT_STDERR_LIMIT)
     _admit_command(command)
     require_child_rss_measurement()
     time_executable = _system_tool(RSS_TOOL)

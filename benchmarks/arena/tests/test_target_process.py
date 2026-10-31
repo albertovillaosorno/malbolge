@@ -49,8 +49,7 @@ import pytest
 from benchmarks.arena import evidence, target_process
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from pathlib import Path
     from typing import IO
 
@@ -575,6 +574,43 @@ def test_measured_child_rejects_malformed_original_command_before_tools(
     with pytest.raises(target_process.TargetProcessError, match="command"):
         launcher(cast("list[str]", command), *input_args)
     assert not tools_called
+
+
+@pytest.mark.parametrize(
+    ("launcher", "uses_input"),
+    [
+        (target_process.invoke_limited_measured, False),
+        (target_process.invoke_limited_measured_raw, False),
+        (target_process.invoke_with_input_limited_measured, True),
+        (target_process.invoke_with_input_limited_measured_raw, True),
+    ],
+)
+@pytest.mark.parametrize(
+    "invalid_deadline", [None, False, True, 0, -1, 15.5, float("nan"), "3"]
+)
+def test_measured_child_invalid_deadline_rejects_before_host_tools(
+    monkeypatch: pytest.MonkeyPatch,
+    launcher: Callable[..., object],
+    *,
+    uses_input: bool,
+    invalid_deadline: object,
+) -> None:
+    """Bad measured deadlines must not probe tools or create output folders."""
+
+    def forbidden_tool_probe() -> None:
+        message = "invalid measured deadline reached host tools"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(
+        target_process, "require_child_rss_measurement", forbidden_tool_probe
+    )
+    arguments = (b"input",) if uses_input else ()
+    with pytest.raises(target_process.TargetProcessError, match="deadline"):
+        launcher(
+            _child("print('never')"),
+            *arguments,
+            timeout_seconds=cast("float", invalid_deadline),
+        )
 
 
 def test_real_child_launch_errors_are_typed_and_preserve_cause(
