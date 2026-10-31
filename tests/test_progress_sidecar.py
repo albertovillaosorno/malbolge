@@ -12096,8 +12096,8 @@ def test_windows_writer_lock_rejects_noncanonical_lock_receipt(
 
 
 @pytest.mark.parametrize(
-    "receipt", [False, True, -1, "0", object()],
-    ids=["false", "true", "negative", "string", "foreign"],
+    "receipt", [False, True, -1, "0", object(), 2**80],
+    ids=["false", "true", "negative", "string", "foreign", "overflow"],
 )
 def test_writer_lock_rejects_foreign_descriptor_before_acquisition(
     monkeypatch: pytest.MonkeyPatch,
@@ -12129,8 +12129,8 @@ def test_writer_lock_rejects_foreign_descriptor_before_acquisition(
 
 
 @pytest.mark.parametrize(
-    "receipt", [False, True, -1, "0", object()],
-    ids=["false", "true", "negative", "string", "foreign"],
+    "receipt", [False, True, -1, "0", object(), 2**80],
+    ids=["false", "true", "negative", "string", "foreign", "overflow"],
 )
 def test_writer_lock_rejects_foreign_descriptor_at_identity_recheck(
     tmp_path: Path,

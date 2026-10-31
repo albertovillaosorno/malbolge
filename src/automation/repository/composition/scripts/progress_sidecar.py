@@ -56,6 +56,7 @@ import os
 from pathlib import Path
 import re
 import stat
+from struct import calcsize
 import sys
 import tempfile
 from time import monotonic_ns
@@ -100,6 +101,7 @@ _FOLLOW_ARGUMENT_COUNT: Final = 2
 _FOLLOW_INTERVAL_SECONDS: Final = 1.0
 _MAX_SIDECAR_BYTES: Final = 1_048_576
 _RAW_READ_CHUNK_BYTES: Final = 65_536
+_MAX_NATIVE_FILE_DESCRIPTOR: Final = (1 << (8 * calcsize("@i") - 1)) - 1
 _JOB_IDENTITY_FIELD_COUNT: Final = 3
 WINDOWS_PLATFORM: Final = "nt"
 _NUL_PATH_CHARACTER: Final = "\x00"
@@ -2097,8 +2099,12 @@ def _require_zero_lock_seek_receipt(receipt: object) -> None:
 
 def _native_writer_lock_descriptor(receipt: object) -> int:
     """Reject nonnative, boolean, or negative lock descriptor receipts."""
-    if type(receipt) is not int or receipt < 0:
-        _fail("progress writer lock descriptor must be a native nonnegative integer")
+    if (
+        type(receipt) is not int
+        or receipt < 0
+        or receipt > _MAX_NATIVE_FILE_DESCRIPTOR
+    ):
+        _fail("progress writer lock descriptor must be a native bounded integer")
     return receipt
 
 

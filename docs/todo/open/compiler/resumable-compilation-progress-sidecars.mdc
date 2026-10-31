@@ -613,7 +613,9 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   completion remain admissible. Eleven additional red-first cases verify
   native nonnegative descriptor receipts before lock acquisition and at the
   post-lock inode recheck, plus committed-path retention for a forged release
-  callback completion. Positive native flock locking remains covered by the
+  callback completion. Two additional red-first overflow cases constrain
+  descriptor receipts to the native C `int` range before calling OS primitives.
+  Positive native flock locking remains covered by the
   existing cross-process contention and process-death tests. Two further
   red-first fixtures prove a matching native metadata receipt with a forged
   opened-directory or opened-FIFO type cannot authorize lock admission.
