@@ -279,8 +279,12 @@ static int test_binary128(void) {
                       "1.00000", UINT32_C(7))) {
     return 1;
   }
+  // Scientific exponents with four decimal digits must not overflow the
+  // reversed-digit buffer, including uppercase and rounded subnormals.
   if (!expect_text128("%Le", UINT64_C(1), UINT64_C(0),
                       "6.475175e-4966", UINT32_C(14)) ||
+      !expect_text128("%.0LE", UINT64_C(1), UINT64_C(0),
+                      "6E-4966", UINT32_C(7)) ||
       !expect_text128("%LG", UINT64_MAX, UINT64_C(0x7ffeffffffffffff),
                       "1.18973E+4932", UINT32_C(13))) {
     return 2;

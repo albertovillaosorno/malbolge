@@ -195,9 +195,14 @@ static int round_exact(const DecimalExactView *exact, uint32_t target,
   return 1;
 }
 
+static uint32_t exponent_magnitude(int32_t exponent) {
+  // Widen before negation, including the full INT32_MIN magnitude.
+  return exponent < INT32_C(0) ? (uint32_t)(-(int64_t)exponent)
+                               : (uint32_t)exponent;
+}
+
 static uint32_t exponent_digit_count(int32_t exponent) {
-  uint32_t magnitude = exponent < INT32_C(0) ? (uint32_t)(-exponent)
-                                             : (uint32_t)exponent;
+  uint32_t magnitude = exponent_magnitude(exponent);
   uint32_t digits = UINT32_C(1);
 
   while (magnitude >= UINT32_C(10)) {
@@ -270,9 +275,10 @@ static void writer_repeat(DecimalWriter *writer, char value, uint32_t count) {
 
 static void emit_exponent(DecimalWriter *writer, int32_t exponent,
                           int uppercase) {
-  char reversed[3];
-  uint32_t magnitude = exponent < INT32_C(0) ? (uint32_t)(-exponent)
-                                             : (uint32_t)exponent;
+  // A binary128 decimal exponent already has four digits (e.g. -4966).
+  // Ten digits admit every signed 32-bit exponent magnitude without overflow.
+  char reversed[10];
+  uint32_t magnitude = exponent_magnitude(exponent);
   uint32_t count = UINT32_C(0);
   uint32_t minimum = UINT32_C(2);
 
