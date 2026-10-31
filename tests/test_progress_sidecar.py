@@ -13898,3 +13898,145 @@ def test_payload_stream_rejects_sync_on_unrelated_descriptor(
     assert outsider.read_bytes() == b"unrelated"
     assert not destination.exists()
     assert not tuple(tmp_path.glob("*.checkpoint.*"))
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+@pytest.mark.parametrize("site", ["open", "path-stat", "read", "close"])
+@pytest.mark.parametrize("failure_type", [IndexError, OverflowError])
+def test_staged_reader_unexpected_ordinary_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    site: str,
+    failure_type: type[Exception],
+) -> None:
+    """An ordinary host dependency fault cannot publish or escape untyped."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    message = "injected unexpected staged-reader fault"
+    original_open = os.open
+    original_close = os.close
+    original_read = os.read
+    original_stat = Path.stat
+    staged_readers: set[int] = set()
+    injected = False
+
+    def tracked_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        nonlocal injected
+        if (
+            site == "open"
+            and Path(path).name.endswith(".tmp")
+            and not flags & os.O_CREAT
+        ):
+            injected = True
+            raise failure_type(message)
+        descriptor = original_open(path, flags, mode)
+        if Path(path).name.endswith(".tmp") and not flags & os.O_CREAT:
+            staged_readers.add(descriptor)
+        return descriptor
+
+    def tracked_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        nonlocal injected
+        if (
+            site == "path-stat"
+            and not injected
+            and path.name.endswith(".tmp")
+            and not follow_symlinks
+        ):
+            injected = True
+            raise failure_type(message)
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    def tracked_read(descriptor: int, requested: int) -> bytes:
+        nonlocal injected
+        if site == "read" and descriptor in staged_readers and not injected:
+            injected = True
+            raise failure_type(message)
+        return original_read(descriptor, requested)
+
+    def tracked_close(descriptor: int) -> None:
+        nonlocal injected
+        original_close(descriptor)
+        if descriptor in staged_readers:
+            staged_readers.remove(descriptor)
+            if site == "close" and not injected:
+                injected = True
+                raise failure_type(message)
+
+    expected = {
+        "open": "progress temporary cannot be verified",
+        "path-stat": "progress temporary identity cannot be verified",
+        "read": "progress temporary verification failed",
+        "close": "progress temporary descriptor close failed",
+    }[site]
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", tracked_open)
+        context.setattr(os, "read", tracked_read)
+        context.setattr(os, "close", tracked_close)
+        context.setattr(Path, "stat", tracked_stat)
+        with pytest.raises(ERROR, match=expected) as captured:
+            _ = _publish_for_temporary_admission_test(kind, sidecar, destination)
+    assert injected
+    assert isinstance(captured.value.__cause__, failure_type)
+    assert message in str(captured.value.__cause__)
+    assert not staged_readers
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+def test_staged_reader_unexpected_close_fault_preserves_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """An unexpected close fault stays secondary to a typed read rejection."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    original_open = os.open
+    original_close = os.close
+    original_read = os.read
+    staged_readers: set[int] = set()
+    primary = IndexError("primary staged read fault")
+    secondary = OverflowError("secondary staged close fault")
+
+    def tracked_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = original_open(path, flags, mode)
+        if Path(path).name.endswith(".tmp") and not flags & os.O_CREAT:
+            staged_readers.add(descriptor)
+        return descriptor
+
+    def failing_read(descriptor: int, requested: int) -> bytes:
+        if descriptor in staged_readers:
+            raise primary
+        return original_read(descriptor, requested)
+
+    def failing_close(descriptor: int) -> None:
+        original_close(descriptor)
+        if descriptor in staged_readers:
+            staged_readers.remove(descriptor)
+            raise secondary
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "open", tracked_open)
+        context.setattr(os, "read", failing_read)
+        context.setattr(os, "close", failing_close)
+        with pytest.raises(
+            ERROR, match="progress temporary verification failed"
+        ) as captured:
+            _ = _publish_for_temporary_admission_test(kind, sidecar, destination)
+    assert captured.value.__cause__ is primary
+    assert getattr(captured.value, "__notes__", None) == [
+        "progress temporary descriptor close also failed: OverflowError"
+    ]
+    assert not staged_readers
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))

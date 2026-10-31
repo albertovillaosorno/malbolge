@@ -2508,7 +2508,7 @@ def _close_staged_reader(descriptor: int) -> None:
     try:
         if os.close(descriptor) is not None:
             _fail("progress temporary descriptor close receipt must be None")
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         if primary_error is not None:
             BaseException.add_note(
                 primary_error,
@@ -2537,7 +2537,7 @@ def _open_staged_reader(temporary: Path) -> int:
         )
     except ProgressSidecarError:
         raise
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         _fail_with_source(
             f"progress temporary cannot be verified: {_host_error_detail(error)}", error
         )
@@ -2550,7 +2550,7 @@ def _admit_temporary_path(
     _reject_path_redirect(temporary, "progress temporary")
     try:
         current = temporary.stat(follow_symlinks=False)
-    except _OUTPUT_STREAM_ERRORS as error:
+    except Exception as error:
         _fail_with_source(
             f"progress temporary identity cannot be verified: {_host_error_detail(error)}", error
         )
@@ -2578,7 +2578,7 @@ def _verify_written_temporary(
             )
         except ProgressSidecarError:
             raise
-        except _READ_STREAM_ERRORS as error:
+        except Exception as error:
             _fail_with_source(
                 f"progress temporary verification failed: {_host_error_detail(error)}", error
             )

@@ -642,6 +642,12 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   descriptor close, plus writer-lock acquisition with secondary close failure.
   Both mutable and immutable publication reject these failures before commit;
   prior staged read failures keep their original typed cause and close note.
+  Eighteen red-first pointer/immutable staging probes now also contain
+  `IndexError`/`OverflowError` at verifier-reader open, path stat, raw byte
+  verification, and descriptor close. These ordinary unexpected faults never
+  publish an artifact and retain exact exception causes; simultaneous read and
+  close failures preserve the primary read fault with a secondary close note.
+  `BaseException` cancellation is not intercepted.
   Two more red-first alias-discovery probes reject native
   `TypeError`/`AttributeError` directory-entry stat failures without
   admitting unverified retained-stage ownership.

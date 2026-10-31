@@ -318,8 +318,18 @@ boundaries. Unexpected `TypeError` or `AttributeError` cannot enter pointer or
 immutable generation publication. A completed staged byte check with an
 uncertain descriptor close remains rejected; a close failure after an earlier
 verification error becomes a secondary diagnostic instead of masking the
-primary rejection. The held writer-lock acquisition boundary similarly types
-unexpected native errors before entering the serialized publication body, and
+primary rejection. Ordinary but unexpected dependency exceptions beyond the
+previous native error list (including `IndexError` and `OverflowError`) now
+fail closed at staged `os.open`, pathname `stat`, raw byte verification, and
+reader `os.close`. Their exact original exceptions remain causes of typed
+`ProgressSidecarError` results; if a read also fails before close, the close
+fault is only a secondary note. Eighteen red-first mutable and immutable
+publication cases prove no pointer or generation member appears, staged
+reader descriptors close, and original errors stay inspectable. These catches
+exclude `BaseException` cancellation signals and retain the existing strict
+staged-byte digest and filesystem identity admission. The held writer-lock
+acquisition boundary similarly types unexpected native errors before entering
+the serialized publication body, and
 its stream-close failure stays secondary when acquisition already failed.
 Retained-immutable-stage alias discovery also treats unusual native
 `DirEntry.stat` exceptions as unverified entries. It never infers alias
