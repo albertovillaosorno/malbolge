@@ -2080,3 +2080,67 @@ def test_target_audit_native_error_keeps_detail_and_cause(
     ) as caught:
         audit.audit(".temp/arena-target-echo-native/study.json")
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [
+        audit.TargetEchoAuditError,
+        report_output.ReportOutputError,
+        evidence.EvidenceError,
+        OSError,
+        UnicodeError,
+        sp.SubprocessError,
+    ],
+)
+def test_target_audit_exact_error_does_not_render_foreign_arguments(
+    fault_type: type[Exception],
+) -> None:
+    """An exact trusted exception type does not make its payload safe."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("foreign target audit argument formatter executed")
+
+        def __repr__(self) -> str:
+            raise AssertionError("foreign target audit argument repr executed")
+
+    fault = fault_type(HostileArgument())
+    assert audit._safe_error_detail(fault) == fault_type.__name__
+
+
+@pytest.mark.parametrize("scope", ["study", "publish"])
+def test_target_audit_foreign_native_argument_keeps_status_two(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    scope: str,
+) -> None:
+    """A foreign argument cannot mask rejected evidence or broken publication."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("foreign target audit diagnostic executed")
+
+    fault = (
+        OSError(HostileArgument())
+        if scope == "study"
+        else report_output.ReportOutputError(HostileArgument())
+    )
+
+    def reject(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    if scope == "study":
+        monkeypatch.setattr(audit, "_admit_study", reject)
+    else:
+        monkeypatch.setattr(audit.report_output, "publish", reject)
+        monkeypatch.setattr(audit, "audit", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        audit.sys, "argv", ["target-audit", ".temp/arena-target-echo-foreign/study.json"]
+    )
+    with pytest.raises(SystemExit) as caught:
+        audit.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert type(fault).__name__ in output.err

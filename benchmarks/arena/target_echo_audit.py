@@ -161,12 +161,8 @@ def _safe_error_detail(error: Exception) -> str:
         Trusted error text or the name of an untrusted exception type.
 
     """
-    if type(error) is target_process.TargetProcessError:
-        arguments = error.args
-        if len(arguments) == 1 and type(arguments[0]) is str:
-            return arguments[0]
-        return type(error).__name__
     if type(error) in (
+        target_process.TargetProcessError,
         TargetEchoAuditError,
         report_output.ReportOutputError,
         analyze.ArenaError,
@@ -181,7 +177,18 @@ def _safe_error_detail(error: Exception) -> str:
         sp.SubprocessError,
         sp.TimeoutExpired,
     ):
-        return str(error)
+        # The exception class is native, but caller-owned arguments are not.
+        # Never invoke their __str__ or __repr__ while reporting rejection.
+        arguments = error.args
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+        if (
+            type(error) in (OSError, PermissionError, FileNotFoundError)
+            and len(arguments) == 2
+            and type(arguments[0]) is int
+            and type(arguments[1]) is str
+        ):
+            return f"[Errno {arguments[0]}] {arguments[1]}"
     return type(error).__name__
 
 
