@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import importlib.util
+import os
 from pathlib import Path
 from stat import S_ISLNK
 from stat import S_ISREG
@@ -110,7 +111,7 @@ class DiffDomain:
 
 
 def _module_name(path: Path) -> str:
-    digest = hashlib.sha256(str(path).encode()).hexdigest()[:16]
+    digest = hashlib.sha256(os.fsencode(path)).hexdigest()[:16]
     return f"_malbolge_diff_domain_{digest}"
 
 

@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
@@ -48,6 +49,7 @@ if TYPE_CHECKING:
 
     from algorithms.diff.mapped import MappedView
 
+_POSIX = "posix"
 _COMPLETE = """def validate_source_provenance(root):
     return None
 
@@ -144,6 +146,19 @@ def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
         callable(domain.build_behavior_probe_context),
         "probe-context builder is not callable",
     )
+
+
+@pytest.mark.skipif(os.name != _POSIX, reason="requires raw POSIX path bytes")
+def test_domain_loader_accepts_surrogateescaped_module_name(
+    tmp_path: Path,
+) -> None:
+    """Hash real filesystem bytes rather than strict UTF-8 module names."""
+    module = tmp_path / os.fsdecode(b"domain-\xff.py")
+    _write(module, _COMPLETE)
+
+    loaded = load_diff_domain(module)
+
+    assert callable(loaded.build_identity_tree)
 
 
 def test_direct_domain_bundle_rejects_foreign_hook(tmp_path: Path) -> None:
