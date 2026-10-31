@@ -334,11 +334,18 @@ def _collect(
             for slot, (stream, key) in enumerate(
                 zip(streams, registered, strict=True)
             ):
+                # SelectorKey.fd is not sufficient evidence of the stream's
+                # descriptor: a foreign fileno() integer subclass can compare
+                # equal while running caller-owned comparison hooks. Admit the
+                # independent stream receipt before comparing descriptor IDs.
+                stream_fd = stream.fileno()
                 if (
                     type(key) is not selectors.SelectorKey
                     or key.fileobj is not stream
                     or type(key.fd) is not int
-                    or key.fd != stream.fileno()
+                    or type(stream_fd) is not int
+                    or stream_fd < 0
+                    or key.fd != stream_fd
                     or type(key.events) is not int
                     or key.events != selectors.EVENT_READ
                     or type(key.data) is not int

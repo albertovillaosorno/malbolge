@@ -903,6 +903,62 @@ def test_output_capture_requires_both_real_eof_receipts(
     assert result.stderr == b""
 
 
+@pytest.mark.parametrize("forgery", ["int-subclass", "hostile-equality"])
+def test_output_selector_rejects_forged_stream_fileno_receipts(
+    monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """A file object's second fileno receipt cannot forge key equality."""
+    original_launch = target_process.sp.Popen
+    inspected: list[int] = []
+
+    class ForeignDescriptor(int):
+        def __eq__(self, other: object) -> bool:
+            if forgery == "hostile-equality":
+                raise AssertionError("foreign descriptor equality hook executed")
+            return super().__eq__(other)
+
+        def __ne__(self, other: object) -> bool:
+            if forgery == "hostile-equality":
+                raise AssertionError("foreign descriptor inequality hook executed")
+            return super().__ne__(other)
+
+    class OutputProxy:
+        def __init__(self, stream: Any) -> None:
+            self._stream = stream
+            self._calls = 0
+
+        def fileno(self) -> int:
+            self._calls += 1
+            inspected.append(self._calls)
+            descriptor = self._stream.fileno()
+            # Standard selector.register obtains the first *native* fd.
+            # Only the subsequent boundary check receives foreign evidence.
+            if self._calls == 1:
+                return descriptor
+            return ForeignDescriptor(descriptor)
+
+        @property
+        def closed(self) -> bool:
+            return self._stream.closed
+
+        def close(self) -> None:
+            self._stream.close()
+
+    def forged_launch(*args: Any, **kwargs: Any) -> sp.Popen[bytes]:
+        child = cast("sp.Popen[bytes]", original_launch(*args, **kwargs))
+        assert child.stdout is not None
+        child.stdout = cast("Any", OutputProxy(child.stdout))
+        return child
+
+    monkeypatch.setattr(target_process.sp, "Popen", forged_launch)
+    with pytest.raises(target_process.TargetProcessError, match="registration"):
+        target_process.invoke(
+            _child("import os; os.write(1, b'output')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    assert 2 in inspected
+
+
 @pytest.mark.parametrize(
     "forgery",
     [
