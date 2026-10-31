@@ -37,7 +37,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
+from stat import S_ISREG
 import sys
 from typing import Never
 from typing import cast
@@ -54,6 +56,7 @@ DEFAULT_LIBC = ROOT / "docs/technical/specification/c-libc-v1.json"
 INCLUDE_ROOT = ROOT / "src/runtime/guest-c-library/contract/include"
 LIBC_ID = "malbolge-libc-v1"
 SCHEMA_VERSION = 1
+MAX_DOCUMENT_BYTES = 1024 * 1024
 
 COMPILER_HEADERS = (
     "float.h",
@@ -268,15 +271,73 @@ def loads_document(text: str) -> JsonObject:
     return _mapping(parsed, "C libc document")
 
 
+def _regular_identity(status: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _verify_regular_snapshot(
+    expected: os.stat_result,
+    observed: os.stat_result,
+) -> None:
+    if (
+        not S_ISREG(observed.st_mode)
+        or observed.st_size > MAX_DOCUMENT_BYTES
+        or _regular_identity(expected) != _regular_identity(observed)
+    ):
+        _fail("C libc document must be a stable regular file")
+
+
+def _check_parent_paths(path: Path) -> None:
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            _fail("C libc document path must not redirect")
+
+
+def _read_regular_bytes(path: Path) -> bytes:
+    # Reject redirects and specials before opening. O_NOFOLLOW and O_NONBLOCK
+    # also protect the leaf open against symlink races and writerless FIFOs.
+    _check_parent_paths(path)
+    status = path.lstat()
+    if (
+        path.is_symlink()
+        or path.is_junction()
+        or not S_ISREG(status.st_mode)
+    ):
+        _fail("C libc document must be a regular non-redirected file")
+    if status.st_size > MAX_DOCUMENT_BYTES:
+        _fail("C libc document exceeds byte limit")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        opened = os.fstat(stream.fileno())
+        _verify_regular_snapshot(status, opened)
+        data = stream.read(MAX_DOCUMENT_BYTES + 1)
+        _verify_regular_snapshot(opened, os.fstat(stream.fileno()))
+        if len(data) != opened.st_size or len(data) > MAX_DOCUMENT_BYTES:
+            _fail("C libc document changed during read or exceeds byte limit")
+    return data
+
+
 def load_document(path: Path = DEFAULT_LIBC) -> JsonObject:
-    """Load a UTF-8 guest libc contract from disk.
+    """Load a stable regular UTF-8 guest libc contract from disk.
 
     Returns:
-        Parsed top-level contract object.
+        The parsed top-level contract object.
 
     """
     try:
-        text = path.read_text(encoding="utf-8-sig")
+        text = _read_regular_bytes(path).decode("utf-8-sig")
     except UnicodeDecodeError as error:
         _fail(f"invalid C libc UTF-8: {error}")
     except OSError as error:

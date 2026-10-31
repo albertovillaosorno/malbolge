@@ -41,12 +41,17 @@ import os
 from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from typing import TYPE_CHECKING
 from typing import cast
 
 import pytest
+
 from scripts.validate import c_abi
 from scripts.validate import c_libc
 from scripts.validate import c_libc_source
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 LIBC_PATH = ROOT / "docs/technical/specification/c-libc-v1.json"
@@ -79,6 +84,9 @@ VALIDATOR = (
     ROOT / "src/automation/repository/composition/scripts/validate/main.py"
 )
 WINDOWS_OS_NAME = "nt"
+LOADER_SYMLINK = "symlink"
+LOADER_DIRECTORY = "directory"
+LOADER_FIFO = "fifo"
 EXPECTED_DIAGNOSTIC_LINE = 39
 EXPECTED_DIAGNOSTIC_COLUMN = 12
 MALLOC_ROUTINE = "malloc"
@@ -237,6 +245,65 @@ def test_duplicate_libc_keys_fail_closed() -> None:
     text = '{"schema_version":1,"schema_version":1}'
     with pytest.raises(c_libc.CLibcValidationError, match="duplicate JSON key"):
         _ = c_libc.loads_document(text)
+
+
+def test_guest_libc_document_reads_regular_copy(tmp_path: Path) -> None:
+    """A normal detached JSON fixture is accepted by the authority loader."""
+    copy = tmp_path / "libc.json"
+    _ = copy.write_bytes(LIBC_PATH.read_bytes())
+    assert c_libc.load_document(copy) == _document()
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory", "fifo", "oversized"])
+def test_guest_libc_loader_rejects_redirects_and_special_files(
+    kind: str,
+    tmp_path: Path,
+) -> None:
+    """Redirected or nonregular authorities cannot reach the schema parser."""
+    path = tmp_path / "authority.json"
+    if kind == LOADER_SYMLINK:
+        path.symlink_to(LIBC_PATH)
+    elif kind == LOADER_DIRECTORY:
+        path.mkdir()
+    elif kind == LOADER_FIFO:
+        mkfifo = cast(
+            "Callable[[Path], None] | None",
+            getattr(os, "mkfifo", None),
+        )
+        if mkfifo is None:
+            pytest.skip("FIFOs are unavailable on this host")
+        mkfifo(path)
+    else:
+        _ = path.write_bytes(b"x" * (c_libc.MAX_DOCUMENT_BYTES + 1))
+    with pytest.raises(
+        c_libc.CLibcValidationError,
+        match=r"regular non-redirected file|exceeds byte limit",
+    ):
+        _ = c_libc.load_document(path)
+
+
+def test_guest_libc_loader_rejects_parent_directory_symlink(
+    tmp_path: Path,
+) -> None:
+    """The authority path cannot redirect through a linked ancestor."""
+    linked = tmp_path / "linked"
+    linked.symlink_to(LIBC_PATH.parent, target_is_directory=True)
+    with pytest.raises(
+        c_libc.CLibcValidationError,
+        match="path must not redirect",
+    ):
+        _ = c_libc.load_document(linked / LIBC_PATH.name)
+
+
+def test_guest_libc_loader_rejects_invalid_utf8(tmp_path: Path) -> None:
+    """Invalid UTF-8 stays inside the typed libc error boundary."""
+    path = tmp_path / "libc.json"
+    _ = path.write_bytes(b"\xff")
+    with pytest.raises(
+        c_libc.CLibcValidationError,
+        match="invalid C libc UTF-8",
+    ):
+        _ = c_libc.load_document(path)
 
 
 def test_unknown_libc_key_fails_closed() -> None:

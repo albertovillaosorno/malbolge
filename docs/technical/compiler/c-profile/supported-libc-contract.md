@@ -41,7 +41,10 @@ scratch/startup realization. Those facilities consume the completed
 `c-libc-v1.json` defines library identity `malbolge-libc-v1`, binds it to ABI
 `malbolge-c32-v1` and target profile `malbolge-2026`, and closes the header and
 routine sets. Duplicate keys, unknown fields, identity drift, and changed
-availability sets fail closed.
+availability sets fail closed. The authority loader reads only stable,
+non-redirected regular UTF-8 files under a one-megabyte document limit;
+symlinks, FIFOs, directories, and changed file contents fail before schema
+admission.
 
 The contract deliberately does not equate its surface with whatever one host
 calls "C23 freestanding". WG14 C23 issue 1040 remains open and identifies
