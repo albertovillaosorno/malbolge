@@ -201,6 +201,43 @@ def test_generator_rejects_invalid_fraction_before_output(
     _expect(not recipe.output_algorithm.exists(), "invalid recipe wrote output")
 
 
+@pytest.mark.parametrize("unsafe_fragment", ["bad\x00path", "bad\ud800path"])
+def test_generator_rejects_nonportable_recipe_paths_before_work(
+    tmp_path: Path,
+    unsafe_fragment: str,
+) -> None:
+    """Invalid host paths cannot reach preflight, source reads, or output."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    unsafe = tmp_path / unsafe_fragment
+    for name, candidate in (
+        ("source_root", replace(recipe, source_root=unsafe)),
+        ("oracle_root", replace(recipe, oracle_root=unsafe)),
+        ("output_algorithm", replace(recipe, output_algorithm=unsafe)),
+        ("domain_module", replace(recipe, domain_module=unsafe)),
+    ):
+        with pytest.raises(ValueError, match=f"{name} must be a usable path"):
+            write_algorithm(candidate)
+        _expect(
+            not recipe.output_algorithm.exists(),
+            "invalid path created a transform",
+        )
+
+
+@pytest.mark.parametrize("profile", ["bad\x00profile", "bad\ud800profile"])
+def test_generator_rejects_nonportable_profile_before_work(
+    tmp_path: Path,
+    profile: str,
+) -> None:
+    """The public profile identity must be canonically UTF-8 encodable."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    with pytest.raises(ValueError, match="profile must be portable UTF-8 text"):
+        write_algorithm(replace(recipe, profile=profile))
+    _expect(
+        not recipe.output_algorithm.exists(),
+        "invalid profile wrote output",
+    )
+
+
 def test_compatible_mode_runs_domain_preflight_then_fails_emission(
     tmp_path: Path,
 ) -> None:

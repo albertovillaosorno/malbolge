@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
 import math
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
@@ -56,6 +57,7 @@ from algorithms.diff.provenance import SourcePinEvidence
 from algorithms.diff.source_binding import SourceBindingPolicy
 
 _MAX_SHARES = 255
+_NUL = "\x00"
 
 if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityTree
@@ -150,6 +152,14 @@ def _validate_path(value: object, name: str) -> None:
     if not isinstance(value, Path):
         message = f"{name} must be a pathlib Path"
         raise TypeError(message)
+    if _NUL in os.fspath(value):
+        message = f"{name} must be a usable path without NUL"
+        raise ValueError(message)
+    try:
+        _ = os.fsencode(value)
+    except UnicodeError as error:
+        message = f"{name} must be a usable path on this host"
+        raise ValueError(message) from error
 
 
 def _validate_recipe_paths(recipe: DiffRecipe) -> None:
@@ -163,13 +173,25 @@ def _validate_recipe_paths(recipe: DiffRecipe) -> None:
         _validate_path(recipe.domain_module, "domain_module")
 
 
-def _validate_recipe_identity(recipe: DiffRecipe) -> None:
-    if type(recipe.profile) is not str:
+def _validate_profile_text(value: object) -> None:
+    if type(value) is not str:
         message = "profile must use the exact string type"
         raise TypeError(message)
-    if not recipe.profile:
+    if not value:
         message = "profile must be non-empty"
         raise ValueError(message)
+    try:
+        _ = value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        message = "profile must be portable UTF-8 text"
+        raise ValueError(message) from error
+    if _NUL in value:
+        message = "profile must be portable UTF-8 text without NUL"
+        raise ValueError(message)
+
+
+def _validate_recipe_identity(recipe: DiffRecipe) -> None:
+    _validate_profile_text(recipe.profile)
     if type(recipe.mode) is not TransformMode:
         message = "mode must use the exact TransformMode type"
         raise TypeError(message)
