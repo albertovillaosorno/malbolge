@@ -265,15 +265,23 @@ boundary now uses a
 POSIX-isolated child session and concurrent selector-based pipe reads with
 explicit **4-KiB stdout** and **16-KiB stderr** hard limits. It rejects an
 additional byte on either stream, a cumulative wall timeout, and
-ordinary pipe-retaining descendants. Cleanup signals the original isolated
-process group and reaps the direct child; detached descendants and any
-physical memory or CPU budget enforcement remain outside this claim.
+ordinary pipe-retaining descendants. Before selector registration, both output
+pipes must expose distinct native nonnegative signed C-int descriptors; later
+registration and stream receipts must agree with those initial identities.
+Binary stdin likewise rejects forged or oversized native descriptor receipts
+before changing nonblocking state or writing. This prevents malformed local
+host API results from reaching those descriptor operations; it cannot prove
+pipe ancestry, child provenance, or process-tree containment. Cleanup signals
+the original isolated process group and reaps the direct child; detached
+descendants remain outside containment, as do physical memory or CPU budget
+guarantees for the unrestricted pilot.
 Before signaling or polling, cleanup requires an exact native positive child
 PID distinct from the caller's own native positive process-group identity.
 Invalid PID receipts (including zero, negative, or the caller group) fail
 closed without attempting a group or direct-child signal, since a safe target
 cannot be established in that case. Cleanup treats only an exact native
-`ProcessLookupError` as a genuinely absent process or group. POSIX signal and direct-child kill acknowledgements
+`ProcessLookupError` as a genuinely absent process or group. POSIX signal and
+direct-child kill acknowledgements
 must be `None`; direct-child `poll()` must return `None` or an exact integer,
 and `wait()` must return an exact integer (not a boolean). Any foreign
 exception subclass, malformed status, or forged acknowledgement rejects the

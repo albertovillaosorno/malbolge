@@ -960,6 +960,139 @@ def test_output_selector_rejects_forged_stream_fileno_receipts(
 
 
 @pytest.mark.parametrize(
+    "source",
+    ["stdout", "stderr"],
+)
+@pytest.mark.parametrize(
+    "receipt",
+    [False, True, -1, "4", None, 2**31, 2**64],
+    ids=["false", "true", "negative", "text", "none", "over-c-int", "huge"],
+)
+def test_output_fd_admission_precedes_selector_registration(
+    monkeypatch: pytest.MonkeyPatch, source: str, receipt: object
+) -> None:
+    """Never register a forged pipe descriptor with an OS-backed selector."""
+    selector_created = False
+
+    class OutputProbe:
+        def __init__(self, descriptor: object) -> None:
+            self.descriptor = descriptor
+
+        def fileno(self) -> object:
+            return self.descriptor
+
+    class ChildProbe:
+        stdout = OutputProbe(receipt if source == "stdout" else 41)
+        stderr = OutputProbe(receipt if source == "stderr" else 42)
+
+    def forbidden_selector() -> None:
+        nonlocal selector_created
+        selector_created = True
+        raise AssertionError("invalid descriptor reached OS selector")
+
+    monkeypatch.setattr(
+        target_process.selectors, "DefaultSelector", forbidden_selector
+    )
+    with pytest.raises(target_process.TargetProcessError, match="descriptor"):
+        target_process._collect(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()),
+            target_process._ProcessLimits(  # ruff: ignore[private-member-access]
+                timeout_seconds=LARGE_TIMEOUT_SECONDS,
+                stdout_limit=STDOUT_LIMIT,
+                stderr_limit=STDERR_LIMIT,
+            ),
+            deadline=monotonic() + LARGE_TIMEOUT_SECONDS,
+        )
+    assert not selector_created
+
+
+def test_output_selector_registers_only_prevalidated_native_fd_snapshots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable stream cannot switch the descriptor used by registration."""
+    registered: list[object] = []
+
+    class OutputProbe:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor = descriptor
+            self.calls = 0
+
+        def fileno(self) -> int:
+            self.calls += 1
+            # A second receipt can try to redirect a selector to stdio.
+            return self.descriptor if self.calls == 1 else 1
+
+    class ChildProbe:
+        stdout = OutputProbe(41)
+        stderr = OutputProbe(42)
+
+    class SelectorProbe:
+        def __enter__(self) -> SelectorProbe:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def register(
+            self, fileobj: object, events: int, data: int
+        ) -> target_process.selectors.SelectorKey:
+            registered.append(fileobj)
+            if type(fileobj) is not int or fileobj in (0, 1, 2):
+                raise AssertionError("unvalidated stream reached selector registration")
+            return target_process.selectors.SelectorKey(
+                fileobj=fileobj, fd=fileobj, events=events, data=data
+            )
+
+    monkeypatch.setattr(target_process.selectors, "DefaultSelector", SelectorProbe)
+    with pytest.raises(target_process.TargetProcessError, match="registration"):
+        target_process._collect(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()),
+            target_process._ProcessLimits(  # ruff: ignore[private-member-access]
+                timeout_seconds=LARGE_TIMEOUT_SECONDS,
+                stdout_limit=STDOUT_LIMIT,
+                stderr_limit=STDERR_LIMIT,
+            ),
+            deadline=monotonic() + LARGE_TIMEOUT_SECONDS,
+        )
+    assert registered == [41, 42]
+
+
+def test_output_fd_admission_rejects_aliased_streams_before_registration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stdout and stderr must not share a selectable raw pipe descriptor."""
+    selector_created = False
+
+    class OutputProbe:
+        def fileno(self) -> int:
+            return 41
+
+    class ChildProbe:
+        stdout = OutputProbe()
+        stderr = OutputProbe()
+
+    def forbidden_selector() -> None:
+        nonlocal selector_created
+        selector_created = True
+        raise AssertionError("aliased descriptors reached OS selector")
+
+    monkeypatch.setattr(
+        target_process.selectors, "DefaultSelector", forbidden_selector
+    )
+    with pytest.raises(target_process.TargetProcessError, match="distinct"):
+        target_process._collect(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe()),
+            target_process._ProcessLimits(  # ruff: ignore[private-member-access]
+                timeout_seconds=LARGE_TIMEOUT_SECONDS,
+                stdout_limit=STDOUT_LIMIT,
+                stderr_limit=STDERR_LIMIT,
+            ),
+            deadline=monotonic() + LARGE_TIMEOUT_SECONDS,
+        )
+    assert not selector_created
+
+
+@pytest.mark.parametrize(
     "forgery",
     [
         "foreign-fd",
@@ -1167,7 +1300,7 @@ def test_binary_input_close_fault_preserves_delivery_evidence(
         assert type(error.value.__cause__) is RuntimeError
 
 
-@pytest.mark.parametrize("descriptor", [False, True, -1, 3.0, "3", None])
+@pytest.mark.parametrize("descriptor", [False, True, -1, 3.0, "3", None, 2**31, 2**64])
 def test_binary_input_rejects_foreign_file_descriptors_before_host_io(
     monkeypatch: pytest.MonkeyPatch, descriptor: object
 ) -> None:

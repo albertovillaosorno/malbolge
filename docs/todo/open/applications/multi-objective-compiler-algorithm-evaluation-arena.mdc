@@ -123,6 +123,13 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   regressions show swapped/copied readiness keys and masks previously yielded
   apparent success, while registration/EOF forgeries now fail typed admission.
   This guards producer-side evidence handling, not source authenticity.
+- Before asking a selector to register either child pipe, transport now
+  requires native signed C-int stdout/stderr descriptors that are distinct;
+  registration and later stream receipts must retain the same identities.
+  Binary stdin applies the same bounded descriptor admission before any
+  blocking-mode change or write. Eighteen red-first output/input cases reject
+  forged booleans, negatives, oversized IDs and duplicate pipes before host
+  descriptor operations; this cannot authenticate the OS child identity.
 - This does not impose physical study-wide RAM limits or contain detached
   child sessions, and Windows execution of this pilot remains unsupported.
   A separately opt-in 256-byte binary-stdin channel now proves host pipe

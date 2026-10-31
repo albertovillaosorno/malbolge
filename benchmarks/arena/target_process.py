@@ -44,9 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 from time import monotonic
-from typing import Callable
 from typing import Never
-from typing import cast
 
 _ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TIMEOUT_SECONDS = 15
@@ -55,6 +53,7 @@ DEFAULT_STDERR_LIMIT = 16 * 1024
 MAX_STDIN_BYTES = 256
 MAX_COMMAND_ARGUMENTS = 512
 MAX_COMMAND_BYTES = 16 * 1024
+MAX_NATIVE_DESCRIPTOR = 2**31 - 1
 READ_CHUNK_BYTES = 64 * 1024
 POSIX_PLATFORM = "posix"
 GROUP_KILL_SIGNAL = 9
@@ -84,6 +83,13 @@ class TargetProcessError(sp.SubprocessError):
 
 def _fail(message: str) -> Never:
     raise TargetProcessError(message)
+
+
+def _admit_pipe_descriptor(receipt: object, *, channel: str) -> int:
+    """Admit native signed C-int descriptors before any host pipe operation."""
+    if type(receipt) is not int or not 0 <= receipt <= MAX_NATIVE_DESCRIPTOR:
+        _fail(f"bounded target {channel} requires a native pipe descriptor")
+    return receipt
 
 
 def _admit_limits(
@@ -215,9 +221,8 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
     # A positive forged child PID could still equal our own process group.
     # Signaling -pid in that case kills the caller and its ordinary peers.
     try:
-        # POSIX-only hook: the cross-platform type stubs omit getpgid.
-        group_reader = cast("Callable[[int], object]", getattr(os, "getpgid"))
-        caller_group = group_reader(0)
+        # getpgid is available only on POSIX; cross-platform stubs omit it.
+        caller_group = os.getpgid(0)  # pyright: ignore[reportAttributeAccessIssue]
     except Exception as error:
         message = "bounded target cleanup cannot inspect caller process group"
         raise TargetProcessError(message) from error
@@ -323,13 +328,24 @@ def _collect(
         _fail("bounded target process requires separate output pipes")
     buffers = [bytearray(), bytearray()]
     try:
+        # Selector registration already performs a host descriptor operation.
+        # Inspect both independent fileno receipts *before* registering either
+        # pipe so a forged bool/negative/non-C-int or aliased handle cannot
+        # reach the OS selector even transiently.
+        streams = (child.stdout, child.stderr)
+        stream_fds = tuple(
+            _admit_pipe_descriptor(stream.fileno(), channel="output")
+            for stream in streams
+        )
+        if stream_fds[0] == stream_fds[1]:
+            _fail("bounded target output requires distinct pipe descriptors")
         with selectors.DefaultSelector() as watched:
-            # Preserve exact keys from registration: a forged readiness key
-            # must not relabel stdout as stderr or read an unrelated fd.
-            streams = (child.stdout, child.stderr)
+            # Register the already validated integer snapshots, not mutable
+            # stream objects whose fileno() could change during registration.
+            # A forged readiness key must not relabel or redirect the pipes.
             registered = tuple(
-                watched.register(stream, selectors.EVENT_READ, slot)
-                for slot, stream in enumerate(streams)
+                watched.register(descriptor, selectors.EVENT_READ, slot)
+                for slot, descriptor in enumerate(stream_fds)
             )
             for slot, (stream, key) in enumerate(
                 zip(streams, registered, strict=True)
@@ -341,10 +357,11 @@ def _collect(
                 stream_fd = stream.fileno()
                 if (
                     type(key) is not selectors.SelectorKey
-                    or key.fileobj is not stream
+                    or key.fileobj is not stream_fds[slot]
                     or type(key.fd) is not int
+                    or not 0 <= key.fd <= MAX_NATIVE_DESCRIPTOR
                     or type(stream_fd) is not int
-                    or stream_fd < 0
+                    or stream_fd != stream_fds[slot]
                     or key.fd != stream_fd
                     or type(key.events) is not int
                     or key.events != selectors.EVENT_READ
@@ -420,9 +437,9 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
     try:
         # At most 256 bytes fit in an initially empty POSIX pipe. Nonblocking
         # prevents a broken child from extending the same wall deadline.
-        descriptor = child.stdin.fileno()
-        if type(descriptor) is not int or descriptor < 0:
-            _fail("bounded target input requires a native file descriptor")
+        descriptor = _admit_pipe_descriptor(
+            child.stdin.fileno(), channel="input"
+        )
         if os.set_blocking(descriptor, False) is not None:
             _fail("bounded target input nonblocking setup returned invalid receipt")
         if data:
