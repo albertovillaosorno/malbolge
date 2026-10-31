@@ -42,7 +42,9 @@ pub mod c_source;
 
 use std::env;
 use std::ffi::{OsStr, OsString};
-use std::fs::{self, DirBuilder};
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use std::fs::OpenOptions;
+use std::fs::{self, DirBuilder, File};
 use std::io::{self, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio, id};
@@ -76,6 +78,9 @@ const INPUT_STDIN_ARGUMENT: &str = "--input-stdin";
 const REPORT_STEPS_ARGUMENT: &str = "--report-steps";
 const STEPS_REPORT_PREFIX: &str = "malbolge-steps-v1:";
 const MAX_GUEST_STDIN_BYTES: u64 = 256;
+// Covers the largest currently registered 15-trit capsule (8 sideband
+// symbols per 14,348,907-byte payload) with room for frame metadata.
+const MAX_MALBOLGE_SOURCE_BYTES: u64 = 134_217_728;
 const PROFILE_ADAPTIVE_WIDTH_ENV: &str = "MALBOLGE_PROFILE_ADAPTIVE_WIDTH";
 const PROFILE_WORKER_ARG_COUNT_ENV: &str =
     "MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_COUNT";
@@ -762,13 +767,63 @@ fn run_classic(source: &[u8], input: Vec<u8>) -> Result<u64, String> {
     Ok(steps)
 }
 
+// Nonblocking open prevents an unconnected FIFO from stalling the CLI.
+// The opened handle is checked for regular-file identity before any read.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn open_malbolge_source(path: &Path) -> Result<File, String> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    const LINUX_O_NONBLOCK: i32 = 1 << 11;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(LINUX_O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("failed to open Malbolge source: {error}"))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn open_malbolge_source(path: &Path) -> Result<File, String> {
+    if !fs::metadata(path)
+        .map_err(|error| format!("failed to stat Malbolge source: {error}"))?
+        .is_file()
+    {
+        return Err(String::from("Malbolge source must be a regular file"));
+    }
+    File::open(path)
+        .map_err(|error| format!("failed to open Malbolge source: {error}"))
+}
+
+fn read_malbolge_source(path: &Path) -> Result<Vec<u8>, String> {
+    let file = open_malbolge_source(path)?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("failed to stat Malbolge source: {error}"))?;
+    if !metadata.is_file() || metadata.len() > MAX_MALBOLGE_SOURCE_BYTES {
+        return Err(String::from(
+            "Malbolge source must be a regular file at most 128 MiB",
+        ));
+    }
+    // Even if an ordinary file grows after fstat, never read beyond the
+    // cap plus one overflow-detection byte.
+    let mut bytes = Vec::new();
+    let _read = file
+        .take(MAX_MALBOLGE_SOURCE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read Malbolge source: {error}"))?;
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX)
+        > MAX_MALBOLGE_SOURCE_BYTES
+    {
+        return Err(String::from("Malbolge source exceeds 128 MiB"));
+    }
+    Ok(bytes)
+}
+
 fn run_malbolge(
     source_path: &Path,
     input: Vec<u8>,
     report_steps: bool,
 ) -> Result<ExitCode, String> {
-    let source = fs::read(source_path)
-        .map_err(|error| format!("failed to read Malbolge source: {error}"))?;
+    let source = read_malbolge_source(source_path)?;
     let steps = match parse_capsule(&source)
         .map_err(|error| format!("Malbolge capsule parsing failed: {error}"))?
     {

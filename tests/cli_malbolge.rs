@@ -33,7 +33,7 @@
 //! End-to-end raw Malbolge CLI authority evidence.
 
 use std::env::temp_dir;
-use std::fs::{remove_file, write};
+use std::fs::{File, remove_file, write};
 use std::io::Write as _;
 use std::iter::once;
 use std::path::{Path, PathBuf};
@@ -79,6 +79,30 @@ impl TemporarySource {
             .join(format!("malbolge-cli-oversized-{}.malbolge", id()));
         write(&path, vec![b'!'; 59_050])
             .map_err(|error| format!("write oversized source: {error}"))?;
+        Ok(Self { path })
+    }
+
+    fn oversized_sparse() -> Result<Self, String> {
+        let path = temp_dir()
+            .join(format!("malbolge-cli-oversized-sparse-{}.malbolge", id()));
+        File::create(&path)
+            .map_err(|error| format!("create sparse source: {error}"))?
+            .set_len(134_217_729)
+            .map_err(|error| format!("extend sparse source: {error}"))?;
+        Ok(Self { path })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn writerless_fifo() -> Result<Self, String> {
+        let path = temp_dir()
+            .join(format!("malbolge-cli-writerless-{}.malbolge", id()));
+        let status = Command::new("/usr/bin/mkfifo")
+            .arg(&path)
+            .status()
+            .map_err(|error| format!("create FIFO source: {error}"))?;
+        if !status.success() {
+            return Err(format!("mkfifo failed: {status}"));
+        }
         Ok(Self { path })
     }
 }
@@ -296,6 +320,58 @@ fn raw_source_capacity_uses_profile_diagnostic() -> Result<(), String> {
             ),
             output.status, output.stdout, stderr,
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn oversized_sparse_source_is_rejected_before_guest_execution()
+-> Result<(), String> {
+    let source = TemporarySource::oversized_sparse()?;
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&source.path)
+        .output()
+        .map_err(|error| format!("run oversized sparse source: {error}"))?;
+    let diagnostic = String::from_utf8_lossy(&output.stderr);
+    if output.status.success()
+        || !output.stdout.is_empty()
+        || !diagnostic.contains("regular file at most 128 MiB")
+    {
+        return Err(format!("oversized source admitted: {output:?}"));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn writerless_fifo_and_fifo_symlink_do_not_block_guest_runner()
+-> Result<(), String> {
+    use std::os::unix::fs::symlink;
+
+    let source = TemporarySource::writerless_fifo()?;
+    let alias = TemporarySource {
+        path: temp_dir()
+            .join(format!("malbolge-cli-writerless-alias-{}.malbolge", id())),
+    };
+    symlink(&source.path, &alias.path)
+        .map_err(|error| format!("create FIFO alias: {error}"))?;
+    for path in [&source.path, &alias.path] {
+        let output = Command::new("/usr/bin/timeout")
+            .arg("3s")
+            .arg(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(path)
+            .output()
+            .map_err(|error| format!("run bounded FIFO source: {error}"))?;
+        let diagnostic = String::from_utf8_lossy(&output.stderr);
+        if output.status.code() == Some(124i32)
+            || output.status.success()
+            || !output.stdout.is_empty()
+            || !diagnostic.contains("regular file at most 128 MiB")
+        {
+            return Err(format!(
+                "FIFO source not rejected promptly: {output:?}"
+            ));
+        }
     }
     Ok(())
 }

@@ -47,7 +47,12 @@ persistent native executable. Empty input therefore exposes the selected word
 width: classic raw source emits EOF low byte `0xA8`, while the annual and 2026.3
 
 14-trit capsules emit `0x78`. A malformed modern frame fails capsule parsing
-before the historical fallback bytes can execute.
+before the historical fallback bytes can execute. The CLI accepts source bytes
+only from a regular file and caps acquisition at 128 MiB (including capsule
+sideband and source whitespace), enough for the current 15-trit profile's
+largest capsule payload plus framing. Reading uses one verified file handle,
+a bounded byte count even after post-stat growth, and nonblocking opens on
+Linux/Android so a FIFO or FIFO symlink cannot stall the command.
 
 The current VM input model is pre-buffered rather than interactive. The CLI does
 not fake real-time input by reading the terminal to EOF before startup.
