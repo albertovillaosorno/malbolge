@@ -1275,3 +1275,96 @@ def test_math_log_cleanup_only_failure_is_typed(
         validator._write_math_build_log(log, "new data")
     assert caught.value.__cause__ is cleanup
     assert log.read_text(encoding="utf-8") == "new data"
+
+
+@pytest.mark.parametrize("payload_kind", ["foreign-bytes", "bytearray", "memoryview"])
+def test_math_tex_read_rejects_foreign_byte_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload_kind: str
+) -> None:
+    """A source stream must return real bytes before length/decoder hooks."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    original_fdopen = os.fdopen
+
+    class ForeignBytes(bytes):
+        def __len__(self) -> int:
+            raise AssertionError("foreign TeX byte length hook executed")
+
+    class ForeignStream:
+        def __init__(self, descriptor: int) -> None:
+            self.stream = original_fdopen(descriptor, "rb")
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, _size: int) -> object:
+            data = source.read_bytes()
+            if payload_kind == "foreign-bytes":
+                return ForeignBytes(data)
+            if payload_kind == "bytearray":
+                return bytearray(data)
+            return memoryview(data)
+
+    monkeypatch.setattr(
+        os, "fdopen", lambda descriptor, _mode: ForeignStream(descriptor)
+    )
+    with pytest.raises(validator.MathSpecificationError, match="byte receipt"):
+        _ = validator._read_tex(source)
+
+
+@pytest.mark.parametrize(
+    "receipt_kind", ["foreign-result", "foreign-stdout", "foreign-stderr"]
+)
+def test_math_latex_rejects_foreign_process_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt_kind: str
+) -> None:
+    """Untrusted subprocess result objects and strings have no execution hooks."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+
+    class ForeignText(str):
+        def __add__(self, _other: object) -> str:
+            raise AssertionError("foreign LaTeX stdout formatter executed")
+
+        def __len__(self) -> int:
+            raise AssertionError("foreign LaTeX text length hook executed")
+
+    class ForeignResult:
+        def __getattribute__(self, _name: str) -> object:
+            raise AssertionError("foreign LaTeX process receipt hook executed")
+
+    forged: object
+    if receipt_kind == "foreign-result":
+        forged = ForeignResult()
+    else:
+        forged = sp.CompletedProcess(
+            args=["pdflatex"],
+            returncode=0,
+            stdout=ForeignText("stdout") if receipt_kind == "foreign-stdout" else "",
+            stderr=ForeignText("stderr") if receipt_kind == "foreign-stderr" else "",
+        )
+    monkeypatch.setattr(sp, "run", lambda *_args, **_kwargs: forged)
+    with pytest.raises(validator.MathSpecificationError, match="malformed LaTeX"):
+        _compile_math_source(source)
+    assert not log.exists()
+
+
+def test_math_log_rejects_foreign_text_before_writing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Direct log publishing refuses custom text length and writer hooks."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+
+    class ForeignText(str):
+        def __len__(self) -> int:
+            raise AssertionError("foreign mathematics log length hook executed")
+
+    with pytest.raises(validator.MathSpecificationError, match="log text"):
+        validator._write_math_build_log(log, ForeignText("new data"))
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    assert tuple(log.parent.iterdir()) == (log,)

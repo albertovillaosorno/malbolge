@@ -235,6 +235,8 @@ def _read_open_tex_bytes(
         if _tex_source_identity(os.fstat(stream.fileno())) != admitted:
             _fail("mathematics source changed before read")
         data = stream.read(MAX_TEX_BYTES + 1)
+        if type(data) is not bytes:
+            _fail("malformed mathematics source byte receipt")
         if (
             len(data) != admitted[2]
             or _tex_source_identity(os.fstat(stream.fileno())) != admitted
@@ -465,6 +467,8 @@ def _admit_math_build_log(log_path: Path) -> None:
 
 def _write_math_build_log(log_path: Path, log: str) -> None:
     """Atomically replace one physical log without opening a linked leaf."""
+    if type(log) is not str:
+        _fail("malformed mathematics build log text")
     _reject_cache_redirects(log_path.parent)
     _admit_math_build_log(log_path)
     try:
@@ -553,9 +557,10 @@ def _compile_document(source: Path) -> None:
             f"LaTeX compiler execution failed: {_host_error_detail(error)}"
         ) from error
     if (
-        type(completed.returncode) is not int
-        or not isinstance(completed.stdout, str)
-        or not isinstance(completed.stderr, str)
+        type(completed) is not subprocess.CompletedProcess
+        or type(completed.returncode) is not int
+        or type(completed.stdout) is not str
+        or type(completed.stderr) is not str
     ):
         _fail("malformed LaTeX compiler process receipt")
     log = completed.stdout + completed.stderr
