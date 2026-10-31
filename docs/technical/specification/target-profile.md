@@ -63,6 +63,9 @@ maximum profile word, the frozen 1998 machine envelope, exactly one selected
 current identity, preservation of the sequential deterministic
 self-modifying semantic core across schema-v2 profiles, and an exact
 one-to-one assignment of `<` and `/` to versioned input/output roles.
+It rejects impossible giant trit counts using the declared modulus bit length
+before computing a potentially unbounded ternary exponent; matching larger
+geometries remain admitted without an arbitrary trit-width ceiling.
 
 Cross-component consumption is not complete. The classic safe Rust `Machine`
 remains deliberately bound to `malbolge-1998` and cannot silently execute a

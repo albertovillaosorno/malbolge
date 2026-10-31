@@ -462,6 +462,10 @@ def _validate_word(value: JsonValue, context: str) -> int:
         _fail(f"{context}.radix must be ternary")
     if trits <= 0:
         _fail(f"{context}.trits must be positive")
+    # Every positive 3**trits needs more than `trits` binary digits.
+    # Reject impossible geometry before evaluating an attacker-sized power.
+    if modulus <= 0 or trits >= modulus.bit_length():
+        _fail(f"{context}.modulus must equal radix**trits")
     if modulus != radix**trits:
         _fail(f"{context}.modulus must equal radix**trits")
     return modulus

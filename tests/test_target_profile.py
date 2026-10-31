@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+
 from scripts.validate import target_profile as validator
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -219,6 +220,33 @@ def test_profile_file_rejects_invalid_utf8(tmp_path: Path) -> None:
         match="invalid target-profile UTF-8",
     ):
         _ = validator.load_document(path)
+
+
+def test_inconsistent_giant_trit_count_rejects_before_power() -> None:
+    """Impossible billion-trit geometry cannot trigger huge exponentiation."""
+    changed = _canonical_text().replace('"trits": 15', '"trits": 1000000000', 1)
+    assert changed != _canonical_text()
+    with pytest.raises(
+        validator.ProfileValidationError,
+        match="modulus must equal radix",
+    ):
+        validator.validate_text(changed)
+
+
+def test_large_valid_word_geometry_has_no_artificial_trit_cap() -> None:
+    """The rejection bound still admits a matching large ternary modulus."""
+    trits = 256
+    modulus = 3**trits
+    text = _canonical_text()
+    for before, after in (
+        ('"trits": 15', f'"trits": {trits}'),
+        (f'"modulus": {CURRENT_WORDS}', f'"modulus": {modulus}'),
+        (f'"words": {CURRENT_WORDS}', f'"words": {modulus}'),
+        (f'"eof_word": {CURRENT_EOF}', f'"eof_word": {modulus - 1}'),
+    ):
+        assert before in text
+        text = text.replace(before, after, 1)
+    validator.validate_text(text)
 
 
 def test_duplicate_json_keys_fail_closed() -> None:
