@@ -417,12 +417,22 @@ def _commit() -> str:
     if not stat.S_ISREG(mode) or not executable:
         _fail("target echo source revision Git executable is not an ordinary file")
     # Source revision must belong to this checkout, not an ambient Git dir.
-    clean_env = {
-        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
-    }
+    try:
+        clean_env: dict[str, str] = {}
+        for name, value in os.environ.items():
+            if type(name) is not str or type(value) is not str:
+                _fail("target echo Git environment requires native strings")
+            if not name.startswith("GIT_"):
+                clean_env[name] = value
+    except TargetEchoStudyError:
+        raise
+    except Exception as error:
+        message = "target echo Git environment inspection failed"
+        raise TargetEchoStudyError(message) from error
+    command = [git, "rev-parse", "HEAD"]
     try:
         output = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [git, "rev-parse", "HEAD"],
+            command,
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             env=clean_env,
@@ -436,9 +446,14 @@ def _commit() -> str:
         raise TargetEchoStudyError(message) from error
     if (
         type(output) is not sp.CompletedProcess
+        or type(output.args) is not list
+        or any(type(argument) is not str for argument in output.args)
+        or output.args != command
         or type(output.returncode) is not int
         or output.returncode != 0
         or type(output.stdout) is not str
+        or type(output.stderr) is not str
+        or output.stderr != ""
     ):
         _fail("target echo reference has invalid Git revision receipt")
     commit = output.stdout.strip()

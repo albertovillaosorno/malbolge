@@ -516,6 +516,128 @@ def test_target_echo_commit_rejects_noncanonical_git_receipts(
         target_echo_reference._commit()
 
 
+class _HostileGitReceipt(str):
+    """Foreign Git text must not gain authorization via a string hook."""
+
+    def __eq__(self, other: object) -> bool:
+        raise AssertionError("foreign Git receipt equality hook executed")
+
+
+@pytest.mark.parametrize(
+    ("argument_kind", "stderr_receipt"),
+    [
+        ("correct", "warning from Git\n"),
+        ("correct", b""),
+        ("correct", None),
+        ("correct", _HostileGitReceipt("")),
+        ("foreign", ""),
+        ("tuple", ""),
+        ("subclass", ""),
+    ],
+    ids=[
+        "nonempty-stderr",
+        "binary-stderr",
+        "missing-stderr",
+        "foreign-stderr",
+        "different-command",
+        "tuple-command",
+        "subclass-command",
+    ],
+)
+def test_target_echo_commit_rejects_forged_git_completion_receipts(
+    monkeypatch: pytest.MonkeyPatch, argument_kind: str, stderr_receipt: object
+) -> None:
+    """Revision evidence requires the exact launched command and clean text stderr."""
+
+    class _ForeignArgumentList(list[str]):
+        def __eq__(self, other: object) -> bool:
+            raise AssertionError("foreign Git argument equality hook executed")
+
+    def substituted(command: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        supplied: object = (
+            ["foreign-git", "rev-parse", "HEAD"]
+            if argument_kind == "foreign"
+            else tuple(command)
+            if argument_kind == "tuple"
+            else _ForeignArgumentList(command)
+            if argument_kind == "subclass"
+            else command
+        )
+        return sp.CompletedProcess(
+            supplied, 0, "a" * 40 + "\n", cast("str", stderr_receipt)
+        )
+
+    monkeypatch.setattr(target_echo_reference.sp, "run", substituted)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="Git revision receipt"
+    ):
+        target_echo_reference._commit()
+
+
+def test_target_echo_commit_accepts_exact_native_git_completion_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exact clean command receipt continues to bind the source commit."""
+
+    def successful(command: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(command, 0, "a" * 40 + "\n", "")
+
+    monkeypatch.setattr(target_echo_reference.sp, "run", successful)
+    assert target_echo_reference._commit() == "a" * 40
+
+
+class _HostileGitEnvName(str):
+    """Environment filtering cannot run foreign key predicate hooks."""
+
+    def startswith(self, *_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("foreign Git environment key hook executed")
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {_HostileGitEnvName("GIT_DIR"): "foreign"},
+        {"PATH": bytearray(b"foreign")},
+        {False: "foreign"},
+    ],
+    ids=["foreign-name", "foreign-value", "nonstr-name"],
+)
+def test_target_echo_commit_rejects_foreign_git_environment_before_launch(
+    monkeypatch: pytest.MonkeyPatch, environment: dict[object, object]
+) -> None:
+    """Untrusted environment names and values cannot reach revision processes."""
+    monkeypatch.setattr(target_echo_reference.os, "environ", environment)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("foreign Git environment reached subprocess")
+
+    monkeypatch.setattr(target_echo_reference.sp, "run", forbidden)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="Git environment"
+    ):
+        target_echo_reference._commit()
+
+
+@pytest.mark.parametrize("fault_type", [IndexError, _UnexpectedHostFault])
+def test_target_echo_commit_types_environment_iteration_failure(
+    monkeypatch: pytest.MonkeyPatch, fault_type: type[Exception]
+) -> None:
+    """OS environment iteration errors are typed without formatting foreign faults."""
+    fault = fault_type("malformed Git environment")
+
+    class _BrokenEnvironment:
+        def items(self) -> None:
+            raise fault
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(target_echo_reference.os, "environ", _BrokenEnvironment())
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="Git environment"
+        ) as caught:
+            target_echo_reference._commit()
+    assert caught.value.__cause__ is fault
+
+
 @pytest.mark.parametrize(
     "stage", [PROFILE_PREFLIGHT, REVISION_PREFLIGHT, TOOL_IDENTITY_PREFLIGHT]
 )
