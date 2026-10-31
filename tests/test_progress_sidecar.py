@@ -6343,6 +6343,67 @@ def _replace_staged_progress_temporary(
 
 
 @pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+@pytest.mark.parametrize("replacement", [TEMP_REGULAR, TEMP_SYMLINK])
+def test_progress_cleanup_preserves_foreign_staging_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    replacement: str,
+) -> None:
+    """Failed publication must not unlink an unrelated staged-path owner."""
+    if replacement == TEMP_SYMLINK and os.name == progress.WINDOWS_PLATFORM:
+        pytest.skip("temporary symlink substitution needs POSIX semantics")
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    foreign = tmp_path / "unrelated-source"
+    foreign_bytes = b"unrelated-file-must-survive"
+    _ = foreign.write_bytes(foreign_bytes)
+    foreign_inode = foreign.stat().st_ino
+    original_write = cast(
+        "Callable[[int, bytes], None]",
+        vars(progress)["_write_payload_descriptor"],
+    )
+    replaced_path: list[Path] = []
+
+    def substitute(descriptor: int, payload: bytes) -> None:
+        original_write(descriptor, payload)
+        staged = tuple(destination.parent.glob(f".{destination.name}.*.tmp"))
+        assert len(staged) == 1
+        temporary = staged[0]
+        replaced_path.append(temporary)
+        temporary.unlink()
+        if replacement == TEMP_REGULAR:
+            _ = foreign.replace(temporary)
+        else:
+            temporary.symlink_to(foreign)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_write_payload_descriptor", substitute)
+        with pytest.raises(ERROR, match="temporary"):
+            if kind == TEMP_MUTABLE:
+                _ = progress.write_atomic(sidecar)
+            else:
+                writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+                _ = writer(destination, b"expected-checkpoint", platform=os.name)
+
+    assert not destination.exists()
+    assert len(replaced_path) == 1
+    temporary = replaced_path[0]
+    if replacement == TEMP_REGULAR:
+        assert temporary.is_file()
+        assert temporary.stat().st_ino == foreign_inode
+        assert temporary.read_bytes() == foreign_bytes
+    else:
+        assert temporary.is_symlink()
+        assert temporary.resolve() == foreign
+        assert foreign.read_bytes() == foreign_bytes
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
 @pytest.mark.parametrize(
     "replacement", [TEMP_REGULAR, TEMP_SYMLINK, TEMP_INPLACE]
 )
@@ -6388,7 +6449,16 @@ def test_progress_temporary_substitution_fails_before_publication(
             _ = publish()
     assert not destination.exists()
     assert foreign.read_bytes() == foreign_payload
-    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+    remaining = tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+    if replacement == TEMP_INPLACE:
+        assert not remaining
+    else:
+        assert len(remaining) == 1
+        if replacement == TEMP_REGULAR:
+            assert remaining[0].read_bytes() == foreign_payload
+        else:
+            assert remaining[0].is_symlink()
+            assert remaining[0].resolve() == foreign
 
 
 @pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])

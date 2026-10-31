@@ -2161,15 +2161,40 @@ def _writer_publication_lock(destination: Path) -> Generator[_LockStream]:
         raise ProgressSidecarCommittedError(message, destination) from source
 
 
+def _owned_temporary_still_named(
+    temporary: Path, identity: tuple[int, int] | None
+) -> bool:
+    """Never remove a foreign entry substituted for the staging inode.
+
+    Returns:
+        Whether the pathname still names the originally created regular inode.
+
+    """
+    if identity is None:
+        # Initial descriptor admission failed before an inode could be recorded.
+        return True
+    try:
+        current = temporary.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    return stat.S_ISREG(current.st_mode) and (
+        current.st_dev,
+        current.st_ino,
+    ) == identity
+
+
 def _cleanup_mutable_temporary(
     temporary: Path,
     *,
     replaced: bool,
+    identity: tuple[int, int] | None,
 ) -> None:
     if replaced:
         return
     primary_error = sys.exception()
     try:
+        if not _owned_temporary_still_named(temporary, identity):
+            return
         temporary.unlink(missing_ok=True)
     except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
@@ -2412,6 +2437,7 @@ def _write_atomic_bytes(
     )
     temporary = Path(temporary_name)
     replaced = False
+    temporary_identity: tuple[int, int] | None = None
     try:
         temporary_identity = _temporary_descriptor_identity(descriptor)
         _write_payload_descriptor(descriptor, payload)
@@ -2431,7 +2457,10 @@ def _write_atomic_bytes(
         _cleanup_mutable_temporary(
             temporary,
             replaced=replaced,
+            identity=temporary_identity,
         )
+    if temporary_identity is None:
+        _fail("progress temporary inode identity was not admitted")
     _confirm_mutable_postpublication_identity(
         destination, temporary_identity, payload
     )
@@ -2648,9 +2677,12 @@ def _cleanup_immutable_temporary(
     destination: Path,
     *,
     durable: bool,
+    identity: tuple[int, int] | None,
 ) -> None:
     primary_error = sys.exception()
     try:
+        if not _owned_temporary_still_named(temporary, identity):
+            return
         temporary.unlink(missing_ok=True)
     except (OSError, ValueError, RuntimeError) as error:
         if primary_error is not None:
@@ -2706,6 +2738,7 @@ def _write_immutable(
     )
     temporary = Path(temporary_name)
     durable = False
+    temporary_identity: tuple[int, int] | None = None
     try:
         temporary_identity = _temporary_descriptor_identity(descriptor)
         _write_payload_descriptor(descriptor, payload)
@@ -2742,6 +2775,7 @@ def _write_immutable(
             temporary,
             destination,
             durable=durable,
+            identity=temporary_identity,
         )
     _confirm_immutable_postcleanup_identity(
         destination, expected_identity, payload

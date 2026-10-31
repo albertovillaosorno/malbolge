@@ -186,7 +186,14 @@ previously passed inode/size admission, while keeping opaque checkpoint size
 unbounded and peak *additional* verification buffering independent of payload
 length. A short read or a changed inode/time also rejects. Substituting a
 regular file, a symlink, or truncating the original inode still fails before
-publication in both paths. Temporary cleanup runs on rejection.
+publication in both paths. On rejection, cleanup removes only the original
+staging inode once its identity has been admitted. If another regular file or
+symlink replaces the staging pathname, the foreign entry survives rather than
+being unlinked by a failed publication. A failed initial descriptor admission
+still uses best-effort pathname cleanup because no verified inode was captured;
+like all path-based cleanup, the identity recheck and unlink are not one atomic
+filesystem operation. Neither publication path claims protection from a
+substitution precisely between its final cleanup identity check and unlink.
 Regular-inode and single-hard-link admission is repeated before reopening,
 after hashing on the open descriptor, and after reader closure. Deterministic
 POSIX tests insert a hard-link alias at each boundary, including between hash
