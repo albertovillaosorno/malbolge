@@ -865,7 +865,11 @@ def _validated_verifier(
     verifier: TrustedCandidateVerifier,
 ) -> Callable[[CandidateProposal, VerificationHint | None], object]:
     runtime_verifier = cast("object", verifier)
-    accepts = getattr(runtime_verifier, "accepts", None)
+    try:
+        accepts = getattr(runtime_verifier, "accepts", None)
+    except Exception:  # ruff: ignore[blind-except]
+        # A hostile verifier property is not executable acceptance authority.
+        accepts = None
     if not callable(accepts):
         message = "trusted candidate verifier has wrong type"
         raise InvalidAcceleratorResultError(message)
@@ -1262,7 +1266,14 @@ def _validate_adapter_surface(
     methods: tuple[str, ...],
     label: str,
 ) -> None:
-    if not all(callable(getattr(value, name, None)) for name in methods):
+    try:
+        valid_surface = all(
+            callable(getattr(value, name, None)) for name in methods
+        )
+    except Exception:  # ruff: ignore[blind-except]
+        # Protocol introspection is untrusted input, not adapter execution.
+        valid_surface = False
+    if not valid_surface:
         message = f"{label} has wrong type"
         raise InvalidAcceleratorResultError(message)
 

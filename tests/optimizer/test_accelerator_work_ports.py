@@ -1368,3 +1368,65 @@ def test_search_port_invalid_huge_seed_bypasses_decimal_digit_limit() -> None:
         )
     finally:
         sys.set_int_max_str_digits(old_limit)
+
+
+@final
+class _HostileProtocolProperty:
+    """A forged protocol instance can raise during structural introspection."""
+
+    @override
+    def __getattribute__(self, name: str) -> object:
+        if name in {"capability", "accepts"}:
+            raise ValueError
+        return super().__getattribute__(name)
+
+
+def test_hostile_protocol_property_lookup_falls_back_and_rejects() -> None:
+    """Adapter and verifier validation cannot leak hostile property faults."""
+    hostile: object = _HostileProtocolProperty()
+    batch = CandidateEvaluationBatch(
+        evaluator_id="reverse-bytes-v1",
+        items=(CandidateWorkItem(logical_id="a", payload=b"abc"),),
+    )
+    candidate_reference = CpuCandidateEvaluationAdapter(
+        "reverse-bytes-v1", _reverse
+    )
+    bad_candidate = cast("CandidateEvaluationAdapter", cast("object", hostile))
+    assert evaluate_candidates(
+        batch, candidate_reference, bad_candidate
+    ).capability == CPU_WORK_CAPABILITY
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "candidate evaluation adapter has wrong type",
+        lambda: evaluate_candidates(batch, bad_candidate),
+    )
+
+    request = SearchRequest("deterministic-enumeration-v1", 1, b"problem", 0)
+    search_reference = CpuSearchExecutionAdapter(
+        "deterministic-enumeration-v1", _search
+    )
+    bad_search = cast("SearchExecutionAdapter", cast("object", hostile))
+    assert execute_search(
+        request, search_reference, bad_search
+    ).capability == CPU_WORK_CAPABILITY
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "search execution adapter has wrong type",
+        lambda: execute_search(request, bad_search),
+    )
+
+    assist = VerificationAssistBatch(
+        items=(CandidateWorkItem(logical_id="a", payload=b"abc"),),
+        verifier_id="verification-v1",
+    )
+    assert request_verification_hints(
+        assist, cast("VerificationAssistAdapter", cast("object", hostile))
+    ) == ()
+    result = execute_search(request, search_reference)
+    _expect_error(
+        InvalidAcceleratorResultError,
+        "trusted candidate verifier has wrong type",
+        lambda: admit_search_result(
+            result, cast("TrustedCandidateVerifier", cast("object", hostile))
+        ),
+    )
