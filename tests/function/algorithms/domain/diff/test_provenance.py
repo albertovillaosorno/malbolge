@@ -85,6 +85,24 @@ def test_source_pin_rejects_non_utf8_root_metadata(tmp_path: Path) -> None:
         _ = source_snapshot_evidence(tmp_path, (bad_root,))
 
 
+@pytest.mark.parametrize("invalid", ["nul\x00root", "unpaired\ud800root"])
+def test_source_snapshot_rejects_nonportable_root_path(
+    tmp_path: Path, invalid: str
+) -> None:
+    """Native filesystem path errors must remain source-pin failures."""
+    with pytest.raises(SourcePinError, match="root path"):
+        _ = source_snapshot_evidence(tmp_path / invalid, ("src",))
+
+
+@pytest.mark.parametrize("invalid", ["nul\x00repo", "unpaired\ud800repo"])
+def test_source_pin_rejects_nonportable_repository_label(
+    invalid: str,
+) -> None:
+    """Distributable pin names must not carry unsafe string encodings."""
+    with pytest.raises(SourcePinError, match="repository"):
+        _ = SourcePin(invalid, _COMMIT, ("src",), 1, "0" * 64)
+
+
 def test_source_snapshot_rejects_non_utf8_walk_filename(
     tmp_path: Path,
 ) -> None:

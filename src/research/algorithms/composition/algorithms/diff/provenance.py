@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import os
 from pathlib import Path
 from pathlib import PurePosixPath
 from stat import S_ISDIR
@@ -86,6 +87,14 @@ def _validate_repository(repository: object) -> None:
     if type(repository) is not str or not repository:
         message = "source pin repository must be a non-empty string"
         raise SourcePinError(message)
+    if _NUL in repository:
+        message = "source pin repository must not contain NUL"
+        raise SourcePinError(message)
+    try:
+        _ = repository.encode("utf-8")
+    except UnicodeError as error:
+        message = "source pin repository must be UTF-8 encodable"
+        raise SourcePinError(message) from error
 
 
 def _is_lower_hex(value: str, length: int) -> bool:
@@ -286,6 +295,16 @@ def _validate_root_path(root: object) -> None:
     if not isinstance(root, Path):
         message = "pinned source root must use a pathlib Path value"
         raise SourcePinError(message)
+    raw = str(root)
+    if _NUL in raw:
+        message = "pinned source root path must not contain NUL"
+        raise SourcePinError(message)
+    try:
+        _ = raw.encode("utf-8")
+        _ = os.fsencode(root)
+    except UnicodeError as error:
+        message = "pinned source root path must be filesystem-encodable"
+        raise SourcePinError(message) from error
 
 
 def _resolved_source_root(root: Path) -> Path:
