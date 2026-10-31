@@ -42,6 +42,7 @@ from benchmarks.challenges import generate
 
 MAX_BUNDLE_CASES = 64
 MAX_BUNDLE_NODES = 4096
+MAX_BUNDLE_VERSION_BITS = 64
 MAX_SOURCE_BYTES = 8 * 1024 * 1024
 MAX_MANIFEST_BYTES = 32 * 1024
 ORACLE_BYTES = 4
@@ -77,7 +78,7 @@ def _bounded_case(case: dict[str, Any]) -> None:
         _fail("challenge replay requires string identity fields")
     if type(case["version"]) is not int or type(case["seed"]) is not int:
         _fail("challenge replay requires integer identity fields")
-    if case["version"].bit_length() > 64:
+    if case["version"].bit_length() > MAX_BUNDLE_VERSION_BITS:
         _fail("challenge replay requires a bounded version identity")
     nodes = case["difficulty"]
     if type(nodes) is not int or nodes < 1:

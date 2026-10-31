@@ -521,6 +521,8 @@ def _bundle_source(
 
 
 def _bundle_directory(case: dict[str, Any], relative_root: str) -> str:
+    if case["version"].bit_length() > challenge_bundles.MAX_BUNDLE_VERSION_BITS:
+        _fail("challenge bundle version exceeds bounded identity limit")
     if case["difficulty"] > challenge_bundles.MAX_BUNDLE_NODES:
         _fail("challenge replay exceeds 4096-node preflight limit")
     return (

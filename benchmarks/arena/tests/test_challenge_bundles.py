@@ -259,6 +259,22 @@ def test_direct_bundle_rejects_extreme_native_version_before_formatting(
         challenge_bundles.verify_bundle(case, PROFILE, files)
 
 
+def test_direct_evidence_bundle_preflight_rejects_extreme_version(
+    tmp_path: Path,
+) -> None:
+    """Admitted native documents cannot format unbounded version path names."""
+    document = _study(tmp_path)
+    for row in document["observations"]:
+        row["case"]["version"] = 1 << 50000
+    admitted = analyze.admit_document(document)
+    with pytest.raises(evidence.EvidenceError, match="challenge.*version"):
+        evidence.validate_links(
+            admitted,
+            tmp_path,
+            policy=evidence.EvidencePolicy(challenge_root=BUNDLE_ROOT),
+        )
+
+
 class _HostileVersion:
     """A non-JSON version can execute its formatting hook during rejection."""
 
