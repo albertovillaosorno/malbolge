@@ -14040,3 +14040,148 @@ def test_staged_reader_unexpected_close_fault_preserves_primary(
     assert not staged_readers
     assert not destination.exists()
     assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.parametrize("member", [POINTER_READER_MEMBER, CHECKPOINT_READER_MEMBER])
+@pytest.mark.parametrize("site", ["read", "close"])
+@pytest.mark.parametrize("fault_type", [IndexError, OverflowError])
+def test_durable_reader_unexpected_ordinary_stream_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+    site: str,
+    fault_type: type[Exception],
+) -> None:
+    """Unexpected raw reader faults reject a durable member with its cause."""
+    checkpoint = b"durable-reader-checkpoint"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    message = "injected ordinary reader dependency fault"
+    opened: list[int] = []
+
+    @final
+    class FaultyReader:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor = descriptor
+
+        def read(self, size: int = -1) -> bytes:
+            if site == "read":
+                raise fault_type(message)
+            return os.read(self.descriptor, size)
+
+        def close(self) -> None:
+            os.close(self.descriptor)
+            if site == "close":
+                raise fault_type(message)
+
+    def faulty_stream(descriptor: int, mode: str, *, closefd: bool) -> FaultyReader:
+        assert (mode, closefd) == ("rb", True)
+        opened.append(descriptor)
+        return FaultyReader(descriptor)
+
+    expected = (
+        "progress sidecar is unavailable"
+        if member == POINTER_READER_MEMBER
+        else "checkpoint payload is unavailable"
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", faulty_stream)
+        with pytest.raises(ERROR, match=expected) as captured:
+            _ = _read_selected_progress_member(sidecar, member)
+    assert len(opened) == 1
+    cause = captured.value.__cause__
+    assert isinstance(cause, Exception)
+    assert type(cause) is fault_type
+    assert cause.args == (message,)
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+    assert progress.read(Path(sidecar.progress_path)) == sidecar
+    assert progress.read_checkpoint_generation(sidecar) == (checkpoint, None)
+
+
+@pytest.mark.parametrize("member", [POINTER_READER_MEMBER, CHECKPOINT_READER_MEMBER])
+def test_durable_reader_ordinary_close_fault_stays_secondary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+) -> None:
+    """The original raw read fault survives an unexpected close failure."""
+    checkpoint = b"durable-reader-checkpoint"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    primary = IndexError("primary reader failure")
+    secondary = OverflowError("secondary reader close failure")
+    opened: list[int] = []
+
+    @final
+    class FaultyReader:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor = descriptor
+
+        @staticmethod
+        def read(size: int = -1) -> bytes:
+            del size
+            raise primary
+
+        def close(self) -> None:
+            os.close(self.descriptor)
+            raise secondary
+
+    def faulty_stream(descriptor: int, mode: str, *, closefd: bool) -> FaultyReader:
+        assert (mode, closefd) == ("rb", True)
+        opened.append(descriptor)
+        return FaultyReader(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", faulty_stream)
+        with pytest.raises(ERROR, match="unavailable") as captured:
+            _ = _read_selected_progress_member(sidecar, member)
+    assert len(opened) == 1
+    assert captured.value.__cause__ is primary
+    assert getattr(captured.value, "__notes__", None) == [
+        "read stream close also failed: OverflowError"
+    ]
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("member", [POINTER_READER_MEMBER, CHECKPOINT_READER_MEMBER])
+def test_durable_reader_unexpected_raw_close_keeps_constructor_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+) -> None:
+    """Raw descriptor cleanup cannot hide a failed read stream constructor."""
+    checkpoint = b"durable-reader-checkpoint"
+    sidecar = _checkpointed(_sidecar(tmp_path), checkpoint=checkpoint, partial=None)
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    primary = IndexError("read stream constructor fault")
+    secondary = OverflowError("raw descriptor close fault")
+    actual_close = os.close
+    opened: list[int] = []
+    closed: list[int] = []
+
+    def failing_stream(descriptor: int, mode: str, *, closefd: bool) -> None:
+        assert (mode, closefd) == ("rb", True)
+        opened.append(descriptor)
+        raise primary
+
+    def failing_close(descriptor: int) -> None:
+        actual_close(descriptor)
+        if descriptor in opened:
+            closed.append(descriptor)
+            raise secondary
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", failing_stream)
+        context.setattr(os, "close", failing_close)
+        with pytest.raises(ERROR, match="unavailable") as captured:
+            _ = _read_selected_progress_member(sidecar, member)
+    assert len(opened) == 1
+    assert closed == opened
+    assert captured.value.__cause__ is primary
+    assert getattr(captured.value, "__notes__", None) == [
+        "read descriptor cleanup also failed: OverflowError"
+    ]
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])

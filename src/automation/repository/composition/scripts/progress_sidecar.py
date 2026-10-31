@@ -87,13 +87,6 @@ _OUTPUT_STREAM_ERRORS: Final = (
     AttributeError,
     TypeError,
 )
-_READ_STREAM_ERRORS: Final = (
-    OSError,
-    ValueError,
-    RuntimeError,
-    TypeError,
-    AttributeError,
-)
 _CHECKPOINT_INFO_FLAG: Final = "--checkpoint-info"
 _CHECKPOINT_INFO_ARGUMENT_COUNT: Final = 2
 _EXTRACT_CHECKPOINT_FLAG: Final = "--extract-checkpoint"
@@ -1837,7 +1830,7 @@ def _close_raw_descriptor_preserving_primary(
     try:
         if os.close(descriptor) is not None:
             _fail("raw descriptor close receipt must be None")
-    except _OUTPUT_STREAM_ERRORS as close_error:
+    except Exception as close_error:
         BaseException.add_note(
             original_error,
             f"{context} also failed: {_host_error_detail(close_error)}"
@@ -2029,7 +2022,7 @@ def read(path: Path) -> ProgressSidecar:
         _fail(f"invalid progress UTF-8: {_host_error_detail(error)}")
     except ProgressSidecarError:
         raise
-    except _READ_STREAM_ERRORS as error:
+    except Exception as error:
         _fail_with_source(f"progress sidecar is unavailable: {_host_error_detail(error)}", error)
     return loads(text)
 
@@ -3116,7 +3109,7 @@ def _read_payload(
             _fail(f"{context} payload inode changed during file read")
     except ProgressSidecarError:
         raise
-    except _READ_STREAM_ERRORS as error:
+    except Exception as error:
         _fail_with_source(f"{context} payload is unavailable: {_host_error_detail(error)}", error)
     return payload
 

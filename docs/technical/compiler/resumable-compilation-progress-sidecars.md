@@ -299,6 +299,17 @@ exception as its cause and propagates attached secondary cleanup notes.
 Descriptor cleanup diagnostics remain inspectable without replacing the
 stable public failure category.
 
+Mutable pointer and immutable generation reader wrappers now also contain
+unexpected ordinary `IndexError` and `OverflowError` from raw stream reads,
+stream closure, and raw descriptor cleanup after stream-construction failure.
+The public API retains `ProgressSidecarError` with the original failure as its
+cause. A secondary close failure becomes a note, never the primary failure,
+including when that fault arises before stream ownership transfers. Twelve
+red-first pointer/checkpoint cases verify typed failures, closed descriptors,
+and unchanged durable bytes. Unknown exception messages are rendered by trusted
+type name, not foreign formatting hooks; cancellation signals derived from
+`BaseException` are not captured by the public reader wrappers.
+
 Raw-descriptor cleanup during failed read-stream or writer-lock stream
 construction follows the same precedence, including `ValueError`,
 `RuntimeError`, `TypeError`, and `AttributeError` from `os.close`. Exact
