@@ -412,8 +412,10 @@ def _record_file(root: Path, path: Path) -> FileRecord | None:
 
 
 def _require_filesystem_root(value: object, context: str) -> None:
-    if not isinstance(value, Path):
-        message = f"{context} must use a pathlib Path filesystem path"
+    # Subclasses may override conversion, status or resolution to redirect I/O.
+    # Admit only the native host path before calling any such method.
+    if type(value) is not type(Path()):
+        message = f"{context} must use an exact pathlib Path filesystem path"
         raise ExactTreeError(message)
     if _NUL in str(value):
         message = f"{context} must use a representable filesystem path"

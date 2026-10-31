@@ -208,8 +208,10 @@ class _MaterializeContext:
 
 
 def _validate_request_path(value: object, context: str) -> None:
-    if not isinstance(value, Path):
-        message = f"{context} must use pathlib Path"
+    # Request paths authorize both source reads and output publication.
+    # Reject user-defined Path overrides before any conversion or resolution.
+    if type(value) is not type(Path()):
+        message = f"{context} must use exact pathlib Path"
         raise CompatiblePlanError(message)
     raw = str(value)
     if _NUL in raw:

@@ -715,6 +715,44 @@ def test_compatible_request_envelopes_reject_foreign_fields(
         _ = replace(request, postcondition=cast("Postcondition", object()))
 
 
+class _ForeignCompatibleRoot(type(Path())):
+    """An overridden root must not redirect compatible tree operations."""
+
+    def __str__(self) -> str:
+        message = "foreign compatible root conversion was evaluated"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("role", ["source", "oracle", "candidate", "output"])
+def test_compatible_requests_reject_foreign_path_subclasses_before_methods(
+    tmp_path: Path, role: str
+) -> None:
+    """Reject source and destination subclass hooks at request creation."""
+    source, oracle = _roots(tmp_path)
+    build = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    plan = build_compatible_plan(build)
+    candidate = _candidate(tmp_path)
+    materialize = _request(candidate, plan, tmp_path / "output")
+    foreign = _ForeignCompatibleRoot(tmp_path / "redirect")
+    actions = {
+        "source": lambda: replace(build, source_root=foreign),
+        "oracle": lambda: replace(build, oracle_root=foreign),
+        "candidate": lambda: replace(materialize, candidate_root=foreign),
+        "output": lambda: replace(materialize, output_root=foreign),
+    }
+    with pytest.raises(
+        CompatiblePlanError, match="must use exact pathlib Path"
+    ):
+        _ = actions[role]()
+    assert not (tmp_path / "redirect").exists()
+
+
 @pytest.mark.parametrize("unsafe_name", ["nul\x00path", "unicode\ud800path"])
 def test_compatible_request_rejects_nonportable_root_paths(
     tmp_path: Path, unsafe_name: str

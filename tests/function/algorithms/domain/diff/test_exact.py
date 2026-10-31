@@ -123,6 +123,34 @@ def _synthetic_pair(tmp_path: Path) -> tuple[Path, Path]:
     return source, oracle
 
 
+class _ForeignExactRoot(type(Path())):
+    """An overridden filesystem path cannot establish tree authority."""
+
+    def __str__(self) -> str:
+        message = "foreign exact root path conversion was evaluated"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("role", ["snapshot", "source", "oracle", "output"])
+def test_exact_roots_reject_foreign_path_subclasses_before_methods(
+    tmp_path: Path, role: str
+) -> None:
+    """Authoring and materialization reject root hooks before filesystem I/O."""
+    source, oracle = _synthetic_pair(tmp_path)
+    foreign = _ForeignExactRoot(tmp_path / "redirect")
+    actions = {
+        "snapshot": lambda: snapshot_tree(foreign),
+        "source": lambda: build_exact_plan(foreign, oracle),
+        "oracle": lambda: build_exact_plan(source, foreign),
+        "output": lambda: materialize_exact_plan(
+            source, build_exact_plan(source, oracle), foreign
+        ),
+    }
+    with pytest.raises(ExactTreeError, match="must use an exact pathlib Path"):
+        _ = actions[role]()
+    assert not (tmp_path / "redirect").exists()
+
+
 @pytest.mark.parametrize(
     "invalid_path",
     [

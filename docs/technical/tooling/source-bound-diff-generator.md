@@ -124,6 +124,11 @@ passthrough roots remain dynamic. The final check and rename are not atomic;
 external concurrent writers still need coordination. The no-replace
 directory publisher also rejects host selectors that disagree with the actual
 runtime OS, preventing a caller from selecting an overwrite-capable rename.
+Exact tree snapshot, authoring and materialization root admission and compatible
+build/materialize request admission independently require exact host-native
+`Path` objects. Foreign path subclasses cannot redirect source/oracle reads,
+candidate admission or output publication. Eight red-first public API regressions
+cover the independent roles before any path method runs.
 The Python generated-Rust source emitter separately requires an exact native
 `pathlib.Path` output before rendering or staging bytes. Its default native path
 remains valid; caller-defined path subclasses never receive filesystem calls.

@@ -238,6 +238,10 @@ format.
   placement milestone rather than pretending byte relocation solves
   reformatting.
 
+- Exact tree snapshot, planning, and materialization and compatible plan build
+  and materialization envelopes now require exact native host `Path` roots;
+  eight red-first cases cover snapshot/source/oracle/candidate/output roles
+  before any overriding path method or filesystem publication can run.
 - The Python generated-Rust source emitter now admits only an exact native
   `pathlib.Path` output before rendering or staging, with red-first regressions
   for both render-only and disk-output APIs.
