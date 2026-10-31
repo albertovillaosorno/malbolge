@@ -68,6 +68,7 @@ _FOREIGN_OUTPUT = b"foreign-output"
 _SYMLINK_METHOD = "is_symlink"
 _POSIX = "posix"
 _ROOT_TARGET = b"target"
+_SHORT_WRITE = "short"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -459,6 +460,40 @@ def test_relocatable_output_write_error_fails_closed(
         not (tmp_path / ".out.relocatable-staging").exists(),
         "relocatable staging survived write failure",
     )
+
+
+@pytest.mark.parametrize(
+    "reported",
+    [_SHORT_WRITE, None, True, -1, 10**9],
+)
+def test_relocatable_short_or_invalid_staging_write_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reported: object,
+) -> None:
+    """Do not publish incomplete bytes or trust foreign write counts."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    output = tmp_path / "out"
+    blocked = tmp_path / ".out.relocatable-staging" / "created.bin"
+    original_write = Path.write_bytes
+
+    def misreported_write(path: Path, data: bytes) -> int:
+        if path == blocked and reported == _SHORT_WRITE:
+            return original_write(path, data[:1])
+        written = original_write(path, data)
+        if path == blocked:
+            return cast("int", reported)
+        return written
+
+    monkeypatch.setattr(Path, "write_bytes", misreported_write)
+    with pytest.raises(RelocationError, match="short or invalid byte count"):
+        materialize_relocatable_plan(candidate, plan, output)
+    assert not output.exists()
+    assert not (tmp_path / ".out.relocatable-staging").exists()
 
 
 def test_byte_boundary_change_remains_fail_closed(tmp_path: Path) -> None:
