@@ -89,6 +89,77 @@ BAD_PROFILE_PROVENANCE = 'implementation = "forged/fake_compiler.py"'
 REAL_PROFILE_PROVENANCE = 'implementation = "benchmarks/arena/target_echo_reference.py"'
 
 
+@pytest.mark.parametrize(
+    "foreign", [None, "{}", bytearray(b"{}"), memoryview(b"{}"), object()]
+)
+def test_target_study_reader_rejects_foreign_byte_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+) -> None:
+    """A substituted evidence reader cannot authorize arbitrary source objects."""
+    monkeypatch.setattr(
+        audit.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: foreign,
+    )
+    with pytest.raises(audit.TargetEchoAuditError, match="native bounded bytes"):
+        audit._document(".temp/arena-target-echo-forged/study.json")
+
+
+def test_target_study_reader_does_not_run_foreign_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Decoding an untrusted bytes subclass can forge the audited study text."""
+
+    class ForgedBytes(bytes):  # ruff: ignore[subclass-builtin]
+        def decode(self, *_args: object, **_kwargs: object) -> str:
+            raise AssertionError("foreign target study decoder executed")
+
+    monkeypatch.setattr(
+        audit.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: ForgedBytes(b"{}"),
+    )
+    with pytest.raises(audit.TargetEchoAuditError, match="native bounded bytes"):
+        audit._document(".temp/arena-target-echo-forged/study.json")
+
+
+@pytest.mark.parametrize("foreign", [bytearray(b"raw"), memoryview(b"raw")])
+def test_target_linked_snapshot_rejects_untrusted_hashable_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+) -> None:
+    """A buffer-compatible but foreign receipt cannot certify linked evidence."""
+    monkeypatch.setattr(
+        audit.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: foreign,
+    )
+    document: dict[str, Any] = {
+        "study": {"id": "unmeasured"},
+        "observations": [
+            {"experiment_manifest": "runs/a.toml", "raw_sample": "raw/a.csv"}
+        ],
+    }
+    with pytest.raises(audit.TargetEchoAuditError, match="native bounded bytes"):
+        audit._snapshot_linked_inputs(
+            document, ".temp/arena-target-echo-forged/study.json", "0" * 64
+        )
+
+
+def test_target_evidence_reader_rejects_oversized_native_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The auditor does not trust a substituted bounded reader's size claim."""
+    monkeypatch.setattr(
+        audit.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: b"x" * 4,
+    )
+    with pytest.raises(audit.TargetEchoAuditError, match="native bounded bytes"):
+        audit._native_regular_bytes(audit._ROOT, "forged", limit=3)
+
+
 def test_oversized_sparse_tool_rejects_before_auditor_hashing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

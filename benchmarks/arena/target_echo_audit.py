@@ -154,6 +154,19 @@ def _fail(message: str) -> Never:
     raise TargetEchoAuditError(message)
 
 
+def _native_regular_bytes(root: Path, relative: str, *, limit: int) -> bytes:
+    """Admit exact bounded file bytes before auditing dependent evidence.
+
+    A substituted reader returning a foreign buffer or decoded text must not
+    forge source bytes, invoke caller-defined hooks or certify a hash.
+
+    """
+    data = evidence.read_bounded_regular(root, relative, limit=limit)
+    if type(data) is not bytes or len(data) > limit:
+        _fail("target audit evidence reader requires native bounded bytes")
+    return data
+
+
 def _safe_error_detail(error: Exception) -> str:
     """Preserve exact native diagnostics without foreign exception hooks.
 
@@ -229,7 +242,7 @@ def _prefix(relative: str) -> str:
 
 
 def _document(relative: str) -> tuple[dict[str, Any], str]:
-    data = evidence.read_bounded_regular(
+    data = _native_regular_bytes(
         _ROOT,
         relative,
         limit=MAX_STUDY_BYTES,
@@ -650,7 +663,7 @@ def _check_provenance(document: dict[str, Any], prefix: str) -> str:
     commits: set[str] = set()
     for row in document["observations"]:
         relative = row["experiment_manifest"]
-        raw = evidence.read_bounded_regular(
+        raw = _native_regular_bytes(
             _ROOT,
             relative,
             limit=evidence.MAX_MANIFEST_BYTES,
@@ -825,7 +838,7 @@ def _check_source(
     forward: bool = False,
 ) -> tuple[str, str]:
     relative = f"{prefix}/candidates/{_row_stem(row)}.malbolge"
-    source = evidence.read_bounded_regular(
+    source = _native_regular_bytes(
         _ROOT,
         relative,
         limit=producer.MAX_TARGET_BYTES,
@@ -1069,7 +1082,7 @@ def _replay_forward_result(
 
 def _assert_forward_source_stable(source: Path, original: bytes) -> None:
     relative = source.relative_to(_ROOT).as_posix()
-    after = evidence.read_bounded_regular(
+    after = _native_regular_bytes(
         _ROOT, relative, limit=producer.MAX_TARGET_BYTES
     )
     if after != original:
@@ -1136,7 +1149,7 @@ def check_forward_vm_replay(
     ):
         _fail("target replay requires a bounded native raw RSS witness list")
     relative = source.relative_to(_ROOT).as_posix()
-    original = evidence.read_bounded_regular(
+    original = _native_regular_bytes(
         _ROOT, relative, limit=producer.MAX_TARGET_BYTES
     )
     check_forward_candidate_source(original, pairs=pairs, algorithm=algorithm)
@@ -1173,7 +1186,7 @@ def _replay_one(
         )
         if execution.stderr != expected_stderr:
             _fail("target audit VM replay step receipt differs from count")
-    current = evidence.read_bounded_regular(
+    current = _native_regular_bytes(
         _ROOT,
         relative,
         limit=producer.MAX_TARGET_BYTES,
@@ -1280,7 +1293,7 @@ def _rss_digest(
     *,
     version: int | None,
 ) -> str | None:
-    manifest = evidence.read_bounded_regular(
+    manifest = _native_regular_bytes(
         _ROOT,
         record["experiment_manifest"],
         limit=evidence.MAX_MANIFEST_BYTES,
@@ -1394,14 +1407,9 @@ def _validate_rss_stage_bytes(
         _fail("v6 RSS stage receipt differs from exact reported peak")
 
 
-def _check_rss_receipts(
-    document: dict[str, Any],
-    prefix: str,
-    names: set[str],
-) -> None:
+def _check_rss_receipts(document: dict[str, Any], prefix: str) -> None:
     raw = document["study"]["id"] == FORWARD_RAW_RSS_STUDY
     retained = _retained_rss_document(document)
-    _check_rss_receipt_inventory(document, prefix, names)
     for row in document["observations"]:
         required = retained and row["outcome"] == analyze.VERIFIED
         version = (2 if raw else 1) if required else None
@@ -1409,7 +1417,7 @@ def _check_rss_receipts(
         if not required:
             continue
         relative = f"{prefix}/{RSS_RECEIPT_DIR}/{_row_stem(row)}.json"
-        data = evidence.read_bounded_regular(_ROOT, relative, limit=RSS_REPORT_LIMIT)
+        data = _native_regular_bytes(_ROOT, relative, limit=RSS_REPORT_LIMIT)
         if sha256(data).hexdigest() != digest:
             _fail("v6 RSS receipt digest differs from linked run manifest")
         _validate_rss_stage_bytes(data, row, raw=raw)
@@ -1444,7 +1452,7 @@ def _snapshot_linked_inputs(
         }
     )
     for relative, limit in sorted(linked):
-        data = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
+        data = _native_regular_bytes(_ROOT, relative, limit=limit)
         snapshots[relative] = (sha256(data).hexdigest(), limit)
     return snapshots
 
@@ -1454,7 +1462,7 @@ def _recheck_linked_inputs(
 ) -> None:
     """Reject inspected study and linked-byte changes before publishing."""
     for relative, (original, limit) in snapshots.items():
-        current = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
+        current = _native_regular_bytes(_ROOT, relative, limit=limit)
         if sha256(current).hexdigest() != original:
             _fail(f"target audit linked input changed before report: {relative}")
 
@@ -1475,6 +1483,9 @@ def _admit_study(
     document, study_hash = _document(relative_study)
     _producer_study(document)
     names = _producer_rows(document, prefix)
+    # Diagnose missing, linked or unexpected RSS receipts as inventory
+    # failures before the generic linked-byte snapshot attempts to read them.
+    _check_rss_receipt_inventory(document, prefix, names)
     snapshots = _snapshot_linked_inputs(document, relative_study, study_hash)
     for folder, extension in (("runs", ".toml"), ("raw", ".csv")):
         _check_directory(
@@ -1482,7 +1493,7 @@ def _admit_study(
             folder,
             {f"{stem}{extension}" for stem in names},
         )
-    _check_rss_receipts(document, prefix, names)
+    _check_rss_receipts(document, prefix)
     checked = evidence.validate_links(
         document,
         _ROOT,
@@ -1512,7 +1523,7 @@ def _admit_study(
 def _recheck_sources(source_hashes: dict[str, str]) -> None:
     """Refuse observed retained-source drift before reporting an audit."""
     for relative, recorded in source_hashes.items():
-        current = evidence.read_bounded_regular(
+        current = _native_regular_bytes(
             _ROOT,
             relative,
             limit=producer.MAX_TARGET_BYTES,
@@ -1542,7 +1553,7 @@ def _stage_rss_values(
     raw: bool,
 ) -> dict[str, int]:
     path = f"{prefix}/{RSS_RECEIPT_DIR}/{_row_stem(row)}.json"
-    data = evidence.read_bounded_regular(_ROOT, path, limit=RSS_REPORT_LIMIT)
+    data = _native_regular_bytes(_ROOT, path, limit=RSS_REPORT_LIMIT)
     _validate_rss_stage_bytes(data, row, raw=raw)
     record = _rss_record(data, raw=raw)
     return {key: record["stages"][key] for key in RSS_STAGE_NAMES}
