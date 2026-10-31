@@ -67,6 +67,13 @@ FAMILY = "arithmetic-dag"
 OUTPUT_FAULT = "injected short stdout write"
 
 
+class _UnexpectedHostFault(IndexError):
+    """Unexpected dependency errors cannot control study diagnostics."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign dependency exception was formatted")
+
+
 def _pilot() -> tuple[Path, dict[str, Any]]:
     path, document = reference_study.run_study(
         reference_study.StudyPlan(FAMILY, (4, 8), 7, REPETITIONS),
@@ -438,7 +445,15 @@ def test_reference_git_requires_native_positive_executable_access(
 
 
 @pytest.mark.parametrize(
-    "fault_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+    "fault_type",
+    [
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        _UnexpectedHostFault,
+    ],
 )
 @pytest.mark.parametrize("site", ["status", "access"])
 def test_reference_git_physical_preflight_faults_are_typed(
@@ -474,7 +489,15 @@ def test_reference_git_physical_preflight_faults_are_typed(
 
 
 @pytest.mark.parametrize(
-    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+    "failure_type",
+    [
+        OSError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        _UnexpectedHostFault,
+    ],
 )
 def test_reference_git_resolver_fault_preserves_typed_source_error(
     monkeypatch: pytest.MonkeyPatch, failure_type: type[Exception]
@@ -558,6 +581,7 @@ def test_reference_git_accepts_exact_zero_exit_and_revision(
         TypeError,
         AttributeError,
         reference_study.sp.SubprocessError,
+        _UnexpectedHostFault,
     ],
 )
 def test_reference_git_process_fault_preserves_typed_source_error(
@@ -644,7 +668,7 @@ def test_host_reference_requires_an_existing_directory_for_output(
         reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
 
 
-@pytest.mark.parametrize("error_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize("error_type", [ValueError, RuntimeError, _UnexpectedHostFault])
 def test_host_reference_types_workspace_root_inspection_failures(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -675,7 +699,9 @@ def test_host_reference_types_workspace_root_inspection_failures(
     assert isinstance(error.value.__cause__, error_type)
 
 
-@pytest.mark.parametrize("error_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "error_type", [OSError, ValueError, RuntimeError, _UnexpectedHostFault]
+)
 @pytest.mark.parametrize("failed_stage", ["allocate", "raw", "runs", "candidates"])
 def test_host_reference_workspace_failures_are_typed_and_cleanup_own_output(
     monkeypatch: pytest.MonkeyPatch,
@@ -735,13 +761,20 @@ class _UnsafeWorkspaceCleanupArgument:
         RuntimeError("injected cleanup error"),
         _UnsafeWorkspaceCleanupError("foreign cleanup"),
         ValueError(_UnsafeWorkspaceCleanupArgument()),
+        _UnexpectedHostFault("unanticipated cleanup"),
     ],
-    ids=["native-value", "native-runtime", "foreign-subclass", "foreign-argument"],
+    ids=[
+        "native-value",
+        "native-runtime",
+        "foreign-subclass",
+        "foreign-argument",
+        "unexpected",
+    ],
 )
 def test_host_reference_setup_cleanup_failure_preserves_original_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    cleanup_error: ValueError | RuntimeError,
+    cleanup_error: Exception,
 ) -> None:
     """Unexpected cleanup faults cannot hide the failed workspace setup."""
     directory = tmp_path / "allocated"

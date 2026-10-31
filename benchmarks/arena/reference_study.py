@@ -93,7 +93,8 @@ def _quote(text: str) -> str:
 def _commit() -> str:
     try:
         executable = shutil.which("git", path=os.defpath)
-    except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
+    except Exception as error:
+        # Tool resolution is a host dependency; keep ordinary faults typed.
         message = "host-C reference study Git lookup failed"
         raise ReferenceStudyError(message) from error
     if executable is None:
@@ -109,14 +110,7 @@ def _commit() -> str:
         _ = os.fsencode(executable)
         mode = Path(executable).lstat().st_mode
         executable_access = os.access(executable, os.X_OK)
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-        UnicodeError,
-    ) as error:
+    except Exception as error:
         message = "host-C reference study Git executable unavailable"
         raise ReferenceStudyError(message) from error
     if (
@@ -141,14 +135,7 @@ def _commit() -> str:
             text=True,
             timeout=5,
         )
-    except (
-        OSError,
-        ValueError,
-        RuntimeError,
-        TypeError,
-        AttributeError,
-        sp.SubprocessError,
-    ) as error:
+    except Exception as error:
         message = "host reference study cannot identify source commit"
         raise ReferenceStudyError(message) from error
     if (
@@ -793,7 +780,7 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
     # This is static admission, not a cross-process filesystem race guarantee.
     try:
         local_mode = _LOCAL.lstat().st_mode
-    except (OSError, ValueError, RuntimeError) as error:
+    except Exception as error:
         message = "host-C reference workspace root is unavailable"
         raise ReferenceStudyError(message) from error
     if not stat.S_ISDIR(local_mode):
@@ -805,18 +792,18 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
                 dir=_LOCAL,
             )
         )
-    except (OSError, ValueError, RuntimeError) as error:
+    except Exception as error:
         message = "host-C reference workspace allocation failed"
         raise ReferenceStudyError(message) from error
     try:
         for child in ("raw", "runs", "candidates"):
             (directory / child).mkdir()
-    except (OSError, ValueError, RuntimeError) as error:
+    except Exception as error:
         # Only remove our newly allocated, not-yet-measured study directory.
         # Preserve the original failure if cleanup also fails.
         try:
             shutil.rmtree(directory)
-        except (OSError, ValueError, RuntimeError) as cleanup_error:
+        except Exception as cleanup_error:
             note = "host-C workspace cleanup also failed"
             if type(cleanup_error) in (OSError, ValueError, RuntimeError):
                 arguments = cleanup_error.args
