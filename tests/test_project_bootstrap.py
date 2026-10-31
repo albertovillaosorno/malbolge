@@ -213,9 +213,7 @@ def test_uv_manifest_pins_exact_windows_artifact(tmp_path: Path) -> None:
     assert artifact.asset == WINDOWS_UV_ASSET
     assert artifact.base_url.startswith("https://github.com/astral-sh/uv/")
     assert len(artifact.sha256) == python_validation.SHA256_HEX_LENGTH
-    assert executable == (
-        tmp_path / ".dependencies/uv/0.12.20/bin/uv.exe"
-    )
+    assert executable == (tmp_path / ".dependencies/uv/0.12.20/bin/uv.exe")
 
 
 def test_uv_manifest_rejects_unknown_schema(tmp_path: Path) -> None:
@@ -834,9 +832,10 @@ def test_cuda_manifest_index_selects_linux_without_rewriting_windows(
     )
     _ = _write_cuda_manifest_index(tmp_path)
 
-    assert project.cuda_toolchain_manifest_path(
-        tmp_path, WINDOWS_PLATFORM
-    ) == windows
+    assert (
+        project.cuda_toolchain_manifest_path(tmp_path, WINDOWS_PLATFORM)
+        == windows
+    )
     assert (
         project.cuda_toolchain_manifest_path(tmp_path, LINUX_PLATFORM) == linux
     )
@@ -899,6 +898,147 @@ def test_cuda_inspection_uses_tracked_manifest_path(tmp_path: Path) -> None:
     assert manifest == tmp_path / project.CUDA_TOOLCHAIN_MANIFEST
     assert status.state is project.ComponentState.MISSING
     assert status.path == tmp_path / CUDA_VERSION_ROOT
+
+
+@pytest.mark.parametrize(
+    "authority",
+    [project.CUDA_TOOLCHAIN_MANIFEST, project.CUDA_TOOLCHAIN_INDEX],
+)
+def test_bootstrap_cuda_authority_rejects_linked_leaf(
+    tmp_path: Path,
+    authority: Path,
+) -> None:
+    """CUDA bootstrap cannot trust a redirect to otherwise valid JSON."""
+    _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    if authority == project.CUDA_TOOLCHAIN_INDEX:
+        _ = _write_cuda_manifest_index(tmp_path)
+    selected = tmp_path / authority
+    original = selected.with_suffix(".original")
+    _ = selected.replace(original)
+    _ = selected.symlink_to(original)
+    with pytest.raises(project.InitializationError, match=r"redirect|regular"):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+
+def test_bootstrap_cuda_authority_rejects_linked_parent(
+    tmp_path: Path,
+) -> None:
+    """An in-root symlinked ancestor cannot select pinned CUDA metadata."""
+    _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    _ = _write_cuda_manifest_index(tmp_path)
+    manifest_root = (tmp_path / project.CUDA_TOOLCHAIN_INDEX).parent
+    relocated = tmp_path / "real-manifests"
+    _ = manifest_root.replace(relocated)
+    _ = manifest_root.symlink_to(relocated, target_is_directory=True)
+    with pytest.raises(project.InitializationError, match="redirect"):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+
+def test_bootstrap_rust_authority_rejects_linked_leaf(tmp_path: Path) -> None:
+    """Rust toolchain version cannot be borrowed through an alias."""
+    original = _write_rust_manifest(tmp_path)
+    relocated = original.with_suffix(".original")
+    _ = original.replace(relocated)
+    _ = original.symlink_to(relocated)
+    with pytest.raises(project.InitializationError, match=r"redirect|regular"):
+        _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+
+
+@pytest.mark.parametrize(
+    "authority",
+    [project.CUDA_TOOLCHAIN_MANIFEST, project.CUDA_TOOLCHAIN_INDEX],
+)
+def test_bootstrap_cuda_authority_rejects_oversized_json(
+    tmp_path: Path,
+    authority: Path,
+) -> None:
+    """Manifest and index sizes are bounded before JSON decoding."""
+    _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    if authority == project.CUDA_TOOLCHAIN_INDEX:
+        _ = _write_cuda_manifest_index(tmp_path)
+    selected = tmp_path / authority
+    with selected.open("wb") as stream:
+        _ = stream.truncate(project.MAX_AUTHORITY_BYTES + 1)
+    with pytest.raises(project.InitializationError, match="byte limit"):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+
+def test_bootstrap_rust_authority_rejects_invalid_utf8(tmp_path: Path) -> None:
+    """Malformed authority encoding produces a stable bootstrap error."""
+    rust = _write_rust_manifest(tmp_path)
+    _ = rust.write_bytes(b"\xff")
+    with pytest.raises(project.InitializationError, match="cannot read"):
+        _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+
+
+def test_bootstrap_rust_authority_rejects_oversized_toml(
+    tmp_path: Path,
+) -> None:
+    """Rust version pins cannot be parsed from unbounded metadata."""
+    rust = _write_rust_manifest(tmp_path)
+    with rust.open("wb") as stream:
+        _ = stream.truncate(project.MAX_AUTHORITY_BYTES + 1)
+    with pytest.raises(project.InitializationError, match="byte limit"):
+        _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+
+
+def test_bootstrap_git_authority_rejects_linked_version_source(
+    tmp_path: Path,
+) -> None:
+    """Host Git import cannot follow a rewritten version authority alias."""
+    versions = tmp_path / ".jig/settings/versions.toml"
+    versions.parent.mkdir(parents=True)
+    _ = versions.write_text(
+        '[authority.git]\ncurrent = "2.55.0"\n', encoding="utf-8"
+    )
+    relocated = versions.with_suffix(".original")
+    _ = versions.replace(relocated)
+    _ = versions.symlink_to(relocated)
+    observation = project.GitHostObservation(
+        executable=tmp_path / "host-git",
+        exec_path=tmp_path / "host-exec",
+        version_line="git version 2.55.0",
+    )
+    with pytest.raises(project.InitializationError, match=r"redirect|regular"):
+        _ = project.import_host_git(tmp_path, LINUX_PLATFORM, observation)
+    assert not (tmp_path / ".dependencies").exists()
+
+
+def test_bootstrap_cuda_authority_rejects_inode_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-byte path replacement cannot swap the admitted CUDA index."""
+    _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    selected = _write_cuda_manifest_index(tmp_path)
+    replacement = selected.with_suffix(".replacement")
+    _ = replacement.write_bytes(selected.read_bytes())
+    original_open = os.open
+
+    def swap_before_open(path: Path, flags: int) -> int:
+        if path == selected:
+            _ = replacement.replace(selected)
+        return original_open(path, flags)
+
+    monkeypatch.setattr(os, "open", swap_before_open)
+    with pytest.raises(project.InitializationError, match="changed"):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+
+def test_bootstrap_cuda_authority_rejects_nonregular_fifo(
+    tmp_path: Path,
+) -> None:
+    """A named pipe is never interpreted as an absent CUDA index."""
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO unsupported")
+    _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    index = tmp_path / project.CUDA_TOOLCHAIN_INDEX
+    mkfifo = cast("Callable[[Path], None] | None", getattr(os, "mkfifo", None))
+    if mkfifo is None:
+        pytest.skip("FIFO unsupported")
+    mkfifo(index)
+    with pytest.raises(project.InitializationError, match="regular"):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
 
 
 def test_cuda_inspection_rejects_unknown_schema(tmp_path: Path) -> None:

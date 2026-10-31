@@ -98,6 +98,7 @@ CUDA_TOOLCHAIN_INDEX: Final = CUDA_TOOLCHAIN_MANIFEST.with_name(
     "toolchain-manifests.json"
 )
 CUDA_TOOLCHAIN_INDEX_SCHEMA_VERSION: Final = 1
+MAX_AUTHORITY_BYTES: Final = 1_048_576
 SYSTEM_NAMES: Final = {
     WINDOWS_SYSTEM: WINDOWS_SYSTEM,
     LINUX_SYSTEM: LINUX_SYSTEM,
@@ -267,24 +268,112 @@ def _reject_duplicate_pairs(
     return document
 
 
+def _reject_authority_parent_redirects(path: Path) -> None:
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction():
+            _fail("bootstrap authority parent path must not redirect")
+
+
+def _authority_present(path: Path) -> bool:
+    """Distinguish genuinely absent authority from invalid existing input.
+
+    Returns:
+        False only when the authority leaf does not exist.
+
+    """
+    _reject_authority_parent_redirects(path)
+    try:
+        _ = path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _authority_identity(status: os.stat_result) -> tuple[int, ...]:
+    """Admit a regular authority file and capture its stable identity.
+
+    Returns:
+        Device/inode, size and mutation-sensitive timestamps.
+
+    """
+    if not stat.S_ISREG(status.st_mode):
+        _fail("bootstrap authority must be a regular file")
+    if status.st_size > MAX_AUTHORITY_BYTES:
+        _fail("bootstrap authority exceeds byte limit")
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _read_authority_bytes(path: Path) -> bytes:
+    """Read bounded nonredirected authority bytes from one stable inode.
+
+    Returns:
+        Exact physical authority content, or a typed rejection.
+
+    """
+    _reject_authority_parent_redirects(path)
+    admitted = path.lstat()
+    expected = _authority_identity(admitted)
+    if path.is_symlink() or path.is_junction():
+        _fail("bootstrap authority path must not redirect")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as stream:
+        if _authority_identity(os.fstat(stream.fileno())) != expected:
+            _fail("bootstrap authority changed before read")
+        content = stream.read(MAX_AUTHORITY_BYTES + 1)
+        if (
+            len(content) != admitted.st_size
+            or _authority_identity(os.fstat(stream.fileno())) != expected
+            or _authority_identity(path.lstat()) != expected
+        ):
+            _fail("bootstrap authority changed during read")
+    _reject_authority_parent_redirects(path)
+    return content
+
+
 def _json_document(path: Path, label: str) -> dict[str, object]:
     try:
         parsed = cast(
             "object",
             json.loads(
-                path.read_text(encoding="utf-8"),
+                _read_authority_bytes(path).decode("utf-8"),
                 object_pairs_hook=_reject_duplicate_pairs,
             ),
         )
-    except (json.JSONDecodeError, OSError) as error:
+    except (
+        json.JSONDecodeError,
+        OSError,
+        ValueError,
+        UnicodeDecodeError,
+        RecursionError,
+    ) as error:
         _fail(f"cannot read {label}: {error}")
     return _mapping(parsed, label)
 
 
 def _toml_document(path: Path, label: str) -> dict[str, object]:
     try:
-        parsed = cast("object", tomllib.loads(path.read_text(encoding="utf-8")))
-    except (OSError, tomllib.TOMLDecodeError) as error:
+        parsed = cast(
+            "object", tomllib.loads(_read_authority_bytes(path).decode("utf-8"))
+        )
+    except (
+        OSError,
+        ValueError,
+        UnicodeDecodeError,
+        RecursionError,
+        tomllib.TOMLDecodeError,
+    ) as error:
         _fail(f"cannot read {label}: {error}")
     return _mapping(parsed, label)
 
@@ -300,7 +389,7 @@ def cuda_toolchain_manifest_path(
 
     """
     index_path = root / CUDA_TOOLCHAIN_INDEX
-    if not index_path.is_file():
+    if not _authority_present(index_path):
         return root / CUDA_TOOLCHAIN_MANIFEST
     document = _json_document(index_path, "CUDA toolchain manifest index")
     schema_version = document.get("schema_version")
@@ -342,7 +431,7 @@ def cuda_toolchain_nvrtc_relative_path(
 
     """
     index_path = root / CUDA_TOOLCHAIN_INDEX
-    if not index_path.is_file():
+    if not _authority_present(index_path):
         return None
     document = _json_document(index_path, "CUDA toolchain manifest index")
     platforms = _mapping(
@@ -390,7 +479,7 @@ def _inspect_cuda_manifest(
     platform_id: str,
 ) -> ComponentStatus:
     path = manifest_path
-    if not manifest_path.is_file():
+    if not _authority_present(manifest_path):
         detail = "tracked CUDA toolchain manifest is absent"
         state = ComponentState.MISSING
     else:

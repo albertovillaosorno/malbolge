@@ -22,6 +22,15 @@ fully hermetic Linux linker/sysroot packaging remain outside this P0 slice.
 
 Bootstrap consumes the repository's pinned Python, Rust, Git, and Jig version
 authorities plus already-installed host Rustup, Git, and linker observations.
+The checkout initializer reads tracked CUDA index/platform JSON, Rust toolchain
+TOML, and Git version TOML through bounded one-MiB regular-file snapshots.
+Existing symlink, junction, FIFO, directory, and parent-path redirects fail
+closed rather than silently falling back to legacy manifest selection or
+blocking on a pipe. An actually missing CUDA index still selects the legacy
+direct manifest; a missing direct manifest retains its `missing` readiness
+state. Opened file identity and timestamps are checked before/after each read,
+and invalid UTF-8, oversized input, or changed inodes produce typed bootstrap
+errors before any tool import is attempted.
 Python keeps native platform launchers and publishes neutral Jig aliases below
 `.dependencies`. On POSIX, BasedPyright and pytest aliases answer only the exact
 singleton `--version` probe from the same pinned `expected_tools` authority that
