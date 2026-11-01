@@ -614,7 +614,7 @@ def test_sanitizer_compiler_identity_rejects_malformed_process_receipts(
 ) -> None:
     """Compiler version evidence requires an exact native process receipt."""
     receipt = subprocess.CompletedProcess[bytes](
-        ("clang", "--version"),
+        (str(harness.CLANG), "--version"),
         cast("int", exit_code),
         stdout=cast("bytes", stdout),
         stderr=cast("bytes", stderr),
@@ -650,7 +650,10 @@ def test_sanitizer_case_execution_rejects_malformed_process_receipts(
     """Forged process results cannot certify a clean sanitizer case."""
     exit_code, stdout, stderr = receipt_parts
     receipt = subprocess.CompletedProcess[bytes](
-        ("sanitizer", "case"),
+        (
+            str(tmp_path / "sanitizer.exe"),
+            str(tmp_path / "malformed-case.malbolge"),
+        ),
         cast("int", exit_code),
         stdout=cast("bytes", stdout),
         stderr=cast("bytes", stderr),
@@ -687,15 +690,16 @@ def test_sanitizer_build_rejects_malformed_process_receipts(
     runtime = tmp_path / "mock-runtime.dll"
     _ = runtime.write_bytes(b"mock runtime")
     monkeypatch.setattr(harness, "ASAN_RUNTIME", runtime)
-    completed = subprocess.CompletedProcess[bytes](
-        ("clang",), cast("int", exit_code), stdout=b"", stderr=b""
-    )
-
     def forged_run(
         command: object, *, cwd: Path
     ) -> subprocess.CompletedProcess[bytes]:
-        del command, cwd
-        return completed
+        del cwd
+        return subprocess.CompletedProcess[bytes](
+            cast("tuple[str, ...]", command),
+            cast("int", exit_code),
+            stdout=b"",
+            stderr=b"",
+        )
 
     monkeypatch.setattr(harness, "_run", forged_run)
     with pytest.raises(harness.SanitizerHarnessError, match="process receipt"):
@@ -853,3 +857,322 @@ def test_sanitizer_rejects_incomplete_case_file_write(
     )
     with pytest.raises(harness.SanitizerHarnessError, match="write count"):
         _ = harness.run_harness()
+
+
+@pytest.mark.parametrize(
+    "receipt_args",
+    [
+        None,
+        "clang --version",
+        ["clang", "--version"],
+        ("different-clang", "--version"),
+        ("clang", True),
+    ],
+)
+def test_sanitizer_compiler_identity_rejects_foreign_command_receipts(
+    monkeypatch: pytest.MonkeyPatch, receipt_args: object
+) -> None:
+    """A fabricated success for different argv cannot identify pinned Clang."""
+    completed = subprocess.CompletedProcess[bytes](
+        cast("tuple[str, ...]", receipt_args),
+        0,
+        stdout=b"clang version 22.1.8 mock\n",
+        stderr=b"",
+    )
+    monkeypatch.setattr(harness, "_run", lambda *_args, **_kwargs: completed)
+    with pytest.raises(harness.SanitizerHarnessError, match="process receipt"):
+        # ruff: ignore[private-member-access]
+        harness._compiler_identity()  # pyright: ignore[reportPrivateUsage]
+
+
+def test_sanitizer_build_rejects_forged_successful_clang_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unrelated successful process cannot certify sanitized executable."""
+    monkeypatch.setattr(harness, "ROOT", tmp_path)
+    work = tmp_path / "work"
+    work.mkdir()
+    executable = work / "malbolge-sanitized.exe"
+    _ = executable.write_bytes(b"mock executable")
+    runtime = tmp_path / "mock-runtime.dll"
+    _ = runtime.write_bytes(b"mock runtime")
+    monkeypatch.setattr(harness, "ASAN_RUNTIME", runtime)
+    completed = subprocess.CompletedProcess[bytes](
+        ("clang", "--version"), 0, stdout=b"", stderr=b""
+    )
+    monkeypatch.setattr(harness, "_run", lambda *_args, **_kwargs: completed)
+    with pytest.raises(harness.SanitizerHarnessError, match="process receipt"):
+        # ruff: ignore[private-member-access]
+        _ = harness._build(  # pyright: ignore[reportPrivateUsage]
+            work, source_bytes=b"trusted historical source"
+        )
+    assert not (work / runtime.name).exists()
+
+
+def test_sanitizer_case_rejects_forged_successful_execution_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A clean result must correspond to this exact executable and fixture."""
+    completed = subprocess.CompletedProcess[bytes](
+        ("another-executable", "another-fixture"),
+        0,
+        stdout=b"not the guest",
+        stderr=b"",
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: completed)
+    case = harness.SanitizerCase(
+        identifier="correct-case", input_bytes=b"", source_bytes=b"D"
+    )
+    with pytest.raises(harness.SanitizerHarnessError, match="process receipt"):
+        # ruff: ignore[private-member-access]
+        _ = harness._execute_case(  # pyright: ignore[reportPrivateUsage]
+            tmp_path / "sanitizer.exe", tmp_path, case
+        )
+
+
+@pytest.mark.parametrize("which", ["root", "workspace"])
+@pytest.mark.parametrize("receipt", [None, 1, "directory", object()])
+def test_sanitizer_temporary_directories_require_native_stat_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    which: str,
+    receipt: object,
+) -> None:
+    """A forged stat object must never certify a temporary build location."""
+    root = tmp_path / ".temp"
+    root.mkdir()
+    work = root / "historical-sanitizer-abcdefgh"
+    work.mkdir()
+    selected = root if which == "root" else work
+    original = Path.lstat
+
+    def fake_lstat(self: Path, *args: object, **kwargs: object) -> object:
+        return receipt if self == selected else original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+    with pytest.raises(harness.SanitizerHarnessError, match="stat receipt"):
+        if which == "root":
+            harness._admit_temporary_root(root)  # pyright: ignore[reportPrivateUsage]
+        else:
+            # ruff: ignore[private-member-access]
+            harness._admit_temporary_workspace(  # pyright: ignore[reportPrivateUsage]
+                root, str(work)
+            )
+
+
+@pytest.mark.parametrize("which", ["root", "workspace"])
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction", "exists", "is_dir"])
+@pytest.mark.parametrize("receipt", [None, 0, 1, "redirect"])
+def test_sanitizer_temporary_directories_require_native_redirect_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    which: str,
+    method: str,
+    receipt: object,
+) -> None:
+    """Host predicates must return exact native booleans before admission."""
+    root = tmp_path / ".temp"
+    root.mkdir()
+    work = root / "historical-sanitizer-abcdefgh"
+    work.mkdir()
+    selected = root if which == "root" else work
+    original = getattr(Path, method)
+
+    def forged_status(self: Path) -> object:
+        return receipt if self == selected else original(self)
+
+    monkeypatch.setattr(Path, method, forged_status)
+    with pytest.raises(harness.SanitizerHarnessError, match="status receipt"):
+        if which == "root":
+            harness._admit_temporary_root(root)  # pyright: ignore[reportPrivateUsage]
+        else:
+            # ruff: ignore[private-member-access]
+            harness._admit_temporary_workspace(  # pyright: ignore[reportPrivateUsage]
+                root, str(work)
+            )
+
+
+@pytest.mark.parametrize("stage", ["creation", "root-stat", "workspace-stat"])
+def test_sanitizer_temporary_directory_errors_preserve_cause_safely(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    """Foreign OS error string hooks must not execute in failure reporting."""
+
+    class HostilePermissionError(PermissionError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign host error formatter executed")
+
+    root = tmp_path / ".temp"
+    root.mkdir()
+    work = root / "historical-sanitizer-abcdefgh"
+    work.mkdir()
+    fault = HostilePermissionError("sensitive host failure")
+    original_mkdir = Path.mkdir
+    original_lstat = Path.lstat
+
+    def fake_mkdir(
+        self: Path, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
+    ) -> None:
+        if self == root:
+            raise fault
+        original_mkdir(self, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    def fake_lstat(self: Path, *args: object, **kwargs: object) -> object:
+        if self == (work if stage == "workspace-stat" else root):
+            raise fault
+        return original_lstat(self, *args, **kwargs)
+
+    if stage == "creation":
+        monkeypatch.setattr(Path, "mkdir", fake_mkdir)
+    else:
+        monkeypatch.setattr(Path, "lstat", fake_lstat)
+    with pytest.raises(
+        harness.SanitizerHarnessError, match="HostilePermissionError"
+    ) as failure:
+        if stage == "workspace-stat":
+            # ruff: ignore[private-member-access]
+            harness._admit_temporary_workspace(  # pyright: ignore[reportPrivateUsage]
+                root, str(work)
+            )
+        else:
+            harness._admit_temporary_root(root)  # pyright: ignore[reportPrivateUsage]
+    assert failure.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("which", ["root", "workspace"])
+@pytest.mark.parametrize("method", ["exists", "is_dir"])
+def test_sanitizer_rejects_false_directory_predicate_with_native_stat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, which: str, method: str
+) -> None:
+    """A forged negative predicate cannot contradict physical stat evidence."""
+    root = tmp_path / ".temp"
+    root.mkdir()
+    work = root / "historical-sanitizer-abcdefgh"
+    work.mkdir()
+    selected = root if which == "root" else work
+    original = getattr(Path, method)
+
+    def lying_status(self: Path) -> bool:
+        return False if self == selected else original(self)
+
+    monkeypatch.setattr(Path, method, lying_status)
+    with pytest.raises(harness.SanitizerHarnessError, match="physical directory"):
+        if which == "root":
+            harness._admit_temporary_root(root)  # pyright: ignore[reportPrivateUsage]
+        else:
+            # ruff: ignore[private-member-access]
+            harness._admit_temporary_workspace(  # pyright: ignore[reportPrivateUsage]
+                root, str(work)
+            )
+
+
+@pytest.mark.parametrize("mode", [None, True, 1.5, "dir", object()])
+def test_sanitizer_rejects_foreign_stat_mode_inside_native_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: object
+) -> None:
+    """An exact stat_result wrapper alone cannot prove a directory mode."""
+    root = tmp_path / ".temp"
+    root.mkdir()
+    fake = os.stat_result((cast("int", mode), 0, 0, 1, 0, 0, 0, 0, 0, 0))
+    original = Path.lstat
+
+    def forged_lstat(self: Path, *args: object, **kwargs: object) -> object:
+        return fake if self == root else original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(harness.SanitizerHarnessError, match="stat receipt"):
+        harness._admit_temporary_root(root)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_sanitizer_source_error_does_not_format_foreign_os_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Historical source failures retain their cause without calling hooks."""
+
+    class HostileOSError(OSError):
+        def __str__(self) -> str:
+            raise AssertionError("untrusted historical source error formatted")
+
+    fault = HostileOSError("untrusted host receipt")
+
+    def fail_read(*_args: object, **_kwargs: object) -> bytes:
+        raise fault
+
+    monkeypatch.setattr(harness, "_read_regular", fail_read)
+    with pytest.raises(
+        harness.SanitizerHarnessError, match="HostileOSError"
+    ) as failure:
+        harness._verify_source()  # pyright: ignore[reportPrivateUsage]
+    assert failure.value.__cause__ is fault
+
+
+def test_sanitizer_accepts_exact_native_clang_version_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The exact pinned argv and decoded version remain valid evidence."""
+    command = (str(harness.CLANG), "--version")
+
+    def fake_run(
+        received: tuple[str, ...], *, cwd: Path
+    ) -> subprocess.CompletedProcess[bytes]:
+        assert received == command
+        assert cwd == harness.ROOT
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=b"clang version 22.1.8 (reviewed)\n",
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(harness, "_run", fake_run)
+    harness._compiler_identity()  # pyright: ignore[reportPrivateUsage]
+
+
+def test_sanitizer_accepts_exact_clean_case_receipt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A native result from the requested executable and guest stays clean."""
+    executable = tmp_path / "sanitizer.exe"
+    case = harness.SanitizerCase(
+        identifier="native-clean", input_bytes=b"input", source_bytes=b"D"
+    )
+    command = (str(executable), str(tmp_path / "native-clean.malbolge"))
+
+    def fake_run(
+        received: tuple[str, ...], **kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        assert received == command
+        assert kwargs["input"] == case.input_bytes
+        return subprocess.CompletedProcess(command, 0, stdout=b"ok", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = harness._execute_case(  # pyright: ignore[reportPrivateUsage]
+        executable, tmp_path, case
+    )
+    assert result == {
+        "id": case.identifier,
+        "status": "clean",
+        "stdout_hex": "6f6b",
+        "findings": [],
+    }
+
+
+def test_sanitizer_preserves_native_directory_creation_failure_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exact native host failures retain their readable diagnostic and cause."""
+    root = tmp_path / ".temp"
+    original_mkdir = Path.mkdir
+    fault = PermissionError("native creation denied")
+
+    def fake_mkdir(
+        self: Path, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
+    ) -> None:
+        if self == root:
+            raise fault
+        original_mkdir(self, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    monkeypatch.setattr(Path, "mkdir", fake_mkdir)
+    with pytest.raises(harness.SanitizerHarnessError, match="native creation denied") as failure:
+        harness._admit_temporary_root(root)  # pyright: ignore[reportPrivateUsage]
+    assert failure.value.__cause__ is fault

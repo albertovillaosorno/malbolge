@@ -52,10 +52,13 @@ If stream creation fails for a manifest, evidence, or source descriptor, the
 reader closes its raw descriptor and raises a typed sanitizer error retaining
 the underlying host failure as its cause.
 Pinned Clang identity, sanitizer build, and guest execution receipts require
-a native subprocess completion with an exact integer exit code and native byte
-stdout/stderr streams. Boolean or floating-point statuses and malformed stream
-receipts never certify a clean sanitizer run. Foreign host exception formatters
-are not invoked when the sanitizer command reports failure.
+a native subprocess completion bound to the exact invoked argv, with an exact
+integer exit code and native byte stdout/stderr streams. Substituted commands,
+foreign command containers or elements, boolean or floating-point statuses,
+and malformed output streams never certify a clean sanitizer run. Foreign host
+exception formatters are not invoked when the sanitizer command reports failure
+or when the historical source cannot be read; source read errors retain their
+original host exception as the typed failure cause.
 The pinned source hash is verified before a byte-exact copy is staged in the
 private temporary build directory; Clang compiles that verified snapshot, never
 reopening the original pathname after verification. The original `main.c`
@@ -65,8 +68,12 @@ junction, or regular-file substitute. It is checked before and after creating
 the private build workspace, before any compiler input is staged. The
 workspace receipt must name a physical directory with the expected randomized
 stem directly beneath `.temp`; foreign, redirected, and malformed workspace
-paths are rejected. These preflight checks do not make concurrent pathname
-replacement atomic.
+paths are rejected. Both locations require an exact native `lstat` receipt,
+a native integer mode, and consistent native boolean path-status receipts.
+Contradictory directory predicates and linked physical modes are rejected.
+Native creation/stat errors retain diagnostic text and their original cause;
+foreign exception string hooks are not evaluated. These preflight checks do
+not make concurrent pathname replacement atomic.
 FIFO and symlink substitutions fail without waiting for external input.
 Case identifiers must be portable ASCII filename stems (at most 128 characters),
 excluding path

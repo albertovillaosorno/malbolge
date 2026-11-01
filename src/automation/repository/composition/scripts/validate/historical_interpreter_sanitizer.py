@@ -45,7 +45,7 @@ import tempfile
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from stat import S_ISDIR, S_ISREG
+from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING, Never, cast
 
 from scripts.repository_root import repository_root
@@ -406,8 +406,9 @@ def _run(
 
 def _native_process_receipt(
     result: object,
+    command: tuple[str, ...],
 ) -> subprocess.CompletedProcess[bytes]:
-    """Admit exact native exit status and byte streams as process evidence.
+    """Admit exact argv, native exit status and byte streams as process evidence.
 
     Returns:
         The checked subprocess completion without invoking foreign hooks.
@@ -417,7 +418,11 @@ def _native_process_receipt(
         _fail("invalid sanitizer process receipt")
     completed = cast("subprocess.CompletedProcess[bytes]", result)
     if (
-        type(completed.returncode) is not int
+        type(completed.args) is not tuple
+        or len(completed.args) != len(command)
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != command
+        or type(completed.returncode) is not int
         or type(completed.stdout) is not bytes
         or type(completed.stderr) is not bytes
     ):
@@ -426,9 +431,8 @@ def _native_process_receipt(
 
 
 def _compiler_identity() -> None:
-    completed = _native_process_receipt(
-        _run((str(CLANG), "--version"), cwd=ROOT)
-    )
+    command = (str(CLANG), "--version")
+    completed = _native_process_receipt(_run(command, cwd=ROOT), command)
     first_line = completed.stdout.decode("utf-8", errors="replace").splitlines()
     if completed.returncode != 0 or not first_line:
         _fail("pinned Clang version query failed")
@@ -446,7 +450,10 @@ def _verify_source() -> bytes:
     try:
         source = _read_regular(SOURCE, limit=MAX_FIXTURE_BYTES)
     except OSError as error:
-        _fail(f"historical source is unavailable: {error}")
+        detail = _native_host_error_detail(error)
+        raise SanitizerHarnessError(
+            f"historical source is unavailable: {detail}"
+        ) from error
     observed = sha256(source).hexdigest()
     if observed != SOURCE_SHA256:
         _fail(f"historical source hash mismatch: {observed}")
@@ -496,7 +503,7 @@ def _build(work: Path, *, source_bytes: bytes) -> Path:
         "-o",
         str(executable),
     )
-    completed = _native_process_receipt(_run(command, cwd=ROOT))
+    completed = _native_process_receipt(_run(command, cwd=ROOT), command)
     if completed.returncode != 0 or not executable.is_file():
         stderr = completed.stderr.decode("utf-8", errors="replace")
         message = "sanitizer build failed: " + stderr
@@ -531,9 +538,10 @@ def _execute_case(
         "halt_on_error=1:abort_on_error=0:detect_leaks=0:symbolize=0"
     )
     environment["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=0"
+    command = (str(executable), str(source))
     # jig-ignore-next-line: reviewed local subprocess boundary uses argv only
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        (str(executable), str(source)),
+        command,
         cwd=work,
         check=False,
         shell=False,
@@ -542,7 +550,7 @@ def _execute_case(
         timeout=RUN_TIMEOUT_SECONDS,
         env=environment,
     )
-    completed = _native_process_receipt(completed)
+    completed = _native_process_receipt(completed, command)
     findings = _findings(completed.stderr)
     if findings:
         if completed.returncode == 0:
@@ -565,28 +573,71 @@ def _execute_case(
     }
 
 
+def _native_host_error_detail(error: Exception) -> str:
+    """Render exact native host faults without calling foreign text hooks.
+
+    Returns:
+        Native diagnostic text or the foreign exception's class name.
+
+    """
+    if type(error) in {
+        OSError,
+        FileNotFoundError,
+        FileExistsError,
+        PermissionError,
+        IsADirectoryError,
+        NotADirectoryError,
+        TimeoutError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+    }:
+        return str(error)
+    return type(error).__name__
+
+
+def _require_physical_staging_directory(path: Path, label: str) -> None:
+    """Require native stat and redirect receipts for a staging directory."""
+    try:
+        status = path.lstat()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _native_host_error_detail(error)
+        raise SanitizerHarnessError(f"{label} status failed: {detail}") from error
+    if type(status) is not os.stat_result or type(status.st_mode) is not int:
+        _fail(f"{label} has invalid stat receipt")
+    try:
+        symlink = path.is_symlink()
+        junction = path.is_junction()
+        exists = path.exists()
+        directory = path.is_dir()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _native_host_error_detail(error)
+        raise SanitizerHarnessError(f"{label} status failed: {detail}") from error
+    if any(type(value) is not bool for value in (symlink, junction, exists, directory)):
+        _fail(f"{label} has invalid path status receipt")
+    if symlink or junction or S_ISLNK(status.st_mode):
+        _fail(f"{label} must not redirect")
+    if not (exists and directory and S_ISDIR(status.st_mode)):
+        _fail(f"{label} must be a physical directory")
+
+
 def _admit_temporary_root(root: Path) -> None:
     """Require a physical repository-local staging root before building."""
     try:
         root.mkdir(exist_ok=True)
-    except FileExistsError:
+    except FileExistsError as error:
+        if type(error) is not FileExistsError:
+            detail = _native_host_error_detail(error)
+            raise SanitizerHarnessError(
+                f"sanitizer temporary root creation failed: {detail}"
+            ) from error
         # Validate the existing leaf, rather than leaking raw mkdir failure.
-        pass
     except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _native_host_error_detail(error)
         raise SanitizerHarnessError(
-            f"sanitizer temporary root creation failed: {error}"
+            f"sanitizer temporary root creation failed: {detail}"
         ) from error
-    try:
-        status = root.lstat()
-        redirected = root.is_symlink() or root.is_junction()
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        raise SanitizerHarnessError(
-            f"sanitizer temporary root status failed: {error}"
-        ) from error
-    if redirected:
-        _fail("sanitizer temporary root must not redirect")
-    if not S_ISDIR(status.st_mode):
-        _fail("sanitizer temporary root must be a physical directory")
+    _require_physical_staging_directory(root, "sanitizer temporary root")
 
 
 def _admit_temporary_workspace(root: Path, directory: object) -> Path:
@@ -601,15 +652,7 @@ def _admit_temporary_workspace(root: Path, directory: object) -> Path:
         or re.fullmatch(r"historical-sanitizer-[a-z0-9_]{8}", work.name) is None
     ):
         _fail("sanitizer temporary workspace is outside requested staging root")
-    try:
-        status = work.lstat()
-        redirected = work.is_symlink() or work.is_junction()
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        raise SanitizerHarnessError(
-            f"sanitizer temporary workspace status failed: {error}"
-        ) from error
-    if redirected or not S_ISDIR(status.st_mode):
-        _fail("sanitizer temporary workspace must be a physical directory")
+    _require_physical_staging_directory(work, "sanitizer temporary workspace")
     return work
 
 
