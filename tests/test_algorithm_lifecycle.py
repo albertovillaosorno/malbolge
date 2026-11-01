@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Self, cast, override
 
@@ -835,6 +837,13 @@ def test_lifecycle_forged_manifest_open_descriptor_is_rejected(
         _ = validator._read_utf8(path)  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.fixture
+def lifecycle_test_streams() -> Iterator[ExitStack]:
+    """Release every test-owned duplicate even when validation rejects it."""
+    with ExitStack() as streams:
+        yield streams
+
+
 class _LifecycleReadStream:
     """Own a real source fd and forge a single stream return value."""
 
@@ -859,7 +868,7 @@ class _LifecycleReadStream:
 
 
 def test_lifecycle_rejects_forged_valid_bytes_from_foreign_stream(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lifecycle_test_streams: ExitStack
 ) -> None:
     """A forged fdopen stream cannot substitute valid bytes for bad disk content."""
     path = tmp_path / "lifecycle.toml"
@@ -869,6 +878,7 @@ def test_lifecycle_rejects_forged_valid_bytes_from_foreign_stream(
 
     def forged_fdopen(descriptor: int, mode: str) -> BinaryIO:
         wrapped = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        _ = lifecycle_test_streams.enter_context(wrapped)
         return cast("BinaryIO", cast("object", _LifecycleReadStream(wrapped, source)))
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
@@ -877,7 +887,7 @@ def test_lifecycle_rejects_forged_valid_bytes_from_foreign_stream(
 
 
 def test_lifecycle_rejects_native_stream_bound_to_other_descriptor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lifecycle_test_streams: ExitStack
 ) -> None:
     """An exact native buffered stream cannot substitute a distinct same-inode fd."""
     path = tmp_path / "lifecycle.toml"
@@ -887,7 +897,8 @@ def test_lifecycle_rejects_native_stream_bound_to_other_descriptor(
 
     def forged_fdopen(descriptor: int, mode: str) -> BinaryIO:
         opened.append(descriptor)
-        return cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        wrapped = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        return lifecycle_test_streams.enter_context(wrapped)
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
     with pytest.raises(validator.AlgorithmLifecycleError, match="native stream"):
@@ -899,7 +910,10 @@ def test_lifecycle_rejects_native_stream_bound_to_other_descriptor(
 
 @pytest.mark.parametrize("kind", ["text", "list", "subclass"])
 def test_lifecycle_forged_manifest_read_receipt_is_rejected(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    lifecycle_test_streams: ExitStack,
 ) -> None:
     """Source bytes must be exact native bytes before any length inspection."""
     path = tmp_path / "lifecycle.toml"
@@ -920,6 +934,7 @@ def test_lifecycle_forged_manifest_read_receipt_is_rejected(
 
     def forged_fdopen(descriptor: int, mode: str) -> BinaryIO:
         wrapped = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        _ = lifecycle_test_streams.enter_context(wrapped)
         return cast(
             "BinaryIO", cast("object", _LifecycleReadStream(wrapped, payloads[kind]))
         )
@@ -931,7 +946,10 @@ def test_lifecycle_forged_manifest_read_receipt_is_rejected(
 
 @pytest.mark.parametrize("descriptor", [True, -1, 3.0])
 def test_lifecycle_forged_manifest_stream_descriptor_is_rejected(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, descriptor: object
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    descriptor: object,
+    lifecycle_test_streams: ExitStack,
 ) -> None:
     """A forged stream fileno cannot serve as native descriptor evidence."""
     path = tmp_path / "lifecycle.toml"
@@ -941,6 +959,7 @@ def test_lifecycle_forged_manifest_stream_descriptor_is_rejected(
 
     def forged_fdopen(fd: int, mode: str) -> BinaryIO:
         wrapped = cast("BinaryIO", native_fdopen(os.dup(fd), mode))
+        _ = lifecycle_test_streams.enter_context(wrapped)
         return cast(
             "BinaryIO",
             cast("object", _LifecycleReadStream(wrapped, source, descriptor)),
