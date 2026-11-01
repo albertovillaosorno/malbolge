@@ -1279,6 +1279,9 @@ frontend_arguments(const FrontendRequest &request) {
       "-Werror=return-type",
       "-Werror=uninitialized",
       "-fno-color-diagnostics",
+      // Native header paths are private. Retain caret/source context without
+      // allowing Clang to print physical file names or include-root paths.
+      "-fno-show-source-location",
       "-nostdinc",
       "-isystem",
       request.resource_dir + "/include",

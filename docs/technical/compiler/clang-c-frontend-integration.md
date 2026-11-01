@@ -119,7 +119,11 @@ argument set:
 The in-memory filename is the logical source identity, not the physical source
 path. Included declarations participate in Clang semantic analysis but are not
 emitted as source nodes. References to them use semantic external identities
-such as `external:memcpy` rather than header paths.
+such as `external:memcpy` rather than header paths. Clang text diagnostics omit
+file locations, retaining error text and caret/source excerpts without
+revealing absolute private include roots; the stable failure diagnostic still
+names the logical source ID. Syntax failures in identical private headers
+remain byte-identical after physical relocation.
 
 ### Semantic traversal
 

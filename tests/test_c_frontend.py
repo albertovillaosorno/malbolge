@@ -710,13 +710,43 @@ def test_default_enum_outside_abi_domain_fails_closed() -> None:
     assert completed.stderr.strip() == ENUM_DOMAIN_DIAGNOSTIC
 
 
+def test_malformed_private_header_diagnostics_are_path_independent(
+    tmp_path: Path,
+) -> None:
+    """Clang must never disclose native include roots on a parse failure."""
+    results = []
+    for root_name in ("first", "second"):
+        directory = tmp_path / root_name
+        directory.mkdir()
+        _ = (directory / "private.h").write_text(
+            "int invalid(void { return 1; }\n", encoding="utf-8"
+        )
+        source = directory / "source.c"
+        _ = source.write_text('#include "private.h"\n', encoding="utf-8")
+        completed = _run_frontend(
+            source,
+            "fixtures/private-header.c",
+            guest_include=directory,
+        )
+        assert completed.returncode == PARSE_STATUS
+        assert not completed.stdout
+        assert "expected ')'" in completed.stderr
+        assert "MALBOLGE-FRONTEND-004 Clang parse failed" in completed.stderr
+        assert "fixtures/private-header.c" in completed.stderr
+        assert str(directory) not in completed.stderr
+        results.append(completed.stderr)
+    assert results[0] == results[1]
+
+
 def test_malformed_source_fails_under_logical_source_identity() -> None:
     """Syntax errors fail closed without exposing the physical input path."""
     completed = _run_frontend(MALFORMED, MALFORMED_SOURCE_ID)
     assert completed.returncode == PARSE_STATUS
     assert not completed.stdout
     assert PARSE_DIAGNOSTIC in completed.stderr
-    assert f"{MALFORMED_SOURCE_ID}:" in completed.stderr
+    assert "error:" in completed.stderr
+    assert "expected" in completed.stderr
+    assert "MALBOLGE-FRONTEND-004 Clang parse failed" in completed.stderr
     assert str(MALFORMED) not in completed.stderr
 
 
