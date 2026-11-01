@@ -43,6 +43,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -124,6 +125,21 @@ PLUGIN_REJECTIONS = (
         "malbolge-abi-type-surface",
     ),
 )
+
+
+class UntrustedHostFormatterError(TypeError):
+    """Synthetic host failure whose text formatter must never be invoked."""
+
+    @override
+    def __str__(self) -> str:
+        """Fail if an untrusted exception formatter is executed.
+
+        Raises:
+            AssertionError: The toolchain validator invoked foreign formatting.
+
+        """
+        message = "foreign LLVM host error formatter executed"
+        raise AssertionError(message)
 
 
 def _canonical_document() -> dict[str, object]:
@@ -474,7 +490,10 @@ def test_manifest_rejects_same_byte_swap_after_read(
 
 @pytest.mark.parametrize("source_kind", ["manifest", "archive"])
 @pytest.mark.parametrize("fault_point", ["fdopen", "fstat"])
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+@pytest.mark.parametrize(
+    "fault_type",
+    [OSError, ValueError, TypeError, RuntimeError, UntrustedHostFormatterError],
+)
 def test_tidy_source_stream_fault_closes_owned_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

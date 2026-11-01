@@ -207,6 +207,30 @@ def _fail(message: str) -> Never:
     raise ToolchainError(message)
 
 
+def _host_error_detail(error: Exception) -> str:
+    """Use native host diagnostics without foreign exception formatter hooks.
+
+    Returns:
+        Trusted built-in exception text or the foreign exception type name.
+
+    """
+    if type(error) in {
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        FileNotFoundError,
+        PermissionError,
+        FileExistsError,
+        IsADirectoryError,
+        NotADirectoryError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    }:
+        return str(error)
+    return type(error).__name__
+
+
 def _reject_duplicate_pairs(
     pairs: list[tuple[str, object]],
 ) -> dict[str, object]:
@@ -286,7 +310,8 @@ def _open_regular_source(
             os.close(descriptor)
         except OSError:
             pass
-        raise ToolchainError(f"cannot read {label}: {error}") from error
+        message = f"cannot read {label}: {_host_error_detail(error)}"
+        raise ToolchainError(message) from error
     try:
         opened = _regular_source_identity(os.fstat(stream.fileno()), label)
         if opened != expected:
@@ -298,7 +323,8 @@ def _open_regular_source(
             pass
         if isinstance(error, ToolchainError):
             raise
-        raise ToolchainError(f"cannot read {label}: {error}") from error
+        message = f"cannot read {label}: {_host_error_detail(error)}"
+        raise ToolchainError(message) from error
     return stream, admitted
 
 

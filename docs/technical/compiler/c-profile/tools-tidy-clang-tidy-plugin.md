@@ -73,6 +73,8 @@ or modification during streaming. Neither check accepts linked evidence paths
 or treats a matching hash as permission to replace inputs. A failed source
 stream wrapper or descriptor-identity preflight closes the owned descriptor
 and reports a typed toolchain error with the underlying host failure as cause.
+Native source errors retain their diagnostic text; foreign host exceptions use
+their type name rather than executing custom string-formatting hooks.
 
 Linux LLVM development RPM publication also requires a physical, unlinked
 completion marker and physical regular required headers under the tracked
