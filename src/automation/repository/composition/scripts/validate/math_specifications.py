@@ -92,6 +92,7 @@ def _host_error_detail(error: Exception) -> str:
 
     """
     if type(error) in (
+        MathSpecificationError,
         OSError,
         ValueError,
         TypeError,
@@ -272,7 +273,14 @@ def _read_tex(path: Path) -> str:
     try:
         return _stable_tex_source_bytes(path).decode("utf-8")
     except UnicodeDecodeError as error:
-        _fail(f"invalid mathematics source UTF-8: {path}: {error}")
+        detail = (
+            str(error)
+            if type(error) is UnicodeDecodeError
+            else "foreign Unicode decoder failure"
+        )
+        raise MathSpecificationError(
+            f"invalid mathematics source UTF-8: {path}: {detail}"
+        ) from error
     except MathSpecificationError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -702,7 +710,7 @@ def main() -> int:
     try:
         sources = build_documents()
     except (OSError, MathSpecificationError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_host_error_detail(error)}\n")
         return 1
     _ = sys.stdout.write(
         f"mathematical specifications valid: {len(sources)} documents\n"

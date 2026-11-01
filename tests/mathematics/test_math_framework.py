@@ -1437,3 +1437,68 @@ def test_math_log_rejects_foreign_text_before_writing(
         validator._write_math_build_log(log, ForeignText("new data"))
     assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
     assert tuple(log.parent.iterdir()) == (log,)
+
+
+def test_math_tex_invalid_utf8_retains_decoder_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An invalid TeX encoding preserves native byte-offset diagnostics."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    _ = source.write_bytes(b"\xff")
+    with pytest.raises(
+        validator.MathSpecificationError, match="invalid mathematics source UTF-8"
+    ) as caught:
+        _ = validator._read_tex(source)
+    assert type(caught.value.__cause__) is UnicodeDecodeError
+    assert "position 0" in str(caught.value)
+
+
+def test_math_tex_rejects_foreign_unicode_formatter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign Unicode failure cannot execute hostile text formatters."""
+
+    class ForeignUnicodeError(UnicodeDecodeError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign mathematics decoder formatter executed")
+
+    fault = ForeignUnicodeError("utf-8", b"\xff", 0, 1, "decoder failure")
+
+    class FaultyBytes(bytes):
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            del encoding, errors
+            raise fault
+
+    monkeypatch.setattr(
+        validator, "_stable_tex_source_bytes", lambda _path: FaultyBytes(b"data")
+    )
+    with pytest.raises(
+        validator.MathSpecificationError, match="invalid mathematics source UTF-8"
+    ) as caught:
+        _ = validator._read_tex(Path("untrusted.tex"))
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("fault_type", [OSError, validator.MathSpecificationError])
+def test_math_cli_never_formats_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """CLI failures remain stable even when an exception has hostile __str__."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign mathematics CLI formatter executed")
+
+    foreign = type("ForeignMathCliFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("untrusted data")
+
+    def fail_build() -> tuple[Path, ...]:
+        raise fault
+
+    monkeypatch.setattr(validator, "build_documents", fail_build)
+    assert validator.main() == 1
+    output = capsys.readouterr()
+    assert "ForeignMathCliFault" in output.err
+    assert not output.out

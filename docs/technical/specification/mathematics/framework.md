@@ -64,8 +64,10 @@ TeX validation reads no more than one MiB per physical regular source,
 rejects redirected parent/leaf paths, and requires the pre-read file identity
 (device, inode, size and modification/change times) to match the open descriptor
 and the post-read pathname. In-place edits and byte-identical file replacements
-invalidate the snapshot. TeX input decoding errors are surfaced as math
-validation errors. These are validation-input checks, not an atomic protection
+invalidate the snapshot. TeX input decoding errors are surfaced as math validation errors, retaining
+native decoder causes without running foreign exception formatters. CLI host and
+policy error diagnostics also avoid foreign exception formatter hooks. These are
+validation-input checks, not an atomic protection
 against filesystem races during a subsequent TeX compiler invocation.
 
 The current repository has nine standalone mathematical documents. All nine
