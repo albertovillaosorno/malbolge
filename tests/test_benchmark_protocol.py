@@ -494,6 +494,108 @@ def test_benchmark_reader_requires_exact_native_bytes(
 
 
 @pytest.mark.parametrize(
+    "field", ("mode", "device", "inode", "size", "mtime_ns", "ctime_ns")
+)
+@pytest.mark.parametrize("receipt", (None, True, 1.5, "foreign"))
+def test_benchmark_native_stat_requires_integer_identity_members(
+    field: str,
+    receipt: object,
+) -> None:
+    """An exact native stat container cannot launder forged identity members."""
+    native = DETERMINISTIC.lstat()
+    fields: list[object] = [
+        *native,
+        native.st_atime,
+        native.st_mtime,
+        native[9],
+        native.st_atime_ns,
+        native.st_mtime_ns,
+        native.st_ctime_ns,
+    ]
+    field_position = {
+        "mode": 0,
+        "device": 2,
+        "inode": 1,
+        "size": 6,
+        "mtime_ns": 14,
+        "ctime_ns": 15,
+    }
+    fields[field_position[field]] = receipt
+    forged = os.stat_result(cast("tuple[int, ...]", tuple(fields)))
+    with pytest.raises(validator.BenchmarkProtocolError, match="native stat fields"):
+        _ = validator._native_stat(  # pyright: ignore[reportPrivateUsage]
+            forged, "benchmark identity"
+        )
+
+
+def test_benchmark_native_stat_rejects_negative_file_size() -> None:
+    """Forged negative byte lengths cannot create an admitted bounded source."""
+    native = DETERMINISTIC.lstat()
+    fields = [
+        *native,
+        native.st_atime,
+        native.st_mtime,
+        native[9],
+        native.st_atime_ns,
+        native.st_mtime_ns,
+        native.st_ctime_ns,
+    ]
+    fields[6] = -1
+    forged = os.stat_result(tuple(fields))
+    with pytest.raises(validator.BenchmarkProtocolError, match="native stat fields"):
+        _ = validator._native_stat(  # pyright: ignore[reportPrivateUsage]
+            forged, "benchmark identity"
+        )
+
+
+@pytest.mark.parametrize("position", ("parent", "leaf", "opened"))
+def test_benchmark_read_rejects_forged_native_mode_in_all_file_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    position: str,
+) -> None:
+    """Physical ancestors, source leaves and descriptors share field admission."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+        protocol, "benchmark protocol"
+    )
+    assert admitted is not None
+    native_lstat = Path.lstat
+    native_fstat = os.fstat
+    target = protocol.parent if position == "parent" else protocol
+    native = target.lstat()
+    fields: list[object] = [
+        *native,
+        native.st_atime,
+        native.st_mtime,
+        native[9],
+        native.st_atime_ns,
+        native.st_mtime_ns,
+        native.st_ctime_ns,
+    ]
+    fields[0] = "foreign"
+    forged = os.stat_result(cast("tuple[int, ...]", tuple(fields)))
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        return forged if path == target and position != "opened" else native_lstat(path)
+
+    def forged_fstat(fd: int) -> os.stat_result:
+        return forged if position == "opened" else native_fstat(fd)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(validator.BenchmarkProtocolError, match="native stat fields"):
+        if position == "opened":
+            _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+                protocol, "benchmark protocol", admitted
+            )
+        else:
+            _ = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+                protocol, "benchmark protocol"
+            )
+
+
+@pytest.mark.parametrize(
     "phase",
     (
         "parent_initial",
@@ -616,16 +718,12 @@ def test_benchmark_rejects_non_native_junction_status(
         nonlocal leaf_checks
         if path == protocol:
             leaf_checks += 1
-        if path == victim and (
-            component != AFTER_READ_JUNCTION or leaf_checks > 1
-        ):
+        if path == victim and (component != AFTER_READ_JUNCTION or leaf_checks > 1):
             return cast("bool", receipt)
         return native_junction(path)
 
     monkeypatch.setattr(Path, "is_junction", forged_junction)
-    with pytest.raises(
-        validator.BenchmarkProtocolError, match="native junction"
-    ):
+    with pytest.raises(validator.BenchmarkProtocolError, match="native junction"):
         _ = validator.validate_example(protocol)
     if component == AFTER_READ_JUNCTION:
         assert leaf_checks > 1

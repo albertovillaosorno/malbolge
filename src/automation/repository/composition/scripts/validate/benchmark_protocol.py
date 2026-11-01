@@ -501,6 +501,16 @@ def _native_stat(status: os.stat_result, context: str) -> os.stat_result:
     """
     if type(status) is not os.stat_result:
         _fail(f"{context} requires native stat receipt")
+    identity_fields = (
+        status.st_mode,
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+    if any(type(field) is not int for field in identity_fields) or status.st_size < 0:
+        _fail(f"{context} requires native stat fields")
     return status
 
 
@@ -652,9 +662,7 @@ def _regular_file_status(path: Path, context: str) -> os.stat_result | None:
         raise BenchmarkProtocolError(f"{context} status failed: {detail}") from error
     status = _native_stat(status, f"{context} status")
     try:
-        redirected = S_ISLNK(status.st_mode) or _native_junction_status(
-            path, context
-        )
+        redirected = S_ISLNK(status.st_mode) or _native_junction_status(path, context)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         detail = _host_error_detail(error)
         raise BenchmarkProtocolError(f"{context} status failed: {detail}") from error
