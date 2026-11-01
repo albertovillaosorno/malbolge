@@ -126,7 +126,12 @@ not silently commit partial guest-visible effects.
   boundaries, the normative `ubO` byte-I/O
   roundtrip fixture, non-graphical non-progress, low-byte output, EOF, code
   jumps, post-jump encryption, atomic rejection, rotate, crazy, and pointer
-  wrap.
+  wrap. A separate fixed 94-cell position-sensitive I/O phase executes 256
+  successive raw input/output byte pairs, including NUL and `0xff`, followed
+  by an EOF read. It checks byte-exact output, the atomic refusal of the 257th
+  output at capacity 256, and successful resume after capacity is enlarged.
+  This is independent classic VM evidence using preloaded machine memory, not
+  a generated guest-program or application-level byte-stream demonstration.
 - The C harness asserts semantic signature `0xa9dabd8fc51d13c9` over every
   classic word's rotate result, a deterministic 59049-pair crazy sample, the
   complete loaded `ubO` image, and representative execution boundaries.

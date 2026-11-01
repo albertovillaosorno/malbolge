@@ -714,6 +714,87 @@ static int test_jump_encryption_and_atomic_rejection(void)
     return failures;
 }
 
+/*
+ * The classic XLAT1 phase decodes this 94-cell fixture as alternating input
+ * and output instructions. Repeating it is valid because the phase and the
+ * two-instruction cycle both have even length. It is fixed test data, not
+ * computed through the VM under test.
+ */
+static const uint8_t BINARY_IO_PHASE[] =
+    "ubs`q^o\\mZkXiVgTeRcPaN_L]J[HYFWDUBS@Q>O<M:K8I6G"
+    "4E2C0A.?,=*;(9&7$5\"3~1|/z-x+v)t'r%p#n!l}j{hyfwd";
+
+_Static_assert(sizeof(BINARY_IO_PHASE) - 1U == 94U,
+               "classic phase fixture must contain 94 cells");
+
+static int test_full_binary_stream_capacity_resume(void)
+{
+    static uint8_t input[256];
+    static uint8_t output[258];
+    MalbolgeTrace trace;
+    MalbolgeDiagnostic result;
+    size_t steps = 0U;
+    int failures = 0;
+
+    for (size_t index = 0U; index < sizeof(input); ++index) {
+        input[index] = (uint8_t)index;
+        output[index] = UINT8_C(0xCC);
+    }
+    output[256] = UINT8_C(0x5A);
+    output[257] = UINT8_C(0xA5);
+
+    malbolge_machine_init_state(&g_machine, 0U, input, sizeof(input),
+                                output, sizeof(input));
+    g_machine.registers.data_pointer = 1024U;
+    for (size_t index = 0U; index < 514U; ++index) {
+        g_machine.memory[index] =
+            (MalbolgeWord)BINARY_IO_PHASE[index % 94U];
+    }
+
+    failures += expect_true(
+        malbolge_run(&g_machine, 513U, &steps, &result) ==
+        MALBOLGE_STEP_CONTINUED);
+    failures += expect_true(result.code == MALBOLGE_DIAGNOSTIC_NONE);
+    failures += expect_true(steps == 513U);
+    failures += expect_true(g_machine.input_cursor == 256U);
+    failures += expect_true(g_machine.output_length == 256U);
+    failures += expect_true(g_machine.registers.accumulator ==
+                            (MalbolgeWord)MALBOLGE_MAX_WORD);
+    failures += expect_true(g_machine.registers.code_pointer == 513U);
+    failures += expect_true(g_machine.registers.data_pointer == 1537U);
+    for (size_t index = 0U; index < sizeof(input); ++index) {
+        failures += expect_true(output[index] == input[index]);
+    }
+
+    const MalbolgeWord rejected_cell = g_machine.memory[513];
+    failures += expect_true(
+        malbolge_step(&g_machine, &trace) == MALBOLGE_STEP_REJECTED);
+    failures += expect_true(trace.diagnostic.code ==
+                            MALBOLGE_DIAGNOSTIC_OUTPUT_CAPACITY);
+    failures += expect_true(trace.diagnostic.position == 256U);
+    failures += expect_true(trace.has_output_byte == 0U);
+    failures += expect_true(g_machine.memory[513] == rejected_cell);
+    failures += expect_true(g_machine.registers.code_pointer == 513U);
+    failures += expect_true(g_machine.registers.data_pointer == 1537U);
+    failures += expect_true(g_machine.input_cursor == 256U);
+    failures += expect_true(g_machine.output_length == 256U);
+    failures += expect_true(output[256] == UINT8_C(0x5A));
+    failures += expect_true(output[257] == UINT8_C(0xA5));
+
+    /* Enlarging the caller-owned capacity permits the same pending EOF byte. */
+    g_machine.output_capacity = 257U;
+    failures += expect_true(
+        malbolge_run(&g_machine, 1U, &steps, &result) ==
+        MALBOLGE_STEP_CONTINUED);
+    failures += expect_true(result.code == MALBOLGE_DIAGNOSTIC_NONE);
+    failures += expect_true(steps == 1U);
+    failures += expect_true(g_machine.output_length == 257U);
+    failures += expect_true(output[256] == UINT8_C(0xA8));
+    failures += expect_true(output[257] == UINT8_C(0xA5));
+    failures += expect_true(g_machine.input_cursor == 256U);
+    return failures;
+}
+
 static int test_rotate_crazy_and_wrap(void)
 {
     MalbolgeTrace trace;
@@ -851,6 +932,7 @@ int malbolge_c_conformance(void)
     failures += test_roundtrip_fixture();
     failures += test_non_graphical_non_progress();
     failures += test_byte_io_edges();
+    failures += test_full_binary_stream_capacity_resume();
     failures += test_jump_encryption_and_atomic_rejection();
     failures += test_rotate_crazy_and_wrap();
     failures += test_state_validation_and_control_edges();
