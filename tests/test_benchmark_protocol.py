@@ -490,6 +490,90 @@ def test_benchmark_reader_requires_exact_native_bytes(
         )
 
 
+@pytest.mark.parametrize(
+    "phase",
+    (
+        "parent_initial",
+        "parent_after",
+        "leaf_initial",
+        "leaf_after",
+        "fstat_initial",
+        "fstat_after",
+    ),
+)
+@pytest.mark.parametrize("receipt_kind", ("opaque", "hostile"))
+def test_benchmark_stat_receipts_are_native_before_field_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    receipt_kind: str,
+) -> None:
+    """Foreign parent, leaf and opened-descriptor metadata cannot attest a file."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    real_lstat = Path.lstat
+    real_fstat = os.fstat
+    real_open = os.open
+    opened = False
+    fstat_calls = 0
+
+    @final
+    class HostileStatus:
+        def __getattribute__(self, _field: str) -> Never:
+            raise AssertionError("foreign benchmark status field executed")
+
+    receipt: object = HostileStatus() if receipt_kind == "hostile" else object()
+    context = "benchmark protocol"
+    if phase.endswith("after") or phase.startswith("fstat"):
+        admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+            protocol, context
+        )
+        assert admitted is not None
+    else:
+        admitted = None
+
+    def tracked_open(path: Path, flags: int) -> int:
+        nonlocal opened
+        descriptor = real_open(path, flags)
+        if path == protocol:
+            opened = True
+        return descriptor
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        if (
+            path == protocol.parent
+            and phase in ("parent_initial", "parent_after")
+            and opened == (phase == "parent_after")
+        ) or (
+            path == protocol
+            and phase in ("leaf_initial", "leaf_after")
+            and opened == (phase == "leaf_after")
+        ):
+            return cast("os.stat_result", receipt)
+        return real_lstat(path)
+
+    def forged_fstat(descriptor: int) -> os.stat_result:
+        nonlocal fstat_calls
+        fstat_calls += 1
+        if (phase == "fstat_initial" and fstat_calls == 1) or (
+            phase == "fstat_after" and fstat_calls == 2
+        ):
+            return cast("os.stat_result", receipt)
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(os, "open", tracked_open)
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(validator.BenchmarkProtocolError, match="native stat receipt"):
+        if admitted is None:
+            _ = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+                protocol, context
+            )
+        else:
+            _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+                protocol, context, admitted
+            )
+
+
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
 @pytest.mark.parametrize(
     "operation",

@@ -492,9 +492,23 @@ def parse_protocol(text: str) -> BenchmarkProtocolRecord:
     )
 
 
+def _native_stat(status: os.stat_result, context: str) -> os.stat_result:
+    """Admit only exact OS stat metadata before inspecting any fields.
+
+    Returns:
+        Trusted native stat metadata.
+
+    """
+    if type(status) is not os.stat_result:
+        _fail(f"{context} requires native stat receipt")
+    return status
+
+
 def _matching_regular_status(
     expected: os.stat_result, observed: os.stat_result
 ) -> bool:
+    expected = _native_stat(expected, "benchmark file identity")
+    observed = _native_stat(observed, "benchmark file identity")
     return S_ISREG(observed.st_mode) and all(
         getattr(expected, field) == getattr(observed, field)
         for field in (
@@ -512,7 +526,7 @@ def _check_physical_parents(path: Path, context: str) -> None:
     """Reject redirected or non-directory source ancestors."""
     for parent in path.parents:
         try:
-            status = parent.lstat()
+            status = _native_stat(parent.lstat(), f"{context} parent status")
             redirected = S_ISLNK(status.st_mode) or parent.is_junction()
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             detail = _host_error_detail(error)
@@ -621,6 +635,7 @@ def _regular_file_status(path: Path, context: str) -> os.stat_result | None:
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         detail = _host_error_detail(error)
         raise BenchmarkProtocolError(f"{context} status failed: {detail}") from error
+    status = _native_stat(status, f"{context} status")
     try:
         redirected = S_ISLNK(status.st_mode) or path.is_junction()
     except (OSError, ValueError, TypeError, RuntimeError) as error:

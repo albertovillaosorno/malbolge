@@ -54,8 +54,10 @@ produce typed benchmark-protocol failures.
 The validator admits only physical regular evidence files whose parent
 components are unlinked directories, before reading and again after. It pins
 the opened descriptor to its device, inode, byte length, and modification/change
-timestamps. It rejects parent redirects, post-admission leaf replacement or
-in-place mutation, uses nonblocking/no-follow opens where available, and reads
+timestamps. Parent and leaf statuses, and opened-descriptor checks before and
+after reading, require exact native stat receipts before inspecting fields. The
+reader rejects parent redirects, post-admission leaf replacement or in-place
+mutation, uses nonblocking/no-follow opens where available, and reads
 text in at most 64 KiB chunks under a 1 MiB admission limit. Host file
 opening must return an exact native signed descriptor before stream wrapping
 or cleanup; the wrapped stream must report that same descriptor both before and
