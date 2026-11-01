@@ -246,7 +246,7 @@ def _read_uv_manifest_bytes(path: Path) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    with _open_owned_binary_stream(descriptor) as stream:
         if _uv_manifest_identity(os.fstat(stream.fileno())) != expected:
             _fail("uv toolchain manifest changed before read")
         content = stream.read(MAX_UV_MANIFEST_BYTES + 1)
@@ -269,14 +269,19 @@ def _uv_manifest_document(manifest_path: Path) -> dict[str, object]:
                 object_pairs_hook=_reject_duplicate_pairs,
             ),
         )
+    except ProvisionError:
+        raise
     except (
         json.JSONDecodeError,
         OSError,
         ValueError,
         UnicodeDecodeError,
         RecursionError,
+        TypeError,
+        RuntimeError,
     ) as error:
-        _fail(f"cannot read uv toolchain manifest: {error}")
+        message = f"cannot read uv toolchain manifest: {type(error).__name__}"
+        raise ProvisionError(message) from error
     if not isinstance(parsed, dict):
         _fail("uv toolchain manifest must be an object")
     return cast("dict[str, object]", parsed)
@@ -718,7 +723,7 @@ def _jig_file_identity(
     )
 
 
-def _open_jig_binary_stream(descriptor: int) -> BinaryIO:
+def _open_owned_binary_stream(descriptor: int) -> BinaryIO:
     """Transfer a source descriptor to a stream without leaking on failure.
 
     Returns:
@@ -756,7 +761,7 @@ def _read_open_jig_binary(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(source, flags)
-    with _open_jig_binary_stream(descriptor) as stream:
+    with _open_owned_binary_stream(descriptor) as stream:
         observed = os.fstat(stream.fileno())
         if not stat.S_ISREG(observed.st_mode):
             _fail("Jig alias source must be a regular file")

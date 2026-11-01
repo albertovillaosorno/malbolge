@@ -33,6 +33,8 @@ and invalid UTF-8, oversized input, or changed inodes produce typed bootstrap
 errors before any tool import is attempted. The pinned `uv-toolchain.json`
 uses the same one-MiB physical regular-file admission and stable descriptor
 checks before its URL, version, artifact, and digest fields are interpreted.
+Failed uv manifest stream wrapping closes its owned descriptor and surfaces
+a typed bootstrap error with the original host failure as its cause.
 Python keeps native platform launchers and publishes neutral Jig aliases below
 `.dependencies`. On POSIX, BasedPyright and pytest aliases answer only the exact
 singleton `--version` probe from the same pinned `expected_tools` authority that

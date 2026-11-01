@@ -2448,12 +2448,12 @@ def test_jig_alias_publisher_rejects_hardlinked_staging_inode(
             stage.unlink(missing_ok=True)
 
 
-def _inject_jig_source_wrapper_failure(
+def _inject_binary_source_wrapper_failure(
     monkeypatch: pytest.MonkeyPatch,
     source: Path,
     fault_type: type[Exception],
 ) -> tuple[list[int], Exception]:
-    """Intercept one native read descriptor and fail at stream wrapping.
+    """Intercept one binary source descriptor and fail stream wrapping.
 
     Returns:
         The opened descriptors and the injected host failure identity.
@@ -2462,7 +2462,7 @@ def _inject_jig_source_wrapper_failure(
     opened: list[int] = []
     native_open = os.open
     native_fdopen = os.fdopen
-    fault = fault_type("injected Jig tool binary wrapper failure")
+    fault = fault_type("injected binary source wrapper failure")
 
     def capture_open(
         path: str | os.PathLike[str], flags: int, mode: int = 0o777
@@ -2485,6 +2485,37 @@ def _inject_jig_source_wrapper_failure(
 @pytest.mark.parametrize(
     "fault_type", [OSError, ValueError, TypeError, RuntimeError]
 )
+def test_uv_manifest_fdopen_fault_closes_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Manifest admission must not leak handles or untyped stream errors."""
+    manifest = _copy_uv_manifest(tmp_path)
+    opened, fault = _inject_binary_source_wrapper_failure(
+        monkeypatch, manifest, fault_type
+    )
+    try:
+        with pytest.raises(
+            python_validation.ProvisionError,
+            match="cannot read uv toolchain manifest",
+        ) as caught:
+            _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+        assert caught.value.__cause__ is fault
+        assert len(opened) == 1
+        with pytest.raises(
+            OSError, match=r"Bad file descriptor|Invalid handle"
+        ):
+            _ = os.fstat(opened[0])
+    finally:
+        for descriptor in opened:
+            with suppress(OSError):
+                os.close(descriptor)
+
+
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
 def test_jig_alias_source_fdopen_fault_closes_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2493,7 +2524,7 @@ def test_jig_alias_source_fdopen_fault_closes_descriptor(
     """A tool source descriptor cannot leak if its stream wrapper fails."""
     layout = _jig_alias_fixture(tmp_path, windows=True)
     source = layout.scripts / "basedpyright.exe"
-    opened, fault = _inject_jig_source_wrapper_failure(
+    opened, fault = _inject_binary_source_wrapper_failure(
         monkeypatch, source, fault_type
     )
     try:
