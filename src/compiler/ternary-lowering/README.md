@@ -162,10 +162,13 @@ delegates envelope/codec validation, and revalidates extracted bytes through
 the ternary stage before returning state.
 
 The ternary progress adapter uses an owned bounded process transport with a
-60-second direct-child deadline, 64 MiB stdout cap, and 8 KiB stderr cap.
-Two concurrent pipe readers prevent large valid state from blocking behind
-filled pipes, while every rejected status or resource breach fails closed.
-This transport does not yet terminate entire descendant process groups.
+60-second deadline, 64 MiB stdout cap, and 8 KiB stderr cap. Two concurrent
+pipe readers prevent large valid state from blocking behind filled pipes,
+while every rejected status or resource breach fails closed. On Linux, each
+inspector runs in its own process group; termination on success or failure
+also kills ordinary same-group descendants, including inherited-pipe and
+redirected-stdio holders. Other platforms retain direct-child cleanup, and
+processes that deliberately detach into a separate session are not covered.
 
 Integration coverage publishes two canonical ternary generations through the
 production sidecar writer, labels the first CPU and the second CUDA, and
