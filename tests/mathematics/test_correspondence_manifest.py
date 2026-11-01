@@ -329,6 +329,30 @@ def test_correspondence_rejects_redirected_repository_evidence(
         _ = validator._repository_path(relative, kind)
 
 
+@pytest.mark.parametrize(
+    ("kind", "alias"),
+    (
+        ("equation source", r"math\model.tex"),
+        ("equation source", r"math/formal\model.tex"),
+        ("test evidence", r"tests\witness.py"),
+        ("test evidence", r"tests/fixtures\witness.py"),
+    ),
+)
+def test_correspondence_rejects_host_dependent_backslash_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    alias: str,
+) -> None:
+    """Physical source receipt must retain identical spelling on all hosts."""
+    source = tmp_path / alias
+    source.parent.mkdir(parents=True, exist_ok=True)
+    _ = source.write_text("witness", encoding="utf-8")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    with pytest.raises(validator.CorrespondenceError, match="must use forward slashes"):
+        _ = validator._repository_path(alias, kind)
+
+
 def test_correspondence_rejects_redirected_manifest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

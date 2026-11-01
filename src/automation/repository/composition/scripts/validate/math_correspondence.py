@@ -378,6 +378,8 @@ def _repository_path(raw: str, context: str) -> Path:
     )
     if not native_admitted or not windows_admitted:
         _fail(f"{context} must be repository-relative: {raw}")
+    if "\\" in raw:
+        _fail(f"{context} must use forward slashes")
     resolved = ROOT / relative
     _physical_repository_path(resolved, context, directory=False)
     return resolved
