@@ -213,7 +213,11 @@ do not depend on JSON text encoding.
 
 Binary and unary operations use source-language operator spellings. Casts use a
 closed repository vocabulary. Main-source declaration references are
-`name@byte-offset`; header/builtin references are `external:name`.
+`name@byte-offset`; header/builtin references are `external:name`. Header
+record fields use `external:field@struct(TAG_ANCHOR)` or
+`external:field@union(TAG_ANCHOR)`, with the same canonical record anchor used
+by normalized types. Fields with the same spelling from distinct imported
+records cannot alias; ordinary external functions remain `external:name`.
 
 ## Invariants
 

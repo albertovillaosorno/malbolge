@@ -533,6 +533,52 @@ def test_header_anonymous_tags_retain_distinct_path_free_types(
     assert outputs[0] == outputs[1]
 
 
+def test_header_member_references_qualify_owning_record(
+    tmp_path: Path,
+) -> None:
+    """Same-name fields in distinct imported records cannot alias."""
+    header = (
+        "typedef struct { int value; } Narrow;\n"
+        "typedef struct { long long value; } Wide;\n"
+        "typedef union { int value; } LeftUnion;\n"
+        "typedef union { long long value; } RightUnion;\n"
+    )
+    source = (
+        '#include "types.h"\n'
+        "Narrow narrow; Wide wide;\n"
+        "LeftUnion left_union; RightUnion right_union;\n"
+        "int main(void) { return narrow.value + (int)wide.value + "
+        "left_union.value + (int)right_union.value; }\n"
+    )
+    outputs = []
+    for root_name in ("first", "second"):
+        directory = tmp_path / root_name
+        directory.mkdir()
+        _ = (directory / "types.h").write_text(header, encoding="utf-8")
+        source_path = directory / "source.c"
+        _ = source_path.write_text(source, encoding="utf-8")
+        completed = _run_frontend(
+            source_path,
+            "fixtures/header-members.c",
+            guest_include=directory,
+        )
+        artifact = _artifact(completed)
+        nodes = cast("list[dict[str, object]]", artifact["nodes"])
+        members = [
+            cast("str", node["reference"])
+            for node in nodes
+            if node["kind"] == "member-expression"
+        ]
+        assert len(members) == 4
+        assert len(set(members)) == 4
+        assert all(member.startswith("external:value@") for member in members)
+        assert all("struct(external-anonymous:" in value for value in members[:2])
+        assert all("union(external-anonymous:" in value for value in members[2:])
+        assert str(directory) not in completed.stdout
+        outputs.append(completed.stdout)
+    assert outputs[0] == outputs[1]
+
+
 def test_frontend_contract_is_closed_and_versioned() -> None:
     """Tracked artifact authority pins exact Clang/profile semantics."""
     document = cast("dict[str, object]", json.loads(CONTRACT.read_text()))

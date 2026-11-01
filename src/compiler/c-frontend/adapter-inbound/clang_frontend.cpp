@@ -875,7 +875,7 @@ private:
     populate_literal(statement, node);
   }
 
-  void populate_reference(const clang::Stmt &statement, Node &node) const {
+  void populate_reference(const clang::Stmt &statement, Node &node) {
     if (const auto *reference =
             llvm::dyn_cast<clang::DeclRefExpr>(&statement)) {
       node.reference = declaration_reference(*reference->getDecl());
@@ -927,7 +927,7 @@ private:
   }
 
   [[nodiscard]] std::string
-  declaration_reference(const clang::NamedDecl &declaration) const {
+  declaration_reference(const clang::NamedDecl &declaration) {
     const clang::Decl *canonical = declaration.getCanonicalDecl();
     const auto *named = llvm::dyn_cast<clang::NamedDecl>(canonical);
     const clang::NamedDecl &selected = named == nullptr ? declaration : *named;
@@ -937,6 +937,12 @@ private:
     if (location.isValid() && source_manager_.isWrittenInMainFile(location)) {
       return name + "@" +
              std::to_string(source_manager_.getFileOffset(location));
+    }
+    if (const auto *field = llvm::dyn_cast<clang::FieldDecl>(&selected)) {
+      const clang::RecordDecl &record = *field->getParent();
+      const std::string owner = (record.isUnion() ? "union(" : "struct(") +
+                                declaration_anchor(record) + ")";
+      return "external:" + name + "@" + owner;
     }
     return "external:" + (name.empty() ? std::string("anonymous") : name);
   }
