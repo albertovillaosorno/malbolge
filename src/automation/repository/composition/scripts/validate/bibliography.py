@@ -212,7 +212,13 @@ def _host_error_detail(error: Exception) -> str:
         Trusted built-in error text or an external exception type label.
 
     """
-    if type(error) in (OSError, ValueError, TypeError, RuntimeError):
+    if type(error) in (
+        BibliographyValidationError,
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+    ):
         return str(error)
     return type(error).__name__
 
@@ -231,11 +237,11 @@ def _path_status(path: Path) -> stat_result | None:
         status = path.lstat()
     except FileNotFoundError:
         return None
-    except (OSError, ValueError, RuntimeError):
+    except (OSError, ValueError, TypeError, RuntimeError):
         _fail("bibliography filesystem traversal failed")
     try:
         redirected = S_ISLNK(status.st_mode) or path.is_junction()
-    except (OSError, ValueError, RuntimeError):
+    except (OSError, ValueError, TypeError, RuntimeError):
         _fail("bibliography filesystem traversal failed")
     if redirected:
         _fail("bibliography paths must not redirect")
@@ -363,10 +369,19 @@ def _read_regular_text(path: Path) -> str:
 
     """
     content = _read_regular_bytes(path)
+    if type(content) is not bytes:
+        _fail("bibliography evidence requires native byte receipt")
     try:
         return content.decode("utf-8")
     except UnicodeDecodeError as error:
-        _fail(f"bibliography evidence invalid UTF-8: {path}: {error}")
+        detail = (
+            str(error)
+            if type(error) is UnicodeDecodeError
+            else "foreign Unicode decoder failure"
+        )
+        raise BibliographyValidationError(
+            f"bibliography evidence invalid UTF-8: {path}: {detail}"
+        ) from error
 
 
 def _is_directory(path: Path) -> bool:
@@ -731,7 +746,7 @@ def main() -> int:
     try:
         report = validate_repository()
     except (BibliographyValidationError, OSError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_host_error_detail(error)}\n")
         return 1
     message = "".join(
         (

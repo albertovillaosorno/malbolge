@@ -96,4 +96,7 @@ provenance, explicit uncertainty, nonempty sources, unique stable identities,
 exact validation-package pins, durable external-reference coverage, and the
 required baseline. `tests/test_bibliography.py` exercises those fail-closed
 boundaries. The validator checks repository evidence shape and coverage; it does
-not independently re-fetch or re-prove external claims.
+not independently re-fetch or re-prove external claims. Evidence decoding
+requires native bytes, and invalid UTF-8 retains its native decoder cause.
+Filesystem status failures and operator reports remain typed without running
+foreign exception formatter hooks.

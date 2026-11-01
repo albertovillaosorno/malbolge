@@ -227,7 +227,7 @@ def test_filesystem_status_errors_fail_closed() -> None:
         _ = is_regular_file(denied)
 
 
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
 @pytest.mark.parametrize(
     "operation", ("lstat", "junction", "resolve", "open", "fdopen", "fstat", "read")
 )
@@ -534,3 +534,63 @@ def test_bibliography_native_host_diagnostic_remains_actionable(
     ) as caught:
         validator._read_regular_text(source)  # pyright: ignore[reportPrivateUsage]
     assert caught.value.__cause__ is fault
+
+
+def test_bibliography_utf8_failure_preserves_decoder_cause(tmp_path: Path) -> None:
+    """An invalid evidence encoding retains the native decoder error."""
+    source = tmp_path / "invalid.md"
+    _ = source.write_bytes(b"\xff")
+    with pytest.raises(
+        validator.BibliographyValidationError, match="invalid UTF-8"
+    ) as caught:
+        _ = validator._read_regular_text(source)  # pyright: ignore[reportPrivateUsage]
+    assert type(caught.value.__cause__) is UnicodeDecodeError
+    assert "position 0" in str(caught.value)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, validator.BibliographyValidationError])
+def test_bibliography_cli_never_formats_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """Foreign host or policy failure formatting must not escape the CLI."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign bibliography CLI formatter executed")
+
+    foreign = type(
+        "ForeignBibliographyCliFault", (fault_type,), {"__str__": unsafe_str}
+    )
+    fault = foreign("untrusted detail")
+
+    def fail_validate() -> None:
+        raise fault
+
+    monkeypatch.setattr(validator, "validate_repository", fail_validate)
+    assert validator.main() == 1
+    output = capsys.readouterr()
+    assert "ForeignBibliographyCliFault" in output.err
+    assert not output.out
+
+
+def test_bibliography_rejects_foreign_byte_receipt_before_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The evidence decoder cannot invoke untrusted bytes subclass hooks."""
+
+    class ForeignBytes(bytes):
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            del encoding, errors
+            raise AssertionError("foreign bibliography byte decoder executed")
+
+    monkeypatch.setattr(
+        validator, "_read_regular_bytes", lambda _path: ForeignBytes(b"valid")
+    )
+    with pytest.raises(
+        validator.BibliographyValidationError, match="native byte receipt"
+    ):
+        _ = validator._read_regular_text(  # pyright: ignore[reportPrivateUsage]
+            Path("untrusted.md")
+        )
