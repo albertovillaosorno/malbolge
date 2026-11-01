@@ -503,9 +503,13 @@ through the mutable pointer publisher; unclassified raw writer and filesystem
 errors still receive the pointer-publication error boundary.
 
 The persistent writer-lock file also receives regular-descriptor admission and
-nonblocking/no-follow opens where available. Its lock-path recheck after
-creating the parent directory rejects a parent-link substitution before the
-writer-lock file is opened.
+nonblocking/no-follow opens where available. The preflight presence probe
+requires an exact native boolean, so a forged `Path.exists()` receipt cannot
+skip regular-file admission or trigger foreign truth-value methods. Five
+red-first malformed-receipt cases and two genuine-present/absent cases cover
+the lock path without publishing on untrusted evidence. Its lock-path recheck
+after creating the parent directory rejects a parent-link substitution before
+the writer-lock file is opened.
 
 Unexpected `ValueError` and `RuntimeError` from writer-lock stream opening,
 including filesystem admission and raw descriptor construction, now receive

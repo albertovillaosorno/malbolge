@@ -15437,3 +15437,45 @@ def test_progress_link_probe_allows_native_false_receipt(
         context.setattr(Path, method, native_probe)
         assert progress.write_atomic(sidecar) == destination
     assert progress.read(destination) == sidecar
+
+
+@pytest.mark.parametrize("receipt", [0, 1, "present", "", None])
+def test_writer_lock_presence_probe_requires_native_boolean_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Foreign lock-presence verdicts must not bypass early admission."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    lock_path = destination.with_name(f"{destination.name}.lock")
+    original_exists = Path.exists
+    probes: list[Path] = []
+
+    def forged_exists(path: Path, *, follow_symlinks: bool = True) -> bool:
+        if path == lock_path:
+            probes.append(path)
+            return cast("bool", receipt)
+        return original_exists(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "exists", forged_exists)
+        with pytest.raises(ERROR, match="native boolean"):
+            _ = progress.write_atomic(candidate)
+    assert probes == [lock_path]
+    assert not destination.exists()
+    assert not lock_path.exists()
+
+
+@pytest.mark.parametrize("existing", [True, False])
+def test_writer_lock_presence_probe_accepts_native_boolean(
+    tmp_path: Path, *, existing: bool
+) -> None:
+    """The lock's actual presence remains compatible with new publication."""
+    candidate = _sidecar(tmp_path)
+    destination = Path(candidate.progress_path)
+    lock_path = destination.with_name(f"{destination.name}.lock")
+    if existing:
+        _ = lock_path.write_bytes(b"")
+    assert progress.write_atomic(candidate) == destination
+    assert progress.read(destination) == candidate

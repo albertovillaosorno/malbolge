@@ -2210,7 +2210,10 @@ def _open_regular_writer_lock(lock_path: Path) -> _LockStream:
 
     """
     context = "progress writer lock"
-    if lock_path.exists() and not stat.S_ISREG(
+    present = lock_path.exists()
+    if type(present) is not bool:
+        _fail("progress writer lock presence must use a native boolean")
+    if present and not stat.S_ISREG(
         _admit_native_stat(lock_path.stat(), context).st_mode
     ):
         _fail(f"{context} must be a regular file")
