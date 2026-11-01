@@ -1015,6 +1015,11 @@ CLI exit boundary without claiming that already emitted output can be rolled
 back or intercepted `BaseException` cancellation signals.
 
 The progress-sidecar inspector provides two verified portable-checkpoint views.
+The reference inspector requires an operand for each `--checkpoint-info`,
+`--extract-checkpoint`, and `--follow` mode flag. A bare flag returns usage
+status 2 without treating the option name as a progress-pointer filename;
+other single positional pathnames continue to use regular inspection.
+
 `--checkpoint-info PROGRESS.json` validates the mutable sidecar, immutable
 generation bytes, outer checkpoint digest, resume identity and position,
 canonical envelope, and inner payload digest before reporting only checkpoint

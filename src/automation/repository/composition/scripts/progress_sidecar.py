@@ -3690,7 +3690,11 @@ def _dispatch_inspection(arguments: list[str], usage: str) -> int:
         and arguments[0] == _EXTRACT_CHECKPOINT_FLAG
     ):
         status = _extract_checkpoint_path(Path(arguments[2]), arguments[1])
-    elif len(arguments) == 1:
+    elif len(arguments) == 1 and arguments[0] not in {
+        _CHECKPOINT_INFO_FLAG,
+        _EXTRACT_CHECKPOINT_FLAG,
+        _FOLLOW_FLAG,
+    }:
         status = _inspect_path(Path(arguments[0]))
     else:
         _write_error_diagnostic(usage)

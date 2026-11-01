@@ -98,6 +98,8 @@ SUMMARY_FIELDS = (
 CHECKPOINT_INSPECTION_FAILED_PREFIX = "portable checkpoint inspection failed:"
 CHECKPOINT_EXTRACTION_FAILED_PREFIX = "portable checkpoint extraction failed:"
 INSPECTION_FAILED_PREFIX = "progress sidecar inspection failed:"
+USAGE_PREFIX = "usage: progress_sidecar.py"
+USAGE_STATUS = 2
 CHECKPOINT_INFO_HELP = "--checkpoint-info PROGRESS.json"
 EXTRACT_HELP = "--extract-checkpoint STATE_CODEC PROGRESS.json"
 FOLLOW_HELP = "--follow PROGRESS.json"
@@ -1417,6 +1419,28 @@ def test_operator_unexpected_diagnostic_sink_fault_keeps_status(
     with monkeypatch.context() as context:
         context.setattr(sys, "stderr", BrokenDiagnosticStream())
         assert progress.main(arguments) == (2 if mode == "usage" else 1)
+
+
+@pytest.mark.parametrize(
+    "option",
+    ["--checkpoint-info", "--extract-checkpoint", "--follow"],
+)
+def test_operator_cli_rejects_missing_option_operand_without_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    option: str,
+) -> None:
+    """Bare mode flags require operands and never become pointer filenames."""
+
+    def forbid_inspection(path: Path) -> int:
+        pytest.fail(f"unexpected pointer read: {path}")
+
+    monkeypatch.setattr(progress, "_inspect_path", forbid_inspection)
+    assert progress.main([option]) == USAGE_STATUS
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert USAGE_PREFIX in captured.err
+    assert INSPECTION_FAILED_PREFIX not in captured.err
 
 
 @pytest.mark.parametrize(
