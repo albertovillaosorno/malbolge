@@ -34,8 +34,11 @@
 
 from __future__ import annotations
 
+import os
+import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from pathlib import Path
 from typing import cast, override
 
 import pytest
@@ -305,3 +308,134 @@ def test_tidy_build_cli_safely_handles_cross_builder_errors(
         assert "HostileLinuxBuildError" in actual
     else:
         assert str(fault) in actual
+
+
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction", "exists", "is_dir"])
+@pytest.mark.parametrize("receipt", [None, 0, 1, "yes"])
+def test_tidy_rejects_foreign_build_directory_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str, receipt: object
+) -> None:
+    """Reject non-native directory status evidence on the Windows builder."""
+    target = tmp_path / "build"
+    target.mkdir()
+    original = getattr(Path, method)
+
+    def fake_status(self: Path) -> object:
+        return receipt if self == target else original(self)
+
+    monkeypatch.setattr(Path, method, fake_status)
+    with pytest.raises(tidy_build.BuildError, match="status receipt"):
+        tidy_build._require_physical_directory(  # pyright: ignore[reportPrivateUsage]
+            target, "build cache"
+        )
+
+
+@pytest.mark.parametrize("receipt", [None, 1, "directory", object()])
+def test_tidy_rejects_foreign_build_directory_stat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """An lstat object from an unknown provider cannot prove directory mode."""
+    target = tmp_path / "build"
+    target.mkdir()
+    original = Path.lstat
+
+    def fake_lstat(self: Path, *args: object, **kwargs: object) -> object:
+        return receipt if self == target else original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+    with pytest.raises(tidy_build.BuildError, match="stat receipt"):
+        tidy_build._require_physical_directory(  # pyright: ignore[reportPrivateUsage]
+            target, "build cache"
+        )
+
+
+@pytest.mark.parametrize("mode", [None, True, 1.5, "directory"])
+def test_tidy_rejects_foreign_build_directory_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: object
+) -> None:
+    """Reject forged mode values even in a native stat_result container."""
+    target = tmp_path / "build"
+    target.mkdir()
+    original = Path.lstat
+    forged = os.stat_result((cast("int", mode), 0, 0, 1, 0, 0, 0, 0, 0, 0))
+
+    def fake_lstat(self: Path, *args: object, **kwargs: object) -> object:
+        return forged if self == target else original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+    with pytest.raises(tidy_build.BuildError, match="stat receipt"):
+        tidy_build._require_physical_directory(  # pyright: ignore[reportPrivateUsage]
+            target, "build cache"
+        )
+
+
+@pytest.mark.parametrize("receipt", [None, 0, 1, "yes"])
+def test_tidy_rejects_foreign_file_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Require native file-status booleans for pinned host inputs."""
+    target = tmp_path / "host.exe"
+    _ = target.write_bytes(b"host")
+    original = Path.is_file
+
+    def fake_file(self: Path) -> object:
+        return receipt if self == target else original(self)
+
+    monkeypatch.setattr(Path, "is_file", fake_file)
+    with pytest.raises(tidy_build.BuildError, match="status receipt"):
+        tidy_build._require_file(target, "host")  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("count", [None, True, 1.5, "1"])
+def test_tidy_rejects_foreign_script_link_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, count: object
+) -> None:
+    """Only native link counts admit replacement of a cached build script."""
+    target = tmp_path / "build.cmd"
+    _ = target.write_text("@echo off")
+    original = Path.lstat
+    forged = os.stat_result(
+        (stat.S_IFREG | 0o644, 0, 0, cast("int", count), 0, 0, 0, 0, 0, 0)
+    )
+
+    def fake_stat(self: Path, *args: object, **kwargs: object) -> object:
+        return forged if self == target else original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", fake_stat)
+    with pytest.raises(tidy_build.BuildError, match="stat receipt"):
+        tidy_build._require_unlinked_build_script(  # pyright: ignore[reportPrivateUsage]
+            target
+        )
+
+
+def test_tidy_rejects_linked_host_file(tmp_path: Path) -> None:
+    """A symlink is not a physical pinned build-tool executable."""
+    native = tmp_path / "native.exe"
+    _ = native.write_bytes(b"mock")
+    alias = tmp_path / "alias.exe"
+    try:
+        alias.symlink_to(native)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"links unavailable: {error}")
+    with pytest.raises(tidy_build.BuildError, match="redirect"):
+        tidy_build._require_file(alias, "host")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_tidy_accepts_native_regular_build_inputs(tmp_path: Path) -> None:
+    """Physical executable and singly linked script receipts remain valid."""
+    native = tmp_path / "native.exe"
+    _ = native.write_bytes(b"mock")
+    script = tmp_path / "build.cmd"
+    _ = script.write_text("@echo off")
+    assert (
+        tidy_build._require_file(  # pyright: ignore[reportPrivateUsage]
+            native, "host"
+        )
+        == native
+    )
+    tidy_build._require_unlinked_build_script(  # pyright: ignore[reportPrivateUsage]
+        script
+    )
+    tidy_build._require_unlinked_build_script(  # pyright: ignore[reportPrivateUsage]
+        tmp_path / "not-created.cmd"
+    )

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from dataclasses import dataclass
@@ -75,7 +76,18 @@ def _fail(message: str) -> Never:
 
 
 def _require_file(path: Path, label: str) -> Path:
-    if not path.is_file():
+    _require_physical_directory(path.parent, f"{label} parent")
+    physical = _native_lstat(path, label)
+    if physical is None:
+        _fail(f"{label} not found: {path}")
+    file = path.is_file()
+    symlink = path.is_symlink()
+    junction = path.is_junction()
+    if any(type(value) is not bool for value in (file, symlink, junction)):
+        _fail(f"{label} has invalid status receipt: {path}")
+    if symlink or junction or stat.S_ISLNK(physical.st_mode):
+        _fail(f"{label} must not redirect: {path}")
+    if not file or not stat.S_ISREG(physical.st_mode):
         _fail(f"{label} not found: {path}")
     return path
 
@@ -101,6 +113,28 @@ def _native_host_error_detail(error: Exception) -> str:
     }:
         return str(error)
     return type(error).__name__
+
+
+def _native_lstat(path: Path, label: str) -> os.stat_result | None:
+    """Require a native physical stat, allowing only true missing paths.
+
+    Returns:
+        Exact stat data or None for an exact missing-path host exception.
+
+    """
+    try:
+        physical = path.lstat()
+    except FileNotFoundError as error:
+        if type(error) is FileNotFoundError:
+            return None
+        detail = _native_host_error_detail(error)
+        raise BuildError(f"{label} stat failed: {detail}") from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _native_host_error_detail(error)
+        raise BuildError(f"{label} stat failed: {detail}") from error
+    if type(physical) is not os.stat_result or type(physical.st_mode) is not int:
+        _fail(f"{label} has invalid stat receipt: {path}")
+    return physical
 
 
 def _run(
@@ -219,18 +253,52 @@ def _batch_path(path: Path) -> str:
 
 
 def _require_physical_directory(path: Path, label: str) -> None:
-    """Reject linked or non-directory paths before native build operations."""
+    """Admit physical native directory evidence for every existing ancestor."""
     for component in (path, *path.parents):
-        if component.is_symlink() or component.is_junction():
+        physical = _native_lstat(component, label)
+        symlink = component.is_symlink()
+        junction = component.is_junction()
+        exists = component.exists()
+        directory = component.is_dir()
+        if any(
+            type(value) is not bool for value in (symlink, junction, exists, directory)
+        ):
+            _fail(f"{label} has invalid status receipt: {component}")
+        if (
+            symlink
+            or junction
+            or (physical is not None and stat.S_ISLNK(physical.st_mode))
+        ):
             _fail(f"{label} directory must not redirect: {component}")
-        if component.exists() and not component.is_dir():
+        if physical is None:
+            if exists or directory:
+                _fail(f"{label} has invalid stat receipt for missing path: {component}")
+            continue
+        if not (exists and directory and stat.S_ISDIR(physical.st_mode)):
             _fail(f"{label} path must be a directory: {component}")
 
 
 def _require_unlinked_build_script(path: Path) -> None:
-    if path.is_symlink() or path.is_junction():
+    """Require a native, private script or a physically absent path."""
+    _require_physical_directory(path.parent, "build cache")
+    physical = _native_lstat(path, "build cache script")
+    symlink = path.is_symlink()
+    junction = path.is_junction()
+    exists = path.exists()
+    file = path.is_file()
+    if any(type(value) is not bool for value in (symlink, junction, exists, file)):
+        _fail(f"build cache script has invalid status receipt: {path}")
+    if symlink or junction or (physical is not None and stat.S_ISLNK(physical.st_mode)):
         _fail(f"build cache script must not redirect: {path}")
-    if path.exists() and (not path.is_file() or path.lstat().st_nlink != 1):
+    if physical is None:
+        if exists or file:
+            _fail(f"build cache script has invalid stat receipt: {path}")
+        return
+    if type(physical.st_nlink) is not int:
+        _fail(f"build cache script has invalid stat receipt: {path}")
+    if not (
+        exists and file and stat.S_ISREG(physical.st_mode) and physical.st_nlink == 1
+    ):
         _fail(f"build cache script must be a private regular file: {path}")
 
 

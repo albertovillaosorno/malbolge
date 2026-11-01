@@ -129,6 +129,15 @@ exceptions and CLI errors are identified by type without evaluating custom
 string-formatting hooks. This subprocess admission does not provide an atomic
 lock against concurrent changes to executable paths.
 
+Windows cache, plugin-output, and tool parent paths also require native
+boolean status and exact physical `lstat` directory-mode evidence on every
+existing ancestor. Pinned tool and plugin files must have native regular-file
+modes and must not redirect. Existing `build.cmd` files additionally require a
+native single-link count before they may be overwritten; an exact missing
+script path remains valid for initial creation. Contradictory or foreign
+status/stat receipts fail closed. These checks also remain non-atomic with
+respect to concurrent pathname replacement.
+
 LLVM documents out-of-tree clang-tidy checks as shared-library plugins loaded
 with `--load`, while also warning that plugin API/ABI compatibility is tied to
 the exact clang-tidy build. Native guest-C validation subprocess probes
