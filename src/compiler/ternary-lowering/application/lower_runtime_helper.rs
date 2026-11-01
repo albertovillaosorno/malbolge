@@ -69,6 +69,7 @@ pub fn lower_runtime_helper(
     if request.target_profile != TARGET_PROFILE
         || profile.profile_id != TARGET_PROFILE
         || request.target_profile != profile.profile_id
+        || profile.input_instruction == profile.output_instruction
         || profile.eof_word.checked_add(1) != Some(profile.memory_words)
         || profile.eof_word <= 255
         || !eof_word_has_all_two_trits(profile.eof_word)

@@ -20946,6 +20946,35 @@ fn runtime_helper_identity_or_profile_drift_fails_closed() -> Result<(), String>
 }
 
 #[test]
+fn pure_runtime_helpers_reject_colliding_profile_io_opcodes() -> Result<(), String> {
+    let original = current_profile_io();
+    let mut forged = original.clone();
+    forged.output_instruction = forged.input_instruction;
+    for identity in [
+        "malbolge_guest_decode_input_word",
+        "malbolge_guest_output_byte",
+    ] {
+        let request = RuntimeHelperRequest {
+            identity: String::from(identity),
+            target_profile: String::from("malbolge-2026"),
+        };
+        if lower_runtime_helper(&request, &forged)
+            != Err(RuntimeHelperLoweringError::UnsupportedProfile)
+        {
+            return Err(format!("colliding raw I/O opcodes reached {identity}"));
+        }
+        let canonical = lower_runtime_helper(&request, &original)
+            .map_err(|error| format!("canonical helper admission: {error:?}"))?;
+        if realize_runtime_helper(&canonical, &forged)
+            != Err(RuntimeHelperRealizationError::InvalidProfile)
+        {
+            return Err(format!("colliding raw I/O opcodes realized {identity}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn pure_runtime_helpers_reject_non_ternary_eof_word_geometry() -> Result<(), String> {
     let baseline = current_profile_io();
     for eof_word in [
