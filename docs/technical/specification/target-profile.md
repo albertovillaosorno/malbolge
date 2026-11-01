@@ -61,6 +61,8 @@ descriptor with no-follow and nonblocking opening where supported, and checks
 inode, extent, and write-time evidence before and after the read. Replacement
 or mutation fails closed. File loading rejects
 invalid UTF-8 as a typed profile-validation failure before JSON admission.
+Decoder failures retain their original cause, and only native decoder errors
+contribute diagnostic text; foreign exception formatters are never invoked.
 Parser capacity failures, including integer-token digit limits, also produce a
 typed profile-validation error without hiding duplicate-key diagnostics. It
 enforces exact schema keys, ternary word consistency, single-word memory

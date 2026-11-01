@@ -242,6 +242,43 @@ def test_profile_file_rejects_invalid_utf8(tmp_path: Path) -> None:
         _ = validator.load_document(path)
 
 
+def test_profile_file_utf8_error_preserves_native_cause(tmp_path: Path) -> None:
+    """Malformed UTF-8 reports a useful native error and preserves its cause."""
+    path = tmp_path / "profile.json"
+    _ = path.write_bytes(b"{\xff}")
+    with pytest.raises(
+        validator.ProfileValidationError, match="invalid target-profile UTF-8"
+    ) as caught:
+        _ = validator.load_document(path)
+    assert type(caught.value.__cause__) is UnicodeDecodeError
+    assert "position 1" in str(caught.value)
+
+
+def test_profile_file_utf8_error_never_formats_foreign_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An injected decoder failure cannot execute foreign formatter hooks."""
+
+    class ForeignUnicodeFault(UnicodeDecodeError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign Unicode formatter executed")
+
+    fault = ForeignUnicodeFault("utf-8", b"\xff", 0, 1, "host failure")
+
+    class FailingBytes(bytes):
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            del encoding, errors
+            raise fault
+
+    monkeypatch.setattr(validator, "_read_profile_bytes", lambda _path: FailingBytes())
+    with pytest.raises(
+        validator.ProfileValidationError, match="invalid target-profile UTF-8"
+    ) as caught:
+        _ = validator.load_document(tmp_path / "profile.json")
+    assert caught.value.__cause__ is fault
+
+
 def test_profile_file_rejects_linked_leaf_and_directory(tmp_path: Path) -> None:
     """Profile authority cannot be supplied through path redirects."""
     original = tmp_path / "profile.json"

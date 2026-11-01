@@ -421,7 +421,14 @@ def load_document(path: Path) -> JsonObject:
     except ProfileValidationError:
         raise
     except UnicodeDecodeError as error:
-        _fail(f"invalid target-profile UTF-8: {error}")
+        detail = (
+            str(error)
+            if type(error) is UnicodeDecodeError
+            else "foreign Unicode decoder failure"
+        )
+        raise ProfileValidationError(
+            f"invalid target-profile UTF-8: {detail}"
+        ) from error
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         # Only exact native exceptions can supply trusted diagnostic text.
         detail = (
