@@ -38,6 +38,7 @@ import contextlib
 
 import os
 from pathlib import Path
+from typing import BinaryIO
 from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
@@ -656,3 +657,44 @@ def test_search_config_wraps_hostile_os_errors_without_string_hooks(
         _ = load_search_configuration(source)
     assert raised
     assert type(caught.value.__cause__) is HostileOsError
+
+
+@pytest.mark.parametrize("reported", [None, True, 7, bytearray(b"data")])
+def test_search_config_rejects_non_native_binary_read_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reported: object,
+) -> None:
+    """A foreign stream must not supply a successful TOML read receipt."""
+    source = tmp_path / SEARCH_CONFIG_SOURCE
+    _ = source.write_text(_config(), encoding="utf-8")
+    real_fdopen = os.fdopen
+    intercepted = False
+
+    class ForgedStream:
+        def __init__(self, inner: object) -> None:
+            self.inner: object = inner
+
+        def __enter__(self) -> ForgedStream:
+            return self
+
+        def __exit__(self, exc_type: object, exc_value: object, trace: object) -> None:
+            del exc_type, exc_value, trace
+            cast("BinaryIO", self.inner).close()
+
+        def fileno(self) -> int:
+            return cast("BinaryIO", self.inner).fileno()
+
+        def read(self, count: int) -> bytes:
+            nonlocal intercepted
+            del count
+            intercepted = True
+            return cast("bytes", reported)
+
+    def fake_fdopen(descriptor: int, mode: str) -> ForgedStream:
+        return ForgedStream(real_fdopen(descriptor, mode))
+
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    with pytest.raises(SearchConfigurationError, match="non-native bytes"):
+        _ = load_search_configuration(source)
+    assert intercepted

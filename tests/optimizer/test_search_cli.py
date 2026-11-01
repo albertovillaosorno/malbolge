@@ -44,6 +44,7 @@ import os
 from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from typing import BinaryIO
 from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
@@ -1441,3 +1442,61 @@ def test_cli_wraps_hostile_binary_source_os_errors_without_string_hooks(
     assert status == CONFIGURATION_ERROR
     assert not output
     assert "HostileOsError" in error
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+@pytest.mark.parametrize("reported", [None, True, 7, bytearray(b"data")])
+def test_cli_rejects_non_native_binary_read_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+    reported: object,
+) -> None:
+    """Opaque problem/checkpoint input must contain exact native bytes."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    original_open = os.open
+    original_fdopen = os.fdopen
+    selected_fd: int | None = None
+    intercepted = False
+
+    class ForgedStream:
+        def __init__(self, inner: BinaryIO) -> None:
+            self.inner = inner
+
+        def __enter__(self) -> ForgedStream:
+            return self
+
+        def __exit__(self, exc_type: object, exc_value: object, trace: object) -> None:
+            del exc_type, exc_value, trace
+            self.inner.close()
+
+        def fileno(self) -> int:
+            return self.inner.fileno()
+
+        def read(self, count: int) -> bytes:
+            nonlocal intercepted
+            del count
+            intercepted = True
+            return cast("bytes", reported)
+
+    def fake_open(path: Path, flags: int) -> int:
+        nonlocal selected_fd
+        descriptor = original_open(path, flags)
+        if path == selected:
+            selected_fd = descriptor
+        return descriptor
+
+    def fake_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        inner = cast("BinaryIO", original_fdopen(descriptor, mode))
+        if descriptor == selected_fd:
+            return cast("BinaryIO", cast("object", ForgedStream(inner)))
+        return inner
+
+    monkeypatch.setattr(os, "open", fake_open)
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert intercepted
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert "non-native bytes" in error

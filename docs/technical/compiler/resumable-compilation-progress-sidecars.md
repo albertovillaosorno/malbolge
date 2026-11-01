@@ -893,6 +893,12 @@ checkpoint state, and records checkpoint SHA-256 plus
 `evaluated-search-prefix-resume-v1` in resumed JSON output. Fresh-search JSON is
 unchanged.
 
+Both the optimizer binary-file reader and its upstream TOML reader admit only
+exact native immutable `bytes` from an opened stream before measuring the
+receipt length, checking stable inode metadata, or decoding/searching. Foreign
+stream return values and bytes subclasses fail with typed configuration status
+instead of executing their methods or yielding untrusted evidence.
+
 Both configuration and binary file ingress wrap foreign `OSError` subclasses
 without executing their overridable string hooks: exact built-in native OS
 errors retain their details, while foreign exceptions contribute only their

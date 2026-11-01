@@ -179,6 +179,9 @@ def _read_config_descriptor(
             message = "search configuration changed before read"
             raise SearchConfigurationError(message)
         payload = stream.read(MAX_SEARCH_CONFIGURATION_BYTES + 1)
+        if type(payload) is not bytes:
+            message = "search configuration stream returned non-native bytes"
+            raise SearchConfigurationError(message)
         if len(payload) != expected[2]:
             message = (
                 "search configuration changed during read or "

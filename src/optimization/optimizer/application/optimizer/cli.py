@@ -574,6 +574,9 @@ def _read_cli_descriptor(
             message = f"{label} changed before read"
             raise SearchCliError(message)
         payload = stream.read(MAX_SEARCH_INPUT_BYTES + 1)
+        if type(payload) is not bytes:
+            message = f"{label} stream returned non-native bytes"
+            raise SearchCliError(message)
         if len(payload) != expected[2]:
             message = f"{label} changed during read or exceeds byte limit"
             raise SearchCliError(message)
