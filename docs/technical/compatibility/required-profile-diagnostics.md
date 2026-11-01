@@ -98,9 +98,13 @@ dimensions, a real rejected requirement/runtime pair, and profile-capacity
 precedence before rendering diagnostic text. Public requirement objects are
 re-resolved against canonical `malbolge.json` during preflight: profile kind,
 version, word width, memory capacity, and normative features must still match
-the declared profile identity exactly. Directly constructed kinds must be exact
-supported strings before membership checks, so unhashable forged values cannot
-escape as raw host type errors. Only the program-specific required-memory
+the declared profile identity exactly. Before comparing imported tuples against
+canonical feature or missing-dimension sequences, direct preflight requires exact
+native tuples containing only exact native strings. Caller-owned equality hooks
+cannot supply or disrupt a diagnostic by masquerading as a feature or missing
+dimension. Directly constructed kinds must be exact supported strings before
+membership checks, so unhashable forged values cannot escape as raw host type
+errors. Only the program-specific required-memory
 footprint may vary within that canonical profile capacity; zero is a valid
 footprint for an empty region/source preflight, while profile/runtime capacities
 

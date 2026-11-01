@@ -333,6 +333,8 @@ def _validated_error_dimensions(
         _raise_validation(
             "diagnostic missing dimensions must use the exact immutable tuple"
         )
+    if any(type(dimension) is not str for dimension in value):
+        _raise_validation("diagnostic missing dimensions require exact strings")
     return value
 
 
@@ -382,7 +384,11 @@ def _validated_requirement(value: ProfileRequirement) -> ProfileRequirement:
         value.required_memory_words,
         "required memory words",
     )
-    if value.required_features != NORMATIVE_PROFILE_FEATURES:
+    if (
+        type(value.required_features) is not tuple
+        or any(type(feature) is not str for feature in value.required_features)
+        or value.required_features != NORMATIVE_PROFILE_FEATURES
+    ):
         _raise_validation("profile features must equal the normative feature set")
     canonical = _canonical_profile_requirement(
         value.profile_id,

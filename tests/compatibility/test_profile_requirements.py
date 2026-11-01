@@ -44,7 +44,7 @@ import sys
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
-from typing import cast
+from typing import cast, override
 
 import pytest
 
@@ -685,6 +685,166 @@ def test_preflight_contains_invalid_canonical_authority(
         match="canonical profile authority is unavailable or invalid",
     ):
         requirements.preflight_profile_requirement(requirement, _runtime())
+
+
+class HostileProfileDimension:
+    """A caller-owned dimension with executable comparison hooks."""
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        """Reject comparisons if host-supplied values escape type admission.
+
+        Raises:
+            AssertionError: Whenever equality is invoked.
+
+        """
+        del other
+        message = "foreign profile dimension equality executed"
+        raise AssertionError(message)
+
+    @override
+    def __hash__(self) -> int:
+        """Reject hashing of caller-owned dimension values.
+
+        Raises:
+            AssertionError: Whenever hashing is invoked.
+
+        """
+        message = "foreign profile dimension hashing executed"
+        raise AssertionError(message)
+
+
+class HostileProfileString(str):  # ruff: ignore[subclass-builtin]
+    """A string subclass that runs caller-owned equality hooks."""
+
+    __slots__: tuple[str, ...] = ()
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        """Reject comparisons against caller-owned string subclasses.
+
+        Raises:
+            AssertionError: Whenever equality is invoked.
+
+        """
+        del other
+        message = "foreign string equality executed"
+        raise AssertionError(message)
+
+    @override
+    def __hash__(self) -> int:
+        """Preserve ordinary hash behavior for a hostile string fixture.
+
+        Returns:
+            Native string hash.
+
+        """
+        return str.__hash__(self)
+
+
+class HostileProfileTuple(tuple[str, ...]):
+    """A tuple subclass that runs caller-owned inequality hooks."""
+
+    __slots__: tuple[str, ...] = ()
+
+    @override
+    def __ne__(self, other: object) -> bool:
+        """Reject comparisons against caller-owned tuple subclasses.
+
+        Raises:
+            AssertionError: Whenever inequality is invoked.
+
+        """
+        del other
+        message = "foreign tuple inequality executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    "feature", [HostileProfileDimension(), HostileProfileString("byte-input")]
+)
+def test_preflight_rejects_hostile_feature_without_equality(
+    feature: object,
+) -> None:
+    """Preflight must reject foreign tuple elements before comparisons."""
+    features = cast(
+        "tuple[str, ...]",
+        (feature, *requirements.NORMATIVE_PROFILE_FEATURES[1:]),
+    )
+    forged = replace(_requirement(), required_features=features)
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="normative feature set",
+    ):
+        requirements.preflight_profile_requirement(forged, _runtime())
+
+
+def test_direct_error_rejects_hostile_feature_without_equality() -> None:
+    """Direct diagnostics validate feature types before tuple equality."""
+    forged_feature: object = HostileProfileDimension()
+    features = cast(
+        "tuple[str, ...]",
+        (forged_feature, *requirements.NORMATIVE_PROFILE_FEATURES[1:]),
+    )
+    forged = replace(_requirement(), required_features=features)
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="normative feature set",
+    ):
+        _ = requirements.ProfileRequirementError(
+            requirements.ProfileRequirementErrorKind.RUNTIME_CAPABILITY_MISSING,
+            forged,
+            requirements.safe_rust_classic_capability(),
+            missing_dimensions=("word-trits", "memory-words"),
+        )
+
+
+@pytest.mark.parametrize(
+    "dimension",
+    [HostileProfileDimension(), HostileProfileString("memory-words")],
+)
+def test_direct_error_rejects_hostile_dimension_member_without_equality(
+    dimension: object,
+) -> None:
+    """A caller-owned missing dimension cannot execute comparison hooks."""
+    dimensions = cast("tuple[str, ...]", ("word-trits", dimension))
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="diagnostic missing dimensions",
+    ):
+        _ = requirements.ProfileRequirementError(
+            requirements.ProfileRequirementErrorKind.RUNTIME_CAPABILITY_MISSING,
+            _requirement(),
+            requirements.safe_rust_classic_capability(),
+            missing_dimensions=dimensions,
+        )
+
+
+@pytest.mark.parametrize("entrypoint", ["requirement", "error-dimensions"])
+def test_profile_tuple_subclasses_rejected_without_comparison(
+    entrypoint: str,
+) -> None:
+    """A caller-owned tuple's inequality hook cannot decide admissibility."""
+    if entrypoint == "requirement":
+        features = HostileProfileTuple(requirements.NORMATIVE_PROFILE_FEATURES)
+        forged = replace(_requirement(), required_features=features)
+        with pytest.raises(
+            requirements.ProfileRequirementValidationError,
+            match="normative feature set",
+        ):
+            requirements.preflight_profile_requirement(forged, _runtime())
+    else:
+        dimensions = HostileProfileTuple(("word-trits", "memory-words"))
+        with pytest.raises(
+            requirements.ProfileRequirementValidationError,
+            match="exact immutable tuple",
+        ):
+            _ = requirements.ProfileRequirementError(
+                requirements.ProfileRequirementErrorKind.RUNTIME_CAPABILITY_MISSING,
+                _requirement(),
+                requirements.safe_rust_classic_capability(),
+                missing_dimensions=dimensions,
+            )
 
 
 def test_preflight_revalidates_tampered_requirement() -> None:
