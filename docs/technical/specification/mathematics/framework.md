@@ -69,8 +69,12 @@ filesystem records; junction, symlink, directory, compiler-file and executable
 access verdicts must be actual booleans rather than coerced truthy values.
 Source and temporary build-log file descriptors must be native nonnegative
 integers before stream ownership transfers; an invalid temporary receipt is
-never closed as though it owns a real descriptor. Foreign host receipt objects
-cannot certify paths by executing custom status or truth-value hooks.
+never closed as though it owns a real descriptor. After stream wrapping, the
+stream must report that exact owned descriptor as a native integer before any
+source read or log write. This excludes substituted, duplicated, or nonnative
+stream descriptor receipts; it does not make filesystem replacement atomic.
+Foreign host receipt objects cannot certify paths by executing custom status
+or truth-value hooks.
 TeX validation reads no more than one MiB per physical regular source,
 rejects redirected parent/leaf paths, and requires the pre-read file identity
 (device, inode, size and modification/change times) to match the open descriptor

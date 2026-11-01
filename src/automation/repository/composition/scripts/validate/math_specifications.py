@@ -144,6 +144,19 @@ def _native_descriptor(receipt: object, context: str) -> int:
     return receipt
 
 
+def _owned_stream_descriptor(receipt: object, owned: int, context: str) -> int:
+    """Bind a wrapped stream to its exact previously admitted descriptor.
+
+    Returns:
+        The native descriptor owned by the stream.
+
+    """
+    descriptor = _native_descriptor(receipt, context)
+    if descriptor != owned:
+        _fail(f"{context} stream descriptor changed")
+    return descriptor
+
+
 def _source_relative_path(path: Path) -> Path:
     """Admit a lexical repository-relative source path.
 
@@ -283,14 +296,17 @@ def _read_open_tex_bytes(
             pass
         raise
     with stream:
-        if _tex_source_identity(os.fstat(stream.fileno())) != admitted:
+        stream_descriptor = _owned_stream_descriptor(
+            stream.fileno(), descriptor, "mathematics source"
+        )
+        if _tex_source_identity(os.fstat(stream_descriptor)) != admitted:
             _fail("mathematics source changed before read")
         data = stream.read(MAX_TEX_BYTES + 1)
         if type(data) is not bytes:
             _fail("malformed mathematics source byte receipt")
         if (
             len(data) != admitted[2]
-            or _tex_source_identity(os.fstat(stream.fileno())) != admitted
+            or _tex_source_identity(os.fstat(stream_descriptor)) != admitted
         ):
             _fail("mathematics source changed during read")
     return data
@@ -668,6 +684,9 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
                     pass
                 raise
             with stream:
+                _ = _owned_stream_descriptor(
+                    stream.fileno(), descriptor, "mathematics build log"
+                )
                 written = stream.write(log)
                 if type(written) is not int or written != len(log):
                     _fail(f"incomplete LaTeX build log write: {log_path}")

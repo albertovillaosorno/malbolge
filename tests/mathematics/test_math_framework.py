@@ -37,7 +37,7 @@ from __future__ import annotations
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, cast, final, override
+from typing import TYPE_CHECKING, IO, Self, cast, final, override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -776,6 +776,9 @@ def test_math_log_write_failure_preserves_prior_output(
         def __exit__(self, *_args: object) -> None:
             self.stream.close()
 
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
         def write(self, _text: str) -> int:
             raise fault_type("injected math log write failure")
 
@@ -816,6 +819,9 @@ def test_math_log_rejects_noninteger_write_receipts(
         def __exit__(self, *_args: object) -> None:
             self.stream.close()
 
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
         def write(self, _text: str) -> object:
             return reported
 
@@ -855,6 +861,9 @@ def test_math_log_flush_failure_preserves_prior_output(
 
         def __exit__(self, *_args: object) -> None:
             self.stream.close()
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
 
         def write(self, text: str) -> int:
             return self.stream.write(text)
@@ -2004,3 +2013,108 @@ def test_math_latex_timeout_never_formats_foreign_host_exception(
         _compile_math_source(source)
     assert caught.value.__cause__ is fault
     assert not log.exists()
+
+
+MATH_BINARY_READ_MODE = "rb"
+
+
+@final
+class _ForgedMathStream:
+    """Wrap a stream with a forged descriptor but no content IO."""
+
+    def __init__(
+        self,
+        wrapped: IO[str] | IO[bytes],
+        receipt: object,
+        duplicate_descriptor: int | None,
+    ) -> None:
+        self.wrapped = wrapped
+        self.receipt = receipt
+        self.duplicate_descriptor = duplicate_descriptor
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        if self.duplicate_descriptor is not None:
+            os.close(self.duplicate_descriptor)
+        self.wrapped.close()
+
+    def fileno(self) -> object:
+        if self.duplicate_descriptor is not None:
+            return self.duplicate_descriptor
+        return self.receipt
+
+
+def _forge_math_fdopen(
+    monkeypatch: pytest.MonkeyPatch, *, receipt: object, duplicate: bool
+) -> None:
+    native_fdopen = os.fdopen
+
+    def forged_fdopen(
+        descriptor: int, mode: str, **kwargs: object
+    ) -> _ForgedMathStream:
+        del kwargs
+        stream = (
+            native_fdopen(descriptor, "rb")
+            if mode == MATH_BINARY_READ_MODE
+            else native_fdopen(descriptor, "w", encoding="utf-8", newline="\n")
+        )
+        other = os.dup(descriptor) if duplicate else None
+        return _ForgedMathStream(stream, receipt, other)
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+
+
+@pytest.mark.parametrize("receipt", [True, -1, object()])
+def test_math_source_stream_rejects_foreign_descriptor_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A fake stream cannot request host fstat on an unowned descriptor."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    _forge_math_fdopen(monkeypatch, receipt=receipt, duplicate=False)
+    with pytest.raises(
+        validator.MathSpecificationError, match="native descriptor"
+    ):
+        _ = _read_math_snapshot(source)
+
+
+def test_math_source_stream_rejects_swapped_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second fd for the same source still does not own the open stream."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    _forge_math_fdopen(monkeypatch, receipt=0, duplicate=True)
+    with pytest.raises(
+        validator.MathSpecificationError, match="stream descriptor"
+    ):
+        _ = _read_math_snapshot(source)
+
+
+@pytest.mark.parametrize("receipt", [True, -1, object()])
+def test_math_log_stream_rejects_foreign_descriptor_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A fake log stream must not write after an unowned fileno receipt."""
+    _, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    _forge_math_fdopen(monkeypatch, receipt=receipt, duplicate=False)
+    with pytest.raises(
+        validator.MathSpecificationError, match="native descriptor"
+    ):
+        _publish_math_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
+def test_math_log_stream_rejects_swapped_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unrelated log fileno cannot authorize a successful publication."""
+    _, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    _forge_math_fdopen(monkeypatch, receipt=0, duplicate=True)
+    with pytest.raises(
+        validator.MathSpecificationError, match="stream descriptor"
+    ):
+        _publish_math_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
