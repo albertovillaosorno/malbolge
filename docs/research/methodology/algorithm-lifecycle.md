@@ -51,7 +51,9 @@ physically discovered research algorithm directory. Outside paths,
 noncanonical filenames, and already-linked parent directories fail before
 the manifest is read. Loading then accepts at most 1 MiB from a stable regular-
 file descriptor, rejecting symlinked leaves, special files, file replacements,
-and invalid UTF-8 before TOML admission. Host TOML parser capacity errors,
+and invalid UTF-8 before TOML admission. File receipts must contain native
+bytes, and malformed UTF-8 retains its original decoder cause. CLI errors
+exclude foreign exception formatters. Host TOML parser capacity errors,
 including oversized decimal integer tokens, produce typed lifecycle failures.
 The stable algorithm ID is bound to its
 research record and experiment manifest. Decision dates require the exact TOML

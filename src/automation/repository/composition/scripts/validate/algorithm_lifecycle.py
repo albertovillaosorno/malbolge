@@ -129,7 +129,13 @@ def _host_error_detail(error: Exception) -> str:
         Built-in diagnostic text or a foreign exception's type name.
 
     """
-    if type(error) in (OSError, ValueError, TypeError, RuntimeError):
+    if type(error) in (
+        AlgorithmLifecycleError,
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+    ):
         return str(error)
     return type(error).__name__
 
@@ -555,10 +561,19 @@ def _read_utf8(path: Path) -> str:
         raise AlgorithmLifecycleError(
             f"algorithm lifecycle manifest cannot be read: {path}: {detail}"
         ) from error
+    if type(raw) is not bytes:
+        _fail("algorithm lifecycle requires native byte receipt")
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError as error:
-        _fail(f"invalid algorithm lifecycle UTF-8: {error}")
+        detail = (
+            str(error)
+            if type(error) is UnicodeDecodeError
+            else "foreign Unicode decoder failure"
+        )
+        raise AlgorithmLifecycleError(
+            f"invalid algorithm lifecycle UTF-8: {detail}"
+        ) from error
 
 
 def validate_repository_lifecycle(path: Path) -> AlgorithmLifecycle:
@@ -622,7 +637,7 @@ def main() -> int:
     try:
         records = validate_repository()
     except (AlgorithmLifecycleError, OSError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_host_error_detail(error)}\n")
         return 1
     states: dict[str, int] = {}
     for record in records:

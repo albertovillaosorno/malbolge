@@ -712,3 +712,61 @@ def test_lifecycle_host_failures_never_format_foreign_exceptions(
                 "docs/proof.md", "research record"
             )
     assert caught.value.__cause__ is fault
+
+
+def test_lifecycle_utf8_error_preserves_decoder_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An invalid lifecycle encoding retains the native decoding exception."""
+    source = _fixture_repository(tmp_path, monkeypatch, _base(validator.EXPERIMENTAL))
+    _ = source.write_bytes(b"\xff")
+    with pytest.raises(
+        validator.AlgorithmLifecycleError, match="invalid algorithm lifecycle UTF-8"
+    ) as caught:
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+    assert type(caught.value.__cause__) is UnicodeDecodeError
+    assert "position 0" in str(caught.value)
+
+
+def test_lifecycle_rejects_foreign_byte_receipt_before_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An untrusted reader cannot dispatch a custom bytes decoder."""
+
+    class ForeignBytes(bytes):
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            del encoding, errors
+            raise AssertionError("foreign lifecycle byte decoder executed")
+
+    monkeypatch.setattr(
+        validator, "_read_lifecycle_file", lambda _path: ForeignBytes(b"valid")
+    )
+    with pytest.raises(validator.AlgorithmLifecycleError, match="native byte receipt"):
+        _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+            Path("untrusted/lifecycle.toml")
+        )
+
+
+@pytest.mark.parametrize("fault_type", [OSError, validator.AlgorithmLifecycleError])
+def test_lifecycle_cli_never_formats_foreign_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """A hostile exception formatter cannot escape lifecycle CLI handling."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign lifecycle CLI formatter executed")
+
+    foreign = type("ForeignLifecycleCliError", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("untrusted host detail")
+
+    def fail_validate() -> None:
+        raise fault
+
+    monkeypatch.setattr(validator, "validate_repository", fail_validate)
+    assert validator.main() == 1
+    report = capsys.readouterr()
+    assert "ForeignLifecycleCliError" in report.err
+    assert not report.out
