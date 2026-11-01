@@ -160,10 +160,13 @@ anchors append a one-based `:occurrence` suffix to the expansion byte offset:
 different tag declarations in one macro invocation may otherwise share the same
 source position. The occurrence is assigned on deterministic first encounter
 per offset and remains tied to the canonical tag, not to a serialized Clang
-pointer. Non-default address spaces and unrecognized Clang types fail
-with `MALBOLGE-FRONTEND-002`. The regression suite uses `_BitInt(17)` to prove
-that a construct accepted by the parser cannot silently escape the normalized
-type grammar.
+pointer. Anonymous tags from included headers use
+`external-anonymous:occurrence`, also assigned on first canonical encounter.
+The ordinal preserves separate header types and never exposes a host header
+path or native pointer. Non-default address spaces and unrecognized Clang
+types fail with `MALBOLGE-FRONTEND-002`. The regression suite uses
+`_BitInt(17)` to prove that a construct accepted by the parser cannot silently
+escape the normalized type grammar.
 
 ### Declaration semantics
 

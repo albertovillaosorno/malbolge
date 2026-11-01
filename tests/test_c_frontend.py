@@ -249,7 +249,11 @@ def _ensure_native_frontend() -> None:
 
 
 def _run_frontend(
-    source: Path, source_id: str, *, timeout: int = 30
+    source: Path,
+    source_id: str,
+    *,
+    guest_include: Path = GUEST_INCLUDE,
+    timeout: int = 30,
 ) -> sp.CompletedProcess[str]:
     _ensure_native_frontend()
     command = (
@@ -259,7 +263,7 @@ def _run_frontend(
         "--resource-dir",
         str(RESOURCE_DIR),
         "--guest-include",
-        str(GUEST_INCLUDE),
+        str(guest_include),
         str(source),
     )
     return sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
@@ -473,6 +477,60 @@ def test_macro_expansion_tags_keep_distinct_canonical_types(
             "1)",
             "2)",
         ]
+
+
+def test_header_anonymous_tags_retain_distinct_path_free_types(
+    tmp_path: Path,
+) -> None:
+    """Different header-local anonymous tags stay distinct across relocation."""
+    header = (
+        "typedef struct { int narrow_value; } Narrow;\n"
+        "typedef struct { long long wide_value; } Wide;\n"
+        "typedef union { int left; } LeftUnion;\n"
+        "typedef union { long long right; } RightUnion;\n"
+        "typedef enum { FIRST = 0 } FirstEnum;\n"
+        "typedef enum { SECOND = 1 } SecondEnum;\n"
+    )
+    source = (
+        '#include "types.h"\n'
+        "Narrow narrow;\n"
+        "Narrow another;\n"
+        "Wide wide;\n"
+        "LeftUnion left_union;\n"
+        "RightUnion right_union;\n"
+        "FirstEnum first_enum;\n"
+        "SecondEnum second_enum;\n"
+    )
+    outputs = []
+    for directory_name in ("one", "two"):
+        directory = tmp_path / directory_name
+        directory.mkdir()
+        _ = (directory / "types.h").write_text(header, encoding="utf-8")
+        source_path = directory / "source.c"
+        _ = source_path.write_text(source, encoding="utf-8")
+        completed = _run_frontend(
+            source_path,
+            "fixtures/header-anonymous.c",
+            guest_include=directory,
+        )
+        artifact = _artifact(completed)
+        narrow = _named_node(artifact, "narrow")["type"]
+        another = _named_node(artifact, "another")["type"]
+        assert narrow == another
+        for tag, names in (
+            ("struct", ("narrow", "wide")),
+            ("union", ("left_union", "right_union")),
+            ("enum", ("first_enum", "second_enum")),
+        ):
+            first_type = _named_node(artifact, names[0])["type"]
+            second_type = _named_node(artifact, names[1])["type"]
+            assert first_type != second_type
+            for tag_type in (first_type, second_type):
+                assert isinstance(tag_type, str)
+                assert tag_type.startswith(f"{tag}(external-anonymous:")
+        assert str(directory) not in completed.stdout
+        outputs.append(completed.stdout)
+    assert outputs[0] == outputs[1]
 
 
 def test_frontend_contract_is_closed_and_versioned() -> None:

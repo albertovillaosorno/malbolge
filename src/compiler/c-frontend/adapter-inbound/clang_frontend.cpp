@@ -414,7 +414,16 @@ private:
       }
       return anchor;
     }
-    return name.empty() ? "external-anonymous" : name;
+    if (!name.empty()) {
+      return name;
+    }
+    // Header-local anonymous tags have no main-source byte offset.
+    // Assign distinct deterministic identities without exporting header paths.
+    auto [entry, inserted] = external_tag_ordinals_.try_emplace(&canonical, 0U);
+    if (inserted) {
+      entry->second = external_tag_ordinals_.size();
+    }
+    return "external-anonymous:" + std::to_string(entry->second);
   }
 
   void fail_type(const clang::Type &type, llvm::StringRef detail) {
@@ -1080,6 +1089,8 @@ private:
   clang::ASTContext &context_;
   std::unordered_map<std::size_t, std::size_t> macro_offset_counts_;
   std::unordered_map<const clang::NamedDecl *, std::size_t> macro_tag_ordinals_;
+  std::unordered_map<const clang::NamedDecl *, std::size_t>
+      external_tag_ordinals_;
   std::string failure_;
   std::vector<Node> nodes_;
   std::vector<std::size_t> parents_;

@@ -104,9 +104,9 @@
     "vla(TYPE)",
     "fn(PARAMS)->TYPE",
     "fn-unspecified()->TYPE",
-    "struct(NAME_OR_OFFSET[:MACRO_OCCURRENCE])",
-    "union(NAME_OR_OFFSET[:MACRO_OCCURRENCE])",
-    "enum(NAME_OR_OFFSET[:MACRO_OCCURRENCE])",
+    "struct(NAME_OR_TAG_ANCHOR)",
+    "union(NAME_OR_TAG_ANCHOR)",
+    "enum(NAME_OR_TAG_ANCHOR)",
     "atomic(TYPE)",
     "complex(TYPE)",
     "q[QUALIFIERS](TYPE)"
