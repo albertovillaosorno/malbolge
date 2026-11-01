@@ -279,6 +279,44 @@ def test_manifest_rejects_drive_relative_development_root(
         _ = tidy_toolchain.load_identity(manifest, root=tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("section", "field"),
+    (
+        ("toolchain", "runtime_root"),
+        ("toolchain", "development_root"),
+        ("toolchain", "plugin_output_root"),
+        ("platform", "clang"),
+        ("platform", "plugin_host"),
+        ("platform", "plugin_library"),
+        ("platform-list", "required_runtime_files"),
+        ("platform-list", "required_development_files"),
+    ),
+)
+def test_toolchain_manifest_rejects_host_dependent_backslash_paths(
+    tmp_path: Path,
+    section: str,
+    field: str,
+) -> None:
+    """Pinned tools must resolve the same path on Linux and Windows."""
+    document = _canonical_document()
+    selected = document
+    if section != "toolchain":
+        platforms = cast("dict[str, object]", document["platforms"])
+        selected = cast("dict[str, object]", platforms[WINDOWS_PLATFORM])
+    if section == "platform-list":
+        paths = cast("list[str]", selected[field])
+        paths[0] = paths[0].replace("/", "\\")
+    else:
+        value = cast("str", selected[field])
+        selected[field] = value.replace("/", "\\")
+    manifest = _write_manifest(tmp_path, document)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError,
+        match="must use forward slashes",
+    ):
+        _ = tidy_toolchain.load_identity(manifest, root=tmp_path)
+
+
 def test_manifest_rejects_drifted_llvm_version(tmp_path: Path) -> None:
     """A manifest edit cannot silently select another LLVM revision."""
     document = _canonical_document()

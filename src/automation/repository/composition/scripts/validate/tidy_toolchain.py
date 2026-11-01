@@ -394,6 +394,8 @@ def _repository_path(value: str, label: str) -> Path:
     )
     if native_escape or windows_escape:
         _fail(f"{label} must stay within the repository")
+    if "\\" in value:
+        _fail(f"{label} must use forward slashes")
     return native
 
 
