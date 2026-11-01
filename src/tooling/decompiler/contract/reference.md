@@ -45,8 +45,13 @@ rotate/crazy/indirect-jump post-encryption and binary input/EOF. A separate
 current-profile fixture verifies the larger 15-trit geometry and EOF
 low-byte output without assuming the historical 10-trit sentinel. Both
 profiles also reject an indirect jump to a non-graphical encryption target
-atomically, preserving the pre-step memory and registers. This evidence
-does not establish correctness for arbitrary programs or untested profiles.
+atomically, preserving the pre-step memory and registers. Rejected rotate and
+crazy instructions that would overwrite their own executing code cell with a
+non-graphical word likewise leave all memory and registers unchanged. A
+source-admitted indirect jump into a non-graphical successor proves that the
+historical profile continues without progress while the current profile
+terminates. These checks compare complete states, not only status codes, but
+do not establish correctness for arbitrary programs or untested profiles.
 
 ## CLI
 

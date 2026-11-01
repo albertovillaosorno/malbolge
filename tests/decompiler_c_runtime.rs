@@ -41,13 +41,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use malbolge::{
     ProfileDescriptor, ProfileMachine, ProfileMachineError, RunOutcome,
-    Termination, current_profile,
+    Termination, current_profile, decode_profile_instruction,
     historical_profile,
 };
 
 const SOURCE: &[u8] = b"ubO";
 const ARITHMETIC_SOURCE: &[u8] = b"(&<N";
 const INVALID_JUMP_SOURCE: &[u8] = b"bP";
+const INVALID_ROTATE_SOURCE: &[u8] = b"'C";
+const INVALID_CRAZY_SOURCE: &[u8] = b">C";
 const JUMP_SOURCE: &[u8] = &[
     98, 67, 66, 65, 64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52,
     51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35,
@@ -189,11 +191,20 @@ int main(void)
 ";
 
 #[derive(Clone, Copy)]
+enum ExpectedVmOutcome {
+    BudgetExhausted,
+    Halt,
+    InvalidEncryption,
+    InvalidWriteEncryption,
+    NonGraphical,
+}
+
+#[derive(Clone, Copy)]
 struct GeneratedVmCase<'case> {
+    expected_outcome: ExpectedVmOutcome,
     expected_output: &'case [u8],
     expected_steps: usize,
     harness: &'case str,
-    invalid_encryption: bool,
     profile: &'static ProfileDescriptor,
     source: &'case [u8],
 }
@@ -306,11 +317,59 @@ fn vm_snapshot_bytes(machine: &ProfileMachine) -> Vec<u8> {
     expected
 }
 
+fn require_vm_outcome(
+    machine: &ProfileMachine,
+    observed: Result<RunOutcome, ProfileMachineError>,
+    expected: ExpectedVmOutcome,
+    expected_steps: usize,
+) -> Result<(), String> {
+    match (observed, expected) {
+        (
+            Ok(RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps,
+            }),
+            ExpectedVmOutcome::Halt,
+        ) if steps == expected_steps => {},
+        (
+            Ok(RunOutcome::Terminated {
+                reason: Termination::NonGraphicalCell,
+                steps,
+            }),
+            ExpectedVmOutcome::NonGraphical,
+        ) if steps == expected_steps => {},
+        (
+            Ok(RunOutcome::BudgetExhausted { steps }),
+            ExpectedVmOutcome::BudgetExhausted,
+        ) if steps == expected_steps => {},
+        (
+            Err(ProfileMachineError::InvalidEncryptionTarget {
+                pointer: 98, value,
+            }),
+            ExpectedVmOutcome::InvalidEncryption,
+        ) if expected_steps == 0
+            && machine.memory().get(98).copied() == Some(value)
+            && !(33..=126).contains(&value) => {},
+        (
+            Err(ProfileMachineError::InvalidEncryptionTarget {
+                pointer: 0, value,
+            }),
+            ExpectedVmOutcome::InvalidWriteEncryption,
+        ) if expected_steps == 0
+            && machine.memory().first().is_some_and(|raw| *raw != value)
+            && !(33..=126).contains(&value) => {},
+        (unexpected, _) => {
+            return Err(format!("unexpected normative outcome: {unexpected:?}"));
+        },
+    }
+    Ok(())
+}
+
 fn verify_generated_state_against_vm(case: GeneratedVmCase<'_>)
 -> Result<(), String> {
     let GeneratedVmCase {
-        profile, source, harness, expected_output, expected_steps,
-        invalid_encryption,
+        profile, source, harness, expected_outcome, expected_output,
+        expected_steps,
     } = case;
     let directory = temporary_directory()?;
     let result = (|| {
@@ -324,31 +383,16 @@ fn verify_generated_state_against_vm(case: GeneratedVmCase<'_>)
             profile, source, Vec::new(),
         )
         .map_err(|error| error.to_string())?;
+        let before = (expected_steps == 0).then(|| vm_snapshot_bytes(&machine));
         let outcome = machine.run(expected_steps.max(1));
-        match (outcome, invalid_encryption) {
-            (
-                Ok(RunOutcome::Terminated {
-                    reason: Termination::HaltInstruction,
-                    steps,
-                }),
-                false,
-            ) if steps == expected_steps => {},
-            (
-                Err(ProfileMachineError::InvalidEncryptionTarget {
-                    pointer: 98, value,
-                }),
-                true,
-            ) if expected_steps == 0
-                && machine.memory().get(98).copied() == Some(value)
-                && !(33..=126).contains(&value) => {},
-            (unexpected, _) => {
-                return Err(format!("unexpected normative outcome: {unexpected:?}"));
-            },
+        require_vm_outcome(&machine, outcome, expected_outcome, expected_steps)?;
+        let expected = vm_snapshot_bytes(&machine);
+        if before.is_some_and(|snapshot| snapshot != expected) {
+            return Err(String::from("normative VM committed a rejected step"));
         }
         if machine.output() != expected_output {
             return Err(format!("unexpected normative output: {:?}", machine.output()));
         }
-        let expected = vm_snapshot_bytes(&machine);
         if !executed.status.success()
             || !executed.stderr.is_empty()
             || executed.stdout != expected
@@ -372,10 +416,10 @@ fn verify_generated_state_against_vm(case: GeneratedVmCase<'_>)
 fn generated_c_arithmetic_memory_and_registers_match_normative_vm()
 -> Result<(), String> {
     verify_generated_state_against_vm(GeneratedVmCase {
+        expected_outcome: ExpectedVmOutcome::Halt,
         expected_output: &[],
         expected_steps: 4,
         harness: MEMORY_HARNESS,
-        invalid_encryption: false,
         profile: historical_profile(),
         source: ARITHMETIC_SOURCE,
     })
@@ -388,10 +432,10 @@ fn generated_c_post_jump_encryption_matches_normative_vm()
         "#define EXPECTED_OUTPUT_LEN 1\n#define EXPECTED_OUTPUT_BYTE 0xa8\n{MEMORY_HARNESS}"
     );
     verify_generated_state_against_vm(GeneratedVmCase {
+        expected_outcome: ExpectedVmOutcome::Halt,
         expected_output: &[0xa8],
         expected_steps: 4,
         harness: &harness,
-        invalid_encryption: false,
         profile: historical_profile(),
         source: JUMP_SOURCE,
     })
@@ -411,10 +455,10 @@ fn generated_c_current_profile_eof_state_matches_normative_vm()
          #define STEP_BUDGET 3\n{MEMORY_HARNESS}",
     );
     verify_generated_state_against_vm(GeneratedVmCase {
+        expected_outcome: ExpectedVmOutcome::Halt,
         expected_output: &[expected_byte],
         expected_steps: 3,
         harness: &harness,
-        invalid_encryption: false,
         profile,
         source: SOURCE,
     })
@@ -433,13 +477,79 @@ fn generated_c_invalid_jump_encryption_is_atomic_for_both_profiles()
     );
     for profile in [historical_profile(), current_profile()] {
         verify_generated_state_against_vm(GeneratedVmCase {
+            expected_outcome: ExpectedVmOutcome::InvalidEncryption,
             expected_output: &[],
             expected_steps: 0,
             harness: &harness,
-            invalid_encryption: true,
             profile,
             source: INVALID_JUMP_SOURCE,
         })?;
+    }
+    Ok(())
+}
+
+// The first `b` jumps indirectly from C=0 to the source cell at C=98.
+// Each later raw byte is a valid initial no-op, so admission succeeds; the
+// first generated cell past the 99-byte source is non-graphical at C=99.
+fn source_with_non_graphical_jump_successor() -> Result<Vec<u8>, String> {
+    let mut source = vec![b'b'];
+    for position in 1..=98u32 {
+        let raw = (33u8..=126).find(|byte| {
+            decode_profile_instruction(u32::from(*byte), position) == Some(b'o')
+        })
+        .ok_or_else(|| format!("no valid no-op source byte at {position}"))?;
+        source.push(raw);
+    }
+    Ok(source)
+}
+
+#[test]
+fn generated_c_non_graphical_successor_obeys_selected_profile()
+-> Result<(), String> {
+    let source = source_with_non_graphical_jump_successor()?;
+    for (profile, c_status, expected_outcome) in [
+        (historical_profile(), "MB_STATUS_BUDGET_EXHAUSTED", ExpectedVmOutcome::BudgetExhausted),
+        (current_profile(), "MB_STATUS_NON_GRAPHICAL", ExpectedVmOutcome::NonGraphical),
+    ] {
+        let harness = format!(
+            "#define EXPECTED_STATUS {c_status}\n\
+             #define EXPECTED_STEPS 2\n\
+             #define STEP_BUDGET 2\n{MEMORY_HARNESS}",
+        );
+        verify_generated_state_against_vm(GeneratedVmCase {
+            expected_outcome,
+            expected_output: &[],
+            expected_steps: 2,
+            harness: &harness,
+            profile,
+            source: &source,
+        })?;
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_c_invalid_code_cell_writes_are_atomic_for_both_profiles()
+-> Result<(), String> {
+    // The first cell decodes respectively to rotate and crazy. Both would
+    // rewrite their own C=0 code cell with a non-graphical value. Neither
+    // the value nor the new accumulator may commit on failed encryption.
+    let harness = format!(
+        "#define EXPECTED_STATUS MB_STATUS_INVALID_ENCRYPTION\n\
+         #define EXPECTED_STEPS 0\n\
+         #define STEP_BUDGET 1\n{MEMORY_HARNESS}",
+    );
+    for source in [INVALID_ROTATE_SOURCE, INVALID_CRAZY_SOURCE] {
+        for profile in [historical_profile(), current_profile()] {
+            verify_generated_state_against_vm(GeneratedVmCase {
+                expected_outcome: ExpectedVmOutcome::InvalidWriteEncryption,
+                expected_output: &[],
+                expected_steps: 0,
+                harness: &harness,
+                profile,
+                source,
+            })?;
+        }
     }
     Ok(())
 }
