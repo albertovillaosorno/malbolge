@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import ntpath
 import os
 import re
 import sys
@@ -234,6 +235,8 @@ def _relative_path(value: str, context: str) -> str:
         _fail(f"{context} must be repository-relative: {value}")
     if "\\" in value:
         _fail(f"{context} must use forward slashes")
+    if ntpath.isreserved(value):
+        _fail(f"{context} contains a Windows-reserved path component")
     return path.as_posix()
 
 

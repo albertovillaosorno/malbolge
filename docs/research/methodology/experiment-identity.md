@@ -79,7 +79,9 @@ and the repository-relative raw-output path. Repository-relative paths reject
 absolute, Windows drive/root, parent-traversal, and TOML-escaped NUL forms
 before filesystem consumers receive them, independent of host. Backslash path
 separators are also rejected: evidence names use portable forward slashes so
-Linux and Windows resolve the same repository-relative identity.
+Linux and Windows resolve the same repository-relative identity. Paths
+containing Windows-reserved components, including device names, NTFS alternate
+data streams, and trailing spaces or dots, are rejected even on POSIX hosts.
 Accepted outcomes include success, no solution, candidate invalidity, resource
 exhaustion, and tool failure so negative evidence remains reconstructible
 instead of disappearing from analysis.

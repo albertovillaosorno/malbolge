@@ -58,7 +58,8 @@ files under the repository root, with no symlinked leaves or parent directories.
 Evidence paths reject TOML-escaped NUL bytes before host filesystem access,
 preventing raw path API errors from escaping lifecycle validation. Backslash
 separators are rejected so evidence paths retain the same forward-slash spelling
-on Linux and Windows.
+on Linux and Windows. Windows-reserved path components, including NTFS alternate
+data streams, device names, and trailing spaces/dots, also fail on POSIX hosts.
 On hosts with directory-relative file opening, checks pin every parent
 directory through the evidence admission; other hosts reject links during
 component-by-component path inspection.

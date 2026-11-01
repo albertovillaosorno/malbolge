@@ -304,6 +304,24 @@ def test_lifecycle_rejects_windows_drive_relative_path() -> None:
 
 
 @pytest.mark.parametrize(
+    "reserved",
+    (
+        "docs/research/method.md:metadata",
+        "docs/NUL.txt",
+        "docs/CON/evidence.md",
+        "docs/results.",
+        "docs/results ",
+    ),
+)
+def test_lifecycle_rejects_windows_reserved_evidence_name(reserved: str) -> None:
+    """A retained negative result cannot alias an NTFS stream or device."""
+    _expect_failure(
+        _base(validator.REJECTED) + _decision(negative_results=reserved),
+        "Windows-reserved",
+    )
+
+
+@pytest.mark.parametrize(
     ("state", "field", "original", "additional"),
     (
         (validator.EXPERIMENTAL, "research_record", RESEARCH, ""),

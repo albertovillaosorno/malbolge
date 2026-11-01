@@ -540,6 +540,21 @@ def test_manifest_rejects_windows_drive_relative_path() -> None:
 
 
 @pytest.mark.parametrize(
+    "reserved",
+    (
+        "algorithms/example/out/raw.json:metadata",
+        "algorithms/example/out/NUL.txt",
+        "algorithms/NUL/out/raw.json",
+        "algorithms/example/out/results.",
+        "algorithms/example/out/results ",
+    ),
+)
+def test_manifest_rejects_windows_reserved_run_artifact_name(reserved: str) -> None:
+    """NTFS streams and Windows-reserved components are not portable evidence."""
+    _expect_failure(_run_manifest(raw_output=reserved), "Windows-reserved")
+
+
+@pytest.mark.parametrize(
     ("field", "original", "portable_alias"),
     (
         (
