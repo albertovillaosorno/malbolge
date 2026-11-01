@@ -51,9 +51,12 @@ command identities cannot impersonate successful builds. Symlink, junction,
 and non-directory substitutions fail closed. On Linux, those build-output
 path checks also require exact native booleans from every directory ancestor;
 foreign path-status hooks cannot authorize an output location. The Windows frontend
-likewise rejects linked build-cache and output ancestors, plus existing symbolic or
-hardlinked `build.cmd` scripts, before invoking CMake. After either native
-build, the executable and its output ancestors must be physical and
+likewise requires exact native boolean results from build-cache/output ancestor
+checks, existing `build.cmd` script admission, and final executable status.
+Existing scripts and final executables require exact native regular-file stat
+receipts with a single link. Linked build-cache and output ancestors and
+symbolic or hardlinked scripts are rejected before invoking CMake. After either
+native build, the executable and its output ancestors must be physical and
 unlinked before its version check can execute it. These path checks are not
 an atomic cross-process publication lock.
 

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from typing import Final
@@ -75,6 +76,18 @@ def _fail(message: str) -> Never:
     raise FrontendBuildError(message)
 
 
+def _native_path_status(receipt: object, context: str) -> bool:
+    """Admit only exact native filesystem path decisions.
+
+    Returns:
+        The admitted boolean status.
+
+    """
+    if type(receipt) is not bool:
+        _fail(f"{context} requires native path status")
+    return receipt
+
+
 def _batch_path(path: Path) -> str:
     return str(path.resolve()).replace("/", "\\")
 
@@ -101,17 +114,37 @@ def _run(
 def _require_physical_directory(path: Path, label: str) -> None:
     """Require unlinked directory ancestry for frontend build destinations."""
     for component in (path, *path.parents):
-        if component.is_symlink() or component.is_junction():
+        if _native_path_status(
+            component.is_symlink(), f"{label} redirect"
+        ) or _native_path_status(component.is_junction(), f"{label} redirect"):
             _fail(f"{label} directory must not redirect: {component}")
-        if component.exists() and not component.is_dir():
+        exists = _native_path_status(component.exists(), f"{label} existence")
+        directory = _native_path_status(component.is_dir(), f"{label} directory")
+        if exists and not directory:
             _fail(f"{label} path must be a directory: {component}")
 
 
 def _require_private_build_script(path: Path) -> None:
-    if path.is_symlink() or path.is_junction():
+    symbolic = _native_path_status(
+        path.is_symlink(), "build cache script redirect"
+    )
+    junction = _native_path_status(
+        path.is_junction(), "build cache script redirect"
+    )
+    if symbolic or junction:
         _fail(f"build cache script must not redirect: {path}")
-    if path.exists() and (not path.is_file() or path.lstat().st_nlink != 1):
-        _fail(f"build cache script must be a private regular file: {path}")
+    if _native_path_status(path.exists(), "build cache script existence"):
+        status = path.lstat()
+        if (
+            type(status) is not os.stat_result
+            or not S_ISREG(status.st_mode)
+            or status.st_nlink != 1
+        ):
+            _fail(f"build cache script must be a private regular file: {path}")
+        if not _native_path_status(
+            path.is_file(), "build cache script regular file"
+        ):
+            _fail(f"build cache script must be a private regular file: {path}")
 
 
 def _write_build_script(
@@ -183,6 +216,27 @@ def _build_windows(identity: tidy_toolchain.ToolchainIdentity) -> None:
         _fail(f"C frontend build failed with status {completed.returncode}")
 
 
+def _require_private_executable(path: Path) -> None:
+    """Admit an unlinked, native regular executable before version checking."""
+    if not _native_path_status(path.is_file(), "frontend executable file"):
+        _fail(f"C frontend executable missing: {path}")
+    symbolic = _native_path_status(
+        path.is_symlink(), "frontend executable redirect"
+    )
+    junction = _native_path_status(
+        path.is_junction(), "frontend executable redirect"
+    )
+    if symbolic or junction:
+        _fail(f"C frontend executable must be a private regular file: {path}")
+    status = path.lstat()
+    if (
+        type(status) is not os.stat_result
+        or not S_ISREG(status.st_mode)
+        or status.st_nlink != 1
+    ):
+        _fail(f"C frontend executable must be a private regular file: {path}")
+
+
 def build() -> None:
     """Build and verify the exact native frontend executable."""
     identity = tidy_toolchain.load_identity(platform_id=HOST_PLATFORM_ID)
@@ -194,14 +248,7 @@ def build() -> None:
     else:
         _fail(f"unsupported C frontend build platform: {identity.platform_id}")
     _require_physical_directory(EXECUTABLE.parent, "frontend output")
-    if not EXECUTABLE.is_file():
-        _fail(f"C frontend executable missing: {EXECUTABLE}")
-    if (
-        EXECUTABLE.is_symlink()
-        or EXECUTABLE.is_junction()
-        or EXECUTABLE.lstat().st_nlink != 1
-    ):
-        _fail(f"C frontend executable must be a private regular file: {EXECUTABLE}")
+    _require_private_executable(EXECUTABLE)
     version = _run([str(EXECUTABLE), "--version"], capture=True)
     expected = f"malbolge-c-frontend 1 LLVM {identity.llvm_version}"
     if version.returncode != 0 or version.stdout.strip() != expected:

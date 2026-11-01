@@ -610,3 +610,126 @@ def test_frontend_build_rejects_redirected_executable_parent(
         c_frontend_build.build()
     assert not calls
     assert external_executable.read_bytes() == b"foreign executable"
+
+
+class _ForeignFrontendPathVerdict:
+    """Caller-controlled filesystem decision with unsafe truthiness."""
+
+    def __bool__(self) -> bool:
+        """Reject accidental coercion of a foreign host status.
+
+        Raises:
+            AssertionError: Whenever truthiness is evaluated.
+
+        """
+        message = "foreign frontend path truthiness executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("receipt", [0, 1, _ForeignFrontendPathVerdict()])
+def test_windows_frontend_cache_rejects_non_native_path_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A build-cache directory cannot trust a foreign junction receipt."""
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    native_junction = Path.is_junction
+
+    def forged_junction(path: Path) -> bool:
+        return (
+            cast("bool", receipt)
+            if path == cache
+            else native_junction(path)
+        )
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    guard = cast(
+        "Callable[[Path, str], None]",
+        vars(c_frontend_build)["_require_physical_directory"],
+    )
+    with pytest.raises(
+        c_frontend_build.FrontendBuildError, match="native path"
+    ):
+        guard(cache, "build cache")
+
+
+@pytest.mark.parametrize("receipt", [0, 1, _ForeignFrontendPathVerdict()])
+def test_windows_frontend_script_rejects_non_native_path_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """An existing generated batch script must have native redirect status."""
+    script = tmp_path / "build.cmd"
+    _ = script.write_bytes(b"@echo off\r\n")
+    native_junction = Path.is_junction
+
+    def forged_junction(path: Path) -> bool:
+        return (
+            cast("bool", receipt)
+            if path == script
+            else native_junction(path)
+        )
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    guard = cast(
+        "Callable[[Path], None]",
+        vars(c_frontend_build)["_require_private_build_script"],
+    )
+    with pytest.raises(
+        c_frontend_build.FrontendBuildError, match="native path"
+    ):
+        guard(script)
+
+
+@pytest.mark.parametrize("receipt", [0, 1, _ForeignFrontendPathVerdict()])
+def test_windows_frontend_executable_rejects_non_native_path_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Foreign executable redirect decisions cannot launch the version probe."""
+    executable = tmp_path / "frontend.exe"
+    _ = executable.write_bytes(b"local executable")
+    monkeypatch.setattr(c_frontend_build, "EXECUTABLE", executable)
+    monkeypatch.setattr(
+        c_frontend_build, "HOST_PLATFORM_ID", tidy_toolchain.WINDOWS_PLATFORM
+    )
+
+    def skip_validation(
+        identity: tidy_toolchain.ToolchainIdentity,
+    ) -> None:
+        _ = identity
+
+    monkeypatch.setattr(
+        tidy_toolchain, "validate_installation", skip_validation
+    )
+    monkeypatch.setattr(c_frontend_build, "_build_windows", skip_validation)
+    native_junction = Path.is_junction
+    invoked: list[list[str]] = []
+
+    def forged_junction(path: Path) -> bool:
+        return (
+            cast("bool", receipt)
+            if path == executable
+            else native_junction(path)
+        )
+
+    def capture_run(
+        command: list[str], *, capture: bool = False
+    ) -> CompletedProcess[str]:
+        del capture
+        invoked.append(command)
+        return CompletedProcess(
+            command, 0, "malbolge-c-frontend 1 LLVM 22.1.8", ""
+        )
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    monkeypatch.setattr(c_frontend_build, "_run", capture_run)
+    with pytest.raises(
+        c_frontend_build.FrontendBuildError, match="native path"
+    ):
+        c_frontend_build.build()
+    assert not invoked
