@@ -95,6 +95,9 @@ independent oracle instead of relying on an undocumented development compiler
 path. Linux pytest also builds and runs the same standalone harness with pinned
 Clang 22.1.8 in strict C23 and ASan/UBSan modes, so the binary and EOF checks
 execute in a focused native test without waiting for the full Jig run.
+The same runner also syntax-checks the VM and its full harness for i686,
+x86-64, and AArch64 Windows ABIs and wasm32; those are compile-only checks,
+not claims of execution under those targets.
 
 ## Invariants
 

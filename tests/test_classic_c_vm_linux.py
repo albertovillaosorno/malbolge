@@ -55,6 +55,12 @@ WARNINGS = (
     f"-I{VM}",
 )
 SANITIZERS = ("-fsanitize=address,undefined", "-fno-omit-frame-pointer")
+CROSS_TARGETS = (
+    "i686-pc-windows-msvc",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "wasm32-unknown-unknown",
+)
 
 
 def run_command(command: tuple[str, ...]) -> sp.CompletedProcess[str]:
@@ -103,3 +109,23 @@ def test_classic_c_vm_conformance_on_linux(
 
     executed = run_command((str(executable),))
     assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+@pytest.mark.skipif(
+    sys.platform != LINUX_PLATFORM,
+    reason="cross-target compiler asset is pinned to the Linux runner",
+)
+@pytest.mark.parametrize("target", CROSS_TARGETS)
+def test_classic_c_vm_cross_target_syntax_on_linux(target: str) -> None:
+    """Check the independent C VM on three Windows ABIs and wasm32."""
+    compiled = run_command((
+        str(CLANG),
+        f"--target={target}",
+        *WARNINGS,
+        "-ffreestanding",
+        "-fno-builtin",
+        "-fsyntax-only",
+        str(VM / "malbolge_vm.c"),
+        str(HARNESS),
+    ))
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
