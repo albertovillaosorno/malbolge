@@ -751,8 +751,15 @@ def _tool_output(path: Path) -> str:
             encoding="utf-8",
             errors="replace",
             shell=False,
+            timeout=15,
         )
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
+    except (
+        sp.TimeoutExpired,
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+    ) as error:
         message = f"failed to execute LLVM version query {path}: "
         raise ToolchainError(message + _host_error_detail(error)) from error
     if not _native_version_receipt(completed, argv):

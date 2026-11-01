@@ -1614,3 +1614,27 @@ def test_toolchain_cli_does_not_format_foreign_errors(
     monkeypatch.setattr(tidy_toolchain, "load_identity", fail_load)
     assert tidy_toolchain.main([]) == 1
     assert expected_diagnostic in capsys.readouterr().err
+
+
+EXPECTED_LLVM_VERSION_TIMEOUT_SECONDS = 15
+
+
+def test_llvm_version_probe_bounds_unresponsive_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hung LLVM version subprocess fails with typed original cause."""
+    fault = sp.TimeoutExpired(
+        ["clang", "--version"], EXPECTED_LLVM_VERSION_TIMEOUT_SECONDS
+    )
+
+    def timed_out_run(*args: object, **kwargs: object) -> None:
+        del args
+        assert kwargs["timeout"] == EXPECTED_LLVM_VERSION_TIMEOUT_SECONDS
+        raise fault
+
+    monkeypatch.setattr(sp, "run", timed_out_run)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="TimeoutExpired"
+    ) as caught:
+        _ = tidy_toolchain._tool_output(Path("clang"))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is fault

@@ -83,8 +83,9 @@ Clang and clang-tidy version probes likewise require native subprocess results,
 exact command arguments, integer exit statuses, and native decoded
 stdout/stderr; booleans, floats, foreign objects, and malformed host receipts
 cannot prove a ready toolchain.
-Probe failures preserve their original host exception as the typed error cause
-without invoking foreign exception formatters. Source stream ownership transfers
+Version probes have a 15-second execution bound; timeouts preserve their
+original host exception as the typed error cause without invoking foreign
+exception formatters. Source stream ownership transfers
 only to a native binary buffer wrapper; a foreign `fdopen` result is rejected
 without reading its fields or leaking the opened descriptor. Manifest decoding,
 source inspection, and archive hashing preserve the original host or UTF-8
