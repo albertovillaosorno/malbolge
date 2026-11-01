@@ -71,13 +71,15 @@ by the selected profile loader.
 - The decompiler now provides an explicit `--representation annotated` view
   with selected-profile identity, deterministic 64-byte wrapping, initial
   indirect/halt boundaries and exact canonical region-position comments.
-  Six `tests/decompiler.rs` regressions prove canonical byte/source-map
+  Seven `tests/decompiler.rs` regressions prove canonical byte/source-map
   recovery, historic/current VM observational equivalence, fail-closed source
   admission, and CLI stdout/file byte identity. Another regression proves
   `--source-format annotated` can re-enter the analysis CLI with identical
   results, while raw/default mode and malformed presentation fail closed.
   A 150-cell valid no-op fixture also proves exact 64-byte region wrapping and
-  recovered annotated line/column/offset mapping. The raw loader is unchanged.
+  recovered annotated line/column/offset mapping. A line-start graphical `#`
+  following an initial indirect boundary remains code, not a comment. The raw
+  loader is unchanged.
 - Remaining evidence: compiler C/IR-aligned structural annotations and
   source-map composition against real emitted layout; initial VM labels are not
   recovered C source regions or post-mutation semantics.

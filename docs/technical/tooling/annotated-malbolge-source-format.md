@@ -182,3 +182,8 @@ A sixth regression generates 150 valid graphical no-op cells using the VM's
 public normative instruction decoder and proves region boundaries at canonical
 positions 63 and 127, exact LF line placement, column, source offset, and byte
 recovery through the annotated canonicalizer.
+
+A seventh regression constructs a valid hash-byte instruction immediately
+after a valid initially indirect cell. This forces the `#` to column one on
+a generated code line and verifies that it survives canonicalization as code,
+not a presentation comment, with unchanged profile VM observations.

@@ -440,6 +440,62 @@ fn annotated_render_bounded_width_preserves_exact_line_column_map()
 }
 
 #[test]
+fn annotated_render_preserves_line_start_hash_code_after_initial_jump()
+-> Result<(), String> {
+    let mut source = Vec::new();
+    for position in 0u32..128 {
+        let byte = (33u8..=126)
+            .find(|&cell| {
+                decode_profile_instruction(u32::from(cell), position) == Some(b'o')
+            })
+            .ok_or_else(|| format!("no no-op byte at {position}"))?;
+        source.push(byte);
+    }
+    let hash_position = (2u32..127)
+        .find(|&position| {
+            matches!(
+                decode_profile_instruction(u32::from(b'#'), position),
+                Some(b'i' | b'j' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+            )
+        })
+        .ok_or_else(|| String::from("no admitted hash position"))?;
+    let previous = hash_position.saturating_sub(1);
+    let jump = (33u8..=126)
+        .find(|&cell| decode_profile_instruction(u32::from(cell), previous) == Some(b'i'))
+        .ok_or_else(|| String::from("no initial indirect predecessor"))?;
+    *source.get_mut(usize::try_from(previous).map_err(|error| error.to_string())?)
+        .ok_or_else(|| String::from("missing predecessor"))? = jump;
+    *source.get_mut(usize::try_from(hash_position).map_err(|error| error.to_string())?)
+        .ok_or_else(|| String::from("missing hash code cell"))? = b'#';
+    let profile = historical_profile();
+    let rendered = decompiler::render_annotated(profile, &source)
+        .map_err(|error| error.to_string())?;
+    let normalized = canonicalize_annotated_source(rendered.as_bytes())
+        .map_err(|error| error.to_string())?;
+    let location = normalized.locations()
+        .get(usize::try_from(hash_position).map_err(|error| error.to_string())?)
+        .ok_or_else(|| String::from("missing hash source location"))?;
+    if normalized.bytes() != source
+        || location.column() != 1
+        || rendered.as_bytes().get(location.offset()) != Some(&b'#')
+    {
+        return Err(String::from("line-start hash was parsed as a comment"));
+    }
+    let mut canonical = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| error.to_string())?;
+    let mut annotated = ProfileMachine::from_annotated_source(
+        profile, rendered.as_bytes(), Vec::new(),
+    )
+    .map_err(|error| error.to_string())?;
+    if canonical.run(8) != annotated.run(8)
+        || canonical.output() != annotated.output()
+    {
+        return Err(String::from("line-start hash changed VM execution"));
+    }
+    Ok(())
+}
+
+#[test]
 fn annotated_cli_emits_canonicalizable_output_to_stdout_and_file() -> Result<(), String> {
     let directory = temporary_cli_inputs()?;
     let source = directory.join("raw.malbolge");
