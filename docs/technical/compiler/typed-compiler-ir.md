@@ -165,9 +165,9 @@ returns one normalized `i32` integer constant. The lowerer preserves function,
 body, return, and value spans; converts the semantic decimal constant to exact
 32-bit little-endian bits; constructs canonical typed IR; and invokes complete
 IR admission before returning a module. The normalized literal span must
-also be contained in its return-statement span, not merely somewhere in the
-function body; a separately located literal cannot masquerade as the return
-expression. Wrong producer identity, unsupported semantic shapes, and
+also be nonempty and contained in its return-statement span, not merely
+somewhere in the function body; a zero-width or separately located span
+cannot identify the integer token that supplies the return expression. Wrong producer identity, unsupported semantic shapes, and
 out-of-range constants fail with stable lowering errors.
 
 A tracked C fixture is normalized by the real pinned frontend into an exact JSON

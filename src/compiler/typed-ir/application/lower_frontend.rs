@@ -163,6 +163,7 @@ pub(super) fn admit_frontend_function(
         || !valid_span(returned)
         || !span_contains(body, returned)
         || !valid_span(literal)
+        || literal.begin().byte() == literal.end().byte()
         || !span_contains(body, literal)
         || !span_contains(returned, literal)
     {

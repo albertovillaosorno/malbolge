@@ -1572,6 +1572,7 @@ const fn changed_frontend_value_span(
     match field {
         22 => frontend_span(1210, 1, 1215, 2),
         24 => frontend_span(1222, 16, 1223, 17),
+        25 => frontend_span(1231, 25, 1231, 25),
         _ => function.value_span(),
     }
 }
@@ -1653,7 +1654,7 @@ fn different_frontend_provenance(
         5 => spec.functions.push(frontend_function(
             "fn()->i32", "i32", "7",
         )),
-        6..=9 | 15..=24 => {
+        6..=9 | 15..=25 => {
             let original = spec.functions.first()
                 .ok_or_else(|| String::from("frontend function missing"))?;
             let changed = changed_frontend_function(original, field);
@@ -1676,7 +1677,7 @@ fn assert_foreign_frontend_rejected(
     inspector: &Path,
     golden: &Path,
 ) -> Result<(), String> {
-    for field in 0u8..25u8 {
+    for field in 0u8..26u8 {
         let foreign = different_frontend_provenance(expected, field)?;
         if field >= 10 {
             let fresh = lower_frontend_artifact(&foreign);
@@ -1684,7 +1685,7 @@ fn assert_foreign_frontend_rejected(
                 10..=14 => FrontendLoweringError::Identity,
                 15..=18 => FrontendLoweringError::UnsupportedSemantics,
                 19 => FrontendLoweringError::IntegerConstant,
-                20..=24 => FrontendLoweringError::Validation(
+                20..=25 => FrontendLoweringError::Validation(
                     ValidationError::SourceProvenance,
                 ),
                 _ => return Err(format!("unknown frontend field {field}")),
