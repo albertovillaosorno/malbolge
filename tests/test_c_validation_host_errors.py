@@ -458,6 +458,69 @@ def test_manual_c_tool_admission_preserves_native_default_selection(
 
 
 @pytest.mark.parametrize(
+    "boundary",
+    ("clang-tidy", "clang", "profile", "plugin", "default-host", "default-plugin"),
+)
+@pytest.mark.parametrize("receipt_kind", ("opaque", "text", "hostile"))
+def test_manual_c_tool_resolution_requires_native_path_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+    receipt_kind: str,
+) -> None:
+    """Compiler and implicit plugin resolution cannot admit foreign path hooks."""
+    host = tmp_path / "clang-tidy"
+    clang = tmp_path / "clang"
+    profile = tmp_path / "profile.yaml"
+    plugin = tmp_path / "plugin.so"
+    for path in (host, clang, profile, plugin):
+        _ = path.write_bytes(b"fixture")
+    arguments = validator._Arguments()
+    arguments.clang_tidy = host
+    arguments.clang = clang
+    arguments.profile = profile
+    arguments.plugin = plugin
+    monkeypatch.setattr(validator, "PLUGIN_HOST", host)
+    monkeypatch.setattr(validator, "PLUGIN_LIBRARY", plugin)
+    target = {
+        "clang-tidy": host,
+        "clang": clang,
+        "profile": profile,
+        "plugin": plugin,
+        "default-host": host,
+        "default-plugin": plugin,
+    }[boundary]
+
+    class ForeignPath:
+        @override
+        def __eq__(self, other: object) -> Never:
+            del self, other
+            raise AssertionError("foreign resolved-path equality hook executed")
+
+    receipt: object = {
+        "opaque": object(),
+        "text": "/foreign/tool",
+        "hostile": ForeignPath(),
+    }[receipt_kind]
+    native_resolve = Path.resolve
+
+    def forged_resolve(path: Path, strict: bool = False) -> Path:
+        return (
+            cast("Path", receipt)
+            if path == target
+            else native_resolve(path, strict=strict)
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "resolve", forged_resolve)
+        with pytest.raises(validator.InputError, match="resolved-path receipt"):
+            if boundary in ("default-host", "default-plugin"):
+                _ = validator._default_plugin(host)
+            else:
+                _ = validator._configuration(arguments)
+
+
+@pytest.mark.parametrize(
     ("method", "receipt"),
     [
         ("exists", 0),

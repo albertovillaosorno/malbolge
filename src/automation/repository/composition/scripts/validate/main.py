@@ -204,15 +204,17 @@ def _default_plugin(clang_tidy: Path) -> Path | None:
 
     """
     try:
-        canonical_host = PLUGIN_HOST.resolve()
-        selected_host = clang_tidy.resolve()
+        canonical_host = _native_resolved_path(
+            PLUGIN_HOST, context="canonical plugin host"
+        )
+        selected_host = _native_resolved_path(clang_tidy, context="clang-tidy host")
     except OSError:
         return None
     if selected_host != canonical_host or not _native_path_status(
         PLUGIN_LIBRARY.is_file(), "default plugin library file"
     ):
         return None
-    return PLUGIN_LIBRARY.resolve()
+    return _native_resolved_path(PLUGIN_LIBRARY, context="plugin library")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -274,8 +276,8 @@ def _native_path_status(value: object, context: str) -> bool:
     return cast("bool", value)
 
 
-def _native_resolved_path(path: Path) -> Path:
-    """Preserve the native path flavor before using a resolved C source.
+def _native_resolved_path(path: Path, *, context: str = "C source") -> Path:
+    """Preserve native path flavor before using any resolved validation file.
 
     Returns:
         A native resolved file path.
@@ -283,7 +285,7 @@ def _native_resolved_path(path: Path) -> Path:
     """
     resolved = path.resolve()
     if type(resolved) is not type(path):
-        _fail("invalid C source resolved-path receipt")
+        _fail(f"invalid {context} resolved-path receipt")
     return resolved
 
 
@@ -433,11 +435,11 @@ def _require_plugin_registration(clang_tidy: Path, plugin: Path) -> None:
 
 
 def _configuration(arguments: _Arguments) -> _Configuration:
-    clang_tidy = arguments.clang_tidy.resolve()
-    clang = arguments.clang.resolve()
-    profile = arguments.profile.resolve()
+    clang_tidy = _native_resolved_path(arguments.clang_tidy, context="clang-tidy")
+    clang = _native_resolved_path(arguments.clang, context="Clang")
+    profile = _native_resolved_path(arguments.profile, context="guest profile")
     plugin = (
-        arguments.plugin.resolve()
+        _native_resolved_path(arguments.plugin, context="clang-tidy plugin")
         if arguments.plugin is not None
         else _default_plugin(clang_tidy)
     )
