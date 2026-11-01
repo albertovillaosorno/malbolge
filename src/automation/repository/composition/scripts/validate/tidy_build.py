@@ -34,22 +34,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import Final
-from typing import Never
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final, Never
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(composition_root))
 
 from scripts.repository_root import repository_root
-from scripts.validate import tidy_build_linux
-from scripts.validate import tidy_toolchain
+from scripts.validate import tidy_build_linux, tidy_toolchain
 
 ROOT: Final = repository_root(Path(__file__))
 SOURCE_ROOT: Final = ROOT / "tools" / "tidy" / "composition"
@@ -82,13 +80,36 @@ def _require_file(path: Path, label: str) -> Path:
     return path
 
 
+def _native_host_error_detail(error: Exception) -> str:
+    """Return exact native host text, never formatting foreign subclasses.
+
+    Returns:
+        Built-in failure text or the foreign exception's class name.
+
+    """
+    if type(error) in {
+        OSError,
+        FileNotFoundError,
+        FileExistsError,
+        PermissionError,
+        IsADirectoryError,
+        NotADirectoryError,
+        TimeoutError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+    }:
+        return str(error)
+    return type(error).__name__
+
+
 def _run(
     command: list[str],
     *,
     capture: bool = False,
 ) -> sp.CompletedProcess[str]:
     try:
-        return sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             command,
             cwd=ROOT,
             check=False,
@@ -97,8 +118,27 @@ def _run(
             errors="replace",
             shell=False,
         )
-    except OSError as error:
-        _fail(f"failed to execute {command[0]}: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _native_host_error_detail(error)
+        raise BuildError(f"failed to execute {command[0]}: {detail}") from error
+    if (
+        type(completed) is not sp.CompletedProcess
+        or type(completed.args) is not list
+        or len(completed.args) != len(command)
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != command
+        or type(completed.returncode) is not int
+        or (
+            capture
+            and (type(completed.stdout) is not str or type(completed.stderr) is not str)
+        )
+        or (
+            not capture
+            and (completed.stdout is not None or completed.stderr is not None)
+        )
+    ):
+        _fail("invalid clang-tidy native build process receipt")
+    return completed
 
 
 def _checked_output(command: list[str], label: str) -> str:
@@ -369,7 +409,17 @@ def main() -> int:
         tidy_build_linux.LinuxBuildError,
         tidy_toolchain.ToolchainError,
     ) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        detail = (
+            str(error)
+            if type(error)
+            in {
+                BuildError,
+                tidy_build_linux.LinuxBuildError,
+                tidy_toolchain.ToolchainError,
+            }
+            else type(error).__name__
+        )
+        _ = sys.stderr.write(f"error: {detail}\n")
         return 1
     message = f"clang-tidy plugin ready: {identity.plugin_library}"
     _ = sys.stdout.write(message + chr(10))

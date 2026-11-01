@@ -118,6 +118,17 @@ still cannot prevent concurrent replacement after a completed preflight.
 
 ### Windows plugin host
 
+The Windows native plugin dispatcher authenticates every launched process
+receipt before using its outputs or exit status. The exact native
+`CompletedProcess` must name the requested list of string arguments and an
+integer return code. Captured version, discovery, export, and check-list
+commands must return native text streams; uncaptured build commands must not
+report fabricated output streams. Missing or foreign receipts fail closed,
+and native launch faults retain their original exception cause. Foreign host
+exceptions and CLI errors are identified by type without evaluating custom
+string-formatting hooks. This subprocess admission does not provide an atomic
+lock against concurrent changes to executable paths.
+
 LLVM documents out-of-tree clang-tidy checks as shared-library plugins loaded
 with `--load`, while also warning that plugin API/ABI compatibility is tied to
 the exact clang-tidy build. Native guest-C validation subprocess probes
