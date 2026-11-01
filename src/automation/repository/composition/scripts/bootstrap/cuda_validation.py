@@ -374,7 +374,9 @@ def verify_cuda_package(data: bytes, package: CudaPackageArtifact) -> None:
 
 def _archive_member_path(value: str) -> PurePosixPath:
     path = PurePosixPath(value)
-    if path.is_absolute() or PARENT_SEGMENT in path.parts:
+    windows = PureWindowsPath(value)
+    anchored = path.is_absolute() or bool(windows.drive or windows.root)
+    if anchored or PARENT_SEGMENT in path.parts:
         _fail(f"CUDA archive member escapes package root: {value}")
     if "\\" in value:
         _fail("CUDA archive member must use forward slashes")

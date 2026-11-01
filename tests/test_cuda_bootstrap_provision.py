@@ -253,6 +253,32 @@ def test_tar_extraction_rejects_parent_escape(tmp_path: Path) -> None:
     assert not (tmp_path / "escape").exists()
 
 
+@pytest.mark.parametrize(
+    "member",
+    ("C:/escaped/absolute", "D:drive-relative", "e:/root/escape"),
+)
+def test_cuda_archive_rejects_windows_drive_members(member: str) -> None:
+    """A POSIX archive member may not create a Windows drive path."""
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match="escapes package root"
+    ):
+        _ = cuda_validation._archive_member_path(member)
+
+
+def test_cuda_archive_extraction_rejects_windows_drive_root(tmp_path: Path) -> None:
+    """A forged drive-root archive cannot claim a repository toolkit."""
+    payload = _tar_xz({"C:/escape.txt": b"forged"})
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM
+    ).packages[0]
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match="escapes package root"
+    ):
+        cuda_validation.extract_cuda_package(
+            payload, package, tmp_path / "toolkit", staging=tmp_path / "staging"
+        )
+
+
 def test_cuda_archive_rejects_host_dependent_backslash_member(
     tmp_path: Path,
 ) -> None:
