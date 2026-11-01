@@ -178,14 +178,34 @@ def _batch_path(path: Path) -> str:
     return str(path.resolve()).replace("/", "\\")
 
 
+def _require_physical_directory(path: Path, label: str) -> None:
+    """Reject linked or non-directory paths before native build operations."""
+    for component in (path, *path.parents):
+        if component.is_symlink() or component.is_junction():
+            _fail(f"{label} directory must not redirect: {component}")
+        if component.exists() and not component.is_dir():
+            _fail(f"{label} path must be a directory: {component}")
+
+
+def _require_unlinked_build_script(path: Path) -> None:
+    if path.is_symlink() or path.is_junction():
+        _fail(f"build cache script must not redirect: {path}")
+    if path.exists() and (not path.is_file() or path.lstat().st_nlink != 1):
+        _fail(f"build cache script must be a private regular file: {path}")
+
+
 def _write_build_script(
     tools: VisualStudioTools,
     identity: tidy_toolchain.ToolchainIdentity,
 ) -> Path:
+    _require_physical_directory(BUILD_ROOT, "build cache")
     BUILD_ROOT.mkdir(parents=True, exist_ok=True)
     build_dir = BUILD_ROOT / "build"
+    _require_physical_directory(build_dir, "build cache")
     build_dir.mkdir(parents=True, exist_ok=True)
+    _require_physical_directory(build_dir, "build cache")
     script = BUILD_ROOT / "build.cmd"
+    _require_unlinked_build_script(script)
     configure = (
         f'"{_batch_path(tools.cmake)}" '
         f'-S "{_batch_path(SOURCE_ROOT)}" '
@@ -219,6 +239,8 @@ def _write_build_script(
         "exit /b %errorlevel%",
     ]
     content = "\r\n".join(lines) + "\r\n"
+    _require_physical_directory(BUILD_ROOT, "build cache")
+    _require_unlinked_build_script(script)
     written = script.write_text(content, encoding="utf-8", newline="")
     if type(written) is not int or written != len(content):
         _fail("clang-tidy build script has invalid write count")
@@ -234,9 +256,15 @@ def build(identity: tidy_toolchain.ToolchainIdentity) -> None:
     if identity.platform_id != tidy_toolchain.WINDOWS_PLATFORM:
         _fail(f"unsupported clang-tidy build platform: {identity.platform_id}")
     tools = visual_studio_tools()
+    output = identity.plugin_output_root
+    _require_physical_directory(output, "plugin output")
+    output.mkdir(parents=True, exist_ok=True)
+    _require_physical_directory(output, "plugin output")
     script = _write_build_script(tools, identity)
     windows = Path(os.environ.get("SYSTEMROOT", "C:/Windows"))
     command_shell = _require_file(windows / "System32" / "cmd.exe", "cmd.exe")
+    _require_physical_directory(output, "plugin output")
+    _require_physical_directory(BUILD_ROOT, "build cache")
     completed = _run(
         [str(command_shell), "/d", "/c", str(script.resolve())]
     )
@@ -257,9 +285,21 @@ def provision_clang_resources(
     relative = Path("lib") / "clang" / resource_version
     source = identity.runtime_root / relative
     destination = identity.plugin_output_root / relative
+    _require_physical_directory(source, "Clang resource input")
+    for member in source.rglob("*"):
+        if member.is_symlink() or member.is_junction():
+            _fail(f"Clang resource input must not redirect: {member}")
+        if not (member.is_dir() or member.is_file()):
+            _fail(f"Clang resource input must contain regular files: {member}")
     _ = _require_file(source / "include" / "limits.h", "Clang limits header")
+    _require_physical_directory(destination.parent, "Clang resource output")
+    if destination.is_symlink() or destination.is_junction():
+        _fail(f"Clang resource output must not redirect: {destination}")
     if destination.exists():
+        if not destination.is_dir():
+            _fail(f"Clang resource output must be a directory: {destination}")
         shutil.rmtree(destination)
+    _require_physical_directory(destination.parent, "Clang resource output")
     _ = shutil.copytree(source, destination)
 
 

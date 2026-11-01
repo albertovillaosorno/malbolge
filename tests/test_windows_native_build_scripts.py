@@ -162,3 +162,223 @@ def test_windows_builder_accepts_exact_complete_script(
     assert CRLF in raw
     assert DOUBLE_CRLF not in raw
     assert BARE_LF not in raw.replace(CRLF, b"")
+
+
+@pytest.mark.parametrize(
+    "path_kind",
+    [
+        "destination-root-symlink",
+        "destination-parent-symlink",
+        "destination-leaf-symlink",
+        "destination-parent-file",
+        "destination-leaf-file",
+        "source-parent-symlink",
+        "source-header-symlink",
+    ],
+)
+def test_windows_tidy_resource_copy_rejects_untrusted_paths(
+    tmp_path: Path,
+    path_kind: str,
+) -> None:
+    """Never delete or copy through a redirected Clang resource directory."""
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    identity = tidy_toolchain.load_identity(
+        root=repository, platform_id=tidy_toolchain.WINDOWS_PLATFORM
+    )
+    resource = identity.runtime_root / "lib/clang/22"
+    target = identity.plugin_output_root / "lib/clang/22"
+    external = tmp_path / "external"
+    external.mkdir()
+    marker = external / "foreign-marker.txt"
+    _ = marker.write_bytes(b"foreign data")
+    if path_kind == "source-parent-symlink":
+        resource.parent.mkdir(parents=True)
+        (external / "include").mkdir()
+        _ = (external / "include/limits.h").write_bytes(b"foreign header")
+        try:
+            resource.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+    else:
+        (resource / "include").mkdir(parents=True)
+        header = resource / "include/limits.h"
+        if path_kind == "source-header-symlink":
+            external_header = external / "limits.h"
+            _ = external_header.write_bytes(b"foreign header")
+            try:
+                header.symlink_to(external_header)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"file links unavailable: {error}")
+        else:
+            _ = header.write_bytes(b"trusted header")
+    if path_kind == "destination-root-symlink":
+        identity.plugin_output_root.parent.mkdir(parents=True)
+        selected = identity.plugin_output_root
+    elif path_kind == "destination-parent-symlink":
+        identity.plugin_output_root.mkdir(parents=True)
+        selected = identity.plugin_output_root / "lib"
+        (external / "clang/22").mkdir(parents=True)
+        _ = (external / "clang/22/foreign-member.txt").write_bytes(b"preserve")
+    elif path_kind == "destination-leaf-symlink":
+        target.parent.mkdir(parents=True)
+        selected = target
+    elif path_kind == "destination-parent-file":
+        identity.plugin_output_root.mkdir(parents=True)
+        selected = identity.plugin_output_root / "lib"
+        _ = selected.write_bytes(b"not a directory")
+    elif path_kind == "destination-leaf-file":
+        target.parent.mkdir(parents=True)
+        selected = target
+        _ = selected.write_bytes(b"not a directory")
+    else:
+        selected = None
+    if selected is not None and path_kind.endswith("symlink"):
+        try:
+            selected.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+    with pytest.raises(tidy_build.BuildError, match="Clang resource"):
+        tidy_build.provision_clang_resources(identity)
+    assert marker.read_bytes() == b"foreign data"
+    if path_kind == "destination-parent-symlink":
+        assert (external / "clang/22/foreign-member.txt").read_bytes() == b"preserve"
+    if path_kind.startswith("source-"):
+        assert not target.exists()
+
+
+@pytest.mark.parametrize(
+    "path_kind", ["parent-symlink", "leaf-symlink", "parent-file", "leaf-file"]
+)
+def test_windows_tidy_script_rejects_untrusted_build_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_kind: str,
+) -> None:
+    """Build scripts cannot write through a redirected or invalid cache."""
+    build_root = tmp_path / "cache" / "build"
+    monkeypatch.setattr(tidy_build, "BUILD_ROOT", build_root)
+    selected = build_root.parent if path_kind.startswith("parent") else build_root
+    selected.parent.mkdir(parents=True, exist_ok=True)
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    _ = sentinel.write_bytes(b"foreign data")
+    if path_kind.endswith("symlink"):
+        try:
+            selected.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+    else:
+        _ = selected.write_bytes(b"not a directory")
+    identity = tidy_toolchain.load_identity(
+        root=tmp_path, platform_id=tidy_toolchain.WINDOWS_PLATFORM
+    )
+    with pytest.raises(tidy_build.BuildError, match="build cache"):
+        builder = cast("ScriptBuilder", vars(tidy_build)["_write_build_script"])
+        _ = builder(_windows_tools(tmp_path), identity)
+    assert sentinel.read_bytes() == b"foreign data"
+    assert list(external.iterdir()) == [sentinel]
+
+
+@pytest.mark.parametrize("link_kind", ["symbolic", "hard"])
+def test_windows_tidy_build_script_rejects_linked_existing_script(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    link_kind: str,
+) -> None:
+    """An existing build.cmd cannot overwrite another file through an alias."""
+    build_root = tmp_path / "cache" / "build"
+    build_root.mkdir(parents=True)
+    monkeypatch.setattr(tidy_build, "BUILD_ROOT", build_root)
+    outside = tmp_path / "foreign-script.cmd"
+    _ = outside.write_bytes(b"do not overwrite")
+    script = build_root / "build.cmd"
+    try:
+        if link_kind == "symbolic":
+            script.symlink_to(outside)
+        else:
+            script.hardlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"file links unavailable: {error}")
+    identity = tidy_toolchain.load_identity(
+        root=tmp_path, platform_id=tidy_toolchain.WINDOWS_PLATFORM
+    )
+    with pytest.raises(tidy_build.BuildError, match="build cache"):
+        builder = cast("ScriptBuilder", vars(tidy_build)["_write_build_script"])
+        _ = builder(_windows_tools(tmp_path), identity)
+    assert outside.read_bytes() == b"do not overwrite"
+    assert script.exists()
+
+
+def test_windows_tidy_resource_copy_replaces_physical_previous_version(
+    tmp_path: Path,
+) -> None:
+    """An admitted resource directory still supports repeatable replacement."""
+    identity = tidy_toolchain.load_identity(
+        root=tmp_path, platform_id=tidy_toolchain.WINDOWS_PLATFORM
+    )
+    source = identity.runtime_root / "lib/clang/22"
+    source_include = source / "include"
+    source_include.mkdir(parents=True)
+    _ = (source_include / "limits.h").write_bytes(b"canonical limits")
+    destination = identity.plugin_output_root / "lib/clang/22"
+    destination.mkdir(parents=True)
+    old_file = destination / "stale-file.txt"
+    _ = old_file.write_bytes(b"stale")
+    tidy_build.provision_clang_resources(identity)
+    assert (destination / "include/limits.h").read_bytes() == b"canonical limits"
+    assert not old_file.exists()
+    tidy_build.provision_clang_resources(identity)
+    assert (destination / "include/limits.h").read_bytes() == b"canonical limits"
+
+
+@pytest.mark.parametrize(
+    "path_kind", ["parent-symlink", "leaf-symlink", "parent-file", "leaf-file"]
+)
+def test_windows_tidy_build_rejects_redirected_plugin_output_before_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_kind: str,
+) -> None:
+    """CMake cannot receive a redirected plugin output directory."""
+    identity = tidy_toolchain.load_identity(
+        root=tmp_path, platform_id=tidy_toolchain.WINDOWS_PLATFORM
+    )
+    output = identity.plugin_output_root
+    selected = output.parent if path_kind.startswith("parent") else output
+    selected.parent.mkdir(parents=True, exist_ok=True)
+    external = tmp_path / "foreign"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    _ = sentinel.write_bytes(b"foreign data")
+    if path_kind.endswith("symlink"):
+        try:
+            selected.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+    else:
+        _ = selected.write_bytes(b"not a directory")
+    monkeypatch.setattr(tidy_build, "BUILD_ROOT", tmp_path / "cache")
+
+    def skip_installation(_identity: tidy_toolchain.ToolchainIdentity) -> None:
+        return None
+
+    monkeypatch.setattr(tidy_toolchain, "validate_installation", skip_installation)
+    monkeypatch.setattr(
+        tidy_build,
+        "visual_studio_tools",
+        lambda: _windows_tools(tmp_path),
+    )
+    calls: list[list[str]] = []
+
+    def capture_command(command: list[str], *, capture: bool = False) -> None:
+        _ = capture
+        calls.append(command)
+
+    monkeypatch.setattr(tidy_build, "_run", capture_command)
+    with pytest.raises(tidy_build.BuildError, match="plugin output"):
+        tidy_build.build(identity)
+    assert not calls
+    assert sentinel.read_bytes() == b"foreign data"
+    assert list(external.iterdir()) == [sentinel]
