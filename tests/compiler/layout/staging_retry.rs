@@ -583,6 +583,73 @@ fn publication_sync_equal_byte_inode_swap_cannot_report_success() -> Result<(), 
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "already-unlinked stage must retain one verified final link"
+)]
+fn postverification_removed_stage_with_single_final_link_is_safe() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let staged = stage(&output, None);
+    super::publish_new_with_postverify_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        super::sync_published_directory,
+        |saved_stage| fs::remove_file(saved_stage).map_err(|error| error.to_string()),
+    )?;
+    assert!(!staged.exists());
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "postverification stage replacement cannot leave an alias"
+)]
+fn postverification_stage_substitution_must_not_report_success() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let staged = stage(&output, None);
+    let moved = fixture.0.join("escaped-original-stage");
+    let result = super::publish_new_with_postverify_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        super::sync_published_directory,
+        |saved_stage| {
+            assert_eq!(saved_stage, staged);
+            fs::rename(saved_stage, &moved).map_err(|error| error.to_string())?;
+            fs::write(saved_stage, b"foreign-stage").map_err(|error| error.to_string())
+        },
+    );
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("stage cleanup")),
+        "an escaped stage alias was reported successful: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert_eq!(fs::read(&moved).map_err(|error| error.to_string())?, b"ctO");
+    assert_eq!(
+        fs::read(&staged).map_err(|error| error.to_string())?,
+        b"foreign-stage"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "a substituted staging path cannot authorize publication"
 )]
 fn stage_replaced_after_final_sync_cannot_report_success() -> Result<(), String> {

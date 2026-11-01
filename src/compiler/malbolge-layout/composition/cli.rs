@@ -501,13 +501,38 @@ fn publish_new_with_directory_sync_hook(
     after_link: impl FnOnce(&Path) -> Result<(), String>,
     sync_directory: impl FnOnce(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
+    publish_new_with_postverify_hook(
+        path,
+        bytes,
+        after_sync,
+        after_link,
+        sync_directory,
+        |_stage| Ok(()),
+    )
+}
+
+fn verified_output_basename(path: &Path) -> Result<&str, String> {
     if path.extension() != Some(OsStr::new(MALBOLGE_EXTENSION)) {
         return Err(String::from("output must have a .malbolge extension"));
     }
-    let name = path
-        .file_name()
+    path.file_name()
         .and_then(OsStr::to_str)
-        .ok_or("output needs a UTF-8 filename")?;
+        .ok_or_else(|| String::from("output needs a UTF-8 filename"))
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "inject independently scheduled stage cleanup race after final admission"
+)]
+fn publish_new_with_postverify_hook(
+    path: &Path,
+    bytes: &[u8],
+    after_sync: impl FnOnce(&Path) -> Result<(), String>,
+    after_link: impl FnOnce(&Path) -> Result<(), String>,
+    sync_directory: impl FnOnce(&Path) -> Result<(), String>,
+    after_final_verify: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    let name = verified_output_basename(path)?;
     // A crashed publisher may leave its stage behind, and PIDs get recycled.
     // Create only a fresh path; never remove or reuse any collided stage.
     let (staged, mut file) = open_fresh_stage(path, name)?;
@@ -557,23 +582,34 @@ fn publish_new_with_directory_sync_hook(
         // descriptor, pathname, link count and exact bytes once more before
         // declaring the published artifact verified.
         verify_fsynced_stage(path, &mut file, bytes, (&opened, 2, &resolved_target))?;
+        after_final_verify(&staged)?;
         Ok(())
     })();
     // Retire only our own original staging inode. A stage pathname swapped
     // after the exclusive create belongs to the other writer and is preserved.
     let opened = file.metadata();
     drop(file);
-    let cleanup = if let (Ok(original), Ok(named)) = (opened, fs::symlink_metadata(&staged))
-        && canonical_wire_metadata_matches(&original, &named)
-    {
-        fs::remove_file(&staged)
-            .map_err(|error| format!("stage cleanup failed after publication: {error}"))
-    } else {
-        Ok(())
+    let cleanup = match (opened, fs::symlink_metadata(&staged)) {
+        (Ok(original), Ok(named)) if canonical_wire_metadata_matches(&original, &named) => {
+            fs::remove_file(&staged)
+                .map_err(|error| format!("stage cleanup failed after publication: {error}"))
+        }
+        // Another writer may have already unlinked our stage. That is safe
+        // only if the original inode now has exactly the final target link.
+        (Ok(original), Err(error))
+            if error.kind() == io::ErrorKind::NotFound
+                && cfg!(any(unix, windows))
+                && has_exact_link_count(&original, 1) =>
+        {
+            Ok(())
+        }
+        (Ok(_), Ok(_)) => Err(String::from("stage cleanup rejected substituted pathname")),
+        (Ok(_), Err(error)) => Err(format!("stage cleanup cannot inspect path: {error}")),
+        (Err(error), _) => Err(format!("stage cleanup cannot inspect inode: {error}")),
     };
     // A committed final file survives a failed cleanup, but a surviving stage
     // is another writable hard link. Do not report successful publication.
-    // Preserve the original publication failure if cleanup also fails.
+    // Never remove a foreign staging path; retain any primary publication error.
     outcome.and(cleanup)
 }
 
