@@ -1088,9 +1088,10 @@ The original study records remain the result authority.
   C-int descriptor and an expected stage filename within its workspace.
   Before any child launch it requires the descriptor and pathname to identify
   the same single-link regular inode, then requires native `None` from
-  descriptor close. Invalid receipt shapes or mismatched paths cannot trigger
-  descriptor use, child execution, or deletion of an unrelated path. A failed
-  temporary receipt unlink cannot mask the earlier compiler, oracle, or
+  descriptor close. Invalid descriptor receipts never reach descriptor
+  operations. A mismatched pathname or inode leads to safe closure of an
+  admitted descriptor without child execution or unrelated path deletion.
+  A failed temporary receipt unlink cannot mask the earlier compiler, oracle, or
   RSS-validation failure; the cleanup error stays in the original exception's
   diagnostics. Unexpected RSS reader method errors likewise preserve their
   original causes across the typed boundary.
