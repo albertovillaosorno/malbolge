@@ -1112,6 +1112,11 @@ The original study records remain the result authority.
   workspace body or its recursive `__exit__` cleanup. Genuine temporary
   contexts retain the prior cleanup and primary-error precedence. These
   observed filesystem checks are not an atomic or race-free ownership proof.
+  The temporary context's own cleanup target must also equal its admitted
+  entry pathname before any direct replay work. A red-first injected context
+  previously reached work even when cleanup targeted an unrelated directory;
+  the mismatch now rejects without recursive cleanup. This is observational
+  path admission, not race-free filesystem ownership.
   Host-C reference measurement and independent rebuild now both read the
   generated `oracle-check` executable through bounded regular-file evidence
   admission. The child output-file limit (8 MiB) also caps retained executable

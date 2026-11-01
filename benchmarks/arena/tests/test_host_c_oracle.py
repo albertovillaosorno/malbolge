@@ -2473,6 +2473,46 @@ def test_host_c_native_workspace_rejects_unowned_enter_result_without_cleanup(
         assert (target / "preserve.txt").read_text() == "preserve"
 
 
+def test_host_c_workspace_rejects_foreign_context_cleanup_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An admitted workspace entry must not license foreign cleanup."""
+    root = tmp_path / "scratch"
+    root.mkdir()
+    admitted = root / "arena-host-c-oracle-admitted"
+    admitted.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_bytes(b"preserve")
+    cleanup: list[str] = []
+
+    class MismatchedWorkspace:
+        name = str(outside)
+
+        def __enter__(self) -> str:
+            return str(admitted)
+
+        def __exit__(self, *_args: object) -> None:
+            cleanup.append("removed")
+            (Path(self.name) / "keep.txt").unlink()
+
+    monkeypatch.setattr(host_c_oracle, "_TEMP", root)
+    monkeypatch.setattr(
+        host_c_oracle.tempfile,
+        "TemporaryDirectory",
+        lambda **_kwargs: MismatchedWorkspace(),
+    )
+    with (
+        pytest.raises(host_c_oracle.HostOracleError, match="workspace"),
+        host_c_oracle._native_workspace("arena-host-c-oracle-"),
+    ):
+        pytest.fail("mismatched cleanup target reached guest work")
+    assert cleanup == []
+    assert marker.read_bytes() == b"preserve"
+
+
 def _allocated_workspace(root: Path, prefix: str) -> Path:
     """Create a genuinely local physical fixture for cleanup fault tests."""
     directory = root / f"{prefix}injected"
@@ -2509,6 +2549,7 @@ def test_host_c_direct_workspaces_contain_unexpected_host_faults(
     class FailingCleanup:
         def __init__(self, directory: Path) -> None:
             self.directory = directory
+            self.name = str(directory)
 
         def __enter__(self) -> str:
             return str(self.directory)
@@ -2564,6 +2605,7 @@ def test_host_c_workspace_cleanup_cannot_mask_primary_rejection(
     class FailingCleanup:
         def __init__(self, directory: Path) -> None:
             self.directory = directory
+            self.name = str(directory)
 
         def __enter__(self) -> str:
             return str(self.directory)

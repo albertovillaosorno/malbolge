@@ -662,6 +662,15 @@ def _native_workspace(prefix: str) -> Iterator[Path]:
     # Do not call __exit__ on a forged return: cleanup could delete a foreign
     # directory. Ordinary valid allocations retain their prior cleanup path.
     directory = _admit_native_workspace_receipt(temporary, prefix=prefix)
+    # __exit__ removes the context's own name, not necessarily __enter__'s
+    # returned path. Reject mismatched removal targets before guest work.
+    try:
+        cleanup_name = workspace.name
+    except Exception as error:
+        message = "host-C workspace context cleanup target unavailable"
+        raise HostOracleError(message) from error
+    if type(cleanup_name) is not str or cleanup_name != temporary:
+        _fail("host-C workspace context cleanup target mismatches entry")
     try:
         yield directory
     except BaseException as primary:
