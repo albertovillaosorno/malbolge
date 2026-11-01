@@ -403,7 +403,7 @@ def load_document(path: Path = DEFAULT_ABI) -> JsonObject:
         raise CAbiValidationError(
             f"invalid C ABI UTF-8: {_safe_error_detail(error)}"
         ) from error
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise CAbiValidationError(
             f"failed to read C ABI document {path}: {_safe_error_detail(error)}"
         ) from error

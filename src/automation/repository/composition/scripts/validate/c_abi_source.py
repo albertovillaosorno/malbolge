@@ -213,7 +213,7 @@ def _clang_identity(clang: Path) -> str:
             errors="replace",
             shell=False,
         )
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         _fail(f"failed to execute Clang version query {clang}: {error}")
     stdout, stderr = _checked_clang_output(completed, "version")
     if completed.returncode != 0:
@@ -224,7 +224,7 @@ def _clang_identity(clang: Path) -> str:
 def _require_ast_inputs(source: Path, clang: Path) -> None:
     try:
         clang_is_file = clang.is_file()
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         _fail(f"Clang status failed for {clang}: {error}")
     if not clang_is_file:
         _fail(f"pinned Clang not found: {clang}")
@@ -233,7 +233,7 @@ def _require_ast_inputs(source: Path, clang: Path) -> None:
         _fail(f"Clang must report {expected}: {clang}")
     try:
         source_is_file = source.is_file()
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         _fail(f"source status failed for {source}: {error}")
     if not source_is_file:
         _fail(f"source is not a regular file: {source}")
@@ -262,7 +262,7 @@ def _run_ast(source: Path, clang: Path, target: str) -> JsonObject:
             errors="replace",
             shell=False,
         )
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         _fail(f"failed to execute Clang AST parse {clang}: {error}")
     stdout, stderr = _checked_clang_output(completed, "AST")
     if completed.returncode != 0:
@@ -685,7 +685,8 @@ def _source_snapshot(source: Path) -> _SourceSnapshot:
         descriptor = os.open(source, flags)
         try:
             stream = os.fdopen(descriptor, "rb")
-        except (OSError, ValueError, RuntimeError):
+        except BaseException:
+            # A failed stream wrapper has not taken ownership of this fd.
             try:
                 os.close(descriptor)
             except OSError:
@@ -695,7 +696,7 @@ def _source_snapshot(source: Path) -> _SourceSnapshot:
             return _snapshot_open_source(stream, source, admitted)
     except SourceAnalysisError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise SourceAnalysisError(
             f"failed to read guest C source {source}: {error}"
         ) from error
@@ -715,7 +716,7 @@ def analyze_source(
     """
     try:
         resolved = source.resolve()
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise SourceAnalysisError(
             f"failed to resolve guest C source {source}: {error}"
         ) from error
@@ -728,7 +729,7 @@ def analyze_source(
         _fail(f"invalid guest-C UTF-8 in {resolved}: {error}")
     try:
         resolved_clang = clang.resolve()
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise SourceAnalysisError(
             f"failed to resolve Clang path {clang}: {error}"
         ) from error

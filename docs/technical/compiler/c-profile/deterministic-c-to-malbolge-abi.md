@@ -24,6 +24,8 @@ duplicate JSON keys, unknown schema versions, or disagreement with the current
 target profile. The ABI authority loader admits only stable regular
 UTF-8 files of at most 1 MiB; linked leaves and parent directories, special
 files, and changed document identities are rejected before JSON parsing.
+Host filesystem failures, including stream-wrapper type faults, are reported as
+typed ABI validation errors rather than raw host exceptions.
 
 ## Scope
 
@@ -326,7 +328,9 @@ snapshot after Clang's AST parse. An in-place edit, file substitution, or
 source truncation in the intervening window is a deterministic validation
 error, including a same-byte replacement with a different inode. This
 preflight proves consistency of the observed source evidence; it does not
-assert that Clang provides complete guest-C lowering.
+assert that Clang provides complete guest-C lowering. Failed source stream
+wrapping closes the raw descriptor; unexpected host type failures while reading
+or resolving explicit paths remain typed source-analysis errors.
 
 ### Compatibility fixtures
 

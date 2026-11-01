@@ -316,7 +316,9 @@ def test_missing_abi_manifest_fails_closed(tmp_path: Path) -> None:
         _ = c_abi.load_document(missing)
 
 
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
 @pytest.mark.parametrize(
     "operation",
     (
@@ -394,7 +396,9 @@ def test_c_abi_document_host_file_faults_are_typed(
         _ = c_abi.load_document(source)
 
 
-@pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
 def test_c_abi_fdopen_failure_closes_owned_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -434,7 +438,9 @@ def test_missing_guest_source_fails_closed(tmp_path: Path) -> None:
         _ = c_abi_source.analyze_source(missing)
 
 
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
 @pytest.mark.parametrize(
     "operation", ("lstat", "open", "fdopen", "fstat", "read", "post_lstat")
 )
@@ -493,7 +499,9 @@ def test_guest_source_host_file_faults_are_typed(
         _ = c_abi_source._source_snapshot(source)
 
 
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
 def test_guest_source_fdopen_failure_closes_owned_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -523,7 +531,9 @@ def test_guest_source_fdopen_failure_closes_owned_descriptor(
         _ = os.fstat(opened[0])
 
 
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
 @pytest.mark.parametrize("location", ["source", "clang"])
 def test_guest_source_resolve_host_faults_are_typed(
     tmp_path: Path,
