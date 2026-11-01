@@ -82,6 +82,9 @@ nonblocking descriptor acquisition rejects FIFO inputs without waiting for a
 writer, and a post-read inode/timestamp recheck refuses replaced or rewritten
 sources. Other hosts apply regular-path preflight and bounded post-read checks.
 Host-file rejection is `MALBOLGE-FRONTEND-003` before invoking Clang.
+Both `--version` output and final normalized artifact output must flush
+successfully; a failed stdout write or flush returns nonzero with
+`MALBOLGE-FRONTEND-003` rather than reporting publication of lost bytes.
 
 The command-line composition receives a physical source path only to load bytes.
 The normalized artifact receives instead an explicit portable logical source

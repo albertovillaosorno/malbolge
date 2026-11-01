@@ -203,12 +203,21 @@ constexpr std::size_t kSourceReadChunk = 64U * 1024U;
   return bytes;
 }
 
+[[nodiscard]] int publish_stdout(std::string_view content) {
+  std::cout << content << '\n';
+  std::cout.flush();
+  if (!std::cout.good()) {
+    std::cerr << "MALBOLGE-FRONTEND-003 cannot write standard output\n";
+    return 2;
+  }
+  return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--version") {
-    std::cout << "malbolge-c-frontend 1 LLVM 22.1.8\n";
-    return 0;
+    return publish_stdout("malbolge-c-frontend 1 LLVM 22.1.8");
   }
   const auto arguments = parse_arguments(argc, argv);
   if (!arguments.has_value()) {
@@ -231,6 +240,5 @@ int main(int argc, char **argv) {
     std::cerr << result.diagnostic << '\n';
     return result.status;
   }
-  std::cout << result.artifact << '\n';
-  return 0;
+  return publish_stdout(result.artifact);
 }

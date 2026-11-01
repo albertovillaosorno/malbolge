@@ -436,6 +436,37 @@ def test_frontend_contract_is_closed_and_versioned() -> None:
     assert document["failure_codes"] == EXPECTED_FAILURE_CODES
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux /dev/full sink")
+def test_failed_stdout_publication_returns_an_error() -> None:
+    """Neither version text nor generated JSON can succeed after write failure."""
+    _ensure_native_frontend()
+    normal_args = (
+        "--source-id",
+        BASIC_SOURCE_ID,
+        "--resource-dir",
+        str(RESOURCE_DIR),
+        "--guest-include",
+        str(GUEST_INCLUDE),
+        str(BASIC),
+    )
+    with Path("/dev/full").open("wb") as sink:
+        for arguments in (("--version",), normal_args):
+            completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+                (str(c_frontend_build.EXECUTABLE), *arguments),
+                cwd=ROOT,
+                check=False,
+                stdout=sink,
+                stderr=sp.PIPE,
+                encoding="utf-8",
+                shell=False,
+                timeout=10,
+            )
+            assert completed.returncode == REQUEST_STATUS
+            assert completed.stderr == (
+                "MALBOLGE-FRONTEND-003 cannot write standard output\n"
+            )
+
+
 def test_frontend_version_is_exact() -> None:
     """Built product identifies its versioned frontend and LLVM dependency."""
     _ensure_native_frontend()
