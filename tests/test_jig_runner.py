@@ -728,6 +728,57 @@ def test_runner_rejects_non_native_executable_status(
                 _ = jig_runner.jig_environment(tmp_path, {})
 
 
+@pytest.mark.parametrize("external", [False, True])
+@pytest.mark.parametrize("mode", ["foreign", "boolean", "negative", "oversized"])
+def test_runner_rejects_invalid_native_file_mode_without_host_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    external: bool,
+    mode: str,
+) -> None:
+    """Even an exact stat_result cannot authorize a foreign or invalid mode."""
+    pinned = _pinned_launchers(tmp_path)
+    target = pinned / "chktex"
+    inherited: dict[str, str] = {}
+    if external:
+        directory = tmp_path.parent / f"jig-mode-{tmp_path.name}"
+        directory.mkdir()
+        target = directory / "chktex"
+        _ = target.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        target.chmod(0o700)
+        inherited[jig_runner.EXTERNAL_TOOL_BIN_VARIABLE] = str(directory)
+    native_lstat = Path.lstat
+
+    class ForeignMode:
+        def __index__(self) -> int:
+            raise AssertionError("foreign file-mode index hook executed")
+
+        def __and__(self, _other: object) -> int:
+            raise AssertionError("foreign file-mode mask hook executed")
+
+    invalid: object = {
+        "foreign": ForeignMode(),
+        "boolean": True,
+        "negative": -1,
+        "oversized": 1 << 100,
+    }[mode]
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        status = native_lstat(path)
+        if path == target:
+            return os.stat_result(
+                cast("tuple[float, ...]", cast("object", (invalid, *tuple(status)[1:])))
+            )
+        return status
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", forged_lstat)
+        pattern = "external.*directory" if external else "missing executable"
+        with pytest.raises(jig_runner.JigRunnerError, match=pattern):
+            _ = jig_runner.jig_environment(tmp_path, inherited)
+
+
 def test_runner_cli_never_formats_foreign_tool_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

@@ -85,7 +85,12 @@ def _regular_executable(path: Path) -> bool:
     """
     try:
         status = path.lstat()
-        if type(status) is not os.stat_result or not S_ISREG(status.st_mode):
+        if type(status) is not os.stat_result:
+            return False
+        mode = status.st_mode
+        if type(mode) is not int or not (0 <= mode <= 0xFFFFFFFF):
+            return False
+        if not S_ISREG(mode):
             return False
         executable = os.access(path, os.X_OK)
         return type(executable) is bool and executable

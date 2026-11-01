@@ -110,7 +110,9 @@ physical executable `chktex`; it rejects symlinks in either path, missing
 executables, path-list injection and directories inside the repository. Native
 filesystem evidence is required: redirect checks and directory/executable-mode
 queries must yield exact booleans, and file status must be an exact native
-`os.stat_result`. A foreign resolved-path object cannot supply path authority.
+`os.stat_result` with a native unsigned 32-bit file-mode integer. Foreign mode
+objects and negative or oversized mode values fail before file-type checks.
+A foreign resolved-path object cannot supply path authority.
 The explicit directory sits after `.dependencies/bin` and before the system
 default on the child `PATH`. If host filesystem status or path resolution
 raises a type or runtime exception, pinned launchers are treated as unavailable
