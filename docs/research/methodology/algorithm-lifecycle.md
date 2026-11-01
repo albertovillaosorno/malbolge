@@ -52,8 +52,10 @@ noncanonical filenames, and already-linked parent directories fail before
 the manifest is read. Loading then accepts at most 1 MiB from a stable regular-
 file descriptor, rejecting symlinked leaves, special files, file replacements,
 and invalid UTF-8 before TOML admission. File receipts must contain native
-bytes, and malformed UTF-8 retains its original decoder cause. CLI errors
-exclude foreign exception formatters. Host TOML parser capacity errors,
+bytes; the buffered reader must be an exact native wrapper over an exact native
+file object bound to the owned descriptor, so a substituted stream cannot
+supply forged bytes. Malformed UTF-8 retains its original decoder cause. CLI
+errors exclude foreign exception formatters. Host TOML parser capacity errors,
 including oversized decimal integer tokens, produce typed lifecycle failures.
 File and evidence admission requires exact native stat receipts, native
 nonnegative descriptor integers, native bytes from file reads, and exact boolean

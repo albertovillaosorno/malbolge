@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import io
 import ntpath
 import os
 import sys
@@ -560,6 +561,29 @@ def _read_lifecycle_file(path: Path) -> bytes:
         except OSError:
             pass
         raise
+    # A returned stream may lie about its fileno and supply unrelated bytes.
+    # Require the actual native buffered/file wrappers bound to our owned fd.
+    if type(stream) is not io.BufferedReader:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        _fail("algorithm lifecycle manifest requires native stream receipt")
+    raw = stream.raw
+    if (
+        type(raw) is not io.FileIO
+        or type(raw.name) is not int
+        or raw.name != descriptor
+        or raw.fileno() != descriptor
+        or stream.fileno() != descriptor
+    ):
+        # Even a native buffered wrapper can contain an unowned raw stream;
+        # close only our descriptor, never the returned wrapper's raw object.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        _fail("algorithm lifecycle manifest requires native stream receipt")
     with stream:
         return _read_lifecycle_bytes(stream, admitted, path)
 
