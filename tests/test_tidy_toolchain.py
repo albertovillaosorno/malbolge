@@ -44,6 +44,7 @@ import sys
 from typing import Self
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import final
 from typing import override
 
 if TYPE_CHECKING:
@@ -1065,7 +1066,7 @@ def test_llvm_version_probe_keeps_native_output(
 ) -> None:
     """Exact native subprocess results preserve the readable version text."""
     receipt = sp.CompletedProcess(
-        ["clang"], 0, "clang version 22.1.8", "warning"
+        ["clang", "--version"], 0, "clang version 22.1.8", "warning"
     )
     _mock_version_run(monkeypatch, receipt)
     output = tidy_toolchain._tool_output(Path("clang"))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
@@ -1378,3 +1379,101 @@ def test_tidy_manifest_decoder_preserves_native_cause(
     ) as caught:
         _ = tidy_toolchain.load_identity(source, root=tmp_path)
     assert type(caught.value.__cause__) is UnicodeDecodeError
+
+
+class ForeignLLVMRedirectReceipt:
+    """A foreign path redirect result must not run its truthiness hook."""
+
+    def __bool__(self) -> bool:
+        """Reject use of an untrusted junction or symlink status.
+
+        Raises:
+            AssertionError: A foreign truthiness hook was invoked.
+
+        """
+        message = "foreign LLVM redirect truthiness hook executed"
+        raise AssertionError(message)
+
+
+REDIRECT_LEAF = "leaf"
+REDIRECT_SYMLINK = "is_symlink"
+REDIRECT_CASES = [
+    (source_kind, scope, kind)
+    for source_kind in (SOURCE_MANIFEST, "archive")
+    for scope in (REDIRECT_LEAF, "parent")
+    for kind in (REDIRECT_SYMLINK, "is_junction")
+]
+
+
+@pytest.mark.parametrize("case", REDIRECT_CASES)
+@pytest.mark.parametrize(
+    "receipt", [None, 0, 0.0, ForeignLLVMRedirectReceipt()]
+)
+def test_tidy_source_rejects_foreign_redirect_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    case: tuple[str, str, str],
+    receipt: object,
+) -> None:
+    """Only exact host booleans may decide source path redirection."""
+    source_kind, scope, kind = case
+    source, identity = _tidy_source_case(tmp_path, source_kind)
+    selected = source if scope == REDIRECT_LEAF else tmp_path
+    native_status = (
+        Path.is_symlink if kind == REDIRECT_SYMLINK else Path.is_junction
+    )
+
+    def forged_redirect(path: Path) -> object:
+        return receipt if path == selected else native_status(path)
+
+    monkeypatch.setattr(Path, kind, forged_redirect)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match=r"invalid .*receipt"
+    ):
+        _verify_tidy_source(source, identity, source_kind)
+
+
+@final
+class ForeignLLVMArgv:
+    """A foreign process argument receipt may have comparison hooks."""
+
+    __hash__ = object.__hash__
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        """Reject invoking untrusted version process argument equality.
+
+        Raises:
+            AssertionError: A foreign command comparison was invoked.
+
+        """
+        del other
+        message = "foreign LLVM argv equality executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["other-tool", "--version"],
+        ["clang", "--help"],
+        ["clang", "--version", "--unknown"],
+        ("clang", "--version"),
+        ForeignLLVMArgv(),
+        ["clang", cast("str", cast("object", b"--version"))],
+    ],
+)
+def test_llvm_version_probe_rejects_wrong_command_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    argv: object,
+) -> None:
+    """A passing status for another invocation is not toolchain evidence."""
+    receipt: sp.CompletedProcess[str] = sp.CompletedProcess(
+        cast("list[str]", argv), 0, "clang version 22.1.8", ""
+    )
+    _mock_version_run(monkeypatch, receipt)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="invalid LLVM version"
+    ):
+        _ = tidy_toolchain._tool_output(Path("clang"))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]

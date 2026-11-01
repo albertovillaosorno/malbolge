@@ -274,11 +274,23 @@ def _regular_source_identity(
     )
 
 
+def _reject_source_redirect(path: Path, label: str) -> None:
+    """Require native symlink and junction decisions for evidence paths."""
+    for name, probe in (
+        ("symlink", path.is_symlink),
+        ("junction", path.is_junction),
+    ):
+        redirect = probe()
+        if type(redirect) is not bool:
+            _fail(f"invalid {label} {name} receipt")
+        if redirect:
+            _fail(f"{label} path must not redirect")
+
+
 def _check_source_parents(path: Path, label: str) -> None:
     """Reject alias directories rather than borrowing external evidence."""
     for parent in path.parents:
-        if parent.is_symlink() or parent.is_junction():
-            _fail(f"{label} path must not redirect")
+        _reject_source_redirect(parent, label)
 
 
 def _opened_binary_stream(descriptor: int, label: str) -> io.BufferedReader:
@@ -323,8 +335,7 @@ def _open_regular_source(
     _check_source_parents(path, label)
     admitted = path.lstat()
     expected = _regular_source_identity(admitted, label)
-    if path.is_symlink() or path.is_junction():
-        _fail(f"{label} path must not redirect")
+    _reject_source_redirect(path, label)
     flags = (
         os.O_RDONLY
         | getattr(os, "O_NOFOLLOW", 0)
@@ -703,8 +714,8 @@ def load_identity(
     )
 
 
-def _native_version_receipt(completed: object) -> bool:
-    """Admit only native subprocess exit and decoded text evidence.
+def _native_version_receipt(completed: object, argv: list[str]) -> bool:
+    """Admit only native subprocess identity, exit, and decoded text evidence.
 
     Returns:
         Whether the process receipt is fully native.
@@ -713,18 +724,26 @@ def _native_version_receipt(completed: object) -> bool:
     if type(completed) is not sp.CompletedProcess:
         return False
     native = cast("sp.CompletedProcess[object]", completed)
+    command = cast("object", native.args)
+    if type(command) is not list:
+        return False
+    native_command = cast("list[object]", command)
     return (
-        type(native.returncode) is int
+        len(native_command) == len(argv)
+        and all(type(part) is str for part in native_command)
+        and native_command == argv
+        and type(native.returncode) is int
         and type(native.stdout) is str
         and type(native.stderr) is str
     )
 
 
 def _tool_output(path: Path) -> str:
+    argv = [str(path), "--version"]
     try:
         # jig-ignore-next-line: indivisible reviewed Ruff rule identifier
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [str(path), "--version"],
+            argv,
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -735,7 +754,7 @@ def _tool_output(path: Path) -> str:
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = f"failed to execute LLVM version query {path}: "
         raise ToolchainError(message + _host_error_detail(error)) from error
-    if not _native_version_receipt(completed):
+    if not _native_version_receipt(completed, argv):
         _fail(f"invalid LLVM version query process receipt: {path}")
     if completed.returncode != 0:
         _fail(f"LLVM version query failed: {path}")
