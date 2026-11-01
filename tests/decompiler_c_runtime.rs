@@ -33,6 +33,7 @@
 
 #![cfg(target_os = "linux")]
 
+use std::array::from_fn;
 use std::env::temp_dir;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -131,6 +132,55 @@ int main(void)
     status = run_case(NULL, 0, EXPECTED_EOF_BYTE);
     if (status != 0) { return status; }
     return check_atomic_exhaustion();
+}
+";
+
+const FULL_BINARY_STREAM_HARNESS: &str = "
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int main(void)
+{
+    uint8_t input[256];
+    uint8_t output[256] = {0};
+    uint32_t *memory = calloc(MB_MEMORY_WORDS, sizeof(*memory));
+    struct mb_result result;
+    uint32_t registers[3];
+    int status;
+    size_t index;
+    size_t byte;
+    if (memory == NULL) { return 50; }
+    for (index = 0; index < sizeof(input); ++index) {
+        input[index] = (uint8_t)index;
+    }
+    status = malbolge_decompiled_run(memory, MB_MEMORY_WORDS,
+        input, sizeof(input), output, sizeof(output), 513, &result);
+    if (status != MB_STATUS_HALT || result.status != MB_STATUS_HALT
+        || result.steps != 513 || result.output_len != sizeof(output)
+        || result.input_consumed != sizeof(input)
+        || memcmp(input, output, sizeof(input)) != 0) {
+        free(memory);
+        return 51;
+    }
+    registers[0] = result.accumulator;
+    registers[1] = result.code_pointer;
+    registers[2] = result.data_pointer;
+    if (fwrite(output, 1, sizeof(output), stdout) != sizeof(output)) {
+        free(memory);
+        return 52;
+    }
+    for (index = 0; index < 516; ++index) {
+        uint32_t value = index < 513 ? memory[index] : registers[index - 513];
+        for (byte = 0; byte < sizeof(value); ++byte) {
+            if (fputc((int)((value >> (byte * 8)) & 0xffu), stdout) == EOF) {
+                free(memory);
+                return 53;
+            }
+        }
+    }
+    free(memory);
+    return 0;
 }
 ";
 
@@ -404,6 +454,104 @@ fn generated_c_versioned_profiles_preserve_binary_io_and_output_refusal()
             .ok_or_else(|| format!("missing immutable profile {id}"))?;
         let source = binary_io_source(profile)?;
         verify_generated_binary_io_against_vm(profile, &source)?;
+    }
+    Ok(())
+}
+
+fn full_binary_stream_source(profile: &ProfileDescriptor) -> Result<[u8; 513], String> {
+    source_for_instructions(from_fn(|index| {
+        if index == 512 {
+            b'v'
+        } else if index.is_multiple_of(2) {
+            profile.input_instruction()
+        } else {
+            profile.output_instruction()
+        }
+    }))
+}
+
+fn expected_vm_full_binary_stream(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<Vec<u8>, String> {
+    let input = (u8::MIN..=u8::MAX).collect::<Vec<_>>();
+    let mut machine = ProfileMachine::from_source(profile, source, input.clone())
+        .map_err(|error| error.to_string())?;
+    let outcome = machine.run(513).map_err(|error| error.to_string())?;
+    if outcome
+        != (RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 513,
+        })
+        || machine.input_consumed() != input.len()
+        || machine.output() != input
+    {
+        return Err(format!(
+            "unexpected normative binary stream for {}: {outcome:?}",
+            profile.id()
+        ));
+    }
+    let mut expected = input;
+    for word in machine.memory().iter().take(513).copied().chain([
+        machine.registers().accumulator,
+        machine.registers().code_pointer,
+        machine.registers().data_pointer,
+    ]) {
+        expected.extend_from_slice(&word.to_le_bytes());
+    }
+    Ok(expected)
+}
+
+fn verify_generated_full_binary_stream_against_vm(
+    profile: &'static ProfileDescriptor,
+) -> Result<(), String> {
+    let source = full_binary_stream_source(profile)?;
+    let directory = temporary_directory()?;
+    let result = (|| {
+        let executable = compile_generated_program(
+            &directory,
+            &source,
+            profile.id(),
+            FULL_BINARY_STREAM_HARNESS,
+        )?;
+        let executed = Command::new(&executable)
+            .output()
+            .map_err(|error| format!("execute full binary C for {}: {error}", profile.id()))?;
+        let expected = expected_vm_full_binary_stream(profile, &source)?;
+        if !executed.status.success() || !executed.stderr.is_empty() || executed.stdout != expected
+        {
+            return Err(format!(
+                "generated C full binary stream differs from VM for {}: \
+                 status={} stderr={} bytes={} expected={}",
+                profile.id(),
+                executed.status,
+                String::from_utf8_lossy(&executed.stderr),
+                executed.stdout.len(),
+                expected.len(),
+            ));
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("clean generated C fixtures: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
+fn generated_c_full_binary_stream_matches_all_profile_vms() -> Result<(), String> {
+    // The 513 executed cells cross the decoder's 94 position phases repeatedly.
+    // Include immutable profiles that swap the input/output opcode identities.
+    for id in [
+        "malbolge-1998",
+        "malbolge-2026",
+        "malbolge-2026.1",
+        "malbolge-2026.2",
+        "malbolge-2026.3",
+    ] {
+        let profile =
+            target_profile(id).ok_or_else(|| format!("missing registered profile {id}"))?;
+        verify_generated_full_binary_stream_against_vm(profile)?;
     }
     Ok(())
 }

@@ -47,7 +47,13 @@ capacity refusal. An all-profile regression refuses the second output after
 one byte commits, preserving the first output and full machine state from a
 two-step baseline. Frozen 2026.1/.2/.3 profiles exercise their selected input/
 output instructions, EOF words, and 10-/14-trit geometry through the same C-vs-
-VM binary I/O check. Current-profile fixtures verify the larger 15-trit
+VM binary I/O check. A separate all-profile, 513-instruction differential
+replays all 256 binary values in order as actual guest input/output, crossing
+position-dependent decode phases repeatedly. The executable C result must
+match the normative VM's entire output and input cursor, the final `A`/`C`/`D`
+registers, and all 513 reached (post-encryption) source cells. This is bounded
+successful-stream evidence, not EOF or arbitrary program equivalence.
+Current-profile fixtures verify the larger 15-trit
 geometry and EOF low-byte output without assuming the historical 10-trit
 sentinel. Both profiles also reject an indirect jump to a non-graphical
 encryption target atomically, preserving the pre-step memory and registers.
