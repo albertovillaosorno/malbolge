@@ -35,16 +35,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import filecmp
 import os
-from pathlib import Path
 import shutil
-from stat import S_ISDIR
-from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-from typing import Final
-from typing import Never
+from dataclasses import dataclass
+from pathlib import Path
+from stat import S_ISDIR, S_ISREG
+from typing import Final, Never
 
 LLVM_VERSION: Final = "22.1.8"
 LLVM_ROOT: Final = Path(".dependencies/llvm") / LLVM_VERSION
@@ -310,6 +308,28 @@ def _stage_linux_llvm(
     _write_import_marker(staged, LINUX_PLATFORM)
 
 
+def _admit_linux_import_staging(root: Path, staging: Path) -> None:
+    """Fail closed before cleanup or writes through redirected staging paths."""
+    if not _physical_directory(root):
+        _fail("LLVM import staging repository root must be physical")
+    temporary_root = root / ".temp"
+    if temporary_root.is_symlink() or temporary_root.is_junction():
+        _fail("LLVM import staging root must not redirect")
+    if not temporary_root.exists():
+        try:
+            temporary_root.mkdir()
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM import staging root creation failed: {type(error).__name__}"
+            ) from error
+    if not _physical_directory(temporary_root):
+        _fail("LLVM import staging root must be a physical directory")
+    if staging.is_symlink() or staging.is_junction():
+        _fail("LLVM import staging directory must not redirect")
+    if staging.exists() and not _physical_directory(staging):
+        _fail("LLVM import staging directory must be physical")
+
+
 def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     """Import one exact Linux LLVM runtime into repository-local state.
 
@@ -328,11 +348,16 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     ):
         _fail("repository-local LLVM exists without the exact import marker")
     staging = root / ".temp" / "llvm-import-linux-x86_64"
+    _admit_linux_import_staging(root, staging)
     if staging.exists():
         shutil.rmtree(staging)
+    _admit_linux_import_staging(root, staging)
     staged = staging / "llvm"
     try:
         _stage_linux_llvm(staged, observation)
+        _admit_linux_import_staging(root, staging)
+        if not _physical_directory(staged):
+            _fail("LLVM import staging source must be a physical directory")
         destination.parent.mkdir(parents=True, exist_ok=True)
         _ = staged.replace(destination)
     finally:

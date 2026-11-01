@@ -106,6 +106,40 @@ def test_linux_import_materializes_local_runtime_and_neutral_aliases(
     assert llvm_validation.import_linux_llvm(tmp_path, observation) == root
 
 
+@pytest.mark.parametrize(
+    "staging_fault",
+    ("redirected-root", "nondirectory-root", "redirected-stage"),
+)
+def test_linux_import_rejects_untrusted_staging_before_copy(
+    tmp_path: Path,
+    staging_fault: str,
+) -> None:
+    """Repository-local LLVM staging cannot redirect imports outside .temp."""
+    observation = _host_observation(tmp_path)
+    outside = tmp_path / "unrelated-staging"
+    outside.mkdir()
+    temporary_root = tmp_path / ".temp"
+    if staging_fault == "redirected-root":
+        try:
+            temporary_root.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unsupported: {error}")
+    elif staging_fault == "nondirectory-root":
+        _ = temporary_root.write_text("foreign temporary root", encoding="utf-8")
+    else:
+        temporary_root.mkdir()
+        try:
+            (temporary_root / "llvm-import-linux-x86_64").symlink_to(
+                outside, target_is_directory=True
+            )
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unsupported: {error}")
+    with pytest.raises(llvm_validation.LlvmImportError, match="LLVM.*staging"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+    assert not tuple(outside.iterdir())
+
+
 def test_windows_aliases_preserve_existing_executable_bytes(
     tmp_path: Path,
 ) -> None:
