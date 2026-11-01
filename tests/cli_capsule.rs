@@ -108,10 +108,6 @@ impl TemporaryCapsule {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
-)]
 impl Drop for TemporaryCapsule {
     fn drop(&mut self) {
         let _ignored = remove_file(&self.path);
@@ -133,10 +129,6 @@ impl TemporaryMarker {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
-)]
 impl Drop for TemporaryMarker {
     fn drop(&mut self) {
         let _ignored = remove_file(&self.path);

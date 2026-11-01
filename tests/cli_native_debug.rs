@@ -94,10 +94,6 @@ impl TemporaryRejectedCSource {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
-)]
 impl Drop for TemporaryRejectedCSource {
     fn drop(&mut self) {
         let _ignored = remove_file(&self.path);
@@ -186,10 +182,6 @@ impl InvalidTemporaryCSource {
 }
 
 #[cfg(windows)]
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
-)]
 impl Drop for InvalidTemporaryCSource {
     fn drop(&mut self) {
         let _ignored = remove_file(&self.path);
