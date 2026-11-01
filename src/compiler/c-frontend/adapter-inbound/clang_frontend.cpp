@@ -197,14 +197,55 @@ public:
 private:
   using Base = clang::RecursiveASTVisitor<Normalizer>;
 
+  // The canonical form of ptr(AlignedInt) is ptr(int). Check the full
+  // sugar-bearing type graph before canonicalization can erase an aligned
+  // typedef introduced by a private header.
+  [[nodiscard]] bool has_nested_typedef_alignment(clang::QualType input) {
+    if (input.isNull()) {
+      return false;
+    }
+    const clang::Type *type = input.getTypePtr();
+    if (const auto *alias = llvm::dyn_cast<clang::TypedefType>(type);
+        alias != nullptr && has_layout_attributes(*alias->getDecl())) {
+      return true;
+    }
+    const clang::QualType desugared =
+        input.getSingleStepDesugaredType(context_);
+    if (desugared.getTypePtrOrNull() != type &&
+        has_nested_typedef_alignment(desugared)) {
+      return true;
+    }
+    if (const auto *pointer = llvm::dyn_cast<clang::PointerType>(type)) {
+      return has_nested_typedef_alignment(pointer->getPointeeType());
+    }
+    if (const auto *array = llvm::dyn_cast<clang::ArrayType>(type)) {
+      return has_nested_typedef_alignment(array->getElementType());
+    }
+    if (const auto *function = llvm::dyn_cast<clang::FunctionProtoType>(type)) {
+      for (clang::QualType parameter : function->param_types()) {
+        if (has_nested_typedef_alignment(parameter)) {
+          return true;
+        }
+      }
+    }
+    if (const auto *function = llvm::dyn_cast<clang::FunctionType>(type)) {
+      return has_nested_typedef_alignment(function->getReturnType());
+    }
+    if (const auto *atomic = llvm::dyn_cast<clang::AtomicType>(type)) {
+      return has_nested_typedef_alignment(atomic->getValueType());
+    }
+    if (const auto *complex = llvm::dyn_cast<clang::ComplexType>(type)) {
+      return has_nested_typedef_alignment(complex->getElementType());
+    }
+    return false;
+  }
+
   [[nodiscard]] std::optional<std::string>
   normalize_type(clang::QualType input) {
     if (input.isNull()) {
       return std::nullopt;
     }
-    if (const auto *alias =
-            llvm::dyn_cast<clang::TypedefType>(input.getTypePtr());
-        alias != nullptr && has_layout_attributes(*alias->getDecl())) {
+    if (has_nested_typedef_alignment(input)) {
       failure_ = "MALBOLGE-FRONTEND-002 unsupported C declaration alignment";
       return std::nullopt;
     }

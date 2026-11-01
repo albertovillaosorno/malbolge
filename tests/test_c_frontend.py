@@ -854,6 +854,63 @@ def test_imported_aligned_typedef_fails_closed(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "AlignedInt *pointer;\n",
+        "AlignedInt **double_pointer;\n",
+        "void consume(AlignedInt *value) {}\n",
+        "void (*callback)(AlignedInt *value);\n",
+        "const AlignedInt *qualified_pointer;\n",
+        "typedef AlignedInt *AlignedPointer; AlignedPointer nested;\n",
+    ],
+)
+def test_imported_nested_aligned_typedef_fails_closed(
+    tmp_path: Path, declaration: str
+) -> None:
+    """Nested header typedef alignment must survive sugared type traversal."""
+    _ = (tmp_path / "types.h").write_text(
+        "typedef int AlignedInt __attribute__((aligned(64)));\n",
+        encoding="utf-8",
+    )
+    source = tmp_path / "source.c"
+    _ = source.write_text(
+        '#include "types.h"\n' + declaration, encoding="utf-8"
+    )
+    completed = _run_frontend(
+        source,
+        "fixtures/nested-aligned-alias.c",
+        guest_include=tmp_path,
+    )
+    assert completed.returncode == NORMALIZE_STATUS
+    assert not completed.stdout
+    assert completed.stderr == (
+        "MALBOLGE-FRONTEND-002 unsupported C declaration alignment\n"
+    )
+
+
+def test_imported_plain_typedef_pointer_preserves_canonical_type(
+    tmp_path: Path,
+) -> None:
+    """The nested-layout guard must not reject ordinary private typedefs."""
+    _ = (tmp_path / "types.h").write_text(
+        "typedef int PlainInt;\n",
+        encoding="utf-8",
+    )
+    source = tmp_path / "source.c"
+    _ = source.write_text(
+        '#include "types.h"\nPlainInt **pointer;\n', encoding="utf-8"
+    )
+    artifact = _artifact(
+        _run_frontend(
+            source,
+            "fixtures/plain-alias.c",
+            guest_include=tmp_path,
+        )
+    )
+    assert _named_node(artifact, "pointer")["type"] == "ptr(ptr(i32))"
+
+
 def test_imported_packed_record_type_fails_closed(tmp_path: Path) -> None:
     """Header-defined packing still affects main-source value layout."""
     _ = (tmp_path / "types.h").write_text(

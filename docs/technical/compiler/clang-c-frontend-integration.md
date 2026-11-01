@@ -178,6 +178,12 @@ layout constraints and cannot silently treat an attributed record as plain.
 Explicitly aligned values and aligned typedef aliases likewise fail with
 `MALBOLGE-FRONTEND-002`, including aligned aliases imported from headers;
 normalizing them to a plain integer type would erase alignment semantics.
+The frontend checks the original sugar-bearing type graph before canonicalizing
+it: an aligned typedef imported from a private header must also be rejected
+when hidden under one or more pointers, function signatures, qualifiers, or a
+second typedef alias. Otherwise the canonical `ptr(i32)` spelling would erase
+an alignment-sensitive pointee type without admission evidence. Ordinary
+unaligned header typedefs retain their canonical pointer types.
 
 ### Declaration semantics
 
