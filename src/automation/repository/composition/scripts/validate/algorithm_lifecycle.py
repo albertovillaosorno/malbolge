@@ -370,7 +370,9 @@ def parse_lifecycle(text: str) -> AlgorithmLifecycle:
     )
 
 
-def _same_regular_file(first: os.stat_result, second: os.stat_result) -> bool:
+def _same_regular_file(first: object, second: object) -> bool:
+    if type(first) is not os.stat_result or type(second) is not os.stat_result:
+        _fail("algorithm lifecycle evidence requires native stat receipt")
     return (
         S_ISREG(first.st_mode)
         and S_ISREG(second.st_mode)
@@ -402,13 +404,26 @@ def _evidence_fallback(parts: tuple[str, ...]) -> None:
     for index, part in enumerate(parts):
         current /= part
         status = current.lstat()
+        if type(status) is not os.stat_result:
+            _fail("algorithm lifecycle evidence requires native stat receipt")
         required = S_ISREG if index == len(parts) - 1 else S_ISDIR
-        if current.is_symlink() or current.is_junction():
+        symlink = current.is_symlink()
+        junction = current.is_junction()
+        if type(symlink) is not bool or type(junction) is not bool:
+            _fail("algorithm lifecycle evidence requires native redirect receipt")
+        if symlink or junction:
             message = f"linked evidence component: {current}"
             raise OSError(message)
         if not required(status.st_mode):
             message = f"nonregular evidence component: {current}"
             raise OSError(message)
+
+
+def _native_descriptor(value: object, context: str) -> int:
+    """Reject unbound and caller-owned descriptor receipts before ownership."""
+    if type(value) is not int or value < 0:
+        _fail(f"algorithm lifecycle {context} requires native descriptor")
+    return value
 
 
 def _next_directory_fd(current: int, part: str, flags: int) -> int:
@@ -418,7 +433,7 @@ def _next_directory_fd(current: int, part: str, flags: int) -> int:
         The opened child directory descriptor, replacing the caller's.
 
     """
-    next_fd = os.open(part, flags, dir_fd=current)
+    next_fd = _native_descriptor(os.open(part, flags, dir_fd=current), "directory")
     os.close(current)
     return next_fd
 
@@ -431,7 +446,7 @@ def _check_evidence_leaf(directory: int, name: str) -> None:
 
     """
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-    leaf = os.open(name, flags, dir_fd=directory)
+    leaf = _native_descriptor(os.open(name, flags, dir_fd=directory), "evidence leaf")
     try:
         opened = os.fstat(leaf)
         visible = os.stat(name, dir_fd=directory, follow_symlinks=False)
@@ -445,7 +460,7 @@ def _check_evidence_leaf(directory: int, name: str) -> None:
 def _evidence_descriptor_walk(parts: tuple[str, ...]) -> None:
     """Pin each directory while admitting one regular evidence leaf."""
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    current = os.open(ROOT, flags)
+    current = _native_descriptor(os.open(ROOT, flags), "evidence root")
     try:
         for part in parts[:-1]:
             current = _next_directory_fd(current, part, flags)
@@ -503,13 +518,15 @@ def _read_lifecycle_bytes(
         Lifecycle bytes, prior to strict UTF-8 decoding.
 
     """
-    opened = os.fstat(stream.fileno())
+    opened = os.fstat(_native_descriptor(stream.fileno(), "manifest stream"))
     if not _same_regular_file(admitted, opened):
         _fail(f"algorithm lifecycle manifest changed: {path}")
     if opened.st_size > MAX_LIFECYCLE_BYTES:
         _fail(f"algorithm lifecycle manifest exceeds size limit: {path}")
     raw = stream.read(MAX_LIFECYCLE_BYTES + 1)
-    after = os.fstat(stream.fileno())
+    if type(raw) is not bytes:
+        _fail("algorithm lifecycle requires native byte receipt")
+    after = os.fstat(_native_descriptor(stream.fileno(), "manifest stream"))
     visible = path.lstat()
     if (
         len(raw) != opened.st_size
@@ -528,10 +545,12 @@ def _read_lifecycle_file(path: Path) -> bytes:
 
     """
     admitted = path.lstat()
+    if type(admitted) is not os.stat_result:
+        _fail("algorithm lifecycle manifest requires native stat receipt")
     if not S_ISREG(admitted.st_mode):
         _fail(f"algorithm lifecycle manifest must be regular: {path}")
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-    descriptor = os.open(path, flags)
+    descriptor = _native_descriptor(os.open(path, flags), "manifest")
     try:
         stream = os.fdopen(descriptor, "rb")
     except BaseException:

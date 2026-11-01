@@ -37,7 +37,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self, cast, override
 
 if TYPE_CHECKING:
     from typing import BinaryIO
@@ -770,3 +770,248 @@ def test_lifecycle_cli_never_formats_foreign_exceptions(
     report = capsys.readouterr()
     assert "ForeignLifecycleCliError" in report.err
     assert not report.out
+
+
+@pytest.mark.parametrize("phase", ["admitted", "opened", "after", "visible"])
+def test_lifecycle_forged_manifest_stat_receipt_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Path and descriptor stat values cannot invoke foreign field hooks."""
+    path = tmp_path / "lifecycle.toml"
+    _ = path.write_text(_base(validator.EXPERIMENTAL))
+
+    class ForeignStat:
+        @override
+        def __getattribute__(self, name: str) -> object:
+            del self, name
+            raise AssertionError("foreign stat field hook executed")
+
+    native_lstat = Path.lstat
+    native_fstat = os.fstat
+    lstat_calls = 0
+    fstat_calls = 0
+
+    def forged_lstat(target: Path) -> os.stat_result:
+        nonlocal lstat_calls
+        if target == path:
+            lstat_calls += 1
+            if (phase == "admitted" and lstat_calls == 1) or (
+                phase == "visible" and lstat_calls == 2
+            ):
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return native_lstat(target)
+
+    def forged_fstat(fd: int) -> os.stat_result:
+        nonlocal fstat_calls
+        fstat_calls += 1
+        if (phase == "opened" and fstat_calls == 1) or (
+            phase == "after" and fstat_calls == 2
+        ):
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return native_fstat(fd)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="native stat"):
+        _ = validator._read_utf8(path)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("descriptor", [True, False, -1, 3.0])
+def test_lifecycle_forged_manifest_open_descriptor_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, descriptor: object
+) -> None:
+    """A failed native-fd admission must never close an unowned descriptor."""
+    path = tmp_path / "lifecycle.toml"
+    _ = path.write_text(_base(validator.EXPERIMENTAL))
+    native_open = os.open
+
+    def forged_open(target: Path, flags: int) -> int:
+        if target == path:
+            return cast("int", descriptor)
+        return native_open(target, flags)
+
+    monkeypatch.setattr(os, "open", forged_open)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="native descriptor"):
+        _ = validator._read_utf8(path)  # pyright: ignore[reportPrivateUsage]
+
+
+class _LifecycleReadStream:
+    """Own a real source fd and forge a single stream return value."""
+
+    def __init__(self, wrapped: BinaryIO, payload: object, fd: object = None) -> None:
+        self.wrapped: BinaryIO = wrapped
+        self.payload: object = payload
+        self.fd: object = fd
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        del args
+        self.wrapped.close()
+
+    def fileno(self) -> int:
+        return cast("int", self.fd if self.fd is not None else self.wrapped.fileno())
+
+    def read(self, size: int) -> bytes:
+        del size
+        return cast("bytes", self.payload)
+
+
+@pytest.mark.parametrize("kind", ["text", "list", "subclass"])
+def test_lifecycle_forged_manifest_read_receipt_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Source bytes must be exact native bytes before any length inspection."""
+    path = tmp_path / "lifecycle.toml"
+    source = _base(validator.EXPERIMENTAL).encode()
+    _ = path.write_bytes(source)
+    native_fdopen = os.fdopen
+
+    class ForeignBytes(bytes):
+        @override
+        def __len__(self) -> int:
+            raise AssertionError("foreign byte length hook executed")
+
+    payloads: dict[str, object] = {
+        "text": source.decode(),
+        "list": list(source),
+        "subclass": ForeignBytes(source),
+    }
+
+    def forged_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        wrapped = cast("BinaryIO", native_fdopen(descriptor, mode))
+        return cast(
+            "BinaryIO", cast("object", _LifecycleReadStream(wrapped, payloads[kind]))
+        )
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="native byte"):
+        _ = validator._read_utf8(path)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("descriptor", [True, -1, 3.0])
+def test_lifecycle_forged_manifest_stream_descriptor_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, descriptor: object
+) -> None:
+    """A forged stream fileno cannot serve as native descriptor evidence."""
+    path = tmp_path / "lifecycle.toml"
+    source = _base(validator.EXPERIMENTAL).encode()
+    _ = path.write_bytes(source)
+    native_fdopen = os.fdopen
+
+    def forged_fdopen(fd: int, mode: str) -> BinaryIO:
+        wrapped = cast("BinaryIO", native_fdopen(fd, mode))
+        return cast(
+            "BinaryIO",
+            cast("object", _LifecycleReadStream(wrapped, source, descriptor)),
+        )
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="native descriptor"):
+        _ = validator._read_utf8(path)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("phase", ["root", "directory", "leaf"])
+@pytest.mark.parametrize("descriptor", [True, -1])
+def test_lifecycle_forged_evidence_open_descriptor_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str, descriptor: object
+) -> None:
+    """Directory-relative evidence walks never accept or close fake fds."""
+    root = tmp_path / "repo"
+    proof = root / "docs" / "proof.md"
+    proof.parent.mkdir(parents=True)
+    _ = proof.write_text("evidence")
+    monkeypatch.setattr(validator, "ROOT", root)
+    native_open = os.open
+
+    def forged_open(
+        path: str | os.PathLike[str], flags: int, *, dir_fd: int | None = None
+    ) -> int:
+        if (
+            (phase == "root" and path == root)
+            or (phase == "directory" and path == "docs")
+            or (phase == "leaf" and path == "proof.md")
+        ):
+            return cast("int", descriptor)
+        return native_open(path, flags, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", forged_open)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="native descriptor"):
+        validator._evidence_descriptor_walk(  # pyright: ignore[reportPrivateUsage]
+            ("docs", "proof.md")
+        )
+
+
+@pytest.mark.parametrize("phase", ["opened", "visible"])
+def test_lifecycle_forged_evidence_stat_receipt_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Descriptor and path evidence identities require native status results."""
+    root = tmp_path / "repo"
+    proof = root / "docs" / "proof.md"
+    proof.parent.mkdir(parents=True)
+    _ = proof.write_text("evidence")
+    monkeypatch.setattr(validator, "ROOT", root)
+    native_fstat = os.fstat
+    native_stat = os.stat
+
+    def forged_fstat(fd: int) -> os.stat_result:
+        if phase == "opened":
+            return cast("os.stat_result", object())
+        return native_fstat(fd)
+
+    def forged_stat(
+        path: str | os.PathLike[str],
+        *,
+        dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        if phase == "visible" and path == "proof.md":
+            return cast("os.stat_result", object())
+        return native_stat(path, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    monkeypatch.setattr(os, "stat", forged_stat)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="native stat"):
+        validator._require_existing(  # pyright: ignore[reportPrivateUsage]
+            "docs/proof.md", "research record"
+        )
+
+
+@pytest.mark.parametrize("phase", ["status", "symlink", "junction"])
+def test_lifecycle_forged_evidence_fallback_receipt_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Portable fallback file checks reject forged stat and redirect values."""
+    root = tmp_path / "repo"
+    proof = root / "docs" / "proof.md"
+    proof.parent.mkdir(parents=True)
+    _ = proof.write_text("evidence")
+    monkeypatch.setattr(validator, "ROOT", root)
+    native_lstat = Path.lstat
+    native_symlink = Path.is_symlink
+    native_junction = Path.is_junction
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        if phase == "status" and path == proof:
+            return cast("os.stat_result", object())
+        return native_lstat(path)
+
+    def forged_symlink(path: Path) -> bool:
+        if phase == "symlink" and path == proof:
+            return cast("bool", object())
+        return native_symlink(path)
+
+    def forged_junction(path: Path) -> bool:
+        if phase == "junction" and path == proof:
+            return cast("bool", object())
+        return native_junction(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(Path, "is_symlink", forged_symlink)
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="native"):
+        validator._evidence_fallback(  # pyright: ignore[reportPrivateUsage]
+            ("docs", "proof.md")
+        )

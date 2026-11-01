@@ -55,6 +55,11 @@ and invalid UTF-8 before TOML admission. File receipts must contain native
 bytes, and malformed UTF-8 retains its original decoder cause. CLI errors
 exclude foreign exception formatters. Host TOML parser capacity errors,
 including oversized decimal integer tokens, produce typed lifecycle failures.
+File and evidence admission requires exact native stat receipts, native
+nonnegative descriptor integers, native bytes from file reads, and exact boolean
+link/junction decisions in portable path inspection. Forged host return values
+fail closed before their caller-owned hooks are inspected. The checks cover
+read-time identity, not post-validation immutability.
 The stable algorithm ID is bound to its
 research record and experiment manifest. Decision dates require the exact TOML
 local-date value, excluding local and offset date-time values even though Python
