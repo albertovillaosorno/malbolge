@@ -33,7 +33,13 @@ This contract governs:
 The source-level libc preflight reads a stable regular-file snapshot through a
 no-follow descriptor and rechecks its bytes, inode, extent, and timestamps
 after Clang AST parsing. File replacement or concurrent source edits invalidate
-the analysis, including a same-byte replacement with a different inode.
+the analysis, including a same-byte replacement with a different inode. The
+reader admits only exact native stat receipts, nonnegative native descriptor
+integers, and exact native byte-read results before inspecting their fields or
+length. A foreign host return value cannot invoke a caller-owned hook or
+certify the guest source snapshot. The pinned Clang executable status must
+also be an exact host boolean. CLI diagnostics exclude foreign exception
+formatters.
 Clang macro-expanded library references are attributed to the physical source
 invocation, including nested macros, headers, and argument expansions; checking
 only the spelling token would silently admit forbidden or unavailable calls.

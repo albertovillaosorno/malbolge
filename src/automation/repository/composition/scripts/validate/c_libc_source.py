@@ -35,16 +35,14 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import json
 import os
-from pathlib import Path
-from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import Never
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass
+from pathlib import Path
+from stat import S_ISREG
+from typing import TYPE_CHECKING, Never, cast
 
 if TYPE_CHECKING:
     from os import stat_result
@@ -55,8 +53,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(composition_root))
 
 from scripts.repository_root import repository_root
-from scripts.validate import c_abi
-from scripts.validate import c_libc
+from scripts.validate import c_abi, c_libc
 
 ROOT = repository_root(Path(__file__))
 PINNED_LLVM_VERSION = "22.1.8"
@@ -91,8 +88,7 @@ class LibcDiagnostic:
 
         """
         return (
-            f"{self.path}:{self.line}:{self.column}: error: "
-            f"{self.code} {self.message}"
+            f"{self.path}:{self.line}:{self.column}: error: {self.code} {self.message}"
         )
 
 
@@ -214,6 +210,8 @@ def _require_clang(clang: Path) -> None:
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         message = f"Clang status failed for {clang}"
         raise LibcSourceError(message) from error
+    if type(available) is not bool:
+        _fail("Clang preflight requires native status receipt")
     if not available:
         _fail(f"pinned Clang not found: {clang}")
     expected = f"clang version {PINNED_LLVM_VERSION}"
@@ -463,8 +461,7 @@ def _routine_rejection(
         result = (DIAGNOSTIC_UNAVAILABLE, message)
     elif name in libc.forbidden_routines:
         message = (
-            f"{name} requires host-dependent semantics forbidden by "
-            f"{libc.libc_id}"
+            f"{name} requires host-dependent semantics forbidden by {libc.libc_id}"
         )
         result = (DIAGNOSTIC_FORBIDDEN, message)
     return result
@@ -477,19 +474,13 @@ def _diagnostic_for_reference(
     result: LibcDiagnostic | None = None
     identity = _reference_identity(node)
     name = None if identity is None else identity[0]
-    is_local = (
-        identity is not None and identity[1] in context.local_function_ids
-    )
+    is_local = identity is not None and identity[1] in context.local_function_ids
     rejection = (
-        None
-        if name is None or is_local
-        else _routine_rejection(name, context.libc)
+        None if name is None or is_local else _routine_rejection(name, context.libc)
     )
     offset = None
     if rejection is not None and name is not None:
-        offset = _macro_expansion_offset(
-            node, context.source, context.source_bytes
-        )
+        offset = _macro_expansion_offset(node, context.source, context.source_bytes)
         if offset is None:
             offset = _source_offset(node, name, context.source_bytes)
     if rejection is not None and offset is not None:
@@ -553,13 +544,15 @@ def _deduplicate(
     )
 
 
-def _source_identity(status: stat_result) -> tuple[int, int, int, int, int]:
+def _source_identity(status: object) -> tuple[int, int, int, int, int]:
     """Return stable regular-file identity and mutation evidence.
 
     Returns:
         Device, inode, size, mtime, and ctime.
 
     """
+    if type(status) is not os.stat_result:
+        _fail("guest C source requires native stat receipt")
     if not S_ISREG(status.st_mode):
         _fail("guest C source must be a regular file")
     return (
@@ -569,6 +562,13 @@ def _source_identity(status: stat_result) -> tuple[int, int, int, int, int]:
         status.st_mtime_ns,
         status.st_ctime_ns,
     )
+
+
+def _source_descriptor(receipt: object) -> int:
+    """Require a nonnegative native descriptor before stat or stream ownership."""
+    if type(receipt) is not int or receipt < 0:
+        _fail("guest C source requires native descriptor")
+    return receipt
 
 
 def _snapshot_open_source(
@@ -582,12 +582,14 @@ def _snapshot_open_source(
         Stable source bytes and file identity.
 
     """
-    opened = os.fstat(stream.fileno())
+    opened = os.fstat(_source_descriptor(stream.fileno()))
     identity = _source_identity(opened)
     if identity != _source_identity(admitted):
         _fail(f"guest C source changed before read: {source}")
     content = stream.read()
-    after = os.fstat(stream.fileno())
+    if type(content) is not bytes:
+        _fail("guest C source requires native byte receipt")
+    after = os.fstat(_source_descriptor(stream.fileno()))
     visible = source.lstat()
     if identity != _source_identity(after):
         _fail(f"guest C source changed during read: {source}")
@@ -607,12 +609,11 @@ def _source_snapshot(source: Path) -> _SourceSnapshot:
     """
     try:
         admitted = source.lstat()
+        _ = _source_identity(admitted)
         flags = (
-            os.O_RDONLY
-            | getattr(os, "O_NOFOLLOW", 0)
-            | getattr(os, "O_NONBLOCK", 0)
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
         )
-        descriptor = os.open(source, flags)
+        descriptor = _source_descriptor(os.open(source, flags))
         try:
             stream = os.fdopen(descriptor, "rb")
         except BaseException:
@@ -728,7 +729,13 @@ def main() -> int:
         c_libc.CLibcValidationError,
         LibcSourceError,
     ) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        detail = (
+            str(error)
+            if type(error)
+            in (c_abi.CAbiValidationError, c_libc.CLibcValidationError, LibcSourceError)
+            else type(error).__name__
+        )
+        _ = sys.stderr.write(f"error: {detail}\n")
         return 2
     return 0 if admitted else 1
 

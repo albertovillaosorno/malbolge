@@ -38,21 +38,18 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
+from pathlib import Path
+from typing import TYPE_CHECKING, Self, cast, override
 
 import pytest
 
-from scripts.validate import c_abi
-from scripts.validate import c_libc
-from scripts.validate import c_libc_source
+from scripts.validate import c_abi, c_libc, c_libc_source
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import BinaryIO
 
 ROOT = Path(__file__).resolve().parents[1]
 LIBC_PATH = ROOT / "docs/technical/specification/c-libc-v1.json"
@@ -81,9 +78,7 @@ HARNESS = ROOT / "tests/tidy/libc/guest_libc_harness.c"
 CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 LLD_LINK = ROOT / ".dependencies/llvm/22.1.8/bin/lld-link.exe"
 LLVM_NM = ROOT / ".dependencies/llvm/22.1.8/bin/llvm-nm.exe"
-VALIDATOR = (
-    ROOT / "src/automation/repository/composition/scripts/validate/main.py"
-)
+VALIDATOR = ROOT / "src/automation/repository/composition/scripts/validate/main.py"
 WINDOWS_OS_NAME = "nt"
 LOADER_SYMLINK = "symlink"
 LOADER_DIRECTORY = "directory"
@@ -100,44 +95,50 @@ WINDOWS_ABI_TARGETS = (
     ("aarch64-pc-windows-msvc", frozenset[str]()),
 )
 WASM_TARGET_MACHINERY = frozenset({"__stack_pointer"})
-EXPECTED_AVAILABLE = frozenset({
-    "ceil",
-    "cos",
-    "fabs",
-    "floor",
-    "memcmp",
-    "memcpy",
-    "memmove",
-    "memset",
-    "strcat",
-    "strcmp",
-    "strcpy",
-    "strlen",
-    "strncpy",
-    "sin",
-    "sqrt",
-    "trunc",
-})
-EXPECTED_UNAVAILABLE = frozenset({
-    "atan2",
-    "calloc",
-    "free",
-    "getchar",
-    "malloc",
-    "putchar",
-    "realloc",
-    "snprintf",
-    "vsnprintf",
-})
-EXPECTED_FORBIDDEN = frozenset({
-    "fopen",
-    "getenv",
-    "setlocale",
-    "signal",
-    "system",
-    "time",
-    "tmpfile",
-})
+EXPECTED_AVAILABLE = frozenset(
+    {
+        "ceil",
+        "cos",
+        "fabs",
+        "floor",
+        "memcmp",
+        "memcpy",
+        "memmove",
+        "memset",
+        "strcat",
+        "strcmp",
+        "strcpy",
+        "strlen",
+        "strncpy",
+        "sin",
+        "sqrt",
+        "trunc",
+    }
+)
+EXPECTED_UNAVAILABLE = frozenset(
+    {
+        "atan2",
+        "calloc",
+        "free",
+        "getchar",
+        "malloc",
+        "putchar",
+        "realloc",
+        "snprintf",
+        "vsnprintf",
+    }
+)
+EXPECTED_FORBIDDEN = frozenset(
+    {
+        "fopen",
+        "getenv",
+        "setlocale",
+        "signal",
+        "system",
+        "time",
+        "tmpfile",
+    }
+)
 SOURCE_REJECTIONS = (
     (
         "libc_malloc_unavailable.c",
@@ -672,7 +673,7 @@ def test_libc_clang_ast_rejects_duplicate_json_evidence_keys(text: str) -> None:
 def test_libc_clang_ast_rejects_nonstandard_json_numbers(number: str) -> None:
     """Clang AST evidence must be strict JSON, not Python extensions."""
     with pytest.raises(c_libc_source.LibcSourceError, match="nonfinite.*AST"):
-        _ = c_libc_source._parse_ast('{"number":' + number + '}', ACCEPTED)
+        _ = c_libc_source._parse_ast('{"number":' + number + "}", ACCEPTED)
 
 
 @pytest.mark.parametrize("value", [None, b"{}", [], 10])
@@ -984,9 +985,7 @@ def test_libc_macro_expansion_rejects_forbidden_call_at_invocation(
     _require_clang()
     source = tmp_path / "macro-system.c"
     if header_contents is not None:
-        _ = (tmp_path / "macro-system.h").write_text(
-            header_contents, encoding="utf-8"
-        )
+        _ = (tmp_path / "macro-system.h").write_text(header_contents, encoding="utf-8")
     text = (
         "extern int system(const char *command);\n"
         + macro
@@ -1136,9 +1135,7 @@ def _undefined_symbols(object_file: Path) -> frozenset[str]:
     completed = _run([str(LLVM_NM), "-u", str(object_file)], ROOT)
     assert completed.returncode == 0, completed.stderr
     return frozenset(
-        line.split()[-1]
-        for line in completed.stdout.splitlines()
-        if line.split()
+        line.split()[-1] for line in completed.stdout.splitlines() if line.split()
     )
 
 
@@ -1321,3 +1318,230 @@ def test_libc_preflight_rejects_same_byte_inode_swap_during_ast(
     monkeypatch.setattr(c_libc_source, "_run_ast", swap_source)
     with pytest.raises(c_libc_source.LibcSourceError, match="changed"):
         _ = c_libc_source.analyze_source(source)
+
+
+@pytest.mark.parametrize("phase", ["admitted", "opened", "after", "visible"])
+def test_libc_source_native_stat_receipts_reject_foreign_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Guest-C source status values must be native before field inspection."""
+    source = tmp_path / "source.c"
+    _ = source.write_bytes(b"int guest(void) { return 0; }\n")
+
+    class ForeignStat:
+        @override
+        def __getattribute__(self, name: str) -> object:
+            del self, name
+            raise AssertionError("foreign guest source stat hook executed")
+
+    original_lstat = Path.lstat
+    original_fstat = os.fstat
+    lstat_calls = 0
+    fstat_calls = 0
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        nonlocal lstat_calls
+        if path == source:
+            lstat_calls += 1
+            if (phase == "admitted" and lstat_calls == 1) or (
+                phase == "visible" and lstat_calls == 2
+            ):
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_lstat(path)
+
+    def forged_fstat(descriptor: int) -> os.stat_result:
+        nonlocal fstat_calls
+        fstat_calls += 1
+        if (phase == "opened" and fstat_calls == 1) or (
+            phase == "after" and fstat_calls == 2
+        ):
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_fstat(descriptor)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(c_libc_source.LibcSourceError, match="native stat"):
+        _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("receipt", [True, False, -1, 3.0])
+def test_libc_source_native_open_descriptor_rejects_foreign_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Fake open values never own file descriptors or close stdin/stdout."""
+    source = tmp_path / "source.c"
+    _ = source.write_bytes(b"int guest(void) { return 0; }\n")
+    original_open = os.open
+
+    def forged_open(path: Path, flags: int) -> int:
+        if path == source:
+            return cast("int", receipt)
+        return original_open(path, flags)
+
+    monkeypatch.setattr(os, "open", forged_open)
+    with pytest.raises(c_libc_source.LibcSourceError, match="native descriptor"):
+        _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+
+
+class _LibcSourceForgedStream:
+    """Own a real descriptor while returning host-controlled fake values."""
+
+    def __init__(
+        self, stream: BinaryIO, payload: object, descriptor: object = None
+    ) -> None:
+        self.stream: BinaryIO = stream
+        self.payload: object = payload
+        self.descriptor: object = descriptor
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        del args
+        self.stream.close()
+
+    def fileno(self) -> int:
+        return cast(
+            "int",
+            self.descriptor if self.descriptor is not None else self.stream.fileno(),
+        )
+
+    def read(self) -> bytes:
+        return cast("bytes", self.payload)
+
+
+@pytest.mark.parametrize("kind", ["str", "list", "subclass"])
+def test_libc_source_native_stream_bytes_reject_foreign_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Source extent comparison must not call an inherited byte hook."""
+    source = tmp_path / "source.c"
+    raw = b"int guest(void) { return 0; }\n"
+    _ = source.write_bytes(raw)
+    original_fdopen = os.fdopen
+
+    class ForeignBytes(bytes):
+        @override
+        def __len__(self) -> int:
+            raise AssertionError("foreign guest source length hook executed")
+
+    payloads: dict[str, object] = {
+        "str": raw.decode(),
+        "list": list(raw),
+        "subclass": ForeignBytes(raw),
+    }
+
+    def forged_fdopen(fd: int, mode: str) -> BinaryIO:
+        stream = cast("BinaryIO", original_fdopen(fd, mode))
+        return cast(
+            "BinaryIO", cast("object", _LibcSourceForgedStream(stream, payloads[kind]))
+        )
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(c_libc_source.LibcSourceError, match="native byte"):
+        _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("receipt", [True, -1, 3.0])
+def test_libc_source_native_stream_descriptor_rejects_foreign_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A forged stream descriptor cannot certify a source inode."""
+    source = tmp_path / "source.c"
+    raw = b"int guest(void) { return 0; }\n"
+    _ = source.write_bytes(raw)
+    original_fdopen = os.fdopen
+
+    def forged_fdopen(fd: int, mode: str) -> BinaryIO:
+        stream = cast("BinaryIO", original_fdopen(fd, mode))
+        return cast(
+            "BinaryIO", cast("object", _LibcSourceForgedStream(stream, raw, receipt))
+        )
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(c_libc_source.LibcSourceError, match="native descriptor"):
+        _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "fault_type", [c_libc_source.LibcSourceError, c_abi.CAbiValidationError]
+)
+def test_libc_source_cli_does_not_format_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """CLI failures never execute untrusted exception subclass formatters."""
+
+    class ForeignError(fault_type):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign guest libc CLI hook executed")
+
+    fault = ForeignError("unsafe host detail")
+
+    def fail_abi() -> None:
+        raise fault
+
+    monkeypatch.setattr(c_abi, "canonical_projection", fail_abi)
+    monkeypatch.setattr(sys, "argv", ["c_libc_source", "source.c"])
+    assert c_libc_source.main() == 2
+    output = capsys.readouterr()
+    assert "ForeignError" in output.err
+    assert not output.out
+
+
+@pytest.mark.parametrize("receipt", [0, 1, object()])
+def test_libc_clang_status_rejects_foreign_boolean_receipts(
+    monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Clang executable presence cannot be inferred from truthiness hooks."""
+    original_is_file = Path.is_file
+
+    class ForeignVerdict:
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign Clang status truthiness hook executed")
+
+    verdict = ForeignVerdict() if type(receipt) is object else receipt
+
+    def forged_is_file(path: Path) -> bool:
+        if path == CLANG:
+            return cast("bool", verdict)
+        return original_is_file(path)
+
+    def known_clang_identity(_clang: Path) -> str:
+        return "clang version 22.1.8"
+
+    monkeypatch.setattr(Path, "is_file", forged_is_file)
+    monkeypatch.setattr(c_libc_source, "_clang_identity", known_clang_identity)
+    with pytest.raises(c_libc_source.LibcSourceError, match="native status"):
+        c_libc_source._require_clang(CLANG)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("receipt", [True, -1, 3.0])
+def test_libc_stream_descriptor_after_read_requires_native_int(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A changed fileno receipt after source bytes cannot certify identity."""
+    source = tmp_path / "source.c"
+    raw = b"int guest(void) { return 0; }\n"
+    _ = source.write_bytes(raw)
+    original_fdopen = os.fdopen
+
+    class ForgedSecondDescriptor(_LibcSourceForgedStream):
+        def __init__(self, stream: BinaryIO) -> None:
+            super().__init__(stream, raw)
+            self.calls: int = 0
+
+        @override
+        def fileno(self) -> int:
+            self.calls += 1
+            return cast("int", receipt) if self.calls == 2 else self.stream.fileno()
+
+    def forged_fdopen(fd: int, mode: str) -> BinaryIO:
+        stream = cast("BinaryIO", original_fdopen(fd, mode))
+        return cast("BinaryIO", cast("object", ForgedSecondDescriptor(stream)))
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(c_libc_source.LibcSourceError, match="native descriptor"):
+        _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
