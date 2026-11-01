@@ -164,6 +164,7 @@ pub(super) fn admit_frontend_function(
         || !span_contains(body, returned)
         || !valid_span(literal)
         || !span_contains(body, literal)
+        || !span_contains(returned, literal)
     {
         return Err(FrontendLoweringError::Validation(
             ValidationError::SourceProvenance,

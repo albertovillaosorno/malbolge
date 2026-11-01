@@ -30,7 +30,8 @@ fresh-or-resumed normalized-frontend/typed-IR stage handoff, and verified
 progress-sidecar checkpoint adaptation are implemented. Source-bound resume
 also requires the exact two-entry i32/function type table emitted by the
 supported frontend slice; a valid checkpoint with extra unused type entries is
-not evidence of equivalent fresh lowering. Unsupported frontend
-semantic shapes fail closed; full accepted-C coverage is owned by the later
-tools/tidy lowerability
-contract rather than weakening this IR boundary.
+not evidence of equivalent fresh lowering. Fresh and source-bound frontend
+admission also reject literal spans outside their owning return statements.
+Unsupported frontend semantic shapes fail closed; full accepted-C coverage
+is owned by the later tools/tidy lowerability contract rather than weakening
+this IR boundary.

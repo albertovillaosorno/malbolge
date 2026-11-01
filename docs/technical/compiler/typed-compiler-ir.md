@@ -164,9 +164,11 @@ external, non-inline, storage-class `none`, no-argument `fn()->i32` whose body
 returns one normalized `i32` integer constant. The lowerer preserves function,
 body, return, and value spans; converts the semantic decimal constant to exact
 32-bit little-endian bits; constructs canonical typed IR; and invokes complete
-IR admission before returning a module. Wrong producer identity,
-unsupported
-semantic shapes, and out-of-range constants fail with stable lowering errors.
+IR admission before returning a module. The normalized literal span must
+also be contained in its return-statement span, not merely somewhere in the
+function body; a separately located literal cannot masquerade as the return
+expression. Wrong producer identity, unsupported semantic shapes, and
+out-of-range constants fail with stable lowering errors.
 
 A tracked C fixture is normalized by the real pinned frontend into an exact JSON
 golden. Rust lowering evidence uses that golden's exact source identity, digest,
