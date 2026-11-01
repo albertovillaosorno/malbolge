@@ -303,6 +303,43 @@ def test_lifecycle_rejects_windows_drive_relative_path() -> None:
     _expect_failure(text, "must be repository-relative")
 
 
+@pytest.mark.parametrize(
+    ("state", "field", "original", "additional"),
+    (
+        (validator.EXPERIMENTAL, "research_record", RESEARCH, ""),
+        (validator.EXPERIMENTAL, "experiment_manifest", EXPERIMENT, ""),
+        (validator.PROMOTION_CANDIDATE, "correctness", EVIDENCE, _promotion()),
+        (
+            validator.REJECTED,
+            "evidence",
+            EVIDENCE,
+            _decision(negative_results=EVIDENCE),
+        ),
+        (
+            validator.REJECTED,
+            "negative_results",
+            EVIDENCE,
+            _decision(negative_results=EVIDENCE),
+        ),
+    ),
+)
+def test_lifecycle_rejects_host_dependent_backslash_paths(
+    state: str,
+    field: str,
+    original: str,
+    additional: str,
+) -> None:
+    """Research evidence must name the same path on Linux and Windows."""
+    source = _base(state) + additional
+    existing = f'{field} = "{original}"'
+    assert existing in source
+    alias = original.replace("/", "\\")
+    _expect_failure(
+        source.replace(existing, f"{field} = '{alias}'", 1),
+        "must use forward slashes",
+    )
+
+
 def test_promotion_candidate_requires_all_five_evidence_gates() -> None:
     """Promotion eligibility is evidence-linked rather than boolean asserted."""
     valid = _base(validator.PROMOTION_CANDIDATE) + _promotion()

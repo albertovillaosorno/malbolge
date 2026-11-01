@@ -56,7 +56,9 @@ local-date value, excluding local and offset date-time values even though Python
 `datetime` derives from `date`. Evidence references must be regular
 files under the repository root, with no symlinked leaves or parent directories.
 Evidence paths reject TOML-escaped NUL bytes before host filesystem access,
-preventing raw path API errors from escaping lifecycle validation.
+preventing raw path API errors from escaping lifecycle validation. Backslash
+separators are rejected so evidence paths retain the same forward-slash spelling
+on Linux and Windows.
 On hosts with directory-relative file opening, checks pin every parent
 directory through the evidence admission; other hosts reject links during
 component-by-component path inspection.
