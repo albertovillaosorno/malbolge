@@ -226,6 +226,14 @@ An optional `--capsule` mode now wraps verified raw source using the
 existing version-one historical-fallback capsule builder. The producer
 independently parses the result before publication and requires an exact
 canonical profile identity/fingerprint and byte-for-byte payload equality.
+Independent CLI integration now publishes raw and version-one capsule files
+for immutable `malbolge-2026.1`, `.2`, and `.3` profile IDs. It compares
+byte-identical raw/capsule payloads, checks canonical profile fingerprints,
+re-decodes each graphical instruction using the selected swapped or unchanged
+I/O opcode identity, and replays three binary bytes `0x00`, `0xff`, `0x80`
+through the normative VM for both published forms. This is an actual process-
+level source/publication boundary, not just in-memory encoder evidence.
+
 Real external-process integration invokes the *general* `malbolge` runner on
 a modern-profile capsule, and separately runs the historical-safe fallback
 through the classic interpreter. The unframed raw mode remains unchanged:

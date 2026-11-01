@@ -42,7 +42,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use malbolge::{
     ExecutionMachine, ExecutionMode, ProfileMachine, RunOutcome, current_profile,
-    decode_profile_instruction, historical_profile, parse_capsule,
+    decode_profile_instruction, historical_profile, parse_capsule, target_profile,
 };
 
 const EXECUTABLE: &str = env!("CARGO_BIN_EXE_malbolge_layout");
@@ -490,6 +490,71 @@ fn capsule_emission_preserves_profile_and_exact_raw_source() -> Result<(), Strin
             Ok(RunOutcome::Terminated { steps: 3, .. })
         ));
         assert_eq!(vm.output(), b"V");
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "versioned source identity and VM replay cross the process boundary"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "a single process-level test proves source, capsule, profile and guest parity"
+)]
+fn immutable_profiles_publish_exact_raw_and_capsule_sources() -> Result<(), String> {
+    let operations = [
+        "input", "output", "input", "output", "input", "output", "halt",
+    ];
+    for profile_id in ["malbolge-2026.1", "malbolge-2026.2", "malbolge-2026.3"] {
+        let profile = target_profile(profile_id).ok_or("missing immutable profile")?;
+        let fixture = OwnedFixture::new()?;
+        let raw_path = fixture.path("versioned-raw.malbolge");
+        let capsule_path = fixture.path("versioned-capsule.malbolge");
+        let raw = source_on_success(&emit(profile_id, &raw_path, &operations)?, &raw_path)?;
+        let capsule_output = emit_capsule(profile_id, &capsule_path, &operations)?;
+        if !capsule_output.status.success() {
+            return Err(format!(
+                "{profile_id} capsule emitter: {}",
+                String::from_utf8_lossy(&capsule_output.stderr)
+            ));
+        }
+        let capsule_bytes = fs::read(&capsule_path).map_err(|error| error.to_string())?;
+        let parsed = parse_capsule(&capsule_bytes)
+            .map_err(|error| format!("{profile_id} capsule parse: {error:?}"))?
+            .ok_or("missing versioned capsule sideband")?;
+        assert_eq!(parsed.profile().id(), profile_id);
+        assert_eq!(parsed.profile().fingerprint(), profile.fingerprint());
+        assert_eq!(parsed.payload(), raw);
+        assert_eq!(raw.len(), operations.len());
+        for (index, &source_byte) in raw.iter().enumerate() {
+            let expected = if index == operations.len() - 1 {
+                b'v'
+            } else if index.is_multiple_of(2) {
+                profile.input_instruction()
+            } else {
+                profile.output_instruction()
+            };
+            assert_eq!(
+                decode_profile_instruction(
+                    u32::from(source_byte),
+                    u32::try_from(index).map_err(|error| error.to_string())?
+                ),
+                Some(expected),
+                "{profile_id} published code at {index}"
+            );
+        }
+        for source in [raw.as_slice(), parsed.payload()] {
+            let mut vm = ProfileMachine::from_source(profile, source, vec![0, 255, 128])
+                .map_err(|error| format!("{profile_id} VM load: {error:?}"))?;
+            assert!(matches!(
+                vm.run(operations.len()),
+                Ok(RunOutcome::Terminated { steps: 7, .. }),
+            ));
+            assert_eq!(vm.output(), &[0, 255, 128], "{profile_id} VM output");
+            assert_eq!(vm.input_consumed(), 3, "{profile_id} VM inputs");
+        }
     }
     Ok(())
 }
