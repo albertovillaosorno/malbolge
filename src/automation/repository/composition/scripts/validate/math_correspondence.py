@@ -160,6 +160,27 @@ def _exact_keys(
     _fail(message)
 
 
+def _native_junction_status(path: Path, context: str) -> bool:
+    """Require an exact native verdict for a repository path junction.
+
+    Returns:
+        Whether the named path is a junction.
+
+    Raises:
+        CorrespondenceError: The host status cannot establish a native verdict.
+
+    """
+    try:
+        is_junction = path.is_junction()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        message = f"{context} redirect status failed: {detail}"
+        raise CorrespondenceError(message) from error
+    if type(is_junction) is not bool:
+        _fail(f"{context} requires a native junction receipt")
+    return is_junction
+
+
 def _require_physical_member(
     path: Path,
     context: str,
@@ -175,14 +196,9 @@ def _require_physical_member(
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         detail = _host_error_detail(error)
         raise CorrespondenceError(f"{context} status failed: {detail}") from error
-    try:
-        is_junction = path.is_junction()
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        detail = _host_error_detail(error)
-        raise CorrespondenceError(
-            f"{context} redirect status failed: {detail}"
-        ) from error
-    if S_ISLNK(status.st_mode) or is_junction:
+    if type(status) is not os.stat_result:
+        _fail(f"{context} requires a native stat receipt")
+    if S_ISLNK(status.st_mode) or _native_junction_status(path, context):
         _fail(f"{context} must not redirect: {relative.as_posix()}")
     admitted = S_ISDIR(status.st_mode) if directory else S_ISREG(status.st_mode)
     if not admitted:
@@ -214,7 +230,7 @@ def _physical_repository_path(
 
 
 def _source_fingerprint(
-    status: os.stat_result,
+    status: object,
     context: str,
 ) -> tuple[int, ...]:
     """Validate a regular source and capture mutation-sensitive identity.
@@ -223,6 +239,8 @@ def _source_fingerprint(
         Device, inode, byte count, and modification/change timestamps.
 
     """
+    if type(status) is not os.stat_result:
+        _fail(f"{context} requires a native stat receipt")
     if not S_ISREG(status.st_mode):
         _fail(f"{context} must be a physical regular artifact")
     return (
@@ -259,6 +277,8 @@ def _read_source_descriptor(
         if _source_fingerprint(os.fstat(stream.fileno()), context) != expected:
             _fail(f"{context} changed before read")
         payload = stream.read(MAX_CORRESPONDENCE_SOURCE_BYTES + 1)
+        if type(payload) is not bytes:
+            _fail(f"{context} requires a native byte receipt")
         if len(payload) != expected[2]:
             _fail(f"{context} changed during read or exceeds byte limit")
         if (
@@ -290,6 +310,8 @@ def _read_source_bytes(path: Path, context: str) -> bytes:
             | getattr(os, "O_BINARY", 0)
         )
         descriptor = os.open(path, flags)
+        if type(descriptor) is not int or descriptor < 0:
+            _fail(f"{context} requires a native file descriptor")
         return _read_source_descriptor(path, context, descriptor, expected=expected)
     except CorrespondenceError:
         raise
@@ -303,7 +325,8 @@ def _read_source_text(path: Path, context: str) -> str:
         payload = _read_source_bytes(path, context)
         return payload.decode("utf-8")
     except UnicodeDecodeError as error:
-        _fail(f"invalid {context} UTF-8: {error}")
+        message = f"invalid {context} UTF-8: {error}"
+        raise CorrespondenceError(message) from error
     except OSError as error:
         detail = _host_error_detail(error)
         raise CorrespondenceError(f"cannot read {context}: {detail}") from error
@@ -574,7 +597,12 @@ def main() -> int:
     try:
         entries = validate_repository()
     except (OSError, CorrespondenceError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        detail = (
+            str(error)
+            if type(error) is CorrespondenceError
+            else _host_error_detail(error)
+        )
+        _ = sys.stderr.write(f"error: {detail}\n")
         return 1
     _ = sys.stdout.write(
         f"mathematical correspondence valid: {len(entries)} equations\n"

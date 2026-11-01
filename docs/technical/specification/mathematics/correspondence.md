@@ -41,11 +41,18 @@ evidence files and rejects redirected source ancestors, including symlinked
 math directories. The validator reads at most 4 MiB per source, using stable
 regular-file descriptors and verifying inode, size and timestamps before and
 after reads. A parent changed into a symlink, or a source replaced during a
-read, cannot supply equation or test evidence. Native stream-wrapper
+read, cannot supply equation or test evidence. Filesystem stat receipts
+must be native stat results, redirect/junction verdicts must be exact native
+booleans, and opened file descriptors must be native nonnegative integers before
+stream ownership transfers. Native stream-wrapper
 failures, including TypeError, close the already-open source descriptor and
-produce typed correspondence errors with the original host cause. Malformed
-UTF-8 remains a typed correspondence error. These read-time checks do not
-claim files can never change after validation finishes.
+produce typed correspondence errors with the original host cause. Source read
+receipts must be exact native bytes; text, lists, and caller-owned byte
+subclasses cannot establish executable equation evidence. Malformed UTF-8
+remains a typed correspondence error with its original decoder cause, and the
+command-line error boundary does not invoke foreign host exception formatters.
+These read-time checks do not claim files can never change after validation
+finishes.
 
 ### Current promoted equations
 

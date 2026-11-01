@@ -40,7 +40,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Self
+from typing import BinaryIO, Self, cast, override
 
 import pytest
 
@@ -217,6 +217,238 @@ def test_correspondence_fdopen_failure_closes_owned_descriptor(
     assert len(opened) == 1
     with pytest.raises(OSError):
         _ = os.fstat(opened[0])
+
+
+class _ForgedReadStream:
+    """Expose a real descriptor while replacing only its read receipt."""
+
+    def __init__(self, stream: BinaryIO, receipt: object) -> None:
+        self._stream: BinaryIO = stream
+        self._receipt: object = receipt
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        del args
+        self._stream.close()
+
+    def fileno(self) -> int:
+        return self._stream.fileno()
+
+    def read(self, size: int) -> bytes:
+        del size
+        return cast("bytes", self._receipt)
+
+
+@pytest.mark.parametrize("payload_kind", ["text", "byte-subclass", "list"])
+def test_correspondence_rejects_foreign_stream_read_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    payload_kind: str,
+) -> None:
+    """Only exact native bytes may certify equation or test source evidence."""
+    source = tmp_path / "witness.rs"
+    native_bytes = b"fn witness() {}\n"
+    _ = source.write_bytes(native_bytes)
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    native_fdopen = os.fdopen
+
+    class ForeignBytes(bytes):
+        """A caller-owned bytes subclass can override decoder hooks."""
+
+    receipts: dict[str, object] = {
+        "text": native_bytes.decode("ascii"),
+        "byte-subclass": ForeignBytes(native_bytes),
+        "list": list(native_bytes),
+    }
+
+    def wrap_stream(descriptor: int, mode: str) -> _ForgedReadStream:
+        del mode
+        return _ForgedReadStream(
+            native_fdopen(descriptor, "rb"), receipts[payload_kind]
+        )
+
+    monkeypatch.setattr(os, "fdopen", wrap_stream)
+    with pytest.raises(validator.CorrespondenceError, match="native byte"):
+        _ = validator._read_source_bytes(source, "witness")
+
+
+@pytest.mark.parametrize("receipt", [True, False, -1])
+def test_correspondence_rejects_unbound_open_descriptor_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Fake descriptor values cannot be used or accidentally closed."""
+    source = tmp_path / "witness.rs"
+    _ = source.write_bytes(b"fn witness() {}\n")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    native_open = os.open
+
+    def forged_open(path: Path, flags: int) -> int:
+        if path == source:
+            return cast("int", receipt)
+        return native_open(path, flags)
+
+    monkeypatch.setattr(os, "open", forged_open)
+    with pytest.raises(validator.CorrespondenceError, match="descriptor"):
+        _ = validator._read_source_bytes(source, "witness")
+
+
+def test_correspondence_rejects_foreign_stat_receipt_without_property_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged stat receipt cannot execute foreign property hooks."""
+    source = tmp_path / "witness.rs"
+    _ = source.write_bytes(b"fn witness() {}\n")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+
+    class ForeignStat:
+        @override
+        def __getattribute__(self, name: str) -> object:
+            del self, name
+            raise AssertionError
+
+    def forged_fstat(descriptor: int) -> object:
+        del descriptor
+        return ForeignStat()
+
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(validator.CorrespondenceError, match="native stat"):
+        _ = validator._read_source_bytes(source, "witness")
+
+
+def test_correspondence_rejects_non_native_path_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Physical path admission cannot inspect a forged stat receipt."""
+    source = tmp_path / "witness.rs"
+    _ = source.write_bytes(b"fn witness() {}\n")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    native_lstat = Path.lstat
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        if path == source:
+            return cast("os.stat_result", object())
+        return native_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(validator.CorrespondenceError, match="native stat"):
+        _ = validator._physical_repository_path(
+            source, "witness", directory=False
+        )
+
+
+class ForeignJunctionVerdict:
+    """A foreign junction result must never be coerced to a boolean."""
+
+    def __bool__(self) -> bool:
+        """Disallow coercion of a forged receipt.
+
+        Raises:
+            AssertionError: If a caller tries to coerce the receipt.
+
+        """
+        message = "foreign junction truthiness was executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (component, receipt)
+        for component in (LEAF_KIND, "parent")
+        for receipt in (0, 1, ForeignJunctionVerdict())
+    ],
+)
+def test_correspondence_rejects_non_native_junction_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, object],
+) -> None:
+    """Both source ancestors and leaves need native redirect decisions."""
+    component, receipt = case
+    parent = tmp_path / "tests"
+    parent.mkdir()
+    source = parent / "witness.rs"
+    _ = source.write_bytes(b"fn witness() {}\n")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    native_junction = Path.is_junction
+    victim = source if component == LEAF_KIND else parent
+
+    def forged_junction(path: Path) -> bool:
+        if path == victim:
+            return cast("bool", receipt)
+        return native_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    with pytest.raises(validator.CorrespondenceError, match="native junction"):
+        _ = validator._read_source_bytes(source, "witness")
+
+
+@pytest.mark.parametrize("receipt", [0, 1, ForeignJunctionVerdict()])
+def test_correspondence_rejects_changed_junction_receipt_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """The final physical path check must not trust a new foreign verdict."""
+    source = tmp_path / "witness.rs"
+    _ = source.write_bytes(b"fn witness() {}\n")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    native_junction = Path.is_junction
+    source_checks = 0
+
+    def forged_junction(path: Path) -> bool:
+        nonlocal source_checks
+        if path == source:
+            source_checks += 1
+            if source_checks > 1:
+                return cast("bool", receipt)
+        return native_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    with pytest.raises(validator.CorrespondenceError, match="native junction"):
+        _ = validator._read_source_bytes(source, "witness")
+    assert source_checks > 1
+
+
+def test_correspondence_cli_avoids_foreign_os_error_formatter(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An OSError subclass must not execute its custom string method."""
+
+    class ForeignStatusError(OSError):
+        """Caller-owned failure with hostile formatting."""
+
+        @override
+        def __str__(self) -> str:
+            raise AssertionError
+
+    def fail_validation() -> tuple[validator.Correspondence, ...]:
+        detail = "untrusted status text"
+        raise ForeignStatusError(detail)
+
+    monkeypatch.setattr(validator, "validate_repository", fail_validation)
+    assert validator.main() == 1
+    assert ForeignStatusError.__name__ in capsys.readouterr().err
+
+
+def test_correspondence_decoder_error_retains_utf8_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed source bytes retain the underlying decoder evidence."""
+    source = tmp_path / "witness.rs"
+    _ = source.write_bytes(b"\xff")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    with pytest.raises(validator.CorrespondenceError, match="UTF-8") as caught:
+        _ = validator._read_source_text(source, "witness")
+    assert isinstance(caught.value.__cause__, UnicodeDecodeError)
 
 
 @pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
