@@ -31,12 +31,15 @@ tests, verifier integration, and Git-ignored local `out/` artifacts.
 `src/automation/repository/composition/scripts/validate/research_mirror.py`
 enforces the repository shape. The shared research layout discovery also
 rejects linked algorithm directories and redirected in-root directory
-ancestors before admitting an `experiment.toml` identity. Every direct
-research ID under either mirror root must exist on both sides. The special
-composition state-graph experiment and domain algorithm directories must not
-publish the same research ID: discovery rejects a collision instead of silently
-replacing either physical experiment. Mirror identity also rejects research
-IDs differing only under Unicode case folding and canonical NFC normalization:
+ancestors before admitting an `experiment.toml` identity. Discovery requires
+exact native filesystem stat receipts and boolean junction results before
+inspecting their fields or truthiness; forged host results fail closed.
+Every direct research ID under either mirror root must exist on both sides.
+The special composition state-graph experiment and domain algorithm
+directories must not publish the same research ID: discovery rejects a collision
+instead of silently replacing either physical experiment. Mirror identity also
+rejects research IDs differing only under Unicode case folding and canonical NFC
+normalization:
 those names are distinct on some POSIX filesystems but can alias on
 case-insensitive or normalization-insensitive hosts.
 Each research ID must also be one portable path component: `.`/`..`, forward

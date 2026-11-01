@@ -32,8 +32,10 @@
 
 """Fail-closed tests for research experiment layout discovery."""
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Never, cast, final, override
 
 import pytest
 
@@ -209,4 +211,77 @@ def test_domain_and_composition_research_id_collision_fails_closed(
     composition.mkdir(parents=True)
     _ = (composition / "experiment.toml").write_text("schema_version = 1\n")
     with pytest.raises(OSError, match="duplicate research algorithm ID"):
+        _ = research_layout.research_algorithm_directories(tmp_path)
+
+
+@pytest.mark.parametrize("position", ("domain", "candidate", "manifest"))
+@pytest.mark.parametrize("receipt_kind", ("opaque", "hostile"))
+def test_discovery_requires_native_status_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    position: str,
+    receipt_kind: str,
+) -> None:
+    """Untrusted OS status objects cannot claim physical research evidence."""
+    domain = _domain_root(tmp_path)
+    candidate = domain / "candidate"
+    candidate.mkdir(parents=True)
+    manifest = candidate / "experiment.toml"
+    _ = manifest.write_bytes(b"schema_version = 1\n")
+    target = {"domain": domain, "candidate": candidate, "manifest": manifest}[position]
+    original_lstat = Path.lstat
+
+    @final
+    class HostileStatus:
+        @override
+        def __getattribute__(self, _name: str) -> Never:
+            raise AssertionError("foreign research stat field executed")
+
+    receipt: object = HostileStatus() if receipt_kind == "hostile" else object()
+
+    def forged_status(path: Path) -> os.stat_result:
+        if path == target:
+            return cast("os.stat_result", receipt)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_status)
+    with pytest.raises(OSError, match="native stat receipt"):
+        _ = research_layout.research_algorithm_directories(tmp_path)
+
+
+@pytest.mark.parametrize("position", ("candidate", "manifest"))
+@pytest.mark.parametrize("receipt_kind", ("truthy", "falsey", "hostile"))
+def test_discovery_requires_native_junction_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    position: str,
+    receipt_kind: str,
+) -> None:
+    """Forged junction predicates cannot suppress or invent research aliases."""
+    domain = _domain_root(tmp_path)
+    candidate = domain / "candidate"
+    candidate.mkdir(parents=True)
+    manifest = candidate / "experiment.toml"
+    _ = manifest.write_bytes(b"schema_version = 1\n")
+    target = candidate if position == "candidate" else manifest
+    original_junction = Path.is_junction
+
+    @final
+    class HostilePredicate:
+        def __bool__(self) -> Never:
+            raise AssertionError("foreign research junction truthiness executed")
+
+    receipt: object = {
+        "truthy": "redirect",
+        "falsey": list[object](),
+        "hostile": HostilePredicate(),
+    }[receipt_kind]
+
+    def forged_junction(path: Path) -> bool:
+        if path == target:
+            return cast("bool", cast("object", receipt))
+        return original_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    with pytest.raises(OSError, match="native junction receipt"):
         _ = research_layout.research_algorithm_directories(tmp_path)

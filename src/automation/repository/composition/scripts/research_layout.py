@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import ntpath
+import os
 import unicodedata
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING
@@ -61,6 +62,20 @@ def research_id_alias_key(identifier: str) -> str:
     return unicodedata.normalize("NFC", identifier.casefold())
 
 
+def _native_status(status: object, context: str) -> os.stat_result:
+    """Accept exact filesystem status receipts before any field access."""
+    if type(status) is not os.stat_result:
+        raise OSError(f"{context} requires native stat receipt")
+    return status
+
+
+def _native_junction(value: object, context: str) -> bool:
+    """Accept exact junction flags without invoking foreign truthiness hooks."""
+    if type(value) is not bool:
+        raise OSError(f"{context} requires native junction receipt")
+    return value
+
+
 def _unlinked_directory(root: Path, directory: Path) -> bool:
     """Check each in-root directory component without following an alias.
 
@@ -75,10 +90,11 @@ def _unlinked_directory(root: Path, directory: Path) -> bool:
     for part in directory.relative_to(root).parts:
         current /= part
         try:
-            status = current.lstat()
+            status = _native_status(current.lstat(), "research directory status")
         except FileNotFoundError:
             return False
-        if S_ISLNK(status.st_mode) or current.is_junction():
+        junction = _native_junction(current.is_junction(), "research directory status")
+        if S_ISLNK(status.st_mode) or junction:
             message = f"research directory must not redirect: {current}"
             raise OSError(message)
         if not S_ISDIR(status.st_mode):
@@ -90,10 +106,11 @@ def _manifest_is_file(path: Path, root: Path) -> bool:
     if not _unlinked_directory(root, path.parent):
         return False
     try:
-        status = path.lstat()
+        status = _native_status(path.lstat(), "research manifest status")
     except FileNotFoundError:
         return False
-    if S_ISLNK(status.st_mode) or path.is_junction():
+    junction = _native_junction(path.is_junction(), "research manifest status")
+    if S_ISLNK(status.st_mode) or junction:
         message = f"research manifest path must not redirect: {path}"
         raise OSError(message)
     return S_ISREG(status.st_mode)
