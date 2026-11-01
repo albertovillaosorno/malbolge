@@ -15,13 +15,17 @@ canonical executable profile declaration is the repository-root
 - `malbolge-2026.3` is the immutable interpreter-compatible transition
   identity used by byte-exact compatibility fixtures.
 - `malbolge-2026` is the official year-only current schema-v2 scalable profile:
-  14 trits,
-  4,782,969 directly addressed words, `/` input, and `<` output. It keeps modern
-  safe failure rules and does not reproduce historical C undefined behavior.
+  15 trits, 14,348,907 directly addressed words, `/` input, and `<` output. It
+  keeps modern safe failure rules and does not reproduce historical C undefined
+  behavior.
 
-`src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json` records why 14 trits were selected
-for the first scalable profile. Future capacity changes create another immutable
-profile and advance `current_profile`; they never mutate an existing identity.
+The `scalable-memory-evidence.json` record in this directory explains why
+14 trits were selected for the first scalable versioned profile. Published
+versioned profiles remain immutable. The annual current reference may advance
+its fallback geometry; its fingerprint then changes, so previously bound
+artifacts never silently acquire the new behavior. Future published versioned
+identities remain distinct from earlier releases.
+
 Defined original-interpreter behavior belongs to `malbolge-1998`.
 Contradictory prose is explicit specification comparison, while undefined C
 behavior remains outside every portable profile.
