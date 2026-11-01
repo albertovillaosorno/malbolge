@@ -66,9 +66,11 @@ pub fn realize_runtime_io(
     }
     // Successful input bytes occupy 0..=255. The raw profile EOF sentinel
     // must not alias one of them and must be an all-two-trit word. Enforce
-    // both even for output-only effects: downstream operations still carry
-    // this projection, which is not full profile descriptor authentication.
+    // both even for output-only effects. The EOF word must also be the last
+    // addressable word in the descriptor's copied memory geometry; these
+    // consistency guards are not full profile descriptor authentication.
     if profile.input_instruction == profile.output_instruction
+        || profile.eof_word.checked_add(1) != Some(profile.memory_words)
         || u8::try_from(profile.eof_word).is_ok()
         || !eof_word_has_all_two_trits(profile.eof_word)
     {

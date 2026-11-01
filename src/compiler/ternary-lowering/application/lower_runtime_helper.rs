@@ -64,9 +64,12 @@ pub fn lower_runtime_helper(
     request: &RuntimeHelperRequest,
     profile: &TargetProfileIo,
 ) -> Result<RuntimeHelperOperation, RuntimeHelperLoweringError> {
+    // An all-two-trit word from a different VM width is not the selected
+    // descriptor's EOF unless it is also the last addressable word.
     if request.target_profile != TARGET_PROFILE
         || profile.profile_id != TARGET_PROFILE
         || request.target_profile != profile.profile_id
+        || profile.eof_word.checked_add(1) != Some(profile.memory_words)
         || profile.eof_word <= 255
         || !eof_word_has_all_two_trits(profile.eof_word)
     {

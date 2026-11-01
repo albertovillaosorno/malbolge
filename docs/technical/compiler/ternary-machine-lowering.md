@@ -919,12 +919,15 @@ operations; `InputWord` explicitly includes the selected profile's EOF word.
 Unknown intrinsic names or profile drift fail closed.
 
 A separate target-profile projection copies the current descriptor's exact
-profile ID, input/output instruction bytes, and EOF word. Runtime I/O
-realization uses only that projection, producing profile-bound machine
-operations
-without hardcoded `/` or `<` characters; colliding projected input/output
-instructions or profile drift fail closed. Raw I/O realization now also
-rejects an EOF sentinel in the successful byte range `0..=255`, for both
+profile ID, input/output instruction bytes, EOF word, and memory word count.
+Runtime I/O realization uses only that projection, producing profile-bound
+machine operations without hardcoded `/` or `<` characters. Colliding
+projected I/O instructions or profile drift fail closed. Raw I/O and pure
+helper lowering require the memory word count to equal EOF word plus one,
+preventing substitution of a valid all-two-trit sentinel from a different
+width. This is consistency validation, not authentication of a caller-forged
+descriptor. Raw I/O realization also rejects an EOF sentinel in the successful
+byte range `0..=255`, for both
 input and output intrinsics, matching the previously enforced helper boundary;
 this is a projection-consistency guard, not independent authentication of the
 complete profile descriptor.

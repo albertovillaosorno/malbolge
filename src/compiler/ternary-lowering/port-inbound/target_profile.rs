@@ -39,6 +39,8 @@ pub struct TargetProfileIo {
     pub eof_word: u32,
     /// Decoded machine instruction byte assigned to input.
     pub input_instruction: u8,
+    /// Canonical memory word count copied from the same profile descriptor.
+    pub memory_words: u32,
     /// Decoded machine instruction byte assigned to output.
     pub output_instruction: u8,
     /// Exact canonical target-profile identity.

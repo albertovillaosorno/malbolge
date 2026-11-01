@@ -21312,6 +21312,7 @@ fn current_profile_io() -> TargetProfileIo {
     TargetProfileIo {
         eof_word: profile.eof_word(),
         input_instruction: profile.input_instruction(),
+        memory_words: profile.memory_words(),
         output_instruction: profile.output_instruction(),
         profile_id: String::from(profile.id()),
     }
@@ -21509,6 +21510,56 @@ fn raw_machine_io_rejects_non_ternary_eof_word_geometry() -> Result<(), String> 
                     "non-ternary EOF word {eof_word} reached source-cell encoding"
                 ));
             }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn current_profile_io_rejects_foreign_all_two_trit_widths() -> Result<(), String> {
+    let original = current_profile_io();
+    let decoder = VmProfileInstructionDecoder;
+    let canonical_input =
+        realize_runtime_io(RuntimeIntrinsicOperation::InputWord, &original)
+            .map_err(|error| format!("canonical input: {error:?}"))?;
+    let helper = RuntimeHelperRequest {
+        identity: String::from("malbolge_guest_decode_input_word"),
+        target_profile: String::from("malbolge-2026"),
+    };
+    // These are all 3^n-1 (valid base-three sentinels), but neither their
+    // six-, fourteen-, nor sixteen-trit width matches the current profile.
+    for eof_word in [728u32, 4_782_968, 43_046_720] {
+        let mut forged = original.clone();
+        forged.eof_word = eof_word;
+        if realize_runtime_io(RuntimeIntrinsicOperation::InputWord, &forged)
+            != Err(RuntimeIoRealizationError::InvalidProjection)
+            || encode_machine_io(canonical_input, 0, &decoder, &forged)
+                != Err(MachineIoEncodingError::InvalidProfile)
+            || lower_runtime_helper(&helper, &forged)
+                != Err(RuntimeHelperLoweringError::UnsupportedProfile)
+        {
+            return Err(format!(
+                "foreign base-three EOF width {eof_word} admitted as current profile"
+            ));
+        }
+    }
+    // A forged word count without a changed EOF sentinel must fail too.
+    for memory_words in [
+        0,
+        original.memory_words - 1,
+        original.memory_words + 1,
+        u32::MAX,
+    ] {
+        let mut forged = original.clone();
+        forged.memory_words = memory_words;
+        if realize_runtime_io(RuntimeIntrinsicOperation::OutputByte, &forged)
+            != Err(RuntimeIoRealizationError::InvalidProjection)
+            || lower_runtime_helper(&helper, &forged)
+                != Err(RuntimeHelperLoweringError::UnsupportedProfile)
+        {
+            return Err(format!(
+                "foreign current-profile memory word count {memory_words} admitted"
+            ));
         }
     }
     Ok(())
