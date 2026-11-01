@@ -107,6 +107,42 @@ def _host_error_detail(error: Exception) -> str:
     return type(error).__name__
 
 
+def _native_stat(receipt: object, context: str) -> os.stat_result:
+    """Admit only OS-native stat metadata before reading any properties.
+
+    Returns:
+        The authenticated OS stat result.
+
+    """
+    if type(receipt) is not os.stat_result:
+        _fail(f"{context} requires a native stat receipt")
+    return receipt
+
+
+def _native_boolean(receipt: object, context: str, status: str) -> bool:
+    """Admit only OS-native redirect, directory and access verdicts.
+
+    Returns:
+        The authenticated OS boolean verdict.
+
+    """
+    if type(receipt) is not bool:
+        _fail(f"{context} requires a native {status} receipt")
+    return receipt
+
+
+def _native_descriptor(receipt: object, context: str) -> int:
+    """Reject descriptors that cannot establish exclusive stream ownership.
+
+    Returns:
+        The nonnegative native descriptor.
+
+    """
+    if type(receipt) is not int or receipt < 0:
+        _fail(f"{context} requires a native descriptor receipt")
+    return receipt
+
+
 def _source_relative_path(path: Path) -> Path:
     """Admit a lexical repository-relative source path.
 
@@ -135,12 +171,14 @@ def _physical_math_status(path: Path, *, directory: bool) -> None:
             raise MathSpecificationError(
                 f"mathematics source status failed: {_host_error_detail(error)}"
             ) from error
+        status = _native_stat(status, "mathematics source")
         try:
             junction = current.is_junction()
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             raise MathSpecificationError(
                 f"mathematics source redirect status failed: {_host_error_detail(error)}"
             ) from error
+        junction = _native_boolean(junction, "mathematics source", "junction")
         if S_ISLNK(status.st_mode) or junction:
             _fail(f"mathematics source must not redirect: {relative.as_posix()}")
         expect_directory = directory if index == len(relative.parts) - 1 else True
@@ -157,8 +195,17 @@ def _admit_tex_candidate(candidate: Path, sources: list[Path]) -> None:
     if candidate.suffix == TEX_SUFFIX:
         _physical_math_status(candidate, directory=False)
         sources.append(candidate)
-    elif candidate.is_symlink() and candidate.is_dir():
-        _fail(f"mathematics source directory must not redirect: {candidate}")
+    else:
+        symlink = _native_boolean(
+            candidate.is_symlink(), "mathematics source scan", "symlink"
+        )
+        if symlink:
+            directory = _native_boolean(
+                candidate.is_dir(), "mathematics source scan", "directory"
+            )
+            if directory:
+                reason = "mathematics source directory must not redirect"
+                _fail(f"{reason}: {candidate}")
 
 
 def _discovered_tex_paths() -> tuple[Path, ...]:
@@ -195,6 +242,7 @@ def _tex_source_identity(
         Device, inode, size, mtime and ctime of the admitted source.
 
     """
+    status = _native_stat(status, "mathematics source")
     if not S_ISREG(status.st_mode):
         _fail("mathematics source must be a physical regular artifact")
     if status.st_size > MAX_TEX_BYTES:
@@ -224,7 +272,7 @@ def _read_open_tex_bytes(
         | getattr(os, "O_NONBLOCK", 0)
         | getattr(os, "O_BINARY", 0)
     )
-    descriptor = os.open(path, flags)
+    descriptor = _native_descriptor(os.open(path, flags), "mathematics source")
     try:
         stream = os.fdopen(descriptor, "rb")
     except (OSError, ValueError, TypeError, RuntimeError):
@@ -320,12 +368,14 @@ def _cache_component_is_physical(path: Path, relative: Path) -> bool:
         raise MathSpecificationError(
             f"mathematics cache status failed: {_host_error_detail(error)}"
         ) from error
+    status = _native_stat(status, "mathematics cache")
     try:
         junction = path.is_junction()
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise MathSpecificationError(
             f"mathematics cache redirect status failed: {_host_error_detail(error)}"
         ) from error
+    junction = _native_boolean(junction, "mathematics cache", "junction")
     if S_ISLNK(status.st_mode) or junction:
         _fail(f"mathematics cache path must not redirect: {relative.as_posix()}")
     if not S_ISDIR(status.st_mode):
@@ -442,12 +492,21 @@ def latex_compiler(
     if type(compiler) is not str or not compiler or not Path(compiler).is_absolute():
         _fail("LaTeX compiler resolver must return an absolute executable path")
     try:
-        executable = Path(compiler).is_file() and os.access(compiler, os.X_OK)
+        is_file = Path(compiler).is_file()
+        can_execute = (
+            os.access(compiler, os.X_OK)
+            if type(is_file) is bool and is_file
+            else False
+        )
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise MathSpecificationError(
             f"LaTeX compiler status failed: {_host_error_detail(error)}"
         ) from error
-    if not executable:
+    is_file = _native_boolean(is_file, "LaTeX compiler", "file status")
+    can_execute = _native_boolean(
+        can_execute, "LaTeX compiler", "executable status"
+    )
+    if not (is_file and can_execute):
         _fail(f"LaTeX compiler is not an executable file: {compiler}")
     return compiler
 
@@ -455,12 +514,15 @@ def latex_compiler(
 def _admit_math_build_log(log_path: Path) -> None:
     """Reject a redirected or nonregular existing cache-log destination."""
     try:
-        redirected = log_path.is_symlink() or log_path.is_junction()
+        symlink = log_path.is_symlink()
+        junction = log_path.is_junction()
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise MathSpecificationError(
             f"mathematics cache log redirect status failed: {_host_error_detail(error)}"
         ) from error
-    if redirected:
+    symlink = _native_boolean(symlink, "mathematics cache log", "redirect")
+    junction = _native_boolean(junction, "mathematics cache log", "redirect")
+    if symlink or junction:
         _fail(f"mathematics cache log must not redirect: {log_path}")
     try:
         observed = log_path.lstat()
@@ -470,6 +532,7 @@ def _admit_math_build_log(log_path: Path) -> None:
         raise MathSpecificationError(
             f"mathematics cache log status failed: {_host_error_detail(error)}"
         ) from error
+    observed = _native_stat(observed, "mathematics cache log")
     if not S_ISREG(observed.st_mode):
         _fail(f"mathematics cache log must be a regular file: {log_path}")
 
@@ -485,6 +548,8 @@ def _admit_math_log_temporary(
         The admitted path and its regular-file device/inode identity.
 
     """
+    # An invalid receipt never owns a descriptor, especially fd 0 or fd 1.
+    descriptor = _native_descriptor(descriptor, "mathematics build log")
     try:
         if type(name) is not str:
             _fail("mathematics build log temporary path receipt must be a string")

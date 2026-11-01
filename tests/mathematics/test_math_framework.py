@@ -37,7 +37,7 @@ from __future__ import annotations
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Self, cast, override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1502,3 +1502,321 @@ def test_math_cli_never_formats_foreign_errors(
     output = capsys.readouterr()
     assert "ForeignMathCliFault" in output.err
     assert not output.out
+
+
+SYMLINK_METHOD = "is_symlink"
+
+
+def _read_math_snapshot(source: Path) -> str:
+    reader = cast("Callable[[Path], str]", vars(validator)["_read_tex"])
+    return reader(source)
+
+
+def _publish_math_log(log: Path, text: str) -> None:
+    publisher = cast(
+        "Callable[[Path, str], None]", vars(validator)["_write_math_build_log"]
+    )
+    publisher(log, text)
+
+
+def _admit_math_temporary(log: Path, descriptor: int, name: str) -> None:
+    admission = cast(
+        "Callable[[Path, int, str], object]",
+        vars(validator)["_admit_math_log_temporary"],
+    )
+    _ = admission(log, descriptor, name)
+
+
+class _ForeignReceipt:
+    """A foreign host receipt must not run attribute or truth-value hooks."""
+
+    @override
+    def __getattribute__(self, name: str) -> object:
+        if name.startswith("st_"):
+            message = "foreign host receipt attribute accessed"
+            raise AssertionError(message)
+        return cast("object", object.__getattribute__(self, name))
+
+    def __bool__(self) -> bool:
+        message = "foreign host receipt coerced to bool"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("parent", [True, False])
+def test_math_tex_rejects_foreign_path_stat_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, parent: bool
+) -> None:
+    """Source admission must not inspect untrusted stat-shaped properties."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    victim = source.parent if parent else source
+    native_lstat = Path.lstat
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        if path == victim:
+            return cast("os.stat_result", cast("object", _ForeignReceipt()))
+        return native_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(validator.MathSpecificationError, match="native stat"):
+        _ = _read_math_snapshot(source)
+
+
+@pytest.mark.parametrize("receipt", [0, 1, _ForeignReceipt()])
+def test_math_tex_rejects_foreign_junction_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Redirect decisions require actual native booleans, not truthiness."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    native_junction = Path.is_junction
+
+    def forged_junction(path: Path) -> bool:
+        if path == source:
+            return cast("bool", receipt)
+        return native_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    with pytest.raises(
+        validator.MathSpecificationError, match="native junction"
+    ):
+        _ = _read_math_snapshot(source)
+
+
+def test_math_tex_rejects_foreign_descriptor_stat_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Descriptor identity cannot consult caller-controlled stat attributes."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+
+    def forged_fstat(descriptor: int) -> os.stat_result:
+        del descriptor
+        return cast("os.stat_result", cast("object", _ForeignReceipt()))
+
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(validator.MathSpecificationError, match="native stat"):
+        _ = _read_math_snapshot(source)
+
+
+@pytest.mark.parametrize("receipt", [True, -1])
+def test_math_tex_rejects_foreign_open_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A fake descriptor must not be wrapped or close an unrelated host fd."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    native_open = os.open
+
+    def forged_open(path: Path, flags: int) -> int:
+        if path == source:
+            return cast("int", receipt)
+        return native_open(path, flags)
+
+    def unsafe_fdopen(descriptor: int, mode: str) -> object:
+        del descriptor, mode
+        message = "foreign descriptor was wrapped"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(os, "open", forged_open)
+    monkeypatch.setattr(os, "fdopen", unsafe_fdopen)
+    with pytest.raises(
+        validator.MathSpecificationError, match="native descriptor"
+    ):
+        _ = _read_math_snapshot(source)
+
+
+@pytest.mark.parametrize("receipt", [0, _ForeignReceipt()])
+def test_math_cache_rejects_foreign_junction_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A fake cache-directory redirect verdict cannot admit log writes."""
+    _, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    native_junction = Path.is_junction
+
+    def forged_junction(path: Path) -> bool:
+        if path == log.parent:
+            return cast("bool", receipt)
+        return native_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    with pytest.raises(
+        validator.MathSpecificationError, match="native junction"
+    ):
+        _publish_math_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
+def test_math_cache_rejects_foreign_stat_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fake cache-directory stat cannot certify an output location."""
+    _, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    native_lstat = Path.lstat
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        if path == log.parent:
+            return cast("os.stat_result", cast("object", _ForeignReceipt()))
+        return native_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(validator.MathSpecificationError, match="native stat"):
+        _publish_math_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("receipt", [0, _ForeignReceipt()])
+def test_math_log_leaf_rejects_foreign_redirect_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    method: str,
+    receipt: object,
+) -> None:
+    """Log-leaf admission must not coerce custom redirect truthiness."""
+    _, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    native_method = (
+        Path.is_symlink if method == SYMLINK_METHOD else Path.is_junction
+    )
+
+    def forged_redirect(path: Path) -> bool:
+        if path == log:
+            return cast("bool", receipt)
+        return native_method(path)
+
+    monkeypatch.setattr(Path, method, forged_redirect)
+    with pytest.raises(
+        validator.MathSpecificationError, match=r"native .* receipt"
+    ):
+        _publish_math_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
+def test_math_log_leaf_rejects_foreign_stat_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An existing log cannot be authenticated by custom stat properties."""
+    _, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    native_lstat = Path.lstat
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        if path == log:
+            return cast("os.stat_result", cast("object", _ForeignReceipt()))
+        return native_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(validator.MathSpecificationError, match="native stat"):
+        _publish_math_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
+@pytest.mark.parametrize("receipt", [1, _ForeignReceipt()])
+def test_math_latex_rejects_foreign_file_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """An absolute compiler path needs a native file status verdict."""
+    binary = tmp_path / "pdflatex"
+    _ = binary.write_bytes(b"fake executable")
+    binary.chmod(0o755)
+    native_is_file = Path.is_file
+
+    def forged_is_file(path: Path) -> bool:
+        if path == binary:
+            return cast("bool", receipt)
+        return native_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", forged_is_file)
+    with pytest.raises(validator.MathSpecificationError, match="native"):
+        _ = validator.latex_compiler(lambda name: str(binary) if name else None)
+
+
+@pytest.mark.parametrize("receipt", [1, _ForeignReceipt()])
+def test_math_latex_rejects_foreign_access_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A real compiler pathname still needs native execute permission."""
+    binary = tmp_path / "pdflatex"
+    _ = binary.write_bytes(b"fake executable")
+    binary.chmod(0o755)
+    native_access = os.access
+
+    def forged_access(path: str | bytes, mode: int) -> bool:
+        if path == str(binary):
+            return cast("bool", receipt)
+        return native_access(path, mode)
+
+    monkeypatch.setattr(os, "access", forged_access)
+    with pytest.raises(validator.MathSpecificationError, match="native"):
+        _ = validator.latex_compiler(lambda name: str(binary) if name else None)
+
+
+@pytest.mark.parametrize("receipt", [True, -1])
+def test_math_log_rejects_foreign_temporary_descriptor_before_host_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A fake temporary descriptor must never close stdin/stdout or open fds."""
+    _, log = _math_log_fixture(tmp_path, monkeypatch)
+
+    def unsafe_fstat(descriptor: int) -> os.stat_result:
+        del descriptor
+        message = "non-native temporary descriptor probed"
+        raise AssertionError(message)
+
+    def unsafe_close(descriptor: int) -> None:
+        del descriptor
+        message = "non-native temporary descriptor closed"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(os, "fstat", unsafe_fstat)
+    monkeypatch.setattr(os, "close", unsafe_close)
+    with pytest.raises(
+        validator.MathSpecificationError, match="native descriptor"
+    ):
+        _ = _admit_math_temporary(log, cast("int", receipt), "fake")
+
+
+@pytest.mark.parametrize("receipt", [0, _ForeignReceipt()])
+def test_math_scan_rejects_non_native_symlink_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A non-TeX discovered entry needs an authentic link-status verdict."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    ignored = source.parent / "ignored.txt"
+    _ = ignored.write_text("unrelated", encoding="utf-8")
+    native_symlink = Path.is_symlink
+
+    def forged_symlink(path: Path) -> bool:
+        if path == ignored:
+            return cast("bool", receipt)
+        return native_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", forged_symlink)
+    with pytest.raises(
+        validator.MathSpecificationError, match="native symlink"
+    ):
+        _ = validator.document_sources()
+
+
+@pytest.mark.parametrize("receipt", [0, _ForeignReceipt()])
+def test_math_scan_rejects_non_native_directory_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Symlink directory admission cannot trust a coerced directory verdict."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    ignored = source.parent / "ignored.txt"
+    _ = ignored.symlink_to(source.parent, target_is_directory=True)
+    native_is_dir = Path.is_dir
+
+    def forged_is_dir(path: Path) -> bool:
+        if path == ignored:
+            return cast("bool", receipt)
+        return native_is_dir(path)
+
+    monkeypatch.setattr(Path, "is_dir", forged_is_dir)
+    with pytest.raises(
+        validator.MathSpecificationError, match="native directory"
+    ):
+        _ = validator.document_sources()

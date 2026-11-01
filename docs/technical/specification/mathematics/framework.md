@@ -59,7 +59,13 @@ created regular descriptor inode; foreign pathname or inode receipts close the
 owned descriptor without touching the foreign name. The staged inode is checked
 again before replacement and cleanup never unlinks a changed staging inode.
 The preflight and later publication checks do not make concurrent directory
-replacement atomic.
+replacement atomic. Source and cache-path status receipts must be exact native
+filesystem records; junction, symlink, directory, compiler-file and executable
+access verdicts must be actual booleans rather than coerced truthy values.
+Source and temporary build-log file descriptors must be native nonnegative
+integers before stream ownership transfers; an invalid temporary receipt is
+never closed as though it owns a real descriptor. Foreign host receipt objects
+cannot certify paths by executing custom status or truth-value hooks.
 TeX validation reads no more than one MiB per physical regular source,
 rejects redirected parent/leaf paths, and requires the pre-read file identity
 (device, inode, size and modification/change times) to match the open descriptor
