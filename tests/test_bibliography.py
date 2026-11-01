@@ -42,7 +42,7 @@ from stat import S_IFDIR, S_IFLNK
 from typing import TYPE_CHECKING, Self, cast, override
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from typing import BinaryIO, Never
 
 import pytest
@@ -689,6 +689,15 @@ def test_bibliography_rejects_foreign_open_descriptor(
         _ = validator._read_regular_bytes(source)  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.fixture
+def borrowed_streams() -> Iterator[list[BinaryIO]]:
+    """Close only stream handles created by adversarial test fixtures."""
+    opened: list[BinaryIO] = []
+    yield opened
+    for stream in reversed(opened):
+        stream.close()
+
+
 class _ForeignReadStream:
     """Delegate fd ownership but forge just the read receipt."""
 
@@ -712,7 +721,7 @@ class _ForeignReadStream:
 
 
 def test_bibliography_rejects_forged_native_bytes_from_foreign_stream(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, borrowed_streams: list[BinaryIO]
 ) -> None:
     """An fdopen stream cannot replace invalid disk bytes with valid evidence."""
     source = tmp_path / "evidence.md"
@@ -722,6 +731,7 @@ def test_bibliography_rejects_forged_native_bytes_from_foreign_stream(
 
     def forged_fdopen(descriptor: int, mode: str) -> BinaryIO:
         wrapped = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        borrowed_streams.append(wrapped)
         return cast("BinaryIO", cast("object", _ForeignReadStream(wrapped, expected)))
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
@@ -730,7 +740,7 @@ def test_bibliography_rejects_forged_native_bytes_from_foreign_stream(
 
 
 def test_bibliography_rejects_native_buffer_with_foreign_raw_source(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, borrowed_streams: list[BinaryIO]
 ) -> None:
     """An exact buffered wrapper still needs a real raw file descriptor."""
     source = tmp_path / "evidence.md"
@@ -762,7 +772,9 @@ def test_bibliography_rejects_native_buffer_with_foreign_raw_source(
 
     def forged_fdopen(descriptor: int, _mode: str) -> BinaryIO:
         opened.append(descriptor)
-        return cast("BinaryIO", io.BufferedReader(ForeignRaw(descriptor)))
+        stream = cast("BinaryIO", io.BufferedReader(ForeignRaw(descriptor)))
+        borrowed_streams.append(stream)
+        return stream
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
     with pytest.raises(validator.BibliographyValidationError, match="native stream"):
@@ -773,7 +785,7 @@ def test_bibliography_rejects_native_buffer_with_foreign_raw_source(
 
 
 def test_bibliography_rejects_native_reader_of_unowned_descriptor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, borrowed_streams: list[BinaryIO]
 ) -> None:
     """A second native descriptor to the same inode is not the owned open fd."""
     source = tmp_path / "evidence.md"
@@ -783,7 +795,9 @@ def test_bibliography_rejects_native_reader_of_unowned_descriptor(
 
     def substituted_fdopen(descriptor: int, mode: str) -> BinaryIO:
         opened.append(descriptor)
-        return cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        stream = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        borrowed_streams.append(stream)
+        return stream
 
     monkeypatch.setattr(os, "fdopen", substituted_fdopen)
     with pytest.raises(validator.BibliographyValidationError, match="native stream"):
@@ -797,6 +811,7 @@ def test_bibliography_rejects_native_reader_of_unowned_descriptor(
 def test_bibliography_rejects_foreign_stream_receipt_before_inspection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    borrowed_streams: list[BinaryIO],
     receipt_kind: str,
 ) -> None:
     """Untrusted stream reads cannot provide provenance bytes."""
@@ -817,6 +832,7 @@ def test_bibliography_rejects_foreign_stream_receipt_before_inspection(
 
     def forged_fdopen(descriptor: int, mode: str) -> BinaryIO:
         stream = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        borrowed_streams.append(stream)
         return cast(
             "BinaryIO",
             cast("object", _ForeignReadStream(stream, receipts[receipt_kind])),
@@ -834,6 +850,7 @@ def test_bibliography_rejects_foreign_stream_receipt_before_inspection(
 def test_bibliography_rejects_foreign_stream_descriptor_receipt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    borrowed_streams: list[BinaryIO],
     phase: str,
     receipt: object,
 ) -> None:
@@ -858,6 +875,7 @@ def test_bibliography_rejects_foreign_stream_descriptor_receipt(
 
     def forged_fdopen(descriptor: int, mode: str) -> BinaryIO:
         stream = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        borrowed_streams.append(stream)
         return cast("BinaryIO", cast("object", ForeignDescriptorStream(stream)))
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
