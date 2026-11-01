@@ -761,8 +761,48 @@ def _tool_output(path: Path) -> str:
     return completed.stdout + chr(10) + completed.stderr
 
 
+def _required_file_evidence(path: Path, label: str) -> bool:
+    """Inspect native required-file state without coercing host receipts.
+
+    Returns:
+        Whether the required file is present and physically admitted.
+
+    """
+    present = path.is_file()
+    if type(present) is not bool:
+        _fail(f"invalid {label} file status receipt")
+    if present:
+        _check_source_parents(path, label)
+        _reject_source_redirect(path, label)
+        _ = _regular_source_identity(path.lstat(), label)
+    return present
+
+
+def _native_required_file(path: Path, label: str) -> bool:
+    """Wrap required-file host faults without calling foreign formatters.
+
+    Returns:
+        Whether the required file is present and physically admitted.
+
+    Raises:
+        ToolchainError: Host evidence is redirected, malformed, or unreadable.
+
+    """
+    try:
+        return _required_file_evidence(path, label)
+    except ToolchainError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = f"cannot inspect {label}: {_host_error_detail(error)}"
+        raise ToolchainError(message) from error
+
+
 def _require_files(root: Path, files: tuple[Path, ...], label: str) -> None:
-    missing = [str(path) for path in files if not (root / path).is_file()]
+    missing = [
+        str(path)
+        for path in files
+        if not _native_required_file(root / path, label)
+    ]
     if missing:
         _fail(f"{label} is missing required files: {', '.join(missing)}")
 

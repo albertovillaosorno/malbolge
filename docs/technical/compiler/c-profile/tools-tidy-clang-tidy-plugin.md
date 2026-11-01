@@ -63,7 +63,8 @@ Linked and drifted aliases fail closed, while unchanged aliases remain reusable.
 
 `tidy_toolchain.py` closes the manifest schema, rejects escaping paths and
 host-dependent backslash separators, verifies required runtime/development
-files, checks the exact Clang and clang-tidy versions, and can hash an
+files with exact native status and physical unlinked regular-file admission,
+checks the exact Clang and clang-tidy versions, and can hash an
 explicitly supplied development archive. Manifest loading requires a bounded,
 non-redirected regular file; the descriptor and pathname must retain inode,
 extent, and timestamps throughout the read before

@@ -1477,3 +1477,100 @@ def test_llvm_version_probe_rejects_wrong_command_receipts(
         tidy_toolchain.ToolchainError, match="invalid LLVM version"
     ):
         _ = tidy_toolchain._tool_output(Path("clang"))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+
+class ForeignLLVMFileStatus:
+    """A foreign required-file result must not supply executable readiness."""
+
+    def __bool__(self) -> bool:
+        """Reject use of foreign file-status truthiness.
+
+        Raises:
+            AssertionError: An untrusted host formatter was invoked.
+
+        """
+        message = "foreign LLVM required-file truthiness invoked"
+        raise AssertionError(message)
+
+
+def _require_llvm_fixture(root: Path, relative: Path) -> None:
+    """Run the pinned required-runtime-file admission for one test path."""
+    tidy_toolchain._require_files(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        root, (relative,), "LLVM runtime"
+    )
+
+
+@pytest.mark.parametrize("receipt", [1, 1.0, ForeignLLVMFileStatus()])
+def test_tidy_required_file_rejects_foreign_is_file_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Required runtime evidence cannot rely on coerced file status."""
+    path = tmp_path / "compiler"
+    _ = path.write_bytes(b"native LLVM binary")
+    native_is_file = Path.is_file
+
+    def forged_is_file(candidate: Path) -> object:
+        return receipt if candidate == path else native_is_file(candidate)
+
+    monkeypatch.setattr(Path, "is_file", forged_is_file)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match=r"invalid .*file status"
+    ):
+        _require_llvm_fixture(tmp_path, Path("compiler"))
+
+
+@pytest.mark.parametrize("redirect_kind", ["leaf", "parent"])
+def test_tidy_required_file_rejects_redirected_installation(
+    tmp_path: Path,
+    redirect_kind: str,
+) -> None:
+    """Executable readiness cannot borrow a linked local LLVM dependency."""
+    real = tmp_path / "physical"
+    real.mkdir()
+    _ = (real / "compiler").write_bytes(b"native LLVM binary")
+    if redirect_kind == REDIRECT_LEAF:
+        linked = tmp_path / "compiler"
+        target = real / "compiler"
+        relative = Path("compiler")
+    else:
+        linked = tmp_path / "linked"
+        target = real
+        relative = Path("linked/compiler")
+    try:
+        linked.symlink_to(
+            target,
+            target_is_directory=(redirect_kind != REDIRECT_LEAF),
+        )
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlink unavailable: {error}")
+    with pytest.raises(tidy_toolchain.ToolchainError, match="redirect"):
+        _require_llvm_fixture(tmp_path, relative)
+
+
+def test_tidy_required_file_rejects_foreign_stat_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Required executable metadata must be native, not foreign stat hooks."""
+    path = tmp_path / "compiler"
+    _ = path.write_bytes(b"native LLVM binary")
+    native_lstat = Path.lstat
+
+    def forged_lstat(candidate: Path) -> object:
+        return (
+            ForgedLLVMStat() if candidate == path else native_lstat(candidate)
+        )
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(tidy_toolchain.ToolchainError, match=r"invalid .*stat"):
+        _require_llvm_fixture(tmp_path, Path("compiler"))
+
+
+def test_tidy_required_file_accepts_physical_installed_file(
+    tmp_path: Path,
+) -> None:
+    """An existing local physical file remains valid installation evidence."""
+    _ = (tmp_path / "compiler").write_bytes(b"native LLVM binary")
+    _require_llvm_fixture(tmp_path, Path("compiler"))
