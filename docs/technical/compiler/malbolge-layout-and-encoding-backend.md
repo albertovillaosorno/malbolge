@@ -92,8 +92,12 @@ A complete 513-cell alternating input/output/halt layout now runs each byte
 the immutable 10-/14-trit profiles with swapped I/O opcode identities. Its
 independent step witness checks every reached code/data address and XLAT2
 mutation; actual guest input consumption and output bytes must match the entire
-binary domain. This covers successful byte-stream I/O, not EOF behavior or
-arbitrary typed-IR program lowering.
+binary domain. A separate seven-cell input/output/halt
+layout uses one real `0xff` input followed by two exhausted reads on all five
+profiles. Guest output retains the valid final byte, then twice exposes the
+selected profile's EOF accumulator word modulo 256 without consuming phantom
+input bytes. These tests cover successful byte I/O and raw VM EOF behavior,
+not C `getchar`/`feof` semantics or arbitrary typed-IR program lowering.
 
 `tests/malbolge_layout.rs` exercises 94 decode phases for profile byte I/O,
 executes real byte I/O, early and later-phase relocated rotate/crazy, and

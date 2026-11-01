@@ -373,6 +373,53 @@ fn all_registered_profiles_execute_all_256_binary_bytes() -> Result<(), String> 
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "each profile must distinguish a final valid byte from EOF"
+)]
+fn all_registered_profiles_preserve_end_of_input_in_emitted_layout() -> Result<(), String> {
+    let operations = [
+        LinearOpcode::InputWord,
+        LinearOpcode::OutputByte,
+        LinearOpcode::InputWord,
+        LinearOpcode::OutputByte,
+        LinearOpcode::InputWord,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ];
+    for profile in [
+        historical_profile(),
+        current_profile(),
+        target_profile("malbolge-2026.1").ok_or("missing 2026.1")?,
+        target_profile("malbolge-2026.2").ok_or("missing 2026.2")?,
+        target_profile("malbolge-2026.3").ok_or("missing 2026.3")?,
+    ] {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("{} EOF layout: {error:?}", profile.id()))?;
+        let mut machine = ProfileMachine::from_source(profile, layout.source(), vec![255])
+            .map_err(|error| format!("{} EOF VM load: {error:?}", profile.id()))?;
+        verify_execution_witness(&mut machine, &layout)?;
+        // The selected VM outputs the low eight bits of the EOF accumulator.
+        let eof_output = profile.eof_word().to_le_bytes()[0];
+        assert_ne!(
+            eof_output,
+            255,
+            "{} EOF must differ from 0xff",
+            profile.id()
+        );
+        assert_eq!(
+            machine.output(),
+            &[255, eof_output, eof_output],
+            "{} output after EOF",
+            profile.id(),
+        );
+        assert_eq!(machine.input_consumed(), 1, "{} input", profile.id());
+        assert_eq!(machine.registers().accumulator, profile.eof_word());
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "VM execution assertions follow fallible setup"
 )]
 fn real_rotate_and_crazy_instructions_execute_without_jumps() -> Result<(), String> {
