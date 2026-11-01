@@ -34,14 +34,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-from typing import Final
-from typing import Never
+from pathlib import Path
+from typing import Final, Never
 
 from scripts.repository_root import repository_root
-from scripts.validate import tidy_build_linux
-from scripts.validate import tidy_toolchain
+from scripts.validate import tidy_build_linux, tidy_toolchain
 
 ROOT: Final = repository_root(Path(__file__))
 SOURCE_ROOT: Final = ROOT / "src" / "compiler" / "c-frontend" / "composition"
@@ -123,19 +121,28 @@ def _checked_run(command: list[str], label: str) -> None:
             errors="replace",
             shell=False,
         )
-    except OSError as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = (
             f"failed to execute Linux frontend {label}: "
             f"{tidy_build_linux.native_build_error_detail(error)}"
         )
         raise LinuxFrontendBuildError(message) from error
+    if (
+        type(completed) is not sp.CompletedProcess
+        or type(completed.returncode) is not int
+        or type(completed.stdout) is not str
+        or type(completed.stderr) is not str
+    ):
+        _fail(f"Linux frontend {label} returned malformed process receipt")
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
         _fail(
-            "".join((
-                f"Linux frontend {label} failed with status ",
-                f"{completed.returncode}: {detail}",
-            ))
+            "".join(
+                (
+                    f"Linux frontend {label} failed with status ",
+                    f"{completed.returncode}: {detail}",
+                )
+            )
         )
 
 

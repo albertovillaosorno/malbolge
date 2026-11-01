@@ -31,13 +31,11 @@ from __future__ import annotations
 # ruff: file-ignore[private-member-access]
 # pyright: reportPrivateUsage=false
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import] - patched; no processes run.
-from typing import Never
-from typing import override
+from typing import Never, cast, override
 
 import pytest
 
-from scripts.validate import c_frontend_build_linux
-from scripts.validate import tidy_build_linux
+from scripts.validate import c_frontend_build_linux, tidy_build_linux
 
 NATIVE_DETAIL = "synthetic native build failure"
 FOREIGN_DETAIL = "ForeignNativeBuildError"
@@ -122,9 +120,7 @@ def test_frontend_tool_discovery_preserves_trusted_native_build_errors(
     def fail_tool_discovery() -> Never:
         raise fault
 
-    monkeypatch.setattr(
-        tidy_build_linux, "linux_build_tools", fail_tool_discovery
-    )
+    monkeypatch.setattr(tidy_build_linux, "linux_build_tools", fail_tool_discovery)
     with pytest.raises(
         c_frontend_build_linux.LinuxFrontendBuildError,
         match=r"native|Foreign",
@@ -137,3 +133,132 @@ def test_frontend_tool_discovery_preserves_trusted_native_build_errors(
         else "ForeignDiscoveryError"
     )
     assert expected in str(caught.value)
+
+
+@pytest.mark.parametrize("kind", [PLUGIN, "frontend"])
+@pytest.mark.parametrize("status", [False, True, 0.0, 1.0, "0", None])
+def test_linux_native_builder_rejects_noninteger_status(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    status: object,
+) -> None:
+    """A bool or floating return code never impersonates native build success."""
+    completed = sp.CompletedProcess(
+        args=["cmake", "--version"], returncode=0, stdout="ok", stderr=""
+    )
+    completed.returncode = cast("int", status)
+    monkeypatch.setattr(sp, "run", lambda *_args, **_kwargs: completed)
+    expected_type = (
+        tidy_build_linux.LinuxBuildError
+        if kind == PLUGIN
+        else c_frontend_build_linux.LinuxFrontendBuildError
+    )
+    with pytest.raises(expected_type, match="process receipt"):
+        _run_builder(kind)
+
+
+@pytest.mark.parametrize("kind", [PLUGIN, "frontend"])
+@pytest.mark.parametrize("field", ["stdout", "stderr"])
+def test_linux_native_builder_rejects_foreign_output_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    field: str,
+) -> None:
+    """Native build diagnostics may not invoke foreign text hooks."""
+
+    class ForeignText(str):
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign Linux build output hook executed")
+
+        def strip(self, *_args: object) -> str:
+            raise AssertionError("foreign Linux build output strip hook executed")
+
+    completed = sp.CompletedProcess(
+        args=["cmake", "--version"], returncode=0, stdout="ok", stderr=""
+    )
+    setattr(completed, field, ForeignText("untrusted"))
+    monkeypatch.setattr(sp, "run", lambda *_args, **_kwargs: completed)
+    expected_type = (
+        tidy_build_linux.LinuxBuildError
+        if kind == PLUGIN
+        else c_frontend_build_linux.LinuxFrontendBuildError
+    )
+    with pytest.raises(expected_type, match="process receipt"):
+        _run_builder(kind)
+
+
+@pytest.mark.parametrize("kind", [PLUGIN, "frontend"])
+def test_linux_native_builder_rejects_foreign_process_result(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A forged process record is rejected before attribute access."""
+
+    class ForeignResult:
+        def __getattribute__(self, _name: str) -> object:
+            raise AssertionError("foreign Linux process receipt hook executed")
+
+    monkeypatch.setattr(sp, "run", lambda *_args, **_kwargs: ForeignResult())
+    expected_type = (
+        tidy_build_linux.LinuxBuildError
+        if kind == PLUGIN
+        else c_frontend_build_linux.LinuxFrontendBuildError
+    )
+    with pytest.raises(expected_type, match="process receipt"):
+        _run_builder(kind)
+
+
+@pytest.mark.parametrize("kind", [PLUGIN, "frontend"])
+@pytest.mark.parametrize("fault_type", [ValueError, TypeError, RuntimeError])
+def test_linux_native_builder_wraps_non_os_host_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    fault_type: type[Exception],
+) -> None:
+    """Host process errors retain causes without foreign formatter execution."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign Linux process error formatter executed")
+
+    foreign = type("ForeignNativeFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("host error")
+
+    def fail_process(*_args: object, **_kwargs: object) -> Never:
+        raise fault
+
+    monkeypatch.setattr(sp, "run", fail_process)
+    expected_type = (
+        tidy_build_linux.LinuxBuildError
+        if kind == PLUGIN
+        else c_frontend_build_linux.LinuxFrontendBuildError
+    )
+    with pytest.raises(expected_type, match="failed to execute") as caught:
+        _run_builder(kind)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("kind", [PLUGIN, "frontend"])
+@pytest.mark.parametrize("status", [0, 17])
+def test_linux_native_builder_retains_exact_process_outcomes(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    status: int,
+) -> None:
+    """An authentic success or failed CMake execution remains recognizable."""
+    completed = sp.CompletedProcess(
+        args=["cmake", "--version"],
+        returncode=status,
+        stdout="build stdout",
+        stderr="build stderr",
+    )
+    monkeypatch.setattr(sp, "run", lambda *_args, **_kwargs: completed)
+    if status == 0:
+        _run_builder(kind)
+        return
+    expected_type = (
+        tidy_build_linux.LinuxBuildError
+        if kind == PLUGIN
+        else c_frontend_build_linux.LinuxFrontendBuildError
+    )
+    with pytest.raises(expected_type, match="17: build stderr"):
+        _run_builder(kind)

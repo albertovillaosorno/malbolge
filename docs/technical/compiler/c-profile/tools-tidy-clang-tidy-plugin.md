@@ -88,7 +88,9 @@ silently using ambient headers or repeating a network download.
 The Linux plugin CMake builder likewise converts native process launch faults
 into typed build failures with their original causes. Host diagnostics are
 rendered only for exact built-in exception types; custom host exception text
-hooks are not executed.
+hooks are not executed. Native CMake process receipts require exact integer
+exit statuses and native stdout/stderr text; foreign objects and boolean or
+floating success values are rejected before build promotion.
 
 ### Windows plugin host
 

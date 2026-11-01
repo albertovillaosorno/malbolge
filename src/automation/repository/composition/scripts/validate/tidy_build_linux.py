@@ -34,12 +34,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-from typing import Final
-from typing import Never
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final, Never
 
 from scripts.repository_root import repository_root
 from scripts.validate import tidy_toolchain
@@ -155,17 +154,19 @@ def _checked_run(command: list[str], label: str) -> None:
             errors="replace",
             shell=False,
         )
-    except OSError as error:
-        message = (
-            f"failed to execute Linux {label}: "
-            f"{native_build_error_detail(error)}"
-        )
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = f"failed to execute Linux {label}: {native_build_error_detail(error)}"
         raise LinuxBuildError(message) from error
+    if (
+        type(completed) is not sp.CompletedProcess
+        or type(completed.returncode) is not int
+        or type(completed.stdout) is not str
+        or type(completed.stderr) is not str
+    ):
+        _fail(f"Linux {label} returned malformed process receipt")
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
-        _fail(
-            f"Linux {label} failed with status {completed.returncode}: {detail}"
-        )
+        _fail(f"Linux {label} failed with status {completed.returncode}: {detail}")
 
 
 def _require_physical_build_directory(path: Path, label: str) -> None:
@@ -180,10 +181,7 @@ def _require_physical_build_directory(path: Path, label: str) -> None:
 def build(identity: tidy_toolchain.ToolchainIdentity) -> None:
     """Build the Linux plugin from exact local native-analysis inputs."""
     if identity.platform_id != tidy_toolchain.LINUX_PLATFORM:
-        message = (
-            "Linux build received unsupported platform: "
-            f"{identity.platform_id}"
-        )
+        message = f"Linux build received unsupported platform: {identity.platform_id}"
         _fail(message)
     tidy_toolchain.validate_installation(identity)
     tools = linux_build_tools()

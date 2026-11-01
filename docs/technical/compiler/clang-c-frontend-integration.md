@@ -44,7 +44,9 @@ forbidden. On Linux, build-cache and frontend-output paths are admitted only
 through physical, non-redirected directory ancestors before creating output
 folders and again before native configure/build commands. Linux frontend
 CMake failures and native build-tool discovery failures retain typed error
-causes without invoking custom host exception formatting hooks. Symlink,
+causes without invoking custom host exception formatting hooks. Native CMake
+build receipts must have exact integer exit statuses and native stdout/stderr
+text; foreign receipt objects cannot impersonate successful builds. Symlink,
 junction, and non-directory substitutions fail closed. The Windows frontend
 likewise rejects linked build-cache and output ancestors, plus existing symbolic or
 hardlinked `build.cmd` scripts, before invoking CMake. After either native
