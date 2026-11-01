@@ -68,6 +68,11 @@ def _safe_error_detail(error: Exception) -> str:
 
 
 def _arguments(arguments: list[str]) -> tuple[Path, str | None]:
+    if type(arguments) is not list or any(
+        type(argument) is not str for argument in arguments
+    ):
+        message = "CLI requires native CLI argument list and string tokens"
+        raise ProfileIdentityCliError(message)
     if arguments in (["-h"], ["--help"]):
         usage = f"usage: {MODULE_COMMAND} PROFILE.json [EXPECTED-FINGERPRINT]\n"
         _ = sys.stdout.write(usage)

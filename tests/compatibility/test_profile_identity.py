@@ -37,11 +37,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+from typing import TYPE_CHECKING
+from typing import cast
+from typing import final
+from typing import override
 
 import pytest
 
 from scripts.validate import profile_identity
 from scripts.validate import target_profile as validator
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_PATH = (
@@ -51,6 +58,7 @@ EXAMPLE_PATH = (
 )
 PROFILE_PATH = ROOT / "malbolge.json"
 CURRENT_PROFILE = "malbolge-2026"
+NATIVE_CLI_MESSAGE = "native CLI"
 CUSTOM_PROFILE = "custom-14-example"
 EXAMPLE_FINGERPRINT = (
     "malbolge-profile-v1:sha256:"
@@ -275,3 +283,100 @@ def test_profile_identity_cli_native_failure_retains_diagnostic(
     monkeypatch.setattr(sys, "argv", ["profile_identity", str(EXAMPLE_PATH)])
     assert profile_identity.main() == 1
     assert "external profile fingerprint mismatch" in capsys.readouterr().err
+
+
+@final
+class _ForeignCliArgument:
+    """Adversarial caller value with executable comparison behavior."""
+
+    __hash__ = object.__hash__
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        """Detect an unsafe argument comparison.
+
+        Raises:
+            AssertionError: If equality executes before argument admission.
+
+        """
+        del other
+        message = "foreign profile CLI equality executed"
+        raise AssertionError(message)
+
+
+@final
+class _ForeignCliString(str):  # ruff: ignore[subclass-builtin]
+    """String subclass cannot masquerade as a trusted CLI token."""
+
+    __slots__: tuple[str, ...] = ()
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        """Detect an unsafe string comparison.
+
+        Raises:
+            AssertionError: If equality executes before argument admission.
+
+        """
+        del other
+        message = "foreign profile CLI string equality executed"
+        raise AssertionError(message)
+
+    __hash__ = str.__hash__
+
+
+@final
+class _ForeignCliList(list[str]):  # ruff: ignore[subclass-builtin]
+    """List subclass cannot own CLI argument-sequence equality."""
+
+    __hash__ = None
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        """Detect an unsafe sequence comparison.
+
+        Raises:
+            AssertionError: If equality executes before argument admission.
+
+        """
+        del other
+        message = "foreign profile CLI list equality executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    "supplied",
+    [
+        [_ForeignCliArgument()],
+        [_ForeignCliString("--help")],
+        _ForeignCliList(["--help"]),
+        ["profile.json", _ForeignCliArgument()],
+        ["profile.json", _ForeignCliString("fingerprint")],
+    ],
+)
+def test_profile_identity_rejects_foreign_cli_arguments_before_comparison(
+    supplied: object,
+) -> None:
+    """Neither caller-owned containers nor tokens may execute equality hooks."""
+    arguments = cast(
+        "Callable[[list[str]], tuple[Path, str | None]]",
+        vars(profile_identity)["_arguments"],
+    )
+    with pytest.raises(
+        profile_identity.ProfileIdentityCliError, match="native CLI"
+    ):
+        _ = arguments(cast("list[str]", supplied))
+
+
+def test_profile_identity_cli_main_rejects_foreign_argument_without_hook(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI errors remain typed, deterministic and safely rendered."""
+    monkeypatch.setattr(
+        sys, "argv", ["profile_identity", _ForeignCliArgument()]
+    )
+    assert profile_identity.main() == 1
+    output = capsys.readouterr()
+    assert not output.out
+    assert NATIVE_CLI_MESSAGE in output.err
