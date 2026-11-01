@@ -807,11 +807,11 @@ def _admit_jig_alias_temporary(
     *,
     alias_root: Path,
     prefix: str,
-) -> Path:
+) -> tuple[Path, tuple[int, int]]:
     """Bind one mkstemp pathname to its descriptor and requested directory.
 
     Returns:
-        An admitted native temporary path safe for atomic alias publication.
+        The admitted native staging name and descriptor inode identity.
 
     Raises:
         ProvisionError: The receipt is nonnative, foreign, or unverifiable.
@@ -841,7 +841,31 @@ def _admit_jig_alias_temporary(
     single_link = descriptor_status.st_nlink == pathname_status.st_nlink == 1
     if not all((regular, same_inode, single_link)):
         _fail("Jig alias temporary receipt does not match its descriptor")
-    return temporary
+    return temporary, (descriptor_status.st_dev, descriptor_status.st_ino)
+
+
+def _jig_alias_stage_is_owned(
+    temporary: Path,
+    identity: tuple[int, int],
+    *,
+    expected_size: int | None = None,
+) -> bool:
+    """Check one still-private stage without following linked names.
+
+    Returns:
+        Whether the path still names the original single-link inode.
+
+    """
+    try:
+        status = temporary.lstat()
+    except OSError, ValueError, TypeError, RuntimeError:
+        return False
+    valid = (
+        stat.S_ISREG(status.st_mode)
+        and status.st_nlink == 1
+        and (status.st_dev, status.st_ino) == identity
+    )
+    return valid and (expected_size is None or status.st_size == expected_size)
 
 
 def _open_jig_alias_write_stream(descriptor: int) -> BinaryIO:
@@ -861,6 +885,30 @@ def _open_jig_alias_write_stream(descriptor: int) -> BinaryIO:
         raise ProvisionError(message) from error
 
 
+def _publish_owned_jig_alias_stage(
+    stage_receipt: tuple[Path, int, tuple[int, int]],
+    target: Path,
+    *,
+    payload: bytes,
+    windows: bool,
+) -> None:
+    """Write and promote only the descriptor-bound private staging inode."""
+    temporary, descriptor, identity = stage_receipt
+    with _open_jig_alias_write_stream(descriptor) as stream:
+        written = stream.write(payload)
+        if type(written) is not int or written != len(payload):
+            _fail("Jig alias temporary write count mismatch")
+        if not windows:
+            os.fchmod(stream.fileno(), JIG_BINARY_MODE)
+    _check_jig_alias_path(target.parent, directory=True, required=True)
+    _check_jig_alias_path(target, directory=False, required=False)
+    if not _jig_alias_stage_is_owned(
+        temporary, identity, expected_size=len(payload)
+    ):
+        _fail("Jig alias temporary changed before publication")
+    _ = temporary.replace(target)
+
+
 def _publish_jig_tool_alias(
     target: Path,
     payload: bytes,
@@ -874,7 +922,7 @@ def _publish_jig_tool_alias(
     prefix = f".{target.name}."
     descriptor, temporary_name = tempfile.mkstemp(prefix=prefix, dir=alias_root)
     try:
-        temporary = _admit_jig_alias_temporary(
+        temporary, identity = _admit_jig_alias_temporary(
             descriptor,
             temporary_name,
             alias_root=alias_root,
@@ -885,17 +933,15 @@ def _publish_jig_tool_alias(
             os.close(descriptor)
         raise
     try:
-        with _open_jig_alias_write_stream(descriptor) as stream:
-            written = stream.write(payload)
-            if type(written) is not int or written != len(payload):
-                _fail("Jig alias temporary write count mismatch")
-            if not windows:
-                os.fchmod(stream.fileno(), JIG_BINARY_MODE)
-        _check_jig_alias_path(alias_root, directory=True, required=True)
-        _check_jig_alias_path(target, directory=False, required=False)
-        _ = temporary.replace(target)
+        _publish_owned_jig_alias_stage(
+            (temporary, descriptor, identity),
+            target,
+            payload=payload,
+            windows=windows,
+        )
     finally:
-        temporary.unlink(missing_ok=True)
+        if _jig_alias_stage_is_owned(temporary, identity):
+            temporary.unlink(missing_ok=True)
 
 
 def _jig_alias_source_and_target(

@@ -59,7 +59,10 @@ pathname is rejected without unlinking or replacing that foreign file; the
 owned descriptor is closed on rejection. A failed temporary-output stream
 wrapper likewise closes its descriptor, retains the original host error as the
 cause of a typed bootstrap failure, and preserves any previously committed
-alias or launcher.
+alias or launcher. Before replacement, stage identity, regular-file type,
+exclusive link count and exact byte size are rechecked against the admitted
+original descriptor. Cleanup unlinks only the original owned inode, leaving
+foreign symlink or hardlink replacements untouched on rejection.
 Native Windows
 CMD and POSIX Python/pytest launcher scripts use the same physical preflight
 and private atomic replacement, checking both launcher destinations before

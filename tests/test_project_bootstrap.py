@@ -2449,6 +2449,80 @@ def test_jig_alias_publisher_rejects_hardlinked_staging_inode(
             stage.unlink(missing_ok=True)
 
 
+def _inject_jig_alias_postwrite_stage_swap(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: Path,
+    *,
+    symlink: bool,
+) -> tuple[list[Path], list[Path]]:
+    """Swap the admitted stage immediately after writing its payload.
+
+    Returns:
+        Original staging pathnames and retained owned inode pathnames.
+
+    """
+    native_mkstemp = tempfile.mkstemp
+    native_fchmod = os.fchmod
+    stages: list[Path] = []
+    backups: list[Path] = []
+
+    def capture_mkstemp(**kwargs: object) -> tuple[int, str]:
+        descriptor, name = native_mkstemp(
+            prefix=cast("str", kwargs["prefix"]),
+            dir=cast("Path", kwargs["dir"]),
+        )
+        stages.append(Path(name))
+        return descriptor, name
+
+    def swap_fchmod(descriptor: int, mode: int) -> None:
+        if not backups:
+            stage = stages[0]
+            backup = stage.with_name(f"{stage.name}.owned")
+            _ = stage.rename(backup)
+            backups.append(backup)
+            if symlink:
+                _ = stage.symlink_to(foreign)
+            else:
+                os.link(foreign, stage)
+        native_fchmod(descriptor, mode)
+
+    monkeypatch.setattr(tempfile, "mkstemp", capture_mkstemp)
+    monkeypatch.setattr(os, "fchmod", swap_fchmod)
+    return stages, backups
+
+
+@pytest.mark.parametrize("symlink", [False, True])
+def test_jig_alias_publisher_rejects_swapped_stage_after_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    symlink: bool,
+) -> None:
+    """Staging receipt must remain bound through publication and cleanup."""
+    layout = _jig_alias_fixture(tmp_path, windows=False)
+    root = layout.environment / "jig-bin"
+    root.mkdir()
+    target = root / "basedpyright.bin"
+    old_bytes = b"existing valid alias"
+    foreign_bytes = b"foreign must remain intact"
+    _ = target.write_bytes(old_bytes)
+    foreign = tmp_path / "foreign.bin"
+    _ = foreign.write_bytes(foreign_bytes)
+    stages, backups = _inject_jig_alias_postwrite_stage_swap(
+        monkeypatch, foreign, symlink=symlink
+    )
+    try:
+        with pytest.raises(python_validation.ProvisionError, match="temporary"):
+            _ = python_validation.write_jig_tool_aliases(layout, windows=False)
+        assert foreign.read_bytes() == foreign_bytes
+        assert target.read_bytes() == old_bytes
+        assert len(stages) == len(backups) == 1
+        assert stages[0].exists()
+    finally:
+        for stage in (*stages, *backups):
+            stage.unlink(missing_ok=True)
+
+
 def _inject_binary_source_wrapper_failure(
     monkeypatch: pytest.MonkeyPatch,
     source: Path,
