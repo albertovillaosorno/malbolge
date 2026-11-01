@@ -54,10 +54,12 @@ truth.
 The filesystem evidence reader admits only physical, unchanged regular files.
 Its path and descriptor status receipts must be exact native stat results,
 junction decisions exact booleans, opened descriptors nonnegative native integers,
-and read receipts exact native bytes. It rejects foreign host receipt objects
-before inspecting their fields or invoking caller-owned conversion hooks. These
-checks pin each read to an admitted inode and byte extent; they do not assert
-that source files cannot change after a validation run finishes.
+and read receipts exact native bytes. A native buffered reader must wrap a
+native file object whose descriptor is the exact owned open handle; a substituted
+stream cannot provide forged bytes despite matching file metadata. The reader
+rejects foreign host receipt objects before invoking their conversion hooks.
+These checks pin each read to an admitted inode and byte extent; they do not
+assert that source files cannot change after a validation run finishes.
 
 ## Diagnostics
 

@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import re
 import sys
@@ -370,6 +371,28 @@ def _read_regular_bytes(path: Path) -> bytes:
             except OSError:
                 pass
             raise
+        # An arbitrary stream may forge both fileno and source bytes while
+        # satisfying the physical file's stat and length checks.
+        if type(stream) is not io.BufferedReader:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            _fail("bibliography evidence requires native stream receipt")
+        raw = stream.raw
+        if (
+            type(raw) is not io.FileIO
+            or type(raw.name) is not int
+            or raw.name != descriptor
+            or raw.fileno() != descriptor
+            or stream.fileno() != descriptor
+        ):
+            # Never close a foreign raw stream; only our opened descriptor.
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            _fail("bibliography evidence requires native stream receipt")
         with stream:
             return _read_open_evidence(stream, admitted, path)
     except BibliographyValidationError:
