@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import sys
@@ -415,6 +416,28 @@ def _read_profile_bytes(path: Path) -> bytes:
         except OSError:
             pass
         raise
+    # Status receipts alone cannot attest bytes from a substituted stream.
+    # Accept only the exact native buffered/file wrapper for our opened fd.
+    if type(stream) is not io.BufferedReader:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        _fail("target-profile document requires native stream receipt")
+    raw = stream.raw
+    if (
+        type(raw) is not io.FileIO
+        or type(raw.name) is not int
+        or raw.name != descriptor
+        or raw.fileno() != descriptor
+        or stream.fileno() != descriptor
+    ):
+        # The foreign wrapper may own a different raw fd: close ours only.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        _fail("target-profile document requires native stream receipt")
     with stream:
         if (
             _profile_identity(os.fstat(_profile_descriptor(stream.fileno())))

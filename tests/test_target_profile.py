@@ -42,7 +42,7 @@ from typing import TYPE_CHECKING, Self, cast, override
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from typing import BinaryIO
 
 from scripts.validate import target_profile as validator
@@ -1044,6 +1044,61 @@ def test_profile_foreign_open_descriptor_rejected_before_fd_ownership(
         _ = validator.load_document(source)
 
 
+@pytest.fixture
+def borrowed_profile_streams() -> Iterator[list[BinaryIO]]:
+    """Close handles intentionally borrowed by forged stream fixtures."""
+    opened: list[BinaryIO] = []
+    yield opened
+    for stream in reversed(opened):
+        stream.close()
+
+
+def test_profile_rejects_forged_valid_json_from_foreign_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    borrowed_profile_streams: list[BinaryIO],
+) -> None:
+    """A forged stream cannot supply JSON unrelated to the on-disk file."""
+    source = tmp_path / "profile.json"
+    expected = b"{}"
+    _ = source.write_bytes(b"!!")
+    original_fdopen = os.fdopen
+
+    def substituted_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        stream = cast("BinaryIO", original_fdopen(os.dup(descriptor), mode))
+        borrowed_profile_streams.append(stream)
+        return cast("BinaryIO", cast("object", _ProfileForgedStream(stream, expected)))
+
+    monkeypatch.setattr(os, "fdopen", substituted_fdopen)
+    with pytest.raises(validator.ProfileValidationError, match="native stream"):
+        _ = validator.load_document(source)
+
+
+def test_profile_rejects_native_reader_of_other_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    borrowed_profile_streams: list[BinaryIO],
+) -> None:
+    """A real reader of a duplicated fd cannot replace the owned open handle."""
+    source = tmp_path / "profile.json"
+    _ = source.write_bytes(b"{}")
+    original_fdopen = os.fdopen
+    opened: list[int] = []
+
+    def substituted_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        opened.append(descriptor)
+        stream = cast("BinaryIO", original_fdopen(os.dup(descriptor), mode))
+        borrowed_profile_streams.append(stream)
+        return stream
+
+    monkeypatch.setattr(os, "fdopen", substituted_fdopen)
+    with pytest.raises(validator.ProfileValidationError, match="native stream"):
+        _ = validator.load_document(source)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
 class _ProfileForgedStream:
     """Own a native stream but expose a selected forged return value."""
 
@@ -1074,7 +1129,10 @@ class _ProfileForgedStream:
 
 @pytest.mark.parametrize("kind", ["str", "list", "subclass"])
 def test_profile_foreign_stream_byte_receipt_rejected_before_length(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    borrowed_profile_streams: list[BinaryIO],
+    kind: str,
 ) -> None:
     """Forged stream bytes cannot execute caller-owned byte hooks."""
     source = tmp_path / "profile.json"
@@ -1093,19 +1151,23 @@ def test_profile_foreign_stream_byte_receipt_rejected_before_length(
     }
 
     def forged_fdopen(fd: int, mode: str) -> BinaryIO:
-        stream = cast("BinaryIO", original_fdopen(fd, mode))
+        stream = cast("BinaryIO", original_fdopen(os.dup(fd), mode))
+        borrowed_profile_streams.append(stream)
         return cast(
             "BinaryIO", cast("object", _ProfileForgedStream(stream, receipts[kind]))
         )
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
-    with pytest.raises(validator.ProfileValidationError, match="native byte"):
+    with pytest.raises(validator.ProfileValidationError, match="native stream"):
         _ = validator.load_document(source)
 
 
 @pytest.mark.parametrize("receipt", [True, -1, 3.0])
 def test_profile_foreign_stream_descriptor_rejected_before_stat(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    borrowed_profile_streams: list[BinaryIO],
+    receipt: object,
 ) -> None:
     """A forged stream fileno must never reach os.fstat."""
     source = tmp_path / "profile.json"
@@ -1113,13 +1175,14 @@ def test_profile_foreign_stream_descriptor_rejected_before_stat(
     original_fdopen = os.fdopen
 
     def forged_fdopen(fd: int, mode: str) -> BinaryIO:
-        stream = cast("BinaryIO", original_fdopen(fd, mode))
+        stream = cast("BinaryIO", original_fdopen(os.dup(fd), mode))
+        borrowed_profile_streams.append(stream)
         return cast(
             "BinaryIO", cast("object", _ProfileForgedStream(stream, b"{}", receipt))
         )
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
-    with pytest.raises(validator.ProfileValidationError, match="native descriptor"):
+    with pytest.raises(validator.ProfileValidationError, match="native stream"):
         _ = validator.load_document(source)
 
 

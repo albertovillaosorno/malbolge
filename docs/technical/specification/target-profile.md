@@ -62,9 +62,11 @@ inode, extent, and write-time evidence before and after the read. Replacement
 or mutation fails closed. Host status receipts must be exact native stat
 results, redirect verdicts exact booleans, opened descriptors nonnegative native
 integers, and stream reads exact native bytes before any caller-owned hooks are
-inspected. These checks establish identity during reads, not immutability after
-validation. File loading rejects
-invalid UTF-8 as a typed profile-validation failure before JSON admission.
+inspected. The reader requires an exact native buffered stream wrapping a native
+file object bound to the opened descriptor, preventing forged same-length JSON
+from a substituted stream. These checks establish read-time identity, not
+immutability after validation. File loading rejects invalid UTF-8 as a typed
+profile-validation failure before JSON admission.
 Decoder failures retain their original cause, and only native decoder errors
 contribute diagnostic text; foreign exception formatters are never invoked.
 Parser capacity failures, including integer-token digit limits, also produce a
