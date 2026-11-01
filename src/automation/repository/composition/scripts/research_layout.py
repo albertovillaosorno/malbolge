@@ -51,6 +51,7 @@ def research_id_is_portable(identifier: str) -> bool:
         identifier not in {"", ".", ".."}
         and "/" not in identifier
         and "\\" not in identifier
+        and ":" not in identifier
         and not ntpath.isreserved(identifier)
     )
 

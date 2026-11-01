@@ -112,7 +112,17 @@ def test_casefold_colliding_research_ids_fail_closed(
 
 @pytest.mark.parametrize(
     "identifier",
-    ("NUL", "scratch:stream", "trailing.", "trailing ", r"foo\bar", ".", ".."),
+    (
+        "NUL",
+        "scratch:stream",
+        "a:b",
+        "C:temp",
+        "trailing.",
+        "trailing ",
+        r"foo\bar",
+        ".",
+        "..",
+    ),
 )
 def test_unportable_research_ids_fail_closed(identifier: str) -> None:
     """A mirrored research ID must name one portable physical directory."""

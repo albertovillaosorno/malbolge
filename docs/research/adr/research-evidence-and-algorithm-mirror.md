@@ -40,8 +40,9 @@ IDs differing only under Unicode case folding and canonical NFC normalization:
 those names are distinct on some POSIX filesystems but can alias on
 case-insensitive or normalization-insensitive hosts.
 Each research ID must also be one portable path component: `.`/`..`, forward
-or backward separators, Windows device names, NTFS alternate stream suffixes,
-and trailing dots or spaces are not admissible, even on POSIX hosts.
+or backward separators, colons (including Windows drive-relative names),
+Windows device names, and trailing dots or spaces are not admissible, even on
+POSIX hosts.
 The documentation half requires `README.md` and `research.md`; the executable
 half requires
 `README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via

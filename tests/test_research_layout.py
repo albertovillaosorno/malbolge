@@ -171,7 +171,9 @@ def test_discovery_rejects_casefold_colliding_experiments(
         _ = research_layout.research_algorithm_directories(tmp_path)
 
 
-@pytest.mark.parametrize("identifier", ("NUL", "scratch:stream", "trailing."))
+@pytest.mark.parametrize(
+    "identifier", ("NUL", "scratch:stream", "a:b", "C:temp", "trailing.")
+)
 def test_discovery_rejects_unportable_research_ids(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
