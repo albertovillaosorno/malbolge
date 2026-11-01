@@ -2029,6 +2029,24 @@ fn ensure_new_value(
     state: &LoweringState,
     value: u32,
 ) -> Result<(), TernaryLoweringError> {
+    // The canonical MCTR validator requires dense, per-function SSA results.
+    // Reject forged projections here, before returning an unencodable program.
+    let next = [
+        state.bools.len(),
+        state.bytes.len(),
+        state.signed_bytes.len(),
+        state.signed_halves.len(),
+        state.unsigned_halves.len(),
+        state.signed.len(),
+        state.unsigned.len(),
+    ]
+    .into_iter()
+    .try_fold(0usize, usize::checked_add)
+    .and_then(|count| u32::try_from(count).ok())
+    .ok_or(TernaryLoweringError::InvalidProjection)?;
+    if value != next {
+        return Err(TernaryLoweringError::InvalidProjection);
+    }
     if state.bools.contains(&value)
         || state.bytes.contains(&value)
         || state.signed_bytes.contains(&value)

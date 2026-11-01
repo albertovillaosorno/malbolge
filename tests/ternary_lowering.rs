@@ -9259,6 +9259,58 @@ fn byte_output_requires_prior_byte_definition() -> Result<(), String> {
 }
 
 #[test]
+fn sparse_projection_value_ids_fail_before_emitting_target_ir()
+-> Result<(), String> {
+    for forged_first in [false, true] {
+        let mut projection = projected_byte_io_fixture()?;
+        let block = projection
+            .functions
+            .first_mut()
+            .and_then(|function| function.blocks.first_mut())
+            .ok_or_else(|| String::from("byte-I/O projection block missing"))?;
+        if forged_first {
+            let InputInstruction::ByteInput { result, .. } = block
+                .instructions
+                .first_mut()
+                .ok_or_else(|| String::from("byte input projection missing"))?
+            else {
+                return Err(String::from("byte input projection changed"));
+            };
+            *result = 1;
+            let InputInstruction::ByteOutput { value, .. } =
+                block.instructions.get_mut(1).ok_or_else(|| {
+                    String::from("byte output projection missing")
+                })?
+            else {
+                return Err(String::from("byte output projection changed"));
+            };
+            *value = 1;
+        }
+        let InputInstruction::ConstantInteger { result, .. } =
+            block.instructions.get_mut(2).ok_or_else(|| {
+                String::from("integer constant projection missing")
+            })?
+        else {
+            return Err(String::from("integer constant projection changed"));
+        };
+        *result = 2;
+        let InputTerminator::Return { value, .. } = &mut block.terminator
+        else {
+            return Err(String::from("return projection changed"));
+        };
+        *value = Some(2);
+        if lower_typed_ir(&projection)
+            != Err(TernaryLoweringError::InvalidProjection)
+        {
+            return Err(format!(
+                "sparse projection SSA admitted (first ID forged: {forged_first})"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn duplicate_projection_value_ids_fail_closed() -> Result<(), String> {
     let mut input = projected_byte_io_fixture()?;
     let instruction = input
@@ -17680,7 +17732,7 @@ fn reject_boolean_constant_projection_forgery(
             _ => return Err(String::from("unknown Boolean projection case")),
         }
         let expected = if variation == 3 {
-            TernaryLoweringError::UnsupportedTerminator
+            TernaryLoweringError::InvalidProjection
         } else {
             TernaryLoweringError::UnsupportedInstruction
         };
@@ -19314,9 +19366,12 @@ fn malformed_byte_constant_projection_fails_closed() -> Result<(), String> {
             3 => *result = 1,
             _ => return Err(String::from("unknown byte-constant test case")),
         }
-        if lower_typed_ir(&malformed)
-            != Err(TernaryLoweringError::UnsupportedInstruction)
-        {
+        let expected = if variant == 3 {
+            TernaryLoweringError::InvalidProjection
+        } else {
+            TernaryLoweringError::UnsupportedInstruction
+        };
+        if lower_typed_ir(&malformed) != Err(expected) {
             return Err(format!(
                 "malformed byte-constant variant {variant} lowered"
             ));

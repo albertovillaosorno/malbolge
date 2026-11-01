@@ -1439,6 +1439,11 @@ addresses, and auxiliary startup/wrapper planning models are not wire authority.
 - The stage has deterministic input/output form, rejects malformed or
   unsupported input explicitly, and preserves source/profile provenance needed
   downstream.
+- Projected per-function SSA definitions must start at zero and remain dense
+  across all scalar types and byte effects. Sparse or skipped result IDs are
+  rejected by lowering before target IR is returned, matching the independent
+  canonical MCTR admission rule; a regression covers missing first and later
+  definitions while preserving valid dense multi-type programs.
 
 ## Failure Behavior
 
