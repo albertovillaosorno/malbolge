@@ -61,6 +61,9 @@ opening must return an exact native signed descriptor before stream wrapping
 or cleanup; the wrapped stream must report that same descriptor both before and
 after reading, and mismatches cannot authorize byte checks. Linked run manifests
 and retained raw CSV evidence obey the same physical-parent boundary.
+Each raw-read chunk must be exact native bytes before truthiness or length
+inspection. Native UTF-8 decoding errors retain their detail and chained cause;
+foreign decoder and CLI host exceptions never invoke their custom formatters.
 The retained raw CSV is checked for regular-file presence and nonzero size, not
 parsed as performance proof. TOML-escaped NUL bytes are rejected in linked run
 and raw sample paths before any host filesystem access.

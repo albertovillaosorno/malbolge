@@ -148,6 +148,66 @@ def test_protocol_file_rejects_invalid_utf8(tmp_path: Path) -> None:
         _ = validator.validate_example(path)
 
 
+def test_benchmark_utf8_failure_preserves_native_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native decoder details survive as a typed, chained evidence failure."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    _ = protocol.write_bytes(b"{\xff}")
+    admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+        protocol, "benchmark protocol"
+    )
+    assert admitted is not None
+    with pytest.raises(
+        validator.BenchmarkProtocolError, match="invalid benchmark protocol UTF-8"
+    ) as caught:
+        _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+            protocol, "benchmark protocol", admitted
+        )
+    assert type(caught.value.__cause__) is UnicodeDecodeError
+    assert "position 1" in str(caught.value)
+
+
+def test_benchmark_utf8_failure_never_formats_foreign_decoder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign Unicode failures never execute caller-provided formatters."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+        protocol, "benchmark protocol"
+    )
+    assert admitted is not None
+
+    @final
+    class ForeignDecodeError(UnicodeDecodeError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign decoder formatted")
+
+    fault = ForeignDecodeError("utf-8", b"\xff", 0, 1, "bad source")
+
+    @final
+    class ForeignBytes(bytes):
+        @override
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            del encoding, errors
+            raise fault
+
+    def forged_read(*_args: object, **_kwargs: object) -> bytes:
+        return ForeignBytes()
+
+    monkeypatch.setattr(validator, "_read_verified_bytes", forged_read)
+    with pytest.raises(
+        validator.BenchmarkProtocolError, match="invalid benchmark protocol UTF-8"
+    ) as caught:
+        _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+            protocol, "benchmark protocol", admitted
+        )
+    assert caught.value.__cause__ is fault
+
+
 def test_repository_example_scan_errors_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -385,6 +445,49 @@ def test_benchmark_reader_bounds_text_and_reads_in_chunks(
     _ = protocol.write_bytes(b"x" * (validator.MAX_PROTOCOL_BYTES + 1))
     with pytest.raises(validator.BenchmarkProtocolError, match="admission limit"):
         _ = validator.validate_example(protocol)
+
+
+@pytest.mark.parametrize(
+    "receipt_kind", ("subclass", "text", "bytearray", "memoryview", "none")
+)
+def test_benchmark_reader_requires_exact_native_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_kind: str,
+) -> None:
+    """Foreign read receipts cannot reach truthiness, length, or join hooks."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+        protocol, "benchmark protocol"
+    )
+    assert admitted is not None
+    real_read = os.read
+
+    @final
+    class ForeignBytes(bytes):
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign read truthiness executed")
+
+        @override
+        def __len__(self) -> int:
+            raise AssertionError("foreign read length executed")
+
+    def forged_read(descriptor: int, count: int) -> bytes:
+        original = real_read(descriptor, count)
+        receipts: dict[str, object] = {
+            "subclass": ForeignBytes(original),
+            "text": original.decode("utf-8"),
+            "bytearray": bytearray(original),
+            "memoryview": memoryview(original),
+            "none": None,
+        }
+        return cast("bytes", receipts[receipt_kind])
+
+    monkeypatch.setattr(os, "read", forged_read)
+    with pytest.raises(validator.BenchmarkProtocolError, match="native read bytes"):
+        _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+            protocol, "benchmark protocol", admitted
+        )
 
 
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
@@ -901,3 +1004,43 @@ def test_protocol_host_fault_never_formats_foreign_exceptions(
     with pytest.raises(validator.BenchmarkProtocolError, match=expected) as caught:
         validator.validate_example(protocol)
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("fault_type", [OSError, validator.BenchmarkProtocolError])
+def test_benchmark_cli_never_formats_foreign_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """A foreign exception from validation cannot execute its formatter."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign benchmark CLI exception formatted")
+
+    foreign = type("ForeignBenchmarkFailure", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe diagnostics")
+
+    def fail_examples() -> Never:
+        raise fault
+
+    monkeypatch.setattr(validator, "validate_repository_examples", fail_examples)
+    assert validator.main() == 1
+    assert "ForeignBenchmarkFailure" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("fault_type", [OSError, validator.BenchmarkProtocolError])
+def test_benchmark_cli_keeps_native_failure_detail(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """Exact native failures retain their actionable diagnostics."""
+    fault = fault_type("native benchmark examples unavailable")
+
+    def fail_examples() -> Never:
+        raise fault
+
+    monkeypatch.setattr(validator, "validate_repository_examples", fail_examples)
+    assert validator.main() == 1
+    assert "native benchmark examples unavailable" in capsys.readouterr().err

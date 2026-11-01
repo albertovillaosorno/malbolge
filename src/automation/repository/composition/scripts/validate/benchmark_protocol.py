@@ -152,7 +152,13 @@ def _host_error_detail(error: Exception) -> str:
         A trusted built-in diagnostic or the foreign exception type name.
 
     """
-    if type(error) in (OSError, ValueError, TypeError, RuntimeError):
+    if type(error) in (
+        BenchmarkProtocolError,
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+    ):
         return str(error)
     return type(error).__name__
 
@@ -538,6 +544,8 @@ def _read_verified_bytes(
     parts: list[bytes] = []
     while remaining:
         chunk = os.read(descriptor, min(FILE_READ_CHUNK_BYTES, remaining))
+        if type(chunk) is not bytes:
+            _fail(f"{context} requires native read bytes")
         if not chunk or len(chunk) > remaining:
             _fail(f"{context} changed during file read")
         parts.append(chunk)
@@ -598,7 +606,10 @@ def _read_utf8(path: Path, context: str, admitted: os.stat_result) -> str:
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError as error:
-        _fail(f"invalid {context} UTF-8: {error}")
+        detail = (
+            str(error) if type(error) is UnicodeDecodeError else type(error).__name__
+        )
+        raise BenchmarkProtocolError(f"invalid {context} UTF-8: {detail}") from error
 
 
 def _regular_file_status(path: Path, context: str) -> os.stat_result | None:
@@ -699,7 +710,7 @@ def main() -> int:
     try:
         examples = validate_repository_examples()
     except (BenchmarkProtocolError, OSError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_host_error_detail(error)}\n")
         return 1
     _ = sys.stdout.write(f"benchmark protocol examples valid: {len(examples)}\n")
     return 0
