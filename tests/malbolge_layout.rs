@@ -245,7 +245,13 @@ fn layout_encodes_current_and_historical_profiles_exactly() -> Result<(), String
     reason = "exhaustive profile/phase/opcode coverage is deliberately nested"
 )]
 fn all_94_profile_decode_phases_admit_machine_io_and_halt() -> Result<(), String> {
-    for profile in [current_profile(), historical_profile()] {
+    for profile in [
+        historical_profile(),
+        current_profile(),
+        target_profile("malbolge-2026.1").ok_or("missing 2026.1")?,
+        target_profile("malbolge-2026.2").ok_or("missing 2026.2")?,
+        target_profile("malbolge-2026.3").ok_or("missing 2026.3")?,
+    ] {
         for phase in 0..94 {
             for opcode in [LinearOpcode::InputWord, LinearOpcode::OutputByte] {
                 let mut operations = vec![LinearOpcode::NoOperation; phase + 2];

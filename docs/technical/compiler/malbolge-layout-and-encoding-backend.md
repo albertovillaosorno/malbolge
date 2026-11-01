@@ -87,6 +87,11 @@ later jump reads a code cell whose normal no-op execution already encrypted
 it. This evidence is not arbitrary branch lowering, a general data
 memory-write proof, or unbounded semantic equivalence.
 
+The exhaustive 94-phase inversion matrix now requires both input and output
+decoding at every address phase under all five registered profiles, rather
+than only historical/current. Versioned profiles include swapped I/O decoder
+identities, so this proves both opcodes independently at odd and even phases.
+
 A complete 513-cell alternating input/output/halt layout now runs each byte
 `0x00` through `0xff` under all five registered normative profiles, including
 the immutable 10-/14-trit profiles with swapped I/O opcode identities. Its
