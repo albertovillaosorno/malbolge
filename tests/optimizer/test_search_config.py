@@ -38,6 +38,7 @@ import contextlib
 
 import os
 from pathlib import Path
+import tomllib
 from typing import BinaryIO
 from typing import Never
 from typing import TYPE_CHECKING
@@ -791,3 +792,38 @@ def test_search_config_contains_stream_read_and_close_faults(
         _ = load_search_configuration(source)
     assert reached
     assert type(caught.value.__cause__) is fault
+
+
+def test_search_config_rejects_foreign_toml_table_before_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A parser dependency cannot inject a mapping with executable hooks."""
+    class ForeignTable(dict[str, object]):
+        @override
+        def items(self) -> Never:  # type: ignore[override]
+            raise AssertionError("foreign mapping iterator called")
+
+    monkeypatch.setattr(tomllib, "loads", lambda text: ForeignTable())
+    with pytest.raises(SearchConfigurationError, match="native TOML table"):
+        _ = parse_search_configuration(_config())
+
+
+def test_search_config_rejects_foreign_toml_key_before_hash_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Parser-provided string subclasses cannot influence key comparisons."""
+    class ForeignKey(str):
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign key comparison invoked")
+
+        __hash__ = str.__hash__
+
+    malformed: dict[str, object] = {
+        "schema_version": SEARCH_CONFIGURATION_SCHEMA,
+        "search": {ForeignKey("algorithm_id"): ALGORITHM, "backend_id": BACKEND},
+    }
+    monkeypatch.setattr(tomllib, "loads", lambda text: malformed)
+    with pytest.raises(SearchConfigurationError, match="native string key"):
+        _ = parse_search_configuration(_config())

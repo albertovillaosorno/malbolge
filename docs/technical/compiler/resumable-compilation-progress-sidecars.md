@@ -857,6 +857,11 @@ open.
 
 Canonical typed-IR durable state is already backend-identity neutral.
 
+The optimizer's TOML parser result admits only exact native dictionaries and
+exact native string keys before iterating or comparing names. Foreign mapping
+or key subclasses cannot invoke their custom iteration or equality methods,
+including when a parser dependency returns a nonstandard object.
+
 The optimizer's upstream TOML loader also admits exact platform-native
 `pathlib.Path` inputs and rejects NUL or unencodable Unicode pathnames before
 filesystem calls. Valid POSIX `surrogateescape` byte paths continue to round

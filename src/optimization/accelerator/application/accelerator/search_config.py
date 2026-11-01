@@ -367,14 +367,14 @@ def _validated_source(value: str) -> str:
 
 
 def _mapping(value: object, context: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        message = f"{context} must be a TOML table"
+    if type(value) is not dict:
+        message = f"{context} must be a native TOML table"
         raise SearchConfigurationError(message)
     raw = cast("dict[object, object]", value)
     result: dict[str, object] = {}
     for key, item in raw.items():
-        if not isinstance(key, str):
-            message = f"{context} contains a non-string key"
+        if type(key) is not str:
+            message = f"{context} contains a non-native string key"
             raise SearchConfigurationError(message)
         result[key] = item
     return result
