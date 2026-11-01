@@ -221,7 +221,16 @@ def _read_regular(path: Path, *, limit: int) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        # The descriptor remains owned by this reader until wrapping succeeds.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise SanitizerHarnessError(f"cannot read sanitizer input: {error}") from error
+    with stream:
         if _regular_identity(os.fstat(stream.fileno()), limit) != expected:
             _fail("sanitizer input changed before read")
         contents = stream.read(limit + 1)

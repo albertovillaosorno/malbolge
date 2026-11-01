@@ -48,6 +48,9 @@ with a one-MiB input bound and opened-inode identity checked before and after
 reads. In-root source fixtures and the pinned historical source obey the same
 regular-file and stable-snapshot rules, each with a one-MiB limit; fixture
 locations cannot traverse outside the repository or follow linked directories.
+If stream creation fails for a manifest, evidence, or source descriptor, the
+reader closes its raw descriptor and raises a typed sanitizer error retaining
+the underlying host failure as its cause.
 The pinned source hash is verified before a byte-exact copy is staged in the
 private temporary build directory; Clang compiles that verified snapshot, never
 reopening the original pathname after verification. The original `main.c`

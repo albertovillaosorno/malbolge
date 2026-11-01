@@ -152,6 +152,67 @@ def test_sanitizer_case_allows_safe_portable_filename_stem() -> None:
     assert case.identifier == identifier
 
 
+@pytest.mark.parametrize(
+    "source_kind", ["cases", "evidence", "historical-source"]
+)
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_sanitizer_source_wrapper_failure_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+    fault_type: type[Exception],
+) -> None:
+    """Manifest, evidence, and historical source readers own failed wraps."""
+    source = tmp_path / (
+        "main.c" if source_kind == "historical-source" else f"{source_kind}.json"
+    )
+    _ = source.write_bytes(b"{}")
+    if source_kind == "cases":
+        monkeypatch.setattr(harness, "CASES", source)
+    elif source_kind == "evidence":
+        monkeypatch.setattr(harness, "EVIDENCE", source)
+    else:
+        monkeypatch.setattr(harness, "SOURCE", source)
+        monkeypatch.setattr(harness, "is_supported", lambda: True)
+        monkeypatch.setattr(harness, "_compiler_identity", lambda: None)
+    native_open = os.open
+    native_fdopen = os.fdopen
+    opened: list[int] = []
+    fault = fault_type("injected sanitizer source wrapper failure")
+
+    def capture_open(path: Path, flags: int) -> int:
+        descriptor = native_open(path, flags)
+        if path == source:
+            opened.append(descriptor)
+        return descriptor
+
+    def reject_fdopen(descriptor: int, mode: str) -> object:
+        if descriptor in opened and mode == "rb":
+            raise fault
+        return native_fdopen(descriptor, mode)
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "fdopen", reject_fdopen)
+    try:
+        with pytest.raises(harness.SanitizerHarnessError) as caught:
+            if source_kind == "cases":
+                _ = harness.load_cases()
+            elif source_kind == "evidence":
+                _ = harness.load_evidence()
+            else:
+                _ = harness.run_harness()
+        assert caught.value.__cause__ is fault
+        assert len(opened) == 1
+        with pytest.raises(OSError, match=r"Bad file descriptor|Invalid handle"):
+            _ = os.fstat(opened[0])
+    finally:
+        for descriptor in opened:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
 def test_sanitizer_evidence_rejects_invalid_utf8(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
