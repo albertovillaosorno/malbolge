@@ -89,7 +89,11 @@ silently using ambient headers or repeating a network download.
 
 LLVM documents out-of-tree clang-tidy checks as shared-library plugins loaded
 with `--load`, while also warning that plugin API/ABI compatibility is tied to
-the exact clang-tidy build. The official LLVM 22.1.8 Windows release layout has
+the exact clang-tidy build. Native guest-C validation subprocess probes
+(Clang version, plugin registration, and analysis execution) normalize host
+errors to typed configuration failures without invoking foreign exception
+formatters, retaining the original host error as the cause. The official LLVM
+22.1.8 Windows release layout has
 plugin symbol exporting disabled, so its prebuilt `clang-tidy.exe` does not
 export the registry operation required by an out-of-tree DLL.
 

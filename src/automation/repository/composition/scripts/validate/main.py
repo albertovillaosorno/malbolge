@@ -126,6 +126,26 @@ def _fail(message: str) -> Never:
     raise InputError(message)
 
 
+def _host_error_detail(error: OSError) -> str:
+    """Read only exact native process exception text, not foreign hooks.
+
+    Returns:
+        Native error detail or an untrusted subclass's type name.
+
+    """
+    if type(error) in {
+        OSError,
+        FileNotFoundError,
+        PermissionError,
+        FileExistsError,
+        IsADirectoryError,
+        NotADirectoryError,
+        TimeoutError,
+    }:
+        return str(error)
+    return type(error).__name__
+
+
 def _default_clang_tidy() -> Path:
     if PLUGIN_HOST.is_file() and PLUGIN_LIBRARY.is_file():
         return PLUGIN_HOST
@@ -258,7 +278,11 @@ def _tool_version_output(path: Path, label: str) -> str:
             shell=False,
         )
     except OSError as error:
-        _fail(f"failed to execute {label} version query {path}: {error}")
+        message = (
+            f"failed to execute {label} version query {path}: "
+            f"{_host_error_detail(error)}"
+        )
+        raise InputError(message) from error
     if completed.returncode != 0:
         _fail(f"{label} version query failed: {path}")
     return completed.stdout + chr(10) + completed.stderr
@@ -288,7 +312,11 @@ def _require_plugin_registration(clang_tidy: Path, plugin: Path) -> None:
             shell=False,
         )
     except OSError as error:
-        _fail(f"failed to probe clang-tidy plugin registration: {error}")
+        message = (
+            "failed to probe clang-tidy plugin registration: "
+            f"{_host_error_detail(error)}"
+        )
+        raise InputError(message) from error
     observed = tuple(
         line.strip()
         for line in completed.stdout.splitlines()
@@ -344,7 +372,11 @@ def _run(command: list[str]) -> int:
             shell=False,
         )
     except OSError as error:
-        _fail(f"failed to execute validation tool {command[0]}: {error}")
+        message = (
+            f"failed to execute validation tool {command[0]}: "
+            f"{_host_error_detail(error)}"
+        )
+        raise InputError(message) from error
     return completed.returncode
 
 
