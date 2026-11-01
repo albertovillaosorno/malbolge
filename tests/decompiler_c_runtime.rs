@@ -128,7 +128,7 @@ int main(void)
     if (status != 0) { return status; }
     status = run_case(high, 1, 0xff);
     if (status != 0) { return status; }
-    status = run_case(NULL, 0, 0xa8);
+    status = run_case(NULL, 0, EXPECTED_EOF_BYTE);
     if (status != 0) { return status; }
     return check_atomic_exhaustion();
 }
@@ -262,19 +262,25 @@ fn compile_generated_program(
     Ok(executable)
 }
 
-#[test]
-fn generated_c_matches_historical_vm_and_rejects_output_atomically()
--> Result<(), String> {
+fn verify_generated_binary_io_against_vm(
+    profile: &'static ProfileDescriptor,
+) -> Result<(), String> {
     let directory = temporary_directory()?;
     let result = (|| {
-        let executable = compile_generated_program(&directory, SOURCE, "malbolge-1998", HARNESS)?;
+        let harness = format!(
+            "#define EXPECTED_EOF_BYTE {}\n{HARNESS}",
+            profile.eof_word().to_le_bytes()[0],
+        );
+        let executable = compile_generated_program(
+            &directory, SOURCE, profile.id(), &harness,
+        )?;
         let executed = Command::new(&executable)
             .output()
             .map_err(|error| format!("execute generated C: {error}"))?;
         let mut expected_output = Vec::new();
         for input in [vec![0], vec![0x41], vec![0xff], vec![]] {
             let mut machine = ProfileMachine::from_source(
-                historical_profile(), SOURCE, input,
+                profile, SOURCE, input,
             )
             .map_err(|error| error.to_string())?;
             let outcome = machine.run(8).map_err(|error| error.to_string())?;
@@ -301,6 +307,20 @@ fn generated_c_matches_historical_vm_and_rejects_output_atomically()
         .map_err(|error| format!("clean generated C fixtures: {error}"));
     result?;
     cleanup
+}
+
+#[test]
+fn generated_c_matches_historical_vm_and_rejects_output_atomically()
+-> Result<(), String> {
+    verify_generated_binary_io_against_vm(historical_profile())
+}
+
+#[test]
+fn generated_c_matches_current_vm_and_rejects_output_atomically()
+-> Result<(), String> {
+    // Exercise all three non-EOF byte values and the 15-trit EOF sentinel,
+    // alongside the same output-capacity rollback guard as the 1998 profile.
+    verify_generated_binary_io_against_vm(current_profile())
 }
 
 fn vm_snapshot_bytes(machine: &ProfileMachine) -> Vec<u8> {
