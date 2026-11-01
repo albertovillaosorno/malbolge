@@ -51,12 +51,16 @@ files under a 1 MiB limit, reads through a no-follow/nonblocking descriptor
 where available. Raw opening receipts must be exact native signed file
 descriptors; the wrapped stream must retain that same descriptor before and
 after reading. Initial and post-read status checks require exact native stat
-receipts before inspecting any filesystem identity fields. Parent and leaf
+receipts and native integer mode, device, inode, size, and nanosecond
+timestamps before interpreting filesystem identity. The initial file
+verdict is an exact native boolean, not a host-supplied truthiness result.
+Parent and leaf
 symbolic-link and junction verdicts must also be exact native booleans, on both
 initial and post-read inspection; foreign truthiness hooks never run. Stream
 reads must provide exact native bytes before any length inspection, and UTF-8
-decoder failures retain their original cause without formatting foreign exception
-subclasses. The reader rejects replacement or modification by rechecking
+decoder failures retain their original cause without formatting foreign
+exception subclasses. The reader rejects replacement or modification by
+rechecking
 device, inode, extent, and timestamps after reading. Repository-manifest
 validation accepts working-directory-relative and absolute in-root paths without
 resolving

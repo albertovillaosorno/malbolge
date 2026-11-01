@@ -543,6 +543,16 @@ def _manifest_identity(
     """
     if type(status) is not os.stat_result:
         _fail("experiment manifest requires native stat receipt")
+    fields = (
+        status.st_mode,
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+    if any(type(field) is not int for field in fields) or status.st_size < 0:
+        _fail("experiment manifest requires native stat fields")
     if not S_ISREG(status.st_mode):
         _fail("experiment manifest must be a regular file")
     if status.st_size > MAX_MANIFEST_BYTES:
@@ -673,6 +683,8 @@ def validate_repository_manifest(path: Path) -> ExperimentManifest:
         raise ExperimentManifestError(
             f"experiment manifest cannot be inspected: {detail}"
         ) from error
+    if type(exists) is not bool:
+        _fail("experiment manifest requires native file receipt")
     if not exists:
         _fail(f"experiment manifest not found: {relative.as_posix()}")
     manifest = parse_manifest(_read_utf8(canonical_path))

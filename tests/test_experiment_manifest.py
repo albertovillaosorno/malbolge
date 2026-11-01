@@ -425,6 +425,30 @@ def test_repository_manifest_inspection_failures_are_typed(
         _ = validator.validate_repository_manifest(source)
 
 
+@pytest.mark.parametrize("receipt", (None, 0, 1, "yes", object()))
+def test_repository_manifest_requires_native_file_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A foreign file-inspection result must not authorize source admission."""
+    source = _repository_manifest_fixture(tmp_path, monkeypatch)
+    original = Path.is_file
+
+    class ForeignVerdict:
+        def __bool__(self) -> Never:
+            raise AssertionError("foreign file-inspection truthiness executed")
+
+    verdict = ForeignVerdict() if type(receipt) is object else receipt
+
+    def forged_is_file(path: Path) -> bool:
+        return cast("bool", verdict) if path == source else original(path)
+
+    monkeypatch.setattr(Path, "is_file", forged_is_file)
+    with pytest.raises(validator.ExperimentManifestError, match="native file receipt"):
+        _ = validator.validate_repository_manifest(source)
+
+
 @final
 class _ForeignDescriptor(int):
     """An int subtype cannot claim native ownership of a file descriptor."""
@@ -681,6 +705,95 @@ def test_manifest_rejects_foreign_stat_receipts_before_field_access(
     monkeypatch.setattr(os, "fstat", forged_fstat)
     with pytest.raises(validator.ExperimentManifestError, match="native stat receipt"):
         _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("phase", ("initial", "opened", "after", "recheck"))
+@pytest.mark.parametrize(
+    "field", ("mode", "inode", "device", "size", "mtime_ns", "ctime_ns")
+)
+def test_manifest_requires_native_stat_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    field: str,
+) -> None:
+    """Even native stat containers cannot authorize foreign identity fields."""
+    source = tmp_path / "experiment.toml"
+    _ = source.write_bytes(b"schema_version = 1\n")
+    native = source.lstat()
+    fields: list[object] = [
+        *native,
+        native.st_atime,
+        native.st_mtime,
+        native[9],
+        native.st_atime_ns,
+        native.st_mtime_ns,
+        native.st_ctime_ns,
+    ]
+    target_index = {
+        "mode": 0,
+        "inode": 1,
+        "device": 2,
+        "size": 6,
+        "mtime_ns": 14,
+        "ctime_ns": 15,
+    }[field]
+    fields[target_index] = "foreign"
+    forged = os.stat_result(cast("tuple[int, ...]", tuple(fields)))
+    real_lstat = Path.lstat
+    real_open = os.open
+    real_fstat = os.fstat
+    opened = False
+    fstat_calls = 0
+
+    def tracked_open(path: Path, flags: int) -> int:
+        nonlocal opened
+        descriptor = real_open(path, flags)
+        if path == source:
+            opened = True
+        return descriptor
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        if path == source and (
+            (phase == "initial" and not opened) or (phase == "recheck" and opened)
+        ):
+            return forged
+        return real_lstat(path)
+
+    def forged_fstat(descriptor: int) -> os.stat_result:
+        nonlocal fstat_calls
+        fstat_calls += 1
+        if (phase == "opened" and fstat_calls == 1) or (
+            phase == "after" and fstat_calls == 2
+        ):
+            return forged
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(os, "open", tracked_open)
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(validator.ExperimentManifestError, match="native stat fields"):
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_manifest_rejects_negative_native_stat_size(tmp_path: Path) -> None:
+    """A forged negative size cannot be treated as bounded regular evidence."""
+    source = tmp_path / "experiment.toml"
+    _ = source.write_bytes(b"schema_version = 1\n")
+    native = source.lstat()
+    fields = [
+        *native,
+        native.st_atime,
+        native.st_mtime,
+        native[9],
+        native.st_atime_ns,
+        native.st_mtime_ns,
+        native.st_ctime_ns,
+    ]
+    fields[6] = -1
+    forged = os.stat_result(tuple(fields))
+    with pytest.raises(validator.ExperimentManifestError, match="native stat fields"):
+        _ = validator._manifest_identity(forged)  # pyright: ignore[reportPrivateUsage]
 
 
 @pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
