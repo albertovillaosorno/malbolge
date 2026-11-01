@@ -50,8 +50,11 @@ registers, consumed input, or committed steps. A second pinned-Clang
 regression executes a four-step relocation/rotate/crazy/halt source produced by
 the repository layout tool and compares all 59,049 resulting memory words plus
 accumulator, code pointer, and data pointer byte for byte with the historical
-VM. These tests cover the selected historical sources and transitions, not all
-possible program states or profiles; the VM remains the authority.
+VM. A third regression uses the layout tool's 102-byte automatic forward
+jump fixture (jump/input/output/halt), comparing the entire memory image and
+registers after the jump to catch incorrect encryption at the jumped code
+address. These tests cover selected historical sources and transitions, not
+all possible program states or profiles; the VM remains the authority.
 
 The general Cargo entrypoint delegates policy to
 `src/tooling/decompiler/application/cli.rs` and

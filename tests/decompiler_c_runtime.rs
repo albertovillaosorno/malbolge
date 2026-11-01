@@ -23,7 +23,7 @@
 // - Summary:
 //   - Executes generated semantic C and compares it to the normative VM.
 // - Description:
-//   - Covers binary/EOF I/O, halt, atomic refusal, and arithmetic state.
+//   - Covers binary/EOF I/O, halt, refusal, arithmetic, and jumps.
 // - Usage:
 //   - Collected by Cargo tests on Linux using the repository-pinned Clang.
 // - Defaults:
@@ -43,6 +43,14 @@ use malbolge::{ProfileMachine, RunOutcome, Termination, historical_profile};
 
 const SOURCE: &[u8] = b"ubO";
 const ARITHMETIC_SOURCE: &[u8] = b"(&<N";
+const JUMP_SOURCE: &[u8] = &[
+    98, 67, 66, 65, 64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52,
+    51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35,
+    34, 33, 126, 125, 124, 123, 122, 121, 120, 119, 118, 117, 116, 115, 114, 113, 112,
+    111, 110, 109, 108, 107, 106, 105, 104, 103, 102, 101, 100, 99, 98, 97, 96, 95,
+    94, 93, 92, 91, 90, 89, 88, 87, 86, 85, 84, 83, 82, 81, 80, 79, 78,
+    77, 76, 75, 74, 73, 72, 71, 70, 69, 68, 67, 66, 65, 64, 112, 93, 74,
+];
 const HARNESS: &str = "
 #include <stdio.h>
 #include <stdlib.h>
@@ -123,18 +131,27 @@ const MEMORY_HARNESS: &str = "
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifndef EXPECTED_OUTPUT_LEN
+#define EXPECTED_OUTPUT_LEN 0
+#endif
+#ifndef EXPECTED_OUTPUT_BYTE
+#define EXPECTED_OUTPUT_BYTE 0
+#endif
+
 int main(void)
 {
     uint32_t *memory = calloc(MB_MEMORY_WORDS, sizeof(*memory));
     struct mb_result result;
+    uint8_t output[1] = {0};
     size_t index;
     int status;
     if (memory == NULL) { return 30; }
     status = malbolge_decompiled_run(memory, MB_MEMORY_WORDS,
-        NULL, 0, NULL, 0, 4, &result);
+        NULL, 0, output, EXPECTED_OUTPUT_LEN, 4, &result);
     if (status != MB_STATUS_HALT || result.status != MB_STATUS_HALT
-        || result.steps != 4 || result.output_len != 0
-        || result.input_consumed != 0) {
+        || result.steps != 4 || result.output_len != EXPECTED_OUTPUT_LEN
+        || result.input_consumed != 0
+        || (EXPECTED_OUTPUT_LEN != 0 && output[0] != EXPECTED_OUTPUT_BYTE)) {
         free(memory);
         return 31;
     }
@@ -250,19 +267,17 @@ fn generated_c_matches_historical_vm_and_rejects_output_atomically()
     cleanup
 }
 
-#[test]
-fn generated_c_arithmetic_memory_and_registers_match_normative_vm()
--> Result<(), String> {
+fn verify_generated_state_against_vm(
+    source: &[u8], harness: &str, expected_output: &[u8],
+) -> Result<(), String> {
     let directory = temporary_directory()?;
     let result = (|| {
-        let executable = compile_generated_program(
-            &directory, ARITHMETIC_SOURCE, MEMORY_HARNESS,
-        )?;
+        let executable = compile_generated_program(&directory, source, harness)?;
         let executed = Command::new(&executable)
             .output()
             .map_err(|error| format!("execute generated arithmetic C: {error}"))?;
         let mut machine = ProfileMachine::from_source(
-            historical_profile(), ARITHMETIC_SOURCE, Vec::new(),
+            historical_profile(), source, Vec::new(),
         )
         .map_err(|error| error.to_string())?;
         let outcome = machine.run(4).map_err(|error| error.to_string())?;
@@ -272,7 +287,10 @@ fn generated_c_arithmetic_memory_and_registers_match_normative_vm()
         }) {
             return Err(format!("arithmetic VM did not halt: {outcome:?}"));
         }
-        let mut expected = Vec::with_capacity((machine.memory().len() + 3) * 4);
+        if machine.output() != expected_output {
+            return Err(format!("unexpected normative output: {:?}", machine.output()));
+        }
+        let mut expected = Vec::with_capacity(machine.memory().len().saturating_add(3).saturating_mul(4));
         for word in machine.memory().iter().copied().chain([
             machine.registers().accumulator,
             machine.registers().code_pointer,
@@ -297,4 +315,19 @@ fn generated_c_arithmetic_memory_and_registers_match_normative_vm()
         .map_err(|error| format!("clean arithmetic C fixtures: {error}"));
     result?;
     cleanup
+}
+
+#[test]
+fn generated_c_arithmetic_memory_and_registers_match_normative_vm()
+-> Result<(), String> {
+    verify_generated_state_against_vm(ARITHMETIC_SOURCE, MEMORY_HARNESS, &[])
+}
+
+#[test]
+fn generated_c_post_jump_encryption_matches_normative_vm()
+-> Result<(), String> {
+    let harness = format!(
+        "#define EXPECTED_OUTPUT_LEN 1\n#define EXPECTED_OUTPUT_BYTE 0xa8\n{MEMORY_HARNESS}"
+    );
+    verify_generated_state_against_vm(JUMP_SOURCE, &harness, &[0xa8])
 }
