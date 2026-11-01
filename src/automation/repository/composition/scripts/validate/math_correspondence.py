@@ -249,7 +249,7 @@ def _read_source_descriptor(
     """
     try:
         stream = os.fdopen(descriptor, "rb")
-    except (OSError, ValueError, RuntimeError):
+    except OSError, ValueError, TypeError, RuntimeError:
         try:
             os.close(descriptor)
         except OSError:

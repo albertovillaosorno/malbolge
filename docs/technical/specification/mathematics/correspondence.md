@@ -41,9 +41,11 @@ evidence files and rejects redirected source ancestors, including symlinked
 math directories. The validator reads at most 4 MiB per source, using stable
 regular-file descriptors and verifying inode, size and timestamps before and
 after reads. A parent changed into a symlink, or a source replaced during a
-read, cannot supply equation or test evidence. Malformed UTF-8 remains a typed
-correspondence error. These are read-time checks, not a claim that files can
-never change after validation finishes.
+read, cannot supply equation or test evidence. Native stream-wrapper
+failures, including TypeError, close the already-open source descriptor and
+produce typed correspondence errors with the original host cause. Malformed
+UTF-8 remains a typed correspondence error. These read-time checks do not
+claim files can never change after validation finishes.
 
 ### Current promoted equations
 

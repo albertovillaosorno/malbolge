@@ -100,7 +100,9 @@ def test_correspondence_toml_host_parser_capacity_is_typed(
         _ = validator._parse(text)
 
 
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
 @pytest.mark.parametrize(
     "operation", ("lstat", "junction", "open", "fdopen", "fstat", "read", "post_lstat")
 )
@@ -183,7 +185,9 @@ def test_correspondence_source_host_faults_are_typed(
         _ = validator._read_source_text(source, "witness")
 
 
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
 def test_correspondence_fdopen_failure_closes_owned_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -207,8 +211,9 @@ def test_correspondence_fdopen_failure_closes_owned_descriptor(
 
     monkeypatch.setattr(os, "open", track_open)
     monkeypatch.setattr(os, "fdopen", fail_fdopen)
-    with pytest.raises(validator.CorrespondenceError):
+    with pytest.raises(validator.CorrespondenceError) as caught:
         _ = validator._read_source_text(source, "witness")
+    assert type(caught.value.__cause__) is fault_type
     assert len(opened) == 1
     with pytest.raises(OSError):
         _ = os.fstat(opened[0])
