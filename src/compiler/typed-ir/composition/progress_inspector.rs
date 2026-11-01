@@ -73,10 +73,6 @@ impl<'counter> InspectorPipePermit<'counter> {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
-)]
 impl Drop for InspectorPipePermit<'_> {
     fn drop(&mut self) {
         let _previous = self.counter.fetch_sub(1, Ordering::AcqRel);
