@@ -35,6 +35,7 @@
 from dataclasses import replace
 import hashlib
 import itertools
+import math
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -361,6 +362,57 @@ def test_stricter_fraction_changes_threshold_fail_closed() -> None:
         binding.threshold == _STRICT_THRESHOLD,
         "threshold fraction did not round up",
     )
+
+
+@pytest.mark.parametrize(
+    ("maximum_anchors", "boundary"),
+    [(3, 1), (20, 17), (50, 35)],
+)
+def test_threshold_ceil_respects_fraction_just_above_share_boundary(
+    maximum_anchors: int, boundary: int
+) -> None:
+    """Floating-point multiplication must not round away a required share."""
+    fraction = math.nextafter(boundary / maximum_anchors, math.inf)
+    numerator, denominator = fraction.as_integer_ratio()
+    assert maximum_anchors * numerator > boundary * denominator
+    policy = SourceBindingPolicy(
+        threshold_fraction=fraction,
+        maximum_anchors=maximum_anchors,
+        minimum_anchor_files=1,
+        anchor_policy=AnchorPolicy(window_bytes=16, selection_modulus=1),
+    )
+    reference = _reference()
+    binding = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    assert len(binding.shares) == maximum_anchors
+    assert binding.threshold == boundary + 1
+    assert recover_secret(binding, reference) == _SECRET
+
+    if boundary == 1:
+        single_share_source = _candidate_paths(
+            reference, (binding.shares[0].source_path,)
+        )
+        with pytest.raises(SourceBindingError, match="insufficient"):
+            _ = recover_secret(binding, single_share_source)
+
+
+@pytest.mark.parametrize(
+    ("fraction", "expected_threshold"),
+    [(0.20, 1), (0.60, 3), (0.80, 4)],
+)
+def test_decimal_share_boundaries_keep_expected_quorum(
+    fraction: float, expected_threshold: int
+) -> None:
+    """Decimal fractions at exact k/N boundaries must not tighten spuriously."""
+    policy = SourceBindingPolicy(
+        threshold_fraction=fraction,
+        maximum_anchors=_FILE_COUNT,
+        minimum_anchor_files=1,
+        anchor_policy=AnchorPolicy(window_bytes=16, selection_modulus=1),
+    )
+    binding = bind_secret(
+        _reference(), _SECRET, policy=policy, context=_CONTEXT
+    )
+    assert binding.threshold == expected_threshold
 
 
 def test_source_binding_policy_rejects_boolean_numeric_fields() -> None:

@@ -428,8 +428,12 @@ reconstruction
 key material. The generator selects canonical stable-anchor windows across
 source
 files by content digest, round-robins them across files, and computes
-`T = ceil(N * configured_fraction)`. The secret is split T-of-N over GF(256).
-Each
+`T = ceil(N * configured_fraction)`. The fraction is interpreted using its
+canonical decimal representation and the ceiling is computed with integer
+arithmetic, preserving exact decimal boundaries and requiring the extra share
+for a representable fraction immediately above a boundary. A floating-point
+product must not round that stricter policy down to fewer shares. The secret is
+split T-of-N over GF(256). Each
 share is XOR-masked with HKDF-SHA-256 output whose input key material is the
 exact
 canonical anchor window and whose context also binds the source path, anchor

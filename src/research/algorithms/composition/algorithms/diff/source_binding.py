@@ -46,6 +46,7 @@ binding claim, not a claim of information-theoretic perfect secret sharing.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fractions import Fraction
 import hashlib
 import hmac
 import math
@@ -563,9 +564,14 @@ def bind_secret(
     """
     _validate_bind_inputs(reference, secret, policy=policy, context=context)
     materials = _select_anchor_materials(reference, policy)
+    # Interpret the configured float's canonical decimal as the policy value.
+    # A float product can round a fraction just above k/N back to k and admit
+    # fewer shares than required. Integer arithmetic keeps the ceiling exact.
+    fraction = Fraction(str(_binding_fraction(policy.threshold_fraction)))
+    numerator = len(materials) * fraction.numerator
     threshold = max(
         _ONE,
-        math.ceil(len(materials) * policy.threshold_fraction),
+        (numerator + fraction.denominator - _ONE) // fraction.denominator,
     )
     if threshold < policy.minimum_anchor_files:
         message = "source-binding threshold must reach minimum anchor files"
