@@ -15367,3 +15367,73 @@ def test_native_stat_receipt_keeps_signed_timestamp_support(
         vars(progress)["_admit_native_stat"],
     )
     assert admit(forged, "signed filesystem receipt") is forged
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        (read, method, receipt)
+        for read in (True, False)
+        for method in ("is_symlink", "is_junction")
+        for receipt in (False, True, 0, 1)
+    ],
+)
+def test_progress_link_probe_requires_native_boolean_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: tuple[bool, str, object],
+) -> None:
+    """Foreign link verdicts must not authorize a read or write."""
+    read, method, receipt = scenario
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    if read:
+        _ = progress.write_atomic(sidecar)
+    original = cast("Callable[[Path], bool]", getattr(Path, method))
+    probes: list[Path] = []
+
+    class UntrustedVerdict:
+        def __bool__(self) -> bool:
+            raise AssertionError
+
+    forged: object = (
+        UntrustedVerdict() if type(receipt) is bool else receipt
+    )
+
+    def forged_probe(path: Path) -> bool:
+        if path == destination:
+            probes.append(path)
+            return cast("bool", forged)
+        return original(path)
+
+    action: Callable[[], object] = (
+        (lambda: progress.read(destination))
+        if read
+        else (lambda: progress.write_atomic(sidecar))
+    )
+    with monkeypatch.context() as context:
+        context.setattr(Path, method, forged_probe)
+        with pytest.raises(ERROR, match="native boolean"):
+            _ = action()
+    assert probes == [destination]
+    assert destination.exists() is read
+
+
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction"])
+def test_progress_link_probe_allows_native_false_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str
+) -> None:
+    """A real false redirect verdict preserves ordinary publication."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    original = cast("Callable[[Path], bool]", getattr(Path, method))
+
+    def native_probe(path: Path) -> bool:
+        if path == destination:
+            return False
+        return original(path)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, method, native_probe)
+        assert progress.write_atomic(sidecar) == destination
+    assert progress.read(destination) == sidecar

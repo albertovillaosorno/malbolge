@@ -651,6 +651,11 @@ POSIX durability confirmation requires a directory descriptor rather than
 accepting a regular file's successful `fsync`. The parent is opened with
 `O_DIRECTORY` and `O_NOFOLLOW` where supported, and its path is checked for
 symlink or junction components before opening and before and after sync.
+Each `Path.is_symlink()` and `Path.is_junction()` decision now requires an
+exact native boolean before any truth-value dispatch. Forged status objects
+and integer approximations cannot certify an unlinked pointer, writer-lock,
+checkpoint, or parent-directory path. Red-first pointer read/write cases
+cover both probes; genuine false results preserve ordinary publication.
 Platforms without `O_DIRECTORY` check the opened descriptor's directory type.
 
 A linked parent or a parent replaced with a link during directory sync thus

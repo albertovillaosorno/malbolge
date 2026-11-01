@@ -2752,7 +2752,21 @@ def _write_atomic_bytes(
 
 
 def _path_redirects(path: Path) -> bool:
-    return path.is_symlink() or path.is_junction()
+    """Reject foreign link-status receipts before truth-value dispatch.
+
+    Returns:
+        Whether the path is a symbolic link or junction.
+
+    """
+    symlink = path.is_symlink()
+    if type(symlink) is not bool:
+        _fail("progress path symlink probe must return a native boolean")
+    if symlink:
+        return True
+    junction = path.is_junction()
+    if type(junction) is not bool:
+        _fail("progress path junction probe must return a native boolean")
+    return junction
 
 
 def _redirecting_component(path: Path) -> Path | None:
