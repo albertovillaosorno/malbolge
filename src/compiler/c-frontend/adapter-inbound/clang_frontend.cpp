@@ -60,6 +60,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -387,7 +388,7 @@ private:
   }
 
   [[nodiscard]] std::string
-  declaration_anchor(const clang::NamedDecl &declaration) const {
+  declaration_anchor(const clang::NamedDecl &declaration) {
     const clang::NamedDecl &canonical =
         *llvm::cast<clang::NamedDecl>(declaration.getCanonicalDecl());
     const std::string name = canonical.getNameAsString();
@@ -399,7 +400,19 @@ private:
     const clang::SourceLocation location =
         source_manager_.getExpansionLoc(canonical.getLocation());
     if (location.isValid() && source_manager_.isWrittenInMainFile(location)) {
-      return "@" + std::to_string(source_manager_.getFileOffset(location));
+      const std::size_t offset = source_manager_.getFileOffset(location);
+      std::string anchor = "@" + std::to_string(offset);
+      if (canonical.getLocation().isMacroID()) {
+        // One expansion may declare several independent tags at one source
+        // byte. Preserve their identity without publishing Clang addresses.
+        auto [entry, inserted] =
+            macro_tag_ordinals_.try_emplace(&canonical, 0U);
+        if (inserted) {
+          entry->second = ++macro_offset_counts_[offset];
+        }
+        anchor += ":" + std::to_string(entry->second);
+      }
+      return anchor;
     }
     return name.empty() ? "external-anonymous" : name;
   }
@@ -1065,6 +1078,8 @@ private:
   }
 
   clang::ASTContext &context_;
+  std::unordered_map<std::size_t, std::size_t> macro_offset_counts_;
+  std::unordered_map<const clang::NamedDecl *, std::size_t> macro_tag_ordinals_;
   std::string failure_;
   std::vector<Node> nodes_;
   std::vector<std::size_t> parents_;

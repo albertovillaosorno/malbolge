@@ -155,8 +155,12 @@ canonical tag declaration's source byte offset rather than a Clang pointer
 identity. This preserves distinct C tag types when one block shadows a file-
 scope name or two functions declare separate tags with the same spelling;
 references and redeclarations of one type share its canonical anchor. Named
-file-scope tags retain their stable name-based encoding. Non-default address
-spaces and unrecognized Clang types fail
+file-scope tags retain their stable name-based encoding. Macro-expanded tag
+anchors append a one-based `:occurrence` suffix to the expansion byte offset:
+different tag declarations in one macro invocation may otherwise share the same
+source position. The occurrence is assigned on deterministic first encounter
+per offset and remains tied to the canonical tag, not to a serialized Clang
+pointer. Non-default address spaces and unrecognized Clang types fail
 with `MALBOLGE-FRONTEND-002`. The regression suite uses `_BitInt(17)` to prove
 that a construct accepted by the parser cannot silently escape the normalized
 type grammar.

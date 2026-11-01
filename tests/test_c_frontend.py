@@ -423,6 +423,58 @@ def test_local_tag_forward_declaration_uses_one_canonical_anchor(
     assert _named_node(artifact, "local")["type"] == scoped_type
 
 
+def test_macro_expansion_tags_keep_distinct_canonical_types(
+    tmp_path: Path,
+) -> None:
+    """Multiple tags at one macro callsite are distinct semantic C types."""
+    source = tmp_path / "macro-tags.c"
+    _ = source.write_text(
+        "#define TWO struct { int first; } a; "
+        "struct { long long second; } b;\n"
+        "TWO\n"
+        "#define RECORD(name) struct { int field; } name;\n"
+        "#define DOUBLE RECORD(c) RECORD(d)\n"
+        "DOUBLE\n"
+        "#define UNIONS union { int field; } u; "
+        "union { short field; } v;\n"
+        "UNIONS\n"
+        "#define FLAGS enum { FLAG_E = 1 } e; "
+        "enum { FLAG_F = 2 } f;\n"
+        "FLAGS\n",
+        encoding="utf-8",
+    )
+    logical_id = "fixtures/macro-tags.c"
+    first = _run_frontend(source, logical_id)
+    artifact = _artifact(first)
+    assert _run_frontend(source, logical_id).stdout == first.stdout
+    relocated = tmp_path / "relocated.c"
+    _ = relocated.write_bytes(source.read_bytes())
+    assert _run_frontend(relocated, logical_id).stdout == first.stdout
+    nodes = cast("list[dict[str, object]]", artifact["nodes"])
+    for kind, prefix, variable_names in (
+        ("record-declaration", "struct", ("a", "b", "c", "d")),
+        ("record-declaration", "union", ("u", "v")),
+        ("enum-declaration", "enum", ("e", "f")),
+    ):
+        types = [
+            node["type"]
+            for node in nodes
+            if node["kind"] == kind
+            and isinstance(node.get("type"), str)
+            and cast("str", node["type"]).startswith(f"{prefix}(")
+        ]
+        assert len(types) == len(variable_names)
+        assert len(set(types)) == len(types)
+        for variable_name, tag_type in zip(variable_names, types, strict=True):
+            assert isinstance(tag_type, str)
+            assert tag_type.startswith(f"{prefix}(@")
+            assert _named_node(artifact, variable_name)["type"] == tag_type
+        assert [cast("str", value).split(":")[-1] for value in types[:2]] == [
+            "1)",
+            "2)",
+        ]
+
+
 def test_frontend_contract_is_closed_and_versioned() -> None:
     """Tracked artifact authority pins exact Clang/profile semantics."""
     document = cast("dict[str, object]", json.loads(CONTRACT.read_text()))
