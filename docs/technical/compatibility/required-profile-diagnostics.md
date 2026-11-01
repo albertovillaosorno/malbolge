@@ -116,7 +116,12 @@ profile IDs are validated before dictionary lookup or hashing, and runtime
 
 feature members are type-checked before duplicate hashing. These direct input
 failures therefore remain typed profile validation errors rather than raw Python
-exceptions.
+exceptions. Exact integer demands and runtime capacity fields are also checked
+for decimal diagnostic renderability at construction and direct preflight, so a
+host-configured integer-to-decimal digit limit cannot leak an untyped
+`ValueError` when a profile rejection needs its exact numeric fields. Such
+unrenderable inputs fail as `ProfileRequirementValidationError` rather than
+publishing an incomplete `MALBOLGE-PROFILE-001` or `002` diagnostic.
 
 The profiled runtime limit is implementation capacity, independent of the
 current profile. Its N20/3,486,784,401-word envelope is derived from the

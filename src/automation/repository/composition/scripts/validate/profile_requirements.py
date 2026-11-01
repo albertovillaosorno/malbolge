@@ -524,15 +524,25 @@ def _string(value: object, context: str) -> str:
     return value
 
 
+def _admit_decimal_diagnostic(value: int, context: str) -> None:
+    """Require exact decimal rendering before a stable profile diagnostic."""
+    try:
+        _ = str(value)
+    except ValueError:
+        _raise_validation(f"{context} exceeds the host decimal diagnostic limit")
+
+
 def _non_negative_int(value: object, context: str) -> int:
     if type(value) is not int or value < 0:
         _raise_validation(f"{context} must be a non-negative integer")
+    _admit_decimal_diagnostic(value, context)
     return value
 
 
 def _positive_int(value: object, context: str) -> int:
     if type(value) is not int or value <= 0:
         _raise_validation(f"{context} must be a positive integer")
+    _admit_decimal_diagnostic(value, context)
     return value
 
 

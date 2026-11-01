@@ -40,6 +40,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
@@ -411,6 +412,92 @@ def test_runtime_word_limit_requires_positive_integer(value: int) -> None:
         match="positive integer",
     ):
         _ = _runtime(max_word_trits=value)
+
+
+def _unrenderable_decimal_integer() -> int:
+    """Produce a valid integer exceeding the interpreter's decimal guard."""
+    limit = sys.get_int_max_str_digits()
+    if limit == 0:
+        pytest.skip("host decimal digit guard is disabled")
+    return 10 ** (limit + 1)
+
+
+@pytest.mark.parametrize("entrypoint", ("build", "preflight", "direct_error"))
+def test_oversized_decimal_requirement_is_a_typed_input_error(
+    entrypoint: str,
+) -> None:
+    """Unrenderable exact integers cannot leak a host str(int) ValueError."""
+    oversized = _unrenderable_decimal_integer()
+    base = _requirement(required_memory_words=1)
+    runtime = requirements.safe_rust_classic_capability()
+
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="decimal diagnostic",
+    ):
+        if entrypoint == "build":
+            _ = requirements.build_profile_requirement(
+                _document(),
+                HISTORICAL_ID,
+                required_memory_words=oversized,
+            )
+        elif entrypoint == "preflight":
+            requirements.preflight_profile_requirement(
+                replace(base, required_memory_words=oversized), runtime
+            )
+        else:
+            _ = requirements.ProfileRequirementError(
+                requirements.ProfileRequirementErrorKind.PROFILE_CAPACITY_EXCEEDED,
+                replace(base, required_memory_words=oversized),
+                runtime,
+                missing_dimensions=(),
+            )
+
+
+def test_largest_renderable_decimal_requirement_preserves_exact_diagnostic() -> None:
+    """Host digit guard cannot truncate an otherwise renderable demand."""
+    limit = sys.get_int_max_str_digits()
+    if limit == 0:
+        pytest.skip("host decimal digit guard is disabled")
+    required = 10 ** (limit - 1)
+    requirement = _requirement(
+        HISTORICAL_ID,
+        required_memory_words=required,
+    )
+    with pytest.raises(requirements.ProfileRequirementError) as caught:
+        requirements.preflight_profile_requirement(
+            requirement,
+            requirements.safe_rust_classic_capability(),
+        )
+    assert caught.value.code == "MALBOLGE-PROFILE-002"
+    assert f"required_memory_words={required}" in str(caught.value)
+
+
+@pytest.mark.parametrize("field", ("max_memory_words", "max_word_trits"))
+@pytest.mark.parametrize("entrypoint", ("build", "preflight"))
+def test_oversized_decimal_runtime_capacity_is_a_typed_input_error(
+    field: str,
+    entrypoint: str,
+) -> None:
+    """A runtime geometry must remain printable by stable diagnostics."""
+    oversized = _unrenderable_decimal_integer()
+    runtime = _runtime(features=requirements.NORMATIVE_PROFILE_FEATURES[:-1])
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="decimal diagnostic",
+    ):
+        if entrypoint == "build":
+            _ = requirements.build_runtime_capability(
+                capability_id="runtime.test",
+                features=runtime.features,
+                max_memory_words=oversized if field == "max_memory_words" else 1,
+                max_word_trits=oversized if field == "max_word_trits" else 1,
+            )
+        else:
+            requirements.preflight_profile_requirement(
+                _requirement(required_memory_words=1),
+                replace(runtime, **{field: oversized}),
+            )
 
 
 def test_zero_required_memory_matches_rust_preflight_domain() -> None:
