@@ -42,14 +42,17 @@ The pinned Linux Clang execution suite differentially compares generated C
 against the normative VM across the full memory image and `A`/`C`/`D`
 registers, not only observed output. Both historical and current profile
 fixtures cover arithmetic, rotate/crazy and indirect-jump post-encryption;
-historical fixtures also cover binary input. Current-profile fixtures verify
-the larger 15-trit geometry and EOF low-byte output without assuming the
-historical 10-trit sentinel. Both
-profiles also reject an indirect jump to a non-graphical encryption target
-atomically, preserving the pre-step memory and registers. Rejected rotate and
-crazy instructions that would overwrite their own executing code cell with a
-non-graphical word likewise leave all memory and registers unchanged. A
-source-admitted indirect jump into a non-graphical successor proves that the
+historical and current fixtures also cover binary input and atomic output
+capacity refusal. Frozen 2026.1/.2/.3 profiles exercise their selected input/
+output instructions, EOF words, and 10-/14-trit geometry through the same C-vs-
+VM binary I/O check. Current-profile fixtures verify the larger 15-trit
+geometry and EOF low-byte output without assuming the historical 10-trit
+sentinel. Both profiles also reject an indirect jump to a non-graphical
+encryption target atomically, preserving the pre-step memory and registers.
+Rejected rotate and crazy instructions that would overwrite their own
+executing code cell with a non-graphical word likewise leave all memory
+and registers unchanged. A source-admitted indirect jump into a non-graphical
+successor proves that the
 historical profile continues without progress while the current profile
 terminates. These checks compare complete states, not only status codes, but
 do not establish correctness for arbitrary programs or untested profiles.

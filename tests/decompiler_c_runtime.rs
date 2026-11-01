@@ -42,7 +42,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use malbolge::{
     ProfileDescriptor, ProfileMachine, ProfileMachineError, RunOutcome,
     Termination, current_profile, decode_profile_instruction,
-    historical_profile,
+    historical_profile, target_profile,
 };
 
 const SOURCE: &[u8] = b"ubO";
@@ -262,8 +262,26 @@ fn compile_generated_program(
     Ok(executable)
 }
 
+fn binary_io_source(profile: &ProfileDescriptor) -> Result<[u8; 3], String> {
+    let mut source = [0u8; 3];
+    for (index, (cell, opcode)) in source.iter_mut().zip([
+        profile.input_instruction(),
+        profile.output_instruction(),
+        b'v',
+    ]).enumerate() {
+        let position = u32::try_from(index).map_err(|error| error.to_string())?;
+        *cell = (33u8..=126)
+            .find(|byte| {
+                decode_profile_instruction(u32::from(*byte), position) == Some(opcode)
+            })
+            .ok_or_else(|| format!("no source byte for opcode {opcode} at {index}"))?;
+    }
+    Ok(source)
+}
+
 fn verify_generated_binary_io_against_vm(
     profile: &'static ProfileDescriptor,
+    source: &[u8],
 ) -> Result<(), String> {
     let directory = temporary_directory()?;
     let result = (|| {
@@ -272,7 +290,7 @@ fn verify_generated_binary_io_against_vm(
             profile.eof_word().to_le_bytes()[0],
         );
         let executable = compile_generated_program(
-            &directory, SOURCE, profile.id(), &harness,
+            &directory, source, profile.id(), &harness,
         )?;
         let executed = Command::new(&executable)
             .output()
@@ -280,7 +298,7 @@ fn verify_generated_binary_io_against_vm(
         let mut expected_output = Vec::new();
         for input in [vec![0], vec![0x41], vec![0xff], vec![]] {
             let mut machine = ProfileMachine::from_source(
-                profile, SOURCE, input,
+                profile, source, input,
             )
             .map_err(|error| error.to_string())?;
             let outcome = machine.run(8).map_err(|error| error.to_string())?;
@@ -312,7 +330,7 @@ fn verify_generated_binary_io_against_vm(
 #[test]
 fn generated_c_matches_historical_vm_and_rejects_output_atomically()
 -> Result<(), String> {
-    verify_generated_binary_io_against_vm(historical_profile())
+    verify_generated_binary_io_against_vm(historical_profile(), SOURCE)
 }
 
 #[test]
@@ -320,7 +338,21 @@ fn generated_c_matches_current_vm_and_rejects_output_atomically()
 -> Result<(), String> {
     // Exercise all three non-EOF byte values and the 15-trit EOF sentinel,
     // alongside the same output-capacity rollback guard as the 1998 profile.
-    verify_generated_binary_io_against_vm(current_profile())
+    verify_generated_binary_io_against_vm(current_profile(), SOURCE)
+}
+
+#[test]
+fn generated_c_versioned_profiles_preserve_binary_io_and_output_refusal()
+-> Result<(), String> {
+    // Frozen identities include swapped I/O instruction assignments and
+    // distinct 10- and 14-trit geometries; derive source from each descriptor.
+    for id in ["malbolge-2026.1", "malbolge-2026.2", "malbolge-2026.3"] {
+        let profile = target_profile(id)
+            .ok_or_else(|| format!("missing immutable profile {id}"))?;
+        let source = binary_io_source(profile)?;
+        verify_generated_binary_io_against_vm(profile, &source)?;
+    }
+    Ok(())
 }
 
 fn vm_snapshot_bytes(machine: &ProfileMachine) -> Vec<u8> {
