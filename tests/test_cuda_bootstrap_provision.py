@@ -637,6 +637,71 @@ def test_provision_manifest_rejects_inode_swap_after_read(
     assert observed == SOURCE_RECHECK
 
 
+@pytest.mark.parametrize("source_kind", ["manifest", "marker"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_cuda_source_fdopen_fault_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+    fault_type: type[Exception],
+) -> None:
+    """A stream-wrapper fault closes authority and completion-marker descriptors."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    source = manifest
+    if source_kind == "marker":
+        root = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest,
+            LINUX_PLATFORM,
+            downloader=_download_fixture(payload),
+        )
+        source = root / cuda_validation.CUDA_PROVISION_MARKER
+    native_open = os.open
+    native_fdopen = os.fdopen
+    descriptors: list[int] = []
+    fault = fault_type("injected CUDA source wrapper failure")
+
+    def capture_open(path: Path, flags: int) -> int:
+        descriptor = native_open(path, flags)
+        if path == source:
+            descriptors.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(descriptor: int, mode: str) -> object:
+        if descriptor in descriptors and mode == "rb":
+            raise fault
+        return native_fdopen(descriptor, mode)
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    try:
+        with pytest.raises(cuda_validation.CudaProvisionError) as caught:
+            if source_kind == "manifest":
+                _ = cuda_validation.load_cuda_provision_manifest(
+                    tmp_path, manifest, LINUX_PLATFORM
+                )
+            else:
+                _ = cuda_validation.provision_cuda_manifest(
+                    tmp_path, manifest, LINUX_PLATFORM,
+                    downloader=_download_fixture(payload),
+                )
+        if source_kind == "manifest":
+            assert "cannot read CUDA provision manifest" in str(caught.value)
+            assert caught.value.__cause__ is fault
+        else:
+            assert "exists without the exact provision marker" in str(caught.value)
+        assert len(descriptors) == 1
+        with pytest.raises(OSError, match=r"Bad file descriptor|Invalid handle"):
+            _ = os.fstat(descriptors[0])
+    finally:
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
 def test_provision_completion_marker_rejects_linked_source(
     tmp_path: Path,
 ) -> None:

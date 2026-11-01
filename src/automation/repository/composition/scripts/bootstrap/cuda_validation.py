@@ -185,7 +185,16 @@ def _read_manifest_source(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        # Until stream wrapping succeeds, this reader still owns the descriptor.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise CudaProvisionError(f"cannot read {label}: {error}") from error
+    with stream:
         if _manifest_identity(os.fstat(stream.fileno()), label) != expected:
             _fail(f"{label} changed before read")
         payload = stream.read(max_bytes + 1)
