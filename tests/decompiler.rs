@@ -268,8 +268,12 @@ fn cli_accepts_stable_regular_source_symlink() -> Result<(), String> {
 
 #[test]
 fn cli_rejects_duplicate_semantic_options() -> Result<(), String> {
-    let cases: [DuplicateCliCase; 3] = [
+    let cases: [DuplicateCliCase; 4] = [
         (&["--profile", "a", "--profile", "b"], "duplicate --profile"),
+        (
+            &["--source-format", "raw", "--source-format", "annotated"],
+            "duplicate --source-format",
+        ),
         (
             &["--representation", "c", "--representation", "c"],
             "duplicate --representation",
@@ -433,6 +437,97 @@ fn annotated_cli_emits_canonicalizable_output_to_stdout_and_file() -> Result<(),
         || recovered.bytes() != OUTPUT_SOURCE
     {
         return Err(format!("annotated CLI drifted: {stdout:?}; {file:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn annotated_cli_requires_explicit_input_format_for_annotated_views()
+-> Result<(), String> {
+    let directory = temporary_cli_inputs()?;
+    let raw = directory.join("raw.malbolge");
+    let annotated = directory.join("view.annotated.malbolge");
+    let malformed = directory.join("invalid.annotated.malbolge");
+    fs::write(&raw, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
+    let executable = env!("CARGO_BIN_EXE_malbolge_decompile");
+    let base = ["--profile", "malbolge-1998", "--representation", "analysis"];
+    let render = Command::new(executable)
+        .args(["--profile", "malbolge-1998", "--representation", "annotated"])
+        .arg(&raw).arg("--output").arg(&annotated).output()
+        .map_err(|error| error.to_string())?;
+    let baseline = Command::new(executable).args(base).arg(&raw).output()
+        .map_err(|error| error.to_string())?;
+    let explicitly_annotated = Command::new(executable)
+        .args(base).args(["--source-format", "annotated"])
+        .arg(&annotated).output().map_err(|error| error.to_string())?;
+    let default_raw = Command::new(executable)
+        .args(base).arg(&annotated).output()
+        .map_err(|error| error.to_string())?;
+    let explicit_raw = Command::new(executable)
+        .args(base).args(["--source-format", "raw"])
+        .arg(&annotated).output().map_err(|error| error.to_string())?;
+    fs::write(&malformed, b"# malformed \x80\nubO")
+        .map_err(|error| error.to_string())?;
+    let rejected_presentation = Command::new(executable)
+        .args(base).args(["--source-format", "annotated"])
+        .arg(&malformed).output().map_err(|error| error.to_string())?;
+    fs::remove_dir_all(&directory)
+        .map_err(|error| error.to_string())?;
+    if !render.status.success()
+        || !baseline.status.success()
+        || !explicitly_annotated.status.success()
+        || explicitly_annotated.stdout != baseline.stdout
+        || default_raw.status.success()
+        || explicit_raw.status.success()
+        || rejected_presentation.status.success()
+        || !String::from_utf8_lossy(&rejected_presentation.stderr)
+            .contains("invalid annotated source")
+    {
+        return Err(format!(
+            "annotated input mode violated raw isolation: \
+{render:?}; {baseline:?}; {explicitly_annotated:?}; \
+{default_raw:?}; {explicit_raw:?}; {rejected_presentation:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn annotated_cli_preserves_c_and_annotated_output_on_reentry()
+-> Result<(), String> {
+    let directory = temporary_cli_inputs()?;
+    let raw = directory.join("raw.malbolge");
+    let annotated = directory.join("view.annotated.malbolge");
+    fs::write(&raw, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
+    let executable = env!("CARGO_BIN_EXE_malbolge_decompile");
+    let render = Command::new(executable)
+        .args(["--profile", "malbolge-1998", "--representation", "annotated"])
+        .arg(&raw).arg("--output").arg(&annotated).output()
+        .map_err(|error| error.to_string())?;
+    let raw_c = Command::new(executable)
+        .args(["--profile", "malbolge-1998", "--representation", "c"])
+        .arg(&raw).output().map_err(|error| error.to_string())?;
+    let annotated_c = Command::new(executable)
+        .args(["--profile", "malbolge-1998", "--representation", "c"])
+        .args(["--source-format", "annotated"])
+        .arg(&annotated).output().map_err(|error| error.to_string())?;
+    let reannotated = Command::new(executable)
+        .args(["--profile", "malbolge-1998", "--representation", "annotated"])
+        .args(["--source-format", "annotated"])
+        .arg(&annotated).output().map_err(|error| error.to_string())?;
+    let generated = fs::read(&annotated).map_err(|error| error.to_string())?;
+    fs::remove_dir_all(&directory).map_err(|error| error.to_string())?;
+    if !render.status.success()
+        || !raw_c.status.success()
+        || !annotated_c.status.success()
+        || raw_c.stdout != annotated_c.stdout
+        || !reannotated.status.success()
+        || reannotated.stdout != generated
+    {
+        return Err(format!(
+            "annotated reentry changed C or annotated output: \
+{render:?}; {raw_c:?}; {annotated_c:?}; {reannotated:?}"
+        ));
     }
     Ok(())
 }

@@ -71,6 +71,13 @@ After stripping those comments and presentation line breaks, the canonical
 loaded positions, VM semantics, and emitted bytes are unchanged. An initial
 indirect label does not recover its target or predict future self-modification.
 
+`--source-format annotated` separately opts into the v1 comment-stripping
+frontend for decompiler input; it works with `analysis`, `annotated`, and `c`
+outputs. The default `raw` input format never strips comments, regardless of
+file extension. In both cases, the exact selected-profile loader is final
+source admission after the input file is read under the 1 MiB byte cap.
+Malformed annotated presentation fails instead of falling back to raw.
+
 ```text
 cargo run --bin malbolge_decompile -- \
   --profile malbolge-1998 --representation annotated \
@@ -135,7 +142,8 @@ output-capacity atomicity, normative initial translation, typed initial-state
 analysis, CLI analysis output, and the interpreter-compatible `ubO`
 input/output/halt baseline against `ProfileMachine`, plus annotated
 round trips, source-position mappings, initial-state structural boundaries,
-historic/current VM equivalence, and CLI stdout/file identity.
+historic/current VM equivalence, CLI stdout/file identity, and explicit
+annotated input mode isolation against raw and malformed presentation.
 
 Pinned LLVM 22.1.8 development evidence compiled generated historical `ubO` C
 with `-std=c23 -ffreestanding -Wall -Wextra -Werror` for both

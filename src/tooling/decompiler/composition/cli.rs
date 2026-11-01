@@ -43,7 +43,7 @@ use std::io::{
 };
 use std::path::{Path, PathBuf};
 
-use malbolge::target_profile;
+use malbolge::{canonicalize_annotated_source, target_profile};
 
 use super::decompiler;
 
@@ -51,7 +51,7 @@ const MAX_DECOMPILER_SOURCE_BYTES: u64 = 1_048_576;
 
 const USAGE: &str = concat!(
     "usage: malbolge_decompile --profile ID --representation analysis|annotated|c ",
-    "INPUT ",
+    "[--source-format raw|annotated] INPUT ",
     "[--output FILE]"
 );
 
@@ -62,12 +62,19 @@ enum OutputRepresentation {
     CSource,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SourceFormat {
+    Annotated,
+    Raw,
+}
+
 #[derive(Debug)]
 struct Arguments {
     input: PathBuf,
     output: Option<PathBuf>,
     profile_id: String,
     representation: OutputRepresentation,
+    source_format: SourceFormat,
 }
 
 /// Runs the general decompiler command-line frontend.
@@ -88,7 +95,15 @@ pub fn run() -> IoResult<()> {
     let profile = target_profile(&arguments.profile_id).ok_or_else(|| {
         IoError::other(format!("unknown profile: {}", arguments.profile_id))
     })?;
-    let source = read_decompiler_source(&arguments.input)?;
+    let presentation = read_decompiler_source(&arguments.input)?;
+    let source = match arguments.source_format {
+        SourceFormat::Raw => presentation,
+        SourceFormat::Annotated => canonicalize_annotated_source(&presentation)
+            .map_err(|error| {
+                IoError::other(format!("invalid annotated source: {error}"))
+            })?
+            .into_bytes(),
+    };
     let rendered = match arguments.representation {
         OutputRepresentation::Analysis => {
             decompiler::render_analysis(profile, &source)
@@ -251,6 +266,7 @@ fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
     let mut output = None;
     let mut profile_id = None;
     let mut representation = None;
+    let mut source_format = None;
     let mut index = 0usize;
     while index < raw.len() {
         let argument = raw.get(index).ok_or_else(|| IoError::other(USAGE))?;
@@ -258,6 +274,10 @@ fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
             Some("--profile") => {
                 let value = next_utf8(raw, &mut index, "--profile")?;
                 set_once(&mut profile_id, String::from(value), "--profile")?;
+            },
+            Some("--source-format") => {
+                let value = next_utf8(raw, &mut index, "--source-format")?;
+                set_once(&mut source_format, parse_source_format(value)?, "--source-format")?;
             },
             Some("--representation") => {
                 let value = next_utf8(raw, &mut index, "--representation")?;
@@ -297,6 +317,7 @@ fn parse_arguments(raw: &[OsString]) -> IoResult<Option<Arguments>> {
             .ok_or_else(|| IoError::other("missing --profile"))?,
         representation: representation
             .ok_or_else(|| IoError::other("missing --representation"))?,
+        source_format: source_format.unwrap_or(SourceFormat::Raw),
     }))
 }
 
@@ -339,5 +360,13 @@ fn parse_representation(value: &str) -> IoResult<OutputRepresentation> {
         _ => Err(IoError::other(format!(
             "unknown output representation: {value}"
         ))),
+    }
+}
+
+fn parse_source_format(value: &str) -> IoResult<SourceFormat> {
+    match value {
+        "raw" => Ok(SourceFormat::Raw),
+        "annotated" => Ok(SourceFormat::Annotated),
+        _ => Err(IoError::other(format!("unknown source format: {value}"))),
     }
 }

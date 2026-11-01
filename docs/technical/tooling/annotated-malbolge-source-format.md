@@ -79,6 +79,15 @@ These boundaries are initial VM analysis, **not** reconstructed C blocks or
 indirect jump targets. Compiler C/IR-aligned comments and source-map
 composition against emitted layout remain follow-on work.
 
+The same decompiler CLI now accepts `--source-format annotated` as an explicit
+input choice for `analysis`, `annotated`, and `c` rendering. It canonicalizes
+full-line comments and whitespace before the selected-profile source loader
+validates the recovered bytes. Without that option, `raw` remains the default:
+a `.malbolge` filename never implicitly grants comment syntax and an invalid
+raw source is not retried as annotated. Both presentations retain the 1 MiB
+input-file acquisition cap (not a promise that an expanded annotated view of a
+1 MiB canonical program can be re-read within that cap).
+
 ### Structure-aware formatting
 
 Compiler/decompiler tools may use source maps to place deterministic breaks and
@@ -160,3 +169,11 @@ view through the canonicalizer, checks retained loaded-position offset and
 line/column mapping, compares historical/current VM observations, confirms
 initial indirect/halt region boundaries, rejects invalid canonical input, and
 checks byte-identical CLI output through stdout and `--output`.
+
+A fourth decompiler regression exercises the explicit annotated input mode:
+it feeds the generated view back to the analysis CLI, compares exact output
+against raw-source analysis, proves default/explicit raw modes reject the
+annotated comments, and rejects malformed annotated presentation.
+
+A fifth regression proves C and annotated output are byte-identical whether
+read from the canonical raw file or explicitly re-entered annotated source.
