@@ -23,7 +23,7 @@
 // - Summary:
 //   - Executes generated semantic C and compares it to the normative VM.
 // - Description:
-//   - Covers historical EOF, binary input, halt, and output-capacity refusal.
+//   - Covers binary/EOF I/O, halt, atomic refusal, and arithmetic state.
 // - Usage:
 //   - Collected by Cargo tests on Linux using the repository-pinned Clang.
 // - Defaults:
@@ -42,6 +42,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use malbolge::{ProfileMachine, RunOutcome, Termination, historical_profile};
 
 const SOURCE: &[u8] = b"ubO";
+const ARITHMETIC_SOURCE: &[u8] = b"(&<N";
 const HARNESS: &str = "
 #include <stdio.h>
 #include <stdlib.h>
@@ -118,6 +119,44 @@ int main(void)
 }
 ";
 
+const MEMORY_HARNESS: &str = "
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(void)
+{
+    uint32_t *memory = calloc(MB_MEMORY_WORDS, sizeof(*memory));
+    struct mb_result result;
+    size_t index;
+    int status;
+    if (memory == NULL) { return 30; }
+    status = malbolge_decompiled_run(memory, MB_MEMORY_WORDS,
+        NULL, 0, NULL, 0, 4, &result);
+    if (status != MB_STATUS_HALT || result.status != MB_STATUS_HALT
+        || result.steps != 4 || result.output_len != 0
+        || result.input_consumed != 0) {
+        free(memory);
+        return 31;
+    }
+    for (index = 0; index < MB_MEMORY_WORDS + 3; ++index) {
+        uint32_t value = index < MB_MEMORY_WORDS ? memory[index]
+            : index == MB_MEMORY_WORDS ? result.accumulator
+            : index == MB_MEMORY_WORDS + 1 ? result.code_pointer
+            : result.data_pointer;
+        uint8_t bytes[4] = {
+            (uint8_t)value, (uint8_t)(value >> 8),
+            (uint8_t)(value >> 16), (uint8_t)(value >> 24)
+        };
+        if (fwrite(bytes, 1, 4, stdout) != 4) {
+            free(memory);
+            return 32;
+        }
+    }
+    free(memory);
+    return 0;
+}
+";
+
 fn temporary_directory() -> Result<PathBuf, String> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -140,33 +179,42 @@ fn generated_c_stdout(source: &Path) -> Result<Vec<u8>, String> {
     Ok(rendered.stdout)
 }
 
+fn compile_generated_program(
+    directory: &Path,
+    source_bytes: &[u8],
+    harness: &str,
+) -> Result<PathBuf, String> {
+    let source = directory.join("program.malbolge");
+    fs::write(&source, source_bytes).map_err(|error| error.to_string())?;
+    let mut c_source = generated_c_stdout(&source)?;
+    c_source.extend_from_slice(harness.as_bytes());
+    let c_path = directory.join("generated.c");
+    fs::write(&c_path, c_source).map_err(|error| error.to_string())?;
+    let executable = directory.join("generated-runner");
+    let clang = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".dependencies/llvm/22.1.8/bin/clang");
+    let compiled = Command::new(&clang)
+        .args(["-std=c23", "-Wall", "-Wextra", "-Werror"])
+        .arg(&c_path)
+        .arg("-o")
+        .arg(&executable)
+        .output()
+        .map_err(|error| format!("launch pinned Clang: {error}"))?;
+    if !compiled.status.success() {
+        return Err(format!(
+            "generated C rejected by Clang: {}",
+            String::from_utf8_lossy(&compiled.stderr),
+        ));
+    }
+    Ok(executable)
+}
+
 #[test]
 fn generated_c_matches_historical_vm_and_rejects_output_atomically()
 -> Result<(), String> {
     let directory = temporary_directory()?;
     let result = (|| {
-        let source = directory.join("echo.malbolge");
-        fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
-        let mut c_source = generated_c_stdout(&source)?;
-        c_source.extend_from_slice(HARNESS.as_bytes());
-        let c_path = directory.join("generated.c");
-        fs::write(&c_path, c_source).map_err(|error| error.to_string())?;
-        let executable = directory.join("generated-runner");
-        let clang = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join(".dependencies/llvm/22.1.8/bin/clang");
-        let compiled = Command::new(&clang)
-            .args(["-std=c23", "-Wall", "-Wextra", "-Werror"])
-            .arg(&c_path)
-            .arg("-o")
-            .arg(&executable)
-            .output()
-            .map_err(|error| format!("launch pinned Clang: {error}"))?;
-        if !compiled.status.success() {
-            return Err(format!(
-                "generated C rejected by Clang: {}",
-                String::from_utf8_lossy(&compiled.stderr),
-            ));
-        }
+        let executable = compile_generated_program(&directory, SOURCE, HARNESS)?;
         let executed = Command::new(&executable)
             .output()
             .map_err(|error| format!("execute generated C: {error}"))?;
@@ -198,6 +246,55 @@ fn generated_c_matches_historical_vm_and_rejects_output_atomically()
     })();
     let cleanup = fs::remove_dir_all(&directory)
         .map_err(|error| format!("clean generated C fixtures: {error}"));
+    result?;
+    cleanup
+}
+
+#[test]
+fn generated_c_arithmetic_memory_and_registers_match_normative_vm()
+-> Result<(), String> {
+    let directory = temporary_directory()?;
+    let result = (|| {
+        let executable = compile_generated_program(
+            &directory, ARITHMETIC_SOURCE, MEMORY_HARNESS,
+        )?;
+        let executed = Command::new(&executable)
+            .output()
+            .map_err(|error| format!("execute generated arithmetic C: {error}"))?;
+        let mut machine = ProfileMachine::from_source(
+            historical_profile(), ARITHMETIC_SOURCE, Vec::new(),
+        )
+        .map_err(|error| error.to_string())?;
+        let outcome = machine.run(4).map_err(|error| error.to_string())?;
+        if outcome != (RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 4,
+        }) {
+            return Err(format!("arithmetic VM did not halt: {outcome:?}"));
+        }
+        let mut expected = Vec::with_capacity((machine.memory().len() + 3) * 4);
+        for word in machine.memory().iter().copied().chain([
+            machine.registers().accumulator,
+            machine.registers().code_pointer,
+            machine.registers().data_pointer,
+        ]) {
+            expected.extend_from_slice(&word.to_le_bytes());
+        }
+        if !executed.status.success()
+            || !executed.stderr.is_empty()
+            || executed.stdout != expected
+        {
+            return Err(format!(
+                "generated C state differs from normative VM: status={}                  stderr={} actual-bytes={} expected-bytes={}",
+                executed.status,
+                String::from_utf8_lossy(&executed.stderr),
+                executed.stdout.len(), expected.len(),
+            ));
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&directory)
+        .map_err(|error| format!("clean arithmetic C fixtures: {error}"));
     result?;
     cleanup
 }

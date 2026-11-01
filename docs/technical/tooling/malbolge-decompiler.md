@@ -46,9 +46,12 @@ executes it against synthetic `ubO` source and four binary/EOF input cases,
 and compares the emitted bytes and halt instruction counts with the normative
 Rust VM. The compiled harness also compares a one-step budget to an exhausted
 output-capacity run to prove no pending output instruction changes memory,
-registers, consumed input, or committed steps. This test covers the selected
-historical source and these transitions, not all possible program states or
-profiles; the VM remains the authority.
+registers, consumed input, or committed steps. A second pinned-Clang
+regression executes a four-step relocation/rotate/crazy/halt source produced by
+the repository layout tool and compares all 59,049 resulting memory words plus
+accumulator, code pointer, and data pointer byte for byte with the historical
+VM. These tests cover the selected historical sources and transitions, not all
+possible program states or profiles; the VM remains the authority.
 
 The general Cargo entrypoint delegates policy to
 `src/tooling/decompiler/application/cli.rs` and
