@@ -35,8 +35,10 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import suppress
 from dataclasses import dataclass
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -279,6 +281,31 @@ def _check_source_parents(path: Path, label: str) -> None:
             _fail(f"{label} path must not redirect")
 
 
+def _opened_binary_stream(descriptor: int, label: str) -> io.BufferedReader:
+    """Transfer an admitted descriptor only to a native buffered reader.
+
+    Returns:
+        The native source stream, responsible for closing its descriptor.
+
+    Raises:
+        ToolchainError: The OS wrapper failed or returned foreign evidence.
+
+    """
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        # fdopen did not transfer ownership of the source descriptor.
+        with suppress(OSError):
+            os.close(descriptor)
+        message = f"cannot read {label}: {_host_error_detail(error)}"
+        raise ToolchainError(message) from error
+    if type(stream) is not io.BufferedReader:
+        with suppress(OSError):
+            os.close(descriptor)
+        _fail(f"invalid {label} stream wrapper receipt")
+    return stream
+
+
 def _open_regular_source(
     path: Path,
     label: str,
@@ -307,16 +334,7 @@ def _open_regular_source(
     descriptor = os.open(path, flags)
     if type(descriptor) is not int or descriptor < 0:
         _fail(f"invalid {label} open descriptor receipt")
-    try:
-        stream = os.fdopen(descriptor, "rb")
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        # fdopen did not transfer ownership of the source descriptor.
-        try:
-            os.close(descriptor)
-        except OSError:
-            pass
-        message = f"cannot read {label}: {_host_error_detail(error)}"
-        raise ToolchainError(message) from error
+    stream = _opened_binary_stream(descriptor, label)
     try:
         opened = _regular_source_identity(os.fstat(stream.fileno()), label)
         if opened != expected:
@@ -392,8 +410,11 @@ def _document(path: Path) -> dict[str, object]:
                 object_pairs_hook=_reject_duplicate_pairs,
             ),
         )
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as error:
-        _fail(f"cannot read {label}: {error}")
+    except ToolchainError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = f"cannot read {label}: {_host_error_detail(error)}"
+        raise ToolchainError(message) from error
     return _mapping(parsed, label)
 
 
@@ -786,12 +807,20 @@ def _hash_archive(path: Path, required_size: int) -> str:
 
 
 def verify_archive(path: Path, identity: ToolchainIdentity) -> None:
-    """Hash only an unchanged, physically admitted development archive."""
+    """Hash only an unchanged, physically admitted development archive.
+
+    Raises:
+        ToolchainError: Source evidence is malformed, unavailable, or drifted.
+
+    """
     label = "LLVM development archive"
     try:
         observed = _hash_archive(path, identity.asset_size_bytes)
-    except OSError as error:
-        _fail(f"cannot read {label}: {error}")
+    except ToolchainError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = f"cannot read {label}: {_host_error_detail(error)}"
+        raise ToolchainError(message) from error
     if observed != identity.asset_sha256:
         prefix = f"{label} SHA-256 mismatch: expected "
         _fail(f"{prefix}{identity.asset_sha256}; observed {observed}")

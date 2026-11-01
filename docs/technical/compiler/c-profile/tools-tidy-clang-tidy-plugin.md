@@ -81,7 +81,12 @@ Clang and clang-tidy version probes likewise require native subprocess results,
 exact integer exit statuses, and native decoded stdout/stderr; booleans, floats,
 foreign objects, and malformed host receipts cannot prove a ready toolchain.
 Probe failures preserve their original host exception as the typed error cause
-without invoking foreign exception formatters.
+without invoking foreign exception formatters. Source stream ownership transfers
+only to a native binary buffer wrapper; a foreign `fdopen` result is rejected
+without reading its fields or leaking the opened descriptor. Manifest decoding,
+source inspection, and archive hashing preserve the original host or UTF-8
+failure as the typed error cause. Native error text is retained; foreign
+exception formatters are never consulted.
 
 Linux LLVM development RPM publication also requires a physical, unlinked
 completion marker and physical regular required headers under the tracked

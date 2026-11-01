@@ -1266,3 +1266,115 @@ def test_tidy_source_rejects_foreign_read_receipt_before_use(
     monkeypatch.setattr(tidy_toolchain, "_open_regular_source", forged_source)
     with pytest.raises(tidy_toolchain.ToolchainError, match=r"invalid .*bytes"):
         _verify_tidy_source(source, identity, source_kind)
+
+
+class ForeignLLVMHostOSError(OSError):
+    """A foreign OSError whose formatter cannot be trusted."""
+
+    @override
+    def __str__(self) -> str:
+        """Reject attempts to execute foreign host formatting.
+
+        Raises:
+            AssertionError: The foreign formatter was invoked.
+
+        """
+        message = "foreign LLVM filesystem error formatter executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("source_kind", [SOURCE_MANIFEST, "archive"])
+@pytest.mark.parametrize(
+    "fault_type",
+    [
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        ForeignLLVMHostOSError,
+        UntrustedHostFormatterError,
+    ],
+)
+def test_tidy_source_host_failure_preserves_safe_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    source_kind: str,
+    fault_type: type[Exception],
+) -> None:
+    """Manifest and archive host errors never run foreign formatters."""
+    source, identity = _tidy_source_case(tmp_path, source_kind)
+    native_lstat = Path.lstat
+    fault = fault_type("injected LLVM filesystem failure")
+
+    def fail_lstat(path: Path) -> os.stat_result:
+        if path == source:
+            raise fault
+        return native_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="cannot read"
+    ) as caught:
+        _verify_tidy_source(source, identity, source_kind)
+    assert caught.value.__cause__ is fault
+
+
+class ForeignLLVMStreamWrapper:
+    """A forged os.fdopen return object must not own a source descriptor."""
+
+    def fileno(self) -> int:  # ruff: ignore[no-self-use]
+        """Reject inspection of a foreign descriptor hook.
+
+        Raises:
+            AssertionError: An unvalidated wrapper was inspected.
+
+        """
+        message = "foreign LLVM stream wrapper inspected"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("source_kind", [SOURCE_MANIFEST, "archive"])
+def test_tidy_source_rejects_foreign_stream_wrapper_and_closes_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+) -> None:
+    """Only native buffered streams may take ownership of source evidence."""
+    source, identity = _tidy_source_case(tmp_path, source_kind)
+    native_open, native_fdopen, native_fstat = os.open, os.fdopen, os.fstat
+    opened_descriptors: list[int] = []
+
+    def capture_open(path: Path, flags: int) -> int:
+        descriptor = native_open(path, flags)
+        if path == source:
+            opened_descriptors.append(descriptor)
+        return descriptor
+
+    def fake_fdopen(descriptor: int, mode: str) -> object:
+        if descriptor in opened_descriptors:
+            return ForeignLLVMStreamWrapper()
+        return native_fdopen(descriptor, mode)
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match=r"invalid .*stream wrapper"
+    ):
+        _verify_tidy_source(source, identity, source_kind)
+    assert len(opened_descriptors) == 1
+    with pytest.raises(OSError, match=r"Bad file descriptor|Invalid handle"):
+        _ = native_fstat(opened_descriptors[0])
+
+
+def test_tidy_manifest_decoder_preserves_native_cause(
+    tmp_path: Path,
+) -> None:
+    """Invalid manifest UTF-8 retains the source decoder failure."""
+    source = tmp_path / "invalid.json"
+    _ = source.write_bytes(b"{\xff}")
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="cannot read"
+    ) as caught:
+        _ = tidy_toolchain.load_identity(source, root=tmp_path)
+    assert type(caught.value.__cause__) is UnicodeDecodeError
