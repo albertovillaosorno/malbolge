@@ -118,6 +118,13 @@ struct CRunPlan {
     working_directory: Option<PathBuf>,
 }
 
+#[derive(Clone, Copy)]
+struct SourceReadPolicy<'policy> {
+    kind: &'policy str,
+    limit: &'policy str,
+    max_bytes: u64,
+}
+
 fn cleanup_native_artifacts(executable: &Path) -> Result<(), String> {
     remove_if_present(executable)?;
     remove_if_present(&executable.with_extension("pdb"))?;
@@ -797,13 +804,91 @@ fn open_regular_source(path: &Path, kind: &str) -> Result<File, String> {
     File::open(path).map_err(|error| format!("failed to open {kind}: {error}"))
 }
 
+// Revalidate the opened inode and named path after bounded acquisition.
+// Length and nanosecond change-time checks reject partial or rewritten source.
+#[cfg(unix)]
+fn source_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.dev() == after.dev()
+        && before.ino() == after.ino()
+        && before.len() == after.len()
+        && before.mtime() == after.mtime()
+        && before.mtime_nsec() == after.mtime_nsec()
+        && before.ctime() == after.ctime()
+        && before.ctime_nsec() == after.ctime_nsec()
+}
+
+#[cfg(windows)]
+fn source_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.volume_serial_number().is_some()
+        && before.volume_serial_number() == after.volume_serial_number()
+        && before.file_index().is_some()
+        && before.file_index() == after.file_index()
+        && before.last_write_time() == after.last_write_time()
+        && before.change_time() == after.change_time()
+}
+
+#[cfg(not(any(unix, windows)))]
+fn source_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.modified().ok().is_some()
+        && before.modified().ok() == after.modified().ok()
+}
+
+// Linux exposes the exact opened dentry via /proc, including cases where a
+// symlink moves between two hardlinks to the same inode during the read.
+#[cfg(target_os = "linux")]
+fn verify_opened_source_path(
+    file: &File, path: &Path, expected: &Path, kind: &str,
+) -> Result<(), String> {
+    use std::os::fd::AsRawFd as _;
+
+    let descriptor = format!("/proc/self/fd/{}", file.as_raw_fd());
+    let opened = fs::read_link(descriptor)
+        .map_err(|error| format!("failed to verify {kind}: {error}"))?;
+    let current = fs::canonicalize(path)
+        .map_err(|error| format!("failed to verify {kind}: {error}"))?;
+    if opened != expected || current != expected {
+        return Err(format!("{kind} source changed during read"));
+    }
+    Ok(())
+}
+
 fn read_regular_source(
     path: &Path,
     max_bytes: u64,
     kind: &str,
     limit: &str,
 ) -> Result<Vec<u8>, String> {
-    let file = open_regular_source(path, kind)?;
+    read_regular_source_with_reader(
+        path,
+        SourceReadPolicy { kind, limit, max_bytes },
+        |file, bytes| file.take(max_bytes.saturating_add(1)).read_to_end(bytes),
+    )
+}
+
+fn read_regular_source_with_reader(
+    path: &Path,
+    policy: SourceReadPolicy<'_>,
+    read: impl FnOnce(&mut File, &mut Vec<u8>) -> io::Result<usize>,
+) -> Result<Vec<u8>, String> {
+    let SourceReadPolicy { kind, limit, max_bytes } = policy;
+    #[cfg(target_os = "linux")]
+    let expected_path = fs::canonicalize(path)
+        .map_err(|error| format!("failed to resolve {kind}: {error}"))?;
+    let mut file = open_regular_source(path, kind)?;
+    #[cfg(target_os = "linux")]
+    verify_opened_source_path(&file, path, &expected_path, kind)?;
     let metadata = file
         .metadata()
         .map_err(|error| format!("failed to stat {kind}: {error}"))?;
@@ -813,13 +898,21 @@ fn read_regular_source(
     // A file may grow after fstat; the additional byte detects overflow
     // without allocating or scanning an unbounded source stream.
     let mut bytes = Vec::new();
-    let _read = file
-        .take(max_bytes.saturating_add(1))
-        .read_to_end(&mut bytes)
+    let _read = read(&mut file, &mut bytes)
         .map_err(|error| format!("failed to read {kind}: {error}"))?;
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > max_bytes {
         return Err(format!("{kind} exceeds {limit}"));
     }
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) != metadata.len()
+        || !source_metadata_matches(&metadata, &file.metadata()
+            .map_err(|error| format!("failed to stat {kind}: {error}"))?)
+        || !source_metadata_matches(&metadata, &fs::metadata(path)
+            .map_err(|error| format!("failed to stat {kind}: {error}"))?)
+    {
+        return Err(format!("{kind} source changed during read"));
+    }
+    #[cfg(target_os = "linux")]
+    verify_opened_source_path(&file, path, &expected_path, kind)?;
     Ok(bytes)
 }
 
@@ -1082,4 +1175,160 @@ fn pkg_config_sdl2(mode: &str) -> Result<Vec<OsString>, String> {
         format!("pkg-config returned non-UTF-8 SDL2 flags: {error}")
     })?;
     Ok(flags.split_whitespace().map(OsString::from).collect())
+}
+
+#[cfg(test)]
+mod source_read_tests {
+    use super::{SourceReadPolicy, read_regular_source, read_regular_source_with_reader};
+    use std::env::temp_dir;
+    use std::fs::{self, File};
+    use std::io::Read as _;
+    use std::path::Path;
+    use std::process::id;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const SOURCE: &[u8] = b"ubO";
+
+    fn fixture_directory(label: &str) -> Result<std::path::PathBuf, String> {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let path = temp_dir().join(format!("malbolge-source-{label}-{}-{nonce}", id()));
+        fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+        Ok(path)
+    }
+
+    fn try_source_read(
+        path: &Path,
+        mutate: impl FnOnce() -> std::io::Result<()>,
+    ) -> Result<Vec<u8>, String> {
+        read_regular_source_with_reader(path, SourceReadPolicy {
+            kind: "Malbolge source", limit: "32 bytes", max_bytes: 32,
+        }, |file, bytes| {
+            let read = file.take(33).read_to_end(bytes)?;
+            mutate()?;
+            Ok(read)
+        })
+    }
+
+    #[test]
+    fn source_read_rejects_same_inode_rewrite_after_read() -> Result<(), String> {
+        let directory = fixture_directory("rewrite")?;
+        let source = directory.join("program.malbolge");
+        fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
+        let result = try_source_read(&source, || {
+            fs::write(&source, b"ctO")?;
+            File::open(&source)?.set_times(
+                fs::FileTimes::new().set_modified(UNIX_EPOCH),
+            )
+        });
+        fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
+        if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
+            return Err(format!("changed source accepted: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_read_rejects_inode_replacement_after_read() -> Result<(), String> {
+        let directory = fixture_directory("replace")?;
+        let source = directory.join("program.malbolge");
+        let alternate = directory.join("other.malbolge");
+        fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
+        fs::write(&alternate, SOURCE).map_err(|error| error.to_string())?;
+        let result = try_source_read(&source, || fs::rename(&alternate, &source));
+        fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
+        if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
+            return Err(format!("replaced source accepted: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_read_rejects_truncation_after_read() -> Result<(), String> {
+        let directory = fixture_directory("truncate")?;
+        let source = directory.join("program.malbolge");
+        fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
+        let result = try_source_read(&source, || fs::write(&source, b"u"));
+        fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
+        if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
+            return Err(format!("truncated source accepted: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_read_rejects_short_read_of_stable_file() -> Result<(), String> {
+        let directory = fixture_directory("short")?;
+        let source = directory.join("program.malbolge");
+        fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
+        let result = read_regular_source_with_reader(&source, SourceReadPolicy {
+            kind: "Malbolge source", limit: "32 bytes", max_bytes: 32,
+        }, |file, bytes| file.take(1).read_to_end(bytes));
+        fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
+        if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
+            return Err(format!("short source read accepted: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn source_read_rejects_parent_alias_swap_with_same_inode() -> Result<(), String> {
+        use std::os::unix::fs::symlink;
+
+        let directory = fixture_directory("alias-swap")?;
+        let first_dir = directory.join("first");
+        let second_dir = directory.join("second");
+        fs::create_dir_all(&first_dir).map_err(|error| error.to_string())?;
+        fs::create_dir_all(&second_dir).map_err(|error| error.to_string())?;
+        let first = first_dir.join("program.malbolge");
+        let second = second_dir.join("program.malbolge");
+        fs::write(&first, SOURCE).map_err(|error| error.to_string())?;
+        fs::hard_link(&first, &second).map_err(|error| error.to_string())?;
+        let alias = directory.join("current");
+        symlink(&first_dir, &alias).map_err(|error| error.to_string())?;
+        let input = alias.join("program.malbolge");
+        let result = try_source_read(&input, || {
+            fs::remove_file(&alias)?;
+            symlink(&second_dir, &alias)
+        });
+        fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
+        if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
+            return Err(format!("source alias swap accepted: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn source_read_accepts_stable_regular_symlink() -> Result<(), String> {
+        use std::os::unix::fs::symlink;
+
+        let directory = fixture_directory("stable-link")?;
+        let source = directory.join("program.malbolge");
+        let alias = directory.join("alias.malbolge");
+        fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
+        symlink(&source, &alias).map_err(|error| error.to_string())?;
+        let result = read_regular_source(&alias, 32, "Malbolge source", "32 bytes");
+        fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
+        if result.as_deref() != Ok(SOURCE) {
+            return Err(format!("stable source alias rejected: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_read_accepts_unchanged_regular_file() -> Result<(), String> {
+        let directory = fixture_directory("stable")?;
+        let source = directory.join("program.malbolge");
+        fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
+        let result = read_regular_source(&source, 32, "Malbolge source", "32 bytes");
+        fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
+        if result.as_deref() != Ok(SOURCE) {
+            return Err(format!("stable source rejected: {result:?}"));
+        }
+        Ok(())
+    }
 }

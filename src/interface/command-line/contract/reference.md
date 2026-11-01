@@ -52,7 +52,13 @@ only from a regular file and caps acquisition at 128 MiB (including capsule
 sideband and source whitespace), enough for the current 15-trit profile's
 largest capsule payload plus framing. Reading uses one verified file handle,
 a bounded byte count even after post-stat growth, and nonblocking opens on
-Linux/Android so a FIFO or FIFO symlink cannot stall the command.
+Linux/Android so a FIFO or FIFO symlink cannot stall the command. The reader
+also rejects partial reads and source changes between the initial file stat
+and publication: it checks the opened handle and named path for identical file
+identity, length, and available modification/change timestamps. On Linux it
+also rechecks the descriptor's exact opened path, including symlink aliases.
+These checks do not guarantee synchronization against a malicious concurrent
+writer between the final check and VM execution.
 
 The current VM input model is pre-buffered rather than interactive. The CLI does
 not fake real-time input by reading the terminal to EOF before startup.
@@ -106,8 +112,10 @@ Before scanning for native-debug adapters, the CLI admits only a regular C
 source file of at most 64 MiB. It reads through a single checked file handle,
 limits reads even if the file grows after inspection, and uses nonblocking
 opens on Linux/Android so a FIFO or a FIFO symlink cannot stall source
-inspection. This host-only source limit does not constrain the C-to-Malbolge
-compiler or the guest runtime.
+inspection. The same source-identity rechecks guard the C adapter scan,
+although native compiler execution may open the path again and must not be
+mistaken for a fully race-free source snapshot. This host-only source limit
+does not constrain the C-to-Malbolge compiler or the guest runtime.
 
 `malbolge program.c` compiles the C file directly for the current host, runs the
 temporary executable with inherited stdin/stdout/stderr, and removes the native
