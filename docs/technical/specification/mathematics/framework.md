@@ -45,7 +45,12 @@ specialization and imports the same notation surface.
 discovers every standalone `.tex`
 document under `math/`, requires the shared notation include, and compiles each
 document independently with `pdflatex`. Builds disable package auto-installation
-and TeX shell escape and write only beneath `.cache/latex/`.
+and TeX shell escape and write only beneath `.cache/latex/`. Each
+`pdflatex` invocation has a 120-second timeout; a timeout produces a typed
+failure with the original host cause and no successful log publication.
+The compiler result must carry an exact native command argument list matching
+the invoked executable, options, output directory and input source before its
+return code and captured diagnostics can be accepted as build evidence.
 Math source discovery and direct builds reject symlink/junction redirects to
 TeX files or ancestor directories and require physical regular inputs. Direct
 output-cache mapping also rejects parent-traversal source paths. Cache builds

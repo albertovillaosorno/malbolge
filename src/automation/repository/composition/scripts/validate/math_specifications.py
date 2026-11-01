@@ -44,7 +44,7 @@ import sys
 import tempfile
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -65,6 +65,7 @@ PARENT_SEGMENT = ".."
 TEX_SUFFIX = ".tex"
 NOTATION_INCLUDE = r"\input{../malbolge-notation.tex}"
 LATEX_COMPILER = "pdflatex"
+LATEX_TIMEOUT_SECONDS = 120
 REQUIRED_MACROS = (
     r"\CostVector",
     r"\CrazyN",
@@ -700,6 +701,61 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
                 primary.add_note(f"mathematics build log cleanup failed: {detail}")
 
 
+def _require_latex_command_receipt(receipt: object, command: list[str]) -> None:
+    """Require a native argv list with exact executable, options and input."""
+    if type(receipt) is not list:
+        _fail("malformed LaTeX compiler command receipt")
+    arguments = cast("list[object]", receipt)
+    if len(arguments) != len(command) or any(
+        type(argument) is not str or argument != expected
+        for argument, expected in zip(arguments, command, strict=True)
+    ):
+        _fail("malformed LaTeX compiler command receipt")
+
+
+def _run_latex_process(command: list[str], directory: Path) -> tuple[int, str]:
+    """Execute one bounded TeX build and authenticate the command receipt.
+
+    Returns:
+        Native return code and captured stdout/stderr text.
+
+    Raises:
+        MathSpecificationError: On execution or process-receipt failure.
+
+    """
+    # Repository-controlled TeX flags/source names; argv is explicit, no shell.
+    # jig-ignore-next-line: indivisible reviewed identifier
+    try:
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            command,
+            cwd=directory,
+            check=False,
+            capture_output=True,
+            shell=False,
+            text=True,
+            timeout=LATEX_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        message = (
+            f"LaTeX compiler timed out after {LATEX_TIMEOUT_SECONDS} seconds"
+        )
+        raise MathSpecificationError(message) from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = (
+            f"LaTeX compiler execution failed: {_host_error_detail(error)}"
+        )
+        raise MathSpecificationError(message) from error
+    if (
+        type(completed) is not subprocess.CompletedProcess
+        or type(completed.returncode) is not int
+        or type(completed.stdout) is not str
+        or type(completed.stderr) is not str
+    ):
+        _fail("malformed LaTeX compiler process receipt")
+    _require_latex_command_receipt(cast("object", completed.args), command)
+    return completed.returncode, completed.stdout + completed.stderr
+
+
 def _compile_document(source: Path) -> None:
     _physical_math_status(source, directory=False)
     output = output_directory(source)
@@ -718,34 +774,12 @@ def _compile_document(source: Path) -> None:
         f"-output-directory={output}",
         source.name,
     ]
-    # Repository-controlled TeX flags/source names; argv is explicit, no shell.
-    # jig-ignore-next-line: indivisible reviewed identifier
-    try:
-        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command,
-            cwd=source.parent,
-            check=False,
-            capture_output=True,
-            shell=False,
-            text=True,
-        )
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        raise MathSpecificationError(
-            f"LaTeX compiler execution failed: {_host_error_detail(error)}"
-        ) from error
-    if (
-        type(completed) is not subprocess.CompletedProcess
-        or type(completed.returncode) is not int
-        or type(completed.stdout) is not str
-        or type(completed.stderr) is not str
-    ):
-        _fail("malformed LaTeX compiler process receipt")
-    log = completed.stdout + completed.stderr
+    returncode, log = _run_latex_process(command, source.parent)
     _write_math_build_log(log_path, log)
-    if completed.returncode != 0:
+    if returncode != 0:
         relative = source.relative_to(ROOT).as_posix()
         message = (
-            f"LaTeX build failed: {relative} exit={completed.returncode}; "
+            f"LaTeX build failed: {relative} exit={returncode}; "
             f"log={output.relative_to(ROOT).as_posix()}/build.stdout.txt"
         )
         _fail(message)

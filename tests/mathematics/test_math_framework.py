@@ -37,7 +37,7 @@ from __future__ import annotations
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, cast, override
+from typing import TYPE_CHECKING, Self, cast, final, override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -906,8 +906,8 @@ def test_math_latex_malformed_process_receipts_fail_closed(
     monkeypatch.setattr(
         sp,
         "run",
-        lambda *_args, **_kwargs: sp.CompletedProcess(
-            args=["pdflatex"],
+        lambda command, **_kwargs: sp.CompletedProcess(
+            args=command,
             returncode=cast("int", parts["returncode"]),
             stdout=parts["stdout"],
             stderr=parts["stderr"],
@@ -956,8 +956,8 @@ def test_math_latex_nonzero_exit_retains_diagnostics(
     monkeypatch.setattr(
         sp,
         "run",
-        lambda *_args, **_kwargs: sp.CompletedProcess(
-            args=["pdflatex"], returncode=12, stdout="failure out", stderr=" ERR"
+        lambda command, **_kwargs: sp.CompletedProcess(
+            args=command, returncode=12, stdout="failure out", stderr=" ERR"
         ),
     )
     with pytest.raises(validator.MathSpecificationError, match="exit=12"):
@@ -1004,11 +1004,13 @@ def test_math_log_rejects_link_planted_by_compiler(
     outside = tmp_path / "outside.txt"
     _ = outside.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
 
-    def replace_log(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
-        _ = (args, kwargs)
+    def replace_log(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        _ = kwargs
         _ = log.symlink_to(outside)
         return sp.CompletedProcess(
-            args=("pdflatex",),
+            args=command,
             returncode=0,
             stdout=COMPILED_LOG_TEXT,
             stderr="",
@@ -1027,10 +1029,12 @@ def test_math_log_replaces_regular_output_atomically(
     source, log = _math_log_fixture(tmp_path, monkeypatch)
     _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
 
-    def fake_latex(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
-        _ = (args, kwargs)
+    def fake_latex(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        _ = kwargs
         return sp.CompletedProcess(
-            args=("pdflatex",),
+            args=command,
             returncode=0,
             stdout=COMPILED_LOG_TEXT,
             stderr="",
@@ -1069,10 +1073,12 @@ def test_math_log_failed_atomic_replace_preserves_original(
             raise PermissionError(message)
         return original_replace(path, target)
 
-    def fake_latex(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
-        _ = (args, kwargs)
+    def fake_latex(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        _ = kwargs
         return sp.CompletedProcess(
-            args=("pdflatex",),
+            args=command,
             returncode=0,
             stdout=COMPILED_LOG_TEXT,
             stderr="",
@@ -1820,3 +1826,181 @@ def test_math_scan_rejects_non_native_directory_receipt(
         validator.MathSpecificationError, match="native directory"
     ):
         _ = validator.document_sources()
+
+
+@pytest.mark.parametrize(
+    "wrong_args", ["pdflatex", ("pdflatex",), [], ["wrong-program"]]
+)
+def test_math_latex_rejects_unbound_process_command_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    wrong_args: object,
+) -> None:
+    """A successful process receipt must bind the actual invoked TeX argv."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+
+    def forged_run(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        del command, kwargs
+        return sp.CompletedProcess(
+            args=cast("list[str]", wrong_args),
+            returncode=0,
+            stdout=COMPILED_LOG_TEXT,
+            stderr="",
+        )
+
+    monkeypatch.setattr(sp, "run", forged_run)
+    with pytest.raises(
+        validator.MathSpecificationError, match="command receipt"
+    ):
+        _compile_math_source(source)
+    assert not log.exists()
+
+
+def test_math_latex_rejects_foreign_argument_equality(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A string subclass cannot execute custom equality during argv matching."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+
+    @final
+    class ForeignArg(str):  # ruff: ignore[subclass-builtin] - tests native type gate.
+        __slots__ = ()
+        __hash__ = str.__hash__
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            message = "foreign command equality hook executed"
+            raise AssertionError(message)
+
+    def forged_run(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        del kwargs
+        args = list(command)
+        args[-1] = ForeignArg(args[-1])
+        return sp.CompletedProcess(
+            args=args, returncode=0, stdout=COMPILED_LOG_TEXT, stderr=""
+        )
+
+    monkeypatch.setattr(sp, "run", forged_run)
+    with pytest.raises(
+        validator.MathSpecificationError, match="command receipt"
+    ):
+        _compile_math_source(source)
+    assert not log.exists()
+
+
+def test_math_latex_execution_has_a_bounded_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TeX execution cannot wait indefinitely on pathological source files."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+
+    def capture_run(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        assert kwargs["timeout"] == validator.LATEX_TIMEOUT_SECONDS
+        assert kwargs["shell"] is False
+        return sp.CompletedProcess(
+            args=command, returncode=0, stdout=COMPILED_LOG_TEXT, stderr=""
+        )
+
+    monkeypatch.setattr(sp, "run", capture_run)
+    _compile_math_source(source)
+    assert log.read_text(encoding="utf-8") == COMPILED_LOG_TEXT
+
+
+def test_math_latex_timeout_is_typed_and_preserves_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A subprocess timeout retains its host cause and publishes no success."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+    fault = sp.TimeoutExpired(cmd=["pdflatex"], timeout=1)
+
+    def timed_out(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        del command, kwargs
+        raise fault
+
+    monkeypatch.setattr(sp, "run", timed_out)
+    with pytest.raises(
+        validator.MathSpecificationError, match="timed out"
+    ) as caught:
+        _compile_math_source(source)
+    assert caught.value.__cause__ is fault
+    assert not log.exists()
+
+
+BAD_PROGRAM_RECEIPT = "mismatched-program"
+
+
+@pytest.mark.parametrize("kind", [BAD_PROGRAM_RECEIPT, "foreign-list"])
+def test_math_latex_rejects_malformed_successful_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Even same-length native argv and custom lists fail command provenance."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+
+    @final
+    class ForeignList(list[str]):  # ruff: ignore[subclass-builtin] - adversarial receipt.
+        __hash__ = None
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            message = "foreign command list equality executed"
+            raise AssertionError(message)
+
+    def forged_run(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        del kwargs
+        args = list(command)
+        if kind == BAD_PROGRAM_RECEIPT:
+            args[0] = "wrong-compiler"
+        else:
+            args = ForeignList(args)
+        return sp.CompletedProcess(
+            args=args, returncode=0, stdout=COMPILED_LOG_TEXT, stderr=""
+        )
+
+    monkeypatch.setattr(sp, "run", forged_run)
+    with pytest.raises(
+        validator.MathSpecificationError, match="command receipt"
+    ):
+        _compile_math_source(source)
+    assert not log.exists()
+
+
+def test_math_latex_timeout_never_formats_foreign_host_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign timeout formatter cannot execute at the process boundary."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+
+    @final
+    class ForeignTimeout(sp.TimeoutExpired):
+        @override
+        def __str__(self) -> str:
+            message = "foreign timeout formatter executed"
+            raise AssertionError(message)
+
+    fault = ForeignTimeout(cmd=["pdflatex"], timeout=1)
+
+    def timed_out(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        del command, kwargs
+        raise fault
+
+    monkeypatch.setattr(sp, "run", timed_out)
+    with pytest.raises(
+        validator.MathSpecificationError, match="timed out"
+    ) as caught:
+        _compile_math_source(source)
+    assert caught.value.__cause__ is fault
+    assert not log.exists()
