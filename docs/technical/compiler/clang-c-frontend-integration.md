@@ -170,7 +170,11 @@ The ordinal preserves separate header types and never exposes a host header
 path or native pointer. Non-default address spaces and unrecognized Clang
 types fail with `MALBOLGE-FRONTEND-002`. The regression suite uses
 `_BitInt(17)` to prove that a construct accepted by the parser cannot silently
-escape the normalized type grammar.
+escape the normalized type grammar. Layout-affecting record and field
+attributes (packing, explicit alignment, and `#pragma pack`) similarly fail
+closed with `MALBOLGE-FRONTEND-002`, including when the affected record comes
+from an included header. The normalized type grammar does not encode those
+layout constraints and cannot silently treat an attributed record as plain.
 
 ### Declaration semantics
 

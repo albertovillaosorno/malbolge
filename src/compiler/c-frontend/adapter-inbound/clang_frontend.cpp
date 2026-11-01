@@ -36,6 +36,7 @@
 
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/RecursiveASTVisitor.h"
@@ -365,9 +366,29 @@ private:
     return result;
   }
 
+  [[nodiscard]] static bool has_layout_attributes(const clang::Decl &decl) {
+    return decl.hasAttr<clang::PackedAttr>() ||
+           decl.hasAttr<clang::AlignedAttr>() ||
+           decl.hasAttr<clang::MaxFieldAlignmentAttr>();
+  }
+
   [[nodiscard]] std::optional<std::string>
   normalize_record(const clang::RecordType &record) {
     const clang::RecordDecl &declaration = *record.getDecl();
+    const clang::RecordDecl *definition = declaration.getDefinition();
+    const clang::RecordDecl &layout =
+        definition == nullptr ? declaration : *definition;
+    bool unsupported_layout = has_layout_attributes(layout);
+    if (definition != nullptr) {
+      for (const clang::FieldDecl *field : layout.fields()) {
+        unsupported_layout =
+            unsupported_layout || has_layout_attributes(*field);
+      }
+    }
+    if (unsupported_layout) {
+      failure_ = "MALBOLGE-FRONTEND-002 unsupported C record layout attributes";
+      return std::nullopt;
+    }
     std::string result = declaration.isUnion() ? "union(" : "struct(";
     result.append(declaration_anchor(declaration));
     result.push_back(')');

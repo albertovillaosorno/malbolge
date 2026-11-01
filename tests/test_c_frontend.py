@@ -784,6 +784,53 @@ def test_unsupported_type_fails_at_normalization_boundary() -> None:
     assert completed.stderr.strip() == UNSUPPORTED_DIAGNOSTIC
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "struct __attribute__((packed)) P { char c; int n; };\n",
+        "struct __attribute__((aligned(64))) P { char c; int n; };\n",
+        (
+            "#pragma pack(push, 1)\n"
+            "struct P { char c; int n; };\n"
+            "#pragma pack(pop)\n"
+        ),
+        "struct P { _Alignas(32) int n; };\n",
+    ],
+)
+def test_unrepresented_record_layout_attributes_fail_closed(
+    tmp_path: Path, declaration: str
+) -> None:
+    """Clang layout-affecting attributes cannot silently disappear from IR."""
+    source = tmp_path / "record-layout.c"
+    _ = source.write_text(declaration, encoding="utf-8")
+    completed = _run_frontend(source, "fixtures/record-layout.c")
+    assert completed.returncode == NORMALIZE_STATUS
+    assert not completed.stdout
+    assert completed.stderr == (
+        "MALBOLGE-FRONTEND-002 unsupported C record layout attributes\n"
+    )
+
+
+def test_imported_packed_record_type_fails_closed(tmp_path: Path) -> None:
+    """Header-defined packing still affects main-source value layout."""
+    _ = (tmp_path / "types.h").write_text(
+        "typedef struct __attribute__((packed)) { char c; int n; } P;\n",
+        encoding="utf-8",
+    )
+    source = tmp_path / "source.c"
+    _ = source.write_text('#include "types.h"\nP imported;\n', encoding="utf-8")
+    completed = _run_frontend(
+        source,
+        "fixtures/packed-import.c",
+        guest_include=tmp_path,
+    )
+    assert completed.returncode == NORMALIZE_STATUS
+    assert not completed.stdout
+    assert completed.stderr == (
+        "MALBOLGE-FRONTEND-002 unsupported C record layout attributes\n"
+    )
+
+
 def test_default_enum_outside_abi_domain_fails_closed() -> None:
     """Default enum inference follows malbolge-c32-v1, not Clang widening."""
     completed = _run_frontend(ENUM_TOO_WIDE, ENUM_TOO_WIDE_SOURCE_ID)
