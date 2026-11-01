@@ -893,6 +893,12 @@ checkpoint state, and records checkpoint SHA-256 plus
 `evaluated-search-prefix-resume-v1` in resumed JSON output. Fresh-search JSON is
 unchanged.
 
+The optimizer TOML, binary problem, and checkpoint loaders now also contain
+ordinary foreign stream read and close exceptions as typed configuration
+rejections. File evidence is not published after a failed stream finalization;
+existing exact typed source validation is preserved and process-control
+interruptions remain unhandled for their caller.
+
 Opened optimizer TOML, binary problem, and resume-checkpoint streams now
 verify that the stream's `fileno()` is an exact native integer matching the
 originally opened raw descriptor before any descriptor metadata probes. All

@@ -742,3 +742,52 @@ def test_search_config_rejects_foreign_opened_stream_descriptor(
     with pytest.raises(SearchConfigurationError, match="descriptor"):
         _ = load_search_configuration(source)
     assert reached
+
+
+@pytest.mark.parametrize("phase", ["read", "close"])
+@pytest.mark.parametrize("fault", [RuntimeError, IndexError])
+def test_search_config_contains_stream_read_and_close_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    fault: type[Exception],
+) -> None:
+    """Ordinary foreign stream failures must be typed config rejections."""
+    source = tmp_path / SEARCH_CONFIG_SOURCE
+    _ = source.write_text(_config(), encoding="utf-8")
+    real_fdopen = os.fdopen
+    reached = False
+
+    class FaultyStream:
+        def __init__(self, inner: BinaryIO) -> None:
+            self.inner: BinaryIO = inner
+
+        def __enter__(self) -> FaultyStream:
+            return self
+
+        def __exit__(self, exc_type: object, exc_value: object, trace: object) -> None:
+            nonlocal reached
+            del exc_type, exc_value, trace
+            self.inner.close()
+            if phase == "close":
+                reached = True
+                raise fault("synthetic stream close failure")
+
+        def fileno(self) -> int:
+            return self.inner.fileno()
+
+        def read(self, count: int) -> bytes:
+            nonlocal reached
+            if phase == "read":
+                reached = True
+                raise fault("synthetic stream read failure")
+            return self.inner.read(count)
+
+    def fake_fdopen(descriptor: int, mode: str) -> FaultyStream:
+        return FaultyStream(cast("BinaryIO", real_fdopen(descriptor, mode)))
+
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    with pytest.raises(SearchConfigurationError, match="stream I/O failed") as caught:
+        _ = load_search_configuration(source)
+    assert reached
+    assert type(caught.value.__cause__) is fault

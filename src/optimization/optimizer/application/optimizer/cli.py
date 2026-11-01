@@ -569,28 +569,37 @@ def _read_cli_descriptor(
                 f"binary source descriptor close also failed: {type(cleanup_error).__name__}",
             )
         raise
-    with owned_stream as stream:
-        stream_descriptor = stream.fileno()
-        if type(stream_descriptor) is not int or stream_descriptor != descriptor:
-            message = f"{label} stream returned an invalid descriptor"
-            raise SearchCliError(message)
-        if _cli_source_identity(os.fstat(descriptor), label) != expected:
-            message = f"{label} changed before read"
-            raise SearchCliError(message)
-        payload = stream.read(MAX_SEARCH_INPUT_BYTES + 1)
-        if type(payload) is not bytes:
-            message = f"{label} stream returned non-native bytes"
-            raise SearchCliError(message)
-        if len(payload) != expected[2]:
-            message = f"{label} changed during read or exceeds byte limit"
-            raise SearchCliError(message)
-        if (
-            _cli_source_identity(os.fstat(descriptor), label) != expected
-            or _cli_source_identity(path.stat(), label) != expected
-        ):
-            message = f"{label} changed during read"
-            raise SearchCliError(message)
-        return payload
+    try:
+        with owned_stream as stream:
+            stream_descriptor = stream.fileno()
+            if type(stream_descriptor) is not int or stream_descriptor != descriptor:
+                message = f"{label} stream returned an invalid descriptor"
+                raise SearchCliError(message)
+            if _cli_source_identity(os.fstat(descriptor), label) != expected:
+                message = f"{label} changed before read"
+                raise SearchCliError(message)
+            payload = stream.read(MAX_SEARCH_INPUT_BYTES + 1)
+            if type(payload) is not bytes:
+                message = f"{label} stream returned non-native bytes"
+                raise SearchCliError(message)
+            if len(payload) != expected[2]:
+                message = f"{label} changed during read or exceeds byte limit"
+                raise SearchCliError(message)
+            if (
+                _cli_source_identity(os.fstat(descriptor), label) != expected
+                or _cli_source_identity(path.stat(), label) != expected
+            ):
+                message = f"{label} changed during read"
+                raise SearchCliError(message)
+            return payload
+    except SearchCliError:
+        raise
+    except OSError as error:
+        message = f"cannot read {label}: {_safe_os_error_detail(error)}"
+        raise SearchCliError(message) from error
+    except Exception as error:  # noqa: BLE001 - stream failure must be typed
+        message = f"{label} stream I/O failed: {type(error).__name__}"
+        raise SearchCliError(message) from error
 
 
 def _read_cli_file(path: Path, label: str) -> bytes:

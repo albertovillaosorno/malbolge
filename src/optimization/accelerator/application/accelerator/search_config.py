@@ -174,31 +174,40 @@ def _read_config_descriptor(
             message = f"search configuration stream transfer failed: {type(failure).__name__}"
             raise SearchConfigurationError(message) from failure
         raise
-    with owned_stream as stream:
-        stream_descriptor = stream.fileno()
-        if type(stream_descriptor) is not int or stream_descriptor != descriptor:
-            message = "search configuration stream returned an invalid descriptor"
-            raise SearchConfigurationError(message)
-        if _config_source_identity(os.fstat(descriptor)) != expected:
-            message = "search configuration changed before read"
-            raise SearchConfigurationError(message)
-        payload = stream.read(MAX_SEARCH_CONFIGURATION_BYTES + 1)
-        if type(payload) is not bytes:
-            message = "search configuration stream returned non-native bytes"
-            raise SearchConfigurationError(message)
-        if len(payload) != expected[2]:
-            message = (
-                "search configuration changed during read or "
-                "exceeds byte limit"
-            )
-            raise SearchConfigurationError(message)
-        if (
-            _config_source_identity(os.fstat(descriptor)) != expected
-            or _config_source_identity(path.stat()) != expected
-        ):
-            message = "search configuration changed during read"
-            raise SearchConfigurationError(message)
-        return payload
+    try:
+        with owned_stream as stream:
+            stream_descriptor = stream.fileno()
+            if type(stream_descriptor) is not int or stream_descriptor != descriptor:
+                message = "search configuration stream returned an invalid descriptor"
+                raise SearchConfigurationError(message)
+            if _config_source_identity(os.fstat(descriptor)) != expected:
+                message = "search configuration changed before read"
+                raise SearchConfigurationError(message)
+            payload = stream.read(MAX_SEARCH_CONFIGURATION_BYTES + 1)
+            if type(payload) is not bytes:
+                message = "search configuration stream returned non-native bytes"
+                raise SearchConfigurationError(message)
+            if len(payload) != expected[2]:
+                message = (
+                    "search configuration changed during read or "
+                    "exceeds byte limit"
+                )
+                raise SearchConfigurationError(message)
+            if (
+                _config_source_identity(os.fstat(descriptor)) != expected
+                or _config_source_identity(path.stat()) != expected
+            ):
+                message = "search configuration changed during read"
+                raise SearchConfigurationError(message)
+            return payload
+    except SearchConfigurationError:
+        raise
+    except OSError as error:
+        message = f"cannot read search configuration: {_safe_os_error_detail(error)}"
+        raise SearchConfigurationError(message) from error
+    except Exception as error:  # noqa: BLE001 - stream failure must be typed
+        message = f"search configuration stream I/O failed: {type(error).__name__}"
+        raise SearchConfigurationError(message) from error
 
 
 def _read_config_file(path: Path) -> bytes:
