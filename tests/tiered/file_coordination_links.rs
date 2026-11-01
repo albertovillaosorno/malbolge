@@ -58,10 +58,6 @@ impl Fixture {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "the fixture owns only its isolated directory and needs normal Drop"
-)]
 impl Drop for Fixture {
     fn drop(&mut self) {
         drop(fs::remove_dir_all(&self.directory));
