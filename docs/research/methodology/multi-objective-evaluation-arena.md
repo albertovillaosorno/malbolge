@@ -1083,10 +1083,17 @@ The original study records remain the result authority.
   closed before reference artifact publication, without claiming immutable
   filesystem snapshots or authenticating the host compiler.
   RSS receipt creation, descriptor close, and post-stage cleanup failures are
-  also typed host-C failures. A failed temporary receipt unlink cannot mask
-  the earlier compiler, oracle, or RSS-validation failure; the cleanup error
-  stays in the original exception's diagnostics. Unexpected RSS reader method
-  errors likewise preserve their original causes across the typed boundary.
+  also typed host-C failures. The GNU-time RSS stage accepts only an exact
+  native temporary `(descriptor, pathname)` receipt with a bounded signed
+  C-int descriptor and an expected stage filename within its workspace.
+  Before any child launch it requires the descriptor and pathname to identify
+  the same single-link regular inode, then requires native `None` from
+  descriptor close. Invalid receipt shapes or mismatched paths cannot trigger
+  descriptor use, child execution, or deletion of an unrelated path. A failed
+  temporary receipt unlink cannot mask the earlier compiler, oracle, or
+  RSS-validation failure; the cleanup error stays in the original exception's
+  diagnostics. Unexpected RSS reader method errors likewise preserve their
+  original causes across the typed boundary.
 - `benchmarks/arena/challenge_bundles.py` optionally replays the original
   generator's exact source/oracle/manifest bytes against a bounded retained
   challenge bundle, binding workload digests to reproducible C source. Synthetic

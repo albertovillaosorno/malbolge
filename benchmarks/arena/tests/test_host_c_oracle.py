@@ -1872,6 +1872,157 @@ def test_host_c_rss_temp_cleanup_is_typed_and_preserves_primary_error(
         assert isinstance(error.value.__cause__, PermissionError)
 
 
+class _ForeignRssDescriptor(int):
+    """A custom integer must not authorize host descriptor cleanup."""
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        None,
+        (True, "host-c-stage-rss-fake.txt"),
+        (-1, "host-c-stage-rss-fake.txt"),
+        (_ForeignRssDescriptor(9), "host-c-stage-rss-fake.txt"),
+    ],
+)
+def test_host_c_rss_rejects_foreign_temp_receipt_before_host_actions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Invalid tempfile returns never reach descriptor close or output unlink."""
+    operations: list[str] = []
+
+    def fake_receipt(**kwargs: object) -> object:
+        del kwargs
+        return receipt
+
+    def unexpected_close(descriptor: int) -> None:
+        del descriptor
+        operations.append("close")
+
+    def unexpected_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        del path, missing_ok
+        operations.append("unlink")
+
+    monkeypatch.setattr(
+        host_c_oracle, "_limited_command", lambda command: command
+    )
+    monkeypatch.setattr(
+        host_c_oracle, "_system_tool", lambda name: "/usr/bin/time"
+    )
+    monkeypatch.setattr(host_c_oracle.tempfile, "mkstemp", fake_receipt)
+    monkeypatch.setattr(host_c_oracle.os, "close", unexpected_close)
+    monkeypatch.setattr(Path, "unlink", unexpected_unlink)
+    with pytest.raises(host_c_oracle.HostOracleError):
+        host_c_oracle._bounded_child(["fake"], tmp_path, "RSS")
+    assert not operations
+
+
+def test_host_c_rss_rejects_foreign_temp_name_without_deleting_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid temporary fd cannot authorize an unrelated output pathname."""
+    outside = tmp_path / "unrelated.txt"
+    outside.write_bytes(b"preserve me")
+    actual = tmp_path / "actual-host-c-stage-rss.txt"
+    actual.write_bytes(b"owned tempfile")
+    fd = os.open(actual, os.O_RDONLY)
+    monkeypatch.setattr(
+        host_c_oracle, "_limited_command", lambda command: command
+    )
+    monkeypatch.setattr(
+        host_c_oracle, "_system_tool", lambda name: "/usr/bin/time"
+    )
+    monkeypatch.setattr(
+        host_c_oracle.tempfile, "mkstemp", lambda **kwargs: (fd, str(outside))
+    )
+
+    def reject_child(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("unadmitted RSS filename launched a child")
+
+    monkeypatch.setattr(host_c_oracle.sp, "Popen", reject_child)
+    with pytest.raises(host_c_oracle.HostOracleError):
+        host_c_oracle._bounded_child(["fake"], tmp_path, "RSS")
+    assert outside.read_bytes() == b"preserve me"
+    with pytest.raises(OSError):
+        os.fstat(fd)
+
+
+@pytest.mark.parametrize("kind", ["different-inode", "symlink"])
+def test_host_c_rss_rejects_same_name_shape_with_unowned_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A plausible temp path must bind the real new regular inode."""
+    actual = tmp_path / "actual-temp.txt"
+    actual.write_bytes(b"safe")
+    fd = os.open(actual, os.O_RDONLY)
+    reported = tmp_path / "host-c-stage-rss-forged.txt"
+    if kind == "symlink":
+        reported.symlink_to(actual)
+    else:
+        reported.write_bytes(b"other inode")
+    monkeypatch.setattr(
+        host_c_oracle, "_limited_command", lambda command: command
+    )
+    monkeypatch.setattr(
+        host_c_oracle, "_system_tool", lambda name: "/usr/bin/time"
+    )
+    monkeypatch.setattr(
+        host_c_oracle.tempfile, "mkstemp", lambda **kwargs: (fd, str(reported))
+    )
+
+    def reject_child(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        pytest.fail("unowned RSS inode launched a child")
+
+    monkeypatch.setattr(host_c_oracle.sp, "Popen", reject_child)
+    with pytest.raises(
+        host_c_oracle.HostOracleError, match="RSS temporary inode"
+    ):
+        host_c_oracle._bounded_child(["fake"], tmp_path, "RSS")
+    assert reported.is_symlink() if kind == "symlink" else reported.is_file()
+    with pytest.raises(OSError):
+        os.fstat(fd)
+
+
+@pytest.mark.parametrize("receipt", [False, True, 0, "closed"])
+def test_host_c_rss_rejects_false_temp_close_success_before_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A false close acknowledgement cannot proceed to a measured child."""
+    original_close = host_c_oracle.os.close
+    launched: list[str] = []
+
+    def false_close(descriptor: int) -> None:
+        original_close(descriptor)
+        return cast("None", receipt)
+
+    def unexpected_child(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        launched.append("child")
+        pytest.fail("unconfirmed tempfile close launched a child")
+
+    monkeypatch.setattr(
+        host_c_oracle, "_limited_command", lambda command: command
+    )
+    monkeypatch.setattr(
+        host_c_oracle, "_system_tool", lambda name: "/usr/bin/time"
+    )
+    monkeypatch.setattr(host_c_oracle.os, "close", false_close)
+    monkeypatch.setattr(host_c_oracle.sp, "Popen", unexpected_child)
+    with pytest.raises(host_c_oracle.HostOracleError):
+        host_c_oracle._bounded_child(["fake"], tmp_path, "RSS")
+    assert not launched
+    assert not tuple(tmp_path.glob("host-c-stage-rss-*"))
+
+
 @pytest.mark.parametrize("fault", [OSError, ValueError, RuntimeError])
 def test_host_c_rss_temp_descriptor_close_fault_is_typed(
     tmp_path: Path,

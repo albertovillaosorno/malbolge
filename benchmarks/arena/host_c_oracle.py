@@ -46,6 +46,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from struct import calcsize
 from typing import Any, Never
 
 from benchmarks.challenges import generate
@@ -63,6 +64,9 @@ LINUX_PLATFORM = "linux"
 RESOURCE_LIMIT_TOOL = "prlimit"
 RSS_MEASUREMENT_TOOL = "time"
 RSS_REPORT_MAX_BYTES = 32
+MAX_NATIVE_DESCRIPTOR = (1 << (8 * calcsize("@i") - 1)) - 1
+RSS_TEMP_PREFIX = "host-c-stage-rss-"
+RSS_TEMP_SUFFIX = ".txt"
 SYSTEM_TOOL_SEARCH_PATH = os.defpath
 KIB_BYTES = 1024
 OPTIMIZATION_MODES = ("-O0", "-O2")
@@ -397,26 +401,74 @@ def _wait_child(child: sp.Popen[bytes], label: str) -> None:
         _fail(f"host-C challenge oracle {label} failed")
 
 
+def _close_rss_temporary_descriptor(descriptor: int) -> None:
+    try:
+        receipt = os.close(descriptor)
+    except Exception as error:
+        message = "host-C challenge oracle RSS descriptor close failed"
+        raise HostOracleError(message) from error
+    if receipt is not None:
+        _fail("host-C challenge oracle RSS descriptor close receipt invalid")
+
+
+def _admit_rss_temporary_receipt(receipt: object, cwd: Path) -> tuple[int, str]:
+    if type(receipt) is not tuple or len(receipt) != 2:
+        _fail("host-C challenge oracle RSS temporary receipt invalid")
+    descriptor, pathname = receipt
+    if (
+        type(descriptor) is not int
+        or descriptor < 0
+        or descriptor > MAX_NATIVE_DESCRIPTOR
+    ):
+        _fail("host-C challenge oracle RSS temporary descriptor invalid")
+    if (
+        type(pathname) is not str
+        or "\x00" in pathname
+        or Path(pathname).parent != cwd
+        or not Path(pathname).name.startswith(RSS_TEMP_PREFIX)
+        or not Path(pathname).name.endswith(RSS_TEMP_SUFFIX)
+    ):
+        _close_rss_temporary_descriptor(descriptor)
+        _fail("host-C challenge oracle RSS temporary pathname invalid")
+    try:
+        opened = os.fstat(descriptor)
+        named = Path(pathname).lstat()
+    except Exception as error:
+        _close_rss_temporary_descriptor(descriptor)
+        message = "host-C challenge oracle RSS temporary inode unavailable"
+        raise HostOracleError(message) from error
+    if (
+        type(opened) is not os.stat_result
+        or type(named) is not os.stat_result
+        or not stat.S_ISREG(opened.st_mode)
+        or not stat.S_ISREG(named.st_mode)
+        or opened.st_dev != named.st_dev
+        or opened.st_ino != named.st_ino
+        or opened.st_nlink != 1
+        or named.st_nlink != 1
+    ):
+        _close_rss_temporary_descriptor(descriptor)
+        _fail("host-C challenge oracle RSS temporary inode mismatch")
+    return descriptor, pathname
+
+
 def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
     limited = _limited_command(command)
     time_tool = _system_tool(RSS_MEASUREMENT_TOOL)
     if time_tool is None:
         _fail("host-C child RSS measurement requires GNU time")
     try:
-        fd, output_path = tempfile.mkstemp(
+        temporary = tempfile.mkstemp(
             dir=cwd,
-            prefix="host-c-stage-rss-",
-            suffix=".txt",
+            prefix=RSS_TEMP_PREFIX,
+            suffix=RSS_TEMP_SUFFIX,
         )
     except Exception as error:
         message = "host-C challenge oracle RSS temporary receipt unavailable"
         raise HostOracleError(message) from error
+    fd, output_path = _admit_rss_temporary_receipt(temporary, cwd)
     try:
-        try:
-            os.close(fd)
-        except Exception as error:
-            message = "host-C challenge oracle RSS descriptor close failed"
-            raise HostOracleError(message) from error
+        _close_rss_temporary_descriptor(fd)
         try:
             child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
                 [
