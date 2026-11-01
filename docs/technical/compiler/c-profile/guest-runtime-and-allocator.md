@@ -1436,6 +1436,11 @@ lowered through host-dependent behavior.
   same core heap/frame/startup/byte vectors with pinned Linux Clang 22.1.8 in
   strict C23 and ASan/UBSan modes. It includes the deterministic allocator
   stress test; native Linux evidence does not replace the Windows ABI checks.
+  `tests/test_guest_format_linux.py` similarly executes nine independent
+  C formatting harnesses in strict and sanitizer modes: formatting, parser,
+  varargs, argument resolution, scalar/memory/hex-float rendering, exact
+  decimal conversion, and decimal formatting. Linux execution complements,
+  rather than replaces, the Windows and wasm ABI/dependency checks.
 - Dependency boundary: executable ternary/Malbolge lowering is intentionally
   downstream under `ternary-machine-lowering`; this contract supplies its stable
   runtime semantic identities and implementation inputs.
