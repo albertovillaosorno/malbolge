@@ -120,6 +120,14 @@ maximum member extent/alignment. All arithmetic is overflow-checked in the
 32-bit logical byte domain.
 
 By-value aggregate cycles fail closed while pointer recursion remains valid.
+Object-layout admission now evaluates aggregate dependencies with an explicit
+stack and caches completed type layouts across the type table. Deep but finite
+forward-referenced aggregates therefore avoid host-call-stack exhaustion and
+repeated quadratic subtree walks. Pointer types terminate traversal, repeated
+fields reuse the same result, and by-value cycles still fail with `TypeTable`.
+Regression fixtures admit and canonically restore an 8,192-level array chain,
+reject an equally deep by-value cycle, and preserve repeated-field and
+pointer-recursive layouts.
 When a static global carries explicit initializer bytes, their length must equal
 its exact canonical object extent. This prevents malformed IR from publishing
 an initializer whose byte sequence cannot denote the declared guest object.

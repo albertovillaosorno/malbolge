@@ -42,6 +42,7 @@ use std::fmt::Write as _;
 use std::fs::{
     copy, create_dir_all, read_to_string, remove_dir_all, remove_file, write,
 };
+use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::process::{Command, id};
 use std::str::from_utf8;
@@ -2902,6 +2903,117 @@ fn by_value_recursive_aggregate_fails_layout_admission() {
         )],
     });
     assert_eq!(validate_module(&module), Err(ValidationError::TypeTable));
+}
+
+fn deep_array_type_table(depth: u32, cyclic: bool) -> Module {
+    let types = (0..depth)
+        .map(|index| {
+            TypeEntry::new(
+                TypeId::new(index),
+                TypeDef::Array {
+                    count: 1,
+                    element: TypeId::new(index.saturating_add(1)),
+                },
+            )
+        })
+        .chain(once(TypeEntry::new(
+            TypeId::new(depth),
+            if cyclic {
+                TypeDef::structure(vec![TypeId::new(0)])
+            } else {
+                TypeDef::U8
+            },
+        )))
+        .collect();
+    Module::new(ModuleSpec {
+        abi_id: String::from(ABI_ID),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: Vec::new(),
+        globals: Vec::new(),
+        proof_obligations: Vec::new(),
+        source_id: String::from(SOURCE_ID),
+        source_sha256: SOURCE_HASH,
+        target_profile: String::from(PROFILE_ID),
+        types,
+    })
+}
+
+#[test]
+fn deep_aggregate_type_table_stays_stack_safe_and_canonical()
+-> Result<(), String> {
+    let admitted = deep_array_type_table(8_192, false);
+    validate_module(&admitted)
+        .map_err(|error| format!("deep aggregate admission: {error:?}"))?;
+    let encoded = canonical_bytes(&admitted)
+        .map_err(|error| format!("deep aggregate encode: {error:?}"))?;
+    if canonical_module(&encoded) != Ok(admitted) {
+        return Err(String::from("deep aggregate canonical restoration drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn deep_aggregate_cycle_fails_without_recursing_the_host_stack() {
+    let recursive = deep_array_type_table(8_192, true);
+    assert_eq!(validate_module(&recursive), Err(ValidationError::TypeTable));
+}
+
+#[test]
+fn pointer_terminated_type_cycle_has_finite_object_layout() {
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(ABI_ID),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: Vec::new(),
+        globals: vec![Global::new(GlobalSpec {
+            id: GlobalId::new(0),
+            initializer: Some(vec![0; 4]),
+            name: String::from("node"),
+            span: span(0, 1),
+            type_id: TypeId::new(0),
+        })],
+        proof_obligations: Vec::new(),
+        source_id: String::from(SOURCE_ID),
+        source_sha256: SOURCE_HASH,
+        target_profile: String::from(PROFILE_ID),
+        types: vec![
+            TypeEntry::new(TypeId::new(0), TypeDef::structure(vec![TypeId::new(1)])),
+            TypeEntry::new(
+                TypeId::new(1),
+                TypeDef::Pointer {
+                    pointee: TypeId::new(0),
+                },
+            ),
+        ],
+    });
+    assert_eq!(validate_module(&module), Ok(()));
+}
+
+#[test]
+fn repeated_aggregate_fields_reuse_one_child_layout() {
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(ABI_ID),
+        format_version: typed_ir::TYPED_IR_VERSION,
+        functions: Vec::new(),
+        globals: vec![Global::new(GlobalSpec {
+            id: GlobalId::new(0),
+            initializer: Some(vec![0; 8]),
+            name: String::from("repeated"),
+            span: span(0, 1),
+            type_id: TypeId::new(0),
+        })],
+        proof_obligations: Vec::new(),
+        source_id: String::from(SOURCE_ID),
+        source_sha256: SOURCE_HASH,
+        target_profile: String::from(PROFILE_ID),
+        types: vec![
+            TypeEntry::new(
+                TypeId::new(0),
+                TypeDef::structure(vec![TypeId::new(1), TypeId::new(1)]),
+            ),
+            TypeEntry::new(TypeId::new(1), TypeDef::I32),
+        ],
+    });
+    assert_eq!(validate_module(&module), Ok(()));
 }
 
 #[test]
