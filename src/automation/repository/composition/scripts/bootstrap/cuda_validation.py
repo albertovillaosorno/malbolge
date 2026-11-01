@@ -193,7 +193,9 @@ def _read_manifest_source(
             os.close(descriptor)
         except OSError:
             pass
-        raise CudaProvisionError(f"cannot read {label}: {error}") from error
+        raise CudaProvisionError(
+            f"cannot read {label}: host stream wrapper failed"
+        ) from error
     with stream:
         if _manifest_identity(os.fstat(stream.fileno()), label) != expected:
             _fail(f"{label} changed before read")

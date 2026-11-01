@@ -42,6 +42,7 @@ from pathlib import Path
 import tarfile
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 import zipfile
 
 import pytest
@@ -637,8 +638,34 @@ def test_provision_manifest_rejects_inode_swap_after_read(
     assert observed == SOURCE_RECHECK
 
 
+class UnprintableHostOSError(OSError):
+    """A host adapter whose diagnostic cannot safely be rendered."""
+
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("host error text must not be formatted")
+
+
+class UnprintableHostRuntimeError(RuntimeError):
+    """An additional fault family with a hostile message adapter."""
+
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("host error text must not be formatted")
+
+
 @pytest.mark.parametrize("source_kind", ["manifest", "marker"])
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+@pytest.mark.parametrize(
+    "fault_type",
+    [
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        UnprintableHostOSError,
+        UnprintableHostRuntimeError,
+    ],
+)
 def test_cuda_source_fdopen_fault_closes_owned_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -688,6 +715,7 @@ def test_cuda_source_fdopen_fault_closes_owned_descriptor(
                 )
         if source_kind == "manifest":
             assert "cannot read CUDA provision manifest" in str(caught.value)
+            assert "host stream wrapper failed" in str(caught.value)
             assert caught.value.__cause__ is fault
         else:
             assert "exists without the exact provision marker" in str(caught.value)

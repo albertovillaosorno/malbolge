@@ -229,7 +229,9 @@ def _read_regular(path: Path, *, limit: int) -> bytes:
             os.close(descriptor)
         except OSError:
             pass
-        raise SanitizerHarnessError(f"cannot read sanitizer input: {error}") from error
+        raise SanitizerHarnessError(
+            "cannot read sanitizer input: host stream wrapper failed"
+        ) from error
     with stream:
         if _regular_identity(os.fstat(stream.fileno()), limit) != expected:
             _fail("sanitizer input changed before read")

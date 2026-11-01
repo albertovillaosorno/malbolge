@@ -39,7 +39,7 @@ import os
 import subprocess  # ruff: ignore[suspicious-subprocess-import]
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, override
 
 import pytest
 
@@ -152,10 +152,36 @@ def test_sanitizer_case_allows_safe_portable_filename_stem() -> None:
     assert case.identifier == identifier
 
 
+class UnprintableHostOSError(OSError):
+    """A host adapter whose diagnostic cannot safely be rendered."""
+
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("host error text must not be formatted")
+
+
+class UnprintableHostRuntimeError(RuntimeError):
+    """An additional fault family with a hostile message adapter."""
+
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("host error text must not be formatted")
+
+
 @pytest.mark.parametrize(
     "source_kind", ["cases", "evidence", "historical-source"]
 )
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+@pytest.mark.parametrize(
+    "fault_type",
+    [
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        UnprintableHostOSError,
+        UnprintableHostRuntimeError,
+    ],
+)
 def test_sanitizer_source_wrapper_failure_closes_owned_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -201,6 +227,7 @@ def test_sanitizer_source_wrapper_failure_closes_owned_descriptor(
                 _ = harness.load_evidence()
             else:
                 _ = harness.run_harness()
+        assert "host stream wrapper failed" in str(caught.value)
         assert caught.value.__cause__ is fault
         assert len(opened) == 1
         with pytest.raises(OSError, match=r"Bad file descriptor|Invalid handle"):
