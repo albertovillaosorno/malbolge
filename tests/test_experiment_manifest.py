@@ -37,7 +37,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Never, Self, cast, final, override
 
 import pytest
 
@@ -423,6 +423,210 @@ def test_repository_manifest_inspection_failures_are_typed(
         match="experiment manifest cannot be inspected",
     ):
         _ = validator.validate_repository_manifest(source)
+
+
+@final
+class _ForeignDescriptor(int):
+    """An int subtype cannot claim native ownership of a file descriptor."""
+
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("foreign manifest descriptor formatted")
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(True, id="boolean"),
+        pytest.param(-1, id="negative"),
+        pytest.param(1 << 40, id="oversized"),
+        pytest.param(3.0, id="float"),
+        pytest.param("3", id="text"),
+        pytest.param(_ForeignDescriptor(3), id="foreign-integer"),
+    ],
+)
+def test_manifest_open_requires_native_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Invalid open receipts must not reach fdopen or descriptor cleanup."""
+    source = tmp_path / "experiment.toml"
+    _ = source.write_bytes(b"schema_version = 1\n")
+    real_open = os.open
+
+    def forged_open(path: Path, flags: int) -> int:
+        if path == source:
+            return cast("int", receipt)
+        return real_open(path, flags)
+
+    def forbidden_fdopen(_descriptor: int, _mode: str) -> Never:
+        raise AssertionError("forged manifest descriptor passed to fdopen")
+
+    def forbidden_close(_descriptor: int) -> Never:
+        raise AssertionError("forged manifest descriptor passed to close")
+
+    monkeypatch.setattr(os, "open", forged_open)
+    monkeypatch.setattr(os, "fdopen", forbidden_fdopen)
+    monkeypatch.setattr(os, "close", forbidden_close)
+    with pytest.raises(validator.ExperimentManifestError, match="native descriptor"):
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(True, id="boolean"),
+        pytest.param(-1, id="negative"),
+        pytest.param(1 << 40, id="oversized"),
+        pytest.param(1, id="unrelated-native"),
+        pytest.param("3", id="text"),
+        pytest.param(_ForeignDescriptor(3), id="foreign-integer"),
+    ],
+)
+def test_manifest_stream_requires_bound_native_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A forged stream fileno cannot authorize fstat or manifest reads."""
+    source = tmp_path / "experiment.toml"
+    _ = source.write_bytes(b"schema_version = 1\n")
+    real_fdopen = os.fdopen
+    real_fstat = os.fstat
+    opened: list[int] = []
+
+    @final
+    class ForgedStream:
+        def __init__(self, descriptor: int, mode: str) -> None:
+            self.stream = real_fdopen(descriptor, mode)
+            opened.append(descriptor)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def fileno(self) -> object:
+            return receipt
+
+        def read(self, length: int) -> bytes:
+            return self.stream.read(length)
+
+    def guarded_fstat(descriptor: int) -> os.stat_result:
+        if not opened or type(descriptor) is not int or descriptor != opened[0]:
+            raise AssertionError("forged manifest stream descriptor reached fstat")
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(os, "fdopen", ForgedStream)
+    monkeypatch.setattr(os, "fstat", guarded_fstat)
+    with pytest.raises(validator.ExperimentManifestError, match="stream descriptor"):
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = real_fstat(opened[0])
+
+
+def test_manifest_stream_rejects_handle_swap_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stream identity remains bound after collecting all manifest bytes."""
+    source = tmp_path / "experiment.toml"
+    _ = source.write_bytes(b"schema_version = 1\n")
+    real_fdopen = os.fdopen
+    real_fstat = os.fstat
+    calls: list[int] = []
+    opened: list[int] = []
+
+    @final
+    class SwitchingStream:
+        def __init__(self, descriptor: int, mode: str) -> None:
+            self.stream = real_fdopen(descriptor, mode)
+            opened.append(descriptor)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def fileno(self) -> int:
+            calls.append(1)
+            return opened[0] if len(calls) == 1 else -1
+
+        def read(self, length: int) -> bytes:
+            return self.stream.read(length)
+
+    def guarded_fstat(descriptor: int) -> os.stat_result:
+        if type(descriptor) is not int or descriptor != opened[0]:
+            raise AssertionError("swapped manifest descriptor reached fstat")
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(os, "fdopen", SwitchingStream)
+    monkeypatch.setattr(os, "fstat", guarded_fstat)
+    with pytest.raises(validator.ExperimentManifestError, match="stream descriptor"):
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("receipt_kind", ("subclass", "text", "bytearray", "none"))
+def test_manifest_stream_read_requires_native_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_kind: str,
+) -> None:
+    """A forged read receipt cannot execute length or decoding hooks."""
+    source = tmp_path / "experiment.toml"
+    _ = source.write_bytes(b"schema_version = 1\n")
+    real_fdopen = os.fdopen
+
+    @final
+    class ForeignBytes(bytes):
+        @override
+        def __len__(self) -> int:
+            raise AssertionError("foreign manifest length executed")
+
+    @final
+    class ForgedStream:
+        def __init__(self, descriptor: int, mode: str) -> None:
+            self.stream = real_fdopen(descriptor, mode)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, length: int) -> bytes:
+            raw = self.stream.read(length)
+            receipts: dict[str, object] = {
+                "subclass": ForeignBytes(raw),
+                "text": raw.decode("utf-8"),
+                "bytearray": bytearray(raw),
+                "none": None,
+            }
+            return cast("bytes", receipts[receipt_kind])
+
+    monkeypatch.setattr(os, "fdopen", ForgedStream)
+    with pytest.raises(validator.ExperimentManifestError, match="native byte receipt"):
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_manifest_invalid_utf8_preserves_native_decoder_cause(tmp_path: Path) -> None:
+    """A malformed source retains the exact native decoder cause."""
+    source = tmp_path / "experiment.toml"
+    _ = source.write_bytes(b"{\xff}")
+    with pytest.raises(
+        validator.ExperimentManifestError, match="invalid experiment manifest UTF-8"
+    ) as caught:
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+    assert type(caught.value.__cause__) is UnicodeDecodeError
+    assert "position 1" in str(caught.value)
 
 
 @pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])

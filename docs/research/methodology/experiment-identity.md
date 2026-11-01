@@ -48,8 +48,13 @@ Experiment manifest schema v1 is validated by
 Manifest file loading rejects invalid UTF-8 through the stable experiment error
 boundary before TOML admission. It admits only physical, non-redirected regular
 files under a 1 MiB limit, reads through a no-follow/nonblocking descriptor
-where available, and rejects replacement or modification by rechecking device,
-inode, extent, and timestamps after reading. Repository-manifest validation
+where available. Raw opening receipts must be exact native signed file
+descriptors; the wrapped stream must retain that same descriptor before and
+after reading. Stream reads must provide exact native bytes before any length
+inspection, and UTF-8 decoder failures retain their original cause without
+formatting foreign exception subclasses. The reader rejects replacement or
+modification by rechecking device, inode, extent, and timestamps after reading.
+Repository-manifest validation
 accepts working-directory-relative and absolute in-root paths without resolving
 away symbolic-link aliases; parent traversal is rejected. After source bytes
 are admitted, repository identity must bind to the registered physical

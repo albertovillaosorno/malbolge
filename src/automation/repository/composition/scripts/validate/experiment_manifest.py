@@ -52,6 +52,7 @@ from scripts.validate import target_profile
 ROOT = repository_root(Path(__file__))
 SCHEMA_VERSION = 1
 MAX_MANIFEST_BYTES = 1024 * 1024
+MAX_NATIVE_DESCRIPTOR = (1 << 31) - 1
 PARENT_SEGMENT = ".."
 PLAN_RECORD_KIND = "plan"
 RUN_RECORD_KIND = "run"
@@ -580,6 +581,8 @@ def _read_manifest_bytes(path: Path) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
+    if type(descriptor) is not int or not 0 <= descriptor <= MAX_NATIVE_DESCRIPTOR:
+        _fail("experiment manifest open requires native descriptor")
     try:
         stream = os.fdopen(descriptor, "rb")
     except BaseException:
@@ -590,12 +593,20 @@ def _read_manifest_bytes(path: Path) -> bytes:
             pass
         raise
     with stream:
-        if _manifest_identity(os.fstat(stream.fileno())) != expected:
+        opened = stream.fileno()
+        if type(opened) is not int or opened != descriptor:
+            _fail("experiment manifest stream descriptor does not match opened file")
+        if _manifest_identity(os.fstat(opened)) != expected:
             _fail("experiment manifest changed before read")
         raw = stream.read(MAX_MANIFEST_BYTES + 1)
+        if type(raw) is not bytes:
+            _fail("experiment manifest requires native byte receipt")
+        after = stream.fileno()
+        if type(after) is not int or after != descriptor:
+            _fail("experiment manifest stream descriptor changed during read")
         if (
             len(raw) != admitted.st_size
-            or _manifest_identity(os.fstat(stream.fileno())) != expected
+            or _manifest_identity(os.fstat(after)) != expected
             or _manifest_identity(path.lstat()) != expected
         ):
             _fail("experiment manifest changed during read")
@@ -623,8 +634,11 @@ def _read_utf8(path: Path) -> str:
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError as error:
+        detail = (
+            str(error) if type(error) is UnicodeDecodeError else type(error).__name__
+        )
         raise ExperimentManifestError(
-            f"invalid experiment manifest UTF-8: {error}"
+            f"invalid experiment manifest UTF-8: {detail}"
         ) from error
 
 
