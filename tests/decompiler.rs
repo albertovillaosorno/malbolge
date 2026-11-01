@@ -43,7 +43,7 @@ pub mod decompiler;
 
 use std::env::temp_dir;
 use std::fs::{self, File};
-use std::io::Read as _;
+use std::io::{Error as IoError, Read as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, id};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -239,6 +239,41 @@ fn cli_rejects_equal_inode_parent_alias_swap_during_read() -> Result<(), String>
         return Err(format!(
             "same-inode source alias swap admitted: {result:?}"
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn cli_rejects_forged_source_read_counts() -> Result<(), String> {
+    let directory = temporary_cli_inputs()?;
+    let source = directory.join("source.malbolge");
+    fs::write(&source, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
+    // Exact source bytes and stable inode are insufficient if the reader
+    // claims to have transferred a different number of bytes.
+    for reported in [0, 2, 4, usize::MAX] {
+        let result = cli::read_decompiler_source_with_reader(
+            &source,
+            |opened, bytes| {
+                let collected = opened.take(SOURCE_PROBE_BYTES).read_to_end(bytes)?;
+                if collected != OUTPUT_SOURCE.len() {
+                    return Err(IoError::other("fixture read length changed"));
+                }
+                Ok(reported)
+            },
+        );
+        if !result.as_ref().is_err_and(|error| {
+            error.to_string().contains("read count disagrees")
+        }) {
+            return Err(format!(
+                "forged read count {reported} admitted: {result:?}"
+            ));
+        }
+    }
+    let retained = fs::read(&source).map_err(|error| error.to_string())?;
+    fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove source fixture: {error}"))?;
+    if retained != OUTPUT_SOURCE {
+        return Err(String::from("read admission changed the original source"));
     }
     Ok(())
 }

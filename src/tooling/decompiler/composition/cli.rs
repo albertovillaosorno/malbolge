@@ -282,7 +282,12 @@ pub(crate) fn read_decompiler_source_with_reader(
     // Limit the production reader to one overflow-detection byte; never
     // publish a source whose identity, contents, or size changed during read.
     let mut bytes = Vec::new();
-    let _read = read(&mut file, &mut bytes)?;
+    let reported = read(&mut file, &mut bytes)?;
+    if reported != bytes.len() {
+        return Err(IoError::other(
+            "decompiler source read count disagrees with collected bytes",
+        ));
+    }
     if u64::try_from(bytes.len()).map_err(IoError::other)?
         > MAX_DECOMPILER_SOURCE_BYTES
     {
