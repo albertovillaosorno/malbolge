@@ -312,6 +312,37 @@ def _location_candidate(node: JsonObject) -> JsonObject | None:
     return _range_begin(node)
 
 
+def _macro_expansion_offset(
+    node: JsonObject,
+    source: Path,
+    source_bytes: bytes,
+) -> int | None:
+    """Locate a macro-expanded reference at its source invocation site.
+
+    Returns:
+        The source offset, or None for a non-macro reference.
+
+    """
+    begin = _range_begin(node)
+    expansion = None if begin is None else begin.get("expansionLoc")
+    if not isinstance(expansion, dict):
+        return None
+    location = cast("JsonObject", expansion)
+    offset = location.get("offset")
+    explicit_file = location.get("file")
+    if type(offset) is not int or not 0 <= offset < len(source_bytes):
+        _fail("invalid Clang macro expansion source location")
+    if explicit_file is not None and explicit_file != str(source):
+        _fail("invalid Clang macro expansion source location")
+    line, column = _line_column(source_bytes, offset)
+    if any(
+        field in location and location[field] != expected
+        for field, expected in (("line", line), ("col", column))
+    ):
+        _fail("inconsistent Clang macro expansion source location")
+    return offset
+
+
 def _nonempty_string(value: JsonValue | None) -> str | None:
     return value if isinstance(value, str) and value else None
 
@@ -454,11 +485,13 @@ def _diagnostic_for_reference(
         if name is None or is_local
         else _routine_rejection(name, context.libc)
     )
-    offset = (
-        None
-        if name is None
-        else _source_offset(node, name, context.source_bytes)
-    )
+    offset = None
+    if rejection is not None and name is not None:
+        offset = _macro_expansion_offset(
+            node, context.source, context.source_bytes
+        )
+        if offset is None:
+            offset = _source_offset(node, name, context.source_bytes)
     if rejection is not None and offset is not None:
         code, message = rejection
         line, column = _line_column(context.source_bytes, offset)

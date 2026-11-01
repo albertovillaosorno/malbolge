@@ -91,6 +91,7 @@ LOADER_FIFO = "fifo"
 EXPECTED_DIAGNOSTIC_LINE = 39
 EXPECTED_DIAGNOSTIC_COLUMN = 12
 MALLOC_ROUTINE = "malloc"
+SYSTEM_ROUTINE = "system"
 MATH_OBJECT_STEMS = frozenset({"math_exact", "math_sqrt"})
 MSVC_FLOAT_MARKER = frozenset({"_fltused"})
 WINDOWS_ABI_TARGETS = (
@@ -943,6 +944,163 @@ def test_libc_source_preflight_reports_exact_routine_use(
     assert diagnostic.line == EXPECTED_DIAGNOSTIC_LINE
     assert diagnostic.column == EXPECTED_DIAGNOSTIC_COLUMN
     assert routine in diagnostic.message
+
+
+@pytest.mark.parametrize(
+    ("macro", "invocation", "header_contents"),
+    [
+        (
+            "#define CALL_SYSTEM(arg) system(arg)\n",
+            'CALL_SYSTEM("ignored")',
+            None,
+        ),
+        (
+            '#include "macro-system.h"\n',
+            'CALL_SYSTEM("ignored")',
+            "#define CALL_SYSTEM(arg) system(arg)\n",
+        ),
+        (
+            """#define SYSTEM_ALIAS system
+#define CALL_SYSTEM(arg) SYSTEM_ALIAS(arg)
+""",
+            'CALL_SYSTEM("ignored")',
+            None,
+        ),
+        (
+            "#define APPLY(fn, arg) fn(arg)\n",
+            'APPLY(system, "ignored")',
+            None,
+        ),
+    ],
+)
+def test_libc_macro_expansion_rejects_forbidden_call_at_invocation(
+    tmp_path: Path,
+    *,
+    macro: str,
+    invocation: str,
+    header_contents: str | None,
+) -> None:
+    """Macro-expanded host calls cannot escape source-located libc admission."""
+    _require_clang()
+    source = tmp_path / "macro-system.c"
+    if header_contents is not None:
+        _ = (tmp_path / "macro-system.h").write_text(
+            header_contents, encoding="utf-8"
+        )
+    text = (
+        "extern int system(const char *command);\n"
+        + macro
+        + f"int probe(void) {{ return {invocation}; }}\n"
+    )
+    _ = source.write_text(text, encoding="utf-8")
+
+    diagnostics = c_libc_source.analyze_source(source)
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == c_libc_source.DIAGNOSTIC_FORBIDDEN
+    assert diagnostics[0].path == source.resolve()
+    assert diagnostics[0].line == text.count("\n")
+    assert diagnostics[0].column == text.splitlines()[-1].index(invocation) + 1
+    assert SYSTEM_ROUTINE in diagnostics[0].message
+
+
+def test_libc_macro_expansion_rejects_unavailable_malloc(
+    tmp_path: Path,
+) -> None:
+    """Macro expansion cannot turn an unavailable allocator into guest libc."""
+    _require_clang()
+    source = tmp_path / "macro-malloc.c"
+    content = """#include <stdlib.h>
+#define MAKE() malloc(8)
+void *probe(void) { return MAKE(); }
+"""
+    _ = source.write_text(content, encoding="utf-8")
+    diagnostics = c_libc_source.analyze_source(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == c_libc_source.DIAGNOSTIC_UNAVAILABLE
+    assert diagnostics[0].line == len(content.splitlines())
+    assert diagnostics[0].column == content.splitlines()[-1].index("MAKE()") + 1
+    assert MALLOC_ROUTINE in diagnostics[0].message
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("offset", True),
+        ("offset", -1),
+        ("offset", 1_000_000),
+        ("file", "foreign-header.h"),
+        ("line", 9_999),
+        ("col", 9_999),
+    ],
+)
+def test_libc_macro_expansion_rejects_unbound_location_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    field: str,
+    invalid: object,
+) -> None:
+    """Malformed location receipts cannot certify a forbidden reference."""
+    source = tmp_path / "source.c"
+    _ = source.write_text(
+        """extern int system(const char *);
+int probe(void) { return system("ignored"); }
+""",
+        encoding="utf-8",
+    )
+    expansion: c_libc_source.JsonObject = {
+        "offset": 39,
+        "file": str(source),
+    }
+    expansion[field] = cast("c_libc_source.JsonValue", invalid)
+    ast: c_libc_source.JsonObject = {
+        "kind": "TranslationUnitDecl",
+        "id": "unit",
+        "inner": [
+            {
+                "kind": "DeclRefExpr",
+                "range": {
+                    "begin": {
+                        "spellingLoc": {"offset": 0},
+                        "expansionLoc": expansion,
+                    }
+                },
+                "referencedDecl": {
+                    "id": "external",
+                    "kind": "FunctionDecl",
+                    "name": "system",
+                },
+            }
+        ],
+    }
+
+    def fake_ast(source_path: Path, config: object) -> c_libc_source.JsonObject:
+        _ = source_path, config
+        return ast
+
+    monkeypatch.setattr(c_libc_source, "_run_ast", fake_ast)
+    with pytest.raises(
+        c_libc_source.LibcSourceError,
+        match="Clang macro expansion source location",
+    ):
+        _ = c_libc_source.analyze_source(source)
+
+
+def test_libc_macro_expansion_preserves_user_function_definition(
+    tmp_path: Path,
+) -> None:
+    """A source-owned function remains legal through macro invocation."""
+    _require_clang()
+    source = tmp_path / "macro-user-system.c"
+    _ = source.write_text(
+        """static int system(const char *s) { return s[0] == 0; }
+#define CALL_SYSTEM(arg) system(arg)
+int probe(void) { return CALL_SYSTEM("ignored"); }
+""",
+        encoding="utf-8",
+    )
+    assert c_libc_source.analyze_source(source) == ()
 
 
 def test_user_defined_forbidden_name_is_not_a_libc_call(

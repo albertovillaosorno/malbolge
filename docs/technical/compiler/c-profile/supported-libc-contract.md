@@ -34,6 +34,12 @@ The source-level libc preflight reads a stable regular-file snapshot through a
 no-follow descriptor and rechecks its bytes, inode, extent, and timestamps
 after Clang AST parsing. File replacement or concurrent source edits invalidate
 the analysis, including a same-byte replacement with a different inode.
+Clang macro-expanded library references are attributed to the physical source
+invocation, including nested macros, headers, and argument expansions; checking
+only the spelling token would silently admit forbidden or unavailable calls.
+Out-of-range, foreign-file, or inconsistent macro locations fail closed rather
+than proving a clean source scan. User-defined local functions retain their
+ordinary declaration-identity exemption even when invoked through macros.
 
 This contract lane does not own heap/stream integration, formatting, or runtime
 scratch/startup realization. Those facilities consume the completed
