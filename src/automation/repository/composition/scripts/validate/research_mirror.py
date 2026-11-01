@@ -94,6 +94,8 @@ def _native_status(receipt: object, context: str) -> os.stat_result:
     """Accept exact native filesystem status before inspecting its fields."""
     if type(receipt) is not os.stat_result:
         _fail(f"{context} requires native stat receipt")
+    if type(receipt.st_mode) is not int:
+        _fail(f"{context} requires native stat mode")
     return receipt
 
 

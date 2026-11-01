@@ -34,9 +34,10 @@ rejects linked algorithm directories and redirected in-root directory
 ancestors before admitting an `experiment.toml` identity. Discovery requires
 exact native filesystem stat receipts and boolean junction results before
 inspecting their fields or truthiness; forged host results fail closed. The
-direct research-mirror validator separately requires the same native status and
-junction receipts for each physical path component and discovered algorithm ID;
-no foreign stat fields or truthiness hooks can certify mirror identity.
+direct research-mirror validator separately requires native stat containers,
+exact integer file-mode fields, and boolean junction receipts for each path
+component and discovered algorithm ID; foreign modes and truthiness hooks
+cannot certify mirror identity.
 Every direct research ID under either mirror root must exist on both sides.
 The special composition state-graph experiment and domain algorithm
 directories must not publish the same research ID: discovery rejects a collision

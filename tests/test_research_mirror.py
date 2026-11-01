@@ -38,7 +38,7 @@ import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import] - Git-only fixture.
 from collections.abc import Iterator
 from pathlib import Path
-from typing import cast, override
+from typing import Never, cast, override
 
 import pytest
 
@@ -677,6 +677,58 @@ def test_mirror_direct_stat_receipt_must_be_native(
     with pytest.raises(validator.ResearchMirrorError, match="native stat receipt"):
         if operation == "id_status":
             _ = validator._directory_ids(documents)  # pyright: ignore[reportPrivateUsage]
+        else:
+            _ = validator._physical_status(  # pyright: ignore[reportPrivateUsage]
+                evidence, "research evidence"
+            )
+
+
+@pytest.mark.parametrize("operation", ("parent", "leaf", "id"))
+@pytest.mark.parametrize(
+    "mode_kind", ("missing", "boolean", "float", "text", "foreign")
+)
+def test_mirror_direct_stat_mode_requires_native_integer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    mode_kind: str,
+) -> None:
+    """A native stat container cannot launder a foreign path-mode verdict."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    directory = tmp_path / "documents"
+    directory.mkdir()
+    evidence = directory / "research.md"
+    _ = evidence.write_text("fixture", encoding="utf-8")
+    child = directory / "fixture"
+    child.mkdir()
+    target = {"parent": directory, "leaf": evidence, "id": child}[operation]
+
+    class ForeignMode(int):
+        @override
+        def __and__(self, other: object) -> Never:
+            del self, other
+            raise AssertionError("foreign mirror mode bitwise hook executed")
+
+    bad_mode: object = {
+        "missing": None,
+        "boolean": True,
+        "float": 1.5,
+        "text": "directory",
+        "foreign": ForeignMode(target.lstat().st_mode),
+    }[mode_kind]
+    original_lstat = Path.lstat
+    native = target.lstat()
+    forged_fields: list[object] = [*native]
+    forged_fields[0] = bad_mode
+    forged = os.stat_result(cast("tuple[int, ...]", tuple(forged_fields)))
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        return forged if path == target else original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(validator.ResearchMirrorError, match="native stat mode"):
+        if operation == "id":
+            _ = validator._directory_ids(directory)  # pyright: ignore[reportPrivateUsage]
         else:
             _ = validator._physical_status(  # pyright: ignore[reportPrivateUsage]
                 evidence, "research evidence"
