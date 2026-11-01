@@ -51,10 +51,14 @@ files under a 1 MiB limit, reads through a no-follow/nonblocking descriptor
 where available, and rejects replacement or modification by rechecking device,
 inode, extent, and timestamps after reading. Repository-manifest validation
 accepts working-directory-relative and absolute in-root paths without resolving
-away symbolic-link aliases; parent traversal is rejected. TOML parser
-capacity errors (including oversized decimal integer tokens) return typed
-manifest errors instead of host exceptions. TOML remains the checked-in
-serialization, but the schema owns semantics independently of that format.
+away symbolic-link aliases; parent traversal is rejected. After source bytes
+are admitted, repository identity must bind to the registered physical
+research algorithm directory and the canonical `experiment.toml` leaf; neither
+a matching directory basename nor rewritten provenance can mint a new ID.
+TOML parser capacity errors, including oversized decimal integer tokens,
+return typed manifest errors instead of host exceptions. TOML remains the
+checked-in serialization, but the schema owns semantics independently of that
+format.
 Shared research discovery also rejects IDs that collide under Unicode case
 folding, including a domain ID that aliases the composition state-graph ID.
 The experiment and lifecycle validators receive this fail-closed discovery

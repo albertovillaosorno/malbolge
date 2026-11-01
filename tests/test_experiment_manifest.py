@@ -182,6 +182,43 @@ def _repository_manifest_fixture(
     return fixture
 
 
+def test_repository_manifest_rejects_unregistered_directory_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A matching basename and rewritten provenance cannot mint research ID."""
+    canonical = _repository_manifest_fixture(tmp_path, monkeypatch)
+    foreign = tmp_path / "scratch/template/experiment.toml"
+    foreign.parent.mkdir(parents=True)
+    body = canonical.read_text().replace(
+        "src/research/algorithms/domain/algorithms/template/experiment.toml",
+        "scratch/template/experiment.toml",
+    )
+    _ = foreign.write_text(body)
+    with pytest.raises(
+        validator.ExperimentManifestError, match="registered research algorithm"
+    ):
+        _ = validator.validate_repository_manifest(foreign)
+
+
+def test_repository_manifest_rejects_noncanonical_filename_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An alternate TOML file cannot impersonate the canonical experiment."""
+    canonical = _repository_manifest_fixture(tmp_path, monkeypatch)
+    foreign = canonical.with_name("other.toml")
+    body = canonical.read_text().replace(
+        "src/research/algorithms/domain/algorithms/template/experiment.toml",
+        "src/research/algorithms/domain/algorithms/template/other.toml",
+    )
+    _ = foreign.write_text(body)
+    with pytest.raises(
+        validator.ExperimentManifestError, match="canonical experiment.toml"
+    ):
+        _ = validator.validate_repository_manifest(foreign)
+
+
 def test_repository_manifest_rejects_symlink_leaf_and_parent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

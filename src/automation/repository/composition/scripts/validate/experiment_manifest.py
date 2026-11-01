@@ -495,11 +495,17 @@ def _validate_repository_identity(
     manifest: ExperimentManifest,
     path: Path,
 ) -> None:
+    if path.name != "experiment.toml":
+        _fail(f"experiment manifest must use canonical experiment.toml: {path}")
     directory_ids = {
         directory: identifier
         for identifier, directory in research_algorithm_directories(ROOT)
     }
-    algorithm_id = directory_ids.get(path.parent, path.parent.name)
+    algorithm_id = directory_ids.get(path.parent)
+    if algorithm_id is None:
+        _fail(
+            f"experiment manifest must belong to a registered research algorithm: {path}"
+        )
     if manifest.identifier != algorithm_id:
         message = " ".join(
             (
