@@ -52,6 +52,13 @@ The pinned source hash is verified before a byte-exact copy is staged in the
 private temporary build directory; Clang compiles that verified snapshot, never
 reopening the original pathname after verification. The original `main.c`
 remains untouched and temporary source copies are deleted with the build.
+The `.temp` staging root must be a physical directory, never a symlink,
+junction, or regular-file substitute. It is checked before and after creating
+the private build workspace, before any compiler input is staged. The
+workspace receipt must name a physical directory with the expected randomized
+stem directly beneath `.temp`; foreign, redirected, and malformed workspace
+paths are rejected. These preflight checks do not make concurrent pathname
+replacement atomic.
 FIFO and symlink substitutions fail without waiting for external input.
 Case identifiers must be portable ASCII filename stems (at most 128 characters),
 excluding path

@@ -34,13 +34,12 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import os
-from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import]
-from typing import TYPE_CHECKING
-from typing import cast
+from hashlib import sha256
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -415,6 +414,97 @@ def test_sanitizer_compiles_only_verified_historical_source_snapshot(
     result = harness.run_harness()
     assert result["cases"] == [{"id": "snapshot"}]
     assert original.read_bytes() == ALTERED_SOURCE
+
+
+@pytest.mark.parametrize("root_kind", ("symlink", "regular-file"))
+def test_sanitizer_harness_rejects_untrusted_temporary_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    root_kind: str,
+) -> None:
+    """Sanitizer builds never follow redirected or non-directory .temp roots."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    temporary_root = root / ".temp"
+    if root_kind == "symlink":
+        try:
+            temporary_root.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unsupported: {error}")
+    else:
+        _ = temporary_root.write_bytes(b"not a directory")
+
+    built: list[Path] = []
+
+    def fake_build(work: Path, *, source_bytes: bytes) -> Path:
+        built.append(work)
+        _ = (work / "unexpected-build.txt").write_bytes(source_bytes)
+        return work / "sanitizer.exe"
+
+    for attr, value in {
+        "ROOT": root,
+        "is_supported": lambda: True,
+        "_compiler_identity": lambda: None,
+        "_verify_source": lambda: b"trusted source",
+        "_build": fake_build,
+        "load_cases": lambda: (),
+    }.items():
+        monkeypatch.setattr(harness, attr, value)
+    with pytest.raises(harness.SanitizerHarnessError, match="temporary root"):
+        _ = harness.run_harness()
+    assert not built
+    assert not tuple(outside.iterdir())
+    assert (
+        temporary_root.is_symlink()
+        if root_kind == "symlink"
+        else temporary_root.is_file()
+    )
+
+
+def test_sanitizer_harness_rejects_foreign_workspace_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A misdirected TemporaryDirectory must not receive compiler outputs."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    (root / ".temp").mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    built: list[Path] = []
+
+    class ForeignWorkspace:
+        def __init__(self, *, prefix: str, dir: Path) -> None:
+            assert prefix == "historical-sanitizer-"
+            assert dir == root / ".temp"
+
+        def __enter__(self) -> str:
+            return str(outside)
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    def fake_build(work: Path, *, source_bytes: bytes) -> Path:
+        built.append(work)
+        _ = (work / "unexpected-build.txt").write_bytes(source_bytes)
+        return work / "sanitizer.exe"
+
+    for attr, value in {
+        "ROOT": root,
+        "is_supported": lambda: True,
+        "_compiler_identity": lambda: None,
+        "_verify_source": lambda: b"trusted source",
+        "_build": fake_build,
+        "load_cases": lambda: (),
+    }.items():
+        monkeypatch.setattr(harness, attr, value)
+    monkeypatch.setattr(harness.tempfile, "TemporaryDirectory", ForeignWorkspace)
+    with pytest.raises(harness.SanitizerHarnessError, match="workspace"):
+        _ = harness.run_harness()
+    assert not built
+    assert not tuple(outside.iterdir())
 
 
 def test_sanitizer_harness_reproduces_reviewed_findings() -> None:

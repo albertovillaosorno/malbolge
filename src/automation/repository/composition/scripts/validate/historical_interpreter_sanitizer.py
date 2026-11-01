@@ -35,21 +35,18 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-from hashlib import sha256
 import json
 import os
-from pathlib import Path
 import re
 import shutil
-from stat import S_ISDIR
-from stat import S_ISREG
 import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
-from typing import Never
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass
+from hashlib import sha256
+from pathlib import Path
+from stat import S_ISDIR, S_ISREG
+from typing import TYPE_CHECKING, Never, cast
 
 from scripts.repository_root import repository_root
 
@@ -533,6 +530,54 @@ def _execute_case(
     }
 
 
+def _admit_temporary_root(root: Path) -> None:
+    """Require a physical repository-local staging root before building."""
+    try:
+        root.mkdir(exist_ok=True)
+    except FileExistsError:
+        # Validate the existing leaf, rather than leaking raw mkdir failure.
+        pass
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise SanitizerHarnessError(
+            f"sanitizer temporary root creation failed: {error}"
+        ) from error
+    try:
+        status = root.lstat()
+        redirected = root.is_symlink() or root.is_junction()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise SanitizerHarnessError(
+            f"sanitizer temporary root status failed: {error}"
+        ) from error
+    if redirected:
+        _fail("sanitizer temporary root must not redirect")
+    if not S_ISDIR(status.st_mode):
+        _fail("sanitizer temporary root must be a physical directory")
+
+
+def _admit_temporary_workspace(root: Path, directory: object) -> Path:
+    """Admit the exact physical stage yielded by TemporaryDirectory."""
+    if type(directory) is not str:
+        _fail("sanitizer temporary workspace must have a native path receipt")
+    work = Path(directory)
+    if (
+        not work.is_absolute()
+        or work != Path(os.path.abspath(work))  # ruff: ignore[os-path-abspath]
+        or work.parent != Path(os.path.abspath(root))  # ruff: ignore[os-path-abspath]
+        or re.fullmatch(r"historical-sanitizer-[a-z0-9_]{8}", work.name) is None
+    ):
+        _fail("sanitizer temporary workspace is outside requested staging root")
+    try:
+        status = work.lstat()
+        redirected = work.is_symlink() or work.is_junction()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise SanitizerHarnessError(
+            f"sanitizer temporary workspace status failed: {error}"
+        ) from error
+    if redirected or not S_ISDIR(status.st_mode):
+        _fail("sanitizer temporary workspace must be a physical directory")
+    return work
+
+
 def run_harness() -> JsonObject:
     """Build, execute, and return normalized sanitizer evidence.
 
@@ -545,12 +590,13 @@ def run_harness() -> JsonObject:
     _compiler_identity()
     source_bytes = _verify_source()
     temporary_root = ROOT / ".temp"
-    temporary_root.mkdir(exist_ok=True)
+    _admit_temporary_root(temporary_root)
     with tempfile.TemporaryDirectory(
         prefix="historical-sanitizer-",
         dir=temporary_root,
     ) as directory:
-        work = Path(directory)
+        _admit_temporary_root(temporary_root)
+        work = _admit_temporary_workspace(temporary_root, directory)
         executable = _build(work, source_bytes=source_bytes)
         results = [
             _execute_case(executable, work, case) for case in load_cases()
