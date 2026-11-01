@@ -120,8 +120,11 @@ also resolves the initial canonical wire path and checks the actual opened
 file pathname through `/proc/self/fd` before and after the bounded read. This
 rejects parent-directory symlink redirection to an outside hard link of the
 same original inode during an injected read, even when every timestamp, byte
-and inode check remains equal. The requested path is also resolved again after
-the read: rebinding an initially stable parent symlink to a second hard link
+and inode check remains equal. The bounded reader also requires the returned
+byte count to equal the collected buffer length; an injected short, zero, or
+exaggerated receipt cannot authorize otherwise unchanged compiler-wire bytes.
+The requested path is also resolved again after the read: rebinding an
+initially stable parent symlink to a second hard link
 of the same inode now rejects even if the original open-descriptor path is
 unchanged. Unavailable descriptor-path evidence rejects; other platforms
 retain their metadata-based contract. These checks reject observed concurrent

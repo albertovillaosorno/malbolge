@@ -240,6 +240,36 @@ fn stable_parent_symlink_remains_admitted() -> Result<(), String> {
 }
 
 #[test]
+#[expect(clippy::panic_in_result_fn, reason = "test asserts exact read receipt")]
+fn rejects_mismatched_canonical_read_receipts() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let wire = fixture.path("wire.mctr");
+    fs::write(&wire, b"abcdefgh").map_err(|error| error.to_string())?;
+    // The same unmodified bytes and inode cannot authorize a forged reader
+    // receipt, whether it understates or overstates the collected byte count.
+    for kind in ["ternary", "typed"] {
+        for forged in [0, 7, 9, usize::MAX] {
+            let result = read_canonical_wire_with_reader(&wire, kind, |file, bytes| {
+                let count = read_and_then(file, bytes, || Ok(()))?;
+                assert_eq!(count, 8);
+                Ok(forged)
+            });
+            assert!(
+                result
+                    .as_ref()
+                    .is_err_and(|error| error.contains("read count")),
+                "forged {kind} wire read receipt {forged} was admitted: {result:?}"
+            );
+        }
+    }
+    assert_eq!(
+        fs::read(&wire).map_err(|error| error.to_string())?,
+        b"abcdefgh"
+    );
+    Ok(())
+}
+
+#[test]
 #[expect(clippy::panic_in_result_fn, reason = "test asserts admission behavior")]
 fn unchanged_file_remains_admitted() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;

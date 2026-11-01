@@ -641,6 +641,15 @@ fn read_canonical_wire(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
     })
 }
 
+fn admit_wire_read_receipt(kind: &str, reported: usize, collected: usize) -> Result<(), String> {
+    if reported != collected {
+        return Err(format!(
+            "canonical {kind} wire read count disagrees with collected bytes",
+        ));
+    }
+    Ok(())
+}
+
 fn read_canonical_wire_with_reader(
     path: &Path,
     kind: &str,
@@ -686,8 +695,9 @@ fn read_canonical_wire_with_reader(
         return Err(String::from("canonical wire changed during read"));
     }
     let mut bytes = Vec::new();
-    let _bytes_read = read(&mut file, &mut bytes)
+    let bytes_read = read(&mut file, &mut bytes)
         .map_err(|error| format!("cannot read canonical {kind} wire: {error}"))?;
+    admit_wire_read_receipt(kind, bytes_read, bytes.len())?;
     let length = u64::try_from(bytes.len())
         .map_err(|_error| String::from("ternary wire length overflow"))?;
     if length > MAX_CANONICAL_WIRE_BYTES || length != metadata.len() {
