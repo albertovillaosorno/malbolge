@@ -35,19 +35,16 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-from datetime import UTC
-from datetime import datetime
 import os
-from pathlib import Path
-from stat import S_ISDIR
-from stat import S_ISREG
+import re
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - local argv
 import sys
 import tempfile
-from typing import Never
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from stat import S_ISDIR, S_ISREG
+from typing import TYPE_CHECKING, Never, cast
 
 from scripts.repository_root import repository_root
 
@@ -420,19 +417,56 @@ def _run_with_open_sanitizer_log(
     return completed.returncode
 
 
+def _admit_new_sanitizer_log(
+    log_file: BinaryIO, directory: Path, prefix: str
+) -> None:
+    """Bind a newly created log descriptor to its expected cache-local name."""
+    name = log_file.name
+    if type(name) is not str:
+        _fail("sanitizer log stage name must be a native string")
+    path = Path(name)
+    requested_parent = Path(os.path.abspath(directory))  # ruff: ignore[os-path-abspath]
+    if (
+        not path.is_absolute()
+        or path != Path(os.path.abspath(path))  # ruff: ignore[os-path-abspath]
+        or path.parent != requested_parent
+        or re.fullmatch(re.escape(prefix) + r"[a-z0-9_]{8}\.log", path.name) is None
+    ):
+        _fail("sanitizer log stage name is outside the requested log directory")
+    _reject_debug_redirects(directory, label="sanitizer log directory")
+    try:
+        named = path.lstat()
+        opened = os.fstat(log_file.fileno())
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        _fail(f"sanitizer log stage status failed: {type(error).__name__}")
+    if (
+        type(named) is not os.stat_result
+        or type(opened) is not os.stat_result
+        or not S_ISREG(named.st_mode)
+        or not S_ISREG(opened.st_mode)
+        or named.st_nlink != 1
+        or opened.st_nlink != 1
+        or named.st_size != 0
+        or opened.st_size != 0
+        or _log_file_identity(named) != _log_file_identity(opened)
+    ):
+        _fail("sanitizer log stage must be a new physical unlinked-to-others file")
+
+
 def _run_direct(configuration: LaunchConfiguration) -> int:
     log_directory = _prepare_sanitizer_log_directory(configuration.executable)
+    prefix = f"doom-sanitize-{_timestamp()}-"
     try:
         with tempfile.NamedTemporaryFile(
             mode="w+b",
-            prefix=f"doom-sanitize-{_timestamp()}-",
+            prefix=prefix,
             suffix=".log",
             dir=log_directory,
             delete=False,
         ) as log_file:
-            return _run_with_open_sanitizer_log(
-                configuration, cast("BinaryIO", cast("object", log_file))
-            )
+            staged = cast("BinaryIO", cast("object", log_file))
+            _admit_new_sanitizer_log(staged, log_directory, prefix)
+            return _run_with_open_sanitizer_log(configuration, staged)
     except OSError as error:
         _fail(f"sanitizer log failure: {error}")
 

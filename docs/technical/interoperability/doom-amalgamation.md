@@ -75,10 +75,14 @@ preflights its `.debug` directory and `doom-sanitize.exe` output to reject
 redirected parents/leaves and nonregular existing executable targets before
 invoking native Zig. This admission is not atomic with Zig's later output open.
 
-The direct sanitizer-debug runner creates a unique physical log in the executable's `logs/` directory for
-each run, refusing linked log directories or parents instead of writing outside
-the selected debug tree. It verifies that the named output still matches its
-open descriptor before echoing at most one MiB to the console. The complete
+The direct sanitizer-debug runner creates a unique physical log in the
+executable's `logs/` directory for each run, refusing linked log directories
+or parents instead of writing outside the selected debug tree. Before guest
+execution, it binds the new log's random-name receipt to the requested directory
+and verifies the empty regular descriptor has the same unique inode as the
+named log. It rejects foreign, preexisting, and multiply linked log receipts.
+After execution, it checks that the named output still matches its open
+descriptor before echoing at most one MiB to the console. The complete
 sanitizer diagnostic stream remains in the retained log file. Neither the log
 path nor its output bytes may be substituted after process execution; these
 local admission checks do not make arbitrary concurrent parent replacement

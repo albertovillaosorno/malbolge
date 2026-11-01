@@ -34,10 +34,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-from typing import TYPE_CHECKING
-from typing import cast
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from scripts.debug import doom
@@ -118,6 +117,89 @@ def test_doom_debug_log_never_overwrites_predictable_symlink(
     assert outside.read_bytes() == OUTSIDE_BYTES
     assert EXPECTED_OUTPUT.decode("ascii") in capsys.readouterr().out
     assert len(tuple(logs.glob("doom-sanitize-*"))) == EXPECTED_LOG_COUNT
+
+
+@pytest.mark.parametrize(
+    "forgery", ("outside-directory", "wrong-basename", "existing-stage")
+)
+def test_doom_debug_rejects_forged_named_temporary_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """No guest process writes through an unadmitted temporary log receipt."""
+    config = _configuration(tmp_path)
+    logs = config.executable.parent / "logs"
+    logs.mkdir()
+    foreign = (
+        tmp_path / "external-log.txt"
+        if forgery == "outside-directory"
+        else logs
+        / (
+            "unrelated.txt"
+            if forgery == "wrong-basename"
+            else f"doom-sanitize-{FIXED_TIMESTAMP}-abcdefgh.log"
+        )
+    )
+    _ = foreign.write_bytes(OUTSIDE_BYTES)
+    monkeypatch.setattr(doom, "_timestamp", lambda: FIXED_TIMESTAMP)
+
+    def fake_temporary_file(
+        *, mode: str, prefix: str, suffix: str, dir: Path, delete: bool
+    ) -> BinaryIO:
+        assert (mode, suffix, delete) == ("w+b", ".log", False)
+        assert prefix == f"doom-sanitize-{FIXED_TIMESTAMP}-"
+        assert dir == logs
+        return foreign.open("r+b")
+
+    def unexpected_process(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unadmitted sanitizer log reached guest execution")
+
+    monkeypatch.setattr(doom.tempfile, "NamedTemporaryFile", fake_temporary_file)
+    monkeypatch.setattr(sp, "run", unexpected_process)
+    with pytest.raises(doom.DoomDebugError, match="sanitizer log.*stage"):
+        _ = RUN_DIRECT(config)
+    assert foreign.read_bytes() == OUTSIDE_BYTES
+
+
+def test_doom_debug_rejects_hardlinked_named_temporary_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stage with an external hard link is not an exclusive new log."""
+    config = _configuration(tmp_path)
+    logs = config.executable.parent / "logs"
+    logs.mkdir()
+    outside = tmp_path / "outside.log"
+    _ = outside.write_bytes(b"")
+    stage = logs / f"doom-sanitize-{FIXED_TIMESTAMP}-abcdefgh.log"
+    try:
+        stage.hardlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hard links unavailable: {error}")
+    monkeypatch.setattr(doom, "_timestamp", lambda: FIXED_TIMESTAMP)
+
+    def fake_temporary_file(
+        *, mode: str, prefix: str, suffix: str, dir: Path, delete: bool
+    ) -> BinaryIO:
+        assert (mode, prefix, suffix, dir, delete) == (
+            "w+b",
+            f"doom-sanitize-{FIXED_TIMESTAMP}-",
+            ".log",
+            logs,
+            False,
+        )
+        return stage.open("r+b")
+
+    def unexpected_process(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("multiply linked sanitizer log reached guest execution")
+
+    monkeypatch.setattr(doom.tempfile, "NamedTemporaryFile", fake_temporary_file)
+    monkeypatch.setattr(sp, "run", unexpected_process)
+    with pytest.raises(doom.DoomDebugError, match="sanitizer log stage"):
+        _ = RUN_DIRECT(config)
+    assert outside.read_bytes() == b""
+    assert stage.read_bytes() == b""
 
 
 def test_doom_debug_log_directory_must_not_redirect(
