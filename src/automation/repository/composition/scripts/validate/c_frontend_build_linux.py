@@ -70,11 +70,15 @@ def linux_build_tools() -> LinuxFrontendBuildTools:
     Returns:
         CMake and Ninja executable paths visible to the development shell.
 
+    Raises:
+        LinuxFrontendBuildError: Native tool discovery could not be admitted.
+
     """
     try:
         return tidy_build_linux.linux_build_tools()
     except tidy_build_linux.LinuxBuildError as error:
-        _fail(str(error))
+        message = tidy_build_linux.native_build_error_detail(error)
+        raise LinuxFrontendBuildError(message) from error
 
 
 def configure_command(
@@ -120,7 +124,11 @@ def _checked_run(command: list[str], label: str) -> None:
             shell=False,
         )
     except OSError as error:
-        _fail(f"failed to execute Linux frontend {label}: {error}")
+        message = (
+            f"failed to execute Linux frontend {label}: "
+            f"{tidy_build_linux.native_build_error_detail(error)}"
+        )
+        raise LinuxFrontendBuildError(message) from error
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
         _fail(

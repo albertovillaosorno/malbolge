@@ -74,6 +74,27 @@ def _fail(message: str) -> Never:
     raise LinuxBuildError(message)
 
 
+def native_build_error_detail(error: Exception) -> str:
+    """Render only exact native Linux build exceptions, avoiding foreign hooks.
+
+    Returns:
+        Built-in host error detail or the foreign exception's type name.
+
+    """
+    if type(error) in {
+        OSError,
+        FileNotFoundError,
+        PermissionError,
+        FileExistsError,
+        IsADirectoryError,
+        NotADirectoryError,
+        TimeoutError,
+        LinuxBuildError,
+    }:
+        return str(error)
+    return type(error).__name__
+
+
 def _tool(name: str) -> Path:
     resolved = shutil.which(name)
     if resolved is None:
@@ -135,7 +156,11 @@ def _checked_run(command: list[str], label: str) -> None:
             shell=False,
         )
     except OSError as error:
-        _fail(f"failed to execute Linux {label}: {error}")
+        message = (
+            f"failed to execute Linux {label}: "
+            f"{native_build_error_detail(error)}"
+        )
+        raise LinuxBuildError(message) from error
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
         _fail(

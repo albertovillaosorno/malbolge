@@ -42,9 +42,11 @@ resolution used by native analysis. The build uses repository-pinned
 `clang-cl.exe`, C++20, `/W4 /WX`, and `/Brepro`; ambient LLVM discovery is
 forbidden. On Linux, build-cache and frontend-output paths are admitted only
 through physical, non-redirected directory ancestors before creating output
-folders and again before native configure/build commands. Symlink, junction,
-and non-directory substitutions fail closed. The Windows frontend likewise
-rejects linked build-cache and output ancestors, plus existing symbolic or
+folders and again before native configure/build commands. Linux frontend
+CMake failures and native build-tool discovery failures retain typed error
+causes without invoking custom host exception formatting hooks. Symlink,
+junction, and non-directory substitutions fail closed. The Windows frontend
+likewise rejects linked build-cache and output ancestors, plus existing symbolic or
 hardlinked `build.cmd` scripts, before invoking CMake. After either native
 build, the executable and its output ancestors must be physical and
 unlinked before its version check can execute it. These path checks are not

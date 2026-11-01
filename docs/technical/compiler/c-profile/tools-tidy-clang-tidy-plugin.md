@@ -85,6 +85,11 @@ include ancestor, altered marker, or incomplete extraction is not admitted as
 ready; an existing incomplete root must be repaired explicitly rather than
 silently using ambient headers or repeating a network download.
 
+The Linux plugin CMake builder likewise converts native process launch faults
+into typed build failures with their original causes. Host diagnostics are
+rendered only for exact built-in exception types; custom host exception text
+hooks are not executed.
+
 ### Windows plugin host
 
 LLVM documents out-of-tree clang-tidy checks as shared-library plugins loaded
