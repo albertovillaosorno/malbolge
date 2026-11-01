@@ -134,6 +134,53 @@ int main(void)
 }
 ";
 
+const SECOND_OUTPUT_EXHAUSTION_HARNESS: &str = "
+#include <stdlib.h>
+#include <string.h>
+
+int main(void)
+{
+    uint8_t input[] = {0x41};
+    uint8_t admitted_output[1] = {0};
+    uint8_t refused_output[1] = {0};
+    uint32_t *admitted = calloc(MB_MEMORY_WORDS, sizeof(*admitted));
+    uint32_t *refused = calloc(MB_MEMORY_WORDS, sizeof(*refused));
+    struct mb_result admitted_result;
+    struct mb_result refused_result;
+    int admitted_status;
+    int refused_status;
+    int same;
+    if (admitted == NULL || refused == NULL) {
+        free(admitted);
+        free(refused);
+        return 40;
+    }
+    admitted_status = malbolge_decompiled_run(admitted, MB_MEMORY_WORDS,
+        input, sizeof(input), admitted_output, 1, 2, &admitted_result);
+    refused_status = malbolge_decompiled_run(refused, MB_MEMORY_WORDS,
+        input, sizeof(input), refused_output, 1, 4, &refused_result);
+    same = memcmp(admitted, refused, MB_MEMORY_WORDS * sizeof(*admitted)) == 0;
+    free(admitted);
+    free(refused);
+    if (admitted_status != MB_STATUS_BUDGET_EXHAUSTED
+        || refused_status != MB_STATUS_OUTPUT_EXHAUSTED
+        || admitted_result.status != MB_STATUS_BUDGET_EXHAUSTED
+        || refused_result.status != MB_STATUS_OUTPUT_EXHAUSTED
+        || admitted_result.steps != 2 || refused_result.steps != 2
+        || admitted_result.input_consumed != 1
+        || refused_result.input_consumed != 1
+        || admitted_result.output_len != 1 || refused_result.output_len != 1
+        || admitted_output[0] != 0x41 || refused_output[0] != 0x41
+        || admitted_result.accumulator != refused_result.accumulator
+        || admitted_result.code_pointer != refused_result.code_pointer
+        || admitted_result.data_pointer != refused_result.data_pointer
+        || !same) {
+        return 41;
+    }
+    return 0;
+}
+";
+
 const MEMORY_HARNESS: &str = "
 #include <stdio.h>
 #include <stdlib.h>
@@ -262,13 +309,11 @@ fn compile_generated_program(
     Ok(executable)
 }
 
-fn binary_io_source(profile: &ProfileDescriptor) -> Result<[u8; 3], String> {
-    let mut source = [0u8; 3];
-    for (index, (cell, opcode)) in source.iter_mut().zip([
-        profile.input_instruction(),
-        profile.output_instruction(),
-        b'v',
-    ]).enumerate() {
+fn source_for_instructions<const N: usize>(
+    instructions: [u8; N],
+) -> Result<[u8; N], String> {
+    let mut source = [0u8; N];
+    for (index, (cell, opcode)) in source.iter_mut().zip(instructions).enumerate() {
         let position = u32::try_from(index).map_err(|error| error.to_string())?;
         *cell = (33u8..=126)
             .find(|byte| {
@@ -277,6 +322,14 @@ fn binary_io_source(profile: &ProfileDescriptor) -> Result<[u8; 3], String> {
             .ok_or_else(|| format!("no source byte for opcode {opcode} at {index}"))?;
     }
     Ok(source)
+}
+
+fn binary_io_source(profile: &ProfileDescriptor) -> Result<[u8; 3], String> {
+    source_for_instructions([
+        profile.input_instruction(),
+        profile.output_instruction(),
+        b'v',
+    ])
 }
 
 fn verify_generated_binary_io_against_vm(
@@ -351,6 +404,54 @@ fn generated_c_versioned_profiles_preserve_binary_io_and_output_refusal()
             .ok_or_else(|| format!("missing immutable profile {id}"))?;
         let source = binary_io_source(profile)?;
         verify_generated_binary_io_against_vm(profile, &source)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_c_second_output_exhaustion_preserves_committed_output()
+-> Result<(), String> {
+    for id in [
+        "malbolge-1998", "malbolge-2026", "malbolge-2026.1",
+        "malbolge-2026.2", "malbolge-2026.3",
+    ] {
+        let profile = target_profile(id)
+            .ok_or_else(|| format!("missing registered profile {id}"))?;
+        let source = source_for_instructions([
+            profile.input_instruction(),
+            profile.output_instruction(),
+            profile.output_instruction(),
+            b'v',
+        ])?;
+        let directory = temporary_directory()?;
+        let result = (|| {
+            let executable = compile_generated_program(
+                &directory, &source, id, SECOND_OUTPUT_EXHAUSTION_HARNESS,
+            )?;
+            let executed = Command::new(&executable)
+                .output()
+                .map_err(|error| format!("execute generated C: {error}"))?;
+            if !executed.status.success() || !executed.stdout.is_empty()
+                || !executed.stderr.is_empty()
+            {
+                return Err(format!("second output refusal differs for {id}: {executed:?}"));
+            }
+            let mut machine = ProfileMachine::from_source(
+                profile, &source, vec![0x41],
+            )
+            .map_err(|error| error.to_string())?;
+            let outcome = machine.run(2).map_err(|error| error.to_string())?;
+            if outcome != (RunOutcome::BudgetExhausted { steps: 2 })
+                || machine.output() != [0x41]
+            {
+                return Err(format!("unexpected normative output state for {id}: {outcome:?}"));
+            }
+            Ok(())
+        })();
+        let cleanup = fs::remove_dir_all(&directory)
+            .map_err(|error| format!("clean generated C fixtures: {error}"));
+        result?;
+        cleanup?;
     }
     Ok(())
 }

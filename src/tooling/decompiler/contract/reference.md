@@ -43,7 +43,9 @@ against the normative VM across the full memory image and `A`/`C`/`D`
 registers, not only observed output. Both historical and current profile
 fixtures cover arithmetic, rotate/crazy and indirect-jump post-encryption;
 historical and current fixtures also cover binary input and atomic output
-capacity refusal. Frozen 2026.1/.2/.3 profiles exercise their selected input/
+capacity refusal. An all-profile regression refuses the second output after
+one byte commits, preserving the first output and full machine state from a
+two-step baseline. Frozen 2026.1/.2/.3 profiles exercise their selected input/
 output instructions, EOF words, and 10-/14-trit geometry through the same C-vs-
 VM binary I/O check. Current-profile fixtures verify the larger 15-trit
 geometry and EOF low-byte output without assuming the historical 10-trit
