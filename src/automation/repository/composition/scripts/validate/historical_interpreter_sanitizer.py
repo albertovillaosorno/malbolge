@@ -404,8 +404,31 @@ def _run(
     )
 
 
+def _native_process_receipt(
+    result: object,
+) -> subprocess.CompletedProcess[bytes]:
+    """Admit exact native exit status and byte streams as process evidence.
+
+    Returns:
+        The checked subprocess completion without invoking foreign hooks.
+
+    """
+    if type(result) is not subprocess.CompletedProcess:
+        _fail("invalid sanitizer process receipt")
+    completed = cast("subprocess.CompletedProcess[bytes]", result)
+    if (
+        type(completed.returncode) is not int
+        or type(completed.stdout) is not bytes
+        or type(completed.stderr) is not bytes
+    ):
+        _fail("invalid sanitizer process receipt")
+    return completed
+
+
 def _compiler_identity() -> None:
-    completed = _run((str(CLANG), "--version"), cwd=ROOT)
+    completed = _native_process_receipt(
+        _run((str(CLANG), "--version"), cwd=ROOT)
+    )
     first_line = completed.stdout.decode("utf-8", errors="replace").splitlines()
     if completed.returncode != 0 or not first_line:
         _fail("pinned Clang version query failed")
@@ -473,7 +496,7 @@ def _build(work: Path, *, source_bytes: bytes) -> Path:
         "-o",
         str(executable),
     )
-    completed = _run(command, cwd=ROOT)
+    completed = _native_process_receipt(_run(command, cwd=ROOT))
     if completed.returncode != 0 or not executable.is_file():
         stderr = completed.stderr.decode("utf-8", errors="replace")
         message = "sanitizer build failed: " + stderr
@@ -519,6 +542,7 @@ def _execute_case(
         timeout=RUN_TIMEOUT_SECONDS,
         env=environment,
     )
+    completed = _native_process_receipt(completed)
     findings = _findings(completed.stderr)
     if findings:
         if completed.returncode == 0:
@@ -666,7 +690,19 @@ def main() -> int:
         SanitizerHarnessError,
         subprocess.SubprocessError,
     ) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        detail = (
+            str(error)
+            if type(error)
+            in {
+                OSError,
+                SanitizerHarnessError,
+                subprocess.SubprocessError,
+                subprocess.TimeoutExpired,
+                subprocess.CalledProcessError,
+            }
+            else type(error).__name__
+        )
+        _ = sys.stderr.write(f"error: {detail}\n")
         return 1
     if arguments.print_json:
         _ = sys.stdout.write(json.dumps(actual, indent=2) + "\n")

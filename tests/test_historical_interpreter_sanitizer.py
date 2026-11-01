@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess  # ruff: ignore[suspicious-subprocess-import]
+import sys
 from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, cast, override
@@ -593,6 +594,132 @@ def test_sanitizer_harness_rejects_foreign_workspace_receipt(
         _ = harness.run_harness()
     assert not built
     assert not tuple(outside.iterdir())
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "stdout", "stderr"),
+    [
+        (False, b"clang version 22.1.8 mock\n", b""),
+        (0.0, b"clang version 22.1.8 mock\n", b""),
+        (0, "clang version 22.1.8 mock\n", b""),
+        (0, b"clang version 22.1.8 mock\n", ""),
+    ],
+)
+def test_sanitizer_compiler_identity_rejects_malformed_process_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    exit_code: object,
+    stdout: object,
+    stderr: object,
+) -> None:
+    """Compiler version evidence requires an exact native process receipt."""
+    receipt = subprocess.CompletedProcess[bytes](
+        ("clang", "--version"),
+        cast("int", exit_code),
+        stdout=cast("bytes", stdout),
+        stderr=cast("bytes", stderr),
+    )
+
+    def forged_run(
+        command: object, *, cwd: Path
+    ) -> subprocess.CompletedProcess[bytes]:
+        del command, cwd
+        return receipt
+
+    monkeypatch.setattr(harness, "_run", forged_run)
+    with pytest.raises(harness.SanitizerHarnessError, match="process receipt"):
+        # ruff: ignore[private-member-access]
+        harness._compiler_identity()  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "receipt_parts",
+    [
+        (False, b"", b""),
+        (0.0, b"", b""),
+        (0, "", b""),
+        (0, b"", ""),
+    ],
+)
+def test_sanitizer_case_execution_rejects_malformed_process_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    receipt_parts: tuple[object, object, object],
+) -> None:
+    """Forged process results cannot certify a clean sanitizer case."""
+    exit_code, stdout, stderr = receipt_parts
+    receipt = subprocess.CompletedProcess[bytes](
+        ("sanitizer", "case"),
+        cast("int", exit_code),
+        stdout=cast("bytes", stdout),
+        stderr=cast("bytes", stderr),
+    )
+
+    def forged_run(
+        *args: object, **kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        del args, kwargs
+        return receipt
+
+    monkeypatch.setattr(subprocess, "run", forged_run)
+    case = harness.SanitizerCase(
+        identifier="malformed-case", input_bytes=b"", source_bytes=b"D"
+    )
+    with pytest.raises(harness.SanitizerHarnessError, match="process receipt"):
+        # ruff: ignore[private-member-access]
+        _ = harness._execute_case(  # pyright: ignore[reportPrivateUsage]
+            tmp_path / "sanitizer.exe", tmp_path, case
+        )
+
+
+@pytest.mark.parametrize("exit_code", [False, 0.0])
+def test_sanitizer_build_rejects_malformed_process_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exit_code: object,
+) -> None:
+    """A forged successful Clang exit cannot certify a sanitizer build."""
+    monkeypatch.setattr(harness, "ROOT", tmp_path)
+    work = tmp_path / "work"
+    work.mkdir()
+    _ = (work / "malbolge-sanitized.exe").write_bytes(b"fake executable")
+    runtime = tmp_path / "mock-runtime.dll"
+    _ = runtime.write_bytes(b"mock runtime")
+    monkeypatch.setattr(harness, "ASAN_RUNTIME", runtime)
+    completed = subprocess.CompletedProcess[bytes](
+        ("clang",), cast("int", exit_code), stdout=b"", stderr=b""
+    )
+
+    def forged_run(
+        command: object, *, cwd: Path
+    ) -> subprocess.CompletedProcess[bytes]:
+        del command, cwd
+        return completed
+
+    monkeypatch.setattr(harness, "_run", forged_run)
+    with pytest.raises(harness.SanitizerHarnessError, match="process receipt"):
+        # ruff: ignore[private-member-access]
+        _ = harness._build(  # pyright: ignore[reportPrivateUsage]
+            work, source_bytes=b"trusted historical source"
+        )
+    assert not (work / runtime.name).exists()
+
+
+def test_sanitizer_cli_cannot_format_foreign_host_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An untrusted OSError formatter cannot escape the CLI failure boundary."""
+    fault = UnprintableHostOSError("unsafe host detail")
+
+    def fail_evidence() -> harness.JsonObject:
+        raise fault
+
+    monkeypatch.setattr(harness, "_verified_harness", fail_evidence)
+    monkeypatch.setattr(sys, "argv", ["historical-sanitizer"])
+    assert harness.main() == 1
+    assert type(fault).__name__ in capsys.readouterr().err
 
 
 def test_sanitizer_harness_reproduces_reviewed_findings() -> None:
