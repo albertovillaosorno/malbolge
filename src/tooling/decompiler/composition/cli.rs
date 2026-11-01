@@ -50,7 +50,7 @@ use super::decompiler;
 const MAX_DECOMPILER_SOURCE_BYTES: u64 = 1_048_576;
 
 const USAGE: &str = concat!(
-    "usage: malbolge_decompile --profile ID --representation analysis|c ",
+    "usage: malbolge_decompile --profile ID --representation analysis|annotated|c ",
     "INPUT ",
     "[--output FILE]"
 );
@@ -58,6 +58,7 @@ const USAGE: &str = concat!(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OutputRepresentation {
     Analysis,
+    Annotated,
     CSource,
 }
 
@@ -91,6 +92,9 @@ pub fn run() -> IoResult<()> {
     let rendered = match arguments.representation {
         OutputRepresentation::Analysis => {
             decompiler::render_analysis(profile, &source)
+        },
+        OutputRepresentation::Annotated => {
+            decompiler::render_annotated(profile, &source)
         },
         OutputRepresentation::CSource => decompiler::render_c(profile, &source),
     }
@@ -330,6 +334,7 @@ fn next_utf8<'input>(
 fn parse_representation(value: &str) -> IoResult<OutputRepresentation> {
     match value {
         "analysis" => Ok(OutputRepresentation::Analysis),
+        "annotated" => Ok(OutputRepresentation::Annotated),
         "c" => Ok(OutputRepresentation::CSource),
         _ => Err(IoError::other(format!(
             "unknown output representation: {value}"

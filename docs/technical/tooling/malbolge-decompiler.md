@@ -60,6 +60,23 @@ sequential/indirect/halt control-flow classes, and post-step encryption.
 Indirect targets remain explicitly unresolved and the report states that
 self-modification invalidates a purely static decode.
 
+The `annotated` representation emits a profile-explicit, directly
+canonicalizable Malbolge presentation instead of a separate report or C
+translation. It retains every loaded byte verbatim and uses full-line `# `
+comments for exact canonical position ranges and initial control-flow labels.
+The view breaks after initially decoded indirect and halt cells and at most
+64 bytes otherwise. The selected-profile loader still performs input admission;
+consumers must explicitly choose the annotated frontend to strip comments.
+After stripping those comments and presentation line breaks, the canonical
+loaded positions, VM semantics, and emitted bytes are unchanged. An initial
+indirect label does not recover its target or predict future self-modification.
+
+```text
+cargo run --bin malbolge_decompile -- \
+  --profile malbolge-1998 --representation annotated \
+  input.malbolge --output input.annotated.malbolge
+```
+
 Dynamic traces, mutation-history views, and deeper recovered structure are
 optional extensions with separate ownership; they do not reopen this accepted
 initial reverse-engineering boundary.
@@ -112,11 +129,13 @@ substitutes another source.
 
 ## Verification
 
-`tests/decompiler.rs` provides twelve product tests covering deterministic
+`tests/decompiler.rs` includes product tests covering deterministic
 rendering, profile geometry, source rejection, post-jump encryption ordering,
 output-capacity atomicity, normative initial translation, typed initial-state
 analysis, CLI analysis output, and the interpreter-compatible `ubO`
-input/output/halt baseline against `ProfileMachine`.
+input/output/halt baseline against `ProfileMachine`, plus annotated
+round trips, source-position mappings, initial-state structural boundaries,
+historic/current VM equivalence, and CLI stdout/file identity.
 
 Pinned LLVM 22.1.8 development evidence compiled generated historical `ubO` C
 with `-std=c23 -ffreestanding -Wall -Wextra -Werror` for both

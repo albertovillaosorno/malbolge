@@ -63,9 +63,21 @@ canonicalization, the ordinary classic/profile loader remains final admission
 
 authority.
 
-The current formatter is structure-neutral. C/IR-aligned comments and breaks
-remain follow-on compiler/decompiler work once layout/source-map metadata
-exists.
+The reusable `format_annotated_source()` remains structure-neutral. The
+`malbolge_decompile --representation annotated` output now adds an initial-state
+structural view using the same profile-admitted `analyze_initial` evidence as
+its analysis and C representations. It splits after initially decoded halt and
+indirect-control cells, otherwise wraps at 64 canonical bytes. Full-line
+comments carry the selected profile identity, an explicit warning that future
+self-modification invalidates static decode, and each region's exact inclusive
+canonical position range, last initially decoded instruction, and control-flow
+class. Every code line is emitted through the canonical formatter, and the
+annotated canonicalizer recovers the exact original loaded bytes and their
+new offset/line/column map.
+
+These boundaries are initial VM analysis, **not** reconstructed C blocks or
+indirect jump targets. Compiler C/IR-aligned comments and source-map
+composition against emitted layout remain follow-on work.
 
 ### Structure-aware formatting
 
@@ -131,7 +143,7 @@ Required evidence includes:
 - classic facade/current-profile VMs produce identical observations from
   canonical bytes and their annotated presentation equivalents.
 
-`tests/vm/annotated.rs` currently covers those boundaries with seven strict
+`tests/vm/annotated.rs` covers those boundaries with seven strict
 fixtures, including exact source-map positions and hash-heavy formatter
 round-trips.
 
@@ -142,3 +154,9 @@ round-trips.
 - [C-Level Source Debugging](../adr/c-level-source-debugging.md)
 - [Specification Authority And Malbolge
   Evolution](../adr/specification-authority-and-malbolge-evolution.md)
+
+`tests/decompiler.rs` additionally round-trips the profile-explicit annotated
+view through the canonicalizer, checks retained loaded-position offset and
+line/column mapping, compares historical/current VM observations, confirms
+initial indirect/halt region boundaries, rejects invalid canonical input, and
+checks byte-identical CLI output through stdout and `--output`.

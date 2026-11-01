@@ -68,8 +68,14 @@ by the selected profile loader.
   hash/comment ambiguity, LF/CRLF/CR, source-map positions, invalid bytes,
   automatic-wrap round trips, loader fail-closed behavior, and classic/facade/
   current-profile execution equivalence.
-- Remaining evidence: compiler/decompiler C/IR-aligned structural annotations
-  and
-  source-map composition against real emitted layout.
+- The decompiler now provides an explicit `--representation annotated` view
+  with selected-profile identity, deterministic 64-byte wrapping, initial
+  indirect/halt boundaries and exact canonical region-position comments.
+  Three `tests/decompiler.rs` regressions prove canonical byte/source-map
+  recovery, historic/current VM observational equivalence, fail-closed source
+  admission, and CLI stdout/file byte identity. The raw loader is unchanged.
+- Remaining evidence: compiler C/IR-aligned structural annotations and
+  source-map composition against real emitted layout; initial VM labels are not
+  recovered C source regions or post-mutation semantics.
 - Prerequisite completion evidence: `canonical-malbolge-target-profile`,
   `safe-rust-malbolge-vm`, `malbolge-layout-and-encoding-backend`.

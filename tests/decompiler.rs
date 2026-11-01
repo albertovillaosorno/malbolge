@@ -49,8 +49,8 @@ use std::process::{Command, Output, id};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use malbolge::{
-    ProfileMachine, RunOutcome, Termination, current_profile,
-    historical_profile,
+    ProfileMachine, RunOutcome, Termination,
+    canonicalize_annotated_source, current_profile, historical_profile,
 };
 
 const ANALYSIS_SOURCE: &[u8] = b"b&&;@L";
@@ -323,6 +323,116 @@ fn cli_help_is_exclusive() -> Result<(), String> {
                 "combined help did not fail closed: {arguments:?}: {stderr}"
             ));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn annotated_render_round_trips_exact_profile_bytes_and_vm_observations() -> Result<(), String> {
+    for profile in [historical_profile(), current_profile()] {
+        let raw = b"u\t b\r\nO";
+        let rendered =
+            decompiler::render_annotated(profile, raw).map_err(|error| error.to_string())?;
+        let normalized = canonicalize_annotated_source(rendered.as_bytes())
+            .map_err(|error| error.to_string())?;
+        if normalized.bytes() != OUTPUT_SOURCE
+            || normalized.locations().len() != OUTPUT_SOURCE.len()
+            || rendered
+                != decompiler::render_annotated(profile, OUTPUT_SOURCE)
+                    .map_err(|error| error.to_string())?
+            || !rendered.contains("# initial-range=")
+            || !rendered.contains("end-control=halt")
+            || !rendered.contains("self-modification=invalidates-static-decode")
+        {
+            return Err(format!("annotated render drifted: {rendered}"));
+        }
+        for (index, location) in normalized.locations().iter().enumerate() {
+            if rendered.as_bytes().get(location.offset()) != OUTPUT_SOURCE.get(index)
+                || location.column() == 0
+                || location.line() == 0
+            {
+                return Err(format!("annotated source map drifted at {index}"));
+            }
+        }
+        let mut baseline = ProfileMachine::from_source(profile, OUTPUT_SOURCE, vec![0x41])
+            .map_err(|error| error.to_string())?;
+        let mut annotated =
+            ProfileMachine::from_annotated_source(profile, rendered.as_bytes(), vec![0x41])
+                .map_err(|error| error.to_string())?;
+        let expected = baseline.run(8).map_err(|error| error.to_string())?;
+        let observed = annotated.run(8).map_err(|error| error.to_string())?;
+        if observed != expected
+            || annotated.output() != baseline.output()
+            || annotated.input_consumed() != baseline.input_consumed()
+        {
+            return Err(format!(
+                "annotated VM changed execution for {}",
+                profile.id()
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn annotated_render_marks_initial_indirect_and_halt_boundaries() -> Result<(), String> {
+    let rendered = decompiler::render_annotated(historical_profile(), ANALYSIS_SOURCE)
+        .map_err(|error| error.to_string())?;
+    let recovered =
+        canonicalize_annotated_source(rendered.as_bytes()).map_err(|error| error.to_string())?;
+    if recovered.bytes() != ANALYSIS_SOURCE
+        || !rendered.contains("initial-range=0..0")
+        || !rendered.contains("end-control=indirect-code-pointer-from-data")
+        || !rendered.contains("end-control=halt")
+    {
+        return Err(format!(
+            "initial-state annotation boundaries drifted: {rendered}"
+        ));
+    }
+    if decompiler::render_annotated(historical_profile(), b"not malbolge").is_ok() {
+        return Err(String::from("invalid source was annotated"));
+    }
+    Ok(())
+}
+
+#[test]
+fn annotated_cli_emits_canonicalizable_output_to_stdout_and_file() -> Result<(), String> {
+    let directory = temporary_cli_inputs()?;
+    let source = directory.join("raw.malbolge");
+    let target = directory.join("view.annotated.malbolge");
+    fs::write(&source, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
+    let executable = env!("CARGO_BIN_EXE_malbolge_decompile");
+    let args = [
+        "--profile",
+        "malbolge-1998",
+        "--representation",
+        "annotated",
+    ];
+    let stdout = Command::new(executable)
+        .args(args)
+        .arg(&source)
+        .output()
+        .map_err(|error| error.to_string())?;
+    let file = Command::new(executable)
+        .args(args)
+        .arg(&source)
+        .arg("--output")
+        .arg(&target)
+        .output()
+        .map_err(|error| error.to_string())?;
+    let file_bytes = fs::read(&target).map_err(|error| error.to_string())?;
+    fs::remove_dir_all(&directory).map_err(|error| error.to_string())?;
+    let recovered =
+        canonicalize_annotated_source(&stdout.stdout).map_err(|error| error.to_string())?;
+    if !stdout.status.success()
+        || !file.status.success()
+        || !file.stdout.is_empty()
+        || !stdout.stderr.is_empty()
+        || !file.stderr.is_empty()
+        || stdout.stdout != file_bytes
+        || recovered.bytes() != OUTPUT_SOURCE
+    {
+        return Err(format!("annotated CLI drifted: {stdout:?}; {file:?}"));
     }
     Ok(())
 }
