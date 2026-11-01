@@ -37,14 +37,12 @@ from __future__ import annotations
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import cast
 
 import pytest
 
 from scripts.validate import jig_runner
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 pytestmark = pytest.mark.skipif(
     sys.platform != jig_runner.LINUX_PLATFORM,
@@ -233,6 +231,117 @@ def test_environment_rejects_nonregular_pinned_fifo(tmp_path: Path) -> None:
     mkfifo(launcher, 0o700)
     with pytest.raises(jig_runner.JigRunnerError, match="missing executable"):
         _ = jig_runner.jig_environment(tmp_path, {"PATH": "/usr/bin"})
+
+
+ACCESS_OPERATION = "access"
+
+
+def _inject_access_fault(
+    monkeypatch: pytest.MonkeyPatch, target: Path, fault: Exception
+) -> None:
+    """Replace only executable-mode admission for the selected test path."""
+    native_access = os.access
+
+    def fail_access(path: Path, mode: int) -> bool:
+        if path == target:
+            raise fault
+        return native_access(path, mode)
+
+    monkeypatch.setattr(os, ACCESS_OPERATION, fail_access)
+
+
+def _inject_launcher_status_fault(
+    monkeypatch: pytest.MonkeyPatch,
+    target: Path,
+    *,
+    operation: str,
+    fault: Exception,
+) -> None:
+    """Replace one host stat adapter while preserving other path operations."""
+    if operation == ACCESS_OPERATION:
+        _inject_access_fault(monkeypatch, target, fault)
+        return
+
+    methods = {
+        "is_symlink": Path.is_symlink,
+        "is_junction": Path.is_junction,
+        "is_dir": Path.is_dir,
+        "resolve": Path.resolve,
+        "lstat": Path.lstat,
+    }
+
+    def fail_status(path: Path) -> object:
+        if path == target:
+            raise fault
+        return methods[operation](path)
+
+    monkeypatch.setattr(Path, operation, fail_status)
+
+
+@pytest.mark.parametrize("fault_type", [TypeError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation", ["is_symlink", "is_junction", "lstat", ACCESS_OPERATION]
+)
+def test_pinned_launcher_status_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """Unexpected launcher stat errors cannot fall back to ambient Jig tools."""
+    pinned = _pinned_launchers(tmp_path)
+    launcher = pinned / "chktex"
+    fault = fault_type("injected pinned launcher status failure")
+    with monkeypatch.context() as isolated:
+        _inject_launcher_status_fault(
+            isolated, launcher, operation=operation, fault=fault
+        )
+        with pytest.raises(
+            jig_runner.JigRunnerError, match="Jig validation tool"
+        ):
+            _ = jig_runner.jig_environment(tmp_path, {"PATH": "/usr/bin"})
+
+
+@pytest.mark.parametrize("fault_type", [TypeError, RuntimeError])
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "is_symlink",
+        "is_junction",
+        "is_dir",
+        "resolve",
+        "lstat",
+        ACCESS_OPERATION,
+    ],
+)
+def test_external_launcher_status_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fault_type: type[Exception],
+    operation: str,
+) -> None:
+    """An opted-in binary requires confirmed direct physical file admission."""
+    _ = _pinned_launchers(tmp_path)
+    external = tmp_path.parent / f"external-jig-{tmp_path.name}"
+    external.mkdir()
+    executable = external / "chktex"
+    _ = executable.write_bytes(b"#!/bin/sh\nexit 0\n")
+    executable.chmod(0o700)
+    fault = fault_type("injected external launcher status failure")
+    target = external if operation in {"is_dir", "resolve"} else executable
+    with monkeypatch.context() as isolated:
+        _inject_launcher_status_fault(
+            isolated, target, operation=operation, fault=fault
+        )
+        with pytest.raises(
+            jig_runner.JigRunnerError, match=r"external.*directory"
+        ):
+            _ = jig_runner.jig_environment(
+                tmp_path,
+                {jig_runner.EXTERNAL_TOOL_BIN_VARIABLE: str(external)},
+            )
 
 
 def test_runner_keeps_exact_jig_command_and_status(

@@ -109,7 +109,10 @@ The runner admits only one absolute, nonredirected external directory with a
 physical executable `chktex`; it rejects symlinks in either path, missing
 executables, path-list injection and directories inside the repository. The
 explicit directory sits after `.dependencies/bin` and before the system
-default on the child `PATH`.
+default on the child `PATH`. If host filesystem status or path resolution
+raises a type or runtime exception, pinned launchers are treated as unavailable
+and external opt-in directories are rejected with a typed runner error; neither
+failure allows a fallback to ambient binaries.
 
 With no opt-in, the original pinned-and-system selection remains unchanged.
 Jig still owns version/digest attestation, launcher regeneration, validation

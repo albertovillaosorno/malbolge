@@ -68,7 +68,7 @@ def _unredirected_launcher(path: Path) -> bool:
             component.is_symlink() or component.is_junction()
             for component in (path, *path.parents)
         )
-    except OSError, ValueError:
+    except OSError, ValueError, TypeError, RuntimeError:
         return False
 
 
@@ -81,7 +81,7 @@ def _regular_executable(path: Path) -> bool:
     """
     try:
         return S_ISREG(path.lstat().st_mode) and os.access(path, os.X_OK)
-    except OSError:
+    except OSError, ValueError, TypeError, RuntimeError:
         return False
 
 
@@ -114,7 +114,7 @@ def _external_tool_bin(root: Path, directory: str) -> Path:
             executable
         ):
             raise JigRunnerError(message)
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise JigRunnerError(message) from error
     return candidate
 
