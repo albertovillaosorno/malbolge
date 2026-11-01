@@ -1806,9 +1806,27 @@ def loads(text: str) -> ProgressSidecar:
 
 
 def _admit_native_stat(receipt: object, context: str) -> os.stat_result:
-    """Reject foreign filesystem metadata before reading any of its fields."""
+    """Require a native stat wrapper and consumed numeric fields.
+
+    Returns:
+        The admitted native filesystem result.
+
+    """
     if type(receipt) is not os.stat_result:
         _fail(f"{context} metadata must use native os.stat_result")
+    # A caller can construct os.stat_result with foreign tuple members. Check
+    # the consumed fields before comparisons, size arithmetic, or mode masks.
+    for field in (
+        "st_mode",
+        "st_ino",
+        "st_dev",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    ):
+        if type(getattr(receipt, field)) is not int:
+            _fail(f"{context} metadata {field} must use a native integer")
     return receipt
 
 

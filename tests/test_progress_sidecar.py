@@ -7792,7 +7792,9 @@ def test_retained_alias_scan_rejects_foreign_filename_receipt(
         def stat(*, follow_symlinks: bool = True) -> os.stat_result:
             assert not follow_symlinks
             inspected.append(True)
-            return os.stat_result((stat.S_IFREG | 0o600, 1, 2, 1, 0, 0, 0, 0, 0, 0))
+            return os.stat_result(
+                (stat.S_IFREG | 0o600, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            )
 
     entry = cast("os.DirEntry[str]", cast("object", ForgedEntry()))
     assert matcher(entry, ".checkpoint.", (2, 1)) is False
@@ -7823,7 +7825,9 @@ def test_retained_alias_scan_uses_the_admitted_filename_only_once(
         @staticmethod
         def stat(*, follow_symlinks: bool = True) -> os.stat_result:
             assert not follow_symlinks
-            return os.stat_result((stat.S_IFREG | 0o600, 1, 2, 1, 0, 0, 0, 0, 0, 0))
+            return os.stat_result(
+                (stat.S_IFREG | 0o600, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            )
 
     class Scan:
         def __enter__(self) -> tuple[ChangingEntry]:
@@ -14094,9 +14098,9 @@ def test_writer_lock_rejects_nonregular_opened_native_receipt(
         if descriptor != lock_descriptor:
             return actual
         forged_count += 1
-        fields = list(actual)
-        fields[stat.ST_MODE] = kind | stat.S_IMODE(actual.st_mode)
-        return os.stat_result(fields)
+        return _with_forged_native_stat_field(
+            actual, "st_mode", kind | stat.S_IMODE(actual.st_mode)
+        )
 
     with monkeypatch.context() as context:
         context.setattr(progress, "_acquire_writer_lock", acquire_and_mark)
@@ -15225,3 +15229,141 @@ def test_operator_output_unexpected_ordinary_fault_is_typed(
     assert captured.value.__cause__ is fault
     assert writes == [payload if sink == "binary" else description]
     assert flushes == (0 if phase == "write" else 1)
+
+
+def _with_forged_native_stat_field(
+    genuine: os.stat_result, field: str, value: object
+) -> os.stat_result:
+    """Keep the native wrapper and unmodified filesystem fields intact.
+
+    Returns:
+        Native stat result with one deliberately forged field.
+
+    """
+    indices = {
+        "st_mode": stat.ST_MODE,
+        "st_ino": stat.ST_INO,
+        "st_dev": stat.ST_DEV,
+        "st_nlink": stat.ST_NLINK,
+        "st_size": stat.ST_SIZE,
+        "st_mtime_ns": 14,
+        "st_ctime_ns": 15,
+    }
+    fields: list[object] = [
+        *genuine,
+        genuine.st_atime,
+        genuine.st_mtime,
+        genuine.st_ctime,
+        genuine.st_atime_ns,
+        genuine.st_mtime_ns,
+        genuine.st_ctime_ns,
+    ]
+    fields[indices[field]] = value
+    return os.stat_result(cast("list[float]", fields))
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "st_mode",
+        "st_ino",
+        "st_dev",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    ],
+)
+@pytest.mark.parametrize("kind", ["bool", "foreign", "missing"])
+def test_native_stat_receipt_rejects_noninteger_fields_before_dispatch(
+    tmp_path: Path, field: str, kind: str
+) -> None:
+    """An authentic structseq wrapper cannot launder arbitrary Python fields."""
+    observed: list[str] = []
+
+    class ForeignInteger(int):
+        __hash__ = int.__hash__
+
+        def __eq__(self, other: object) -> bool:
+            observed.append("eq")
+            raise AssertionError
+
+        def __lt__(self, other: object) -> bool:
+            observed.append("lt")
+            raise AssertionError
+
+        def __and__(self, other: object) -> int:
+            observed.append("and")
+            raise AssertionError
+
+    genuine = tmp_path.stat()
+    value: object = {
+        "bool": True,
+        "foreign": ForeignInteger(1),
+        "missing": None,
+    }[kind]
+    forged = _with_forged_native_stat_field(genuine, field, value)
+    assert type(forged) is os.stat_result
+    admit = cast(
+        "Callable[[object, str], os.stat_result]",
+        vars(progress)["_admit_native_stat"],
+    )
+    with pytest.raises(ERROR, match="native integer"):
+        _ = admit(forged, "injected filesystem receipt")
+    assert observed == []
+
+
+def test_writer_lock_rejects_foreign_native_stat_nlink_without_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged native lock receipt must not execute a foreign comparison."""
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    original_fstat = os.fstat
+    original_acquire = cast(
+        "Callable[[object], Callable[[], None]]",
+        vars(progress)["_acquire_writer_lock"],
+    )
+    owned_descriptor: int | None = None
+    observed: list[str] = []
+
+    class ForeignLinkCount(int):
+        def __ne__(self, other: object) -> bool:
+            observed.append("ne")
+            raise AssertionError
+
+    def track_acquire(stream: object) -> Callable[[], None]:
+        nonlocal owned_descriptor
+        release = original_acquire(stream)
+        owned_descriptor = cast("BinaryIO", stream).fileno()
+        return release
+
+    def forge_lock_stat(descriptor: int) -> os.stat_result:
+        genuine = original_fstat(descriptor)
+        if descriptor == owned_descriptor:
+            return _with_forged_native_stat_field(
+                genuine, "st_nlink", ForeignLinkCount(genuine.st_nlink)
+            )
+        return genuine
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_acquire_writer_lock", track_acquire)
+        context.setattr(os, "fstat", forge_lock_stat)
+        with pytest.raises(ERROR, match="native integer"):
+            _ = progress.write_atomic(sidecar)
+    assert observed == []
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("field", ["st_mtime_ns", "st_ctime_ns"])
+def test_native_stat_receipt_keeps_signed_timestamp_support(
+    tmp_path: Path, field: str
+) -> None:
+    """Pre-epoch timestamps remain admissible numeric filesystem receipts."""
+    genuine = tmp_path.stat()
+    forged = _with_forged_native_stat_field(genuine, field, -1)
+    admit = cast(
+        "Callable[[object, str], os.stat_result]",
+        vars(progress)["_admit_native_stat"],
+    )
+    assert admit(forged, "signed filesystem receipt") is forged

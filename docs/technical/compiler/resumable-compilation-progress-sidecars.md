@@ -206,7 +206,13 @@ identity checks, the initial/final read-size and timestamp checks, and the
 immutable member's single-link admission. A substituted foreign receipt fails
 with a typed sidecar error before its attributes can execute. These checks
 cannot authenticate a deliberately forged native result or prevent later
-filesystem changes.
+filesystem changes. The seven numeric fields consumed for admission
+(`st_mode`, `st_ino`, `st_dev`, `st_nlink`, `st_size`, `st_mtime_ns`, and
+`st_ctime_ns`) must each be exact native integers. An authentic
+`os.stat_result` wrapper can be built from foreign tuple members; boolean,
+missing, and integer-subclass fields now reject before foreign comparison,
+mode-mask, or size arithmetic runs. Genuine pre-epoch timestamps remain valid
+because this check constrains types rather than timestamp signs.
 
 The open descriptor's device and inode must still match
 the no-follow pathname immediately after opening; detached or replaced regular
