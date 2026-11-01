@@ -167,8 +167,11 @@ body, return, and value spans; converts the semantic decimal constant to exact
 IR admission before returning a module. The normalized literal span must
 also be nonempty and contained in its return-statement span, not merely
 somewhere in the function body; a zero-width or separately located span
-cannot identify the integer token that supplies the return expression. Wrong producer identity, unsupported semantic shapes, and
-out-of-range constants fail with stable lowering errors.
+cannot identify the integer token that supplies the return expression.
+Distinct externally defined C functions must also have nonoverlapping
+half-open declaration spans; this specialized check does not restrict generic
+IR source-map representations. Wrong producer identity, unsupported semantic
+shapes, and out-of-range constants fail with stable lowering errors.
 
 A tracked C fixture is normalized by the real pinned frontend into an exact JSON
 golden. Rust lowering evidence uses that golden's exact source identity, digest,
@@ -233,7 +236,9 @@ artifact. They require a nonempty expected function set and no checkpoint
 globals or proof obligations (the current frontend slice emits neither), along
 with exact ABI, source path/digest, target profile, ordered function count/names,
 full function source spans, and the current no-argument `i32` function signature
-through the admitted type table. The
+through the admitted type table. The source-bound route additionally rejects
+saved checkpoints whose normalized expected C functions have overlapping
+source intervals, even if the generic typed-IR checkpoint is valid. The
 expected frontend must also pass the same artifact ID, Clang version/target,
 language, and schema-version identity gate as fresh lowering. Each expected
 function must also pass the supported declaration/constant-range gate (without

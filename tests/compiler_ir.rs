@@ -1787,6 +1787,47 @@ fn assert_source_matched_resume_failure(
     Ok(())
 }
 
+fn assert_source_bound_admits_disjoint_module(
+    expected: &FrontendArtifact,
+    saved: &Module,
+) -> Result<(), String> {
+    let directory = compiler_crash_directory("disjoint-frontend-functions")?;
+    let progress = directory.join("disjoint.hex");
+    let inspector = temporary_inspector(
+        "disjoint-frontend-functions", INSPECTOR_SUCCESS_SCRIPT,
+    )?;
+    let result = (|| {
+        let encoded = canonical_debug_text(saved)
+            .map_err(|error| format!("encode disjoint functions: {error:?}"))?;
+        write(&progress, encoded)
+            .map_err(|error| format!("write disjoint checkpoint: {error}"))?;
+        let interpreter = repository_python();
+        let direct = resume_typed_ir_from_progress_for_source(
+            &interpreter, &inspector, &progress, expected,
+        );
+        if direct != Ok(saved.clone()) {
+            return Err(format!("disjoint source resume failed: {direct:?}"));
+        }
+        let selected = enter_typed_ir_compiler_stage(
+            TypedIrCompilerStageInput::ProgressForSource {
+                expected, inspector: &inspector, interpreter: &interpreter,
+                progress: &progress,
+            },
+        );
+        if selected != Ok(saved.clone()) {
+            return Err(format!("disjoint product resume failed: {selected:?}"));
+        }
+        Ok(())
+    })();
+    let inspector_cleanup = remove_file(&inspector)
+        .map_err(|error| format!("remove disjoint inspector: {error}"));
+    let directory_cleanup = remove_dir_all(&directory)
+        .map_err(|error| format!("remove disjoint fixture: {error}"));
+    result?;
+    inspector_cleanup?;
+    directory_cleanup
+}
+
 fn assert_source_bound_rejects_admitted_module(
     expected: &FrontendArtifact,
     saved: &Module,
@@ -1988,6 +2029,122 @@ fn typed_ir_source_bound_resume_rejects_internal_drift()
         assert_source_bound_rejects_admitted_module(&expected, &saved, label)?;
     }
     Ok(())
+}
+
+fn overlapping_frontend_function_source() -> FrontendArtifact {
+    let original = frontend_function("fn()->i32", "i32", "7");
+    let overlapping = FrontendReturnIntegerFunction::new(
+        FrontendReturnIntegerFunctionSpec {
+            body_span: original.body_span(),
+            constant_decimal: String::from(original.constant_decimal()),
+            definition: String::from(original.definition()),
+            function_span: original.function_span(),
+            inline_specified: original.inline_specified(),
+            linkage: String::from(original.linkage()),
+            name: String::from("helper"),
+            return_span: original.return_span(),
+            signature: String::from(original.signature()),
+            storage_class: String::from(original.storage_class()),
+            value_span: original.value_span(),
+            value_type: String::from(original.value_type()),
+        },
+    );
+    frontend_artifact(
+        "malbolge-c-frontend-v1", vec![original, overlapping],
+    )
+}
+
+fn shifted_frontend_span(span: FrontendSpan) -> FrontendSpan {
+    let shifted = |point: FrontendPosition| {
+        FrontendPosition::new(
+            point.byte().saturating_add(100),
+            point.line().saturating_add(1), point.column(),
+        )
+    };
+    FrontendSpan::new(shifted(span.begin()), shifted(span.end()))
+}
+
+#[test]
+fn typed_ir_frontend_admits_disjoint_function_definitions()
+-> Result<(), String> {
+    let overlap = overlapping_frontend_function_source();
+    let first = overlap.functions().first()
+        .ok_or_else(|| String::from("missing first function"))?.clone();
+    let other = overlap.functions().get(1)
+        .ok_or_else(|| String::from("missing second function"))?;
+    let second = FrontendReturnIntegerFunction::new(
+        FrontendReturnIntegerFunctionSpec {
+            body_span: shifted_frontend_span(other.body_span()),
+            constant_decimal: String::from(other.constant_decimal()),
+            definition: String::from(other.definition()),
+            function_span: shifted_frontend_span(other.function_span()),
+            inline_specified: other.inline_specified(),
+            linkage: String::from(other.linkage()),
+            name: String::from(other.name()),
+            return_span: shifted_frontend_span(other.return_span()),
+            signature: String::from(other.signature()),
+            storage_class: String::from(other.storage_class()),
+            value_span: shifted_frontend_span(other.value_span()),
+            value_type: String::from(other.value_type()),
+        },
+    );
+    for functions in [
+        vec![first.clone(), second.clone()],
+        vec![second, first],
+    ] {
+        let source = frontend_artifact("malbolge-c-frontend-v1", functions);
+        let lowered = lower_frontend_artifact(&source)
+            .map_err(|error| format!("disjoint functions rejected: {error:?}"))?;
+        if lowered.functions().len() != 2 {
+            return Err(String::from("disjoint functions lost declarations"));
+        }
+        assert_source_bound_admits_disjoint_module(&source, &lowered)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_ir_frontend_rejects_overlapping_function_definitions() {
+    let source = overlapping_frontend_function_source();
+    assert_eq!(
+        lower_frontend_artifact(&source),
+        Err(FrontendLoweringError::Validation(
+            ValidationError::SourceProvenance,
+        )),
+    );
+}
+
+#[test]
+fn typed_ir_source_bound_rejects_overlapping_frontend_definitions()
+-> Result<(), String> {
+    let source = overlapping_frontend_function_source();
+    let fresh = lower_frontend_artifact(&frontend_return_projection())
+        .map_err(|error| format!("fresh single source: {error:?}"))?;
+    let primary = fresh.functions().first()
+        .ok_or_else(|| String::from("missing fresh function"))?;
+    let secondary = Function::new(FunctionSpec {
+        blocks: primary.blocks().to_vec(),
+        entry: primary.entry(),
+        id: FunctionId::new(1),
+        name: String::from("helper"),
+        parameters: primary.parameters().to_vec(),
+        signature: primary.signature(),
+        span: primary.span(),
+    });
+    let saved = Module::new(ModuleSpec {
+        abi_id: String::from(fresh.abi_id()),
+        format_version: fresh.format_version(),
+        functions: vec![primary.clone(), secondary],
+        globals: fresh.globals().to_vec(),
+        proof_obligations: fresh.proof_obligations().to_vec(),
+        source_id: String::from(fresh.source_id()),
+        source_sha256: *fresh.source_sha256(),
+        target_profile: String::from(fresh.target_profile()),
+        types: fresh.types().to_vec(),
+    });
+    assert_source_bound_rejects_admitted_module(
+        &source, &saved, "overlapping-frontend-functions",
+    )
 }
 
 #[test]

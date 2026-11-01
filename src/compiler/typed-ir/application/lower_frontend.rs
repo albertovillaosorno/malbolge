@@ -105,6 +105,7 @@ pub fn lower_frontend_artifact(
     for (index, function) in artifact.functions().iter().enumerate() {
         functions.push(lower_function(index, function)?);
     }
+    admit_disjoint_function_spans(artifact)?;
     let module = Module::new(ModuleSpec {
         abi_id: String::from(ABI_ID),
         format_version: TYPED_IR_VERSION,
@@ -118,6 +119,31 @@ pub fn lower_frontend_artifact(
     });
     validate_module(&module)?;
     Ok(module)
+}
+
+// Two distinct C function definitions cannot own overlapping source ranges.
+// The generic typed-IR validator allows those ranges because IR provenance
+// need not always originate from distinct C definitions. This specialized
+// frontend gate keeps the source-bound resume route equally strict.
+pub(super) fn admit_disjoint_function_spans(
+    artifact: &FrontendArtifact,
+) -> Result<(), FrontendLoweringError> {
+    if artifact.functions().len() < 2 {
+        return Ok(());
+    }
+    let mut ranges = artifact.functions().iter().map(|function| {
+        let span = function.function_span();
+        (span.begin().byte(), span.end().byte())
+    }).collect::<Vec<_>>();
+    ranges.sort_unstable();
+    if ranges.windows(2).any(
+        |pair| matches!(pair, [previous, next] if previous.1 > next.0),
+    ) {
+        return Err(FrontendLoweringError::Validation(
+            ValidationError::SourceProvenance,
+        ));
+    }
+    Ok(())
 }
 
 const fn convert_position(position: FrontendPosition) -> SourcePosition {

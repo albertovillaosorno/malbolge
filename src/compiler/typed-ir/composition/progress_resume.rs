@@ -49,7 +49,9 @@ use super::frontend_semantics::{
     FrontendSpan,
 };
 use super::instruction::Instruction;
-use super::lower_frontend::{admit_frontend_function, validate_identity};
+use super::lower_frontend::{
+    admit_disjoint_function_spans, admit_frontend_function, validate_identity,
+};
 use super::module::{Function, Module};
 use super::source::{SourcePosition, SourceSpan};
 use super::stage::{
@@ -251,6 +253,7 @@ fn matches_expected_frontend(
         && saved.source_sha256() == expected.source_sha256()
         && saved.target_profile() == expected.target_profile()
         && saved.functions().len() == expected.functions().len()
+        && admit_disjoint_function_spans(expected).is_ok()
         && saved.functions().iter().zip(expected.functions()).all(
             |(function, source)| {
                 function.name() == source.name()
