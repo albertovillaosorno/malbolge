@@ -92,7 +92,9 @@ public API and requires an exact match.
 The C harness is built and executed through the repository validation stack with
 the pinned Clang toolchain. Repository-wide Jig validation therefore covers the
 independent oracle instead of relying on an undocumented development compiler
-path.
+path. Linux pytest also builds and runs the same standalone harness with pinned
+Clang 22.1.8 in strict C23 and ASan/UBSan modes, so the binary and EOF checks
+execute in a focused native test without waiting for the full Jig run.
 
 ## Invariants
 
