@@ -568,12 +568,18 @@ def validate_repository_lifecycle(path: Path) -> AlgorithmLifecycle:
         Parsed lifecycle after repository identity/evidence checks.
 
     """
-    record = parse_lifecycle(_read_utf8(path))
+    if path.name != "lifecycle.toml":
+        _fail(f"lifecycle manifest must use canonical lifecycle.toml: {path}")
     directory_ids = {
         directory: identifier
         for identifier, directory in research_algorithm_directories(ROOT)
     }
-    algorithm_id = directory_ids.get(path.parent, path.parent.name)
+    algorithm_id = directory_ids.get(path.parent)
+    if algorithm_id is None:
+        _fail(
+            f"lifecycle manifest must belong to a registered research algorithm: {path}"
+        )
+    record = parse_lifecycle(_read_utf8(path))
     if record.identifier != algorithm_id:
         message = (
             "lifecycle algorithm ID does not match canonical directory: "

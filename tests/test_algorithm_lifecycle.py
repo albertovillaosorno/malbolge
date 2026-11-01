@@ -157,9 +157,11 @@ def test_lifecycle_decimal_digit_limit_fails_typed() -> None:
     _expect_failure(text, "invalid TOML exceeds host parser capacity")
 
 
-def test_lifecycle_file_rejects_invalid_utf8(tmp_path: Path) -> None:
+def test_lifecycle_file_rejects_invalid_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Lifecycle file encoding failure remains a typed validation error."""
-    path = tmp_path / "lifecycle.toml"
+    path = _fixture_repository(tmp_path, monkeypatch, _base(validator.EXPERIMENTAL))
     _ = path.write_bytes(bytes((0x5B, 0xFF, 0x5D)))
     with pytest.raises(
         validator.AlgorithmLifecycleError,
@@ -177,8 +179,7 @@ def test_lifecycle_manifest_host_faults_are_typed(
     operation: str,
 ) -> None:
     """Malformed filesystem errors cannot bypass lifecycle file admission."""
-    manifest = tmp_path / "lifecycle.toml"
-    _ = manifest.write_text(_base(validator.EXPERIMENTAL), encoding="utf-8")
+    manifest = _fixture_repository(tmp_path, monkeypatch, _base(validator.EXPERIMENTAL))
     if operation == "lstat":
         original_lstat = Path.lstat
 
@@ -229,8 +230,7 @@ def test_lifecycle_fdopen_failure_closes_owned_descriptor(
     fault_type: type[Exception],
 ) -> None:
     """An incomplete lifecycle stream wrapper releases the file descriptor."""
-    manifest = tmp_path / "lifecycle.toml"
-    _ = manifest.write_text(_base(validator.EXPERIMENTAL), encoding="utf-8")
+    manifest = _fixture_repository(tmp_path, monkeypatch, _base(validator.EXPERIMENTAL))
     original_open = os.open
     opened: list[int] = []
 
@@ -539,6 +539,45 @@ def test_lifecycle_rejects_oversized_manifest(
         _ = validator.validate_repository_lifecycle(manifest)
 
 
+def test_lifecycle_outside_repository_rejected_before_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A direct validator call must not read foreign lifecycle bytes."""
+    _ = _fixture_repository(tmp_path, monkeypatch, _base(validator.EXPERIMENTAL))
+    foreign = tmp_path / "outside/lifecycle.toml"
+    foreign.parent.mkdir()
+    _ = foreign.write_text(_base(validator.EXPERIMENTAL))
+
+    def unexpected_read(_path: Path) -> str:
+        raise AssertionError("outside lifecycle file read before path admission")
+
+    monkeypatch.setattr(validator, "_read_utf8", unexpected_read)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="registered research"):
+        _ = validator.validate_repository_lifecycle(foreign)
+
+
+def test_lifecycle_noncanonical_leaf_rejected_before_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second TOML file cannot impersonate lifecycle.toml in one algorithm."""
+    canonical = _fixture_repository(
+        tmp_path, monkeypatch, _base(validator.EXPERIMENTAL)
+    )
+    foreign = canonical.with_name("other.toml")
+    _ = foreign.write_text(canonical.read_text())
+
+    def unexpected_read(_path: Path) -> str:
+        raise AssertionError("noncanonical lifecycle file read before admission")
+
+    monkeypatch.setattr(validator, "_read_utf8", unexpected_read)
+    with pytest.raises(
+        validator.AlgorithmLifecycleError, match="canonical lifecycle.toml"
+    ):
+        _ = validator.validate_repository_lifecycle(foreign)
+
+
 def test_lifecycle_parent_link_is_rejected_during_discovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -549,6 +588,11 @@ def test_lifecycle_parent_link_is_rejected_during_discovery(
     outside = tmp_path / "outside-algorithm"
     _ = original.rename(outside)
     original.symlink_to(outside, target_is_directory=True)
+
+    def unexpected_read(_path: Path) -> str:
+        raise AssertionError("linked lifecycle parent read before discovery")
+
+    monkeypatch.setattr(validator, "_read_utf8", unexpected_read)
     with pytest.raises(OSError, match="research directory must not redirect"):
         _ = validator.validate_repository_lifecycle(manifest)
 
@@ -639,8 +683,7 @@ def test_lifecycle_host_failures_never_format_foreign_exceptions(
     foreign = type("ForeignLifecycleHostFault", (fault_type,), {"__str__": unsafe_str})
     fault = foreign("unsafe filesystem diagnostic")
     if phase == "manifest":
-        path = tmp_path / "lifecycle.toml"
-        _ = path.write_text(_base(validator.EXPERIMENTAL), encoding="utf-8")
+        path = _fixture_repository(tmp_path, monkeypatch, _base(validator.EXPERIMENTAL))
         original_lstat = Path.lstat
 
         def fail_lstat(candidate: Path) -> os.stat_result:

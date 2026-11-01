@@ -46,9 +46,12 @@ that explains the decision.
 Every executable research mirror with `experiment.toml` also carries
 `lifecycle.toml`. Schema v1 is validated by
 `src/automation/repository/composition/scripts/validate/algorithm_lifecycle.py`.
-Lifecycle file loading accepts at most 1 MiB from a stable regular-file
-descriptor, rejecting symlinked leaves, special files, file replacements, and
-invalid UTF-8 before TOML admission. Host TOML parser capacity errors,
+Direct lifecycle file loading first requires `lifecycle.toml` under a
+physically discovered research algorithm directory. Outside paths,
+noncanonical filenames, and already-linked parent directories fail before
+the manifest is read. Loading then accepts at most 1 MiB from a stable regular-
+file descriptor, rejecting symlinked leaves, special files, file replacements,
+and invalid UTF-8 before TOML admission. Host TOML parser capacity errors,
 including oversized decimal integer tokens, produce typed lifecycle failures.
 The stable algorithm ID is bound to its
 research record and experiment manifest. Decision dates require the exact TOML
