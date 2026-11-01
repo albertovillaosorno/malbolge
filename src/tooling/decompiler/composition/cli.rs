@@ -39,7 +39,8 @@ use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::fs::{self, File, write};
 use std::io::{
-    Error as IoError, Read as _, Result as IoResult, Write as _, stdout,
+    Error as IoError, ErrorKind as IoErrorKind, Read as _, Result as IoResult,
+    Write as _, stdout,
 };
 use std::path::{Path, PathBuf};
 
@@ -115,11 +116,51 @@ pub fn run() -> IoResult<()> {
     }
     .map_err(|error| IoError::other(error.to_string()))?;
     if let Some(path) = arguments.output {
+        if output_aliases_source(&path, &arguments.input)? {
+            return Err(IoError::other("decompiler output aliases input source"));
+        }
         write(path, rendered.as_bytes())?;
     } else {
         stdout().lock().write_all(rendered.as_bytes())?;
     }
     Ok(())
+}
+
+// Do not silently destroy the admitted program when --output names the input
+// file, even through a hard link or symlink. This protects stable aliases;
+// it does not claim to synchronize hostile concurrent path replacements.
+fn output_aliases_source(output: &Path, input: &Path) -> IoResult<bool> {
+    let output_metadata = match fs::metadata(output) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == IoErrorKind::NotFound => {
+            return Ok(false);
+        }
+        Err(error) => return Err(error),
+    };
+    let input_metadata = fs::metadata(input)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+
+        Ok(output_metadata.dev() == input_metadata.dev()
+            && output_metadata.ino() == input_metadata.ino())
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt as _;
+
+        let same_identity = output_metadata.volume_serial_number().is_some()
+            && output_metadata.volume_serial_number()
+                == input_metadata.volume_serial_number()
+            && output_metadata.file_index().is_some()
+            && output_metadata.file_index() == input_metadata.file_index();
+        Ok(same_identity || fs::canonicalize(output)? == fs::canonicalize(input)?)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (output_metadata, input_metadata);
+        Ok(fs::canonicalize(output)? == fs::canonicalize(input)?)
+    }
 }
 
 // Open an attacker-selected FIFO without waiting for an external writer.

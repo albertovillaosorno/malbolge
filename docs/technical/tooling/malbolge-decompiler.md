@@ -79,6 +79,11 @@ outputs. The default `raw` input format never strips comments, regardless of
 file extension. In both cases, the exact selected-profile loader is final
 source admission after the input file is read under the 1 MiB byte cap.
 Malformed annotated presentation fails instead of falling back to raw.
+The CLI refuses an existing `--output` path that aliases the input source,
+including stable hardlink and symlink aliases, rather than replacing the
+admitted program with an analysis, annotated view, or generated C file.
+This is a stable-path protection, not a guarantee against hostile concurrent
+filesystem mutations.
 
 ```text
 cargo run --bin malbolge_decompile -- \

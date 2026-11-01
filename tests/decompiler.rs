@@ -268,6 +268,49 @@ fn cli_accepts_stable_regular_source_symlink() -> Result<(), String> {
 }
 
 #[test]
+fn cli_refuses_to_overwrite_its_source_via_output_aliases() -> Result<(), String> {
+    let directory = temporary_cli_inputs()?;
+    let source = directory.join("original.malbolge");
+    fs::write(&source, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    let outputs = {
+        use std::os::unix::fs::symlink;
+
+        let hardlink = directory.join("hardlink.malbolge");
+        let symlink_path = directory.join("symlink.malbolge");
+        fs::hard_link(&source, &hardlink).map_err(|error| error.to_string())?;
+        symlink(&source, &symlink_path).map_err(|error| error.to_string())?;
+        vec![source.clone(), hardlink, symlink_path]
+    };
+    #[cfg(not(unix))]
+    let outputs = vec![source.clone()];
+    for output_path in outputs {
+        fs::write(&source, OUTPUT_SOURCE).map_err(|error| error.to_string())?;
+        let output = Command::new(env!("CARGO_BIN_EXE_malbolge_decompile"))
+            .args(["--profile", "malbolge-1998", "--representation", "analysis"])
+            .arg(&source)
+            .arg("--output")
+            .arg(&output_path)
+            .output()
+            .map_err(|error| format!("execute decompiler CLI: {error}"))?;
+        let after = fs::read(&source).map_err(|error| error.to_string())?;
+        let diagnostic = String::from_utf8_lossy(&output.stderr);
+        if output.status.success()
+            || !diagnostic.contains("decompiler output aliases input source")
+            || after != OUTPUT_SOURCE
+        {
+            return Err(format!(
+                "source overwritten through {}: {diagnostic}; {after:?}",
+                output_path.display(),
+            ));
+        }
+    }
+    fs::remove_dir_all(&directory)
+        .map_err(|error| format!("remove source fixture: {error}"))?;
+    Ok(())
+}
+
+#[test]
 fn cli_rejects_duplicate_semantic_options() -> Result<(), String> {
     let cases: [DuplicateCliCase; 4] = [
         (&["--profile", "a", "--profile", "b"], "duplicate --profile"),
