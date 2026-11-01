@@ -659,6 +659,75 @@ def test_math_log_temporary_creation_host_faults_are_typed(
     assert tuple(log.parent.iterdir()) == (log,)
 
 
+@pytest.mark.parametrize("forgery", ("foreign-parent", "foreign-name", "foreign-inode"))
+def test_math_log_rejects_forged_temporary_path_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """A forged temporary name cannot replace or remove an unrelated file."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    foreign = (
+        tmp_path / "foreign" / ".build.stdout.abcdefgh"
+        if forgery == "foreign-parent"
+        else log.parent
+        / ("unrelated.txt" if forgery == "foreign-name" else ".build.stdout.abcdefgh")
+    )
+    foreign.parent.mkdir(parents=True, exist_ok=True)
+    _ = foreign.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    original_mkstemp = validator.tempfile.mkstemp
+    allocated: list[tuple[int, Path]] = []
+
+    def forged_mkstemp(*, dir: Path, prefix: str) -> tuple[int, str]:
+        descriptor, stage = original_mkstemp(dir=dir, prefix=prefix)
+        allocated.append((descriptor, Path(stage)))
+        return descriptor, str(foreign)
+
+    monkeypatch.setattr(validator.tempfile, "mkstemp", forged_mkstemp)
+    try:
+        with pytest.raises(validator.MathSpecificationError, match="temporary path"):
+            validator._write_math_build_log(log, COMPILED_LOG_TEXT)
+        for descriptor, _stage in allocated:
+            with pytest.raises(OSError):
+                _ = os.fstat(descriptor)
+        assert foreign.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+        assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    finally:
+        for _descriptor, stage in allocated:
+            stage.unlink(missing_ok=True)
+
+
+def test_math_log_does_not_unlink_replaced_staging_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed staging name must not delete a foreign inode in cleanup."""
+    _source, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    original_check = validator._check_math_log_temporary_identity
+    replaced: list[Path] = []
+
+    def swap_before_check(path: Path, identity: tuple[int, int]) -> None:
+        foreign = path.parent / "foreign-owned-file.txt"
+        _ = foreign.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+        path.unlink()
+        foreign.rename(path)
+        replaced.append(path)
+        original_check(path, identity)
+
+    monkeypatch.setattr(
+        validator, "_check_math_log_temporary_identity", swap_before_check
+    )
+    with pytest.raises(
+        validator.MathSpecificationError, match="temporary inode changed"
+    ):
+        validator._write_math_build_log(log, COMPILED_LOG_TEXT)
+    assert len(replaced) == 1
+    assert replaced[0].read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
 def test_math_log_wrapper_failure_releases_owned_descriptor(
     tmp_path: Path,

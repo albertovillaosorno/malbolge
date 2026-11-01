@@ -53,8 +53,13 @@ reject existing redirected output directories before creating anything.
 The captured `build.stdout.txt` log must also be a physical regular destination;
 linked log leaves are rejected before invoking TeX and rechecked after compiler
 execution. Each log is published by private temporary-file replacement, so
-existing linked leaves are never opened or truncated. The preflight and later
-publication checks do not make concurrent directory replacement atomic.
+existing linked leaves are never opened or truncated. Temporary-file receipt
+admission requires an expected cache-local staging name tied to the exclusively
+created regular descriptor inode; foreign pathname or inode receipts close the
+owned descriptor without touching the foreign name. The staged inode is checked
+again before replacement and cleanup never unlinks a changed staging inode.
+The preflight and later publication checks do not make concurrent directory
+replacement atomic.
 TeX validation reads no more than one MiB per physical regular source,
 rejects redirected parent/leaf paths, and requires the pre-read file identity
 (device, inode, size and modification/change times) to match the open descriptor

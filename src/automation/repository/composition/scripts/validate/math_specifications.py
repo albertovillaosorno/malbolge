@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -465,6 +466,106 @@ def _admit_math_build_log(log_path: Path) -> None:
         _fail(f"mathematics cache log must be a regular file: {log_path}")
 
 
+def _admit_math_log_temporary(
+    log_path: Path,
+    descriptor: int,
+    name: object,
+) -> tuple[Path, tuple[int, int]]:
+    """Bind an exclusive staging descriptor to its expected cache-only name.
+
+    Returns:
+        The admitted path and its regular-file device/inode identity.
+
+    """
+    try:
+        if type(name) is not str:
+            _fail("mathematics build log temporary path receipt must be a string")
+        temporary = Path(name)
+        # mkstemp reports an absolute name even for a relative requested dir.
+        parent = Path(os.path.abspath(log_path.parent))  # ruff: ignore[os-path-abspath]
+        if (
+            not temporary.is_absolute()
+            or temporary != Path(os.path.abspath(temporary))  # ruff: ignore[os-path-abspath]
+            or temporary.parent != parent
+            or re.fullmatch(r"\.build\.stdout\.[a-z0-9_]{8}", temporary.name) is None
+        ):
+            _fail("mathematics build log temporary path receipt is outside staging")
+        opened = os.fstat(descriptor)
+        named = temporary.lstat()
+        if (
+            type(opened) is not os.stat_result
+            or type(named) is not os.stat_result
+            or not S_ISREG(opened.st_mode)
+            or not S_ISREG(named.st_mode)
+            or opened.st_nlink != 1
+            or named.st_nlink != 1
+            or opened.st_size != 0
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            _fail("mathematics build log temporary path receipt has wrong inode")
+    except (
+        MathSpecificationError,
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+    ) as error:
+        # Never unlink the untrusted name: it may identify an unrelated file.
+        try:
+            os.close(descriptor)
+        except (OSError, ValueError, TypeError) as close_error:
+            error.add_note(
+                f"mathematics temporary descriptor close failed: {_host_error_detail(close_error)}"
+            )
+        if isinstance(error, MathSpecificationError):
+            raise
+        raise MathSpecificationError(
+            f"mathematics build log temporary path receipt failed: {_host_error_detail(error)}"
+        ) from error
+    return temporary, (opened.st_dev, opened.st_ino)
+
+
+def _check_math_log_temporary_identity(
+    temporary: Path, identity: tuple[int, int]
+) -> None:
+    """Reject staged file replacement before publishing a captured log."""
+    try:
+        observed = temporary.lstat()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics build log temporary status failed: {_host_error_detail(error)}"
+        ) from error
+    if (
+        type(observed) is not os.stat_result
+        or not S_ISREG(observed.st_mode)
+        or observed.st_nlink != 1
+        or (observed.st_dev, observed.st_ino) != identity
+    ):
+        _fail("mathematics build log temporary inode changed before publication")
+
+
+def _cleanup_math_log_temporary(temporary: Path, identity: tuple[int, int]) -> None:
+    """Remove only the originally admitted staging inode, if still present."""
+    try:
+        observed = temporary.lstat()
+    except FileNotFoundError:
+        # Preserve missing_ok cleanup for already-committed publication.
+        pass
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise MathSpecificationError(
+            f"mathematics build log temporary cleanup status failed: {_host_error_detail(error)}"
+        ) from error
+    else:
+        if (
+            type(observed) is not os.stat_result
+            or not S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+            or (observed.st_dev, observed.st_ino) != identity
+        ):
+            _fail("mathematics build log temporary inode changed before cleanup")
+    temporary.unlink(missing_ok=True)
+
+
 def _write_math_build_log(log_path: Path, log: str) -> None:
     """Atomically replace one physical log without opening a linked leaf."""
     if type(log) is not str:
@@ -479,7 +580,9 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
         raise MathSpecificationError(
             f"mathematics build log temporary creation failed: {_host_error_detail(error)}"
         ) from error
-    temporary = Path(temporary_name)
+    temporary, temporary_identity = _admit_math_log_temporary(
+        log_path, descriptor, temporary_name
+    )
     try:
         try:
             try:
@@ -503,6 +606,7 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
             ) from error
         _reject_cache_redirects(log_path.parent)
         _admit_math_build_log(log_path)
+        _check_math_log_temporary_identity(temporary, temporary_identity)
         try:
             _ = temporary.replace(log_path)
         except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -512,7 +616,7 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
     finally:
         primary = sys.exception()
         try:
-            temporary.unlink(missing_ok=True)
+            _cleanup_math_log_temporary(temporary, temporary_identity)
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             detail = _host_error_detail(error)
             if primary is None:
