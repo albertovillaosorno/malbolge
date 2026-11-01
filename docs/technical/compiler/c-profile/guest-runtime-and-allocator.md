@@ -107,7 +107,9 @@ input/output byte values and distinguish a real `0xff` byte from EOF, an
 impossible input word, and an oversized word. Additional negative and
 out-of-byte-range `putchar` calls verify low-eight-bit emission and the C
 unsigned-byte return. These are intrinsic-stub wrapper tests, not proof of
-end-to-end generated Malbolge I/O. The routines intentionally remain
+end-to-end generated Malbolge I/O. The Linux pytest harness executes these
+vectors with pinned Clang rather than skipping the Windows-only C runner; the
+latter also retains its cross-ABI compilation checks. The routines remain
 *unavailable* until `ternary-machine-lowering` proves the intrinsic identities
 realize the selected-profile `/` and `<` operations.
 
