@@ -844,6 +844,49 @@ def _validate_plan(plan: StudyPlan) -> None:
         raise ReferenceStudyError(message) from error
 
 
+_STUDY_WORKSPACE_PREFIX = "arena-host-c-study-"
+
+
+def _admit_study_workspace(receipt: object) -> Path:
+    """Reject redirected temporary roots before writing or recursive cleanup.
+
+    The allocator is expected to create a new physical directory inside the
+    admitted local root. This checks the observed path, not race-free ownership.
+    """
+    if type(receipt) is not str or not receipt:
+        _fail("host-C reference workspace allocator returned invalid path")
+    try:
+        directory = Path(receipt)
+        if (
+            not directory.is_absolute()
+            or str(directory) != receipt
+            or directory.parent != _LOCAL
+            or not directory.name.startswith(_STUDY_WORKSPACE_PREFIX)
+            or directory.name == _STUDY_WORKSPACE_PREFIX
+        ):
+            _fail("host-C reference workspace allocator returned foreign path")
+        metadata = directory.lstat()
+    except ReferenceStudyError:
+        raise
+    except Exception as error:
+        message = "host-C reference workspace allocation path unavailable"
+        raise ReferenceStudyError(message) from error
+    if type(metadata) is not os.stat_result or not stat.S_ISDIR(metadata.st_mode):
+        _fail("host-C reference workspace must be a physical directory")
+    try:
+        # A real mkdtemp creates an empty directory. Refuse an occupied
+        # same-prefix path before writing into it or treating it as ours.
+        with os.scandir(directory) as entries:
+            if next(entries, None) is not None:
+                _fail("host-C reference workspace was not newly empty")
+    except ReferenceStudyError:
+        raise
+    except Exception as error:
+        message = "host-C reference workspace contents unavailable"
+        raise ReferenceStudyError(message) from error
+    return directory
+
+
 def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
     """Measure host-C reference behavior into ignored local evidence.
 
@@ -864,11 +907,8 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
     if not stat.S_ISDIR(local_mode):
         _fail("host-C reference workspace requires a physical output directory")
     try:
-        directory = Path(
-            tempfile.mkdtemp(
-                prefix="arena-host-c-study-",
-                dir=_LOCAL,
-            )
+        directory = _admit_study_workspace(
+            tempfile.mkdtemp(prefix=_STUDY_WORKSPACE_PREFIX, dir=_LOCAL)
         )
     except Exception as error:
         message = "host-C reference workspace allocation failed"

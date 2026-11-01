@@ -1044,6 +1044,13 @@ The original study records remain the result authority.
   across multiple canonical difficulties and matched `-O0`/`-O2` arms.
   Live and injected-failure tests verify complete run/raw/challenge identity
   linkage and preserve failed attempts; this is not Malbolge performance.
+  New study workspace allocation now checks that the returned temporary path
+  is a native absolute child of the admitted `.temp` root, has the expected
+  study prefix, identifies a physical directory and is initially empty before
+  any trial write or recursive setup cleanup. Red-first forged allocator
+  receipts previously reached child writes and potentially redirected cleanup;
+  they now reject without touching the claimed foreign path. These observed
+  checks do not prove race-free ownership or an atomic directory snapshot.
 - Host-C reference measurement now uses GNU `time` per direct stage to
   report exact `peak_rss_bytes` (maximum observed Linux `ru_maxrss` after
   KiB-to-byte conversion), retained as a third Pareto cost. Invalid, zero,

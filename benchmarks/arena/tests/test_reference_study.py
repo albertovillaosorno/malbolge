@@ -1020,6 +1020,82 @@ def test_host_reference_types_workspace_root_inspection_failures(
     assert isinstance(error.value.__cause__, error_type)
 
 
+class _ForgedWorkspaceName(str):
+    """A foreign tempfile text receipt must not redirect output or cleanup."""
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "parent-root",
+        "outside-root",
+        "symlink",
+        "regular-file",
+        "foreign-text",
+        "foreign-type",
+        "occupied-prefix",
+        "relative-path",
+    ],
+)
+def test_host_reference_rejects_unowned_workspace_before_writes_or_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    """A forged allocator return cannot target an existing foreign directory."""
+    outer = tmp_path / "other"
+    outer.mkdir()
+    target = tmp_path / "arena-host-c-study-unowned"
+    if kind == "parent-root":
+        target = tmp_path
+    elif kind == "outside-root":
+        target = outer
+    elif kind == "symlink":
+        target.symlink_to(outer, target_is_directory=True)
+    elif kind == "regular-file":
+        target.write_bytes(b"original")
+    elif kind in ("foreign-text", "occupied-prefix"):
+        target.mkdir()
+        if kind == "occupied-prefix":
+            (target / "original.txt").write_text("preserve")
+    receipt: object = str(target)
+    if kind == "foreign-text":
+        receipt = _ForgedWorkspaceName(str(target))
+    elif kind == "foreign-type":
+        receipt = target
+    elif kind == "relative-path":
+        receipt = target.name
+    attempted: list[str] = []
+
+    def forged_allocate(**kwargs: object) -> object:
+        del kwargs
+        return receipt
+
+    def forbidden_mkdir(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        attempted.append("mkdir")
+        raise OSError("unadmitted workspace reached a write")
+
+    def forbidden_cleanup(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        attempted.append("rmtree")
+
+    monkeypatch.setattr(reference_study, "_LOCAL", tmp_path)
+    monkeypatch.setattr(reference_study, "_validate_plan", lambda _: None)
+    monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
+    monkeypatch.setattr(reference_study.tempfile, "mkdtemp", forged_allocate)
+    monkeypatch.setattr(reference_study.Path, "mkdir", forbidden_mkdir)
+    monkeypatch.setattr(reference_study.shutil, "rmtree", forbidden_cleanup)
+    with pytest.raises(reference_study.ReferenceStudyError, match="workspace"):
+        reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
+    assert not attempted
+    assert outer.is_dir()
+    if kind == "regular-file":
+        assert target.read_bytes() == b"original"
+    if kind == "occupied-prefix":
+        assert (target / "original.txt").read_text() == "preserve"
+
+
 @pytest.mark.parametrize(
     "error_type", [OSError, ValueError, RuntimeError, _UnexpectedHostFault]
 )
@@ -1056,6 +1132,7 @@ def test_host_reference_workspace_failures_are_typed_and_cleanup_own_output(
 
     monkeypatch.setattr(reference_study, "_validate_plan", lambda plan: None)
     monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
+    monkeypatch.setattr(reference_study, "_LOCAL", tmp_path)
     monkeypatch.setattr(reference_study.tempfile, "mkdtemp", faulty_mkdtemp)
     monkeypatch.setattr(reference_study.Path, "mkdir", faulty_mkdir)
     monkeypatch.setattr(reference_study, "_run_study", forbidden_measurement)
@@ -1098,7 +1175,7 @@ def test_host_reference_setup_cleanup_failure_preserves_original_error(
     cleanup_error: Exception,
 ) -> None:
     """Unexpected cleanup faults cannot hide the failed workspace setup."""
-    directory = tmp_path / "allocated"
+    directory = tmp_path / "arena-host-c-study-allocated"
     directory.mkdir()
 
     def fake_mkdtemp(**kwargs: object) -> str:
@@ -1759,7 +1836,7 @@ def test_host_reference_workspace_cleanup_never_dispatches_primary_add_note(
     fault_type: type[Exception],
 ) -> None:
     """Foreign primary hooks cannot conceal a failed workspace setup."""
-    directory = tmp_path / "allocated"
+    directory = tmp_path / "arena-host-c-study-allocated"
     directory.mkdir()
 
     class HostilePrimary(fault_type):
