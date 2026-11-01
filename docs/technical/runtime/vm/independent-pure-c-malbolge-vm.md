@@ -132,6 +132,9 @@ not silently commit partial guest-visible effects.
   output at capacity 256, and successful resume after capacity is enlarged.
   This is independent classic VM evidence using preloaded machine memory, not
   a generated guest-program or application-level byte-stream demonstration.
+  Another fixed four-instruction fixture verifies raw `0xff` input, subsequent
+  EOF, byte output, and post-instruction encryption while both classic code and
+  data pointers wrap from address 59048 to zero.
 - The C harness asserts semantic signature `0xa9dabd8fc51d13c9` over every
   classic word's rotate result, a deterministic 59049-pair crazy sample, the
   complete loaded `ubO` image, and representative execution boundaries.

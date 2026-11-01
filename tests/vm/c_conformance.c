@@ -795,6 +795,69 @@ static int test_full_binary_stream_capacity_resume(void)
     return failures;
 }
 
+static int test_binary_io_across_code_and_data_wrap(void)
+{
+    static const uint8_t INPUT[] = {UINT8_C(0xFF)};
+    static uint8_t output[3];
+    MalbolgeTrace trace;
+    int failures = 0;
+
+    output[0] = UINT8_C(0xCC);
+    output[1] = UINT8_C(0xCC);
+    output[2] = UINT8_C(0x5A);
+    malbolge_machine_init_state(&g_machine, 0U, INPUT, sizeof(INPUT),
+                                output, 2U);
+    g_machine.registers.code_pointer = (MalbolgeWord)MALBOLGE_MAX_WORD;
+    g_machine.registers.data_pointer = (MalbolgeWord)MALBOLGE_MAX_WORD;
+    /* At C=59048,0,1,2 these glyphs decode as '/', '<', '/', '<'. */
+    g_machine.memory[MALBOLGE_MAX_WORD] = (MalbolgeWord)'e';
+    g_machine.memory[0] = (MalbolgeWord)'c';
+    g_machine.memory[1] = (MalbolgeWord)'t';
+    g_machine.memory[2] = (MalbolgeWord)'a';
+
+    failures += expect_true(
+        malbolge_step(&g_machine, &trace) == MALBOLGE_STEP_CONTINUED);
+    failures += expect_true(trace.has_input_byte != 0U);
+    failures += expect_true(trace.input_byte == UINT8_C(0xFF));
+    failures += expect_true(trace.input_was_eof == 0U);
+    failures += expect_true(g_machine.registers.accumulator == 255U);
+    failures += expect_true(g_machine.registers.code_pointer == 0U);
+    failures += expect_true(g_machine.registers.data_pointer == 0U);
+    failures += expect_true(g_machine.memory[MALBOLGE_MAX_WORD] ==
+                            (MalbolgeWord)'c');
+    failures += expect_true(g_machine.input_cursor == 1U);
+
+    failures += expect_true(
+        malbolge_step(&g_machine, &trace) == MALBOLGE_STEP_CONTINUED);
+    failures += expect_true(trace.has_output_byte != 0U);
+    failures += expect_true(trace.output_byte == UINT8_C(0xFF));
+    failures += expect_true(g_machine.memory[0] == (MalbolgeWord)'V');
+    failures += expect_true(g_machine.registers.code_pointer == 1U);
+    failures += expect_true(g_machine.registers.data_pointer == 1U);
+
+    failures += expect_true(
+        malbolge_step(&g_machine, &trace) == MALBOLGE_STEP_CONTINUED);
+    failures += expect_true(trace.input_was_eof != 0U);
+    failures += expect_true(trace.has_input_byte == 0U);
+    failures += expect_true(g_machine.registers.accumulator ==
+                            (MalbolgeWord)MALBOLGE_MAX_WORD);
+    failures += expect_true(g_machine.memory[1] == (MalbolgeWord)'E');
+    failures += expect_true(g_machine.input_cursor == 1U);
+
+    failures += expect_true(
+        malbolge_step(&g_machine, &trace) == MALBOLGE_STEP_CONTINUED);
+    failures += expect_true(trace.has_output_byte != 0U);
+    failures += expect_true(trace.output_byte == UINT8_C(0xA8));
+    failures += expect_true(g_machine.memory[2] == (MalbolgeWord)'.');
+    failures += expect_true(g_machine.registers.code_pointer == 3U);
+    failures += expect_true(g_machine.registers.data_pointer == 3U);
+    failures += expect_true(g_machine.output_length == 2U);
+    failures += expect_true(output[0] == UINT8_C(0xFF));
+    failures += expect_true(output[1] == UINT8_C(0xA8));
+    failures += expect_true(output[2] == UINT8_C(0x5A));
+    return failures;
+}
+
 static int test_rotate_crazy_and_wrap(void)
 {
     MalbolgeTrace trace;
@@ -933,6 +996,7 @@ int malbolge_c_conformance(void)
     failures += test_non_graphical_non_progress();
     failures += test_byte_io_edges();
     failures += test_full_binary_stream_capacity_resume();
+    failures += test_binary_io_across_code_and_data_wrap();
     failures += test_jump_encryption_and_atomic_rejection();
     failures += test_rotate_crazy_and_wrap();
     failures += test_state_validation_and_control_edges();
