@@ -563,12 +563,18 @@ fn publish_new_with_directory_sync_hook(
     // after the exclusive create belongs to the other writer and is preserved.
     let opened = file.metadata();
     drop(file);
-    if let (Ok(original), Ok(named)) = (opened, fs::symlink_metadata(&staged))
+    let cleanup = if let (Ok(original), Ok(named)) = (opened, fs::symlink_metadata(&staged))
         && canonical_wire_metadata_matches(&original, &named)
     {
-        drop(fs::remove_file(&staged));
-    }
-    outcome
+        fs::remove_file(&staged)
+            .map_err(|error| format!("stage cleanup failed after publication: {error}"))
+    } else {
+        Ok(())
+    };
+    // A committed final file survives a failed cleanup, but a surviving stage
+    // is another writable hard link. Do not report successful publication.
+    // Preserve the original publication failure if cleanup also fails.
+    outcome.and(cleanup)
 }
 
 // On Linux/Android use nonblocking open first, *then* inspect the actual

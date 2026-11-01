@@ -38,6 +38,8 @@ use super::{
 };
 use std::fs;
 use std::io;
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::id;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -574,6 +576,129 @@ fn publication_sync_equal_byte_inode_swap_cannot_report_success() -> Result<(), 
         b"ctO"
     );
     assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "a substituted staging path cannot authorize publication"
+)]
+fn stage_replaced_after_final_sync_cannot_report_success() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let staged = stage(&output, None);
+    let moved = fixture.0.join("original-staging-alias");
+    let result = super::publish_new_with_directory_sync_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        |directory| {
+            super::sync_published_directory(directory)?;
+            fs::rename(&staged, &moved).map_err(|error| error.to_string())?;
+            fs::write(&staged, b"foreign-stage").map_err(|error| error.to_string())
+        },
+    );
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("changed after sync")),
+        "post-sync stage substitution escaped final admission: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert_eq!(fs::read(&moved).map_err(|error| error.to_string())?, b"ctO");
+    assert_eq!(
+        fs::read(&staged).map_err(|error| error.to_string())?,
+        b"foreign-stage"
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "must reject a failed postpublication stage cleanup"
+)]
+fn stage_unlink_denied_after_directory_sync_cannot_report_success() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let staged = stage(&output, None);
+    let permissions = fs::metadata(&fixture.0)
+        .map_err(|error| error.to_string())?
+        .permissions();
+    let result = super::publish_new_with_directory_sync_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        |directory| {
+            // The target is already published and verified; deny unlinking
+            // the still-owned staging alias only after directory sync.
+            super::sync_published_directory(directory)?;
+            fs::set_permissions(directory, fs::Permissions::from_mode(0o500))
+                .map_err(|error| error.to_string())
+        },
+    );
+    // Restore directory access before assertions and fixture teardown.
+    fs::set_permissions(&fixture.0, permissions)
+        .map_err(|error| format!("restore fixture permissions: {error}"))?;
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("stage cleanup")),
+        "failed stage unlink was reported successful: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert_eq!(
+        fs::read(&staged).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "original failure must survive a denied stage cleanup"
+)]
+fn stage_cleanup_failure_preserves_earlier_publication_error() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let staged = stage(&output, None);
+    let permissions = fs::metadata(&fixture.0)
+        .map_err(|error| error.to_string())?
+        .permissions();
+    let result = publish_new_with_hooks(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| {
+            fs::set_permissions(&fixture.0, fs::Permissions::from_mode(0o500))
+                .map_err(|error| error.to_string())?;
+            Err(String::from("primary post-link rejection"))
+        },
+    );
+    fs::set_permissions(&fixture.0, permissions)
+        .map_err(|error| format!("restore fixture permissions: {error}"))?;
+    assert_eq!(result, Err(String::from("primary post-link rejection")));
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert_eq!(
+        fs::read(&staged).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
     Ok(())
 }
 

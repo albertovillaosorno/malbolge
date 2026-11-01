@@ -160,6 +160,10 @@ original resolved parent directory *after* independently verifying the linked
 final bytes and inode, so successful publication includes a directory-entry
 durability barrier. A failed parent sync returns an error and retains the
 already-visible linked target; the stage is removed only if still owned.
+If removing that still-owned stage fails after a verified publication, the
+publisher reports a cleanup error while retaining the already-linked final
+artifact rather than claiming success with an extra hard-link alias. An earlier
+publication failure remains primary if cleanup also fails.
 An injected sync failure and an altered final byte separately verify these
 ordering gates. After the directory-sync boundary, the original staging
 handle and final pathname are re-admitted with the same identity, exact byte,
