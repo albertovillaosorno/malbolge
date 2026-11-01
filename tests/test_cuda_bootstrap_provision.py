@@ -153,6 +153,29 @@ def test_manifest_parses_exact_linux_nvrtc_package(tmp_path: Path) -> None:
     assert package.sha256 == hashlib.sha256(payload).hexdigest()
 
 
+@pytest.mark.parametrize("field", ("toolkit_root", "relative_path"))
+def test_cuda_provision_manifest_rejects_host_dependent_paths(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    """CUDA packages use one portable pathname on Linux and Windows."""
+    payload = _payload()
+    if field == "relative_path":
+        archive_alias = PACKAGE_PATH.replace("-archive.tar.xz", r"\archive.tar.xz")
+        manifest = _manifest(tmp_path, payload, {field: archive_alias})
+    else:
+        manifest = _manifest(tmp_path, payload)
+        document = cast("dict[str, object]", json.loads(manifest.read_text(encoding="utf-8")))
+        document[field] = TOOLKIT_ROOT.replace("/", "\\")
+        _ = manifest.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match="must use forward slashes"
+    ):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+
+
 def test_package_verification_rejects_size_and_sha_drift(
     tmp_path: Path,
 ) -> None:
@@ -228,6 +251,22 @@ def test_tar_extraction_rejects_parent_escape(tmp_path: Path) -> None:
         )
 
     assert not (tmp_path / "escape").exists()
+
+
+def test_cuda_archive_rejects_host_dependent_backslash_member(
+    tmp_path: Path,
+) -> None:
+    """Windows parent traversal cannot be a literal Linux archive filename."""
+    payload = _tar_xz({f"{ARCHIVE_ROOT}/..\\escape": b"forged"})
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM
+    ).packages[0]
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match="must use forward slashes"
+    ):
+        cuda_validation.extract_cuda_package(
+            payload, package, tmp_path / "toolkit", staging=tmp_path / "staging"
+        )
 
 
 def test_provision_is_idempotent_after_exact_marker(tmp_path: Path) -> None:

@@ -38,8 +38,10 @@ an RPATH/RUNPATH for that required companion library.
 
 The bootstrap has an explicit `--provision-cuda` operation. Its selected
 toolkit root and indexed NVRTC library require portable forward-slash paths,
-rejecting host-dependent backslash separators. It admits the selected host
-manifest only as bounded, nonredirected regular bytes with stable
+rejecting host-dependent backslash separators. Provisioning applies the same
+portable spelling to package relative URLs and archive member names; Windows
+parent traversal cannot hide inside a Linux filename. It admits the selected
+host manifest only as bounded, nonredirected regular bytes with stable
 device, inode, size, and timestamps across each read. It downloads only
 the package identities in the selected host manifest, validates tracked byte
 size and SHA-256 before extraction, rejects archive traversal, stages inside the

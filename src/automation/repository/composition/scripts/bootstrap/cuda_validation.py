@@ -230,6 +230,8 @@ def _repository_relative_path(value: str, label: str) -> Path:
     contains_parent = _contains_parent(native.parts, windows.parts)
     if native.is_absolute() or _windows_anchored(value) or contains_parent:
         _fail(f"{label} must stay within the repository")
+    if "\\" in value:
+        _fail(f"{label} must use forward slashes")
     return native
 
 
@@ -244,6 +246,8 @@ def _archive_relative_path(
     contains_parent = _contains_parent(posix.parts, windows.parts)
     if anchored or contains_parent:
         _fail("CUDA package relative_path must stay below the NVIDIA root")
+    if "\\" in value:
+        _fail("CUDA package relative_path must use forward slashes")
     if any(marker in value for marker in URL_SUFFIX_MARKERS):
         _fail("CUDA package relative_path cannot contain URL suffix authority")
     package_prefix = (package_name, platform_id)
@@ -372,6 +376,8 @@ def _archive_member_path(value: str) -> PurePosixPath:
     path = PurePosixPath(value)
     if path.is_absolute() or PARENT_SEGMENT in path.parts:
         _fail(f"CUDA archive member escapes package root: {value}")
+    if "\\" in value:
+        _fail("CUDA archive member must use forward slashes")
     if not path.parts:
         _fail("CUDA archive member path is empty")
     return path
