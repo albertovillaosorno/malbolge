@@ -37,12 +37,13 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Self, cast, override
 
 import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import BinaryIO
 
 from scripts.validate import target_profile as validator
 
@@ -945,3 +946,204 @@ def test_profile_duplicate_key_hook_refuses_foreign_containers(
         validator._reject_duplicate_pairs(  # pyright: ignore[reportPrivateUsage]
             cast("list[tuple[str, object]]", pairs)
         )
+
+
+@pytest.mark.parametrize("phase", ["admitted", "opened", "after", "visible"])
+def test_profile_foreign_stat_receipts_rejected_before_field_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Manifest identity cannot trust forged path or descriptor stat results."""
+    source = tmp_path / "profile.json"
+    _ = source.write_bytes(b"{}")
+
+    class ForeignStat:
+        @override
+        def __getattribute__(self, name: str) -> object:
+            del self, name
+            raise AssertionError("foreign profile stat hook executed")
+
+    original_lstat = Path.lstat
+    original_fstat = os.fstat
+    lstat_calls = 0
+    fstat_calls = 0
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        nonlocal lstat_calls
+        if path == source:
+            lstat_calls += 1
+            if (phase == "admitted" and lstat_calls == 1) or (
+                phase == "visible" and lstat_calls == 2
+            ):
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_lstat(path)
+
+    def forged_fstat(descriptor: int) -> os.stat_result:
+        nonlocal fstat_calls
+        fstat_calls += 1
+        if (phase == "opened" and fstat_calls == 1) or (
+            phase == "after" and fstat_calls == 2
+        ):
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return original_fstat(descriptor)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(validator.ProfileValidationError, match="native stat"):
+        _ = validator.load_document(source)
+
+
+@pytest.mark.parametrize(
+    "phase", ["parent_symlink", "parent_junction", "leaf_symlink", "leaf_junction"]
+)
+@pytest.mark.parametrize("receipt", [0, 1, object()])
+def test_profile_foreign_redirect_receipts_rejected_without_truthiness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str, receipt: object
+) -> None:
+    """Every source path redirect verdict must be an exact boolean."""
+    source = tmp_path / "profile.json"
+    _ = source.write_bytes(b"{}")
+    leaf = phase.startswith("leaf")
+    target = source if leaf else source.parent
+    is_symlink = phase.endswith("symlink")
+    original = Path.is_symlink if is_symlink else Path.is_junction
+
+    class ForeignVerdict:
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign redirect truthiness hook executed")
+
+    verdict = ForeignVerdict() if type(receipt) is object else receipt
+
+    def forged_method(path: Path) -> bool:
+        if path == target:
+            return cast("bool", verdict)
+        return original(path)
+
+    monkeypatch.setattr(
+        Path, "is_symlink" if is_symlink else "is_junction", forged_method
+    )
+    with pytest.raises(validator.ProfileValidationError, match="native redirect"):
+        _ = validator.load_document(source)
+
+
+@pytest.mark.parametrize("receipt", [True, False, -1, 3.0])
+def test_profile_foreign_open_descriptor_rejected_before_fd_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Invalid open values cannot become stream owners or close host fds."""
+    source = tmp_path / "profile.json"
+    _ = source.write_bytes(b"{}")
+    original_open = os.open
+
+    def forged_open(path: Path, flags: int) -> int:
+        if path == source:
+            return cast("int", receipt)
+        return original_open(path, flags)
+
+    monkeypatch.setattr(os, "open", forged_open)
+    with pytest.raises(validator.ProfileValidationError, match="native descriptor"):
+        _ = validator.load_document(source)
+
+
+class _ProfileForgedStream:
+    """Own a native stream but expose a selected forged return value."""
+
+    def __init__(
+        self, stream: BinaryIO, payload: object, descriptor: object = None
+    ) -> None:
+        self.stream: BinaryIO = stream
+        self.payload: object = payload
+        self.descriptor: object = descriptor
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        del args
+        self.stream.close()
+
+    def fileno(self) -> int:
+        return cast(
+            "int",
+            self.descriptor if self.descriptor is not None else self.stream.fileno(),
+        )
+
+    def read(self, size: int) -> bytes:
+        del size
+        return cast("bytes", self.payload)
+
+
+@pytest.mark.parametrize("kind", ["str", "list", "subclass"])
+def test_profile_foreign_stream_byte_receipt_rejected_before_length(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Forged stream bytes cannot execute caller-owned byte hooks."""
+    source = tmp_path / "profile.json"
+    _ = source.write_bytes(b"{}")
+    original_fdopen = os.fdopen
+
+    class ForeignBytes(bytes):
+        @override
+        def __len__(self) -> int:
+            raise AssertionError("foreign byte length hook executed")
+
+    receipts: dict[str, object] = {
+        "str": "{}",
+        "list": list(b"{}"),
+        "subclass": ForeignBytes(b"{}"),
+    }
+
+    def forged_fdopen(fd: int, mode: str) -> BinaryIO:
+        stream = cast("BinaryIO", original_fdopen(fd, mode))
+        return cast(
+            "BinaryIO", cast("object", _ProfileForgedStream(stream, receipts[kind]))
+        )
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(validator.ProfileValidationError, match="native byte"):
+        _ = validator.load_document(source)
+
+
+@pytest.mark.parametrize("receipt", [True, -1, 3.0])
+def test_profile_foreign_stream_descriptor_rejected_before_stat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A forged stream fileno must never reach os.fstat."""
+    source = tmp_path / "profile.json"
+    _ = source.write_bytes(b"{}")
+    original_fdopen = os.fdopen
+
+    def forged_fdopen(fd: int, mode: str) -> BinaryIO:
+        stream = cast("BinaryIO", original_fdopen(fd, mode))
+        return cast(
+            "BinaryIO", cast("object", _ProfileForgedStream(stream, b"{}", receipt))
+        )
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(validator.ProfileValidationError, match="native descriptor"):
+        _ = validator.load_document(source)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, validator.ProfileValidationError])
+def test_profile_foreign_cli_exception_formatter_not_invoked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """The CLI cannot call foreign error subclass string formatters."""
+
+    class ForeignError(fault_type):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign profile CLI error formatter executed")
+
+    fault = ForeignError("unsafe diagnostic")
+
+    def fail_validate(_document: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(validator, "validate_document", fail_validate)
+    monkeypatch.setattr(sys, "argv", ["target_profile", str(tmp_path / "profile.json")])
+    _ = (tmp_path / "profile.json").write_bytes(b"{}")
+    assert validator.main() == 1
+    assert "ForeignError" in capsys.readouterr().err

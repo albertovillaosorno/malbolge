@@ -59,7 +59,11 @@ validator using duplicate-key-rejecting JSON parsing. Document loading
 requires a stable, non-redirected regular file, reads at most 1 MiB through a
 descriptor with no-follow and nonblocking opening where supported, and checks
 inode, extent, and write-time evidence before and after the read. Replacement
-or mutation fails closed. File loading rejects
+or mutation fails closed. Host status receipts must be exact native stat
+results, redirect verdicts exact booleans, opened descriptors nonnegative native
+integers, and stream reads exact native bytes before any caller-owned hooks are
+inspected. These checks establish identity during reads, not immutability after
+validation. File loading rejects
 invalid UTF-8 as a typed profile-validation failure before JSON admission.
 Decoder failures retain their original cause, and only native decoder errors
 contribute diagnostic text; foreign exception formatters are never invoked.

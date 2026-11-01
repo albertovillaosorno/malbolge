@@ -339,13 +339,15 @@ def _validated_profile_path(value: object) -> Path:
     return value
 
 
-def _profile_identity(status: os.stat_result) -> tuple[int, int, int, int, int]:
+def _profile_identity(status: object) -> tuple[int, int, int, int, int]:
     """Require regular input and retain mutation/replacement evidence.
 
     Returns:
         Device, inode, size, mtime, and ctime for one regular input.
 
     """
+    if type(status) is not os.stat_result:
+        _fail("target-profile document requires native stat receipt")
     if not S_ISREG(status.st_mode):
         _fail("target-profile document must be a regular file")
     if status.st_size > MAX_DOCUMENT_BYTES:
@@ -359,11 +361,31 @@ def _profile_identity(status: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
+def _require_profile_unredirected(path: Path) -> None:
+    """Require exact host booleans before deciding whether a path redirects."""
+    symlink = path.is_symlink()
+    if type(symlink) is not bool:
+        _fail("target-profile document requires native redirect receipt")
+    if symlink:
+        _fail("target-profile document path must not redirect")
+    junction = path.is_junction()
+    if type(junction) is not bool:
+        _fail("target-profile document requires native redirect receipt")
+    if junction:
+        _fail("target-profile document path must not redirect")
+
+
 def _check_profile_parents(path: Path) -> None:
     """Do not admit profile document paths through redirected directories."""
     for parent in path.parents:
-        if parent.is_symlink() or parent.is_junction():
-            _fail("target-profile document path must not redirect")
+        _require_profile_unredirected(parent)
+
+
+def _profile_descriptor(value: object) -> int:
+    """Reject forged or unbound descriptors before native file operations."""
+    if type(value) is not int or value < 0:
+        _fail("target-profile document requires native descriptor")
+    return value
 
 
 def _read_profile_bytes(path: Path) -> bytes:
@@ -376,15 +398,14 @@ def _read_profile_bytes(path: Path) -> bytes:
     _check_profile_parents(path)
     admitted = path.lstat()
     expected = _profile_identity(admitted)
-    if path.is_symlink() or path.is_junction():
-        _fail("target-profile document path must not redirect")
+    _require_profile_unredirected(path)
     flags = (
         os.O_RDONLY
         | getattr(os, "O_NOFOLLOW", 0)
         | getattr(os, "O_NONBLOCK", 0)
         | getattr(os, "O_BINARY", 0)
     )
-    descriptor = os.open(path, flags)
+    descriptor = _profile_descriptor(os.open(path, flags))
     try:
         stream = os.fdopen(descriptor, "rb")
     except BaseException:
@@ -395,12 +416,18 @@ def _read_profile_bytes(path: Path) -> bytes:
             pass
         raise
     with stream:
-        if _profile_identity(os.fstat(stream.fileno())) != expected:
+        if (
+            _profile_identity(os.fstat(_profile_descriptor(stream.fileno())))
+            != expected
+        ):
             _fail("target-profile document changed before read")
         data = stream.read(MAX_DOCUMENT_BYTES + 1)
+        if type(data) is not bytes:
+            _fail("target-profile document requires native byte receipt")
         if (
             len(data) != admitted.st_size
-            or _profile_identity(os.fstat(stream.fileno())) != expected
+            or _profile_identity(os.fstat(_profile_descriptor(stream.fileno())))
+            != expected
             or _profile_identity(path.lstat()) != expected
         ):
             _fail("target-profile document changed during read")
@@ -1381,7 +1408,12 @@ def main() -> int:
         profile = _profile_argument(sys.argv[1:])
         validate_document(load_document(profile))
     except (OSError, ProfileValidationError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        detail = (
+            str(error)
+            if type(error) in (OSError, ProfileValidationError)
+            else type(error).__name__
+        )
+        _ = sys.stderr.write(f"error: {detail}\n")
         return 1
     _ = sys.stdout.write(f"target profile valid: {profile}\n")
     return 0
