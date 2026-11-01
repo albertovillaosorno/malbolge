@@ -520,6 +520,39 @@ fn verified_output_basename(path: &Path) -> Result<&str, String> {
         .ok_or_else(|| String::from("output needs a UTF-8 filename"))
 }
 
+fn verify_cleaned_publication(
+    path: &Path,
+    bytes: &[u8],
+    file: &mut fs::File,
+    resolved_target: Option<&Path>,
+) -> Result<(), String> {
+    let target = resolved_target.ok_or("missing original resolved output path")?;
+    let final_metadata = file
+        .metadata()
+        .map_err(|error| format!("cannot inspect cleaned output: {error}"))?;
+    verify_fsynced_stage(path, file, bytes, (&final_metadata, 1, target))
+}
+
+fn cleanup_original_stage(staged: &Path, opened: io::Result<fs::Metadata>) -> Result<(), String> {
+    match (opened, fs::symlink_metadata(staged)) {
+        (Ok(original), Ok(named)) if canonical_wire_metadata_matches(&original, &named) => {
+            fs::remove_file(staged)
+                .map_err(|error| format!("stage cleanup failed after publication: {error}"))
+        }
+        // A pre-unlinked stage is safe only if its inode now has the final link.
+        (Ok(original), Err(error))
+            if error.kind() == io::ErrorKind::NotFound
+                && cfg!(any(unix, windows))
+                && has_exact_link_count(&original, 1) =>
+        {
+            Ok(())
+        }
+        (Ok(_), Ok(_)) => Err(String::from("stage cleanup rejected substituted pathname")),
+        (Ok(_), Err(error)) => Err(format!("stage cleanup cannot inspect path: {error}")),
+        (Err(error), _) => Err(format!("stage cleanup cannot inspect inode: {error}")),
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "inject independently scheduled stage cleanup race after final admission"
@@ -536,6 +569,7 @@ fn publish_new_with_postverify_hook(
     // A crashed publisher may leave its stage behind, and PIDs get recycled.
     // Create only a fresh path; never remove or reuse any collided stage.
     let (staged, mut file) = open_fresh_stage(path, name)?;
+    let mut resolved_final_path = None;
     let outcome = (|| {
         // Capture the originally opened stage location before any externally
         // observable write or verification hooks. Stable symlinked parents are
@@ -543,6 +577,7 @@ fn publish_new_with_postverify_hook(
         let resolved_stage = fs::canonicalize(&staged)
             .map_err(|error| format!("cannot resolve original stage: {error}"))?;
         let resolved_target = resolved_stage.with_file_name(name);
+        resolved_final_path = Some(resolved_target.clone());
         file.write_all(bytes)
             .map_err(|error| format!("stage write failed: {error}"))?;
         file.sync_all()
@@ -587,30 +622,22 @@ fn publish_new_with_postverify_hook(
     })();
     // Retire only our own original staging inode. A stage pathname swapped
     // after the exclusive create belongs to the other writer and is preserved.
-    let opened = file.metadata();
-    drop(file);
-    let cleanup = match (opened, fs::symlink_metadata(&staged)) {
-        (Ok(original), Ok(named)) if canonical_wire_metadata_matches(&original, &named) => {
-            fs::remove_file(&staged)
-                .map_err(|error| format!("stage cleanup failed after publication: {error}"))
-        }
-        // Another writer may have already unlinked our stage. That is safe
-        // only if the original inode now has exactly the final target link.
-        (Ok(original), Err(error))
-            if error.kind() == io::ErrorKind::NotFound
-                && cfg!(any(unix, windows))
-                && has_exact_link_count(&original, 1) =>
-        {
-            Ok(())
-        }
-        (Ok(_), Ok(_)) => Err(String::from("stage cleanup rejected substituted pathname")),
-        (Ok(_), Err(error)) => Err(format!("stage cleanup cannot inspect path: {error}")),
-        (Err(error), _) => Err(format!("stage cleanup cannot inspect inode: {error}")),
+    let cleanup = cleanup_original_stage(&staged, file.metadata());
+    // Unlinking the stage changes inode ctime and its link count. Re-admit the
+    // original descriptor and final pathname *after* cleanup, requiring the
+    // final output to be its only surviving hard link. A foreign alias created
+    // after the last pre-cleanup verification must not authorize success.
+    let post_cleanup = if outcome.is_ok() && cleanup.is_ok() {
+        verify_cleaned_publication(path, bytes, &mut file, resolved_final_path.as_deref())
+    } else {
+        Ok(())
     };
+    drop(file);
     // A committed final file survives a failed cleanup, but a surviving stage
-    // is another writable hard link. Do not report successful publication.
+    // or external alias remains a writable hard link. Never claim success
+    // without final identity, byte and link-count admission after cleanup.
     // Never remove a foreign staging path; retain any primary publication error.
-    outcome.and(cleanup)
+    outcome.and(cleanup).and(post_cleanup)
 }
 
 // On Linux/Android use nonblocking open first, *then* inspect the actual

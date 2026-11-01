@@ -650,6 +650,102 @@ fn postverification_stage_substitution_must_not_report_success() -> Result<(), S
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "a late hard link must not survive a successful cleanup"
+)]
+fn postverification_new_hard_link_must_not_report_success() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let alias = fixture.0.join("late-foreign-stage-link");
+    let result = super::publish_new_with_postverify_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        super::sync_published_directory,
+        |saved_stage| fs::hard_link(saved_stage, &alias).map_err(|error| error.to_string()),
+    );
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("external hard link")),
+        "a late external hard link falsely succeeded: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert_eq!(fs::read(&alias).map_err(|error| error.to_string())?, b"ctO");
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "the final output must still match its verified bytes after cleanup"
+)]
+fn postverification_final_rewrite_must_not_report_success() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let result = super::publish_new_with_postverify_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        super::sync_published_directory,
+        |_saved_stage| fs::write(&output, b"ctX").map_err(|error| error.to_string()),
+    );
+    assert!(
+        result.is_err(),
+        "a rewritten final output falsely succeeded: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctX"
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "an equal-byte substituted final inode cannot be called verified"
+)]
+fn postverification_final_inode_substitution_must_not_report_success() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let foreign = fixture.0.join("equal-byte-foreign-final");
+    fs::write(&foreign, b"ctO").map_err(|error| error.to_string())?;
+    let result = super::publish_new_with_postverify_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        super::sync_published_directory,
+        |_saved_stage| {
+            fs::remove_file(&output).map_err(|error| error.to_string())?;
+            fs::rename(&foreign, &output).map_err(|error| error.to_string())
+        },
+    );
+    assert!(
+        result.is_err(),
+        "an equal-byte final inode replacement falsely succeeded: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "a substituted staging path cannot authorize publication"
 )]
 fn stage_replaced_after_final_sync_cannot_report_success() -> Result<(), String> {
