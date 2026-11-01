@@ -202,6 +202,51 @@ def test_inspection_requires_completed_neutral_aliases(tmp_path: Path) -> None:
     assert ready.path == root / "jig-bin/clang.bin"
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        (operation, fault_type)
+        for operation in ("is_symlink", "is_junction", "lstat")
+        for fault_type in (TypeError, RuntimeError)
+    ],
+)
+@pytest.mark.parametrize("target_kind", ["marker", "runtime", "resource"])
+def test_llvm_inspection_host_status_faults_are_not_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failure: tuple[str, type[Exception]],
+    target_kind: str,
+) -> None:
+    """Bad host status adapters must not turn readiness into a traceback."""
+    operation, fault_type = failure
+    root = llvm_validation.import_linux_llvm(
+        tmp_path, _host_observation(tmp_path)
+    )
+    target = {
+        "marker": root / llvm_validation.LLVM_IMPORT_MARKER,
+        "runtime": root / "jig-bin/clang.bin",
+        "resource": root / "lib/clang/22",
+    }[target_kind]
+    original = {
+        "is_symlink": Path.is_symlink,
+        "is_junction": Path.is_junction,
+        "lstat": Path.lstat,
+    }[operation]
+    fault = fault_type("injected LLVM runtime status failure")
+
+    def fail_status(path: Path) -> object:
+        if path == target:
+            raise fault
+        return original(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, fail_status)
+        readiness = llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM)
+    assert not readiness.ready
+    assert readiness.detail.endswith("aliases are absent")
+
+
 def test_wrong_host_version_is_not_admitted() -> None:
     """A different host Clang release cannot satisfy the pinned toolchain."""
     assert llvm_validation.llvm_version_matches("clang version 22.1.8") is True

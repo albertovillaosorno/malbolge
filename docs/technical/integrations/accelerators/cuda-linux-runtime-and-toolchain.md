@@ -78,7 +78,10 @@ before download, rechecks physical paths before publication and cleanup, and
 refuses linked destination leaves. Marker readiness rejects host stream-wrapper
 errors and closes the raw descriptor if wrapping fails. These pathname checks
 are fail-closed preflights, not atomic protection from concurrent directory
-swaps by an independently privileged process.
+swaps by an independently privileged process. Read-only LLVM runtime
+inspection likewise fails closed as unavailable when host filesystem status
+adapters raise unexpected type or runtime errors while checking the marker,
+neutral executable aliases, or resource directories.
 
 The P0 is complete. Remaining Windows `.exe`/`.dll`, COFF, sanitizer, and
 adapter paths are explicitly Windows-scoped evidence or implementation branches

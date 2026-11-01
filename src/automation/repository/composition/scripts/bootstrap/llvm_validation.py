@@ -99,21 +99,21 @@ def _unlinked_path(path: Path) -> bool:
             part.is_symlink() or part.is_junction()
             for part in (path, *path.parents)
         )
-    except OSError, ValueError:
+    except OSError, ValueError, TypeError, RuntimeError:
         return False
 
 
 def _physical_file(path: Path) -> bool:
     try:
         return _unlinked_path(path) and S_ISREG(path.lstat().st_mode)
-    except OSError, ValueError:
+    except OSError, ValueError, TypeError, RuntimeError:
         return False
 
 
 def _physical_directory(path: Path) -> bool:
     try:
         return _unlinked_path(path) and S_ISDIR(path.lstat().st_mode)
-    except OSError, ValueError:
+    except OSError, ValueError, TypeError, RuntimeError:
         return False
 
 
