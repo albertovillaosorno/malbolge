@@ -120,8 +120,10 @@ MUTABLE_PARENT_MKDIR_CALLS = 2
 AFTER_CHECKPOINT = "after-checkpoint"
 AFTER_CHECKPOINT_PUBLISH = "after-checkpoint-publish"
 AFTER_CHECKPOINT_SYNC = "after-checkpoint-sync"
+AFTER_CHECKPOINT_CLEANUP = "after-checkpoint-cleanup"
 AFTER_PARTIAL_PUBLISH = "after-partial-publish"
 AFTER_PARTIAL_SYNC = "after-partial-sync"
+AFTER_PARTIAL_CLEANUP = "after-partial-cleanup"
 AFTER_SIDECAR_REPLACE = "after-sidecar-replace"
 AFTER_SIDECAR_SYNC = "after-sidecar-sync"
 BEFORE_CHECKPOINT_FILE_SYNC = "before-checkpoint-file-sync"
@@ -136,11 +138,13 @@ CRASH_BOUNDARIES = (
     BEFORE_CHECKPOINT_PUBLISH,
     AFTER_CHECKPOINT_PUBLISH,
     AFTER_CHECKPOINT_SYNC,
+    AFTER_CHECKPOINT_CLEANUP,
     AFTER_CHECKPOINT,
     BEFORE_PARTIAL_FILE_SYNC,
     BEFORE_PARTIAL_PUBLISH,
     AFTER_PARTIAL_PUBLISH,
     AFTER_PARTIAL_SYNC,
+    AFTER_PARTIAL_CLEANUP,
     BEFORE_SIDECAR_FILE_SYNC,
     BEFORE_SIDECAR_REPLACE,
     AFTER_SIDECAR_REPLACE,
@@ -229,6 +233,7 @@ boundary = sys.argv[5]
 original_write_immutable = progress._write_immutable
 original_publish_immutable_payload = progress._publish_immutable_payload
 original_confirm_durability = progress._confirm_publication_durability
+original_cleanup_immutable = progress._cleanup_immutable_temporary
 original_fsync = os.fsync
 original_replace = Path.replace
 publication_count = 0
@@ -289,6 +294,16 @@ def confirm_then_maybe_crash(published_path, *, context, platform=os.name):
         os._exit(exit_code)
     return result
 
+def cleanup_then_maybe_crash(temporary, destination, *, durable, identity):
+    result = original_cleanup_immutable(
+        temporary, destination, durable=durable, identity=identity
+    )
+    if durable and boundary == "after-checkpoint-cleanup" and publication_count == 1:
+        os._exit(exit_code)
+    if durable and boundary == "after-partial-cleanup" and publication_count == 2:
+        os._exit(exit_code)
+    return result
+
 def crash_before_sidecar(_sidecar):
     os._exit(exit_code)
 
@@ -302,6 +317,7 @@ def replace_then_maybe_crash(source, destination):
 
 progress._publish_immutable_payload = publish_then_maybe_crash
 progress._confirm_publication_durability = confirm_then_maybe_crash
+progress._cleanup_immutable_temporary = cleanup_then_maybe_crash
 progress._write_immutable = write_then_maybe_crash
 os.fsync = fsync_then_maybe_crash
 if boundary == "before-sidecar":
@@ -11580,6 +11596,7 @@ def test_process_crash_preserves_last_committed_generation(
         BEFORE_CHECKPOINT_PUBLISH,
         AFTER_CHECKPOINT_PUBLISH,
         AFTER_CHECKPOINT_SYNC,
+        AFTER_CHECKPOINT_CLEANUP,
         AFTER_CHECKPOINT,
         BEFORE_PARTIAL_FILE_SYNC,
         BEFORE_PARTIAL_PUBLISH,

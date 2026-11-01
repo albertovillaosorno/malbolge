@@ -1420,6 +1420,7 @@ jobs that requested resumability.
   before file synchronization for checkpoint, partial, and sidecar writes;
   immediately before or after checkpoint/partial atomic publication; after
   checkpoint/partial directory sync but before immutable temporary cleanup;
+  after immutable staging cleanup but before its second POSIX directory sync;
   after a durable checkpoint; immediately before sidecar publication; after the
   mutable sidecar temporary file is durable but before atomic pointer
   replacement; after replacement but before directory durability confirmation;
