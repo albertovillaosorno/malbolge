@@ -1820,16 +1820,151 @@ def test_measured_rss_workspace_unexpected_host_fault_is_typed(
     assert caught.value.__cause__ is fault
 
 
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "outside-root",
+        "root-itself",
+        "wrong-prefix",
+        "symlink",
+        "regular-file",
+        "occupied",
+        "relative",
+        "foreign-string",
+        "foreign-type",
+    ],
+)
+def test_measured_rss_rejects_forged_directory_receipt_before_launch_or_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """The temporary context's path is not authority to run or remove files."""
+    workspace = tmp_path / ".temp"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    candidate = workspace / "arena-child-rss-forged"
+    if kind == "outside-root":
+        candidate = outside
+    elif kind == "root-itself":
+        candidate = workspace
+    elif kind == "wrong-prefix":
+        candidate = workspace / "other-directory"
+        candidate.mkdir()
+    elif kind == "symlink":
+        candidate.symlink_to(outside, target_is_directory=True)
+    elif kind == "regular-file":
+        candidate.write_bytes(b"preserve")
+    else:
+        candidate.mkdir()
+        if kind == "occupied":
+            (candidate / "preserve.txt").write_bytes(b"preserve")
+
+    class ForeignString(str):
+        pass
+
+    receipt: object = str(candidate)
+    if kind == "relative":
+        receipt = candidate.name
+    elif kind == "foreign-string":
+        receipt = ForeignString(str(candidate))
+    elif kind == "foreign-type":
+        receipt = candidate
+    cleanup: list[str] = []
+
+    class ForgedDirectory:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> object:
+            return receipt
+
+        def __exit__(self, *_args: object) -> None:
+            cleanup.append("removed")
+
+    def forbidden_launch(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unadmitted RSS path reached the subprocess launcher")
+
+    monkeypatch.setattr(target_process, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_process, "require_child_rss_measurement", lambda: None)
+    monkeypatch.setattr(target_process, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(target_process.tempfile, "TemporaryDirectory", ForgedDirectory)
+    monkeypatch.setattr(target_process, "_run", forbidden_launch)
+    with pytest.raises(target_process.TargetProcessError, match="RSS directory"):
+        target_process.invoke_limited_measured(_child("pass"))
+    assert cleanup == []
+    assert outside.is_dir()
+    if kind == "regular-file":
+        assert candidate.read_bytes() == b"preserve"
+    if kind == "occupied":
+        assert (candidate / "preserve.txt").read_bytes() == b"preserve"
+
+
+@pytest.mark.parametrize("failed_child", [False, True])
+def test_measured_rss_cleanup_boolean_receipt_does_not_suppress_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failed_child: bool,
+) -> None:
+    """A forged context return cannot mask a child verdict or certify RSS."""
+    directory = _rss_fixture_directory(tmp_path, monkeypatch)
+    primary = target_process.TargetProcessError("original RSS child rejection")
+
+    class ForgedCleanup:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> str:
+            return directory
+
+        def __exit__(self, *_args: object) -> bool:
+            return True
+
+    def run(command: list[str], **_kwargs: object) -> sp.CompletedProcess[bytes]:
+        if failed_child:
+            raise primary
+        return sp.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr(target_process.tempfile, "TemporaryDirectory", ForgedCleanup)
+    monkeypatch.setattr(target_process, "require_child_rss_measurement", lambda: None)
+    monkeypatch.setattr(target_process, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(target_process, "_run", run)
+    monkeypatch.setattr(target_process, "_rss_report_bytes", lambda _path: b"10\n")
+    if failed_child:
+        with pytest.raises(
+            target_process.TargetProcessError, match="original RSS"
+        ) as caught:
+            target_process.invoke_limited_measured(_child("pass"))
+        assert caught.value is primary
+        assert any("cleanup returned invalid" in note for note in primary.__notes__)
+    else:
+        with pytest.raises(target_process.TargetProcessError, match="RSS directory"):
+            target_process.invoke_limited_measured(_child("pass"))
+
+
+def _rss_fixture_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Give fault-injecting contexts a real empty in-root cleanup target."""
+    workspace = tmp_path / ".temp"
+    workspace.mkdir(exist_ok=True)
+    folder = workspace / "arena-child-rss-injected"
+    folder.mkdir(exist_ok=True)
+    monkeypatch.setattr(target_process, "_ROOT", tmp_path)
+    return str(folder)
+
+
 @pytest.mark.parametrize("phase", ["constructor", "enter", "exit"])
 @pytest.mark.parametrize(
     "fault_class", [IndexError, _UnexpectedTargetHostFault]
 )
 def test_measured_rss_unexpected_directory_fault_is_typed(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     phase: str,
     fault_class: type[Exception],
 ) -> None:
     """Unexpected temp-directory setup and close faults remain typed."""
+    directory = _rss_fixture_directory(tmp_path, monkeypatch)
     fault = fault_class("unexpected temporary directory failure")
 
     class BrokenDirectory:
@@ -1841,7 +1976,7 @@ def test_measured_rss_unexpected_directory_fault_is_typed(
         def __enter__(self) -> str:
             if phase == "enter":
                 raise fault
-            return "/ignored-test-receipt-directory"
+            return directory
 
         def __exit__(self, *args: object) -> None:
             del args
@@ -1878,10 +2013,12 @@ def test_measured_rss_unexpected_directory_fault_is_typed(
     "fault_class", [IndexError, _UnexpectedTargetHostFault]
 )
 def test_measured_rss_unexpected_cleanup_preserves_primary_child_failure(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fault_class: type[Exception],
 ) -> None:
     """Unexpected RSS cleanup faults cannot replace the child failure."""
+    directory = _rss_fixture_directory(tmp_path, monkeypatch)
     fault = fault_class("unexpected RSS cleanup")
     primary = target_process.TargetProcessError("original RSS child error")
 
@@ -1890,7 +2027,7 @@ def test_measured_rss_unexpected_cleanup_preserves_primary_child_failure(
             del args, kwargs
 
         def __enter__(self) -> str:
-            return "/ignored-test-receipt-directory"
+            return directory
 
         def __exit__(self, *args: object) -> None:
             del args
@@ -1921,10 +2058,12 @@ def test_measured_rss_unexpected_cleanup_preserves_primary_child_failure(
 
 @pytest.mark.parametrize("kind", ["typed", "timeout"])
 def test_measured_rss_transparent_directory_preserves_primary_child_exception(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     kind: str,
 ) -> None:
     """RSS directory admission cannot relabel a normal child rejection."""
+    directory = _rss_fixture_directory(tmp_path, monkeypatch)
     primary: Exception = (
         target_process.TargetProcessError("original target child failure")
         if kind == "typed"
@@ -1936,7 +2075,7 @@ def test_measured_rss_transparent_directory_preserves_primary_child_exception(
             del args, kwargs
 
         def __enter__(self) -> str:
-            return "/ignored-test-receipt-directory"
+            return directory
 
         def __exit__(self, *args: object) -> None:
             del args
@@ -1962,10 +2101,12 @@ def test_measured_rss_transparent_directory_preserves_primary_child_exception(
 
 @pytest.mark.parametrize("phase", ["constructor", "enter", "exit"])
 def test_measured_rss_directory_fault_is_typed(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     phase: str,
 ) -> None:
     """Storage setup/cleanup failures cannot escape raw host exceptions."""
+    directory = _rss_fixture_directory(tmp_path, monkeypatch)
 
     class BrokenDirectory:
         def __init__(self, *args: object, **kwargs: object) -> None:
@@ -1976,7 +2117,7 @@ def test_measured_rss_directory_fault_is_typed(
         def __enter__(self) -> str:
             if phase == "enter":
                 raise OSError("injected RSS directory entry failure")
-            return "/ignored-test-receipt-directory"
+            return directory
 
         def __exit__(self, *args: object) -> None:
             _ = args
@@ -2000,16 +2141,18 @@ def test_measured_rss_directory_fault_is_typed(
 
 
 def test_measured_rss_cleanup_preserves_primary_child_failure(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A secondary temp cleanup error cannot hide a primary subprocess error."""
+    directory = _rss_fixture_directory(tmp_path, monkeypatch)
 
     class BrokenCleanupDirectory:
         def __init__(self, *args: object, **kwargs: object) -> None:
             _ = (args, kwargs)
 
         def __enter__(self) -> str:
-            return "/ignored-test-receipt-directory"
+            return directory
 
         def __exit__(self, *args: object) -> None:
             _ = args
@@ -2038,17 +2181,19 @@ def test_measured_rss_cleanup_preserves_primary_child_failure(
     ],
 )
 def test_measured_rss_cleanup_preserves_primary_under_hostile_diagnostic(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     cleanup_error: RuntimeError,
 ) -> None:
     """Foreign cleanup errors cannot mask a primary limited-child failure."""
+    directory = _rss_fixture_directory(tmp_path, monkeypatch)
 
     class BrokenCleanupDirectory:
         def __init__(self, *args: object, **kwargs: object) -> None:
             del args, kwargs
 
         def __enter__(self) -> str:
-            return "/ignored-test-receipt-directory"
+            return directory
 
         def __exit__(self, *args: object) -> None:
             del args

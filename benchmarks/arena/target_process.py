@@ -40,11 +40,15 @@ import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 from time import monotonic
-from typing import Never
+from typing import TYPE_CHECKING, Never
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 _ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TIMEOUT_SECONDS = 15
@@ -739,6 +743,58 @@ def _rss_workspace() -> Path:
     return workspace
 
 
+def _admit_rss_directory_receipt(receipt: object, workspace: Path) -> Path:
+    """Admit a fresh physical RSS directory before process launch or cleanup.
+
+    This checks the current pathname, not race-free filesystem ownership.
+    """
+    if type(receipt) is not str or not receipt:
+        _fail("bounded target RSS directory returned invalid path receipt")
+    folder = Path(receipt)
+    prefix = "arena-child-rss-"
+    if (
+        not folder.is_absolute()
+        or str(folder) != receipt
+        or folder.parent != workspace
+        or not folder.name.startswith(prefix)
+        or folder.name == prefix
+    ):
+        _fail("bounded target RSS directory returned foreign path receipt")
+    try:
+        details = folder.lstat()
+        if type(details) is not os.stat_result or not S_ISDIR(details.st_mode):
+            _fail("bounded target RSS directory must be physical")
+        with os.scandir(folder) as entries:
+            if next(entries, None) is not None:
+                _fail("bounded target RSS directory must be initially empty")
+    except TargetProcessError:
+        raise
+    except Exception as error:
+        message = "bounded target RSS directory receipt inspection failed"
+        raise TargetProcessError(message) from error
+    return folder
+
+
+@contextmanager
+def _rss_report_directory(workspace: Path) -> Iterator[Path]:
+    """Never pass an unadmitted temp path to recursive context cleanup."""
+    temporary = tempfile.TemporaryDirectory(dir=workspace, prefix="arena-child-rss-")
+    receipt = temporary.__enter__()
+    folder = _admit_rss_directory_receipt(receipt, workspace)
+    try:
+        yield folder
+    except BaseException as primary:
+        cleanup = temporary.__exit__(type(primary), primary, primary.__traceback__)
+        if cleanup is not None:
+            BaseException.add_note(
+                primary, "bounded target RSS directory cleanup returned invalid receipt"
+            )
+        raise
+    else:
+        if temporary.__exit__(None, None, None) is not None:
+            _fail("bounded target RSS directory cleanup returned invalid receipt")
+
+
 def _measured_limited(
     command: list[str],
     *,
@@ -756,9 +812,7 @@ def _measured_limited(
         _fail("bounded target peak RSS requires GNU time")
     primary: BaseException | None = None
     try:
-        with tempfile.TemporaryDirectory(
-            dir=workspace, prefix="arena-child-rss-"
-        ) as folder:
+        with _rss_report_directory(workspace) as folder:
             try:
                 report = Path(folder) / "rss.txt"
                 measured_command = [

@@ -464,6 +464,16 @@ source-emitter process, primary normative VM run and measured second verifier
 VM run; GNU time reports Linux kernel
 `ru_maxrss` in KiB, with explicit exact conversion to `peak_rss_bytes`.
 
+The measured-child transport also admits GNU time's freshly allocated RSS
+report-directory receipt before launching a child or invoking recursive cleanup.
+The path must be exact native absolute text naming an initially empty physical
+directory immediately under the repository's physical `.temp` root with the
+expected staging prefix. A redirected, linked, occupied, or nonnative receipt
+fails without trusting the temporary context's cleanup method. Red-first
+forgery regressions demonstrate that the previous unchecked return could reach
+a subprocess launch with a foreign report path. These checks cannot prevent
+atomic filesystem races or certify the host's temporary-directory allocator.
+
 The observed cost is the maximum of those **three per-child** peaks, not
 the aggregate resident memory of a compiler session or the sum across
 concurrent processes. Every accepted candidate must have three complete,
