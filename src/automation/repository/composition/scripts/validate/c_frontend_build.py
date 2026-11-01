@@ -98,14 +98,34 @@ def _run(
         _fail(f"failed to execute {command[0]}: {error}")
 
 
+def _require_physical_directory(path: Path, label: str) -> None:
+    """Require unlinked directory ancestry for frontend build destinations."""
+    for component in (path, *path.parents):
+        if component.is_symlink() or component.is_junction():
+            _fail(f"{label} directory must not redirect: {component}")
+        if component.exists() and not component.is_dir():
+            _fail(f"{label} path must be a directory: {component}")
+
+
+def _require_private_build_script(path: Path) -> None:
+    if path.is_symlink() or path.is_junction():
+        _fail(f"build cache script must not redirect: {path}")
+    if path.exists() and (not path.is_file() or path.lstat().st_nlink != 1):
+        _fail(f"build cache script must be a private regular file: {path}")
+
+
 def _write_build_script(
     tools: tidy_build.VisualStudioTools,
     identity: tidy_toolchain.ToolchainIdentity,
 ) -> Path:
+    _require_physical_directory(BUILD_ROOT, "build cache")
     BUILD_ROOT.mkdir(parents=True, exist_ok=True)
     build_dir = BUILD_ROOT / "build"
+    _require_physical_directory(build_dir, "build cache")
     build_dir.mkdir(parents=True, exist_ok=True)
+    _require_physical_directory(build_dir, "build cache")
     script = BUILD_ROOT / "build.cmd"
+    _require_private_build_script(script)
     configure = (
         f'"{_batch_path(tools.cmake)}" '
         f'-S "{_batch_path(SOURCE_ROOT)}" '
@@ -139,6 +159,8 @@ def _write_build_script(
         "exit /b %errorlevel%",
     ]
     content = "\r\n".join(lines) + "\r\n"
+    _require_physical_directory(BUILD_ROOT, "build cache")
+    _require_private_build_script(script)
     written = script.write_text(content, encoding="utf-8", newline="")
     if type(written) is not int or written != len(content):
         _fail("C frontend build script has invalid write count")
@@ -146,10 +168,16 @@ def _write_build_script(
 
 
 def _build_windows(identity: tidy_toolchain.ToolchainIdentity) -> None:
+    output = OUTPUT_ROOT
+    _require_physical_directory(output, "frontend output")
+    output.mkdir(parents=True, exist_ok=True)
+    _require_physical_directory(output, "frontend output")
     tools = tidy_build.visual_studio_tools()
     script = _write_build_script(tools, identity)
     windows = Path(os.environ.get("SYSTEMROOT", "C:/Windows"))
     command_shell = windows / "System32" / "cmd.exe"
+    _require_physical_directory(BUILD_ROOT, "build cache")
+    _require_physical_directory(output, "frontend output")
     completed = _run([str(command_shell), "/d", "/c", str(script.resolve())])
     if completed.returncode != 0:
         _fail(f"C frontend build failed with status {completed.returncode}")
@@ -165,8 +193,15 @@ def build() -> None:
         _build_windows(identity)
     else:
         _fail(f"unsupported C frontend build platform: {identity.platform_id}")
+    _require_physical_directory(EXECUTABLE.parent, "frontend output")
     if not EXECUTABLE.is_file():
         _fail(f"C frontend executable missing: {EXECUTABLE}")
+    if (
+        EXECUTABLE.is_symlink()
+        or EXECUTABLE.is_junction()
+        or EXECUTABLE.lstat().st_nlink != 1
+    ):
+        _fail(f"C frontend executable must be a private regular file: {EXECUTABLE}")
     version = _run([str(EXECUTABLE), "--version"], capture=True)
     expected = f"malbolge-c-frontend 1 LLVM {identity.llvm_version}"
     if version.returncode != 0 or version.stdout.strip() != expected:

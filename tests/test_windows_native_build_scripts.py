@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from subprocess import CompletedProcess
 from typing import cast
 
 import pytest
@@ -382,3 +383,227 @@ def test_windows_tidy_build_rejects_redirected_plugin_output_before_command(
     assert not calls
     assert sentinel.read_bytes() == b"foreign data"
     assert list(external.iterdir()) == [sentinel]
+
+
+@pytest.mark.parametrize(
+    "path_kind", ["parent-symlink", "leaf-symlink", "parent-file", "leaf-file"]
+)
+def test_windows_frontend_script_rejects_unphysical_build_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_kind: str,
+) -> None:
+    """Frontend scripts cannot write through redirected or invalid cache roots."""
+    build_root = tmp_path / "cache/build"
+    monkeypatch.setattr(c_frontend_build, "BUILD_ROOT", build_root)
+    selected = build_root.parent if path_kind.startswith("parent") else build_root
+    selected.parent.mkdir(parents=True, exist_ok=True)
+    external = tmp_path / "foreign"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    _ = sentinel.write_bytes(b"foreign data")
+    if path_kind.endswith("symlink"):
+        try:
+            selected.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+    else:
+        _ = selected.write_bytes(b"not a directory")
+    identity = tidy_toolchain.load_identity(
+        root=tmp_path, platform_id=tidy_toolchain.WINDOWS_PLATFORM
+    )
+    builder = cast("ScriptBuilder", vars(c_frontend_build)["_write_build_script"])
+    with pytest.raises(c_frontend_build.FrontendBuildError, match="build cache"):
+        _ = builder(_windows_tools(tmp_path), identity)
+    assert sentinel.read_bytes() == b"foreign data"
+    assert list(external.iterdir()) == [sentinel]
+
+
+@pytest.mark.parametrize("link_kind", ["symbolic", "hard"])
+def test_windows_frontend_script_rejects_linked_existing_script(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    link_kind: str,
+) -> None:
+    """An existing build.cmd cannot overwrite foreign scripts through aliases."""
+    build_root = tmp_path / "cache/build"
+    build_root.mkdir(parents=True)
+    monkeypatch.setattr(c_frontend_build, "BUILD_ROOT", build_root)
+    outside = tmp_path / "outside.cmd"
+    _ = outside.write_bytes(b"foreign data")
+    script = build_root / "build.cmd"
+    try:
+        if link_kind == "symbolic":
+            script.symlink_to(outside)
+        else:
+            script.hardlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"file links unavailable: {error}")
+    identity = tidy_toolchain.load_identity(
+        root=tmp_path, platform_id=tidy_toolchain.WINDOWS_PLATFORM
+    )
+    builder = cast("ScriptBuilder", vars(c_frontend_build)["_write_build_script"])
+    with pytest.raises(c_frontend_build.FrontendBuildError, match="build cache"):
+        _ = builder(_windows_tools(tmp_path), identity)
+    assert outside.read_bytes() == b"foreign data"
+    assert script.exists()
+
+
+@pytest.mark.parametrize(
+    "path_kind", ["parent-symlink", "leaf-symlink", "parent-file", "leaf-file"]
+)
+def test_windows_frontend_rejects_unphysical_output_before_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_kind: str,
+) -> None:
+    """Never launch CMake with a redirected frontend output root."""
+    output = tmp_path / ".dependencies/compiler-c-frontend/22.1.8"
+    selected = output.parent if path_kind.startswith("parent") else output
+    selected.parent.mkdir(parents=True, exist_ok=True)
+    external = tmp_path / "foreign"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    _ = sentinel.write_bytes(b"foreign data")
+    if path_kind.endswith("symlink"):
+        try:
+            selected.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+    else:
+        _ = selected.write_bytes(b"not a directory")
+    monkeypatch.setattr(c_frontend_build, "OUTPUT_ROOT", output)
+    monkeypatch.setattr(c_frontend_build, "BUILD_ROOT", tmp_path / "cache")
+    monkeypatch.setattr(
+        tidy_build, "visual_studio_tools", lambda: _windows_tools(tmp_path)
+    )
+    calls: list[list[str]] = []
+
+    def capture_run(
+        command: list[str], *, capture: bool = False
+    ) -> CompletedProcess[str]:
+        _ = capture
+        calls.append(command)
+        return CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(c_frontend_build, "_run", capture_run)
+    identity = tidy_toolchain.load_identity(
+        root=tmp_path, platform_id=tidy_toolchain.WINDOWS_PLATFORM
+    )
+    windows_builder = cast(
+        "Callable[[tidy_toolchain.ToolchainIdentity], None]",
+        vars(c_frontend_build)["_build_windows"],
+    )
+    with pytest.raises(c_frontend_build.FrontendBuildError, match="frontend output"):
+        windows_builder(identity)
+    assert not calls
+    assert sentinel.read_bytes() == b"foreign data"
+    assert list(external.iterdir()) == [sentinel]
+
+
+@pytest.mark.parametrize("link_kind", ["symbolic", "hard"])
+def test_frontend_build_rejects_linked_native_executable_before_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    link_kind: str,
+) -> None:
+    """A forged linked frontend cannot supply the expected version response."""
+    executable = tmp_path / "frontend.exe"
+    external = tmp_path / "foreign.exe"
+    _ = external.write_bytes(b"foreign executable")
+    try:
+        if link_kind == "symbolic":
+            executable.symlink_to(external)
+        else:
+            executable.hardlink_to(external)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"file links unavailable: {error}")
+    monkeypatch.setattr(
+        c_frontend_build, "HOST_PLATFORM_ID", tidy_toolchain.WINDOWS_PLATFORM
+    )
+    monkeypatch.setattr(c_frontend_build, "EXECUTABLE", executable)
+
+    def skip_validation(_identity: tidy_toolchain.ToolchainIdentity) -> None:
+        return None
+
+    monkeypatch.setattr(tidy_toolchain, "validate_installation", skip_validation)
+    monkeypatch.setattr(c_frontend_build, "_build_windows", skip_validation)
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], *, capture: bool = False) -> CompletedProcess[str]:
+        _ = capture
+        calls.append(command)
+        return CompletedProcess(command, 0, "malbolge-c-frontend 1 LLVM 22.1.8", "")
+
+    monkeypatch.setattr(c_frontend_build, "_run", fake_run)
+    with pytest.raises(
+        c_frontend_build.FrontendBuildError, match="frontend executable"
+    ):
+        c_frontend_build.build()
+    assert not calls
+    assert external.read_bytes() == b"foreign executable"
+
+
+def test_frontend_build_accepts_unlinked_native_executable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An admitted physical executable can prove the required native version."""
+    executable = tmp_path / "frontend.exe"
+    _ = executable.write_bytes(b"local executable")
+    monkeypatch.setattr(
+        c_frontend_build, "HOST_PLATFORM_ID", tidy_toolchain.WINDOWS_PLATFORM
+    )
+    monkeypatch.setattr(c_frontend_build, "EXECUTABLE", executable)
+
+    def skip_validation(_identity: tidy_toolchain.ToolchainIdentity) -> None:
+        return None
+
+    monkeypatch.setattr(tidy_toolchain, "validate_installation", skip_validation)
+    monkeypatch.setattr(c_frontend_build, "_build_windows", skip_validation)
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], *, capture: bool = False) -> CompletedProcess[str]:
+        _ = capture
+        calls.append(command)
+        return CompletedProcess(command, 0, "malbolge-c-frontend 1 LLVM 22.1.8", "")
+
+    monkeypatch.setattr(c_frontend_build, "_run", fake_run)
+    c_frontend_build.build()
+    assert calls == [[str(executable), "--version"]]
+
+
+def test_frontend_build_rejects_redirected_executable_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A physical-looking leaf cannot execute through a linked parent."""
+    external = tmp_path / "foreign"
+    external.mkdir()
+    external_executable = external / "frontend.exe"
+    _ = external_executable.write_bytes(b"foreign executable")
+    linked_parent = tmp_path / "output"
+    linked_parent.symlink_to(external, target_is_directory=True)
+    executable = linked_parent / "frontend.exe"
+    monkeypatch.setattr(
+        c_frontend_build, "HOST_PLATFORM_ID", tidy_toolchain.WINDOWS_PLATFORM
+    )
+    monkeypatch.setattr(c_frontend_build, "EXECUTABLE", executable)
+
+    def skip_validation(_identity: tidy_toolchain.ToolchainIdentity) -> None:
+        return None
+
+    monkeypatch.setattr(tidy_toolchain, "validate_installation", skip_validation)
+    monkeypatch.setattr(c_frontend_build, "_build_windows", skip_validation)
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], *, capture: bool = False) -> CompletedProcess[str]:
+        _ = capture
+        calls.append(command)
+        return CompletedProcess(command, 0, "malbolge-c-frontend 1 LLVM 22.1.8", "")
+
+    monkeypatch.setattr(c_frontend_build, "_run", fake_run)
+    with pytest.raises(c_frontend_build.FrontendBuildError, match="frontend output"):
+        c_frontend_build.build()
+    assert not calls
+    assert external_executable.read_bytes() == b"foreign executable"
