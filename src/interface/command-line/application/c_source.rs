@@ -102,6 +102,13 @@ fn contains_function_identifier(source: &[u8], target: &[u8]) -> bool {
             pending_identifier.clear();
             continue;
         }
+        if byte.is_ascii_digit()
+            || (byte == b'.' && bytes.peek().is_some_and(u8::is_ascii_digit))
+        {
+            skip_preprocessing_number(byte, &mut bytes);
+            pending_identifier.clear();
+            continue;
+        }
         if is_identifier_start(byte) {
             pending_identifier = read_identifier(byte, &mut bytes);
             continue;
@@ -123,6 +130,24 @@ const fn is_identifier_start(byte: u8) -> bool {
     // identifier content so an ASCII adapter suffix cannot be mistaken for a
     // separate symbol; the compiler still owns full Unicode validity.
     byte.is_ascii_alphabetic() || byte == b'_' || byte >= 0x80
+}
+
+// C preprocessing-number tokens can include ASCII identifier suffixes,
+// decimal points, digit separators, and signs immediately after exponent
+// markers. Do not expose a suffix to adapter function-name recognition.
+fn skip_preprocessing_number(first: u8, bytes: &mut SourceBytes<'_>) {
+    let mut previous = first;
+    while let Some(next) = bytes.peek().copied() {
+        let continues = is_identifier_continue(next)
+            || matches!(next, b'.' | b'\'')
+            || (matches!(previous, b'e' | b'E' | b'p' | b'P')
+                && matches!(next, b'+' | b'-'));
+        if !continues {
+            break;
+        }
+        previous = next;
+        let _consumed = bytes.next();
+    }
 }
 
 fn read_identifier(first: u8, bytes: &mut SourceBytes<'_>) -> Vec<u8> {

@@ -100,6 +100,44 @@ fn standalone_ascii_adapter_calls_follow_utf8_source_tokens() {
 }
 
 #[test]
+fn preprocessing_numbers_cannot_impersonate_adapter_identifiers() {
+    // Translation-phase preprocessing numbers include identifier suffixes,
+    // fractional dots and exponent signs. None is a function identifier.
+    for prefix in [
+        b"1".as_slice(),
+        b"0x",
+        b"1.",
+        b".1",
+        b"1e+",
+        b"1E-",
+        b"0p+",
+        b"1'0",
+    ] {
+        let input_token = [prefix, b"__malbolge_input_word(0);"].concat();
+        assert!(
+            !inspect_c_source(&input_token).guest_input(),
+            "numeric preprocessing token selected guest input: {input_token:?}"
+        );
+        let output_token = [prefix, b"__malbolge_output_byte(0);"].concat();
+        assert!(
+            !inspect_c_source(&output_token).guest_output(),
+            "numeric suffix selected guest output: {output_token:?}"
+        );
+    }
+    let source = b"2DoomHost_GuestMemoryRegion(0); \
+        3DoomHost_VideoInitialize(0);";
+    assert!(!inspect_c_source(source).doom_host());
+    let spliced = b"1\\\n__malbolge_input_word(0);";
+    assert!(!inspect_c_source(spliced).guest_input());
+    let separated = b"int value = 1 + __malbolge_input_word();";
+    assert!(inspect_c_source(separated).guest_input());
+    let distinct = b"unsigned int value = 1; __malbolge_input_word(); \
+        __malbolge_output_byte(0);";
+    assert!(inspect_c_source(distinct).guest_input());
+    assert!(inspect_c_source(distinct).guest_output());
+}
+
+#[test]
 fn comments_between_identifier_and_call_are_admitted() {
     let source =
         b"void __malbolge_output_byte/* compiler intrinsic */(unsigned);";
