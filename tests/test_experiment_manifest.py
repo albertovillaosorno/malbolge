@@ -1170,3 +1170,52 @@ def test_manifest_invalid_utf8_keeps_decoder_cause(
     ) as caught:
         _ = validator._read_utf8(Path("manifest.toml"))
     assert type(caught.value.__cause__) is UnicodeDecodeError
+
+
+@pytest.mark.parametrize(
+    "stage",
+    (
+        "parent_symlink",
+        "parent_junction",
+        "leaf_symlink",
+        "leaf_junction",
+        "post_parent_symlink",
+        "post_parent_junction",
+    ),
+)
+@pytest.mark.parametrize("receipt", (0, 1, object()))
+def test_manifest_redirect_receipts_require_native_boolean(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    receipt: object,
+) -> None:
+    """Path redirection cannot invoke forged host-return truthiness hooks."""
+    source = tmp_path / "experiment.toml"
+    _ = source.write_bytes(b"manifest\n")
+    is_leaf = stage.startswith("leaf_")
+    is_after = stage.startswith("post_")
+    target = source if is_leaf else source.parent
+    symlink = stage.endswith("symlink")
+    native = Path.is_symlink if symlink else Path.is_junction
+    inspections = 0
+
+    class ForeignVerdict:
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign manifest redirect hook executed")
+
+    verdict = ForeignVerdict() if type(receipt) is object else receipt
+
+    def forged_redirect(candidate: Path) -> bool:
+        nonlocal inspections
+        if candidate == target:
+            inspections += 1
+            if (not is_after and inspections == 1) or (is_after and inspections == 2):
+                return cast("bool", verdict)
+        return native(candidate)
+
+    monkeypatch.setattr(
+        Path, "is_symlink" if symlink else "is_junction", forged_redirect
+    )
+    with pytest.raises(validator.ExperimentManifestError, match="native redirect"):
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]

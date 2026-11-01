@@ -556,11 +556,20 @@ def _manifest_identity(
     )
 
 
+def _require_not_redirected(path: Path) -> None:
+    """Admit only exact native redirect verdicts before trusting a path."""
+    for check in (path.is_symlink, path.is_junction):
+        redirected = check()
+        if type(redirected) is not bool:
+            _fail("experiment manifest requires native redirect receipt")
+        if redirected:
+            _fail("experiment manifest path must not redirect")
+
+
 def _check_manifest_parents(path: Path) -> None:
     """Reject directory aliases before and after manifest admission."""
     for parent in path.parents:
-        if parent.is_symlink() or parent.is_junction():
-            _fail("experiment manifest path must not redirect")
+        _require_not_redirected(parent)
 
 
 def _read_manifest_bytes(path: Path) -> bytes:
@@ -573,8 +582,7 @@ def _read_manifest_bytes(path: Path) -> bytes:
     _check_manifest_parents(path)
     admitted = path.lstat()
     expected = _manifest_identity(admitted)
-    if path.is_symlink() or path.is_junction():
-        _fail("experiment manifest path must not redirect")
+    _require_not_redirected(path)
     flags = (
         os.O_RDONLY
         | getattr(os, "O_CLOEXEC", 0)
