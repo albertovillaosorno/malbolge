@@ -58,10 +58,10 @@ frontend.
 annotated offset/line/column for every loaded position.
 `format_annotated_source()` provides deterministic automatic wrapping.
 `Machine`, `ExecutionMachine`, and `ProfileMachine` expose explicit annotated
-constructors; their existing raw `from_source` APIs remain unchanged. After
-canonicalization, the ordinary classic/profile loader remains final admission
+constructors; their existing raw `from_source` APIs remain unchanged.
 
-authority.
+After canonicalization, the ordinary classic/profile loader remains final
+admission authority.
 
 The reusable `format_annotated_source()` remains structure-neutral. The
 `malbolge_decompile --representation annotated` output now adds an initial-state
@@ -71,7 +71,9 @@ indirect-control cells, otherwise wraps at 64 canonical bytes. Full-line
 comments carry the selected profile identity, an explicit warning that future
 self-modification invalidates static decode, and each region's exact inclusive
 canonical position range, last initially decoded instruction, and control-flow
-class. Every code line is emitted through the canonical formatter, and the
+class.
+
+Every code line is emitted through the canonical formatter, and the
 annotated canonicalizer recovers the exact original loaded bytes and their
 new offset/line/column map.
 

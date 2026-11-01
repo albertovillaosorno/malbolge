@@ -65,7 +65,9 @@ canonicalizable Malbolge presentation instead of a separate report or C
 translation. It retains every loaded byte verbatim and uses full-line `# `
 comments for exact canonical position ranges and initial control-flow labels.
 The view breaks after initially decoded indirect and halt cells and at most
-64 bytes otherwise. The selected-profile loader still performs input admission;
+64 bytes otherwise.
+
+The selected-profile loader still performs input admission;
 consumers must explicitly choose the annotated frontend to strip comments.
 After stripping those comments and presentation line breaks, the canonical
 loaded positions, VM semantics, and emitted bytes are unchanged. An initial
