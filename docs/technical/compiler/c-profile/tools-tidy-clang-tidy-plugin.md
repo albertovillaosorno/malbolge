@@ -107,7 +107,11 @@ project ABI for arbitrary LLVM objects.
 `tidy_build.py` discovers a Visual Studio installation with the x64 VC toolset,
 uses the Visual Studio CMake/Ninja distribution, and compiles with the pinned
 LLVM `clang-cl.exe`. The generated build tree stays under `.cache/` and outputs
-stay under `.dependencies/tools-tidy/22.1.8/`.
+stay under `.dependencies/tools-tidy/22.1.8/`. On Linux, CMake build-cache
+and plugin-output paths must have physical directory ancestry; symlinks,
+junctions, and non-directory substitutions fail before native commands. Those
+paths are rechecked between configure and build. The preflights do not make
+concurrent pathname replacement atomic.
 
 The LLVM development archive's exported `LLVMDebugInfoPDB` CMake target embeds a
 DIA SDK path from the upstream build machine. The build entrypoint does not edit
