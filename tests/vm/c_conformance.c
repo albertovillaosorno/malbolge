@@ -795,6 +795,50 @@ static int test_full_binary_stream_capacity_resume(void)
     return failures;
 }
 
+static int test_full_source_capacity_and_atomic_overflow(void)
+{
+    static uint8_t source[MALBOLGE_MEMORY_WORDS + 1];
+    MalbolgeDiagnostic result;
+    int failures = 0;
+
+    /* Every decode position is a valid instruction at its exact phase. */
+    for (size_t index = 0U; index < sizeof(source); ++index) {
+        source[index] = BINARY_IO_PHASE[index % 94U];
+    }
+    result = malbolge_machine_init(
+        &g_machine, source, (size_t)MALBOLGE_MEMORY_WORDS,
+        NULL, 0U, NULL, 0U);
+    failures += expect_true(result.code == MALBOLGE_DIAGNOSTIC_NONE);
+    failures += expect_true(g_machine.memory[0] == (MalbolgeWord)source[0]);
+    failures += expect_true(g_machine.memory[MALBOLGE_MAX_WORD] ==
+                            (MalbolgeWord)source[MALBOLGE_MAX_WORD]);
+    failures += expect_true(g_machine.registers.accumulator == 0U);
+    failures += expect_true(g_machine.registers.code_pointer == 0U);
+    failures += expect_true(g_machine.registers.data_pointer == 0U);
+    failures += expect_true(g_machine.input_length == 0U);
+    failures += expect_true(g_machine.output_capacity == 0U);
+
+    /* Rejection must preserve the previous fully loaded machine image. */
+    g_machine.registers.accumulator = 41U;
+    g_machine.memory[0] = 77U;
+    result = malbolge_machine_init(
+        &g_machine, source, sizeof(source), NULL, 0U, NULL, 0U);
+    failures += expect_true(
+        result.code == MALBOLGE_DIAGNOSTIC_SOURCE_TOO_LONG);
+    failures += expect_true(result.position == MALBOLGE_MEMORY_WORDS);
+    failures += expect_true(
+        result.value == (MalbolgeWord)source[MALBOLGE_MEMORY_WORDS]);
+    failures += expect_true(g_machine.registers.accumulator == 41U);
+    failures += expect_true(g_machine.registers.code_pointer == 0U);
+    failures += expect_true(g_machine.registers.data_pointer == 0U);
+    failures += expect_true(g_machine.memory[0] == 77U);
+    failures += expect_true(g_machine.memory[MALBOLGE_MAX_WORD] ==
+                            (MalbolgeWord)source[MALBOLGE_MAX_WORD]);
+    failures += expect_true(g_machine.input_length == 0U);
+    failures += expect_true(g_machine.output_capacity == 0U);
+    return failures;
+}
+
 static int test_binary_io_across_code_and_data_wrap(void)
 {
     static const uint8_t INPUT[] = {UINT8_C(0xFF)};
@@ -996,6 +1040,7 @@ int malbolge_c_conformance(void)
     failures += test_non_graphical_non_progress();
     failures += test_byte_io_edges();
     failures += test_full_binary_stream_capacity_resume();
+    failures += test_full_source_capacity_and_atomic_overflow();
     failures += test_binary_io_across_code_and_data_wrap();
     failures += test_jump_encryption_and_atomic_rejection();
     failures += test_rotate_crazy_and_wrap();
