@@ -503,6 +503,10 @@ fn capsule_emission_preserves_profile_and_exact_raw_source() -> Result<(), Strin
     clippy::cognitive_complexity,
     reason = "a single process-level test proves source, capsule, profile and guest parity"
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "complete versioned raw, capsule, normative VM and general-runner parity matrix"
+)]
 fn immutable_profiles_publish_exact_raw_and_capsule_sources() -> Result<(), String> {
     let operations = [
         "input", "output", "input", "output", "input", "output", "halt",
@@ -555,6 +559,28 @@ fn immutable_profiles_publish_exact_raw_and_capsule_sources() -> Result<(), Stri
             assert_eq!(vm.output(), &[0, 255, 128], "{profile_id} VM output");
             assert_eq!(vm.input_consumed(), 3, "{profile_id} VM inputs");
         }
+        // The separate product runner must honor the capsule's immutable
+        // selected-profile identity without an implicit current-profile reset.
+        let mut guest = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(&capsule_path)
+            .arg("--input-stdin")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("{profile_id} general runner launch: {error}"))?;
+        guest
+            .stdin
+            .take()
+            .ok_or("general runner stdin missing")?
+            .write_all(&[0, 255, 128])
+            .map_err(|error| format!("{profile_id} general runner stdin: {error}"))?;
+        let output = guest
+            .wait_with_output()
+            .map_err(|error| format!("{profile_id} general runner wait: {error}"))?;
+        assert!(output.status.success(), "{profile_id} {output:?}");
+        assert!(output.stderr.is_empty(), "{profile_id} {output:?}");
+        assert_eq!(output.stdout, &[0, 255, 128], "{profile_id} runner");
     }
     Ok(())
 }

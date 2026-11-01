@@ -231,8 +231,12 @@ for immutable `malbolge-2026.1`, `.2`, and `.3` profile IDs. It compares
 byte-identical raw/capsule payloads, checks canonical profile fingerprints,
 re-decodes each graphical instruction using the selected swapped or unchanged
 I/O opcode identity, and replays three binary bytes `0x00`, `0xff`, `0x80`
-through the normative VM for both published forms. This is an actual process-
-level source/publication boundary, not just in-memory encoder evidence.
+through the normative VM for both published forms. The independently built
+`malbolge --input-stdin` product runner additionally opens and executes each
+versioned capsule using the same binary bytes, proving that capsule profile
+selection survives into general execution instead of falling back to the
+current profile. This is an actual process-level source/publication boundary,
+not just in-memory encoder evidence.
 
 Real external-process integration invokes the *general* `malbolge` runner on
 a modern-profile capsule, and separately runs the historical-safe fallback
