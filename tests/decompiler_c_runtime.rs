@@ -140,16 +140,35 @@ const FULL_BINARY_STREAM_HARNESS: &str = "
 #include <stdlib.h>
 #include <string.h>
 
+static int emit_state(const uint8_t *output, size_t output_len,
+    const uint32_t *memory, const struct mb_result *result)
+{
+    const uint32_t registers[3] = {
+        result->accumulator, result->code_pointer, result->data_pointer
+    };
+    size_t index;
+    size_t byte;
+    if (fwrite(output, 1, output_len, stdout) != output_len) { return 52; }
+    for (index = 0; index < 516; ++index) {
+        uint32_t value = index < 513 ? memory[index] : registers[index - 513];
+        for (byte = 0; byte < sizeof(value); ++byte) {
+            if (fputc((int)((value >> (byte * 8)) & 0xffu), stdout) == EOF) {
+                return 53;
+            }
+        }
+    }
+    return 0;
+}
+
 int main(void)
 {
     uint8_t input[256];
     uint8_t output[256] = {0};
     uint32_t *memory = calloc(MB_MEMORY_WORDS, sizeof(*memory));
     struct mb_result result;
-    uint32_t registers[3];
     int status;
+    int emitted;
     size_t index;
-    size_t byte;
     if (memory == NULL) { return 50; }
     for (index = 0; index < sizeof(input); ++index) {
         input[index] = (uint8_t)index;
@@ -163,24 +182,26 @@ int main(void)
         free(memory);
         return 51;
     }
-    registers[0] = result.accumulator;
-    registers[1] = result.code_pointer;
-    registers[2] = result.data_pointer;
-    if (fwrite(output, 1, sizeof(output), stdout) != sizeof(output)) {
+    emitted = emit_state(output, sizeof(output), memory, &result);
+    if (emitted != 0) { free(memory); return emitted; }
+
+    // Refuse the 256th output after 255 bytes have already committed.
+    memset(memory, 0, MB_MEMORY_WORDS * sizeof(*memory));
+    memset(output, 0, sizeof(output));
+    output[255] = 0xa5;
+    status = malbolge_decompiled_run(memory, MB_MEMORY_WORDS,
+        input, sizeof(input), output, 255, 513, &result);
+    if (status != MB_STATUS_OUTPUT_EXHAUSTED
+        || result.status != MB_STATUS_OUTPUT_EXHAUSTED
+        || result.steps != 511 || result.output_len != 255
+        || result.input_consumed != sizeof(input)
+        || memcmp(input, output, 255) != 0 || output[255] != 0xa5) {
         free(memory);
-        return 52;
+        return 54;
     }
-    for (index = 0; index < 516; ++index) {
-        uint32_t value = index < 513 ? memory[index] : registers[index - 513];
-        for (byte = 0; byte < sizeof(value); ++byte) {
-            if (fputc((int)((value >> (byte * 8)) & 0xffu), stdout) == EOF) {
-                free(memory);
-                return 53;
-            }
-        }
-    }
+    emitted = emit_state(output, 255, memory, &result);
     free(memory);
-    return 0;
+    return emitted;
 }
 ";
 
@@ -473,25 +494,35 @@ fn full_binary_stream_source(profile: &ProfileDescriptor) -> Result<[u8; 513], S
 fn expected_vm_full_binary_stream(
     profile: &'static ProfileDescriptor,
     source: &[u8],
+    steps: usize,
 ) -> Result<Vec<u8>, String> {
     let input = (u8::MIN..=u8::MAX).collect::<Vec<_>>();
     let mut machine = ProfileMachine::from_source(profile, source, input.clone())
         .map_err(|error| error.to_string())?;
-    let outcome = machine.run(513).map_err(|error| error.to_string())?;
-    if outcome
-        != (RunOutcome::Terminated {
-            reason: Termination::HaltInstruction,
-            steps: 513,
-        })
-        || machine.input_consumed() != input.len()
-        || machine.output() != input
+    let outcome = machine.run(steps).map_err(|error| error.to_string())?;
+    let (expected_outcome, expected_output_len) = match steps {
+        513 => (
+            RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 513,
+            },
+            256,
+        ),
+        511 => (RunOutcome::BudgetExhausted { steps: 511 }, 255),
+        _ => return Err(format!("unwitnessed binary step count {steps}")),
+    };
+    let expected_output = input.get(..expected_output_len)
+        .ok_or("expected binary output length exceeds source domain")?;
+    let consumed_all_input = machine.input_consumed() == input.len();
+    let output_matches_prefix = machine.output() == expected_output;
+    if outcome != expected_outcome || !consumed_all_input || !output_matches_prefix
     {
         return Err(format!(
-            "unexpected normative binary stream for {}: {outcome:?}",
+            "unexpected normative binary stream for {} at step {steps}: {outcome:?}",
             profile.id()
         ));
     }
-    let mut expected = input;
+    let mut expected = machine.output().to_vec();
     for word in machine.memory().iter().take(513).copied().chain([
         machine.registers().accumulator,
         machine.registers().code_pointer,
@@ -517,7 +548,8 @@ fn verify_generated_full_binary_stream_against_vm(
         let executed = Command::new(&executable)
             .output()
             .map_err(|error| format!("execute full binary C for {}: {error}", profile.id()))?;
-        let expected = expected_vm_full_binary_stream(profile, &source)?;
+        let mut expected = expected_vm_full_binary_stream(profile, &source, 513)?;
+        expected.extend(expected_vm_full_binary_stream(profile, &source, 511)?);
         if !executed.status.success() || !executed.stderr.is_empty() || executed.stdout != expected
         {
             return Err(format!(
