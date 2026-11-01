@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import replace
 import hashlib
 import os
@@ -53,6 +54,12 @@ LINUX_PLATFORM = "linux-x86_64"
 PACKAGE_NAME = "clang-devel-22.1.8-4.fc44.x86_64.rpm"
 HEADER_BYTES = b"reviewed-header"
 PACKAGE_BYTES = b"synthetic exact rpm bytes"
+FOREIGN_CONTENT_BYTES = b"foreign content"
+STAGE_LINKED_PARENT = "linked-parent"
+STAGE_LINKED_LEAF = "linked-stage"
+STAGE_NONDIRECTORY_PARENT = "nondirectory-parent"
+TARGET_DANGLING_LEAF = "dangling-leaf"
+MARKER_BINARY_MODE = "rb"
 
 
 def _asset() -> tidy_toolchain.DevelopmentAsset:
@@ -172,6 +179,252 @@ def _provisioned_identity(tmp_path: Path) -> tidy_toolchain.ToolchainIdentity:
     return identity
 
 
+def _external_sentinel(tmp_path: Path) -> tuple[Path, Path]:
+    """Create a foreign directory with immutable reference content.
+
+    Returns:
+        The foreign directory and sentinel path.
+
+    """
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    _ = sentinel.write_bytes(FOREIGN_CONTENT_BYTES)
+    return external, sentinel
+
+
+def _redirect_development_staging(
+    root: Path, external: Path, stage_kind: str
+) -> None:
+    """Prepare one inadmissible staging directory or ancestor."""
+    temp_root = root / ".temp"
+    if stage_kind == STAGE_NONDIRECTORY_PARENT:
+        _ = temp_root.write_bytes(b"not a directory")
+        return
+    if stage_kind == STAGE_LINKED_PARENT:
+        alias = temp_root
+    else:
+        temp_root.mkdir()
+        alias = temp_root / f"llvm-development-provision-{LINUX_PLATFORM}"
+    try:
+        _ = alias.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory links unavailable: {error}")
+
+
+def _redirect_development_destination(
+    root: Path,
+    identity: tidy_toolchain.ToolchainIdentity,
+    external: Path,
+    *,
+    target_kind: str,
+) -> None:
+    """Prepare an inadmissible toolkit destination or ancestor."""
+    destination_parent = root / ".dependencies"
+    if target_kind == STAGE_NONDIRECTORY_PARENT:
+        _ = destination_parent.write_bytes(b"not a directory")
+        return
+    if target_kind == STAGE_LINKED_PARENT:
+        alias = destination_parent
+        target = external
+    else:
+        identity.development_root.parent.mkdir(parents=True)
+        alias = identity.development_root
+        target = external / "missing"
+    try:
+        _ = alias.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory links unavailable: {error}")
+
+
+@pytest.mark.parametrize(
+    "stage_kind",
+    [STAGE_LINKED_PARENT, STAGE_LINKED_LEAF, STAGE_NONDIRECTORY_PARENT],
+)
+def test_development_provision_rejects_redirected_staging_before_download(
+    tmp_path: Path, stage_kind: str
+) -> None:
+    """Staging must stay inside physical checkout directories."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    external, sentinel = _external_sentinel(tmp_path)
+    _redirect_development_staging(root, external, stage_kind)
+    downloads: list[str] = []
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="staging",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            root,
+            identity,
+            downloader=_downloader(downloads),
+            extractor=_extract_headers,
+        )
+    assert not downloads
+    assert list(external.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not identity.development_root.exists()
+
+
+@pytest.mark.parametrize(
+    "target_kind",
+    [STAGE_LINKED_PARENT, TARGET_DANGLING_LEAF, STAGE_NONDIRECTORY_PARENT],
+)
+def test_development_provision_rejects_redirected_destination_before_download(
+    tmp_path: Path, target_kind: str
+) -> None:
+    """A foreign destination alias is not an admissible toolkit root."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    external, sentinel = _external_sentinel(tmp_path)
+    _redirect_development_destination(
+        root, identity, external, target_kind=target_kind
+    )
+    downloads: list[str] = []
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="destination",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            root,
+            identity,
+            downloader=_downloader(downloads),
+            extractor=_extract_headers,
+        )
+    assert not downloads
+    assert list(external.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    if target_kind == TARGET_DANGLING_LEAF:
+        assert identity.development_root.is_symlink()
+
+
+def test_development_provision_rechecks_staging_after_download(
+    tmp_path: Path,
+) -> None:
+    """A downloader must not redirect subsequent extraction or cleanup."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    external, sentinel = _external_sentinel(tmp_path)
+    stage_parent = root / ".temp"
+    owned_parent = root / ".temp-owned"
+
+    def swap_stage(url: str) -> bytes:
+        del url
+        _ = stage_parent.rename(owned_parent)
+        try:
+            _ = stage_parent.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+        return PACKAGE_BYTES
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="staging",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            root,
+            identity,
+            downloader=swap_stage,
+            extractor=_extract_headers,
+        )
+    assert list(external.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert owned_parent.is_dir()
+    assert not identity.development_root.exists()
+
+
+def test_development_provision_rechecks_destination_after_extraction(
+    tmp_path: Path,
+) -> None:
+    """An extractor cannot redirect the final publication destination."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    external, sentinel = _external_sentinel(tmp_path)
+    destination_parent = root / ".dependencies"
+
+    def swap_destination(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        _extract_headers(data, asset, destination, staging=staging)
+        try:
+            _ = destination_parent.symlink_to(
+                external, target_is_directory=True
+            )
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="destination",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            root,
+            identity,
+            downloader=_downloader([]),
+            extractor=swap_destination,
+        )
+    assert list(external.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert destination_parent.is_symlink()
+    assert not identity.development_root.exists()
+
+
+def test_development_provision_rejects_swapped_staged_root(
+    tmp_path: Path,
+) -> None:
+    """Extractors cannot redirect the staged marker to a foreign directory."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    external, sentinel = _external_sentinel(tmp_path)
+    foreign_header = external / identity.required_development_files[0]
+    foreign_header.parent.mkdir(parents=True)
+    _ = foreign_header.write_bytes(HEADER_BYTES)
+
+    def swap_staged_root(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        _extract_headers(data, asset, destination, staging=staging)
+        owned = destination.with_name("development-owned")
+        _ = destination.rename(owned)
+        try:
+            _ = destination.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="staging",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            root,
+            identity,
+            downloader=_downloader([]),
+            extractor=swap_staged_root,
+        )
+    assert set(external.rglob("*")) == {
+        sentinel,
+        external / "include",
+        external / "include/clang",
+        external / "include/clang/AST",
+        foreign_header,
+    }
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not identity.development_root.exists()
+
+
 def test_development_marker_rejects_linked_leaf(tmp_path: Path) -> None:
     """An exact marker reached via symlink cannot authorize a package root."""
     identity = _provisioned_identity(tmp_path)
@@ -264,6 +517,68 @@ def test_development_marker_rejects_same_byte_inode_replacement(
 
     monkeypatch.setattr(os, "open", swap_before_open)
     assert not llvm_development_validation.development_root_matches(identity)
+
+
+def _inject_marker_stream_fault(
+    monkeypatch: pytest.MonkeyPatch,
+    marker: Path,
+    fault_type: type[Exception],
+) -> list[int]:
+    """Inject a wrapper fault and record raw descriptors opened for the marker.
+
+    Returns:
+        Descriptors that readiness must close on rejection.
+
+    """
+    native_open = os.open
+    native_fdopen = os.fdopen
+    opened: list[int] = []
+    fault = fault_type("injected LLVM development marker stream failure")
+
+    def capture_open(path: Path, flags: int) -> int:
+        descriptor = native_open(path, flags)
+        if path == marker:
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(descriptor: int, mode: str) -> object:
+        if descriptor in opened and mode == MARKER_BINARY_MODE:
+            raise fault
+        return native_fdopen(descriptor, mode)
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    return opened
+
+
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
+def test_development_marker_fdopen_fault_closes_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A host stream-wrapper failure must not leak marker readiness or an fd."""
+    identity = _provisioned_identity(tmp_path)
+    marker = (
+        identity.development_root
+        / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    )
+    opened = _inject_marker_stream_fault(monkeypatch, marker, fault_type)
+    try:
+        assert not llvm_development_validation.development_root_matches(
+            identity
+        )
+        assert len(opened) == 1
+        with pytest.raises(
+            OSError, match=r"Bad file descriptor|Invalid handle"
+        ):
+            _ = os.fstat(opened[0])
+    finally:
+        for descriptor in opened:
+            with suppress(OSError):
+                os.close(descriptor)
 
 
 def test_development_marker_rejects_oversized_marker(tmp_path: Path) -> None:

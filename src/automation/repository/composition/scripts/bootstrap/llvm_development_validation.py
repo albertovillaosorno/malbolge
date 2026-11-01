@@ -35,6 +35,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 import hashlib
 import json
@@ -339,7 +340,13 @@ def _marker_descriptor_matches(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except BaseException:
+        with suppress(OSError):
+            os.close(descriptor)
+        raise
+    with stream:
         before = _marker_identity(os.fstat(stream.fileno()))
         contents = stream.read(len(expected) + 1)
         after = _marker_identity(os.fstat(stream.fileno()))
@@ -365,7 +372,7 @@ def _exact_marker_matches(marker: Path, expected: bytes) -> bool:
             and _direct_regular(marker)
             and _marker_identity(marker.lstat()) == admitted
         )
-    except OSError, ValueError:
+    except OSError, ValueError, TypeError, RuntimeError:
         return False
 
 
@@ -387,10 +394,30 @@ def development_root_matches(
     )
 
 
+def _require_physical_directories(path: Path, label: str) -> None:
+    """Admit only real directory ancestry before filesystem mutations."""
+    for component in (path, *path.parents):
+        if component.is_symlink() or component.is_junction():
+            _fail(
+                f"LLVM development {label} path must not redirect: {component}"
+            )
+        if component.exists() and not component.is_dir():
+            _fail(f"LLVM {label} path must be a directory: {component}")
+
+
+def _require_development_destination(path: Path) -> None:
+    """Forbid redirected ancestors or a redirected development root leaf."""
+    _require_physical_directories(path.parent, "destination")
+    if path.is_symlink() or path.is_junction():
+        _fail(f"LLVM development destination must not redirect: {path}")
+
+
 def _prepare_staging(staging: Path) -> None:
+    _require_physical_directories(staging, "staging")
     if staging.exists():
         _fail(f"LLVM development staging already exists: {staging}")
     staging.mkdir(parents=True)
+    _require_physical_directories(staging, "staging")
 
 
 def _stage_development_assets(
@@ -401,7 +428,9 @@ def _stage_development_assets(
     package_staging: Path,
 ) -> None:
     for asset in identity.development_assets:
+        _require_physical_directories(package_staging, "staging")
         data = functions.download(_asset_url(identity, asset))
+        _require_physical_directories(package_staging, "staging")
         verify_development_asset(data, asset)
         functions.extract(
             data,
@@ -409,6 +438,9 @@ def _stage_development_assets(
             staged_root,
             staging=package_staging,
         )
+        _require_physical_directories(package_staging, "staging")
+        _require_physical_directories(staged_root, "staging")
+    _require_physical_directories(staged_root, "staging")
     missing = tuple(
         relative
         for relative in identity.required_development_files
@@ -434,6 +466,7 @@ def provision_development_identity(
     """
     if development_root_matches(identity):
         return identity.development_root
+    _require_development_destination(identity.development_root)
     if identity.development_root.exists():
         _fail("LLVM development root exists without the exact provision marker")
     staging = (
@@ -453,12 +486,17 @@ def provision_development_identity(
             functions,
             package_staging=staging / "packages",
         )
+        _require_physical_directories(staged_root, "staging")
         _write_verified_staging_bytes(
             staged_root / LLVM_DEVELOPMENT_MARKER, _marker_bytes(identity)
         )
+        _require_development_destination(identity.development_root)
         identity.development_root.parent.mkdir(parents=True, exist_ok=True)
+        _require_development_destination(identity.development_root)
+        _require_physical_directories(staged_root, "staging")
         _ = staged_root.replace(identity.development_root)
     finally:
+        _require_physical_directories(staging, "staging")
         if staging.exists():
             shutil.rmtree(staging)
     return identity.development_root

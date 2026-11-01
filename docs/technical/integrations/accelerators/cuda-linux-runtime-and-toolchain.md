@@ -72,7 +72,13 @@ development RPM bytes into
 under `.dependencies/llvm/22.1.8`. CMake/Ninja builds the clang-tidy plugin as a
 loadable ELF module and the normalized C frontend as a relocatable ELF whose
 RUNPATH resolves the repository-local LLVM libraries. Windows retains its
-reviewed MSVC/DIA registry-bridge branch.
+reviewed MSVC/DIA registry-bridge branch. The Linux LLVM development
+provisioner also rejects linked or non-directory staging/destination ancestry
+before download, rechecks physical paths before publication and cleanup, and
+refuses linked destination leaves. Marker readiness rejects host stream-wrapper
+errors and closes the raw descriptor if wrapping fails. These pathname checks
+are fail-closed preflights, not atomic protection from concurrent directory
+swaps by an independently privileged process.
 
 The P0 is complete. Remaining Windows `.exe`/`.dll`, COFF, sanitizer, and
 adapter paths are explicitly Windows-scoped evidence or implementation branches
