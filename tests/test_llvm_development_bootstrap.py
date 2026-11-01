@@ -581,6 +581,53 @@ def test_development_marker_fdopen_fault_closes_descriptor(
                 os.close(descriptor)
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        (operation, fault_type)
+        for operation in ("is_symlink", "is_junction", "lstat")
+        for fault_type in (TypeError, RuntimeError)
+    ],
+)
+@pytest.mark.parametrize("target_kind", ["marker", "header"])
+def test_development_readiness_rejects_host_status_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failure: tuple[str, type[Exception]],
+    target_kind: str,
+) -> None:
+    """Uncertain host status must not authorize LLVM development readiness."""
+    identity = _provisioned_identity(tmp_path)
+    operation, fault_type = failure
+    target = {
+        "marker": (
+            identity.development_root
+            / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+        ),
+        "header": (
+            identity.development_root / identity.required_development_files[0]
+        ),
+    }[target_kind]
+    original = {
+        "is_symlink": Path.is_symlink,
+        "is_junction": Path.is_junction,
+        "lstat": Path.lstat,
+    }[operation]
+    fault = fault_type("injected LLVM development status failure")
+
+    def fail_status(path: Path) -> object:
+        if path == target:
+            raise fault
+        return original(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, fail_status)
+        assert not llvm_development_validation.development_root_matches(
+            identity
+        )
+
+
 def test_development_marker_rejects_oversized_marker(tmp_path: Path) -> None:
     """Unbounded local marker content must not be read into memory."""
     identity = _provisioned_identity(tmp_path)

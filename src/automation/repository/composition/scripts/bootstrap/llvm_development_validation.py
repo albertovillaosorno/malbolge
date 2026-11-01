@@ -302,7 +302,7 @@ def _direct_regular(path: Path) -> bool:
             )
             and S_ISREG(path.lstat().st_mode)
         )
-    except OSError, ValueError:
+    except OSError, ValueError, TypeError, RuntimeError:
         return False
 
 

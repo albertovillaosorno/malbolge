@@ -81,7 +81,8 @@ are fail-closed preflights, not atomic protection from concurrent directory
 swaps by an independently privileged process. Read-only LLVM runtime
 inspection likewise fails closed as unavailable when host filesystem status
 adapters raise unexpected type or runtime errors while checking the marker,
-neutral executable aliases, or resource directories.
+neutral executable aliases, or resource directories. LLVM development
+readiness applies the same fail-closed rule to its marker and required headers.
 
 The P0 is complete. Remaining Windows `.exe`/`.dll`, COFF, sanitizer, and
 adapter paths are explicitly Windows-scoped evidence or implementation branches
