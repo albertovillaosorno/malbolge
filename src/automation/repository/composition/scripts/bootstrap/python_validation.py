@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 import hashlib
 import io
@@ -766,6 +767,46 @@ def _read_jig_binary_source(source: Path) -> bytes:
     return data
 
 
+def _admit_jig_alias_temporary(
+    descriptor: int,
+    temporary_name: object,
+    *,
+    alias_root: Path,
+    prefix: str,
+) -> Path:
+    """Bind one mkstemp pathname to its descriptor and requested directory.
+
+    Returns:
+        An admitted native temporary path safe for atomic alias publication.
+
+    Raises:
+        ProvisionError: The receipt is nonnative, foreign, or unverifiable.
+
+    """
+    if type(temporary_name) is not str:
+        _fail("Jig alias temporary receipt must be a native pathname")
+    temporary = Path(temporary_name)
+    name = temporary.name
+    valid_name = name.startswith(prefix) and name != prefix
+    valid_location = temporary == alias_root.resolve() / name
+    if not all((valid_name, valid_location, temporary_name == str(temporary))):
+        _fail("Jig alias temporary receipt is outside the requested directory")
+    try:
+        descriptor_status = os.fstat(descriptor)
+        pathname_status = temporary.lstat()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = "Jig alias temporary receipt cannot be verified"
+        raise ProvisionError(message) from error
+    if (
+        not stat.S_ISREG(descriptor_status.st_mode)
+        or not stat.S_ISREG(pathname_status.st_mode)
+        or (descriptor_status.st_dev, descriptor_status.st_ino)
+        != (pathname_status.st_dev, pathname_status.st_ino)
+    ):
+        _fail("Jig alias temporary receipt does not match its descriptor")
+    return temporary
+
+
 def _publish_jig_tool_alias(
     target: Path,
     payload: bytes,
@@ -776,10 +817,19 @@ def _publish_jig_tool_alias(
     alias_root = target.parent
     _check_jig_alias_path(alias_root, directory=True, required=True)
     _check_jig_alias_path(target, directory=False, required=False)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{target.name}.", dir=alias_root
-    )
-    temporary = Path(temporary_name)
+    prefix = f".{target.name}."
+    descriptor, temporary_name = tempfile.mkstemp(prefix=prefix, dir=alias_root)
+    try:
+        temporary = _admit_jig_alias_temporary(
+            descriptor,
+            temporary_name,
+            alias_root=alias_root,
+            prefix=prefix,
+        )
+    except Exception:
+        with suppress(OSError):
+            os.close(descriptor)
+        raise
     try:
         with os.fdopen(descriptor, "wb") as stream:
             written = stream.write(payload)

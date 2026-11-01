@@ -38,8 +38,10 @@ from dataclasses import replace
 import hashlib
 import json
 import os
+from pathlib import Path
 import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+import tempfile
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -51,10 +53,10 @@ from scripts.bootstrap import python_validation
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 BASEDPYRIGHT_TOOL = "basedpyright"
 CUDA_VERSION_ROOT = ".dependencies/cuda/13.3.1/toolkit"
+CUDA_TOOLKIT_ROOT_FIELD = "toolkit_root"
 CUDA_WINDOWS_MANIFEST_SHA256 = (
     "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
 )
@@ -1305,14 +1307,14 @@ def test_cuda_inspection_rejects_drive_relative_toolkit_root(
         _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
 
 
-@pytest.mark.parametrize("field", ("toolkit_root", "nvrtc_library"))
+@pytest.mark.parametrize("field", [CUDA_TOOLKIT_ROOT_FIELD, "nvrtc_library"])
 def test_cuda_bootstrap_rejects_host_dependent_backslash_paths(
     tmp_path: Path,
     field: str,
 ) -> None:
     """Selected CUDA paths retain identical meaning on Linux and Windows."""
     manifest = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
-    if field == "toolkit_root":
+    if field == CUDA_TOOLKIT_ROOT_FIELD:
         document = {
             "schema_version": project.CUDA_TOOLCHAIN_SCHEMA_VERSION,
             "platform": LINUX_PLATFORM,
@@ -1326,14 +1328,18 @@ def test_cuda_bootstrap_rejects_host_dependent_backslash_paths(
         return
     index = _write_cuda_manifest_index(tmp_path)
     platforms = cast(
-        "dict[str, object]", json.loads(index.read_text(encoding="utf-8"))["platforms"]
+        "dict[str, object]",
+        json.loads(index.read_text(encoding="utf-8"))["platforms"],
     )
     selected = cast("dict[str, object]", platforms[LINUX_PLATFORM])
     selected["nvrtc_library"] = r"lib\libnvrtc.so.13"
     _ = index.write_text(
-        json.dumps({"schema_version": 1, "platforms": platforms}), encoding="utf-8"
+        json.dumps({"schema_version": 1, "platforms": platforms}),
+        encoding="utf-8",
     )
-    with pytest.raises(project.InitializationError, match="must use forward slashes"):
+    with pytest.raises(
+        project.InitializationError, match="must use forward slashes"
+    ):
         _ = project.cuda_toolchain_nvrtc_relative_path(tmp_path, LINUX_PLATFORM)
 
 
@@ -2309,6 +2315,74 @@ def _jig_alias_fixture(
         source = layout.scripts / f"{tool_id}{suffix}"
         _ = source.write_bytes(f"{tool_id}-native".encode("ascii"))
     return layout
+
+
+def _forge_jig_mkstemp_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: Path,
+) -> tuple[list[int], list[Path]]:
+    """Return tracked descriptor and actual stage paths for one forged name.
+
+    Returns:
+        One list of owned file descriptors and one of actual stage names.
+
+    """
+    real_mkstemp = tempfile.mkstemp
+    stages: list[Path] = []
+    descriptors: list[int] = []
+
+    def forged_mkstemp(**kwargs: object) -> tuple[int, str]:
+        descriptor, actual_name = real_mkstemp(
+            prefix=cast("str", kwargs["prefix"]),
+            dir=cast("Path", kwargs["dir"]),
+        )
+        stages.append(Path(actual_name))
+        descriptors.append(descriptor)
+        return descriptor, str(foreign)
+
+    monkeypatch.setattr(tempfile, "mkstemp", forged_mkstemp)
+    return descriptors, stages
+
+
+@pytest.mark.parametrize("windows", [False, True])
+@pytest.mark.parametrize("foreign_parent", [False, True])
+def test_jig_alias_publisher_rejects_foreign_mkstemp_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    windows: bool,
+    foreign_parent: bool,
+) -> None:
+    """A forged name must never replace or unlink a foreign regular file."""
+    layout = _jig_alias_fixture(tmp_path, windows=windows)
+    alias_root = layout.environment / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "basedpyright.bin"
+    previous = b"original Jig alias"
+    foreign_bytes = b"foreign data must survive"
+    _ = target.write_bytes(previous)
+    foreign = (
+        tmp_path / "outside.bin"
+        if foreign_parent
+        else alias_root / f".{target.name}.foreign"
+    )
+    _ = foreign.write_bytes(foreign_bytes)
+    descriptors, stages = _forge_jig_mkstemp_receipt(monkeypatch, foreign)
+    try:
+        with pytest.raises(python_validation.ProvisionError, match="temporary"):
+            _ = python_validation.write_jig_tool_aliases(
+                layout, windows=windows
+            )
+        assert foreign.read_bytes() == foreign_bytes
+        assert target.read_bytes() == previous
+        assert len(descriptors) == 1
+        with pytest.raises(
+            OSError, match=r"Bad file descriptor|Invalid handle"
+        ):
+            _ = os.fstat(descriptors[0])
+    finally:
+        for stage in stages:
+            stage.unlink(missing_ok=True)
 
 
 @pytest.mark.parametrize("windows", [False, True])
