@@ -48,6 +48,7 @@ from scripts.repository_root import repository_root
 from scripts.research_layout import (
     research_algorithm_directories,
     research_algorithm_test_directory,
+    research_id_is_portable,
 )
 
 if TYPE_CHECKING:
@@ -163,6 +164,8 @@ def validate_id_sets(
         _fail("research mirror contains no algorithm IDs")
     casefolded: dict[str, str] = {}
     for identifier in sorted(document_ids):
+        if not research_id_is_portable(identifier):
+            _fail(f"research ID not portable across hosts: {identifier}")
         previous = casefolded.setdefault(identifier.casefold(), identifier)
         if previous != identifier:
             message = f"case-insensitive research mirror ID collision: {previous}"

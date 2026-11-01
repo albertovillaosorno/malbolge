@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import ntpath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING
 
@@ -41,6 +42,16 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 STATE_GRAPH_ID = "self-modification-state-graph-optimizer"
+
+
+def research_id_is_portable(identifier: str) -> bool:
+    """Require one path component with the same identity on every host."""
+    return (
+        identifier not in {"", ".", ".."}
+        and "/" not in identifier
+        and "\\" not in identifier
+        and not ntpath.isreserved(identifier)
+    )
 
 
 def _unlinked_directory(root: Path, directory: Path) -> bool:
@@ -111,6 +122,8 @@ def research_algorithm_directories(root: Path) -> tuple[tuple[str, Path], ...]:
         entries[STATE_GRAPH_ID] = state_graph
     casefolded: dict[str, str] = {}
     for identifier in sorted(entries):
+        if not research_id_is_portable(identifier):
+            raise OSError(f"research ID not portable across hosts: {identifier}")
         previous = casefolded.setdefault(identifier.casefold(), identifier)
         if previous != identifier:
             message = f"case-insensitive research ID collision: {previous}"

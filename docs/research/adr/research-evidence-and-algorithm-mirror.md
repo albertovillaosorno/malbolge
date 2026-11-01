@@ -38,6 +38,9 @@ publish the same research ID: discovery rejects a collision instead of silently
 replacing either physical experiment. Mirror identity also rejects research
 IDs differing only by Unicode case folding: those names are distinct on some
 POSIX filesystems but can alias one directory on case-insensitive hosts.
+Each research ID must also be one portable path component: `.`/`..`, forward
+or backward separators, Windows device names, NTFS alternate stream suffixes,
+and trailing dots or spaces are not admissible, even on POSIX hosts.
 The documentation half requires `README.md` and `research.md`; the executable
 half requires
 `README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via

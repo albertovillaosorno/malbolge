@@ -106,6 +106,16 @@ def test_casefold_colliding_research_ids_fail_closed(
         _ = validator.validate_id_sets(aliases, aliases)
 
 
+@pytest.mark.parametrize(
+    "identifier",
+    ("NUL", "scratch:stream", "trailing.", "trailing ", r"foo\bar", ".", ".."),
+)
+def test_unportable_research_ids_fail_closed(identifier: str) -> None:
+    """A mirrored research ID must name one portable physical directory."""
+    with pytest.raises(validator.ResearchMirrorError, match="not portable"):
+        _ = validator.validate_id_sets(frozenset({identifier}), frozenset({identifier}))
+
+
 def test_empty_research_mirror_fails_closed() -> None:
     """Deleting both halves cannot turn the mirror contract into a no-op."""
     _expect_id_failure(frozenset(), frozenset())

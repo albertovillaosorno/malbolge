@@ -170,6 +170,31 @@ def test_discovery_rejects_casefold_colliding_experiments(
         _ = research_layout.research_algorithm_directories(tmp_path)
 
 
+@pytest.mark.parametrize("identifier", ("NUL", "scratch:stream", "trailing."))
+def test_discovery_rejects_unportable_research_ids(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    identifier: str,
+) -> None:
+    """Domain discovery cannot publish a Windows-reserved stable identity."""
+    domain = _domain_root(tmp_path)
+    domain.mkdir(parents=True)
+    original_iterdir = Path.iterdir
+
+    def fake_iterdir(path: Path) -> Iterator[Path]:
+        if path == domain:
+            return iter((domain / identifier,))
+        return original_iterdir(path)
+
+    def fake_manifest(path: Path, _root: Path) -> bool:
+        return path == domain / identifier / "experiment.toml"
+
+    monkeypatch.setattr(Path, "iterdir", fake_iterdir)
+    monkeypatch.setattr(research_layout, "_manifest_is_file", fake_manifest)
+    with pytest.raises(OSError, match="not portable"):
+        _ = research_layout.research_algorithm_directories(tmp_path)
+
+
 def test_domain_and_composition_research_id_collision_fails_closed(
     tmp_path: Path,
 ) -> None:
