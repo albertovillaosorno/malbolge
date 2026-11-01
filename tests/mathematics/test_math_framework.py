@@ -2118,3 +2118,67 @@ def test_math_log_stream_rejects_swapped_descriptor(
     ):
         _publish_math_log(log, COMPILED_LOG_TEXT)
     assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+
+
+DISHONEST_LOG_DIFFERENT = "different"
+
+
+@final
+class _DishonestLogStream:
+    """Claim successful writes independently of actual staged content."""
+
+    def __init__(self, stream: IO[str], payload: str) -> None:
+        self.stream = stream
+        self.payload = payload
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.stream.close()
+
+    def fileno(self) -> int:
+        return self.stream.fileno()
+
+    def write(self, text: str) -> int:
+        if self.payload == DISHONEST_LOG_DIFFERENT:
+            _ = self.stream.write("?" * len(text))
+        return len(text)
+
+    def flush(self) -> None:
+        self.stream.flush()
+
+
+@pytest.mark.parametrize("payload", ["none", DISHONEST_LOG_DIFFERENT])
+def test_math_log_rejects_dishonest_successful_write_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str
+) -> None:
+    """A reported complete write cannot publish missing or altered bytes."""
+    _, log = _math_log_fixture(tmp_path, monkeypatch)
+    _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
+    native_fdopen = os.fdopen
+
+    def forged_fdopen(
+        descriptor: int, mode: str, **kwargs: object
+    ) -> _DishonestLogStream:
+        del mode, kwargs
+        return _DishonestLogStream(
+            native_fdopen(descriptor, "w", encoding="utf-8", newline="\n"),
+            payload,
+        )
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(validator.MathSpecificationError, match="log payload"):
+        _publish_math_log(log, COMPILED_LOG_TEXT)
+    assert log.read_text(encoding="utf-8") == OUTSIDE_LOG_TEXT
+    assert tuple(log.parent.iterdir()) == (log,)
+
+
+@pytest.mark.parametrize("text", ["", "TeX caf\u00e9 \u2713"])
+def test_math_log_payload_validates_empty_and_unicode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str
+) -> None:
+    """UTF-8 output remains valid when byte and character counts differ."""
+    _, log = _math_log_fixture(tmp_path, monkeypatch)
+    _publish_math_log(log, text)
+    assert log.read_bytes() == text.encode("utf-8")

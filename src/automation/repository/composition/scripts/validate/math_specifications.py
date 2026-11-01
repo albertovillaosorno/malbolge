@@ -656,6 +656,17 @@ def _cleanup_math_log_temporary(temporary: Path, identity: tuple[int, int]) -> N
     temporary.unlink(missing_ok=True)
 
 
+def _verify_math_log_payload(descriptor: int, expected_text: str) -> None:
+    """Match actual staged bytes to the claimed successful write receipt."""
+    expected = expected_text.encode("utf-8")
+    offset = os.lseek(descriptor, 0, os.SEEK_SET)
+    if type(offset) is not int or offset != 0:
+        _fail("mathematics build log payload has invalid offset receipt")
+    actual = os.read(descriptor, len(expected) + 1)
+    if type(actual) is not bytes or actual != expected:
+        _fail("mathematics build log payload differs from submitted text")
+
+
 def _write_math_build_log(log_path: Path, log: str) -> None:
     """Atomically replace one physical log without opening a linked leaf."""
     if type(log) is not str:
@@ -691,6 +702,7 @@ def _write_math_build_log(log_path: Path, log: str) -> None:
                 if type(written) is not int or written != len(log):
                     _fail(f"incomplete LaTeX build log write: {log_path}")
                 stream.flush()
+                _verify_math_log_payload(descriptor, log)
         except MathSpecificationError:
             raise
         except (OSError, ValueError, TypeError, RuntimeError) as error:

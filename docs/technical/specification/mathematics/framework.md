@@ -73,8 +73,11 @@ never closed as though it owns a real descriptor. After stream wrapping, the
 stream must report that exact owned descriptor as a native integer before any
 source read or log write. This excludes substituted, duplicated, or nonnative
 stream descriptor receipts; it does not make filesystem replacement atomic.
-Foreign host receipt objects cannot certify paths by executing custom status
-or truth-value hooks.
+After flushing, the log writer reads the staged regular descriptor and checks
+that its physical UTF-8 bytes exactly match the submitted log before an atomic
+replacement; a stream claiming a full write without writing those bytes cannot
+publish misleading success evidence. Foreign host receipt objects cannot
+certify paths by executing custom status or truth-value hooks.
 TeX validation reads no more than one MiB per physical regular source,
 rejects redirected parent/leaf paths, and requires the pre-read file identity
 (device, inode, size and modification/change times) to match the open descriptor
