@@ -44,8 +44,10 @@ remains a byte-identical alias, and Windows retains native binary aliases for
 all three tools. Alias publication now admits only physical tool sources and
 neutral targets with no linked parent/leaf, checks source regular-file metadata
 and a 256-MiB copy limit, and verifies that copied native bytes came from one
-stable descriptor snapshot. Existing alias destinations are replaced through
-private temporary files rather than followed or truncated; preflight rejects
+stable descriptor snapshot. A failed source-descriptor stream wrapper
+closes that owned descriptor and reports a typed bootstrap error retaining
+the original host cause instead of leaking a handle or raw host exception. Existing alias destinations are replaced
+through private temporary files rather than followed or truncated; preflight rejects
 redirected targets before publishing any of the three aliases. Private Jig tool
 alias publication also binds the exact native `mkstemp` receipt to its requested
 alias directory and the open descriptor's regular-file inode before any write,

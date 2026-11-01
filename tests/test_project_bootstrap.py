@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import replace
 import hashlib
 import json
@@ -75,6 +76,7 @@ RUST_STD_BYTES = b"rust-std"
 RUFF_BYTES = b"ruff"
 OUTSIDE_JIG_ALIAS_BYTES = b"retain outside"
 EMPTY_JIG_STAGE_BYTES = b""
+JIG_BINARY_READ_MODE = "rb"
 PYTHON_LAUNCHER_NAME = "python"
 PYTEST_LAUNCHER_NAME = "pytest"
 STALE_LAUNCHER_BYTES = b"stale"
@@ -2444,6 +2446,71 @@ def test_jig_alias_publisher_rejects_hardlinked_staging_inode(
     finally:
         for stage in stages:
             stage.unlink(missing_ok=True)
+
+
+def _inject_jig_source_wrapper_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    source: Path,
+    fault_type: type[Exception],
+) -> tuple[list[int], Exception]:
+    """Intercept one native read descriptor and fail at stream wrapping.
+
+    Returns:
+        The opened descriptors and the injected host failure identity.
+
+    """
+    opened: list[int] = []
+    native_open = os.open
+    native_fdopen = os.fdopen
+    fault = fault_type("injected Jig tool binary wrapper failure")
+
+    def capture_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        descriptor = native_open(path, flags, mode)
+        if os.fspath(path) == os.fspath(source):
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_fdopen(descriptor: int, mode: str) -> object:
+        if descriptor in opened and mode == JIG_BINARY_READ_MODE:
+            raise fault
+        return native_fdopen(descriptor, mode)
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    return opened, fault
+
+
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
+def test_jig_alias_source_fdopen_fault_closes_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A tool source descriptor cannot leak if its stream wrapper fails."""
+    layout = _jig_alias_fixture(tmp_path, windows=True)
+    source = layout.scripts / "basedpyright.exe"
+    opened, fault = _inject_jig_source_wrapper_failure(
+        monkeypatch, source, fault_type
+    )
+    try:
+        with pytest.raises(
+            python_validation.ProvisionError, match="source read failed"
+        ) as caught:
+            _ = python_validation.write_jig_tool_aliases(layout, windows=True)
+        assert caught.value.__cause__ is fault
+        assert len(opened) == 1
+        with pytest.raises(
+            OSError, match=r"Bad file descriptor|Invalid handle"
+        ):
+            _ = os.fstat(opened[0])
+    finally:
+        for descriptor in opened:
+            with suppress(OSError):
+                os.close(descriptor)
 
 
 @pytest.mark.parametrize("windows", [False, True])

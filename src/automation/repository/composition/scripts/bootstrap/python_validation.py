@@ -718,6 +718,27 @@ def _jig_file_identity(
     )
 
 
+def _open_jig_binary_stream(descriptor: int) -> BinaryIO:
+    """Transfer a source descriptor to a stream without leaking on failure.
+
+    Returns:
+        A binary stream owning the admitted native descriptor.
+
+    Raises:
+        OSError: The host rejects stream creation.
+        ValueError: The host rejects descriptor arguments.
+        TypeError: The host stream adapter rejects an argument type.
+        RuntimeError: The host stream adapter cannot create a stream.
+
+    """
+    try:
+        return os.fdopen(descriptor, "rb")
+    except OSError, ValueError, TypeError, RuntimeError:
+        with suppress(OSError):
+            os.close(descriptor)
+        raise
+
+
 def _read_open_jig_binary(
     source: Path,
     expected: tuple[int, int, int, int, int],
@@ -735,7 +756,7 @@ def _read_open_jig_binary(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(source, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    with _open_jig_binary_stream(descriptor) as stream:
         observed = os.fstat(stream.fileno())
         if not stat.S_ISREG(observed.st_mode):
             _fail("Jig alias source must be a regular file")
@@ -756,12 +777,20 @@ def _read_jig_binary_source(source: Path) -> bytes:
     Returns:
         Stable physical source snapshot, excluding replacement and mutation.
 
+    Raises:
+        ProvisionError: Tool bytes, host I/O or source identity are invalid.
+
     """
     expected = _jig_source_identity(source)
     try:
         data = _read_open_jig_binary(source, expected)
-    except OSError as error:
-        _fail(f"Jig alias source read failed: {source}: {error}")
+    except ProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = (
+            f"Jig alias source read failed: {source}: {type(error).__name__}"
+        )
+        raise ProvisionError(message) from error
     if _jig_source_identity(source) != expected:
         _fail("Jig alias source changed during read")
     return data
