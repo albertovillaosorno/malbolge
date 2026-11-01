@@ -43,7 +43,7 @@ import argparse
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import Never
+from typing import Never, cast
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -154,17 +154,52 @@ def _parse_arguments() -> _Arguments:
     return arguments
 
 
+def _native_status(value: object, label: str) -> bool:
+    """Admit exact native boolean path evidence, rejecting foreign hooks.
+
+    Returns:
+        One trusted boolean status value.
+
+    """
+    if type(value) is not bool:
+        _fail(f"invalid {label} status receipt")
+    return cast("bool", value)
+
+
+def _verified_resolve(path: Path) -> Path:
+    """Resolve only to the expected native pathlib flavor.
+
+    Returns:
+        The physical path after exact-type admission.
+
+    """
+    resolved = path.resolve()
+    if type(resolved) is not type(path):
+        _fail("invalid C source resolved-path receipt")
+    return resolved
+
+
+def _reject_redirect(path: Path, label: str) -> None:
+    if _native_status(path.is_symlink(), f"{label} redirect"):
+        _fail(f"{label} must not redirect: {path}")
+    if _native_status(path.is_junction(), f"{label} redirect"):
+        _fail(f"{label} must not redirect: {path}")
+
+
 def _expand_directory(path: Path) -> tuple[Path, ...]:
     if path.name.casefold() != DOOM_DIRECTORY:
         _fail(f"only an explicitly named doom directory is recursive: {path}")
-    if path.is_symlink() or path.is_junction():
-        _fail(f"recursive doom directory must not redirect: {path}")
+    _reject_redirect(path, "recursive doom directory")
     sources: list[Path] = []
     for candidate in path.rglob("*"):
-        if candidate.is_symlink() or candidate.is_junction():
-            _fail(f"recursive doom entry must not redirect: {candidate}")
-        if candidate.is_file() and candidate.suffix.casefold() == C_SUFFIX:
-            sources.append(candidate.resolve())
+        if type(candidate) is not type(path):
+            _fail("invalid recursive doom entry path receipt")
+        _reject_redirect(candidate, "recursive doom entry")
+        if (
+            _native_status(candidate.is_file(), "recursive C source")
+            and candidate.suffix.casefold() == C_SUFFIX
+        ):
+            sources.append(_verified_resolve(candidate))
     files = tuple(sorted(sources))
     if not files:
         _fail(f"doom directory contains no C translation units: {path}")
@@ -172,18 +207,20 @@ def _expand_directory(path: Path) -> tuple[Path, ...]:
 
 
 def _expand_file(path: Path) -> tuple[Path, ...]:
-    if not path.is_file():
+    if not _native_status(path.is_file(), "C source file"):
         _fail(f"input is not a regular file: {path}")
     if path.suffix.casefold() != C_SUFFIX:
         _fail(f"guest validation accepts C translation units only: {path}")
-    return (path.resolve(),)
+    return (_verified_resolve(path),)
 
 
 def _expand_input(raw: str) -> tuple[Path, ...]:
     path = Path(raw)
-    if not path.exists():
+    if not _native_status(path.exists(), "C input existence"):
         _fail(f"input does not exist: {path}")
-    return _expand_directory(path) if path.is_dir() else _expand_file(path)
+    if _native_status(path.is_dir(), "C input directory"):
+        return _expand_directory(path)
+    return _expand_file(path)
 
 
 def _validated_files(raw_inputs: list[str]) -> tuple[Path, ...]:
@@ -218,6 +255,10 @@ def _tool_output(command: list[str]) -> sp.CompletedProcess[str]:
     if (
         type(completed) is not sp.CompletedProcess
         or type(completed.returncode) is not int
+        or type(completed.args) is not list
+        or len(completed.args) != len(command)
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != command
         or type(completed.stdout) is not str
         or type(completed.stderr) is not str
     ):
@@ -226,12 +267,12 @@ def _tool_output(command: list[str]) -> sp.CompletedProcess[str]:
 
 
 def _require_directory(path: Path, label: str) -> None:
-    if not path.is_dir():
+    if not _native_status(path.is_dir(), f"{label} directory"):
         _fail(f"{label} is unavailable: {path}")
 
 
 def _require_pinned_clang() -> None:
-    if not PINNED_CLANG.is_file():
+    if not _native_status(PINNED_CLANG.is_file(), "pinned Clang file"):
         _fail(f"repository-pinned Clang is unavailable: {PINNED_CLANG}")
     version = _tool_output([str(PINNED_CLANG), "--version"])
     expected = f"clang version {PINNED_LLVM_VERSION}"

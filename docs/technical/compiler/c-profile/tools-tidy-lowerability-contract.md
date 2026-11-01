@@ -44,7 +44,9 @@ evidence only; it does not claim that every surviving translation unit can
 already lower through the incomplete typed-IR/compiler pipeline.
 
 Both pinned-Clang preflight and delegated manual validation require exact native
-subprocess receipts: integer exit statuses and native UTF-8 stdout/stderr.
+subprocess receipts: integer exit statuses, invoked argument lists, and native
+UTF-8 stdout/stderr. The pre-Malbolge Clang preflight additionally rejects
+foreign argument-list wrappers, token subclasses, and mismatched commands.
 The manual dispatcher's Clang/tidy version query and plugin-registration probe
 require a native `CompletedProcess` with the invoked argument list and exact
 captured text. The source-validation subprocess instead inherits output and
@@ -58,9 +60,13 @@ reporting boundary.
 Recursive discovery is reserved for an explicitly selected `doom` directory.
 This convenience rejects linked or junction directory roots and descendants
 before admitting C sources, rather than following an alias outside the chosen
-tree or silently skipping linked subdirectories. Explicit single-file C input
-retains caller-selected path alias compatibility. These checks are not an
-atomic source snapshot against subsequent filesystem changes.
+tree or silently skipping linked subdirectories. Path existence, directory,
+regular-file, and redirect checks must return exact booleans before determining
+source selection. Resolved source paths retain their native pathlib flavor;
+foreign status or resolution objects cannot authorize sources or pinned tools.
+Explicit single-file C input retains caller-selected path alias compatibility.
+These checks are not an atomic source snapshot against subsequent filesystem
+changes.
 
 ## Invariants
 

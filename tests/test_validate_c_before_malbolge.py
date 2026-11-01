@@ -316,3 +316,143 @@ def test_preflight_cli_policy_errors_have_safe_diagnostics(
     report = capsys.readouterr()
     assert ("ForeignPolicyFault" if foreign else "native policy detail") in report.err
     assert not report.out
+
+
+@pytest.mark.parametrize(
+    "receipt_kind",
+    ["wrong_args", "tuple_args", "foreign_args", "foreign_token"],
+)
+def test_preflight_rejects_unverified_process_command_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_kind: str,
+) -> None:
+    """Clang cannot report successful evidence for an unrelated invocation."""
+
+    class ForeignArgs(list[str]):
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign command-equality hook executed")
+
+    class ForeignToken(str):
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign token-equality hook executed")
+
+    def forged_run(args: list[str], **_options: object) -> object:
+        forged: object = {
+            "wrong_args": [*args, "--extra"],
+            "tuple_args": tuple(args),
+            "foreign_args": ForeignArgs(args),
+            "foreign_token": [ForeignToken(args[0]), *args[1:]],
+        }[receipt_kind]
+        return sp.CompletedProcess(
+            forged,
+            0,
+            stdout="clang version 22.1.8",
+            stderr="",
+        )
+
+    monkeypatch.setattr(preflight.sp, "run", forged_run)
+    with pytest.raises(preflight.ValidationInputError, match="process receipt"):
+        _ = preflight._tool_output(["clang", "--version"])
+
+
+@pytest.mark.parametrize("where", ["root", "leaf"])
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("status", [0, None, 0.0])
+def test_preflight_rejects_unverified_redirect_status_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    where: str,
+    method: str,
+    status: object,
+) -> None:
+    """Recursive doom admission requires native redirect-status booleans."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    source = doom / "unit.c"
+    _ = source.write_bytes(b"int unit;\n")
+    target = doom if where == "root" else source
+    native = getattr(Path, method)
+
+    def fake_status(path: Path) -> object:
+        return status if path == target else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, method, fake_status)
+        with pytest.raises(preflight.ValidationInputError, match="redirect"):
+            _ = preflight._validated_files([str(doom)])
+
+
+@pytest.mark.parametrize(
+    ("method", "value"),
+    [
+        ("exists", 1),
+        ("exists", object()),
+        ("is_dir", 0),
+        ("is_dir", object()),
+        ("is_file", 1),
+        ("is_file", object()),
+    ],
+)
+def test_preflight_rejects_unverified_explicit_file_status_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    value: object,
+) -> None:
+    """A foreign path-status return never admits an explicit C source."""
+    source = tmp_path / "unit.c"
+    _ = source.write_bytes(b"int unit;\n")
+    native = getattr(Path, method)
+
+    def fake_status(path: Path) -> object:
+        return value if path == source else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, method, fake_status)
+        with pytest.raises(preflight.ValidationInputError, match="status receipt"):
+            _ = preflight._validated_files([str(source)])
+
+
+@pytest.mark.parametrize("value", ["/foreign/source.c", object()])
+def test_preflight_rejects_unverified_resolved_file_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    value: object,
+) -> None:
+    """A foreign resolved-path wrapper cannot act as a selected source."""
+    source = tmp_path / "unit.c"
+    _ = source.write_bytes(b"int unit;\n")
+    native = Path.resolve
+
+    def fake_resolve(path: Path, strict: bool = False) -> object:
+        return value if path == source else native(path, strict=strict)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "resolve", fake_resolve)
+        with pytest.raises(preflight.ValidationInputError, match="resolved.*receipt"):
+            _ = preflight._validated_files([str(source)])
+
+
+@pytest.mark.parametrize("method", ["is_file", "is_dir"])
+@pytest.mark.parametrize("status", [1, object()])
+def test_preflight_rejects_unverified_pinned_tool_path_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    status: object,
+) -> None:
+    """A forged pinned-tool/directory status cannot authorize execution."""
+    target = preflight.PINNED_CLANG if method == "is_file" else tmp_path
+    native = getattr(Path, method)
+
+    def fake_status(path: Path) -> object:
+        return status if path == target else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, method, fake_status)
+        if method == "is_file":
+            with pytest.raises(preflight.ValidationInputError, match="status receipt"):
+                preflight._require_pinned_clang()
+        else:
+            with pytest.raises(preflight.ValidationInputError, match="status receipt"):
+                preflight._require_directory(tmp_path, "test guest headers")
