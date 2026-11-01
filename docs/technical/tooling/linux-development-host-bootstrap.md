@@ -38,6 +38,15 @@ uses the same one-MiB physical regular-file admission and stable descriptor
 checks before its URL, version, artifact, and digest fields are interpreted.
 Failed uv manifest stream wrapping closes its owned descriptor and surfaces
 a typed bootstrap error with the original host failure as its cause.
+Pinned uv executable provisioning rejects symlinked, junction, non-directory,
+and multiply linked executable paths before executing an already-installed
+binary or creating new files. New uv payloads use an exclusively created
+`uv.tmp` descriptor with no-follow admission, exact write count, and descriptor-
+bound executable permissions. The original stage inode, single-link count, and
+byte size must still match before atomic publication; cleanup unlinks only the
+owned stage. An existing staging path is not truncated, and an executable that
+appears during provisioning is not overwritten. These checks do not make
+arbitrary concurrent ancestor directory swaps atomic.
 Python keeps native platform launchers and publishes neutral Jig aliases below
 `.dependencies`. On POSIX, BasedPyright and pytest aliases answer only the exact
 singleton `--version` probe from the same pinned `expected_tools` authority that

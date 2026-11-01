@@ -463,11 +463,11 @@ def test_uv_staging_rejects_incomplete_or_foreign_write_count(
     executable = python_validation.uv_executable(artifact, tmp_path)
     temporary = executable.with_name(f"{executable.name}.tmp")
     binary = b"synthetic-uv-binary-payload"
-    original_write = type(tmp_path).write_bytes
+    original_write = os.write
 
-    def incomplete_write(path: Path, data: bytes) -> int:
-        assert path == temporary
-        _ = original_write(path, data[:1])
+    def incomplete_write(descriptor: int, data: bytes) -> int:
+        assert temporary.is_file()
+        _ = original_write(descriptor, data[:1])
         return cast("int", bad_write_count)
 
     def fake_download(selected_artifact: python_validation.UvArtifact) -> bytes:
@@ -485,7 +485,7 @@ def test_uv_staging_rejects_incomplete_or_foreign_write_count(
         assert command == [str(executable), "--version"]
         return f"uv {artifact.version}"
 
-    monkeypatch.setattr(type(tmp_path), "write_bytes", incomplete_write)
+    monkeypatch.setattr(os, "write", incomplete_write)
     monkeypatch.setattr(
         python_validation, "_download_uv_archive", fake_download
     )

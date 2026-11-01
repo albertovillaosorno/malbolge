@@ -89,6 +89,7 @@ UV_RELEASE_BASE: Final = "https://github.com/astral-sh/uv/releases/download/"
 UV_SCHEMA_VERSION: Final = 1
 MAX_UV_MANIFEST_BYTES: Final = 1_048_576
 MAX_JIG_TOOL_BINARY_BYTES: Final = 256 * 1024 * 1024
+UV_BINARY_MODE: Final = 0o755
 JIG_BINARY_MODE: Final = 0o755
 URL_SUFFIX_MARKERS: Final = frozenset(("?", "#"))
 BASEDPYRIGHT_TOOL_ID: Final = "basedpyright"
@@ -428,18 +429,251 @@ def _uv_version_matches(output: str, version: str) -> bool:
     return output == expected or output.startswith(f"{expected} ")
 
 
-def _write_verified_uv_binary(temporary: Path, binary: bytes) -> None:
-    """Require the complete pinned uv payload before executable publication."""
-    written = temporary.write_bytes(binary)
-    if type(written) is int and written == len(binary):
-        return
+def _admit_uv_directory(
+    path: Path,
+    *,
+    required: bool = False,
+) -> os.stat_result | None:
+    """Reject nonphysical directories in a uv provisioning path.
+
+    Returns:
+        Physical directory metadata, or None for an optional missing path.
+
+    """
+    if path.is_symlink() or path.is_junction():
+        _fail(f"uv provision path must not redirect: {path}")
     try:
-        temporary.unlink(missing_ok=True)
-    except OSError as error:
-        _fail(
-            f"uv staging short or invalid byte count; cleanup failed: {error}"
+        status = path.lstat()
+    except FileNotFoundError:
+        if required:
+            _fail(f"uv provision path disappeared: {path}")
+        return None
+    if not stat.S_ISDIR(status.st_mode):
+        _fail(f"uv provision parent must be a directory: {path}")
+    return status
+
+
+def _uv_leaf_status(
+    path: Path,
+    *,
+    required: bool,
+) -> os.stat_result | None:
+    """Read one physical uv leaf without following redirected names.
+
+    Returns:
+        Physical leaf status, or None when an optional leaf is missing.
+
+    """
+    if path.is_symlink() or path.is_junction():
+        _fail(f"uv provision path must not redirect: {path}")
+    try:
+        return path.lstat()
+    except FileNotFoundError:
+        if required:
+            _fail(f"uv provision path disappeared: {path}")
+        return None
+
+
+def _admit_uv_regular_file(
+    path: Path,
+    *,
+    required: bool,
+) -> os.stat_result | None:
+    """Require a single-link physical regular uv executable or stage.
+
+    Returns:
+        Physical regular file status, or None for an optional missing file.
+
+    """
+    status = _uv_leaf_status(path, required=required)
+    if status is None:
+        return None
+    if not stat.S_ISREG(status.st_mode):
+        _fail(f"uv provision file must be physical and regular: {path}")
+    if status.st_nlink != 1:
+        _fail(f"uv provision file must not have multiple links: {path}")
+    return status
+
+
+def _admit_uv_provision_path(
+    path: Path,
+    *,
+    directory: bool = False,
+    required: bool = False,
+) -> os.stat_result | None:
+    """Admit physical provisioning ancestry and a single-link target leaf.
+
+    Returns:
+        The leaf status, or None when an optional leaf is absent.
+
+    """
+    for parent in reversed(path.parents):
+        _ = _admit_uv_directory(parent)
+    if directory:
+        return _admit_uv_directory(path, required=required)
+    return _admit_uv_regular_file(path, required=required)
+
+
+def _uv_stage_is_owned(
+    temporary: Path,
+    identity: tuple[int, int],
+    *,
+    expected_size: int | None = None,
+) -> bool:
+    """Verify a stage still names its original single-link regular inode.
+
+    Returns:
+        Whether the stage still has the required private identity and size.
+
+    """
+    try:
+        status = temporary.lstat()
+    except OSError, ValueError, TypeError, RuntimeError:
+        return False
+    return (
+        stat.S_ISREG(status.st_mode)
+        and status.st_nlink == 1
+        and (status.st_dev, status.st_ino) == identity
+        and (expected_size is None or status.st_size == expected_size)
+    )
+
+
+def _create_uv_stage(temporary: Path) -> tuple[int, tuple[int, int]]:
+    """Create a private uv staging descriptor using exclusive file creation.
+
+    Returns:
+        Open descriptor and device/inode identity of the created stage.
+
+    Raises:
+        ProvisionError: The staging path cannot be exclusively admitted.
+
+    """
+    if _admit_uv_provision_path(temporary) is not None:
+        _fail(f"uv staging path already exists: {temporary}")
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    try:
+        descriptor = os.open(temporary, flags, 0o600)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = "uv staging descriptor creation failed"
+        raise ProvisionError(message) from error
+    try:
+        status = os.fstat(descriptor)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        with suppress(OSError):
+            os.close(descriptor)
+        message = "uv staging descriptor inspection failed"
+        raise ProvisionError(message) from error
+    return descriptor, (status.st_dev, status.st_ino)
+
+
+def _write_uv_stage_descriptor(
+    temporary: Path,
+    stage: tuple[int, tuple[int, int]],
+    binary: bytes,
+    *,
+    windows: bool,
+) -> None:
+    """Write and mark only the original uv staging descriptor executable."""
+    descriptor, identity = stage
+    if not _uv_stage_is_owned(temporary, identity, expected_size=0):
+        _fail("uv staging descriptor does not match a private file")
+    written = os.write(descriptor, binary)
+    if type(written) is not int or written != len(binary):
+        _fail("uv staging short or invalid byte count")
+    if not windows:
+        os.fchmod(descriptor, UV_BINARY_MODE)
+    if not _uv_stage_is_owned(temporary, identity, expected_size=len(binary)):
+        _fail("uv staging changed during descriptor write")
+
+
+def _write_verified_uv_binary(
+    temporary: Path,
+    binary: bytes,
+    *,
+    windows: bool = WINDOWS,
+) -> tuple[int, int]:
+    """Write pinned uv bytes through one exclusively created owned descriptor.
+
+    Returns:
+        Device and inode identity for the private stage before publication.
+
+    Raises:
+        ProvisionError: A stage write or physical identity cannot be admitted.
+
+    """
+    descriptor, identity = _create_uv_stage(temporary)
+    complete = False
+    try:
+        _write_uv_stage_descriptor(
+            temporary, (descriptor, identity), binary, windows=windows
         )
-    _fail("uv staging short or invalid byte count")
+    except ProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = "uv staging descriptor write failed"
+        raise ProvisionError(message) from error
+    else:
+        complete = True
+        return identity
+    finally:
+        with suppress(OSError):
+            os.close(descriptor)
+        if not complete and _uv_stage_is_owned(temporary, identity):
+            with suppress(OSError):
+                temporary.unlink()
+
+
+def _require_uv_destination_absent(executable: Path) -> None:
+    """Reject a destination created by another process during provisioning."""
+    if _admit_uv_provision_path(executable) is not None:
+        _fail(f"uv executable appeared during provisioning: {executable}")
+
+
+def _publish_uv_stage(
+    temporary: Path,
+    executable: Path,
+    identity: tuple[int, int],
+    *,
+    expected_size: int,
+) -> None:
+    """Publish only a private stage into an admitted physical destination."""
+    _ = _admit_uv_provision_path(
+        executable.parent, directory=True, required=True
+    )
+    _require_uv_destination_absent(executable)
+    if not _uv_stage_is_owned(temporary, identity, expected_size=expected_size):
+        _fail("uv staging changed before publication")
+    _ = temporary.replace(executable)
+
+
+def _provision_uv_binary(
+    executable: Path,
+    binary: bytes,
+    *,
+    windows: bool,
+) -> None:
+    """Provision one new uv executable without following staging aliases."""
+    _ = _admit_uv_provision_path(executable.parent, directory=True)
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    _ = _admit_uv_provision_path(
+        executable.parent, directory=True, required=True
+    )
+    _require_uv_destination_absent(executable)
+    temporary = executable.with_name(f"{executable.name}.tmp")
+    identity = _write_verified_uv_binary(temporary, binary, windows=windows)
+    try:
+        _publish_uv_stage(
+            temporary, executable, identity, expected_size=len(binary)
+        )
+    finally:
+        if _uv_stage_is_owned(temporary, identity):
+            temporary.unlink(missing_ok=True)
 
 
 def ensure_uv(
@@ -456,20 +690,20 @@ def ensure_uv(
     selected = platform_id or uv_platform_id()
     artifact = uv_artifact(selected)
     executable = uv_executable(artifact, root)
-    if executable.is_file():
+    if _admit_uv_provision_path(executable) is not None:
         output = _run([str(executable), "--version"])
+        _ = _admit_uv_provision_path(executable, required=True)
         if _uv_version_matches(output, artifact.version):
             return executable
         _fail(f"unexpected uv version at {executable}: {output!r}")
     data = _download_uv_archive(artifact)
     binary = _uv_member_bytes(data, artifact)
-    executable.parent.mkdir(parents=True, exist_ok=True)
-    temporary = executable.with_name(f"{executable.name}.tmp")
-    _write_verified_uv_binary(temporary, binary)
-    if not selected.startswith("windows-"):
-        _make_executable(temporary)
-    _ = temporary.replace(executable)
+    _provision_uv_binary(
+        executable, binary, windows=selected.startswith("windows-")
+    )
+    _ = _admit_uv_provision_path(executable, required=True)
     output = _run([str(executable), "--version"])
+    _ = _admit_uv_provision_path(executable, required=True)
     if not _uv_version_matches(output, artifact.version):
         _fail(f"unexpected provisioned uv version: {output!r}")
     return executable
@@ -613,11 +847,6 @@ def _posix_jig_tool_alias_text(
         f"{cache}"
         f"{invocation}\n"
     )
-
-
-def _make_executable(path: Path) -> None:
-    mode = path.stat().st_mode
-    _ = path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
 def write_launchers(
