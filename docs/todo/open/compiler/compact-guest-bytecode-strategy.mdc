@@ -241,7 +241,9 @@ code-size explosion or compilation cost.
   canonical host admission rejects other counts, operand/code/data
   forgeries, and foreign source identities. All 6,524 loader-valid
   one-cell substitutions across the four complete source images reject;
-  this does not establish resistance to arbitrary multi-cell forgeries.
+  588 simultaneous two-cell graphical substitutions restricted to pairs of
+  the three branch operand positions also reject. Neither finite matrix
+  establishes resistance to arbitrary multi-cell forgeries.
   Actual profile-VM traces
   establish 233 cells and 86/89/92/94 steps versus direct 3/5/7/9
   cells and steps. General CLI capsules match independently restored

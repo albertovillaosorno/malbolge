@@ -626,6 +626,12 @@ unsupported counts or changes to code, operands, CEB2 or source extent.
 The checker also rejects all 6,524 one-cell loader-admissible alternatives
 (four sources, 233 cells, seven alternate graphical glyphs each). This
 is an exhaustive Hamming-one test, not a cryptographic soundness proof.
+A separate complete two-operand matrix changes two of the three graphical
+branch words at once: four original programs, three unordered operand pairs,
+and seven alternative loader-valid glyphs at each position yield **588
+rejected correlated substitutions**. This covers every Hamming-two edit
+restricted to two branch operands, not arbitrary two-cell changes, source
+forgery, or a general cryptographic guarantee.
 Real normative VM traces confirm every reached guest `i` data read,
 selected C successor and code-only post-jump XLAT2 encryption. All
 102 source-bound data words remain unchanged after execution; binary

@@ -1801,6 +1801,73 @@ fn four_way_real_cli_capsules_match_independent_direct_vm_on_stdin_boundaries() 
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "correlated two-cell graphical branch forgeries"
+)]
+#[expect(
+    clippy::excessive_nesting,
+    reason = "complete Cartesian product of operand pairs and both glyph alphabets"
+)]
+fn four_way_rejects_all_two_operand_graphical_substitutions() -> Result<(), String> {
+    let operands = [
+        quadruple::SECOND_WORD_ADDRESS,
+        quadruple::THIRD_WORD_ADDRESS,
+        quadruple::FOURTH_WORD_ADDRESS,
+    ];
+    let mut rejected = 0usize;
+    for pairs in [1u32, 2, 3, 4] {
+        let (original, source) = canonical_four_way_source(pairs)?;
+        for first_index in 0..operands.len() {
+            for second_index in first_index + 1..operands.len() {
+                let first_position = *operands.get(first_index).ok_or("first operand")?;
+                let second_position = *operands.get(second_index).ok_or("second operand")?;
+                let first_options = guest_probe::alphabet(first_position)
+                    .map_err(|error| format!("first graphical alphabet: {error:?}"))?;
+                let second_options = guest_probe::alphabet(second_position)
+                    .map_err(|error| format!("second graphical alphabet: {error:?}"))?;
+                let original_first = *source.get(first_position).ok_or("first source operand")?;
+                let original_second =
+                    *source.get(second_position).ok_or("second source operand")?;
+                for first in first_options
+                    .into_iter()
+                    .filter(|&word| word != original_first)
+                {
+                    for second in second_options
+                        .into_iter()
+                        .filter(|&word| word != original_second)
+                    {
+                        let mut altered = source.clone();
+                        *altered
+                            .get_mut(first_position)
+                            .ok_or("first altered operand")? = first;
+                        *altered
+                            .get_mut(second_position)
+                            .ok_or("second altered operand")? = second;
+                        assert!(
+                            quadruple::admit_quadruple_echo_dispatch(
+                                &original,
+                                current_profile(),
+                                &altered,
+                            )
+                            .is_err(),
+                            "correlated loader-valid operands must reject n={pairs} \
+                             positions={first_position},{second_position} \
+                             replacements={first},{second}"
+                        );
+                        rejected += 1;
+                    }
+                }
+            }
+        }
+    }
+    // Four sources, three choices of two operands, seven alternative
+    // loader-valid glyphs at each position: no Hamming-two escape.
+    assert_eq!(rejected, 4 * 3 * 7 * 7);
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "bounded entire graphical Hamming-one domain"
 )]
 fn four_way_every_loader_admissible_single_cell_substitution_is_rejected() -> Result<(), String> {
