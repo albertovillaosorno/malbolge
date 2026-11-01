@@ -1162,7 +1162,7 @@ computation, heap, C ABI or guest libc/EOF realization.
 ### First Verified Nonzero Guest U8 Literal
 
 An opt-in `encode_rotated_byte_literal` bridge admits one exact
-`MaterializeU8` with one to thirty-two same-SSA `ByteOutput`s, followed
+`MaterializeU8` with one to thirty-three same-SSA `ByteOutput`s, followed
 by `ReturnVoid`.
 For one output, 14 current-profile nonzero bytes are realized:
 `4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253`. A bounded
@@ -1193,9 +1193,9 @@ Independent 256-byte-domain checks reject the 237 and 238 unseeded values
 respectively. Separate eight- and nine-output short-phase scans each confirm 21
 distinct shortest seeds, rejecting the other 235 bytes per count.
 The tenth-output scan confirms 25 shortest seeds and rejects the other
-231 bytes. Independently re-executed eleven- through thirty-two-output
+231 bytes. Independently re-executed eleven- through thirty-three-output
 scans admit 17, 20, 19, 22, 17, 24, 19, 20, 19, 21, 20, 25, 21, 21,
-19, 22, 18, 22, 19, 20, 19 and 20 nonzero byte values, respectively.
+19, 22, 18, 22, 19, 20, 19, 20 and 18 nonzero byte values, respectively.
 The seventeen- through twenty-output scans each verify all 26 tested phases.
 Twenty-one outputs
 admit 25 phases, excluding phase fourteen.
@@ -1229,11 +1229,15 @@ Thirty-two outputs pass 21 of 26 phases (excluding three through seven),
 retaining 20 shortest nonzero witnesses, including the earlier of two
 phase-16/25 witnesses for byte 139. Typed/raw/capsule and real-runner
 fixtures prove 200 and 15.
-Thirty-three or more outputs, foreign profiles, unknown byte
+Thirty-three outputs pass 21 of 26 real VM phases (not three through seven),
+retaining 18 distinct nonzero bytes. Values 164 and 160 repeat; only their
+first safe prefixes survive. Typed/raw/capsule and real-runner fixtures
+prove byte 136 and byte 158 with no guest input.
+Thirty-four or more outputs, foreign profiles, unknown byte
 values and mixed SSA effects reject.
 
 `compile_canonical_typed_rotated_byte_literal` projects complete
-canonical MCTI with one `u8 ConstantInteger`, one to thirty-two matching
+canonical MCTI with one `u8 ConstantInteger`, one to thirty-three matching
 `ByteOutput`s and final void return. Canonical MCTR re-admission and source
 comparison
 retain source/SSA/ABI/target provenance. The standalone CLI adds explicit

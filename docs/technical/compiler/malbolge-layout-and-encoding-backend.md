@@ -336,13 +336,13 @@ publication remain distinct guarantees.
 ### Genuine Nonzero Byte Constant Artifact Pilot
 
 The explicit `--seeded-byte-literal` mode admits one verified nonzero
-`u8` literal and one to thirty-two matching outputs via canonical MCTI
+`u8` literal and one to thirty-three matching outputs via canonical MCTI
 or MCTR file/stdin. The original 14-value current-profile seed table
 remains exclusive to single-output sources. Ten different byte values
 `55, 64, 65, 66, 163, 164, 165, 182, 183, 200` have a separately
-verified two-output seed table. Third- through thirty-second-output phases
+verified two-output seed table. Third- through thirty-third-output phases
 add 21, 24, 18, 19, 18, 21, 21, 25, 17, 20, 19, 22, 17, 24,
-19, 20, 19, 21, 20, 25, 21, 21, 19, 22, 18, 22, 19, 20, 19 and 20 independently
+19, 20, 19, 21, 20, 25, 21, 21, 19, 22, 18, 22, 19, 20, 19, 20 and 18 independently
 re-executed
 distinct byte values, respectively. All 26 reviewed phases for counts
 three through fourteen and sixteen through twenty halt with equal nonzero
@@ -370,9 +370,12 @@ retaining 19 distinct shortest nonzero values; typed/runner proves 22 and 160.
 Thirty-two outputs pass 21/26 phases (not three through seven),
 retaining 20 distinct shortest nonzero values, with phase 16 preferred
 over later phase 25 for byte 139; typed/runner proves 200 and 15.
-Separate VM scans for sixteen through thirty-two outputs and real CLI
+Thirty-three outputs pass 21/26 phases (not three through seven),
+retaining 18 distinct shortest nonzero values, with shortest witnesses
+for repeated bytes 160/164; typed/real runner proves 136 and 158.
+Separate VM scans for sixteen through thirty-three outputs and real CLI
 fixtures prove 41/194, 6/133, 66/59, 20/6, 192/48, 140/252, 64/18,
-251/27, 65/155, 18/44, 196/137, 138/41, 63/19, 12/25, 55/150, 22/160 and 200/15 at
+251/27, 65/155, 18/44, 196/137, 138/41, 63/19, 12/25, 55/150, 22/160, 200/15 and 136/158 at
 distinct source positions, respectively.
 The admission table retains only the shortest phase per witnessed byte,
 not inferred values for untested source lengths.
@@ -385,7 +388,7 @@ no-overwrite semantics. General-runner process tests select the current
 profile through a capsule; raw graphical source carries no profile ID and
 can produce different values under the runner's historical default.
 The guest computes the byte without a host-provided result. Other profiles,
-unknown literals, zero/thirty-three-or-more outputs, additional effects and
+unknown literals, zero/thirty-four-or-more outputs, additional effects and
 arbitrary arithmetic reject.
 
 ### Signed/unsigned byte identity-cast artifact publication
