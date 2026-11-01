@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
@@ -129,6 +130,29 @@ class SourceAnalysisError(RuntimeError):
     """Pinned Clang could not provide valid AST evidence."""
 
 
+def _safe_error_detail(error: Exception) -> str:
+    """Preserve native diagnostics without invoking foreign formatters.
+
+    Returns:
+        A trusted built-in error message or the foreign exception type name.
+
+    """
+    if type(error) in (
+        OSError,
+        FileNotFoundError,
+        PermissionError,
+        IsADirectoryError,
+        NotADirectoryError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        SourceAnalysisError,
+        c_abi.CAbiValidationError,
+    ):
+        return str(error)
+    return type(error).__name__
+
+
 class _Arguments(argparse.Namespace):
     files: list[Path]
     clang: Path
@@ -193,9 +217,10 @@ def _checked_clang_output(
 
     """
     if (
-        type(completed.returncode) is not int
-        or not isinstance(completed.stdout, str)
-        or not isinstance(completed.stderr, str)
+        type(completed) is not sp.CompletedProcess
+        or type(completed.returncode) is not int
+        or type(completed.stdout) is not str
+        or type(completed.stderr) is not str
     ):
         _fail(f"malformed Clang {context} process receipt")
     return completed.stdout, completed.stderr
@@ -214,7 +239,8 @@ def _clang_identity(clang: Path) -> str:
             shell=False,
         )
     except (OSError, ValueError, TypeError, RuntimeError) as error:
-        _fail(f"failed to execute Clang version query {clang}: {error}")
+        message = f"failed to execute Clang version query {clang}: {_safe_error_detail(error)}"
+        raise SourceAnalysisError(message) from error
     stdout, stderr = _checked_clang_output(completed, "version")
     if completed.returncode != 0:
         _fail(f"Clang version query failed for {clang}")
@@ -225,7 +251,8 @@ def _require_ast_inputs(source: Path, clang: Path) -> None:
     try:
         clang_is_file = clang.is_file()
     except (OSError, ValueError, TypeError, RuntimeError) as error:
-        _fail(f"Clang status failed for {clang}: {error}")
+        message = f"Clang status failed for {clang}: {_safe_error_detail(error)}"
+        raise SourceAnalysisError(message) from error
     if not clang_is_file:
         _fail(f"pinned Clang not found: {clang}")
     expected = f"clang version {PINNED_LLVM_VERSION}"
@@ -234,7 +261,8 @@ def _require_ast_inputs(source: Path, clang: Path) -> None:
     try:
         source_is_file = source.is_file()
     except (OSError, ValueError, TypeError, RuntimeError) as error:
-        _fail(f"source status failed for {source}: {error}")
+        message = f"source status failed for {source}: {_safe_error_detail(error)}"
+        raise SourceAnalysisError(message) from error
     if not source_is_file:
         _fail(f"source is not a regular file: {source}")
 
@@ -263,7 +291,10 @@ def _run_ast(source: Path, clang: Path, target: str) -> JsonObject:
             shell=False,
         )
     except (OSError, ValueError, TypeError, RuntimeError) as error:
-        _fail(f"failed to execute Clang AST parse {clang}: {error}")
+        message = (
+            f"failed to execute Clang AST parse {clang}: {_safe_error_detail(error)}"
+        )
+        raise SourceAnalysisError(message) from error
     stdout, stderr = _checked_clang_output(completed, "AST")
     if completed.returncode != 0:
         detail = stderr.strip()
@@ -632,6 +663,8 @@ def _source_identity(status: stat_result) -> tuple[int, int, int, int, int]:
         Device, inode, size, mtime, and ctime.
 
     """
+    if type(status) is not os.stat_result:
+        _fail("invalid guest C source status receipt")
     if not S_ISREG(status.st_mode):
         _fail("guest C source must be a regular file")
     return (
@@ -654,12 +687,17 @@ def _snapshot_open_source(
         Stable source bytes and file identity.
 
     """
-    opened = os.fstat(stream.fileno())
+    descriptor = stream.fileno()
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("invalid guest C source stream descriptor receipt")
+    opened = os.fstat(descriptor)
     identity = _source_identity(opened)
     if identity != _source_identity(admitted):
         _fail(f"guest C source changed before read: {source}")
     content = stream.read()
-    after = os.fstat(stream.fileno())
+    if type(content) is not bytes:
+        _fail("invalid guest C source bytes receipt")
+    after = os.fstat(descriptor)
     visible = source.lstat()
     if identity != _source_identity(after):
         _fail(f"guest C source changed during read: {source}")
@@ -683,8 +721,12 @@ def _source_snapshot(source: Path) -> _SourceSnapshot:
             os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
         )
         descriptor = os.open(source, flags)
+        if type(descriptor) is not int or descriptor < 0:
+            _fail("invalid guest C source descriptor receipt")
         try:
             stream = os.fdopen(descriptor, "rb")
+            if type(stream) is not io.BufferedReader:
+                _fail("invalid guest C source stream receipt")
         except BaseException:
             # A failed stream wrapper has not taken ownership of this fd.
             try:
@@ -698,7 +740,7 @@ def _source_snapshot(source: Path) -> _SourceSnapshot:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise SourceAnalysisError(
-            f"failed to read guest C source {source}: {error}"
+            f"failed to read guest C source {source}: {_safe_error_detail(error)}"
         ) from error
 
 
@@ -718,7 +760,7 @@ def analyze_source(
         resolved = source.resolve()
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise SourceAnalysisError(
-            f"failed to resolve guest C source {source}: {error}"
+            f"failed to resolve guest C source {source}: {_safe_error_detail(error)}"
         ) from error
     active_projection = projection or c_abi.canonical_projection()
     snapshot = _source_snapshot(resolved)
@@ -726,12 +768,14 @@ def analyze_source(
     try:
         _ = source_bytes.decode("utf-8")
     except UnicodeDecodeError as error:
-        _fail(f"invalid guest-C UTF-8 in {resolved}: {error}")
+        raise SourceAnalysisError(
+            f"invalid guest-C UTF-8 in {resolved}: {error}"
+        ) from error
     try:
         resolved_clang = clang.resolve()
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise SourceAnalysisError(
-            f"failed to resolve Clang path {clang}: {error}"
+            f"failed to resolve Clang path {clang}: {_safe_error_detail(error)}"
         ) from error
     ast = _run_ast(resolved, resolved_clang, active_projection.clang_target)
     if snapshot != _source_snapshot(resolved):
@@ -784,7 +828,7 @@ def main() -> int:
             ):
                 admitted = False
     except (c_abi.CAbiValidationError, SourceAnalysisError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
         return 2
     return 0 if admitted else 1
 

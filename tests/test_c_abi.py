@@ -40,7 +40,7 @@ import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import cast
+from typing import BinaryIO, cast
 
 import pytest
 
@@ -316,9 +316,7 @@ def test_missing_abi_manifest_fails_closed(tmp_path: Path) -> None:
         _ = c_abi.load_document(missing)
 
 
-@pytest.mark.parametrize(
-    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
-)
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
 @pytest.mark.parametrize(
     "operation",
     (
@@ -396,9 +394,7 @@ def test_c_abi_document_host_file_faults_are_typed(
         _ = c_abi.load_document(source)
 
 
-@pytest.mark.parametrize(
-    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
-)
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
 def test_c_abi_fdopen_failure_closes_owned_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -438,9 +434,7 @@ def test_missing_guest_source_fails_closed(tmp_path: Path) -> None:
         _ = c_abi_source.analyze_source(missing)
 
 
-@pytest.mark.parametrize(
-    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
-)
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
 @pytest.mark.parametrize(
     "operation", ("lstat", "open", "fdopen", "fstat", "read", "post_lstat")
 )
@@ -499,9 +493,7 @@ def test_guest_source_host_file_faults_are_typed(
         _ = c_abi_source._source_snapshot(source)
 
 
-@pytest.mark.parametrize(
-    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
-)
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
 def test_guest_source_fdopen_failure_closes_owned_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -531,9 +523,7 @@ def test_guest_source_fdopen_failure_closes_owned_descriptor(
         _ = os.fstat(opened[0])
 
 
-@pytest.mark.parametrize(
-    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
-)
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
 @pytest.mark.parametrize("location", ["source", "clang"])
 def test_guest_source_resolve_host_faults_are_typed(
     tmp_path: Path,
@@ -637,6 +627,311 @@ def test_guest_source_clang_nontext_receipts_fail_closed(
         operation = lambda: c_abi_source._run_ast(source, source, "target")
     with pytest.raises(c_abi_source.SourceAnalysisError, match="Clang"):
         _ = operation()
+
+
+@pytest.mark.parametrize("query", ["version", "ast"])
+@pytest.mark.parametrize(
+    "receipt_kind",
+    [
+        "foreign_result",
+        "subclass_result",
+        "boolean_status",
+        "float_status",
+        "text_status",
+        "foreign_stdout",
+        "foreign_stderr",
+    ],
+)
+def test_guest_source_clang_rejects_forged_process_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    receipt_kind: str,
+) -> None:
+    """Only native Clang exit and text evidence may authorize source parsing."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+
+    class ForgedReceipt:
+        @property
+        def returncode(self) -> object:
+            raise AssertionError("foreign receipt property evaluated")
+
+    class SubclassReceipt(sp.CompletedProcess[str]):
+        pass
+
+    class ForeignText(str):
+        def __add__(self, _other: object) -> str:
+            raise AssertionError("foreign stdout concatenation executed")
+
+        def strip(self, _chars: str | None = None) -> str:
+            raise AssertionError("foreign stderr formatter executed")
+
+    if receipt_kind == "foreign_result":
+        receipt: object = ForgedReceipt()
+    else:
+        constructor = (
+            SubclassReceipt
+            if receipt_kind == "subclass_result"
+            else sp.CompletedProcess
+        )
+        status = cast(
+            "int",
+            {
+                "boolean_status": False,
+                "float_status": 0.0,
+                "text_status": "0",
+            }.get(receipt_kind, 0),
+        )
+        receipt = constructor(
+            ["clang"],
+            status,
+            stdout=ForeignText("valid") if receipt_kind == "foreign_stdout" else "",
+            stderr=ForeignText("invalid") if receipt_kind == "foreign_stderr" else "",
+        )
+    monkeypatch.setattr(c_abi_source.sp, "run", lambda *_a, **_kw: receipt)
+    if query == "version":
+        operation = lambda: c_abi_source._clang_identity(source)
+    else:
+        monkeypatch.setattr(c_abi_source, "_require_ast_inputs", lambda *_: None)
+        operation = lambda: c_abi_source._run_ast(source, source, "target")
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="malformed Clang"):
+        _ = operation()
+
+
+@pytest.mark.parametrize("query", ["version", "ast"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_guest_source_clang_foreign_host_errors_never_format(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    fault_type: type[Exception],
+) -> None:
+    """A foreign host exception must retain its cause without hook invocation."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign host formatter executed")
+
+    foreign = type("ForeignHostFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("private foreign detail")
+
+    def fail_run(*_a: object, **_kw: object) -> object:
+        raise fault
+
+    monkeypatch.setattr(c_abi_source.sp, "run", fail_run)
+    if query == "version":
+        operation = lambda: c_abi_source._clang_identity(source)
+    else:
+        monkeypatch.setattr(c_abi_source, "_require_ast_inputs", lambda *_: None)
+        operation = lambda: c_abi_source._run_ast(source, source, "target")
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="Clang") as error:
+        _ = operation()
+    assert error.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("descriptor", [False, True, -1, 0.0, "4"])
+def test_guest_source_rejects_non_native_open_descriptors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    descriptor: object,
+) -> None:
+    """A forged raw descriptor cannot reach fdopen or close another host fd."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    fdopen_calls: list[object] = []
+    close_calls: list[object] = []
+
+    monkeypatch.setattr(os, "open", lambda *_a, **_kw: descriptor)
+
+    def unexpected_fdopen(fd: object, _mode: str) -> object:
+        fdopen_calls.append(fd)
+        raise AssertionError("forged descriptor passed to fdopen")
+
+    monkeypatch.setattr(os, "fdopen", unexpected_fdopen)
+    monkeypatch.setattr(os, "close", lambda fd: close_calls.append(fd))
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="descriptor"):
+        _ = c_abi_source._source_snapshot(source)
+    assert not fdopen_calls
+    assert not close_calls
+
+
+@pytest.mark.parametrize("phase", ["lstat", "first_fstat", "second_fstat"])
+def test_guest_source_rejects_forged_stat_receipts_without_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """Foreign stat objects cannot masquerade as stable source identity."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+
+    class ForgedStat:
+        @property
+        def st_mode(self) -> object:
+            raise AssertionError("foreign stat hook evaluated")
+
+    if phase == "lstat":
+        monkeypatch.setattr(Path, "lstat", lambda self: ForgedStat())
+    else:
+        original_fstat = os.fstat
+        calls = 0
+
+        def forged_fstat(fd: int) -> os.stat_result | ForgedStat:
+            nonlocal calls
+            calls += 1
+            if calls == (1 if phase == "first_fstat" else 2):
+                return ForgedStat()
+            return original_fstat(fd)
+
+        monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="status"):
+        _ = c_abi_source._source_snapshot(source)
+
+
+@pytest.mark.parametrize("receipt_kind", ["text", "subclass"])
+def test_guest_source_rejects_non_native_read_bytes(
+    tmp_path: Path,
+    receipt_kind: str,
+) -> None:
+    """Source bytes must be native before snapshot identity is trusted."""
+    source = tmp_path / "input.c"
+    _ = source.write_bytes(b"int value;\n")
+
+    class ForeignBytes(bytes):
+        def decode(self, *_args: object, **_kwargs: object) -> str:
+            raise AssertionError("foreign decoder executed")
+
+    with source.open("rb") as real_stream:
+
+        class ForgedRead:
+            def fileno(self) -> int:
+                return real_stream.fileno()
+
+            def read(self) -> object:
+                if receipt_kind == "subclass":
+                    return ForeignBytes(b"int value;\n")
+                return "int value;\n"
+
+        with pytest.raises(c_abi_source.SourceAnalysisError, match="bytes"):
+            _ = c_abi_source._snapshot_open_source(
+                cast("BinaryIO", cast("object", ForgedRead())), source, source.lstat()
+            )
+
+
+def test_guest_source_rejects_foreign_fdopen_stream_without_entering_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged stream wrapper never gains source-read authority or leaks fds."""
+    source = tmp_path / "input.c"
+    _ = source.write_bytes(b"int value;\n")
+    opened: list[int] = []
+    original_open = os.open
+
+    def track_open(path: Path, flags: int) -> int:
+        fd = original_open(path, flags)
+        opened.append(fd)
+        return fd
+
+    class ForeignStream:
+        def __enter__(self) -> object:
+            raise AssertionError("foreign stream hook evaluated")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", lambda *_args: ForeignStream())
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="stream"):
+        _ = c_abi_source._source_snapshot(source)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("descriptor", [False, 0.0, "0", -1])
+def test_guest_source_rejects_foreign_stream_descriptors_before_fstat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    descriptor: object,
+) -> None:
+    """Source fileno must be native, never a coerced host handle."""
+    source = tmp_path / "input.c"
+    _ = source.write_bytes(b"int value;\n")
+
+    class ForeignStream:
+        def fileno(self) -> object:
+            return descriptor
+
+        def read(self) -> bytes:
+            raise AssertionError("read before descriptor admission")
+
+    def forbidden_fstat(_fd: object) -> os.stat_result:
+        raise AssertionError("foreign descriptor reached fstat")
+
+    monkeypatch.setattr(os, "fstat", forbidden_fstat)
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="descriptor"):
+        _ = c_abi_source._snapshot_open_source(
+            cast("BinaryIO", cast("object", ForeignStream())),
+            source,
+            source.lstat(),
+        )
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [c_abi_source.SourceAnalysisError, c_abi.CAbiValidationError],
+)
+def test_guest_abi_cli_never_formats_foreign_validation_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """CLI must not evaluate hooks on foreign validation error subclasses."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign validation error formatter executed")
+
+    foreign = type("ForeignAbiFailure", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe private detail")
+
+    def fail_projection() -> None:
+        raise fault
+
+    monkeypatch.setattr(c_abi, "canonical_projection", fail_projection)
+    monkeypatch.setattr(sys, "argv", ["c_abi_source", "input.c"])
+    assert c_abi_source.main() == 2
+    captured = capsys.readouterr()
+    assert "ForeignAbiFailure" in captured.err
+    assert "unsafe private detail" not in captured.err
+    assert not captured.out
+
+
+def test_guest_abi_cli_native_validation_error_retains_details(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Exact native ABI failures retain a useful diagnostic."""
+
+    def fail_projection() -> None:
+        raise c_abi.CAbiValidationError("invalid canonical ABI projection")
+
+    monkeypatch.setattr(c_abi, "canonical_projection", fail_projection)
+    monkeypatch.setattr(sys, "argv", ["c_abi_source", "input.c"])
+    assert c_abi_source.main() == 2
+    assert "invalid canonical ABI projection" in capsys.readouterr().err
+
+
+def test_guest_source_utf8_failure_retains_native_decoder_cause(
+    tmp_path: Path,
+) -> None:
+    """Rejected source text exposes the decoder as trusted failure evidence."""
+    source = tmp_path / "invalid.c"
+    _ = source.write_bytes(b"\xff")
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="UTF-8") as error:
+        _ = c_abi_source.analyze_source(source)
+    assert type(error.value.__cause__) is UnicodeDecodeError
 
 
 def test_abi_preflight_rejects_source_rewrite_during_ast(

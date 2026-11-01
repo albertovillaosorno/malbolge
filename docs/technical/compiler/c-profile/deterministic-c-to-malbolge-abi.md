@@ -330,7 +330,15 @@ error, including a same-byte replacement with a different inode. This
 preflight proves consistency of the observed source evidence; it does not
 assert that Clang provides complete guest-C lowering. Failed source stream
 wrapping closes the raw descriptor; unexpected host type failures while reading
-or resolving explicit paths remain typed source-analysis errors.
+or resolving explicit paths remain typed source-analysis errors. The preflight
+admits only native file-status receipts, nonnegative integer descriptors,
+standard binary input streams, and exact bytes before trusting identity or
+content evidence. Clang version and AST results must be exact Python
+`CompletedProcess` receipts with native integer exits and decoded text; boolean
+or floating-point exits and foreign text subclasses cannot impersonate valid
+Clang evidence. Unexpected host failures retain their original exception causes,
+while operator diagnostics avoid invoking foreign formatting hooks. Invalid
+source UTF-8 likewise preserves the underlying decoder failure.
 
 ### Compatibility fixtures
 
