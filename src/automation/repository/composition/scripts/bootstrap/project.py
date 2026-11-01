@@ -256,6 +256,8 @@ def _repository_relative_path(value: str, label: str) -> Path:
     )
     if not native_relative or not windows_relative:
         _fail(f"{label} must stay within the repository")
+    if "\\" in value:
+        _fail(f"{label} must use forward slashes")
     return path
 
 

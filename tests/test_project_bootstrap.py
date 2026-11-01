@@ -1305,6 +1305,38 @@ def test_cuda_inspection_rejects_drive_relative_toolkit_root(
         _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
 
 
+@pytest.mark.parametrize("field", ("toolkit_root", "nvrtc_library"))
+def test_cuda_bootstrap_rejects_host_dependent_backslash_paths(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    """Selected CUDA paths retain identical meaning on Linux and Windows."""
+    manifest = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    if field == "toolkit_root":
+        document = {
+            "schema_version": project.CUDA_TOOLCHAIN_SCHEMA_VERSION,
+            "platform": LINUX_PLATFORM,
+            "toolkit_root": CUDA_VERSION_ROOT.replace("/", "\\"),
+        }
+        _ = manifest.write_text(json.dumps(document), encoding="utf-8")
+        with pytest.raises(
+            project.InitializationError, match="must use forward slashes"
+        ):
+            _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+        return
+    index = _write_cuda_manifest_index(tmp_path)
+    platforms = cast(
+        "dict[str, object]", json.loads(index.read_text(encoding="utf-8"))["platforms"]
+    )
+    selected = cast("dict[str, object]", platforms[LINUX_PLATFORM])
+    selected["nvrtc_library"] = r"lib\libnvrtc.so.13"
+    _ = index.write_text(
+        json.dumps({"schema_version": 1, "platforms": platforms}), encoding="utf-8"
+    )
+    with pytest.raises(project.InitializationError, match="must use forward slashes"):
+        _ = project.cuda_toolchain_nvrtc_relative_path(tmp_path, LINUX_PLATFORM)
+
+
 def test_cuda_inspection_rejects_windows_manifest_on_linux(
     tmp_path: Path,
 ) -> None:
