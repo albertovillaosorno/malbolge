@@ -530,6 +530,24 @@ def test_protocol_rejects_windows_drive_relative_path() -> None:
     _expect_failure(text, "must be repository-relative")
 
 
+@pytest.mark.parametrize(
+    ("field", "filename"),
+    (
+        ("experiment_manifest", "deterministic.experiment.toml"),
+        ("path", "deterministic-raw.csv"),
+    ),
+)
+def test_protocol_rejects_host_dependent_backslash_paths(
+    field: str,
+    filename: str,
+) -> None:
+    """Evidence paths must refer to the same file on Windows and Linux."""
+    original = f'{field} = "benchmarks/research/protocol/examples/{filename}"'
+    alias = rf"{field} = 'benchmarks\research\protocol\examples\{filename}'"
+    text = _text(DETERMINISTIC).replace(original, alias)
+    _expect_failure(text, "must use forward slashes")
+
+
 def test_comparison_rejects_unequal_workload() -> None:
     """Performance comparison cannot change the workload between variants."""
     text = _text(DETERMINISTIC).replace(

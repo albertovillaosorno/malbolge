@@ -232,6 +232,8 @@ def _relative_path(value: str, context: str) -> str:
     )
     if not native_relative or not windows_relative:
         _fail(f"{context} must be repository-relative: {value}")
+    if "\\" in value:
+        _fail(f"{context} must use forward slashes")
     return path.as_posix()
 
 

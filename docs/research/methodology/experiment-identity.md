@@ -72,11 +72,13 @@ already occurred and must not contain a `[run]` table. `record_kind = "run"`
 additionally requires a lowercase 40-hex Git commit, lowercase SHA-256 workload
 hash, host identity, accelerator identity, toolchain identity, a closed outcome,
 and the repository-relative raw-output path. Repository-relative paths reject
-absolute, Windows drive/root, parent-traversal, and TOML-escaped NUL forms before
-filesystem consumers receive them, independent of host.
-Accepted outcomes include success,
-no solution, candidate invalidity, resource exhaustion, and tool failure so
-negative evidence remains reconstructible instead of disappearing from analysis.
+absolute, Windows drive/root, parent-traversal, and TOML-escaped NUL forms
+before filesystem consumers receive them, independent of host. Backslash path
+separators are also rejected: evidence names use portable forward slashes so
+Linux and Windows resolve the same repository-relative identity.
+Accepted outcomes include success, no solution, candidate invalidity, resource
+exhaustion, and tool failure so negative evidence remains reconstructible
+instead of disappearing from analysis.
 
 Canonical target profiles are content-bound, not name-only. A manifest naming
 `malbolge-1998`, `malbolge-2026.1`, `malbolge-2026.2`, or

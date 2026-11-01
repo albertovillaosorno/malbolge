@@ -539,6 +539,44 @@ def test_manifest_rejects_windows_drive_relative_path() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("field", "original", "portable_alias"),
+    (
+        (
+            "implementation",
+            "algorithms/example/",
+            r"algorithms\example",
+        ),
+        (
+            "configuration",
+            "algorithms/example/experiment.toml",
+            r"algorithms\example\experiment.toml",
+        ),
+        (
+            "output",
+            "algorithms/example/out/",
+            r"algorithms\example\out",
+        ),
+        (
+            "raw_output",
+            "algorithms/example/out/raw.json",
+            r"algorithms\example\out\raw.json",
+        ),
+    ),
+)
+def test_manifest_rejects_host_dependent_backslash_paths(
+    field: str,
+    original: str,
+    portable_alias: str,
+) -> None:
+    """A Windows path alias cannot name a different Linux evidence file."""
+    text = _run_manifest().replace(
+        f'{field} = "{original}"',
+        f"{field} = '{portable_alias}'",
+    )
+    _expect_failure(text, "must use forward slashes")
+
+
 def test_recorded_run_requires_exact_commit_and_workload_hash() -> None:
     """Recorded evidence cannot omit exact source and workload identity."""
     _expect_failure(
