@@ -311,6 +311,68 @@ fn emitted_source_runs_on_normative_vm_without_guest_host_callbacks() -> Result<
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "complete byte-domain execution checks every normative profile"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "profile, opcode and per-step checks form one bounded binary witness"
+)]
+fn all_registered_profiles_execute_all_256_binary_bytes() -> Result<(), String> {
+    // A complete byte stream crosses each position-dependent decoder phase
+    // several times. Immutable profiles intentionally swap the I/O opcodes.
+    let input: Vec<u8> = (u8::MIN..=u8::MAX).collect();
+    let mut operations = Vec::with_capacity(input.len() * 2 + 1);
+    for _ in &input {
+        operations.extend([LinearOpcode::InputWord, LinearOpcode::OutputByte]);
+    }
+    operations.push(LinearOpcode::Halt);
+    let profiles = [
+        historical_profile(),
+        current_profile(),
+        target_profile("malbolge-2026.1").ok_or("missing 2026.1")?,
+        target_profile("malbolge-2026.2").ok_or("missing 2026.2")?,
+        target_profile("malbolge-2026.3").ok_or("missing 2026.3")?,
+    ];
+    for profile in profiles {
+        let layout = encode_linear_layout(profile, &operations)
+            .map_err(|error| format!("{} binary layout: {error:?}", profile.id()))?;
+        assert_eq!(layout.source().len(), 513);
+        assert_eq!(layout.executed_code_positions().len(), 513);
+        for (address, &byte) in layout.source().iter().enumerate() {
+            let expected = if address == input.len() * 2 {
+                b'v'
+            } else if address.is_multiple_of(2) {
+                profile.input_instruction()
+            } else {
+                profile.output_instruction()
+            };
+            assert_eq!(
+                decode_profile_instruction(
+                    u32::from(byte),
+                    u32::try_from(address).map_err(|error| error.to_string())?,
+                ),
+                Some(expected),
+                "{} source byte at {address}",
+                profile.id(),
+            );
+        }
+        let mut machine = ProfileMachine::from_source(profile, layout.source(), input.clone())
+            .map_err(|error| format!("{} binary VM load: {error:?}", profile.id()))?;
+        verify_execution_witness(&mut machine, &layout)?;
+        assert_eq!(
+            machine.input_consumed(),
+            input.len(),
+            "{} input",
+            profile.id()
+        );
+        assert_eq!(machine.output(), input, "{} output", profile.id());
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "VM execution assertions follow fallible setup"
 )]
 fn real_rotate_and_crazy_instructions_execute_without_jumps() -> Result<(), String> {

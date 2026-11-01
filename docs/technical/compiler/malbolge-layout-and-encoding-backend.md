@@ -87,6 +87,14 @@ later jump reads a code cell whose normal no-op execution already encrypted
 it. This evidence is not arbitrary branch lowering, a general data
 memory-write proof, or unbounded semantic equivalence.
 
+A complete 513-cell alternating input/output/halt layout now runs each byte
+`0x00` through `0xff` under all five registered normative profiles, including
+the immutable 10-/14-trit profiles with swapped I/O opcode identities. Its
+independent step witness checks every reached code/data address and XLAT2
+mutation; actual guest input consumption and output bytes must match the entire
+binary domain. This covers successful byte-stream I/O, not EOF behavior or
+arbitrary typed-IR program lowering.
+
 `tests/malbolge_layout.rs` exercises 94 decode phases for profile byte I/O,
 executes real byte I/O, early and later-phase relocated rotate/crazy, and
 single and multi-forward-jump skip programs under the canonical normative
