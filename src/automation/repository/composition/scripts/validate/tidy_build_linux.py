@@ -34,7 +34,9 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from dataclasses import dataclass
 from pathlib import Path
@@ -160,6 +162,10 @@ def _checked_run(command: list[str], label: str) -> None:
     if (
         type(completed) is not sp.CompletedProcess
         or type(completed.returncode) is not int
+        or type(completed.args) is not list
+        or len(completed.args) != len(command)
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != command
         or type(completed.stdout) is not str
         or type(completed.stderr) is not str
     ):
@@ -169,12 +175,49 @@ def _checked_run(command: list[str], label: str) -> None:
         _fail(f"Linux {label} failed with status {completed.returncode}: {detail}")
 
 
+def _native_directory_status(value: object, label: str) -> bool:
+    """Admit only exact native boolean path-status receipts.
+
+    Returns:
+        The native path-status boolean.
+
+    """
+    if type(value) is not bool:
+        _fail(f"invalid Linux {label} status receipt")
+    return value
+
+
 def _require_physical_build_directory(path: Path, label: str) -> None:
-    """Reject native output paths with linked or nondirectory ancestors."""
+    """Reject non-native and redirected output directory evidence."""
     for component in (path, *path.parents):
-        if component.is_symlink() or component.is_junction():
+        try:
+            physical = component.lstat()
+        except FileNotFoundError as error:
+            if type(error) is not FileNotFoundError:
+                raise LinuxBuildError("invalid Linux directory stat receipt") from error
+            physical = None
+        except OSError as error:
+            message = native_build_error_detail(error)
+            raise LinuxBuildError(f"Linux {label} stat failed: {message}") from error
+        if physical is not None and (
+            type(physical) is not os.stat_result or type(physical.st_mode) is not int
+        ):
+            _fail(f"invalid Linux {label} stat receipt: {component}")
+        symlink = _native_directory_status(component.is_symlink(), "redirect")
+        junction = _native_directory_status(component.is_junction(), "redirect")
+        exists = _native_directory_status(component.exists(), "existence")
+        directory = _native_directory_status(component.is_dir(), "directory")
+        if (
+            symlink
+            or junction
+            or (physical is not None and stat.S_ISLNK(physical.st_mode))
+        ):
             _fail(f"Linux {label} directory must not redirect: {component}")
-        if component.exists() and not component.is_dir():
+        if physical is None:
+            if exists or directory:
+                _fail(f"invalid Linux {label} missing-path status receipt: {component}")
+            continue
+        if not (exists and directory and stat.S_ISDIR(physical.st_mode)):
             _fail(f"Linux {label} path must be a directory: {component}")
 
 

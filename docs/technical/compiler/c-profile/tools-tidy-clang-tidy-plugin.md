@@ -106,9 +106,15 @@ silently using ambient headers or repeating a network download.
 The Linux plugin CMake builder likewise converts native process launch faults
 into typed build failures with their original causes. Host diagnostics are
 rendered only for exact built-in exception types; custom host exception text
-hooks are not executed. Native CMake process receipts require exact integer
-exit statuses and native stdout/stderr text; foreign objects and boolean or
-floating success values are rejected before build promotion.
+hooks are not executed. Native CMake process receipts require the exact
+invoked argument vector, integer exit status, and native stdout/stderr text;
+foreign objects, substituted argv, and boolean or floating success values
+cannot prove a successful configure/build command. Before each native build
+phase, Linux output directories require exact boolean path-status evidence
+and native physical `lstat` directory modes for each existing ancestor.
+Contradictory path predicates, foreign stat receipts, linked ancestors, and
+hostile error-formatting hooks fail closed. These non-atomic pathname checks
+still cannot prevent concurrent replacement after a completed preflight.
 
 ### Windows plugin host
 
@@ -140,9 +146,9 @@ uses the Visual Studio CMake/Ninja distribution, and compiles with the pinned
 LLVM `clang-cl.exe`. The generated build tree stays under `.cache/` and outputs
 stay under `.dependencies/tools-tidy/22.1.8/`. On Linux, CMake build-cache
 and plugin-output paths must have physical directory ancestry; symlinks,
-junctions, and non-directory substitutions fail before native commands. Those
-paths are rechecked between configure and build. The preflights do not make
-concurrent pathname replacement atomic.
+junctions, conflicting native status receipts, and non-directory substitutions
+fail before native commands. Those paths are rechecked between configure and
+build. The preflights do not make concurrent pathname replacement atomic.
 
 On Windows, the generated `build.cmd` and its CMake cache require physical
 unlinked directory ancestry; an existing linked or hardlinked build script is
