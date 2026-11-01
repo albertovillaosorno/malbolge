@@ -143,7 +143,10 @@ with `--load`, while also warning that plugin API/ABI compatibility is tied to
 the exact clang-tidy build. Native guest-C validation subprocess probes
 (Clang version, plugin registration, and analysis execution) normalize host
 errors to typed configuration failures without invoking foreign exception
-formatters, retaining the original host error as the cause. The official LLVM
+formatters, retaining the original host error as the cause. Tool, profile,
+and plugin-file admission and implicit default host/plugin selection also
+require exact native boolean regular-file verdicts before using filesystem
+evidence, never foreign truthiness. The official LLVM
 22.1.8 Windows release layout has
 plugin symbol exporting disabled, so its prebuilt `clang-tidy.exe` does not
 export the registry operation required by an out-of-tree DLL.

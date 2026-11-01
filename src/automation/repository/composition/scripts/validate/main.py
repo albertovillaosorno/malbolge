@@ -189,7 +189,9 @@ def _checked_process_receipt[OutputT: (str, bytes)](
 
 
 def _default_clang_tidy() -> Path:
-    if PLUGIN_HOST.is_file() and PLUGIN_LIBRARY.is_file():
+    if _native_path_status(PLUGIN_HOST.is_file(), "plugin host file") and (
+        _native_path_status(PLUGIN_LIBRARY.is_file(), "plugin library file")
+    ):
         return PLUGIN_HOST
     return PINNED_CLANG_TIDY
 
@@ -206,7 +208,9 @@ def _default_plugin(clang_tidy: Path) -> Path | None:
         selected_host = clang_tidy.resolve()
     except OSError:
         return None
-    if selected_host != canonical_host or not PLUGIN_LIBRARY.is_file():
+    if selected_host != canonical_host or not _native_path_status(
+        PLUGIN_LIBRARY.is_file(), "default plugin library file"
+    ):
         return None
     return PLUGIN_LIBRARY.resolve()
 
@@ -338,7 +342,7 @@ def _validated_files(raw_files: list[str]) -> tuple[Path, ...]:
 
 
 def _require_file(path: Path, label: str) -> None:
-    if not path.is_file():
+    if not _native_path_status(path.is_file(), f"{label} file"):
         _fail(f"{label} not found: {path}")
 
 

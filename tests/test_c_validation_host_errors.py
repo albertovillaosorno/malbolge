@@ -338,6 +338,75 @@ def test_manual_c_validator_foreign_contract_failure_preserves_safe_cause(
 
 
 @pytest.mark.parametrize(
+    "boundary", ("required-tool", "default-host", "default-library", "default-plugin")
+)
+@pytest.mark.parametrize(
+    "receipt_kind", ("missing", "falsey", "truthy", "text", "hostile")
+)
+def test_manual_c_tool_admission_requires_native_file_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+    receipt_kind: str,
+) -> None:
+    """A forged file verdict cannot select or admit compiler plugin evidence."""
+    host = tmp_path / "clang-tidy"
+    library = tmp_path / "plugin.so"
+    _ = host.write_text("host", encoding="utf-8")
+    _ = library.write_text("plugin", encoding="utf-8")
+    monkeypatch.setattr(validator, "PLUGIN_HOST", host)
+    monkeypatch.setattr(validator, "PLUGIN_LIBRARY", library)
+    target = library if boundary in ("default-library", "default-plugin") else host
+    native = Path.is_file
+
+    class ForeignVerdict:
+        def __bool__(self) -> Never:
+            raise AssertionError("foreign compiler file truthiness executed")
+
+    forged: object = {
+        "missing": None,
+        "falsey": 0,
+        "truthy": 1,
+        "text": "yes",
+        "hostile": ForeignVerdict(),
+    }[receipt_kind]
+
+    def forged_file(path: Path) -> bool:
+        return cast("bool", forged) if path == target else native(path)
+
+    monkeypatch.setattr(Path, "is_file", forged_file)
+    with pytest.raises(validator.InputError, match="status receipt"):
+        if boundary == "required-tool":
+            validator._require_file(host, "clang-tidy")
+        elif boundary in ("default-host", "default-library"):
+            _ = validator._default_clang_tidy()
+        else:
+            _ = validator._default_plugin(host)
+
+
+def test_manual_c_tool_admission_preserves_native_default_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native file verdicts retain the reviewed host/plugin fallback rules."""
+    host = tmp_path / "malbolge-clang-tidy"
+    library = tmp_path / "malbolge-plugin.so"
+    _ = host.write_bytes(b"host")
+    _ = library.write_bytes(b"plugin")
+    monkeypatch.setattr(validator, "PLUGIN_HOST", host)
+    monkeypatch.setattr(validator, "PLUGIN_LIBRARY", library)
+    assert validator._default_clang_tidy() == host
+    assert validator._default_plugin(host) == library
+    validator._require_file(host, "clang-tidy")
+
+    library.unlink()
+    assert validator._default_clang_tidy() == validator.PINNED_CLANG_TIDY
+    assert validator._default_plugin(host) is None
+    with pytest.raises(validator.InputError, match="not found"):
+        validator._require_file(library, "clang-tidy plugin")
+
+
+@pytest.mark.parametrize(
     ("method", "receipt"),
     [
         ("exists", 0),
