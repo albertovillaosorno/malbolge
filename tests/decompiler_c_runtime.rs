@@ -553,3 +553,35 @@ fn generated_c_invalid_code_cell_writes_are_atomic_for_both_profiles()
     }
     Ok(())
 }
+
+#[test]
+fn generated_c_current_profile_arithmetic_matches_normative_vm()
+-> Result<(), String> {
+    verify_generated_state_against_vm(GeneratedVmCase {
+        expected_outcome: ExpectedVmOutcome::Halt,
+        expected_output: &[],
+        expected_steps: 4,
+        harness: MEMORY_HARNESS,
+        profile: current_profile(),
+        source: ARITHMETIC_SOURCE,
+    })
+}
+
+#[test]
+fn generated_c_current_profile_post_jump_encryption_matches_normative_vm()
+-> Result<(), String> {
+    let profile = current_profile();
+    let expected_byte = profile.eof_word().to_le_bytes()[0];
+    let harness = format!(
+        "#define EXPECTED_OUTPUT_LEN 1\n\
+         #define EXPECTED_OUTPUT_BYTE {expected_byte}\n{MEMORY_HARNESS}",
+    );
+    verify_generated_state_against_vm(GeneratedVmCase {
+        expected_outcome: ExpectedVmOutcome::Halt,
+        expected_output: &[expected_byte],
+        expected_steps: 4,
+        harness: &harness,
+        profile,
+        source: JUMP_SOURCE,
+    })
+}

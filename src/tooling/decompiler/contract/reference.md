@@ -40,10 +40,11 @@ or output mutation commits.
 
 The pinned Linux Clang execution suite differentially compares generated C
 against the normative VM across the full memory image and `A`/`C`/`D`
-registers, not only observed output. Historical-profile fixtures cover
-rotate/crazy/indirect-jump post-encryption and binary input/EOF. A separate
-current-profile fixture verifies the larger 15-trit geometry and EOF
-low-byte output without assuming the historical 10-trit sentinel. Both
+registers, not only observed output. Both historical and current profile
+fixtures cover arithmetic, rotate/crazy and indirect-jump post-encryption;
+historical fixtures also cover binary input. Current-profile fixtures verify
+the larger 15-trit geometry and EOF low-byte output without assuming the
+historical 10-trit sentinel. Both
 profiles also reject an indirect jump to a non-graphical encryption target
 atomically, preserving the pre-step memory and registers. Rejected rotate and
 crazy instructions that would overwrite their own executing code cell with a
