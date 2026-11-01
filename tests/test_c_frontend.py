@@ -479,6 +479,42 @@ def test_macro_expansion_tags_keep_distinct_canonical_types(
         ]
 
 
+def test_macro_local_references_match_distinct_declarations(
+    tmp_path: Path,
+) -> None:
+    """One macro callsite can declare same-name locals in separate blocks."""
+    source = tmp_path / "macro-locals.c"
+    _ = source.write_text(
+        "#define TWICE { int x = 1; y += x; } "
+        "{ int x = 2; y += x; }\n"
+        "int main(void) { int y = 0; TWICE return y; }\n",
+        encoding="utf-8",
+    )
+    first = _run_frontend(source, "fixtures/macro-locals.c")
+    artifact = _artifact(first)
+    assert _run_frontend(source, "fixtures/macro-locals.c").stdout == first.stdout
+    relocated = tmp_path / "relocated.c"
+    _ = relocated.write_bytes(source.read_bytes())
+    assert _run_frontend(relocated, "fixtures/macro-locals.c").stdout == first.stdout
+    nodes = cast("list[dict[str, object]]", artifact["nodes"])
+    declarations = [
+        node
+        for node in nodes
+        if node["kind"] == "variable-declaration" and node.get("name") == "x"
+    ]
+    references = [
+        node
+        for node in nodes
+        if node["kind"] == "declaration-reference-expression"
+        and cast("str", node.get("reference", "")).startswith("x@")
+    ]
+    assert len(declarations) == len(references) == 2
+    targets = [cast("str", node.get("reference", "")) for node in declarations]
+    assert len(set(targets)) == 2
+    assert all(target.startswith("x@") and ":" in target for target in targets)
+    assert [node["reference"] for node in references] == targets
+
+
 def test_header_anonymous_tags_retain_distinct_path_free_types(
     tmp_path: Path,
 ) -> None:

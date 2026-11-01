@@ -194,7 +194,7 @@
     "alignof",
     "sizeof"
   ],
-  "reference_encoding": "main-name-at-byte-offset-or-external-name-or-external-field-at-record-type",
+  "reference_encoding": "main-name-at-byte-offset-optional-macro-ordinal-or-external-name-or-external-field-at-record-type",
   "literal_encoding": {
     "character": "unsigned-decimal-code-unit",
     "floating": "exact-semantic-bit-pattern-lowercase-hex",

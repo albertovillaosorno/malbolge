@@ -778,6 +778,12 @@ private:
       if (!name.empty()) {
         node.name = name;
       }
+      // A single expansion may declare equally named values in distinct
+      // scopes. Publish the same canonical anchor on the declaration and use.
+      if (llvm::isa<clang::ValueDecl>(named) &&
+          named->getLocation().isMacroID()) {
+        node.reference = declaration_reference(*named);
+      }
     }
     if (const auto *value = llvm::dyn_cast<clang::ValueDecl>(&declaration)) {
       node.type = normalize_type(value->getType());
@@ -935,8 +941,17 @@ private:
     const clang::SourceLocation location =
         source_manager_.getExpansionLoc(selected.getLocation());
     if (location.isValid() && source_manager_.isWrittenInMainFile(location)) {
-      return name + "@" +
-             std::to_string(source_manager_.getFileOffset(location));
+      const std::size_t offset = source_manager_.getFileOffset(location);
+      std::string reference = name + "@" + std::to_string(offset);
+      if (selected.getLocation().isMacroID()) {
+        auto [entry, inserted] =
+            macro_decl_ordinals_.try_emplace(&selected, 0U);
+        if (inserted) {
+          entry->second = ++macro_decl_offset_counts_[offset];
+        }
+        reference += ":" + std::to_string(entry->second);
+      }
+      return reference;
     }
     if (const auto *field = llvm::dyn_cast<clang::FieldDecl>(&selected)) {
       const clang::RecordDecl &record = *field->getParent();
@@ -1094,6 +1109,9 @@ private:
 
   clang::ASTContext &context_;
   std::unordered_map<std::size_t, std::size_t> macro_offset_counts_;
+  std::unordered_map<std::size_t, std::size_t> macro_decl_offset_counts_;
+  std::unordered_map<const clang::NamedDecl *, std::size_t>
+      macro_decl_ordinals_;
   std::unordered_map<const clang::NamedDecl *, std::size_t> macro_tag_ordinals_;
   std::unordered_map<const clang::NamedDecl *, std::size_t>
       external_tag_ordinals_;

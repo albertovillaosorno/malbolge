@@ -213,7 +213,11 @@ do not depend on JSON text encoding.
 
 Binary and unary operations use source-language operator spellings. Casts use a
 closed repository vocabulary. Main-source declaration references are
-`name@byte-offset`; header/builtin references are `external:name`. Header
+`name@byte-offset`; macro-generated value declarations and their uses append
+`:occurrence` to that identity because one expansion may define same-name
+locals in different scopes at an identical byte offset. The ordinal is tied
+to the canonical declaration, and the declaration publishes its own reference
+for matching. Header/builtin references are `external:name`. Header
 record fields use `external:field@struct(TAG_ANCHOR)` or
 `external:field@union(TAG_ANCHOR)`, with the same canonical record anchor used
 by normalized types. Fields with the same spelling from distinct imported
