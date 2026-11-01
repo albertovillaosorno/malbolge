@@ -9455,6 +9455,44 @@ def _publish_for_temporary_admission_test(
 
 @pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
 @pytest.mark.parametrize(
+    "relative_output", ["program.malbolge", "nested/program.malbolge"]
+)
+def test_writer_accepts_canonical_mkstemp_stage_for_relative_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    kind: str,
+    relative_output: str,
+) -> None:
+    """Native mkstemp returns absolute stages for relative output paths."""
+    monkeypatch.chdir(tmp_path)
+    output = Path(relative_output)
+    original = _sidecar(tmp_path)
+    sidecar = replace(
+        original,
+        output_path=str(output),
+        progress_path=str(progress.progress_path(output)),
+    )
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else output.with_suffix(".checkpoint.bin")
+    )
+    published = _publish_for_temporary_admission_test(
+        kind, sidecar, destination
+    )
+    assert published == destination
+    assert destination.is_file()
+    expected = (
+        progress.encode(sidecar)
+        if kind == TEMP_MUTABLE
+        else b"expected-checkpoint"
+    )
+    assert destination.read_bytes() == expected
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+@pytest.mark.parametrize(
     "forgery", [TEMP_FOREIGN_DIRECTORY, TEMP_WRONG_PREFIX, TEMP_FOREIGN_STRING]
 )
 def test_writer_rejects_forged_mkstemp_path_receipt(

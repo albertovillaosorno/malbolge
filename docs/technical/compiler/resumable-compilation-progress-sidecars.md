@@ -382,8 +382,10 @@ staging therefore fails closed before committing a redirected generation.
 Mutable and immutable writers now capture the device and inode of the fresh
 `mkstemp` descriptor before transferring it to the payload stream. Before
 writing, they also admit the returned staging pathname as an exact native
-string in the requested parent directory, with the expected prefix, eight-
-character Python 3.14 token, and `.tmp` suffix. A forged directory, name, or
+absolute string in the lexically normalized requested parent directory, with
+the expected prefix, eight-character Python 3.14 token, and `.tmp` suffix.
+Normalizing a relative destination does not follow symbolic links or change
+the caller's output spelling. A forged directory, name, or
 string-subclass receipt cannot redirect staging or publication despite a
 valid opened descriptor: the descriptor closes and the unadmitted pathname
 is left intact rather than following or deleting a possibly foreign entry.

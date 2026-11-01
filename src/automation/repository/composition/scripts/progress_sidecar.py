@@ -2443,7 +2443,15 @@ def _admit_staging_path(destination: Path, pathname: object) -> Path:
     temporary = Path(pathname)
     prefix = _temporary_stage_prefix(destination)
     basename = temporary.name
-    if temporary.parent != destination.parent:
+    # tempfile.mkstemp returns an absolute pathname even if its ``dir`` was
+    # relative. Normalize only the expected parent lexically: resolving links
+    # would authorize exactly the redirections forbidden by staging checks.
+    requested_parent = Path(os.path.abspath(destination.parent))  # ruff: ignore[os-path-abspath]
+    if (
+        not temporary.is_absolute()
+        or temporary != Path(os.path.abspath(temporary))  # ruff: ignore[os-path-abspath]
+        or temporary.parent != requested_parent
+    ):
         _fail("progress temporary path receipt is outside requested directory")
     if not basename.startswith(prefix) or not basename.endswith(".tmp"):
         _fail("progress temporary path receipt has an unexpected stage name")
