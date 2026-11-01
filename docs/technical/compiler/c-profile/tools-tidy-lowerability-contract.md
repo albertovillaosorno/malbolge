@@ -43,6 +43,14 @@ clang-tidy policy to the existing manual validator. This is early rejection
 evidence only; it does not claim that every surviving translation unit can
 already lower through the incomplete typed-IR/compiler pipeline.
 
+Both pinned-Clang preflight and delegated manual validation require exact native
+subprocess receipts: integer exit statuses and native UTF-8 stdout/stderr.
+Boolean/floating statuses, foreign process results, and untrusted output hooks
+cannot impersonate a successful validation. Host execution failures retain
+their original cause without invoking foreign exception formatters. Canonical
+ABI/libc contract failures and final CLI diagnostics obey the same safe error
+reporting boundary.
+
 Recursive discovery is reserved for an explicitly selected `doom` directory.
 This convenience rejects linked or junction directory roots and descendants
 before admitting C sources, rather than following an alias outside the chosen

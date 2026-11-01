@@ -39,6 +39,7 @@ from __future__ import annotations
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -180,3 +181,138 @@ def test_recursive_doom_cli_reports_configuration_error(
     assert completed.returncode == preflight.CONFIGURATION_ERROR
     assert "recursive doom entry must not redirect" in completed.stderr
     assert not completed.stdout
+
+
+@pytest.mark.parametrize("bad_status", [False, True, 0.0, 1.0, "0", None])
+def test_preflight_rejects_noninteger_process_status_receipts(
+    bad_status: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bool or floating exit status cannot impersonate Clang success."""
+    completed = sp.CompletedProcess(
+        args=["clang", "--version"],
+        returncode=0,
+        stdout="clang version 22.1.8",
+        stderr="",
+    )
+    completed.returncode = cast("int", bad_status)
+    monkeypatch.setattr(preflight.sp, "run", lambda *_args, **_kwargs: completed)
+    with pytest.raises(preflight.ValidationInputError, match="process receipt"):
+        _ = preflight._tool_output(["clang", "--version"])
+
+
+@pytest.mark.parametrize("field", ["stdout", "stderr"])
+def test_preflight_rejects_foreign_process_output_text(
+    field: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Output hooks are never invoked before process receipt admission."""
+
+    class HostileText(str):
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign Clang output truthiness hook executed")
+
+        def __add__(self, other: object) -> str:
+            del other
+            raise AssertionError("foreign Clang output concatenation executed")
+
+    completed = sp.CompletedProcess(
+        args=["clang", "--version"],
+        returncode=0,
+        stdout="clang version 22.1.8",
+        stderr="",
+    )
+    setattr(completed, field, HostileText("some text"))
+    monkeypatch.setattr(preflight.sp, "run", lambda *_args, **_kwargs: completed)
+    with pytest.raises(preflight.ValidationInputError, match="process receipt"):
+        _ = preflight._tool_output(["clang", "--version"])
+
+
+def test_preflight_rejects_foreign_completed_process_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unknown process result objects cannot dispatch attribute hooks."""
+
+    class HostileResult:
+        def __getattribute__(self, _name: str) -> object:
+            raise AssertionError("foreign process property hook executed")
+
+    monkeypatch.setattr(preflight.sp, "run", lambda *_args, **_kwargs: HostileResult())
+    with pytest.raises(preflight.ValidationInputError, match="process receipt"):
+        _ = preflight._tool_output(["clang", "--version"])
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_preflight_tool_execution_faults_preserve_cause_without_formatting(
+    fault_type: type[Exception],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host execution errors never run untrusted exception formatters."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign Clang host formatter executed")
+
+    foreign = type("HostileClangFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("unsafe external error")
+
+    def fail_run(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(preflight.sp, "run", fail_run)
+    with pytest.raises(
+        preflight.ValidationInputError, match="failed to execute"
+    ) as caught:
+        _ = preflight._tool_output(["clang", "--version"])
+    assert caught.value.__cause__ is fault
+
+
+def test_preflight_canonical_contract_never_formats_foreign_valueerror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign canonical ABI failures retain their cause without hook dispatch."""
+
+    class ForeignAbiFault(ValueError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign canonical guest ABI formatter executed")
+
+    fault = ForeignAbiFault("untrusted ABI detail")
+
+    def fail_abi() -> None:
+        raise fault
+
+    monkeypatch.setattr(preflight.c_abi, "canonical_projection", fail_abi)
+    with pytest.raises(
+        preflight.ValidationInputError, match="invalid canonical guest-C contract"
+    ) as caught:
+        _ = preflight._canonical_abi()
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("foreign", [False, True])
+def test_preflight_cli_policy_errors_have_safe_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    foreign: bool,
+) -> None:
+    """Native validation diagnostics remain useful without foreign formatters."""
+
+    class ForeignPolicyFault(preflight.ValidationInputError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign preflight CLI formatter executed")
+
+    fault = (
+        ForeignPolicyFault("untrusted detail")
+        if foreign
+        else preflight.ValidationInputError("native policy detail")
+    )
+
+    def fail_validation(_arguments: object) -> int:
+        raise fault
+
+    monkeypatch.setattr(preflight, "_parse_arguments", lambda: object())
+    monkeypatch.setattr(preflight, "_run_validation", fail_validation)
+    assert preflight.main() == preflight.CONFIGURATION_ERROR
+    report = capsys.readouterr()
+    assert ("ForeignPolicyFault" if foreign else "native policy detail") in report.err
+    assert not report.out

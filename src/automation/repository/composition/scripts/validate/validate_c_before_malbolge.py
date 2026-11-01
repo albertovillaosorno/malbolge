@@ -101,6 +101,28 @@ def _fail(message: str) -> Never:
     raise ValidationInputError(message)
 
 
+def _safe_error_detail(error: Exception) -> str:
+    """Render trusted native errors without executing foreign formatters.
+
+    Returns:
+        Native diagnostic text or an untrusted exception's type name.
+
+    """
+    if type(error) in (
+        ValidationInputError,
+        c_abi.CAbiValidationError,
+        c_libc.CLibcValidationError,
+        OSError,
+        FileNotFoundError,
+        PermissionError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+    ):
+        return str(error)
+    return type(error).__name__
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -173,8 +195,14 @@ def _validated_files(raw_inputs: list[str]) -> tuple[Path, ...]:
 
 
 def _tool_output(command: list[str]) -> sp.CompletedProcess[str]:
+    """Run pinned tooling and admit only exact native process receipts.
+
+    Returns:
+        Complete native stdout, stderr, and integral process status.
+
+    """
     try:
-        return sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             command,
             cwd=ROOT,
             check=False,
@@ -183,8 +211,18 @@ def _tool_output(command: list[str]) -> sp.CompletedProcess[str]:
             errors="replace",
             shell=False,
         )
-    except OSError as error:
-        _fail(f"failed to execute {command[0]}: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise ValidationInputError(
+            f"failed to execute {command[0]}: {_safe_error_detail(error)}"
+        ) from error
+    if (
+        type(completed) is not sp.CompletedProcess
+        or type(completed.returncode) is not int
+        or type(completed.stdout) is not str
+        or type(completed.stderr) is not str
+    ):
+        _fail("malformed pre-Malbolge tool process receipt")
+    return completed
 
 
 def _require_directory(path: Path, label: str) -> None:
@@ -207,7 +245,9 @@ def _canonical_abi() -> c_abi.CAbiProjection:
         abi = c_abi.canonical_projection()
         _ = c_libc.canonical_projection()
     except ValueError as error:
-        _fail(f"invalid canonical guest-C contract: {error}")
+        raise ValidationInputError(
+            f"invalid canonical guest-C contract: {_safe_error_detail(error)}"
+        ) from error
     return abi
 
 
@@ -316,7 +356,7 @@ def main() -> int:
         arguments = _parse_arguments()
         status = _run_validation(arguments)
     except ValidationInputError as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
         status = CONFIGURATION_ERROR
     return status
 
