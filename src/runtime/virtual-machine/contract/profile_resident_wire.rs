@@ -46,6 +46,13 @@ const RESULT_FIXED_U32_FIELDS: usize = 11;
 pub enum ProfileResidentWireError {
     /// A host-sized counter cannot be represented by the protocol u32 field.
     CounterOverflow,
+    /// A request input cursor lies beyond its immutable input stream.
+    InputCursor {
+        /// Reported consumed input bytes.
+        consumed: usize,
+        /// Available input bytes.
+        available: usize,
+    },
     /// One request memory image does not match the declared resident geometry.
     MemoryLengthMismatch {
         /// Declared geometry word count.
@@ -71,6 +78,10 @@ impl Display for ProfileResidentWireError {
             Self::CounterOverflow => {
                 f.write_str("resident profile wire counter exceeds u32")
             },
+            Self::InputCursor { consumed, available } => write!(
+                f,
+                "resident profile wire input cursor {consumed} exceeds {available}",
+            ),
             Self::MemoryLengthMismatch { expected, observed } => write!(
                 f,
                 "resident profile wire memory length {observed} != {expected}"
@@ -356,8 +367,8 @@ pub fn decode_profile_resident_response(
 ///
 /// # Errors
 ///
-/// Returns [`ProfileResidentWireError`] for mixed geometry or counters whose
-/// encoded/host representation would overflow.
+/// Returns [`ProfileResidentWireError`] for mixed geometry, inconsistent memory
+/// lengths or input cursors, and counters whose representation would overflow.
 pub fn profile_resident_response_byte_limit(
     requests: &[ProfileResidentWireRequest<'_>],
 ) -> Result<usize, ProfileResidentWireError> {
@@ -373,6 +384,7 @@ pub fn profile_resident_response_byte_limit(
     let Some(geometry) = geometry_option else {
         return Ok(prefix_bytes);
     };
+    validate_request_shapes(requests, geometry)?;
     let memory_words = usize::try_from(geometry.memory_words())
         .map_err(|_error| ProfileResidentWireError::CounterOverflow)?;
     let memory_bytes = memory_words
@@ -405,7 +417,7 @@ pub fn profile_resident_response_byte_limit(
 /// # Errors
 ///
 /// Returns [`ProfileResidentWireError`] for mixed geometry, memory-shape drift,
-/// or counters that cannot be represented by protocol u32 fields.
+/// input cursors beyond the provided input, or unrepresentable u32 counters.
 pub fn encode_profile_resident_batch(
     requests: &[ProfileResidentWireRequest<'_>],
 ) -> Result<Vec<u8>, ProfileResidentWireError> {
@@ -416,14 +428,7 @@ pub fn encode_profile_resident_batch(
     let memory_len = usize::try_from(geometry.memory_words())
         .map_err(|_error| ProfileResidentWireError::CounterOverflow)?;
     let request_count = usize_u32(requests.len())?;
-    for request in requests {
-        if request.memory.len() != memory_len {
-            return Err(ProfileResidentWireError::MemoryLengthMismatch {
-                expected: geometry.memory_words(),
-                observed: request.memory.len(),
-            });
-        }
-    }
+    validate_request_shapes(requests, geometry)?;
     let capacity = requests
         .len()
         .checked_mul(memory_len)
@@ -520,6 +525,32 @@ fn geometry_values(geometry: ProfileResidentWireGeometry) -> [u32; 6] {
         geometry.word_modulus(),
         u32::from(geometry.word_trits()),
     ]
+}
+
+// The sizing path runs before the encoder in the production process adapter.
+// Both must fail closed on the same invalid request shape, even when invoked
+// directly through the public transport-neutral API.
+fn validate_request_shapes(
+    requests: &[ProfileResidentWireRequest<'_>],
+    geometry: ProfileResidentWireGeometry,
+) -> Result<(), ProfileResidentWireError> {
+    let expected_len = usize::try_from(geometry.memory_words())
+        .map_err(|_error| ProfileResidentWireError::CounterOverflow)?;
+    for request in requests {
+        if request.memory.len() != expected_len {
+            return Err(ProfileResidentWireError::MemoryLengthMismatch {
+                expected: geometry.memory_words(),
+                observed: request.memory.len(),
+            });
+        }
+        if request.input_consumed > request.input.len() {
+            return Err(ProfileResidentWireError::InputCursor {
+                consumed: request.input_consumed,
+                available: request.input.len(),
+            });
+        }
+    }
+    Ok(())
 }
 
 fn homogeneous_geometry(

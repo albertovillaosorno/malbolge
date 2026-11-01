@@ -168,6 +168,54 @@ fn resident_wire_response_limit_tracks_possible_output() -> TestResult {
 }
 
 #[test]
+fn resident_wire_rejects_input_cursor_beyond_supplied_bytes() -> TestResult {
+    let memory = vec![0u32; 243];
+    let valid = request(&memory, GEOMETRY);
+    // Consuming the final supplied byte is legal; advancing past it is not.
+    let at_eof = ProfileResidentWireRequest {
+        input_consumed: valid.input.len(),
+        ..valid
+    };
+    let _limit = normalize_result(profile_resident_response_byte_limit(&[at_eof]))?;
+    let _encoded = normalize_result(encode_profile_resident_batch(&[at_eof]))?;
+    for consumed in [valid.input.len() + 1, usize::MAX] {
+        let forged = ProfileResidentWireRequest {
+            input_consumed: consumed,
+            ..valid
+        };
+        let error = ProfileResidentWireError::InputCursor {
+            consumed,
+            available: valid.input.len(),
+        };
+        check_equal(
+            &profile_resident_response_byte_limit(&[forged]),
+            &Err(error),
+            "resident wire response-limit input cursor",
+        )?;
+        check_equal(
+            &encode_profile_resident_batch(&[forged]),
+            &Err(error),
+            "resident wire encoding input cursor",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn resident_wire_response_limit_rejects_short_memory_image() -> TestResult {
+    let memory = [0u32; 1];
+    let forged = request(&memory, GEOMETRY);
+    check_equal(
+        &profile_resident_response_byte_limit(&[forged]),
+        &Err(ProfileResidentWireError::MemoryLengthMismatch {
+            expected: GEOMETRY.memory_words,
+            observed: memory.len(),
+        }),
+        "resident wire response limit memory length",
+    )
+}
+
+#[test]
 fn resident_wire_encoder_rejects_mixed_geometry() -> TestResult {
     let memory = vec![0u32; 243];
     let first = request(&memory, GEOMETRY);

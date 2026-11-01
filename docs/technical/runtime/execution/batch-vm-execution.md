@@ -96,8 +96,10 @@ application layer. The process transport launches one explicitly configured
 child per homogeneous attempt, bounds stdout by the maximum valid response, and
 decodes MBPRN2 framing. The wire codec checks declared result counts, resident
 memory lengths, and fixed result framing against available bytes before
-reserving decode vectors; request encoding checks real memory lengths before
-reserving geometry-derived buffers. A default 60-second wall-clock deadline
+reserving decode vectors. Both response-limit preflight and request encoding
+reject mismatched resident memory lengths or input cursors past the supplied
+input stream, before allocating geometry-derived buffers or launching a worker.
+A default 60-second wall-clock deadline
 includes process launch, request writing, response reading, and child
 termination. An explicit per-transport duration can tighten or relax the
 deadline, with zero rejecting before launch. Expired, failed, or malformed
