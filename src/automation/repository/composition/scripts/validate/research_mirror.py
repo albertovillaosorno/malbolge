@@ -90,6 +90,23 @@ def _host_error_detail(error: Exception) -> str:
     return type(error).__name__
 
 
+def _native_status(receipt: object, context: str) -> os.stat_result:
+    """Accept exact native filesystem status before inspecting its fields."""
+    if type(receipt) is not os.stat_result:
+        _fail(f"{context} requires native stat receipt")
+    return receipt
+
+
+def _redirected_status(path: Path, status: os.stat_result, context: str) -> bool:
+    """Reject foreign junction truthiness even for a native path status."""
+    if S_ISLNK(status.st_mode):
+        return True
+    verdict = path.is_junction()
+    if type(verdict) is not bool:
+        _fail(f"{context} requires native junction receipt")
+    return verdict
+
+
 def _physical_status(path: Path, context: str) -> os.stat_result:
     """Check every in-root path component without following a redirect."""
     try:
@@ -103,8 +120,10 @@ def _physical_status(path: Path, context: str) -> os.stat_result:
     for index, component in enumerate(relative.parts):
         current = current / component
         try:
-            status = current.lstat()
-            redirected = S_ISLNK(status.st_mode) or current.is_junction()
+            status = _native_status(current.lstat(), context)
+            redirected = _redirected_status(current, status, context)
+        except ResearchMirrorError:
+            raise
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             detail = _host_error_detail(error)
             raise ResearchMirrorError(f"{context} status failed: {detail}") from error
@@ -129,8 +148,10 @@ def _directory_ids(root: Path) -> frozenset[str]:
         if path.name.startswith("."):
             continue
         try:
-            status = path.lstat()
-            redirected = S_ISLNK(status.st_mode) or path.is_junction()
+            status = _native_status(path.lstat(), "research mirror ID")
+            redirected = _redirected_status(path, status, "research mirror ID")
+        except ResearchMirrorError:
+            raise
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             detail = _host_error_detail(error)
             raise ResearchMirrorError(

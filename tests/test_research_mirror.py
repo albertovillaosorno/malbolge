@@ -38,7 +38,7 @@ import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import] - Git-only fixture.
 from collections.abc import Iterator
 from pathlib import Path
-from typing import cast
+from typing import cast, override
 
 import pytest
 
@@ -362,9 +362,7 @@ def test_mirror_git_probe_rejects_noninteger_exit_receipts(
         executable=validator.ROOT / "algorithms/fixture",
         research_id="fixture",
     )
-    completed = sp.CompletedProcess[str](
-        args=[], returncode=cast("int", returncode)
-    )
+    completed = sp.CompletedProcess[str](args=[], returncode=cast("int", returncode))
 
     def forged_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
         del args, kwargs
@@ -539,3 +537,95 @@ def test_mirror_native_host_error_diagnostic_remains_actionable(
     ) as caught:
         _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("operation", ("parent_status", "leaf_status", "id_status"))
+@pytest.mark.parametrize("receipt_kind", ("opaque", "hostile"))
+def test_mirror_direct_stat_receipt_must_be_native(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    receipt_kind: str,
+) -> None:
+    """Neither direct evidence nor discovered ID status may execute host hooks."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    evidence = documents / "research.md"
+    _ = evidence.write_text("fixture", encoding="utf-8")
+    child = documents / "fixture"
+    child.mkdir()
+    target = {
+        "parent_status": documents,
+        "leaf_status": evidence,
+        "id_status": child,
+    }[operation]
+
+    class ForeignStatus:
+        @override
+        def __getattribute__(self, name: str) -> object:
+            del self, name
+            raise AssertionError("foreign mirror status hook executed")
+
+    receipt: object = ForeignStatus() if receipt_kind == "hostile" else object()
+    native_lstat = Path.lstat
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        if path == target:
+            return cast("os.stat_result", receipt)
+        return native_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(validator.ResearchMirrorError, match="native stat receipt"):
+        if operation == "id_status":
+            _ = validator._directory_ids(documents)  # pyright: ignore[reportPrivateUsage]
+        else:
+            _ = validator._physical_status(  # pyright: ignore[reportPrivateUsage]
+                evidence, "research evidence"
+            )
+
+
+@pytest.mark.parametrize(
+    "operation", ("parent_junction", "leaf_junction", "id_junction")
+)
+@pytest.mark.parametrize("receipt", (0, 1, object()))
+def test_mirror_direct_junction_receipt_must_be_native_bool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    receipt: object,
+) -> None:
+    """Direct research mirrors never infer redirection through truthiness."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    evidence = documents / "research.md"
+    _ = evidence.write_text("fixture", encoding="utf-8")
+    child = documents / "fixture"
+    child.mkdir()
+    target = {
+        "parent_junction": documents,
+        "leaf_junction": evidence,
+        "id_junction": child,
+    }[operation]
+
+    class ForeignVerdict:
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign mirror junction truthiness hook executed")
+
+    verdict = ForeignVerdict() if type(receipt) is object else receipt
+    native_junction = Path.is_junction
+
+    def forged_junction(path: Path) -> bool:
+        if path == target:
+            return cast("bool", verdict)
+        return native_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    with pytest.raises(validator.ResearchMirrorError, match="native junction receipt"):
+        if operation == "id_junction":
+            _ = validator._directory_ids(documents)  # pyright: ignore[reportPrivateUsage]
+        else:
+            _ = validator._physical_status(  # pyright: ignore[reportPrivateUsage]
+                evidence, "research evidence"
+            )
