@@ -236,7 +236,11 @@ through the normative VM for both published forms. The independently built
 versioned capsule using the same binary bytes, proving that capsule profile
 selection survives into general execution instead of falling back to the
 current profile. This is an actual process-level source/publication boundary,
-not just in-memory encoder evidence.
+not just in-memory encoder evidence. An additional immutable-profile runner
+fixture feeds only one valid `0xff` byte to a seven-instruction capsule and
+closes stdin: each real runner must emit that byte, then the selected profile's
+EOF accumulator low byte twice rather than invent additional successful reads.
+This tests raw machine EOF propagation through product execution, not C stdio.
 
 Real external-process integration invokes the *general* `malbolge` runner on
 a modern-profile capsule, and separately runs the historical-safe fallback

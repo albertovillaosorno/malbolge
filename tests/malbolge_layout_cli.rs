@@ -588,6 +588,56 @@ fn immutable_profiles_publish_exact_raw_and_capsule_sources() -> Result<(), Stri
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "end-to-end EOF must not consume a phantom input byte"
+)]
+fn immutable_profile_capsules_preserve_valid_ff_before_real_runner_eof() -> Result<(), String> {
+    let operations = [
+        "input", "output", "input", "output", "input", "output", "halt",
+    ];
+    for profile_id in ["malbolge-2026.1", "malbolge-2026.2", "malbolge-2026.3"] {
+        let profile = target_profile(profile_id).ok_or("missing immutable profile")?;
+        let fixture = OwnedFixture::new()?;
+        let target = fixture.path("versioned-eof.malbolge");
+        let published = emit_capsule(profile_id, &target, &operations)?;
+        if !published.status.success() {
+            return Err(format!(
+                "{profile_id} EOF capsule emission: {}",
+                String::from_utf8_lossy(&published.stderr)
+            ));
+        }
+        let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(&target)
+            .arg("--input-stdin")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("{profile_id} runner: {error}"))?;
+        child
+            .stdin
+            .take()
+            .ok_or("missing general-runner stdin")?
+            .write_all(&[255])
+            .map_err(|error| format!("{profile_id} input: {error}"))?;
+        let result = child
+            .wait_with_output()
+            .map_err(|error| format!("{profile_id} EOF result: {error}"))?;
+        assert!(result.status.success(), "{profile_id} {result:?}");
+        assert!(result.stderr.is_empty(), "{profile_id} {result:?}");
+        let low_eof = profile.eof_word().to_le_bytes()[0];
+        assert_ne!(low_eof, 255, "{profile_id} valid 0xff versus EOF");
+        assert_eq!(
+            result.stdout,
+            &[255, low_eof, low_eof],
+            "{profile_id} EOF runner output",
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "real general runner and historical fallback both execute capsule"
 )]
 fn modern_capsule_runs_through_general_cli_with_classic_fallback() -> Result<(), String> {
