@@ -295,6 +295,101 @@ def test_cuda_archive_rejects_host_dependent_backslash_member(
         )
 
 
+@pytest.mark.parametrize(
+    "stage_kind", ["linked-parent", "linked-stage", "nondirectory-parent"]
+)
+def test_cuda_provision_rejects_redirected_staging_before_download(
+    tmp_path: Path, stage_kind: str
+) -> None:
+    """Staging must never write outside a physical repository workspace."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    payload = _payload()
+    manifest = _manifest(root, payload)
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    _ = sentinel.write_bytes(b"foreign data")
+    staging_root = root / ".temp"
+    if stage_kind == "linked-parent":
+        try:
+            staging_root.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+    elif stage_kind == "linked-stage":
+        staging_root.mkdir()
+        try:
+            (staging_root / f"cuda-provision-{LINUX_PLATFORM}").symlink_to(
+                external, target_is_directory=True
+            )
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+    else:
+        _ = staging_root.write_bytes(b"not a staging directory")
+    downloaded: list[str] = []
+
+    def download(url: str) -> bytes:
+        downloaded.append(url)
+        return payload
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match="staging"):
+        _ = cuda_validation.provision_cuda_manifest(
+            root, manifest, LINUX_PLATFORM, downloader=download
+        )
+    assert not downloaded
+    assert sentinel.read_bytes() == b"foreign data"
+    assert list(external.iterdir()) == [sentinel]
+    assert not (root / TOOLKIT_ROOT).exists()
+
+
+@pytest.mark.parametrize(
+    "target_kind", ["linked-parent", "dangling-leaf", "nondirectory-parent"]
+)
+def test_cuda_provision_rejects_redirected_destination_before_download(
+    tmp_path: Path, target_kind: str
+) -> None:
+    """The toolkit destination must not follow or replace foreign aliases."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    payload = _payload()
+    manifest = _manifest(root, payload)
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    _ = sentinel.write_bytes(b"foreign data")
+    if target_kind == "linked-parent":
+        try:
+            (root / ".dependencies").symlink_to(
+                external, target_is_directory=True
+            )
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"directory links unavailable: {error}")
+    elif target_kind == "nondirectory-parent":
+        _ = (root / ".dependencies").write_bytes(b"not a directory")
+    else:
+        destination = root / TOOLKIT_ROOT
+        destination.parent.mkdir(parents=True)
+        try:
+            destination.symlink_to(external / "not-installed")
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"file links unavailable: {error}")
+    downloaded: list[str] = []
+
+    def download(url: str) -> bytes:
+        downloaded.append(url)
+        return payload
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match="destination"):
+        _ = cuda_validation.provision_cuda_manifest(
+            root, manifest, LINUX_PLATFORM, downloader=download
+        )
+    assert not downloaded
+    assert sentinel.read_bytes() == b"foreign data"
+    assert list(external.iterdir()) == [sentinel]
+    if target_kind == "dangling-leaf":
+        assert (root / TOOLKIT_ROOT).is_symlink()
+
+
 def test_provision_is_idempotent_after_exact_marker(tmp_path: Path) -> None:
     """A completed exact toolkit never redownloads admitted package bytes."""
     payload = _payload()

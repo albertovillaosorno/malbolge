@@ -481,10 +481,28 @@ def _safe_zip_extract(data: bytes, staging: Path) -> Path:
         _fail(f"cannot extract CUDA zip archive: {error}")
 
 
+def _require_physical_directories(path: Path, label: str) -> None:
+    """Reject linked or non-directory ancestors before filesystem mutation."""
+    for component in (path, *path.parents):
+        if component.is_symlink() or component.is_junction():
+            _fail(f"CUDA {label} path must not redirect: {component}")
+        if component.exists() and not component.is_dir():
+            _fail(f"CUDA {label} path must be a directory: {component}")
+
+
+def _require_toolkit_destination(path: Path) -> None:
+    _require_physical_directories(path.parent, "toolkit destination")
+    if path.is_symlink() or path.is_junction():
+        _fail(f"CUDA toolkit destination must not redirect: {path}")
+
+
 def _prepare_staging(path: Path) -> None:
+    _require_physical_directories(path, "staging")
     if path.exists():
         shutil.rmtree(path)
+    _require_physical_directories(path, "staging")
     path.mkdir(parents=True)
+    _require_physical_directories(path, "staging")
 
 
 def extract_cuda_package(
@@ -580,6 +598,7 @@ def provision_cuda_manifest(
         return manifest.toolkit_root
     if manifest.toolkit_root.exists():
         _fail("CUDA toolkit exists without the exact provision marker")
+    _require_toolkit_destination(manifest.toolkit_root)
     staging = root / ".temp" / f"cuda-provision-{platform_id}"
     staged_toolkit = staging / "toolkit"
     _prepare_staging(staging)
@@ -587,6 +606,7 @@ def provision_cuda_manifest(
     package_staging = staging / "packages"
     try:
         for package in manifest.packages:
+            _require_physical_directories(staging, "staging")
             data = download(manifest.base_url + package.relative_path)
             extract_cuda_package(
                 data,
@@ -594,12 +614,16 @@ def provision_cuda_manifest(
                 staged_toolkit,
                 staging=package_staging,
             )
+        _require_physical_directories(staging, "staging")
         _write_verified_bytes(
             staged_toolkit / CUDA_PROVISION_MARKER, _marker_bytes(manifest)
         )
+        _require_toolkit_destination(manifest.toolkit_root)
         manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
+        _require_toolkit_destination(manifest.toolkit_root)
         _ = staged_toolkit.replace(manifest.toolkit_root)
     finally:
+        _require_physical_directories(staging, "staging")
         if staging.exists():
             shutil.rmtree(staging)
     return manifest.toolkit_root
