@@ -8663,6 +8663,9 @@ def test_checkpoint_read_rejects_fifo_swapped_during_open(
             _ = progress.read_checkpoint_generation(sidecar)
 
 
+TEMP_FOREIGN_DIRECTORY = "foreign-directory"
+TEMP_WRONG_PREFIX = "wrong-prefix"
+TEMP_FOREIGN_STRING = "foreign-string"
 TEMP_MUTABLE = "mutable"
 TEMP_IMMUTABLE = "immutable"
 TEMP_REGULAR = "regular"
@@ -9450,8 +9453,69 @@ def _publish_for_temporary_admission_test(
     return writer(destination, b"expected-checkpoint", platform=os.name)
 
 
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
 @pytest.mark.parametrize(
-    "failure_type", [OSError, ValueError, RuntimeError, TypeError, AttributeError]
+    "forgery", [TEMP_FOREIGN_DIRECTORY, TEMP_WRONG_PREFIX, TEMP_FOREIGN_STRING]
+)
+def test_writer_rejects_forged_mkstemp_path_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    kind: str,
+    forgery: str,
+) -> None:
+    """A valid staging inode cannot certify a forged creator pathname."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    original_mkstemp = tempfile.mkstemp
+    created: list[tuple[int, Path]] = []
+    foreign_dir = tmp_path / "foreign"
+    foreign_dir.mkdir()
+
+    @final
+    class ForeignString(str):  # ruff: ignore[subclass-builtin]
+        __slots__ = ()
+
+    def forged_mkstemp(
+        *, prefix: str, suffix: str, **options: Path
+    ) -> tuple[int, str]:
+        directory = (
+            foreign_dir if forgery == TEMP_FOREIGN_DIRECTORY else options["dir"]
+        )
+        stage_prefix = (
+            "other-stage." if forgery == TEMP_WRONG_PREFIX else prefix
+        )
+        descriptor, name = original_mkstemp(
+            dir=directory, prefix=stage_prefix, suffix=suffix
+        )
+        created.append((descriptor, Path(name)))
+        returned_name = (
+            ForeignString(name) if forgery == TEMP_FOREIGN_STRING else name
+        )
+        return descriptor, returned_name
+
+    with monkeypatch.context() as context:
+        context.setattr(tempfile, "mkstemp", forged_mkstemp)
+        with pytest.raises(ERROR, match="temporary path receipt"):
+            _ = _publish_for_temporary_admission_test(
+                kind, sidecar, destination
+            )
+    assert len(created) == 1
+    descriptor, stage = created[0]
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(descriptor)
+    assert not destination.exists()
+    assert stage.is_file()
+    assert stage.read_bytes() == EMPTY_PAYLOAD
+
+
+@pytest.mark.parametrize(
+    "failure_type",
+    [OSError, ValueError, RuntimeError, TypeError, AttributeError],
 )
 @pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
 def test_temporary_descriptor_admission_failure_closes_raw_fd(

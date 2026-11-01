@@ -2431,6 +2431,53 @@ def _temporary_descriptor_identity(descriptor: int) -> tuple[int, int]:
     return opened.st_dev, opened.st_ino
 
 
+def _admit_staging_path(destination: Path, pathname: object) -> Path:
+    """Admit an exact native mkstemp stage name in the requested directory.
+
+    Returns:
+        The lexical staging path with the expected random-name shape.
+
+    """
+    if type(pathname) is not str:
+        _fail("progress temporary path receipt must be an exact string")
+    temporary = Path(pathname)
+    prefix = _temporary_stage_prefix(destination)
+    basename = temporary.name
+    if temporary.parent != destination.parent:
+        _fail("progress temporary path receipt is outside requested directory")
+    if not basename.startswith(prefix) or not basename.endswith(".tmp"):
+        _fail("progress temporary path receipt has an unexpected stage name")
+    token = basename[len(prefix) : -len(".tmp")]
+    if _RETAINED_STAGING_TOKEN.fullmatch(token) is None:
+        _fail("progress temporary path receipt has an unexpected stage token")
+    return temporary
+
+
+def _admit_created_temporary(
+    destination: Path, descriptor: int, pathname: object
+) -> tuple[Path, tuple[int, int]]:
+    """Bind mkstemp's native pathname receipt to the requested stage.
+
+    Returns:
+        Admitted staging name and opened descriptor inode identity.
+
+    """
+    identity = _temporary_descriptor_identity(descriptor)
+    try:
+        temporary = _admit_staging_path(destination, pathname)
+    except Exception as error:
+        # The returned name may belong to a foreign directory or inode.
+        # Close the owned descriptor without following or unlinking the name.
+        _close_unadmitted_temporary(descriptor, error)
+        if isinstance(error, ProgressSidecarError):
+            raise
+        detail = _host_error_detail(error)
+        _fail_with_source(
+            f"progress temporary path receipt failed: {detail}", error
+        )
+    return temporary, identity
+
+
 def _admit_temporary_inode(
     observed: os.stat_result, identity: tuple[int, int], expected_size: int
 ) -> None:
@@ -2648,11 +2695,11 @@ def _write_atomic_bytes(
         prefix=_temporary_stage_prefix(destination),
         suffix=".tmp",
     )
-    temporary = Path(temporary_name)
+    temporary, temporary_identity = _admit_created_temporary(
+        destination, descriptor, temporary_name
+    )
     replaced = False
-    temporary_identity: tuple[int, int] | None = None
     try:
-        temporary_identity = _temporary_descriptor_identity(descriptor)
         _write_payload_descriptor(descriptor, payload)
         _reject_path_redirect(destination, "progress sidecar")
         _verify_written_temporary(temporary, temporary_identity, payload)
@@ -2672,8 +2719,6 @@ def _write_atomic_bytes(
             replaced=replaced,
             identity=temporary_identity,
         )
-    if temporary_identity is None:
-        _fail("progress temporary inode identity was not admitted")
     _confirm_mutable_postpublication_identity(
         destination, temporary_identity, payload
     )
@@ -3001,11 +3046,11 @@ def _write_immutable(
         prefix=_temporary_stage_prefix(destination),
         suffix=".tmp",
     )
-    temporary = Path(temporary_name)
+    temporary, temporary_identity = _admit_created_temporary(
+        destination, descriptor, temporary_name
+    )
     durable = False
-    temporary_identity: tuple[int, int] | None = None
     try:
-        temporary_identity = _temporary_descriptor_identity(descriptor)
         _write_payload_descriptor(descriptor, payload)
         _reject_path_redirect(destination, "immutable progress payload")
         _verify_written_temporary(temporary, temporary_identity, payload)

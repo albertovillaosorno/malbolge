@@ -380,10 +380,17 @@ publication. Parent-directory substitution during either mutable or immutable
 staging therefore fails closed before committing a redirected generation.
 
 Mutable and immutable writers now capture the device and inode of the fresh
-`mkstemp` descriptor before transferring it to the payload stream. After file
-sync and stream close, and before pointer replacement or immutable linking,
-they require the temporary pathname to remain a regular, non-symlink entry
-with the same device, inode, exact expected byte length, and **one hard link**.
+`mkstemp` descriptor before transferring it to the payload stream. Before
+writing, they also admit the returned staging pathname as an exact native
+string in the requested parent directory, with the expected prefix, eight-
+character Python 3.14 token, and `.tmp` suffix. A forged directory, name, or
+string-subclass receipt cannot redirect staging or publication despite a
+valid opened descriptor: the descriptor closes and the unadmitted pathname
+is left intact rather than following or deleting a possibly foreign entry.
+After file sync and stream close but before pointer replacement or immutable
+linking, they require the temporary pathname to remain a regular, non-symlink
+entry with the same device, inode, exact expected byte length, and **one hard
+link**.
 This prevents a staged inode already accessible through another pathname from
 becoming a published pointer or checkpoint that can later be mutated through
 its alias.
