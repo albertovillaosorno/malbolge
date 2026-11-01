@@ -615,13 +615,55 @@ def _canonical_payload(
     return generated
 
 
+def _admit_native_workspace_receipt(receipt: object, *, prefix: str) -> Path:
+    """Reject redirected temporary paths before writing or trusting cleanup.
+
+    The return from a temporary context is only an observed filesystem path,
+    not proof of race-free ownership. A rejected path must never reach
+    TemporaryDirectory.__exit__, which could recursively remove it.
+    """
+    if type(receipt) is not str or not receipt or type(prefix) is not str:
+        _fail("host-C workspace context returned invalid path receipt")
+    try:
+        directory = Path(receipt)
+        if (
+            not directory.is_absolute()
+            or str(directory) != receipt
+            or directory.parent != _TEMP
+            or not directory.name.startswith(prefix)
+            or directory.name == prefix
+        ):
+            _fail("host-C workspace context returned foreign path")
+        details = directory.lstat()
+    except HostOracleError:
+        raise
+    except Exception as error:
+        message = "host-C workspace context path unavailable"
+        raise HostOracleError(message) from error
+    if type(details) is not os.stat_result or not stat.S_ISDIR(details.st_mode):
+        _fail("host-C workspace context requires a physical directory")
+    try:
+        with os.scandir(directory) as entries:
+            if next(entries, None) is not None:
+                _fail("host-C workspace context requires an initially empty directory")
+    except HostOracleError:
+        raise
+    except Exception as error:
+        message = "host-C workspace context inventory unavailable"
+        raise HostOracleError(message) from error
+    return directory
+
+
 @contextmanager
 def _native_workspace(prefix: str) -> Iterator[Path]:
     """Preserve an original replay failure if workspace cleanup also fails."""
     workspace = tempfile.TemporaryDirectory(prefix=prefix, dir=_TEMP)
     temporary = workspace.__enter__()
+    # Do not call __exit__ on a forged return: cleanup could delete a foreign
+    # directory. Ordinary valid allocations retain their prior cleanup path.
+    directory = _admit_native_workspace_receipt(temporary, prefix=prefix)
     try:
-        yield Path(temporary)
+        yield directory
     except BaseException as primary:
         try:
             workspace.__exit__(type(primary), primary, primary.__traceback__)

@@ -2399,6 +2399,87 @@ def test_host_c_rss_cleanup_bypasses_hostile_primary_note(
             artifact.unlink()
 
 
+class _ForeignNativeWorkspaceText(str):
+    """An allocator can report text that is not a native stdlib string."""
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "parent-root",
+        "outside-root",
+        "symlink",
+        "regular-file",
+        "foreign-text",
+        "foreign-type",
+        "occupied-prefix",
+        "relative-path",
+    ],
+)
+def test_host_c_native_workspace_rejects_unowned_enter_result_without_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A forged temporary context cannot target writes or recursive cleanup."""
+    root = tmp_path / "scratch"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = root / "arena-host-c-oracle-unowned"
+    if kind == "parent-root":
+        target = root
+    elif kind == "outside-root":
+        target = outside
+    elif kind == "symlink":
+        target.symlink_to(outside, target_is_directory=True)
+    elif kind == "regular-file":
+        target.write_bytes(b"preserve")
+    elif kind in ("foreign-text", "occupied-prefix"):
+        target.mkdir()
+        if kind == "occupied-prefix":
+            (target / "preserve.txt").write_text("preserve")
+    receipt: object = str(target)
+    if kind == "foreign-text":
+        receipt = _ForeignNativeWorkspaceText(str(target))
+    elif kind == "foreign-type":
+        receipt = target
+    elif kind == "relative-path":
+        receipt = target.name
+    attempts: list[str] = []
+
+    class ForgedWorkspace:
+        def __enter__(self) -> object:
+            return receipt
+
+        def __exit__(self, *args: object) -> None:
+            del args
+            attempts.append("cleanup")
+
+    monkeypatch.setattr(host_c_oracle, "_TEMP", root)
+    monkeypatch.setattr(
+        host_c_oracle.tempfile,
+        "TemporaryDirectory",
+        lambda **_kwargs: ForgedWorkspace(),
+    )
+    with (
+        pytest.raises(host_c_oracle.HostOracleError, match="workspace"),
+        host_c_oracle._native_workspace("arena-host-c-oracle-"),
+    ):
+        attempts.append("write")
+    assert not attempts
+    assert outside.is_dir()
+    if kind == "regular-file":
+        assert target.read_bytes() == b"preserve"
+    if kind == "occupied-prefix":
+        assert (target / "preserve.txt").read_text() == "preserve"
+
+
+def _allocated_workspace(root: Path, prefix: str) -> Path:
+    """Create a genuinely local physical fixture for cleanup fault tests."""
+    directory = root / f"{prefix}injected"
+    directory.mkdir()
+    return directory
+
+
 @pytest.mark.parametrize("operation", ["replay", "rebuild", "measure"])
 @pytest.mark.parametrize("stage", ["workspace", "source-write", "workspace-cleanup"])
 def test_host_c_direct_workspaces_contain_unexpected_host_faults(
@@ -2426,8 +2507,11 @@ def test_host_c_direct_workspaces_contain_unexpected_host_faults(
         return original_write(path, payload)
 
     class FailingCleanup:
+        def __init__(self, directory: Path) -> None:
+            self.directory = directory
+
         def __enter__(self) -> str:
-            return str(tmp_path)
+            return str(self.directory)
 
         def __exit__(self, *_args: object) -> None:
             raise fault
@@ -2442,8 +2526,11 @@ def test_host_c_direct_workspaces_contain_unexpected_host_faults(
         monkeypatch.setattr(
             host_c_oracle.tempfile,
             "TemporaryDirectory",
-            lambda **_kwargs: FailingCleanup(),
+            lambda **kwargs: FailingCleanup(
+                _allocated_workspace(tmp_path, str(kwargs["prefix"]))
+            ),
         )
+        monkeypatch.setattr(host_c_oracle, "_TEMP", tmp_path)
         monkeypatch.setattr(host_c_oracle, "_replay_mode", lambda *_args: 1024)
         monkeypatch.setattr(
             host_c_oracle, "_read_reference_executable", lambda _dir: b"checked"
@@ -2475,8 +2562,11 @@ def test_host_c_workspace_cleanup_cannot_mask_primary_rejection(
     cleanup = ForeignCleanupFault("untrusted cleanup details")
 
     class FailingCleanup:
+        def __init__(self, directory: Path) -> None:
+            self.directory = directory
+
         def __enter__(self) -> str:
-            return str(tmp_path)
+            return str(self.directory)
 
         def __exit__(self, *_args: object) -> None:
             raise cleanup
@@ -2484,9 +2574,10 @@ def test_host_c_workspace_cleanup_cannot_mask_primary_rejection(
     def fail_replay(_directory: Path, _mode: str) -> int:
         raise primary
 
-    def fake_workspace(**_kwargs: object) -> FailingCleanup:
-        return FailingCleanup()
+    def fake_workspace(**kwargs: object) -> FailingCleanup:
+        return FailingCleanup(_allocated_workspace(tmp_path, str(kwargs["prefix"])))
 
+    monkeypatch.setattr(host_c_oracle, "_TEMP", tmp_path)
     monkeypatch.setattr(host_c_oracle.tempfile, "TemporaryDirectory", fake_workspace)
     monkeypatch.setattr(host_c_oracle, "_replay_mode", fail_replay)
     identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)

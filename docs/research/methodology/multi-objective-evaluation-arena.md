@@ -1093,6 +1093,13 @@ The original study records remain the result authority.
   active challenge families pass real replay tests; injected wrong entry
   results, compiler stages, source mutations and oversized batches fail closed.
   The subprocess gate explicitly does not execute a compiler candidate.
+  Direct host-C replay, rebuild and measurement now admit a native absolute
+  `TemporaryDirectory.__enter__` receipt for a physical, initially empty
+  in-root workspace with the expected operation prefix before source writes.
+  A forged outside, linked, occupied or foreign receipt cannot reach the
+  workspace body or its recursive `__exit__` cleanup. Genuine temporary
+  contexts retain the prior cleanup and primary-error precedence. These
+  observed filesystem checks are not an atomic or race-free ownership proof.
   Host-C reference measurement and independent rebuild now both read the
   generated `oracle-check` executable through bounded regular-file evidence
   admission. The child output-file limit (8 MiB) also caps retained executable
