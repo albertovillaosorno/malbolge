@@ -54,10 +54,6 @@ type RunFailure<Wait, Turn> =
 
 struct PanicOnDrop;
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
-)]
 impl Drop for PanicOnDrop {
     fn drop(&mut self) {
         resume_unwind(Box::new("observed callback cleanup panic"));

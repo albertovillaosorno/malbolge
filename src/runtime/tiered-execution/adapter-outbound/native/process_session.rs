@@ -71,10 +71,6 @@ impl<'counter> TimedExchangeWorkerPermit<'counter> {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
-)]
 impl Drop for TimedExchangeWorkerPermit<'_> {
     fn drop(&mut self) {
         let _prior = self.counter.fetch_sub(1, Ordering::AcqRel);
@@ -387,10 +383,6 @@ impl NativeProcessSession {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
-)]
 impl Drop for NativeProcessSession {
     fn drop(&mut self) {
         self.terminate();

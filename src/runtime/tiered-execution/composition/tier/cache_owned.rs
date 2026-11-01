@@ -273,10 +273,6 @@ impl<Reason, TurnError> NativeCacheOwnedWorkerHandle<Reason, TurnError> {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Drop::pin_drop is unstable and its default no-op is correct here"
-)]
 impl<Reason, TurnError> Drop
     for NativeCacheOwnedWorkerHandle<Reason, TurnError>
 {
