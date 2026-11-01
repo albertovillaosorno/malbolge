@@ -239,11 +239,17 @@ def _path_status(path: Path) -> stat_result | None:
         return None
     except (OSError, ValueError, TypeError, RuntimeError):
         _fail("bibliography filesystem traversal failed")
+    if type(status) is not os.stat_result:
+        _fail("bibliography filesystem requires native stat receipt")
+    if S_ISLNK(status.st_mode):
+        _fail("bibliography paths must not redirect")
     try:
-        redirected = S_ISLNK(status.st_mode) or path.is_junction()
+        junction = path.is_junction()
     except (OSError, ValueError, TypeError, RuntimeError):
         _fail("bibliography filesystem traversal failed")
-    if redirected:
+    if type(junction) is not bool:
+        _fail("bibliography filesystem requires native junction receipt")
+    if junction:
         _fail("bibliography paths must not redirect")
     return status
 
@@ -253,7 +259,9 @@ def _is_regular_file(path: Path) -> bool:
     return status is not None and S_ISREG(status.st_mode)
 
 
-def _same_regular_status(first: stat_result, second: stat_result) -> bool:
+def _same_regular_status(first: object, second: object) -> bool:
+    if type(first) is not os.stat_result or type(second) is not os.stat_result:
+        _fail("bibliography evidence requires native stat receipt")
     return (
         S_ISREG(first.st_mode)
         and S_ISREG(second.st_mode)
@@ -282,7 +290,7 @@ def _verify_evidence_finish(
     content: bytes,
 ) -> None:
     """Reject a changed descriptor, pathname, or byte extent."""
-    after = os.fstat(stream.fileno())
+    after = os.fstat(_stream_descriptor(stream))
     visible = _path_status(path)
     _require_unlinked_path(path)
     if not _same_regular_status(opened, after):
@@ -291,6 +299,14 @@ def _verify_evidence_finish(
         _fail(f"bibliography evidence changed: {path}")
     if len(content) != opened.st_size:
         _fail(f"bibliography evidence changed: {path}")
+
+
+def _stream_descriptor(stream: BinaryIO) -> int:
+    """Admit a native descriptor value before asking the host for its status."""
+    descriptor = stream.fileno()
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("bibliography evidence requires native file descriptor")
+    return descriptor
 
 
 def _read_open_evidence(
@@ -304,12 +320,14 @@ def _read_open_evidence(
         Evidence bytes from the admitted inode.
 
     """
-    opened = os.fstat(stream.fileno())
+    opened = os.fstat(_stream_descriptor(stream))
     if not _same_regular_status(admitted, opened):
         _fail(f"bibliography evidence changed: {path}")
     if opened.st_size > MAX_EVIDENCE_BYTES:
         _fail(f"bibliography evidence exceeds size limit: {path}")
     content = stream.read(MAX_EVIDENCE_BYTES + 1)
+    if type(content) is not bytes:
+        _fail("bibliography evidence requires native byte receipt")
     _verify_evidence_finish(stream, opened, path, content=content)
     return content
 
@@ -341,6 +359,8 @@ def _read_regular_bytes(path: Path) -> bytes:
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
+        if type(descriptor) is not int or descriptor < 0:
+            _fail("bibliography evidence requires native file descriptor")
         try:
             stream = os.fdopen(descriptor, "rb")
         except BaseException:

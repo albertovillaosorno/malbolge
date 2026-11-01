@@ -51,6 +51,14 @@ The bibliography records source identity and provenance. It does not decide
 repository policy, legal permission, implementation correctness, or experimental
 truth.
 
+The filesystem evidence reader admits only physical, unchanged regular files.
+Its path and descriptor status receipts must be exact native stat results,
+junction decisions exact booleans, opened descriptors nonnegative native integers,
+and read receipts exact native bytes. It rejects foreign host receipt objects
+before inspecting their fields or invoking caller-owned conversion hooks. These
+checks pin each read to an admitted inode and byte extent; they do not assert
+that source files cannot change after a validation run finishes.
+
 ## Diagnostics
 
 Missing records, duplicate canonical identities, malformed source sections,

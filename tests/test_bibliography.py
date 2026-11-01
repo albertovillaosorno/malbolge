@@ -38,7 +38,7 @@ import os
 from os import stat_result
 from pathlib import Path
 from stat import S_IFDIR, S_IFLNK
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Self, cast, override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -594,3 +594,191 @@ def test_bibliography_rejects_foreign_byte_receipt_before_decode(
         _ = validator._read_regular_text(  # pyright: ignore[reportPrivateUsage]
             Path("untrusted.md")
         )
+
+
+@pytest.mark.parametrize("phase", ["lstat", "opened", "after"])
+def test_bibliography_rejects_foreign_stat_receipts_before_field_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """Host stat objects must not execute caller-owned property hooks."""
+    source = tmp_path / "evidence.md"
+    _ = source.write_bytes(b"evidence\n")
+
+    class ForeignStat:
+        @override
+        def __getattribute__(self, name: str) -> object:
+            del self, name
+            raise AssertionError("foreign stat hook executed")
+
+    if phase == "lstat":
+        native_lstat = Path.lstat
+
+        def forged_lstat(path: Path) -> stat_result:
+            if path == source:
+                return cast("stat_result", cast("object", ForeignStat()))
+            return native_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", forged_lstat)
+    else:
+        native_fstat = os.fstat
+        observed = 0
+
+        def forged_fstat(descriptor: int) -> stat_result:
+            nonlocal observed
+            observed += 1
+            if (phase == "opened" and observed == 1) or (
+                phase == "after" and observed == 2
+            ):
+                return cast("stat_result", cast("object", ForeignStat()))
+            return native_fstat(descriptor)
+
+        monkeypatch.setattr(os, "fstat", forged_fstat)
+
+    with pytest.raises(
+        validator.BibliographyValidationError, match="native stat receipt"
+    ):
+        _ = validator._read_regular_bytes(source)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("junction", [1, 0, "", object()])
+def test_bibliography_rejects_nonboolean_junction_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    junction: object,
+) -> None:
+    """Junction decisions require native bool, not truthiness coercion."""
+    source = tmp_path / "evidence.md"
+    _ = source.write_bytes(b"evidence\n")
+    native_junction = Path.is_junction
+
+    def forged_junction(path: Path) -> bool:
+        if path == source:
+            return cast("bool", junction)
+        return native_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    with pytest.raises(
+        validator.BibliographyValidationError, match="native junction receipt"
+    ):
+        _ = validator._read_regular_bytes(source)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("descriptor", [True, False, -1, 3.0])
+def test_bibliography_rejects_foreign_open_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    descriptor: object,
+) -> None:
+    """An invalid open receipt cannot be wrapped or closed as an owned fd."""
+    source = tmp_path / "evidence.md"
+    _ = source.write_bytes(b"evidence\n")
+    native_open = os.open
+
+    def forged_open(path: Path, flags: int) -> int:
+        if path == source:
+            return cast("int", descriptor)
+        return native_open(path, flags)
+
+    monkeypatch.setattr(os, "open", forged_open)
+    with pytest.raises(
+        validator.BibliographyValidationError, match="native file descriptor"
+    ):
+        _ = validator._read_regular_bytes(source)  # pyright: ignore[reportPrivateUsage]
+
+
+class _ForeignReadStream:
+    """Delegate fd ownership but forge just the read receipt."""
+
+    def __init__(self, wrapped: BinaryIO, receipt: object) -> None:
+        self.wrapped: BinaryIO = wrapped
+        self.receipt: object = receipt
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        del args
+        self.wrapped.close()
+
+    def fileno(self) -> int:
+        return self.wrapped.fileno()
+
+    def read(self, size: int) -> bytes:
+        del size
+        return cast("bytes", self.receipt)
+
+
+@pytest.mark.parametrize("receipt_kind", ["text", "subclass", "list"])
+def test_bibliography_rejects_foreign_stream_receipt_before_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_kind: str,
+) -> None:
+    """Untrusted stream reads cannot provide provenance bytes."""
+    source = tmp_path / "evidence.md"
+    _ = source.write_bytes(b"evidence\n")
+    native_fdopen = os.fdopen
+
+    class ForeignBytes(bytes):
+        @override
+        def __len__(self) -> int:
+            raise AssertionError("foreign byte length hook executed")
+
+    receipts: dict[str, object] = {
+        "text": "evidence\n",
+        "subclass": ForeignBytes(b"evidence\n"),
+        "list": list(b"evidence\n"),
+    }
+
+    def forged_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        stream = cast("BinaryIO", native_fdopen(descriptor, mode))
+        return cast(
+            "BinaryIO",
+            cast("object", _ForeignReadStream(stream, receipts[receipt_kind])),
+        )
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(
+        validator.BibliographyValidationError, match="native byte receipt"
+    ):
+        _ = validator._read_regular_bytes(source)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("phase", ["opened", "after"])
+@pytest.mark.parametrize("receipt", [True, -1, 2.0])
+def test_bibliography_rejects_foreign_stream_descriptor_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    receipt: object,
+) -> None:
+    """A stream cannot use a forged fd during the before/after stat checks."""
+    source = tmp_path / "evidence.md"
+    _ = source.write_bytes(b"evidence\n")
+    native_fdopen = os.fdopen
+
+    class ForeignDescriptorStream(_ForeignReadStream):
+        def __init__(self, stream: BinaryIO) -> None:
+            super().__init__(stream, b"evidence\n")
+            self.calls: int = 0
+
+        @override
+        def fileno(self) -> int:
+            self.calls += 1
+            if (phase == "opened" and self.calls == 1) or (
+                phase == "after" and self.calls == 2
+            ):
+                return cast("int", receipt)
+            return self.wrapped.fileno()
+
+    def forged_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        stream = cast("BinaryIO", native_fdopen(descriptor, mode))
+        return cast("BinaryIO", cast("object", ForeignDescriptorStream(stream)))
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(
+        validator.BibliographyValidationError, match="native file descriptor"
+    ):
+        _ = validator._read_regular_bytes(source)  # pyright: ignore[reportPrivateUsage]
