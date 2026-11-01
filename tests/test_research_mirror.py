@@ -94,6 +94,18 @@ def test_executable_only_research_id_fails_closed() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "aliases",
+    [frozenset({"alpha", "ALPHA"}), frozenset({"analysis-v2", "ANALYSIS-v2"})],
+)
+def test_casefold_colliding_research_ids_fail_closed(
+    aliases: frozenset[str],
+) -> None:
+    """Distinct POSIX names cannot alias one research ID on Windows/macOS."""
+    with pytest.raises(validator.ResearchMirrorError, match="case-insensitive"):
+        _ = validator.validate_id_sets(aliases, aliases)
+
+
 def test_empty_research_mirror_fails_closed() -> None:
     """Deleting both halves cannot turn the mirror contract into a no-op."""
     _expect_id_failure(frozenset(), frozenset())
@@ -376,11 +388,11 @@ def test_mirror_foreign_host_error_formatters_cannot_escape(
             ),
         ) as caught:
             if boundary == "physical":
-                validator._physical_status(  # pyright: ignore[reportPrivateUsage]
+                _ = validator._physical_status(  # pyright: ignore[reportPrivateUsage]
                     child, "research document"
                 )
             else:
-                validator._directory_ids(  # pyright: ignore[reportPrivateUsage]
+                _ = validator._directory_ids(  # pyright: ignore[reportPrivateUsage]
                     directory
                 )
     elif boundary == "discovery":
@@ -392,7 +404,7 @@ def test_mirror_foreign_host_error_formatters_cannot_escape(
         with pytest.raises(
             validator.ResearchMirrorError, match="discovery failed"
         ) as caught:
-            validator.validate_repository(_always_ignored)
+            _ = validator.validate_repository(_always_ignored)
     else:
         entry = validator.MirrorEntry(
             document=tmp_path / "docs/fixture",
@@ -407,7 +419,7 @@ def test_mirror_foreign_host_error_formatters_cannot_escape(
         with pytest.raises(
             validator.ResearchMirrorError, match="Git ignore probe failed"
         ) as caught:
-            validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+            _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
     assert caught.value.__cause__ is fault
 
 
@@ -432,5 +444,5 @@ def test_mirror_native_host_error_diagnostic_remains_actionable(
         validator.ResearchMirrorError,
         match="native git executable unavailable",
     ) as caught:
-        validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+        _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
     assert caught.value.__cause__ is fault

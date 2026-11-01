@@ -161,6 +161,12 @@ def validate_id_sets(
         _fail(message)
     if not document_ids:
         _fail("research mirror contains no algorithm IDs")
+    casefolded: dict[str, str] = {}
+    for identifier in sorted(document_ids):
+        previous = casefolded.setdefault(identifier.casefold(), identifier)
+        if previous != identifier:
+            message = f"case-insensitive research mirror ID collision: {previous}"
+            _fail(f"{message} and {identifier}")
     return tuple(sorted(document_ids))
 
 
