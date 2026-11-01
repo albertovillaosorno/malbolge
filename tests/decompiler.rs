@@ -50,7 +50,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use malbolge::{
     ProfileMachine, RunOutcome, Termination,
-    canonicalize_annotated_source, current_profile, historical_profile,
+    canonicalize_annotated_source, current_profile,
+    decode_profile_instruction, historical_profile,
 };
 
 const ANALYSIS_SOURCE: &[u8] = b"b&&;@L";
@@ -395,6 +396,45 @@ fn annotated_render_marks_initial_indirect_and_halt_boundaries() -> Result<(), S
     }
     if decompiler::render_annotated(historical_profile(), b"not malbolge").is_ok() {
         return Err(String::from("invalid source was annotated"));
+    }
+    Ok(())
+}
+
+#[test]
+fn annotated_render_bounded_width_preserves_exact_line_column_map()
+-> Result<(), String> {
+    let mut canonical = Vec::new();
+    for position in 0u32..150 {
+        let code = (33u8..=126)
+            .find(|&byte| {
+                decode_profile_instruction(u32::from(byte), position) == Some(b'o')
+            })
+            .ok_or_else(|| format!("no graphical no-op at {position}"))?;
+        canonical.push(code);
+    }
+    let rendered = decompiler::render_annotated(historical_profile(), &canonical)
+        .map_err(|error| error.to_string())?;
+    let recovered = canonicalize_annotated_source(rendered.as_bytes())
+        .map_err(|error| error.to_string())?;
+    if recovered.bytes() != canonical
+        || !rendered.contains("initial-range=0..63")
+        || !rendered.contains("initial-range=64..127")
+        || !rendered.contains("initial-range=128..149")
+        || recovered.locations().len() != canonical.len()
+    {
+        return Err(String::from("bounded initial-region rendering drifted"));
+    }
+    for (position, location) in recovered.locations().iter().enumerate() {
+        let expected_line = 4 + position.div_euclid(64) * 2;
+        let expected_column = position.rem_euclid(64) + 1;
+        if location.line() != expected_line
+            || location.column() != expected_column
+            || rendered.as_bytes().get(location.offset()) != canonical.get(position)
+        {
+            return Err(format!(
+                "annotated map drift at {position}: {location:?}"
+            ));
+        }
     }
     Ok(())
 }

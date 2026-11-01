@@ -177,3 +177,8 @@ annotated comments, and rejects malformed annotated presentation.
 
 A fifth regression proves C and annotated output are byte-identical whether
 read from the canonical raw file or explicitly re-entered annotated source.
+
+A sixth regression generates 150 valid graphical no-op cells using the VM's
+public normative instruction decoder and proves region boundaries at canonical
+positions 63 and 127, exact LF line placement, column, source offset, and byte
+recovery through the annotated canonicalizer.
