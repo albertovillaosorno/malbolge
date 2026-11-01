@@ -20,6 +20,7 @@ recovered from arbitrary Malbolge.
 - `src/tooling/decompiler/composition/cli.rs`
 - `src/tooling/decompiler/composition/malbolge_decompile.rs`
 - `tests/decompiler.rs`
+- `tests/decompiler_c_runtime.rs` (Linux/pinned-Clang execution evidence)
 - local generated views of `examples/museum/` specimens
 
 ## Current Behavior
@@ -39,6 +40,15 @@ width crazy and rotate operations, position-dependent decode, bounded execution,
 self-modification, post-instruction encryption, and explicit status values. It
 deliberately calls no `malloc`, `getchar`, `putchar`, thread API, or platform
 service.
+A dedicated Linux runtime regression (`tests/decompiler_c_runtime.rs`)
+compiles the CLI's historical-profile C output with pinned Clang 22.1.8,
+executes it against synthetic `ubO` source and four binary/EOF input cases,
+and compares the emitted bytes and halt instruction counts with the normative
+Rust VM. The compiled harness also compares a one-step budget to an exhausted
+output-capacity run to prove no pending output instruction changes memory,
+registers, consumed input, or committed steps. This test covers the selected
+historical source and these transitions, not all possible program states or
+profiles; the VM remains the authority.
 
 The general Cargo entrypoint delegates policy to
 `src/tooling/decompiler/application/cli.rs` and
