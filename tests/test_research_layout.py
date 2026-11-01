@@ -32,6 +32,7 @@
 
 """Fail-closed tests for research experiment layout discovery."""
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -130,6 +131,42 @@ def test_linked_state_graph_directory_is_not_discovered(tmp_path: Path) -> None:
     state_graph.parent.mkdir(parents=True)
     state_graph.symlink_to(outside, target_is_directory=True)
     with pytest.raises(OSError, match="redirect"):
+        _ = research_layout.research_algorithm_directories(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("domain_ids", "include_composition"),
+    [
+        (("candidate", "CANDIDATE"), False),
+        ((research_layout.STATE_GRAPH_ID.swapcase(),), True),
+    ],
+)
+def test_discovery_rejects_casefold_colliding_experiments(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    domain_ids: tuple[str, ...],
+    include_composition: bool,
+) -> None:
+    """All manifest consumers reject aliases on case-insensitive hosts."""
+    domain = _domain_root(tmp_path)
+    domain.mkdir(parents=True)
+    composition = tmp_path / "src/research/algorithms/composition/state-graph"
+    original_iterdir = Path.iterdir
+
+    def fake_iterdir(path: Path) -> Iterator[Path]:
+        if path == domain:
+            return iter(domain / identifier for identifier in domain_ids)
+        return original_iterdir(path)
+
+    def fake_manifest(path: Path, _root: Path) -> bool:
+        return path.name == "experiment.toml" and (
+            path.parent.parent == domain
+            or (include_composition and path.parent == composition)
+        )
+
+    monkeypatch.setattr(Path, "iterdir", fake_iterdir)
+    monkeypatch.setattr(research_layout, "_manifest_is_file", fake_manifest)
+    with pytest.raises(OSError, match="case-insensitive"):
         _ = research_layout.research_algorithm_directories(tmp_path)
 
 

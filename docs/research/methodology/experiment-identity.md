@@ -55,6 +55,10 @@ away symbolic-link aliases; parent traversal is rejected. TOML parser
 capacity errors (including oversized decimal integer tokens) return typed
 manifest errors instead of host exceptions. TOML remains the checked-in
 serialization, but the schema owns semantics independently of that format.
+Shared research discovery also rejects IDs that collide under Unicode case
+folding, including a domain ID that aliases the composition state-graph ID.
+The experiment and lifecycle validators receive this fail-closed discovery
+result, independently of the research mirror's two-sided shape check.
 Every research mirror carries `algorithms/<id>/experiment.toml` with:
 
 - `schema_version = 1`;

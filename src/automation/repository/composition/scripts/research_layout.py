@@ -109,6 +109,12 @@ def research_algorithm_directories(root: Path) -> tuple[tuple[str, Path], ...]:
             )
             raise OSError(message)
         entries[STATE_GRAPH_ID] = state_graph
+    casefolded: dict[str, str] = {}
+    for identifier in sorted(entries):
+        previous = casefolded.setdefault(identifier.casefold(), identifier)
+        if previous != identifier:
+            message = f"case-insensitive research ID collision: {previous}"
+            raise OSError(f"{message} and {identifier}")
     return tuple(sorted(entries.items()))
 
 
