@@ -56,7 +56,10 @@ alias directory and the open descriptor's regular-file inode before any write,
 replacement, or cleanup. A single-link inode is required so hardlinked stages
 cannot modify foreign files by writing through a shared inode. A forged foreign
 pathname is rejected without unlinking or replacing that foreign file; the
-owned descriptor is closed on rejection.
+owned descriptor is closed on rejection. A failed temporary-output stream
+wrapper likewise closes its descriptor, retains the original host error as the
+cause of a typed bootstrap failure, and preserves any previously committed
+alias or launcher.
 Native Windows
 CMD and POSIX Python/pytest launcher scripts use the same physical preflight
 and private atomic replacement, checking both launcher destinations before

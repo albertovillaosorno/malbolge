@@ -723,8 +723,8 @@ def _jig_file_identity(
     )
 
 
-def _open_owned_binary_stream(descriptor: int) -> BinaryIO:
-    """Transfer a source descriptor to a stream without leaking on failure.
+def _open_owned_binary_stream(descriptor: int, *, mode: str = "rb") -> BinaryIO:
+    """Transfer an owned descriptor to a stream without leaking on failure.
 
     Returns:
         A binary stream owning the admitted native descriptor.
@@ -737,7 +737,7 @@ def _open_owned_binary_stream(descriptor: int) -> BinaryIO:
 
     """
     try:
-        return os.fdopen(descriptor, "rb")
+        return cast("BinaryIO", os.fdopen(descriptor, mode))
     except OSError, ValueError, TypeError, RuntimeError:
         with suppress(OSError):
             os.close(descriptor)
@@ -844,6 +844,23 @@ def _admit_jig_alias_temporary(
     return temporary
 
 
+def _open_jig_alias_write_stream(descriptor: int) -> BinaryIO:
+    """Transfer a private alias descriptor to a typed writable stream.
+
+    Returns:
+        A writable stream owning the unique stage descriptor.
+
+    Raises:
+        ProvisionError: Host stream wrapping failed after descriptor creation.
+
+    """
+    try:
+        return _open_owned_binary_stream(descriptor, mode="wb")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = f"Jig alias temporary stream failed: {type(error).__name__}"
+        raise ProvisionError(message) from error
+
+
 def _publish_jig_tool_alias(
     target: Path,
     payload: bytes,
@@ -868,7 +885,7 @@ def _publish_jig_tool_alias(
             os.close(descriptor)
         raise
     try:
-        with os.fdopen(descriptor, "wb") as stream:
+        with _open_jig_alias_write_stream(descriptor) as stream:
             written = stream.write(payload)
             if type(written) is not int or written != len(payload):
                 _fail("Jig alias temporary write count mismatch")

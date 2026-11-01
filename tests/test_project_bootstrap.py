@@ -77,6 +77,7 @@ RUFF_BYTES = b"ruff"
 OUTSIDE_JIG_ALIAS_BYTES = b"retain outside"
 EMPTY_JIG_STAGE_BYTES = b""
 JIG_BINARY_READ_MODE = "rb"
+JIG_BINARY_WRITE_MODE = "wb"
 PYTHON_LAUNCHER_NAME = "python"
 PYTEST_LAUNCHER_NAME = "pytest"
 STALE_LAUNCHER_BYTES = b"stale"
@@ -2542,6 +2543,107 @@ def test_jig_alias_source_fdopen_fault_closes_descriptor(
         for descriptor in opened:
             with suppress(OSError):
                 os.close(descriptor)
+
+
+def _inject_alias_writer_wrapper_failure(
+    monkeypatch: pytest.MonkeyPatch, fault_type: type[Exception]
+) -> tuple[list[int], list[Path], Exception]:
+    """Reject a staged binary stream wrapper while tracking owned descriptors.
+
+    Returns:
+        Opened descriptors, stage names and the exact injected host exception.
+
+    """
+    native_mkstemp = tempfile.mkstemp
+    native_fdopen = os.fdopen
+    descriptors: list[int] = []
+    stages: list[Path] = []
+    fault = fault_type("injected binary write wrapper failure")
+
+    def capture_stage(**kwargs: object) -> tuple[int, str]:
+        descriptor, name = native_mkstemp(
+            prefix=cast("str", kwargs["prefix"]),
+            dir=cast("Path", kwargs["dir"]),
+        )
+        descriptors.append(descriptor)
+        stages.append(Path(name))
+        return descriptor, name
+
+    def fail_fdopen(descriptor: int, mode: str) -> object:
+        if descriptor in descriptors and mode == JIG_BINARY_WRITE_MODE:
+            raise fault
+        return native_fdopen(descriptor, mode)
+
+    monkeypatch.setattr(tempfile, "mkstemp", capture_stage)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    return descriptors, stages, fault
+
+
+def _assert_rejected_alias_stage(
+    target: Path,
+    original_bytes: bytes,
+    *,
+    descriptors: list[int],
+    stages: list[Path],
+) -> None:
+    """Verify rejection preserves the target and closes the private stage."""
+    assert target.read_bytes() == original_bytes
+    assert len(descriptors) == len(stages) == 1
+    assert not stages[0].exists()
+    with pytest.raises(OSError, match=r"Bad file descriptor|Invalid handle"):
+        _ = os.fstat(descriptors[0])
+
+
+@pytest.mark.parametrize(
+    "scenario", [(False, False), (False, True), (True, False), (True, True)]
+)
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
+def test_jig_alias_writer_stream_fault_closes_stage_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    scenario: tuple[bool, bool],
+    fault_type: type[Exception],
+) -> None:
+    """A failed output stream wrapper cannot leak or truncate an alias."""
+    windows, launcher = scenario
+    layout = _jig_alias_fixture(tmp_path, windows=windows)
+    alias_root = layout.scripts if launcher else layout.environment / "jig-bin"
+    alias_root.mkdir(parents=True, exist_ok=True)
+    target = (
+        layout.python_launcher if launcher else alias_root / "basedpyright.bin"
+    )
+    previous = STALE_LAUNCHER_BYTES
+    _ = target.write_bytes(previous)
+    descriptors, stages, fault = _inject_alias_writer_wrapper_failure(
+        monkeypatch, fault_type
+    )
+
+    def publish() -> None:
+        if launcher:
+            python_validation.write_launchers(layout, windows=windows)
+        else:
+            _ = python_validation.write_jig_tool_aliases(
+                layout, windows=windows
+            )
+
+    try:
+        with pytest.raises(
+            python_validation.ProvisionError, match="temporary stream"
+        ) as caught:
+            publish()
+        assert caught.value.__cause__ is fault
+        _assert_rejected_alias_stage(
+            target, previous, descriptors=descriptors, stages=stages
+        )
+    finally:
+        for descriptor in descriptors:
+            with suppress(OSError):
+                os.close(descriptor)
+        for stage in stages:
+            stage.unlink(missing_ok=True)
 
 
 @pytest.mark.parametrize("windows", [False, True])
