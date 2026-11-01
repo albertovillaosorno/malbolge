@@ -41,7 +41,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed executab
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Never
+from typing import Never, cast
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -258,13 +258,49 @@ def _parse_arguments() -> _Arguments:
     return arguments
 
 
+def _native_path_status(value: object, context: str) -> bool:
+    """Return an admitted native filesystem boolean, never foreign truthiness.
+
+    Returns:
+        The validated boolean status value.
+
+    """
+    if type(value) is not bool:
+        _fail(f"invalid {context} status receipt")
+    return cast("bool", value)
+
+
+def _native_resolved_path(path: Path) -> Path:
+    """Preserve the native path flavor before using a resolved C source.
+
+    Returns:
+        A native resolved file path.
+
+    """
+    resolved = path.resolve()
+    if type(resolved) is not type(path):
+        _fail("invalid C source resolved-path receipt")
+    return resolved
+
+
+def _reject_recursive_redirect(path: Path, context: str) -> None:
+    if _native_path_status(path.is_symlink(), f"{context} redirect"):
+        _fail(f"{context} must not redirect: {path}")
+    if _native_path_status(path.is_junction(), f"{context} redirect"):
+        _fail(f"{context} must not redirect: {path}")
+
+
 def _doom_files(path: Path) -> tuple[Path, ...]:
     sources: list[Path] = []
     for candidate in path.rglob("*"):
-        if candidate.is_symlink() or candidate.is_junction():
-            _fail(f"recursive doom entry must not redirect: {candidate}")
-        if candidate.is_file() and candidate.suffix.casefold() == C_SUFFIX:
-            sources.append(candidate.resolve())
+        if type(candidate) is not type(path):
+            _fail("invalid recursive doom entry path receipt")
+        _reject_recursive_redirect(candidate, "recursive doom entry")
+        if (
+            _native_path_status(candidate.is_file(), "recursive C source")
+            and candidate.suffix.casefold() == C_SUFFIX
+        ):
+            sources.append(_native_resolved_path(candidate))
     files = tuple(sorted(sources))
     if not files:
         _fail(f"doom directory contains no C translation units: {path}")
@@ -274,23 +310,22 @@ def _doom_files(path: Path) -> tuple[Path, ...]:
 def _expand_directory(path: Path) -> tuple[Path, ...]:
     if path.name.casefold() != DOOM_DIRECTORY:
         _fail(f"only an explicitly named doom directory is accepted: {path}")
-    if path.is_symlink() or path.is_junction():
-        _fail(f"recursive doom directory must not redirect: {path}")
+    _reject_recursive_redirect(path, "recursive doom directory")
     return _doom_files(path)
 
 
 def _expand_file(path: Path) -> tuple[Path, ...]:
-    if not path.is_file():
+    if not _native_path_status(path.is_file(), "C source file"):
         _fail(f"input is not a regular file: {path}")
     if path.suffix.casefold() != C_SUFFIX:
         _fail(f"guest validation accepts C translation units only: {path}")
-    return (path.resolve(),)
+    return (_native_resolved_path(path),)
 
 
 def _expand_input(path: Path) -> tuple[Path, ...]:
-    if not path.exists():
+    if not _native_path_status(path.exists(), "C input existence"):
         _fail(f"input does not exist: {path}")
-    if path.is_dir():
+    if _native_path_status(path.is_dir(), "C input directory"):
         return _expand_directory(path)
     return _expand_file(path)
 

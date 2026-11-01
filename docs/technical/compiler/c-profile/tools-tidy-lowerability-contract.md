@@ -64,6 +64,9 @@ tree or silently skipping linked subdirectories. Path existence, directory,
 regular-file, and redirect checks must return exact booleans before determining
 source selection. Resolved source paths retain their native pathlib flavor;
 foreign status or resolution objects cannot authorize sources or pinned tools.
+The delegated manual C dispatcher enforces these same native path receipts for
+explicit sources, `doom` roots, and recursively discovered entries. Foreign
+recursive-entry objects are rejected before querying any path methods.
 Explicit single-file C input retains caller-selected path alias compatibility.
 These checks are not an atomic source snapshot against subsequent filesystem
 changes.

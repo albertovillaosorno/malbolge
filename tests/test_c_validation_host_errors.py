@@ -335,3 +335,165 @@ def test_manual_c_validator_foreign_contract_failure_preserves_safe_cause(
         _ = validator._configuration(validator._Arguments())
     assert "private manifest detail" not in str(caught.value)
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
+    ("method", "receipt"),
+    [
+        ("exists", 0),
+        ("exists", None),
+        ("is_dir", 0),
+        ("is_dir", None),
+        ("is_file", 0),
+        ("is_file", 1),
+    ],
+)
+def test_manual_c_selection_rejects_non_native_source_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    receipt: object,
+) -> None:
+    """Explicit C selection cannot trust foreign truthy or falsey status."""
+    source = tmp_path / "unit.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    native = getattr(Path, method)
+
+    def forged_status(path: Path) -> object:
+        return receipt if path == source else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, method, forged_status)
+        with pytest.raises(validator.InputError, match="status receipt"):
+            _ = validator._validated_files([str(source)])
+
+
+@pytest.mark.parametrize("location", ["root", "leaf"])
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("receipt", [0, None, 0.0])
+def test_manual_c_selection_rejects_non_native_redirect_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    location: str,
+    method: str,
+    receipt: object,
+) -> None:
+    """Recursive Doom admission only trusts exact native redirect booleans."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    source = doom / "unit.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    target = doom if location == "root" else source
+    native = getattr(Path, method)
+
+    def forged_status(path: Path) -> object:
+        return receipt if path == target else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, method, forged_status)
+        with pytest.raises(validator.InputError, match="redirect"):
+            _ = validator._validated_files([str(doom)])
+
+
+@pytest.mark.parametrize("receipt", [0, None, 1.0])
+def test_manual_c_selection_rejects_non_native_recursive_file_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Discovered Doom source files require native regular-file results."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    source = doom / "unit.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    native = Path.is_file
+
+    def forged_status(path: Path) -> object:
+        return receipt if path == source else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_file", forged_status)
+        with pytest.raises(validator.InputError, match="status receipt"):
+            _ = validator._validated_files([str(doom)])
+
+
+@pytest.mark.parametrize("receipt", [object(), "/foreign/unit.c"])
+def test_manual_c_selection_rejects_non_native_resolved_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A path-resolution result may not smuggle a foreign path wrapper."""
+    source = tmp_path / "unit.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    native = Path.resolve
+
+    def forged_resolve(path: Path, strict: bool = False) -> object:
+        return receipt if path == source else native(path, strict=strict)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "resolve", forged_resolve)
+        with pytest.raises(validator.InputError, match="resolved-path receipt"):
+            _ = validator._validated_files([str(source)])
+
+
+def test_manual_c_selection_rejects_foreign_recursive_entry_object(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign recursive entry cannot supply path-status hooks."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    source = doom / "unit.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    native = Path.rglob
+
+    class ForeignEntry:
+        def __getattribute__(self, _name: str) -> object:
+            raise AssertionError("foreign recursive-entry hook evaluated")
+
+    def forged_rglob(path: Path, pattern: str) -> object:
+        return iter([ForeignEntry()]) if path == doom else native(path, pattern)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "rglob", forged_rglob)
+        with pytest.raises(validator.InputError, match="entry.*receipt"):
+            _ = validator._validated_files([str(doom)])
+
+
+def test_manual_c_selection_keeps_explicit_alias_and_physical_doom_nesting(
+    tmp_path: Path,
+) -> None:
+    """Native source selection preserves reviewed aliases and nested trees."""
+    source = tmp_path / "physical.c"
+    _ = source.write_text("int physical;\n", encoding="utf-8")
+    alias = tmp_path / "alias.c"
+    try:
+        alias.symlink_to(source)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlink unavailable: {error}")
+    assert validator._validated_files([str(alias)]) == (source,)
+    nested = tmp_path / "doom" / "src"
+    nested.mkdir(parents=True)
+    child = nested / "unit.c"
+    _ = child.write_text("int unit;\n", encoding="utf-8")
+    assert validator._validated_files([str(tmp_path / "doom")]) == (child,)
+
+
+def test_manual_c_selection_keeps_redirect_rejection_for_recursive_doom(
+    tmp_path: Path,
+) -> None:
+    """A genuinely linked recursive leaf is still refused deterministically."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    outside = tmp_path / "outside.c"
+    _ = outside.write_text("int outside;\n", encoding="utf-8")
+    link = doom / "alias.c"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlink unavailable: {error}")
+    with pytest.raises(
+        validator.InputError, match="recursive doom entry must not redirect"
+    ):
+        _ = validator._validated_files([str(doom)])
