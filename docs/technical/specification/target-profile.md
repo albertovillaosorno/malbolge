@@ -69,6 +69,12 @@ maximum profile word, the frozen 1998 machine envelope, exactly one selected
 current identity, preservation of the sequential deterministic
 self-modifying semantic core across schema-v2 profiles, and an exact
 one-to-one assignment of `<` and `/` to versioned input/output roles.
+The three published `malbolge-2026.1`, `malbolge-2026.2`, and
+`malbolge-2026.3` entries are mandatory and pinned to their originally
+published `malbolge-profile-v1` fingerprints. Validation compares to frozen
+constants, not to the generated fingerprint manifest; removing or redefining
+a released profile cannot be legitimized by regenerating the projection.
+Later profile identities remain separately versionable.
 It rejects impossible giant trit counts using the declared modulus bit length
 before computing a potentially unbounded ternary exponent; matching larger
 geometries remain admitted without an arbitrary trit-width ceiling.

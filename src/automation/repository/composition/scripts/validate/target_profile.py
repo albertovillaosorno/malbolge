@@ -80,6 +80,22 @@ TERNARY_RADIX = 3
 HISTORICAL_VERSION = "1998"
 PROFILE_CANONICALIZATION = "malbolge-profile-v1"
 PROFILE_FINGERPRINT_PREFIX = f"{PROFILE_CANONICALIZATION}:sha256:"
+# Frozen from the originally published v2 manifest. Never consult the generated
+# manifest at validation time: it must not become a mutable identity authority.
+PUBLISHED_VERSIONED_FINGERPRINTS = {
+    "malbolge-2026.1": (
+        "malbolge-profile-v1:sha256:"
+        "e72da529edefea13c4855b83decf61593d3ad64e5231c4911a2391cbd7567204"
+    ),
+    "malbolge-2026.2": (
+        "malbolge-profile-v1:sha256:"
+        "e33e1488162dffdc8bad9102df8eed3f8aac294d057b4f7ad7a389906963fc50"
+    ),
+    "malbolge-2026.3": (
+        "malbolge-profile-v1:sha256:"
+        "14de1b012b349930ca3e8c01b37b126c4e7f274c1bbcacd31b4b82523e0f4230"
+    ),
+}
 CUSTOM_PROFILE_SCHEMA_VERSION = 1
 ASCII_SPACE = 0x20
 ASCII_TILDE = 0x7E
@@ -674,6 +690,19 @@ def _validate_current_profile(
         _fail(f"{CURRENT_PROFILE_ID} version must be {CURRENT_VERSION}")
 
 
+def _validate_published_profiles(validated: dict[str, JsonObject]) -> None:
+    """Keep released versioned identities present and byte-exact in schema v2."""
+    for profile_id, expected in PUBLISHED_VERSIONED_FINGERPRINTS.items():
+        profile = validated.get(profile_id)
+        if profile is None:
+            _fail(f"published profile missing: {profile_id}")
+        if profile["kind"] != VERSIONED_KIND:
+            _fail(f"published profile kind changed: {profile_id}")
+        observed = _fingerprint_identity(profile_id, profile, SCHEMA_VERSION)
+        if observed != expected:
+            _fail(f"published profile identity changed: {profile_id}")
+
+
 def _validate_profile_identities(
     current_profile: str,
     validated: dict[str, JsonObject],
@@ -686,6 +715,7 @@ def _validate_profile_identities(
     if _current_profile_ids(validated) != [current_profile]:
         _fail("exactly current_profile must have kind=current")
     _validate_semantic_cores(validated, historical)
+    _validate_published_profiles(validated)
 
 
 def validate_document(document: JsonObject) -> None:

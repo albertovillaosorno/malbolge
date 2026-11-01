@@ -625,6 +625,54 @@ def test_interpreter_compatible_transition_remains_versioned() -> None:
     ) != validator.profile_fingerprint(document, CURRENT_PROFILE)
 
 
+@pytest.mark.parametrize(
+    "profile_id",
+    ("malbolge-2026.1", "malbolge-2026.2", "malbolge-2026.3"),
+)
+def test_published_versioned_profile_cannot_be_omitted(profile_id: str) -> None:
+    """Each published profile must survive canonical registry validation."""
+    document = validator.loads_document(_canonical_text())
+    profiles = cast("dict[str, object]", document["profiles"])
+    del profiles[profile_id]
+    with pytest.raises(validator.ProfileValidationError, match="published profile"):
+        validator.validate_document(document)
+
+
+@pytest.mark.parametrize(
+    "profile_id",
+    ("malbolge-2026.1", "malbolge-2026.2", "malbolge-2026.3"),
+)
+@pytest.mark.parametrize("mutation", ("kind", "version", "geometry", "io"))
+def test_published_versioned_profile_cannot_be_redefined(
+    profile_id: str,
+    mutation: str,
+) -> None:
+    """A published identity cannot be rebound to different registry behavior."""
+    document = validator.loads_document(_canonical_text())
+    profiles = cast("dict[str, object]", document["profiles"])
+    profile = cast("dict[str, object]", profiles[profile_id])
+    if mutation == "kind":
+        profile["kind"] = validator.HISTORICAL_KIND
+    elif mutation == "version":
+        profile["version"] = "2099"
+    elif mutation == "geometry":
+        word = cast("dict[str, object]", profile["word"])
+        memory = cast("dict[str, object]", profile["memory"])
+        semantics = cast("dict[str, object]", profile["semantics"])
+        word["trits"] = 16
+        word["modulus"] = 3**16
+        memory["words"] = 3**16
+        semantics["eof_word"] = 3**16 - 1
+    else:
+        semantics = cast("dict[str, object]", profile["semantics"])
+        semantics["input_instruction"], semantics["output_instruction"] = (
+            semantics["output_instruction"],
+            semantics["input_instruction"],
+        )
+    with pytest.raises(validator.ProfileValidationError, match="published profile"):
+        validator.validate_document(document)
+
+
 def test_annual_current_identity_cannot_drift() -> None:
     """Schema v2 fixes the official selected identity to the release year."""
     changed = _canonical_text().replace(
