@@ -541,6 +541,8 @@ def _manifest_identity(
         Device, inode, size, mtime and ctime of the admitted manifest.
 
     """
+    if type(status) is not os.stat_result:
+        _fail("experiment manifest requires native stat receipt")
     if not S_ISREG(status.st_mode):
         _fail("experiment manifest must be a regular file")
     if status.st_size > MAX_MANIFEST_BYTES:

@@ -629,6 +629,60 @@ def test_manifest_invalid_utf8_preserves_native_decoder_cause(tmp_path: Path) ->
     assert "position 1" in str(caught.value)
 
 
+@pytest.mark.parametrize("phase", ("initial", "opened", "after", "recheck"))
+@pytest.mark.parametrize("receipt_kind", ("opaque", "hostile"))
+def test_manifest_rejects_foreign_stat_receipts_before_field_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    receipt_kind: str,
+) -> None:
+    """Non-native stat receipts cannot forge stable manifest file identity."""
+    source = tmp_path / "experiment.toml"
+    _ = source.write_bytes(b"schema_version = 1\n")
+    real_lstat = Path.lstat
+    real_open = os.open
+    real_fstat = os.fstat
+    opened = False
+    fstat_calls = 0
+
+    @final
+    class HostileStatus:
+        def __getattribute__(self, _name: str) -> Never:
+            raise AssertionError("foreign manifest stat field executed")
+
+    receipt: object = HostileStatus() if receipt_kind == "hostile" else object()
+
+    def tracked_open(path: Path, flags: int) -> int:
+        nonlocal opened
+        descriptor = real_open(path, flags)
+        if path == source:
+            opened = True
+        return descriptor
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        if path == source and (
+            (phase == "initial" and not opened) or (phase == "recheck" and opened)
+        ):
+            return cast("os.stat_result", receipt)
+        return real_lstat(path)
+
+    def forged_fstat(descriptor: int) -> os.stat_result:
+        nonlocal fstat_calls
+        fstat_calls += 1
+        if (phase == "opened" and fstat_calls == 1) or (
+            phase == "after" and fstat_calls == 2
+        ):
+            return cast("os.stat_result", receipt)
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(os, "open", tracked_open)
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(validator.ExperimentManifestError, match="native stat receipt"):
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+
+
 @pytest.mark.parametrize("fault_type", [ValueError, RuntimeError])
 @pytest.mark.parametrize(
     "operation", ("lstat", "is_symlink", "is_junction", "open", "fstat", "fdopen")

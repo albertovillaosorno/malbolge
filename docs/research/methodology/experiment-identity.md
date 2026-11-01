@@ -50,12 +50,14 @@ boundary before TOML admission. It admits only physical, non-redirected regular
 files under a 1 MiB limit, reads through a no-follow/nonblocking descriptor
 where available. Raw opening receipts must be exact native signed file
 descriptors; the wrapped stream must retain that same descriptor before and
-after reading. Stream reads must provide exact native bytes before any length
-inspection, and UTF-8 decoder failures retain their original cause without
-formatting foreign exception subclasses. The reader rejects replacement or
-modification by rechecking device, inode, extent, and timestamps after reading.
-Repository-manifest validation
-accepts working-directory-relative and absolute in-root paths without resolving
+after reading. Initial and post-read status checks require exact native stat
+receipts before inspecting any filesystem identity fields. Stream reads must
+provide exact native bytes before any length inspection, and UTF-8 decoder
+failures retain their original cause without formatting foreign exception
+subclasses. The reader rejects replacement or modification by rechecking
+device, inode, extent, and timestamps after reading. Repository-manifest
+validation accepts working-directory-relative and absolute in-root paths without
+resolving
 away symbolic-link aliases; parent traversal is rejected. After source bytes
 are admitted, repository identity must bind to the registered physical
 research algorithm directory and the canonical `experiment.toml` leaf; neither
