@@ -126,14 +126,20 @@ def _fail(message: str) -> Never:
     raise InputError(message)
 
 
-def _host_error_detail(error: OSError) -> str:
-    """Read only exact native process exception text, not foreign hooks.
+def _safe_error_detail(error: object) -> str:
+    """Describe native errors without invoking arbitrary formatter hooks.
 
     Returns:
-        Native error detail or an untrusted subclass's type name.
+        Trusted built-in diagnostics, or the foreign object's type name.
 
     """
-    if type(error) in {
+    if type(error) in (
+        str,
+        InputError,
+        c_abi.CAbiValidationError,
+        c_libc.CLibcValidationError,
+        c_abi_source.SourceAnalysisError,
+        c_libc_source.LibcSourceError,
         OSError,
         FileNotFoundError,
         PermissionError,
@@ -141,9 +147,45 @@ def _host_error_detail(error: OSError) -> str:
         IsADirectoryError,
         NotADirectoryError,
         TimeoutError,
-    }:
+        TypeError,
+        ValueError,
+        RuntimeError,
+    ):
         return str(error)
     return type(error).__name__
+
+
+def _checked_process_receipt[OutputT: (str, bytes)](
+    completed: subprocess.CompletedProcess[OutputT],
+    arguments: list[str],
+    *,
+    context: str,
+    capture_output: bool,
+) -> subprocess.CompletedProcess[OutputT]:
+    """Admit a native subprocess result matching its invoked tool and I/O mode.
+
+    Returns:
+        The typed, exact command receipt after all checks pass.
+
+    """
+    if (
+        type(completed) is not subprocess.CompletedProcess
+        or type(completed.returncode) is not int
+        or type(completed.args) is not list
+        or len(completed.args) != len(arguments)
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != arguments
+        or (
+            capture_output
+            and (type(completed.stdout) is not str or type(completed.stderr) is not str)
+        )
+        or (
+            not capture_output
+            and (completed.stdout is not None or completed.stderr is not None)
+        )
+    ):
+        _fail(f"invalid {context} process receipt")
+    return completed
 
 
 def _default_clang_tidy() -> Path:
@@ -266,10 +308,11 @@ def _require_file(path: Path, label: str) -> None:
 
 
 def _tool_version_output(path: Path, label: str) -> str:
+    arguments = [str(path), "--version"]
     try:
         # jig-ignore-next-line: indivisible reviewed identifier
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [str(path), "--version"],
+            arguments,
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -277,12 +320,15 @@ def _tool_version_output(path: Path, label: str) -> str:
             errors="replace",
             shell=False,
         )
-    except OSError as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = (
             f"failed to execute {label} version query {path}: "
-            f"{_host_error_detail(error)}"
+            f"{_safe_error_detail(error)}"
         )
         raise InputError(message) from error
+    completed = _checked_process_receipt(
+        completed, arguments, context=f"{label} version", capture_output=True
+    )
     if completed.returncode != 0:
         _fail(f"{label} version query failed: {path}")
     return completed.stdout + chr(10) + completed.stderr
@@ -295,15 +341,16 @@ def _require_llvm_version(path: Path, label: str) -> None:
 
 
 def _require_plugin_registration(clang_tidy: Path, plugin: Path) -> None:
+    arguments = [
+        str(clang_tidy),
+        f"--load={plugin}",
+        "--checks=-*,malbolge-*",
+        "--list-checks",
+    ]
     try:
         # jig-ignore-next-line: indivisible reviewed identifier
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [
-                str(clang_tidy),
-                f"--load={plugin}",
-                "--checks=-*,malbolge-*",
-                "--list-checks",
-            ],
+            arguments,
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -311,12 +358,15 @@ def _require_plugin_registration(clang_tidy: Path, plugin: Path) -> None:
             errors="replace",
             shell=False,
         )
-    except OSError as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = (
             "failed to probe clang-tidy plugin registration: "
-            f"{_host_error_detail(error)}"
+            f"{_safe_error_detail(error)}"
         )
         raise InputError(message) from error
+    completed = _checked_process_receipt(
+        completed, arguments, context="clang-tidy plugin", capture_output=True
+    )
     observed = tuple(
         line.strip()
         for line in completed.stdout.splitlines()
@@ -350,7 +400,8 @@ def _configuration(arguments: _Arguments) -> _Configuration:
         abi = c_abi.canonical_projection()
         libc = c_libc.canonical_projection()
     except ValueError as error:
-        _fail(f"invalid canonical guest-C contract: {error}")
+        message = f"invalid canonical guest-C contract: {_safe_error_detail(error)}"
+        raise InputError(message) from error
     return _Configuration(
         abi=abi,
         clang=clang,
@@ -371,12 +422,15 @@ def _run(command: list[str]) -> int:
             check=False,
             shell=False,
         )
-    except OSError as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = (
             f"failed to execute validation tool {command[0]}: "
-            f"{_host_error_detail(error)}"
+            f"{_safe_error_detail(error)}"
         )
         raise InputError(message) from error
+    completed = _checked_process_receipt(
+        completed, command, context="guest-C validation", capture_output=False
+    )
     return completed.returncode
 
 
@@ -465,7 +519,7 @@ def _validate_sources(configuration: _Configuration) -> int:
 
 
 def _write_error(error: object) -> None:
-    _ = sys.stderr.write(f"error: {error}\n")
+    _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
 
 
 def main() -> int:

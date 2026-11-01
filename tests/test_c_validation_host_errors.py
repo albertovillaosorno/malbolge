@@ -27,14 +27,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 # Directly exercises the validator's private subprocess admission functions.
 # ruff: file-ignore[private-member-access]
 # pyright: reportPrivateUsage=false
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - patched only; no processes run.
-from typing import Never
-from typing import override
+from pathlib import Path
+from typing import Never, cast, override
 
 import pytest
 
@@ -66,9 +64,7 @@ def _execute_probe(probe: str, executable: Path) -> None:
     if probe == PROBE_VERSION:
         _ = validator._tool_version_output(executable, "Clang")
     elif probe == PROBE_REGISTRATION:
-        validator._require_plugin_registration(
-            executable, Path("/synthetic/plugin")
-        )
+        validator._require_plugin_registration(executable, Path("/synthetic/plugin"))
     else:
         _ = validator._run([str(executable), "--version"])
 
@@ -95,3 +91,247 @@ def test_native_validator_admits_only_trusted_host_error_text(
     assert caught.value.__cause__ is fault
     expected = NATIVE_DETAIL if fault_type is OSError else FOREIGN_DETAIL
     assert expected in str(caught.value)
+
+
+@pytest.mark.parametrize("probe", ["version", "registration", "validation"])
+@pytest.mark.parametrize(
+    "receipt_kind",
+    [
+        "foreign_process",
+        "subclass_process",
+        "boolean_status",
+        "float_status",
+        "text_status",
+        "foreign_args",
+        "foreign_argument",
+        "wrong_args",
+    ],
+)
+def test_manual_c_validator_rejects_forged_process_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    receipt_kind: str,
+) -> None:
+    """Only an exact native matching subprocess may grant guest-C validation."""
+
+    class ForeignProcess:
+        @property
+        def returncode(self) -> object:
+            raise AssertionError("foreign process status hook executed")
+
+    class SubclassProcess(subprocess.CompletedProcess[str]):
+        pass
+
+    class ForeignArgs(list[str]):
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign argument equality hook executed")
+
+    class ForeignArgument(str):
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign token equality hook executed")
+
+    def forged_run(args: list[str], **options: object) -> object:
+        if receipt_kind == "foreign_process":
+            return ForeignProcess()
+        args_receipt: object = args
+        if receipt_kind == "foreign_args":
+            args_receipt = ForeignArgs(args)
+        elif receipt_kind == "foreign_argument":
+            args_receipt = [ForeignArgument(args[0]), *args[1:]]
+        elif receipt_kind == "wrong_args":
+            args_receipt = [*args, "--forged"]
+        status = cast(
+            "int",
+            {
+                "boolean_status": False,
+                "float_status": 0.0,
+                "text_status": "0",
+            }.get(receipt_kind, 0),
+        )
+        constructor = (
+            SubclassProcess
+            if receipt_kind == "subclass_process"
+            else subprocess.CompletedProcess
+        )
+        capturing = options.get("capture_output") is True
+        return constructor(
+            cast("list[str]", cast("object", args_receipt)),
+            status,
+            stdout="" if capturing else None,
+            stderr="" if capturing else None,
+        )
+
+    monkeypatch.setattr(subprocess, "run", forged_run)
+    with pytest.raises(validator.InputError, match="invalid.*process receipt"):
+        _execute_probe(probe, Path("/synthetic/clang"))
+
+
+@pytest.mark.parametrize("probe", ["version", "registration"])
+@pytest.mark.parametrize(
+    "receipt_kind",
+    ["foreign_stdout", "foreign_stderr", "bytes_stdout", "missing_stderr"],
+)
+def test_manual_c_validator_rejects_forged_captured_output(
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    receipt_kind: str,
+) -> None:
+    """Captured Clang output is exact native text before any inspection."""
+
+    class ForeignText(str):
+        def __add__(self, _other: object) -> str:
+            raise AssertionError("foreign captured text evaluated")
+
+        def splitlines(self, *_args: object, **_kwargs: object) -> list[str]:
+            raise AssertionError("foreign captured line hooks executed")
+
+    def forged_run(args: list[str], **_options: object) -> object:
+        stdout: object = ""
+        stderr: object = ""
+        if receipt_kind == "foreign_stdout":
+            stdout = ForeignText("")
+        elif receipt_kind == "foreign_stderr":
+            stderr = ForeignText("")
+        elif receipt_kind == "bytes_stdout":
+            stdout = b""
+        elif receipt_kind == "missing_stderr":
+            stderr = None
+        return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(subprocess, "run", forged_run)
+    with pytest.raises(validator.InputError, match="invalid.*process receipt"):
+        _execute_probe(probe, Path("/synthetic/clang"))
+
+
+@pytest.mark.parametrize("field", ["stdout", "stderr"])
+def test_manual_c_validator_rejects_inherited_output_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """The inherited-I/O source validation may not claim captured output."""
+
+    def forged_run(args: list[str], **_options: object) -> object:
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout="" if field == "stdout" else None,
+            stderr="" if field == "stderr" else None,
+        )
+
+    monkeypatch.setattr(subprocess, "run", forged_run)
+    with pytest.raises(validator.InputError, match="invalid.*process receipt"):
+        _execute_probe("validation", Path("/synthetic/clang"))
+
+
+@pytest.mark.parametrize("probe", ["version", "registration", "validation"])
+@pytest.mark.parametrize("fault_type", [ValueError, TypeError, RuntimeError])
+def test_manual_c_validator_catches_non_os_host_faults_without_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    fault_type: type[Exception],
+) -> None:
+    """A foreign host exception retains its cause but never formats itself."""
+
+    def unsafe_str(self: Exception) -> str:
+        raise AssertionError("foreign host failure formatter executed")
+
+    foreign = type("ForeignHostFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("private error evidence")
+
+    def fail_run(*_args: object, **_kwargs: object) -> Never:
+        raise fault
+
+    monkeypatch.setattr(subprocess, "run", fail_run)
+    with pytest.raises(validator.InputError, match="failed") as caught:
+        _execute_probe(probe, Path("/synthetic/clang"))
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [
+        validator.InputError,
+        validator.c_abi_source.SourceAnalysisError,
+        validator.c_libc_source.LibcSourceError,
+    ],
+)
+def test_manual_c_validator_error_reporting_never_formats_foreign_errors(
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """Foreign validation errors cannot trigger arbitrary diagnostic hooks."""
+
+    def unsafe_str(self: Exception) -> str:
+        raise AssertionError("foreign diagnostic hook executed")
+
+    foreign = type("ForeignDiagnostic", (fault_type,), {"__str__": unsafe_str})
+    validator._write_error(foreign("private host error"))
+    output = capsys.readouterr()
+    assert "ForeignDiagnostic" in output.err
+    assert "private host error" not in output.err
+    assert not output.out
+
+
+def test_manual_c_validator_preserves_native_diagnostic_text(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Native InputError retains the operator-visible failure detail."""
+    validator._write_error(validator.InputError("native compiler failure"))
+    assert "native compiler failure" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("probe", ["version", "registration", "validation"])
+def test_manual_c_validator_native_process_receipts_keep_legacy_behavior(
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+) -> None:
+    """Exact native process evidence retains version, plugin and exit policy."""
+
+    def native_run(
+        args: list[str], **options: object
+    ) -> subprocess.CompletedProcess[str]:
+        capture = options.get("capture_output") is True
+        output = (
+            "clang version 22.1.8\n"
+            if probe == "version"
+            else "\n".join(sorted(validator.PLUGIN_CHECKS))
+        )
+        return subprocess.CompletedProcess(
+            args,
+            7 if probe == "validation" else 0,
+            stdout=output if capture else None,
+            stderr="" if capture else None,
+        )
+
+    monkeypatch.setattr(subprocess, "run", native_run)
+    executable = Path("/synthetic/clang")
+    if probe == "version":
+        assert "version 22.1.8" in validator._tool_version_output(executable, "Clang")
+    elif probe == "registration":
+        validator._require_plugin_registration(executable, Path("/synthetic/plugin"))
+    else:
+        assert validator._run([str(executable), "--version"]) == 7
+
+
+def test_manual_c_validator_foreign_contract_failure_preserves_safe_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign ValueError from canonical ABI cannot format itself."""
+
+    class ForeignContractFailure(ValueError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign canonical contract formatter executed")
+
+    fault = ForeignContractFailure("private manifest detail")
+
+    def reject_abi() -> Never:
+        raise fault
+
+    monkeypatch.setattr(validator, "_require_file", lambda *_args: None)
+    monkeypatch.setattr(validator, "_require_llvm_version", lambda *_args: None)
+    monkeypatch.setattr(validator, "_default_plugin", lambda *_args: None)
+    monkeypatch.setattr(validator.c_abi, "canonical_projection", reject_abi)
+    with pytest.raises(validator.InputError, match="ForeignContractFailure") as caught:
+        _ = validator._configuration(validator._Arguments())
+    assert "private manifest detail" not in str(caught.value)
+    assert caught.value.__cause__ is fault

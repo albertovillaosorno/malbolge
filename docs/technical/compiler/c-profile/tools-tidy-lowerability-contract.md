@@ -45,9 +45,13 @@ already lower through the incomplete typed-IR/compiler pipeline.
 
 Both pinned-Clang preflight and delegated manual validation require exact native
 subprocess receipts: integer exit statuses and native UTF-8 stdout/stderr.
-Boolean/floating statuses, foreign process results, and untrusted output hooks
-cannot impersonate a successful validation. Host execution failures retain
-their original cause without invoking foreign exception formatters. Canonical
+The manual dispatcher's Clang/tidy version query and plugin-registration probe
+require a native `CompletedProcess` with the invoked argument list and exact
+captured text. The source-validation subprocess instead inherits output and
+requires unset stdout/stderr receipts. Boolean/floating statuses, foreign
+process results, altered arguments, and untrusted output hooks cannot
+impersonate a successful validation. Host execution failures retain their
+original causes without invoking foreign exception formatters. Canonical
 ABI/libc contract failures and final CLI diagnostics obey the same safe error
 reporting boundary.
 
