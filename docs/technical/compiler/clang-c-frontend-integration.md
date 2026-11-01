@@ -40,7 +40,11 @@ Build automation lives in
 It reuses the reviewed LLVM 22.1.8 development identity and Visual Studio/DIA
 resolution used by native analysis. The build uses repository-pinned
 `clang-cl.exe`, C++20, `/W4 /WX`, and `/Brepro`; ambient LLVM discovery is
-forbidden.
+forbidden. On Linux, build-cache and frontend-output paths are admitted only
+through physical, non-redirected directory ancestors before creating output
+folders and again before native configure/build commands. Symlink, junction,
+and non-directory substitutions fail closed; these path checks are not an
+atomic cross-process publication lock.
 
 ### Why the artifact is not an AST dump
 

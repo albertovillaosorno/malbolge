@@ -131,6 +131,15 @@ def _checked_run(command: list[str], label: str) -> None:
         )
 
 
+def _require_physical_build_directory(path: Path, label: str) -> None:
+    """Reject redirected or non-directory native CMake output ancestors."""
+    for component in (path, *path.parents):
+        if component.is_symlink() or component.is_junction():
+            _fail(f"Linux frontend {label} directory must not redirect: {component}")
+        if component.exists() and not component.is_dir():
+            _fail(f"Linux frontend {label} path must be a directory: {component}")
+
+
 def build(
     identity: tidy_toolchain.ToolchainIdentity,
     *,
@@ -142,12 +151,18 @@ def build(
         _fail(message)
     tidy_toolchain.validate_installation(identity)
     tools = linux_build_tools()
+    _require_physical_build_directory(BUILD_ROOT, "build cache")
+    _require_physical_build_directory(output_root, "output")
     BUILD_ROOT.mkdir(parents=True, exist_ok=True)
     output_root.mkdir(parents=True, exist_ok=True)
+    _require_physical_build_directory(BUILD_ROOT, "build cache")
+    _require_physical_build_directory(output_root, "output")
     _checked_run(
         configure_command(identity, tools, output_root=output_root),
         "CMake configure",
     )
+    _require_physical_build_directory(BUILD_ROOT, "build cache")
+    _require_physical_build_directory(output_root, "output")
     _checked_run(
         [str(tools.cmake), "--build", str(BUILD_ROOT), "--config", "Release"],
         "CMake build",
