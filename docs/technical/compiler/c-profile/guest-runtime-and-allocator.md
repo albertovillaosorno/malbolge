@@ -93,6 +93,11 @@ These allocation functions intentionally remain *unavailable* in the canonical
 `malbolge-libc-v1` authority until compiler-generated startup proves the heap
 bind occurs before user code.
 
+`tests/test_guest_allocation_linux.py` also executes the test-renamed native
+`malloc`/`calloc`/`realloc`/`free` vectors with pinned Linux Clang in strict
+C23 and ASan/UBSan modes. The test verifies wrapper behavior over guest-owned
+startup and heap state; it does not mark the canonical libc gates available.
+
 Byte I/O now has stable declaration-only compiler intrinsic identities and
 public `getchar`/`putchar` wrapper source. The input wrapper invokes the
 intrinsic word, uses the pure profile-word decoder, and returns byte-or-`EOF`;
