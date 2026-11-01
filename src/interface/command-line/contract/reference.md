@@ -53,9 +53,10 @@ sideband and source whitespace), enough for the current 15-trit profile's
 largest capsule payload plus framing. Reading uses one verified file handle,
 a bounded byte count even after post-stat growth, and nonblocking opens on
 Linux/Android so a FIFO or FIFO symlink cannot stall the command. The reader
-also rejects partial reads and source changes between the initial file stat
-and publication: it checks the opened handle and named path for identical file
-identity, length, and available modification/change timestamps. On Linux it
+also rejects partial reads, inconsistent reported reader byte counts, and
+source changes between the initial file stat and publication: it checks the
+opened handle and named path for identical file identity, length, and available
+modification/change timestamps. On Linux it
 also rechecks the descriptor's exact opened path, including symlink aliases.
 These checks do not guarantee synchronization against a malicious concurrent
 writer between the final check and VM execution.

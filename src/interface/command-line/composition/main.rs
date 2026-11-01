@@ -898,8 +898,13 @@ fn read_regular_source_with_reader(
     // A file may grow after fstat; the additional byte detects overflow
     // without allocating or scanning an unbounded source stream.
     let mut bytes = Vec::new();
-    let _read = read(&mut file, &mut bytes)
+    let reported = read(&mut file, &mut bytes)
         .map_err(|error| format!("failed to read {kind}: {error}"))?;
+    if reported != bytes.len() {
+        return Err(format!(
+            "{kind} read count disagrees with collected source bytes",
+        ));
+    }
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > max_bytes {
         return Err(format!("{kind} exceeds {limit}"));
     }
@@ -1182,7 +1187,7 @@ mod source_read_tests {
     use super::{SourceReadPolicy, read_regular_source, read_regular_source_with_reader};
     use std::env::temp_dir;
     use std::fs::{self, File};
-    use std::io::Read as _;
+    use std::io::{Error as IoError, Read as _};
     use std::path::Path;
     use std::process::id;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1269,6 +1274,37 @@ mod source_read_tests {
         fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
         if !result.as_ref().is_err_and(|error| error.contains("source changed during read")) {
             return Err(format!("short source read accepted: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_read_rejects_forged_reader_byte_counts_for_both_kinds() -> Result<(), String> {
+        let directory = fixture_directory("read-receipt")?;
+        let source = directory.join("program.malbolge");
+        fs::write(&source, SOURCE).map_err(|error| error.to_string())?;
+        for kind in ["Malbolge source", "C source"] {
+            for reported in [0, 2, 4, usize::MAX] {
+                let result = read_regular_source_with_reader(
+                    &source,
+                    SourceReadPolicy { kind, limit: "32 bytes", max_bytes: 32 },
+                    |file, bytes| {
+                        let count = file.take(33).read_to_end(bytes)?;
+                        if count != SOURCE.len() {
+                            return Err(IoError::other("fixture read length changed"));
+                        }
+                        Ok(reported)
+                    },
+                );
+                if !result.as_ref().is_err_and(|error| error.contains("read count disagrees")) {
+                    return Err(format!("{kind} accepted forged count {reported}: {result:?}"));
+                }
+            }
+        }
+        let retained = fs::read(&source).map_err(|error| error.to_string())?;
+        fs::remove_dir_all(directory).map_err(|error| error.to_string())?;
+        if retained != SOURCE {
+            return Err(String::from("source reader altered the original file"));
         }
         Ok(())
     }
