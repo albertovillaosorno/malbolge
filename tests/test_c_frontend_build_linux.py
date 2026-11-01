@@ -34,12 +34,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import] - mocked; no processes run.
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from scripts.validate import c_frontend_build_linux
-from scripts.validate import tidy_toolchain
+from scripts.validate import c_frontend_build_linux, tidy_toolchain
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -194,3 +194,92 @@ def test_linux_frontend_rejects_path_swap_after_configure(
     assert calls == ["CMake configure"]
     assert sentinel.read_bytes() == b"foreign data"
     assert list(external.iterdir()) == [sentinel]
+
+
+@pytest.mark.parametrize(
+    "receipt_kind",
+    ["wrong_args", "tuple_args", "foreign_args", "foreign_token"],
+)
+def test_linux_frontend_refuses_forged_cmake_command_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_kind: str,
+) -> None:
+    """Native CMake success must attest to the exact launched argument list."""
+
+    class ForeignArgs(list[str]):
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign CMake argv equality hook executed")
+
+    class ForeignToken(str):
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign CMake token equality hook executed")
+
+    def forged_run(args: list[str], **_kwargs: object) -> object:
+        malformed: object = {
+            "wrong_args": [*args, "--forged"],
+            "tuple_args": tuple(args),
+            "foreign_args": ForeignArgs(args),
+            "foreign_token": [ForeignToken(args[0]), *args[1:]],
+        }[receipt_kind]
+        return sp.CompletedProcess(
+            cast("list[str]", cast("object", malformed)),
+            0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(c_frontend_build_linux.sp, "run", forged_run)
+    with pytest.raises(
+        c_frontend_build_linux.LinuxFrontendBuildError, match="process receipt"
+    ):
+        c_frontend_build_linux._checked_run(["cmake", "--version"], "CMake")
+
+
+@pytest.mark.parametrize("location", ["parent", "leaf"])
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction", "exists", "is_dir"])
+@pytest.mark.parametrize("receipt", [0, None])
+def test_linux_frontend_refuses_non_native_output_directory_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    location: str,
+    method: str,
+    receipt: object,
+) -> None:
+    """Every physical output ancestor requires exact native boolean status."""
+    parent = tmp_path / "cache"
+    leaf = parent / "build"
+    leaf.mkdir(parents=True)
+    target = parent if location == "parent" else leaf
+    native = getattr(type(leaf), method)
+
+    def forged_status(path: Path) -> object:
+        return receipt if path == target else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(type(leaf), method, forged_status)
+        with pytest.raises(
+            c_frontend_build_linux.LinuxFrontendBuildError, match="status receipt"
+        ):
+            c_frontend_build_linux._require_physical_build_directory(leaf, "test")
+
+
+def test_linux_frontend_native_cmake_receipt_preserves_success_and_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exact CMake subprocess evidence retains native nonzero exit outcomes."""
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 0, stdout="configured", stderr="")
+
+    monkeypatch.setattr(c_frontend_build_linux.sp, "run", run)
+    c_frontend_build_linux._checked_run(["cmake", "--version"], "CMake")
+
+    def failing(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 9, stdout="", stderr="native failure")
+
+    monkeypatch.setattr(c_frontend_build_linux.sp, "run", failing)
+    with pytest.raises(
+        c_frontend_build_linux.LinuxFrontendBuildError,
+        match="status 9: native failure",
+    ):
+        c_frontend_build_linux._checked_run(["cmake", "--version"], "CMake")

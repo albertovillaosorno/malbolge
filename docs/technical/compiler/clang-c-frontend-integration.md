@@ -45,9 +45,12 @@ through physical, non-redirected directory ancestors before creating output
 folders and again before native configure/build commands. Linux frontend
 CMake failures and native build-tool discovery failures retain typed error
 causes without invoking custom host exception formatting hooks. Native CMake
-build receipts must have exact integer exit statuses and native stdout/stderr
-text; foreign receipt objects cannot impersonate successful builds. Symlink,
-junction, and non-directory substitutions fail closed. The Windows frontend
+build receipts must have exact integer exit statuses, matching native command
+argument lists, and native stdout/stderr text; foreign receipt objects or forged
+command identities cannot impersonate successful builds. Symlink, junction,
+and non-directory substitutions fail closed. On Linux, those build-output
+path checks also require exact native booleans from every directory ancestor;
+foreign path-status hooks cannot authorize an output location. The Windows frontend
 likewise rejects linked build-cache and output ancestors, plus existing symbolic or
 hardlinked `build.cmd` scripts, before invoking CMake. After either native
 build, the executable and its output ancestors must be physical and

@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from pathlib import Path
-from typing import Final, Never
+from typing import Final, Never, cast
 
 from scripts.repository_root import repository_root
 from scripts.validate import tidy_build_linux, tidy_toolchain
@@ -60,6 +60,18 @@ class LinuxFrontendBuildError(RuntimeError):
 
 def _fail(message: str) -> Never:
     raise LinuxFrontendBuildError(message)
+
+
+def _native_directory_status(value: object, label: str) -> bool:
+    """Trust only native filesystem booleans during build-output admission.
+
+    Returns:
+        The exact native directory-status boolean.
+
+    """
+    if type(value) is not bool:
+        _fail(f"invalid Linux frontend {label} status receipt")
+    return cast("bool", value)
 
 
 def linux_build_tools() -> LinuxFrontendBuildTools:
@@ -130,6 +142,10 @@ def _checked_run(command: list[str], label: str) -> None:
     if (
         type(completed) is not sp.CompletedProcess
         or type(completed.returncode) is not int
+        or type(completed.args) is not list
+        or len(completed.args) != len(command)
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != command
         or type(completed.stdout) is not str
         or type(completed.stderr) is not str
     ):
@@ -149,9 +165,13 @@ def _checked_run(command: list[str], label: str) -> None:
 def _require_physical_build_directory(path: Path, label: str) -> None:
     """Reject redirected or non-directory native CMake output ancestors."""
     for component in (path, *path.parents):
-        if component.is_symlink() or component.is_junction():
+        if _native_directory_status(component.is_symlink(), "redirect"):
             _fail(f"Linux frontend {label} directory must not redirect: {component}")
-        if component.exists() and not component.is_dir():
+        if _native_directory_status(component.is_junction(), "redirect"):
+            _fail(f"Linux frontend {label} directory must not redirect: {component}")
+        if _native_directory_status(component.exists(), "existence") and not (
+            _native_directory_status(component.is_dir(), "directory")
+        ):
             _fail(f"Linux frontend {label} path must be a directory: {component}")
 
 
