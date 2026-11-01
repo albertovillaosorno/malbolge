@@ -64,10 +64,12 @@ by the selected profile loader.
 
 - Expected durable artifact surface: `tools/`, `compiler/`, `src/`, `tests/`,
   `docs/technical/tooling/annotated-malbolge-source-format.md`.
-- Current evidence: `tests/vm/annotated.rs` has eight strict fixtures covering
+- Current evidence: `tests/vm/annotated.rs` has nine strict fixtures covering
   hash/comment ambiguity, LF/CRLF/CR, source-map positions, invalid bytes,
   automatic-wrap round trips, loader fail-closed behavior, and classic/facade/
-  current-profile execution equivalence.
+  current-profile execution equivalence. The ninth fixture exhaustively checks
+  all 94 graphical ASCII bytes at wrap widths 1 through 95, including precise
+  byte offsets, line numbers, and columns after inserted line breaks.
 - The decompiler now provides an explicit `--representation annotated` view
   with selected-profile identity, deterministic 64-byte wrapping, initial
   indirect/halt boundaries and exact canonical region-position comments.

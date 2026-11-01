@@ -104,6 +104,45 @@ fn annotated_formatter_roundtrips_hash_heavy_canonical_source() -> TestResult {
 }
 
 #[test]
+fn annotated_formatter_preserves_every_graphical_byte_and_source_position() -> TestResult {
+    let canonical = (33u8..=126).collect::<Vec<_>>();
+    for width in 1..=canonical.len() + 1 {
+        let formatted = normalize_result(format_annotated_source(&canonical, width))?;
+        let recovered = normalize_result(canonicalize_annotated_source(&formatted))?;
+        check_equal(
+            recovered.bytes(),
+            canonical.as_slice(),
+            "all graphical bytes survive every wrap width",
+        )?;
+        let observed = recovered
+            .locations()
+            .iter()
+            .map(|location| (location.offset(), location.line(), location.column()))
+            .collect::<Vec<_>>();
+        let mut expected = Vec::with_capacity(canonical.len());
+        let mut offset = 0;
+        let mut line = 1;
+        let mut column = 1;
+        for _ in &canonical {
+            if column > width {
+                offset += 1;
+                line += 1;
+                column = 1;
+            }
+            expected.push((offset, line, column));
+            offset += 1;
+            column += 1;
+        }
+        check_equal(
+            &observed,
+            &expected,
+            "all graphical source offsets, lines, and columns",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn annotated_source_map_tracks_original_loaded_positions() -> TestResult {
     let source = b"# header\r\nc \r\n\t# block\r\ntO";
     let canonical = normalize_result(canonicalize_annotated_source(source))?;

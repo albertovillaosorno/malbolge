@@ -154,9 +154,11 @@ Required evidence includes:
 - classic facade/current-profile VMs produce identical observations from
   canonical bytes and their annotated presentation equivalents.
 
-`tests/vm/annotated.rs` covers those boundaries with seven strict
-fixtures, including exact source-map positions and hash-heavy formatter
-round-trips.
+`tests/vm/annotated.rs` covers those boundaries with nine strict
+fixtures, including exact source-map positions, hash-heavy formatter
+round-trips, and an exhaustive check that all 94 graphical ASCII bytes
+preserve their exact bytes and source-map offsets for every wrap width
+from 1 through 95.
 
 ## References
 
