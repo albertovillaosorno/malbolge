@@ -1545,3 +1545,230 @@ def test_libc_stream_descriptor_after_read_requires_native_int(
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
     with pytest.raises(c_libc_source.LibcSourceError, match="native descriptor"):
         _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("phase", ["admitted", "opened", "after", "visible"])
+def test_libc_authority_foreign_stat_receipts_never_execute_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Authority stat identity cannot invoke forged host field accessors."""
+    path = tmp_path / "libc.json"
+    _ = path.write_bytes(b"{}")
+
+    class ForeignStat:
+        @override
+        def __getattribute__(self, name: str) -> object:
+            del self, name
+            raise AssertionError("foreign libc authority stat hook executed")
+
+    native_lstat = Path.lstat
+    native_fstat = os.fstat
+    lstat_calls = 0
+    fstat_calls = 0
+
+    def forged_lstat(target: Path) -> os.stat_result:
+        nonlocal lstat_calls
+        if target == path:
+            lstat_calls += 1
+            if (phase == "admitted" and lstat_calls == 1) or (
+                phase == "visible" and lstat_calls == 2
+            ):
+                return cast("os.stat_result", cast("object", ForeignStat()))
+        return native_lstat(target)
+
+    def forged_fstat(fd: int) -> os.stat_result:
+        nonlocal fstat_calls
+        fstat_calls += 1
+        if (phase == "opened" and fstat_calls == 1) or (
+            phase == "after" and fstat_calls == 2
+        ):
+            return cast("os.stat_result", cast("object", ForeignStat()))
+        return native_fstat(fd)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(c_libc.CLibcValidationError, match="native stat"):
+        _ = c_libc.load_document(path)
+
+
+@pytest.mark.parametrize(
+    "phase", ["parent_symlink", "parent_junction", "leaf_symlink", "leaf_junction"]
+)
+@pytest.mark.parametrize("receipt", [0, 1, object()])
+def test_libc_authority_foreign_redirect_receipts_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str, receipt: object
+) -> None:
+    """Parent and leaf redirect verdicts must be exact host booleans."""
+    path = tmp_path / "libc.json"
+    _ = path.write_bytes(b"{}")
+    target = path if phase.startswith("leaf") else path.parent
+    is_symlink = phase.endswith("symlink")
+    native = Path.is_symlink if is_symlink else Path.is_junction
+
+    class ForeignVerdict:
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign libc redirect truthiness hook executed")
+
+    verdict = ForeignVerdict() if type(receipt) is object else receipt
+
+    def forged_redirect(candidate: Path) -> bool:
+        if candidate == target:
+            return cast("bool", verdict)
+        return native(candidate)
+
+    monkeypatch.setattr(
+        Path, "is_symlink" if is_symlink else "is_junction", forged_redirect
+    )
+    with pytest.raises(c_libc.CLibcValidationError, match="native redirect"):
+        _ = c_libc.load_document(path)
+
+
+@pytest.mark.parametrize("receipt", [-1, 3.0])
+def test_libc_authority_foreign_open_descriptor_rejected_before_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Invalid open returns cannot be wrapped as owned file descriptors."""
+    path = tmp_path / "libc.json"
+    _ = path.write_bytes(b"{}")
+    native_open = os.open
+
+    def forged_open(candidate: Path, flags: int) -> int:
+        if candidate == path:
+            return cast("int", receipt)
+        return native_open(candidate, flags)
+
+    monkeypatch.setattr(os, "open", forged_open)
+    with pytest.raises(c_libc.CLibcValidationError, match="native descriptor"):
+        _ = c_libc.load_document(path)
+
+
+@pytest.mark.parametrize("receipt", [True, -1, 3.0])
+def test_libc_authority_foreign_stream_descriptor_rejected_before_stat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Untrusted fileno receipts cannot validate the authority inode."""
+    path = tmp_path / "libc.json"
+    _ = path.write_bytes(b"{}")
+    native_fdopen = os.fdopen
+
+    class ForgedFileno(_LibcSourceForgedStream):
+        @override
+        def read(self, *args: object) -> bytes:
+            del args
+            return b"{}"
+
+    def forged_fdopen(fd: int, mode: str) -> BinaryIO:
+        stream = cast("BinaryIO", native_fdopen(fd, mode))
+        return cast("BinaryIO", cast("object", ForgedFileno(stream, b"{}", receipt)))
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(c_libc.CLibcValidationError, match="native descriptor"):
+        _ = c_libc.load_document(path)
+
+
+@pytest.mark.parametrize(
+    "fault_type", [c_libc.CLibcValidationError, c_abi.CAbiValidationError]
+)
+def test_libc_authority_cli_does_not_format_foreign_error_subclasses(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """An exception subclass cannot inject untrusted error formatting."""
+
+    class ForeignError(fault_type):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign libc authority CLI hook executed")
+
+    def fail_projection() -> None:
+        raise ForeignError("untrusted diagnostic")
+
+    monkeypatch.setattr(c_libc, "canonical_projection", fail_projection)
+    assert c_libc.main() == 1
+    assert "ForeignError" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("receipt", [True, False])
+def test_libc_authority_boolean_descriptor_rejected_without_wrapping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: bool
+) -> None:
+    """Boolean file descriptors must not accidentally consume stdio."""
+    path = tmp_path / "libc.json"
+    _ = path.write_bytes(b"{}")
+    native_open = os.open
+
+    def forged_open(candidate: Path, flags: int) -> int:
+        if candidate == path:
+            return cast("int", receipt)
+        return native_open(candidate, flags)
+
+    monkeypatch.setattr(os, "open", forged_open)
+    with pytest.raises(c_libc.CLibcValidationError, match="native descriptor"):
+        _ = c_libc.load_document(path)
+
+
+@pytest.mark.parametrize("phase", ["opened", "after"])
+def test_libc_authority_stream_descriptor_must_match_owned_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """A foreign stream cannot certify its bytes with a different native fd."""
+    path = tmp_path / "libc.json"
+    _ = path.write_bytes(b"{}")
+    native_fdopen = os.fdopen
+
+    class SwappedDescriptorStream(_LibcSourceForgedStream):
+        def __init__(self, wrapped: BinaryIO) -> None:
+            super().__init__(wrapped, b"{}")
+            self.calls: int = 0
+
+        @override
+        def fileno(self) -> int:
+            self.calls += 1
+            if (phase == "opened" and self.calls == 1) or (
+                phase == "after" and self.calls == 2
+            ):
+                return self.stream.fileno() + 1000
+            return self.stream.fileno()
+
+        @override
+        def read(self, *args: object) -> bytes:
+            del args
+            return b"{}"
+
+    def forged_fdopen(fd: int, mode: str) -> BinaryIO:
+        wrapped = cast("BinaryIO", native_fdopen(fd, mode))
+        return cast("BinaryIO", cast("object", SwappedDescriptorStream(wrapped)))
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    with pytest.raises(c_libc.CLibcValidationError, match="stream descriptor"):
+        _ = c_libc.load_document(path)
+
+
+def test_libc_authority_does_not_format_foreign_utf8_decoder_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Direct loader faults preserve decoder cause but not subclass formatting."""
+
+    class ForeignUnicodeFault(UnicodeDecodeError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign libc decoder formatter executed")
+
+    fault = ForeignUnicodeFault("utf-8", b"\xff", 0, 1, "unsafe detail")
+
+    class ForeignBytes(bytes):
+        @override
+        def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+            del encoding, errors
+            raise fault
+
+    def forged_read(_path: Path) -> bytes:
+        return ForeignBytes(b"{}")
+
+    monkeypatch.setattr(c_libc, "_read_regular_bytes", forged_read)
+    with pytest.raises(
+        c_libc.CLibcValidationError, match="ForeignUnicodeFault"
+    ) as error:
+        _ = c_libc.load_document(tmp_path / "libc.json")
+    assert error.value.__cause__ is fault

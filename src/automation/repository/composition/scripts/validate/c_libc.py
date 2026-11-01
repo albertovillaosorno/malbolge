@@ -35,14 +35,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import os
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-import sys
-from typing import Never
-from typing import cast
+from typing import Never, cast
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -110,40 +109,48 @@ FORBIDDEN_ROUTINES = (
     "time",
     "tmpfile",
 )
-TOP_LEVEL_KEYS = frozenset({
-    "abi_id",
-    "available_routines",
-    "compiler_headers",
-    "contracted_unavailable",
-    "failure",
-    "forbidden_routines",
-    "guest_headers",
-    "libc_id",
-    "schema_version",
-    "target_profile",
-    "unavailable_headers",
-})
-AVAILABLE_KEYS = frozenset({
-    "header",
-    "implementation",
-    "name",
-    "semantics",
-    "signature",
-})
-UNAVAILABLE_KEYS = frozenset({
-    "header",
-    "name",
-    "owner",
-    "semantics",
-    "signature",
-})
+TOP_LEVEL_KEYS = frozenset(
+    {
+        "abi_id",
+        "available_routines",
+        "compiler_headers",
+        "contracted_unavailable",
+        "failure",
+        "forbidden_routines",
+        "guest_headers",
+        "libc_id",
+        "schema_version",
+        "target_profile",
+        "unavailable_headers",
+    }
+)
+AVAILABLE_KEYS = frozenset(
+    {
+        "header",
+        "implementation",
+        "name",
+        "semantics",
+        "signature",
+    }
+)
+UNAVAILABLE_KEYS = frozenset(
+    {
+        "header",
+        "name",
+        "owner",
+        "semantics",
+        "signature",
+    }
+)
 FORBIDDEN_KEYS = frozenset({"name", "reason"})
-FAILURE_KEYS = frozenset({
-    "forbidden_routine",
-    "host_library_fallback",
-    "unavailable_routine",
-    "unknown_guest_header",
-})
+FAILURE_KEYS = frozenset(
+    {
+        "forbidden_routine",
+        "host_library_fallback",
+        "unavailable_routine",
+        "unknown_guest_header",
+    }
+)
 
 
 type JsonScalar = bool | int | float | str | None
@@ -224,9 +231,7 @@ def _routine_name(
     if not isinstance(name, str) or not name:
         _fail(f"{context}.name must be a nonempty string")
     invalid = [
-        key
-        for key, field in item.items()
-        if not isinstance(field, str) or not field
+        key for key, field in item.items() if not isinstance(field, str) or not field
     ]
     if invalid:
         _fail(f"{context}.{invalid[0]} must be a nonempty string")
@@ -282,7 +287,9 @@ def loads_document(text: str) -> JsonObject:
     return _mapping(parsed, "C libc document")
 
 
-def _regular_identity(status: os.stat_result) -> tuple[int, int, int, int, int]:
+def _regular_identity(status: object) -> tuple[int, int, int, int, int]:
+    if type(status) is not os.stat_result:
+        _fail("C libc document requires native stat receipt")
     return (
         status.st_dev,
         status.st_ino,
@@ -296,6 +303,8 @@ def _verify_regular_snapshot(
     expected: os.stat_result,
     observed: os.stat_result,
 ) -> None:
+    if type(expected) is not os.stat_result or type(observed) is not os.stat_result:
+        _fail("C libc document requires native stat receipt")
     if (
         not S_ISREG(observed.st_mode)
         or observed.st_size > MAX_DOCUMENT_BYTES
@@ -304,10 +313,28 @@ def _verify_regular_snapshot(
         _fail("C libc document must be a stable regular file")
 
 
+def _require_unredirected_path(path: Path, *, leaf: bool = False) -> None:
+    """Inspect native link/junction verdicts without coercing foreign values."""
+    for verdict in (path.is_symlink, path.is_junction):
+        redirected = verdict()
+        if type(redirected) is not bool:
+            _fail("C libc document requires native redirect receipt")
+        if redirected:
+            if leaf:
+                _fail("C libc document must be a regular non-redirected file")
+            _fail("C libc document path must not redirect")
+
+
 def _check_parent_paths(path: Path) -> None:
     for parent in path.parents:
-        if parent.is_symlink() or parent.is_junction():
-            _fail("C libc document path must not redirect")
+        _require_unredirected_path(parent)
+
+
+def _native_source_descriptor(value: object) -> int:
+    """Admit only an owned native fd before wrapper or status access."""
+    if type(value) is not int or value < 0:
+        _fail("C libc document requires native descriptor")
+    return value
 
 
 def _read_regular_bytes(path: Path) -> bytes:
@@ -318,11 +345,10 @@ def _read_regular_bytes(path: Path) -> bytes:
     # also protect the leaf open against symlink races and writerless FIFOs.
     _check_parent_paths(path)
     status = path.lstat()
-    if (
-        path.is_symlink()
-        or path.is_junction()
-        or not S_ISREG(status.st_mode)
-    ):
+    if type(status) is not os.stat_result:
+        _fail("C libc document requires native stat receipt")
+    _require_unredirected_path(path, leaf=True)
+    if not S_ISREG(status.st_mode):
         _fail("C libc document must be a regular non-redirected file")
     if status.st_size > MAX_DOCUMENT_BYTES:
         _fail("C libc document exceeds byte limit")
@@ -332,7 +358,7 @@ def _read_regular_bytes(path: Path) -> bytes:
         | getattr(os, "O_NONBLOCK", 0)
         | getattr(os, "O_BINARY", 0)
     )
-    descriptor = os.open(path, flags)
+    descriptor = _native_source_descriptor(os.open(path, flags))
     try:
         stream = os.fdopen(descriptor, "rb")
     except BaseException:
@@ -343,10 +369,16 @@ def _read_regular_bytes(path: Path) -> bytes:
             pass
         raise
     with stream:
-        opened = os.fstat(stream.fileno())
+        opened_descriptor = _native_source_descriptor(stream.fileno())
+        if opened_descriptor != descriptor:
+            _fail("C libc document stream descriptor mismatch before read")
+        opened = os.fstat(opened_descriptor)
         _verify_regular_snapshot(status, opened)
         data = stream.read(MAX_DOCUMENT_BYTES + 1)
-        _verify_regular_snapshot(opened, os.fstat(stream.fileno()))
+        after_descriptor = _native_source_descriptor(stream.fileno())
+        if after_descriptor != descriptor:
+            _fail("C libc document stream descriptor mismatch after read")
+        _verify_regular_snapshot(opened, os.fstat(after_descriptor))
         _check_parent_paths(path)
         _verify_regular_snapshot(opened, path.lstat())
         if (
@@ -370,7 +402,10 @@ def load_document(path: Path = DEFAULT_LIBC) -> JsonObject:
     except CLibcValidationError:
         raise
     except UnicodeDecodeError as error:
-        _fail(f"invalid C libc UTF-8: {error}")
+        detail = (
+            str(error) if type(error) is UnicodeDecodeError else type(error).__name__
+        )
+        raise CLibcValidationError(f"invalid C libc UTF-8: {detail}") from error
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         message = f"failed to read C libc document {path}"
         raise CLibcValidationError(message) from error
@@ -513,7 +548,12 @@ def main() -> int:
     try:
         projection = canonical_projection()
     except (c_abi.CAbiValidationError, CLibcValidationError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        detail = (
+            str(error)
+            if type(error) in (c_abi.CAbiValidationError, CLibcValidationError)
+            else type(error).__name__
+        )
+        _ = sys.stderr.write(f"error: {detail}\n")
         return 1
     message = "C libc contract ready: " + projection.libc_id
     message += f" ({projection.abi_id})"

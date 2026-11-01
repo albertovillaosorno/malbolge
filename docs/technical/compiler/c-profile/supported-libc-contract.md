@@ -61,7 +61,11 @@ routine sets. Duplicate keys, unknown fields, identity drift, and changed
 availability sets fail closed. The authority loader reads only stable,
 non-redirected regular UTF-8 files under a one-megabyte document limit;
 symlinks, FIFOs, directories, and changed file contents fail before schema
-admission.
+admission. The canonical authority loader admits only exact native stat
+receipts, exact boolean link/junction decisions, native nonnegative file
+descriptors that remain bound to the opened stream, and exact native read bytes.
+It rejects foreign receipt objects before their hooks can influence admission;
+foreign decoder and CLI errors cannot provide diagnostic formatters.
 
 The contract deliberately does not equate its surface with whatever one host
 calls "C23 freestanding". WG14 C23 issue 1040 remains open and identifies
