@@ -133,6 +133,7 @@ pub fn load(source: &[u8]) -> Result<Memory, LoadError> {
 
 fn collect_source(source: &[u8]) -> Result<Vec<u8>, LoadError> {
     let mut admitted = Vec::new();
+    let mut over_capacity = false;
     for (offset, byte) in source.iter().copied().enumerate() {
         if is_source_whitespace(byte) {
             continue;
@@ -140,12 +141,19 @@ fn collect_source(source: &[u8]) -> Result<Vec<u8>, LoadError> {
         if !(33..=126).contains(&byte) {
             return Err(LoadError::InvalidSourceByte { offset, byte });
         }
-        admitted.push(byte);
+        // Keep acquisition bounded to the classic memory image even when a
+        // direct caller supplies far more than 59,049 graphical bytes. Still
+        // scan the full source so lexical errors retain their precedence.
+        if admitted.len() == MEMORY_WORDS {
+            over_capacity = true;
+        } else {
+            admitted.push(byte);
+        }
     }
     if admitted.len() < 2 {
         return Err(LoadError::InsufficientRecurrenceBase);
     }
-    if admitted.len() > MEMORY_WORDS {
+    if over_capacity {
         return Err(LoadError::SourceTooLong);
     }
     Ok(admitted)

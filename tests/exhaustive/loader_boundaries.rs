@@ -147,6 +147,34 @@ fn every_decode_phase_has_valid_and_invalid_instruction_bytes()
 }
 
 #[test]
+fn capacity_overflow_still_reports_later_invalid_raw_byte() -> Result<(), String> {
+    let mut overlong = vec![b'!'; MEMORY_WORDS.saturating_add(1)];
+    let invalid_offset = overlong.len();
+    overlong.push(0x80);
+    let result = load(&overlong);
+    if result != Err(LoadError::InvalidSourceByte {
+        offset: invalid_offset,
+        byte: 0x80,
+    }) {
+        return Err(format!(
+            "capacity preflight changed lexical rejection precedence: {result:?}"
+        ));
+    }
+    // Whitespace after capacity must neither grow the admitted buffer nor
+    // change the loaded-word count used for capacity diagnostics.
+    let slot = overlong.get_mut(invalid_offset)
+        .ok_or_else(|| String::from("fixture lost oversized tail"))?;
+    *slot = b'\t';
+    let overflow_result = load(&overlong);
+    if overflow_result != Err(LoadError::SourceTooLong) {
+        return Err(format!(
+            "capacity overflow lost after whitespace: {overflow_result:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn recurrence_and_capacity_boundaries_fail_closed() -> Result<(), String> {
     for source in [Vec::new(), b" \t\r\n".to_vec()] {
         let observed = load(&source);
