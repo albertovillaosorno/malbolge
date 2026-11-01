@@ -38,6 +38,16 @@ checked only when an instruction emits a byte; it is not required to equal the
 step budget, and exhaustion rejects that transition before encryption, pointer,
 or output mutation commits.
 
+The pinned Linux Clang execution suite differentially compares generated C
+against the normative VM across the full memory image and `A`/`C`/`D`
+registers, not only observed output. Historical-profile fixtures cover
+rotate/crazy/indirect-jump post-encryption and binary input/EOF. A separate
+current-profile fixture verifies the larger 15-trit geometry and EOF
+low-byte output without assuming the historical 10-trit sentinel. Both
+profiles also reject an indirect jump to a non-graphical encryption target
+atomically, preserving the pre-step memory and registers. This evidence
+does not establish correctness for arbitrary programs or untested profiles.
+
 ## CLI
 
 ```text

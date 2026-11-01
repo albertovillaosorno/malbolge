@@ -39,10 +39,15 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, id};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use malbolge::{ProfileMachine, RunOutcome, Termination, historical_profile};
+use malbolge::{
+    ProfileDescriptor, ProfileMachine, ProfileMachineError, RunOutcome,
+    Termination, current_profile,
+    historical_profile,
+};
 
 const SOURCE: &[u8] = b"ubO";
 const ARITHMETIC_SOURCE: &[u8] = b"(&<N";
+const INVALID_JUMP_SOURCE: &[u8] = b"bP";
 const JUMP_SOURCE: &[u8] = &[
     98, 67, 66, 65, 64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52,
     51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35,
@@ -137,6 +142,15 @@ const MEMORY_HARNESS: &str = "
 #ifndef EXPECTED_OUTPUT_BYTE
 #define EXPECTED_OUTPUT_BYTE 0
 #endif
+#ifndef EXPECTED_STEPS
+#define EXPECTED_STEPS 4
+#endif
+#ifndef EXPECTED_STATUS
+#define EXPECTED_STATUS MB_STATUS_HALT
+#endif
+#ifndef STEP_BUDGET
+#define STEP_BUDGET 4
+#endif
 
 int main(void)
 {
@@ -147,9 +161,9 @@ int main(void)
     int status;
     if (memory == NULL) { return 30; }
     status = malbolge_decompiled_run(memory, MB_MEMORY_WORDS,
-        NULL, 0, output, EXPECTED_OUTPUT_LEN, 4, &result);
-    if (status != MB_STATUS_HALT || result.status != MB_STATUS_HALT
-        || result.steps != 4 || result.output_len != EXPECTED_OUTPUT_LEN
+        NULL, 0, output, EXPECTED_OUTPUT_LEN, STEP_BUDGET, &result);
+    if (status != EXPECTED_STATUS || result.status != EXPECTED_STATUS
+        || result.steps != EXPECTED_STEPS || result.output_len != EXPECTED_OUTPUT_LEN
         || result.input_consumed != 0
         || (EXPECTED_OUTPUT_LEN != 0 && output[0] != EXPECTED_OUTPUT_BYTE)) {
         free(memory);
@@ -174,6 +188,16 @@ int main(void)
 }
 ";
 
+#[derive(Clone, Copy)]
+struct GeneratedVmCase<'case> {
+    expected_output: &'case [u8],
+    expected_steps: usize,
+    harness: &'case str,
+    invalid_encryption: bool,
+    profile: &'static ProfileDescriptor,
+    source: &'case [u8],
+}
+
 fn temporary_directory() -> Result<PathBuf, String> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -184,9 +208,9 @@ fn temporary_directory() -> Result<PathBuf, String> {
     Ok(directory)
 }
 
-fn generated_c_stdout(source: &Path) -> Result<Vec<u8>, String> {
+fn generated_c_stdout(source: &Path, profile: &str) -> Result<Vec<u8>, String> {
     let rendered = Command::new(env!("CARGO_BIN_EXE_malbolge_decompile"))
-        .args(["--profile", "malbolge-1998", "--representation", "c"])
+        .args(["--profile", profile, "--representation", "c"])
         .arg(source)
         .output()
         .map_err(|error| format!("launch decompiler: {error}"))?;
@@ -199,11 +223,12 @@ fn generated_c_stdout(source: &Path) -> Result<Vec<u8>, String> {
 fn compile_generated_program(
     directory: &Path,
     source_bytes: &[u8],
+    profile: &str,
     harness: &str,
 ) -> Result<PathBuf, String> {
     let source = directory.join("program.malbolge");
     fs::write(&source, source_bytes).map_err(|error| error.to_string())?;
-    let mut c_source = generated_c_stdout(&source)?;
+    let mut c_source = generated_c_stdout(&source, profile)?;
     c_source.extend_from_slice(harness.as_bytes());
     let c_path = directory.join("generated.c");
     fs::write(&c_path, c_source).map_err(|error| error.to_string())?;
@@ -231,7 +256,7 @@ fn generated_c_matches_historical_vm_and_rejects_output_atomically()
 -> Result<(), String> {
     let directory = temporary_directory()?;
     let result = (|| {
-        let executable = compile_generated_program(&directory, SOURCE, HARNESS)?;
+        let executable = compile_generated_program(&directory, SOURCE, "malbolge-1998", HARNESS)?;
         let executed = Command::new(&executable)
             .output()
             .map_err(|error| format!("execute generated C: {error}"))?;
@@ -267,43 +292,69 @@ fn generated_c_matches_historical_vm_and_rejects_output_atomically()
     cleanup
 }
 
-fn verify_generated_state_against_vm(
-    source: &[u8], harness: &str, expected_output: &[u8],
-) -> Result<(), String> {
+fn vm_snapshot_bytes(machine: &ProfileMachine) -> Vec<u8> {
+    let mut expected = Vec::with_capacity(
+        machine.memory().len().saturating_add(3).saturating_mul(4),
+    );
+    for word in machine.memory().iter().copied().chain([
+        machine.registers().accumulator,
+        machine.registers().code_pointer,
+        machine.registers().data_pointer,
+    ]) {
+        expected.extend_from_slice(&word.to_le_bytes());
+    }
+    expected
+}
+
+fn verify_generated_state_against_vm(case: GeneratedVmCase<'_>)
+-> Result<(), String> {
+    let GeneratedVmCase {
+        profile, source, harness, expected_output, expected_steps,
+        invalid_encryption,
+    } = case;
     let directory = temporary_directory()?;
     let result = (|| {
-        let executable = compile_generated_program(&directory, source, harness)?;
+        let executable = compile_generated_program(
+            &directory, source, profile.id(), harness,
+        )?;
         let executed = Command::new(&executable)
             .output()
-            .map_err(|error| format!("execute generated arithmetic C: {error}"))?;
+            .map_err(|error| format!("execute generated C: {error}"))?;
         let mut machine = ProfileMachine::from_source(
-            historical_profile(), source, Vec::new(),
+            profile, source, Vec::new(),
         )
         .map_err(|error| error.to_string())?;
-        let outcome = machine.run(4).map_err(|error| error.to_string())?;
-        if outcome != (RunOutcome::Terminated {
-            reason: Termination::HaltInstruction,
-            steps: 4,
-        }) {
-            return Err(format!("arithmetic VM did not halt: {outcome:?}"));
+        let outcome = machine.run(expected_steps.max(1));
+        match (outcome, invalid_encryption) {
+            (
+                Ok(RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps,
+                }),
+                false,
+            ) if steps == expected_steps => {},
+            (
+                Err(ProfileMachineError::InvalidEncryptionTarget {
+                    pointer: 98, value,
+                }),
+                true,
+            ) if expected_steps == 0
+                && machine.memory().get(98).copied() == Some(value)
+                && !(33..=126).contains(&value) => {},
+            (unexpected, _) => {
+                return Err(format!("unexpected normative outcome: {unexpected:?}"));
+            },
         }
         if machine.output() != expected_output {
             return Err(format!("unexpected normative output: {:?}", machine.output()));
         }
-        let mut expected = Vec::with_capacity(machine.memory().len().saturating_add(3).saturating_mul(4));
-        for word in machine.memory().iter().copied().chain([
-            machine.registers().accumulator,
-            machine.registers().code_pointer,
-            machine.registers().data_pointer,
-        ]) {
-            expected.extend_from_slice(&word.to_le_bytes());
-        }
+        let expected = vm_snapshot_bytes(&machine);
         if !executed.status.success()
             || !executed.stderr.is_empty()
             || executed.stdout != expected
         {
             return Err(format!(
-                "generated C state differs from normative VM: status={}                  stderr={} actual-bytes={} expected-bytes={}",
+                "generated C state differs from normative VM: status={} stderr={} actual-bytes={} expected-bytes={}",
                 executed.status,
                 String::from_utf8_lossy(&executed.stderr),
                 executed.stdout.len(), expected.len(),
@@ -312,7 +363,7 @@ fn verify_generated_state_against_vm(
         Ok(())
     })();
     let cleanup = fs::remove_dir_all(&directory)
-        .map_err(|error| format!("clean arithmetic C fixtures: {error}"));
+        .map_err(|error| format!("clean generated C fixtures: {error}"));
     result?;
     cleanup
 }
@@ -320,7 +371,14 @@ fn verify_generated_state_against_vm(
 #[test]
 fn generated_c_arithmetic_memory_and_registers_match_normative_vm()
 -> Result<(), String> {
-    verify_generated_state_against_vm(ARITHMETIC_SOURCE, MEMORY_HARNESS, &[])
+    verify_generated_state_against_vm(GeneratedVmCase {
+        expected_output: &[],
+        expected_steps: 4,
+        harness: MEMORY_HARNESS,
+        invalid_encryption: false,
+        profile: historical_profile(),
+        source: ARITHMETIC_SOURCE,
+    })
 }
 
 #[test]
@@ -329,5 +387,59 @@ fn generated_c_post_jump_encryption_matches_normative_vm()
     let harness = format!(
         "#define EXPECTED_OUTPUT_LEN 1\n#define EXPECTED_OUTPUT_BYTE 0xa8\n{MEMORY_HARNESS}"
     );
-    verify_generated_state_against_vm(JUMP_SOURCE, &harness, &[0xa8])
+    verify_generated_state_against_vm(GeneratedVmCase {
+        expected_output: &[0xa8],
+        expected_steps: 4,
+        harness: &harness,
+        invalid_encryption: false,
+        profile: historical_profile(),
+        source: JUMP_SOURCE,
+    })
+}
+
+#[test]
+fn generated_c_current_profile_eof_state_matches_normative_vm()
+-> Result<(), String> {
+    // The 15-trit current profile has a different memory geometry and EOF
+    // sentinel from the historical source-compatible machine.
+    let profile = current_profile();
+    let expected_byte = profile.eof_word().to_le_bytes()[0];
+    let harness = format!(
+        "#define EXPECTED_OUTPUT_LEN 1\n\
+         #define EXPECTED_OUTPUT_BYTE {expected_byte}\n\
+         #define EXPECTED_STEPS 3\n\
+         #define STEP_BUDGET 3\n{MEMORY_HARNESS}",
+    );
+    verify_generated_state_against_vm(GeneratedVmCase {
+        expected_output: &[expected_byte],
+        expected_steps: 3,
+        harness: &harness,
+        invalid_encryption: false,
+        profile,
+        source: SOURCE,
+    })
+}
+
+#[test]
+fn generated_c_invalid_jump_encryption_is_atomic_for_both_profiles()
+-> Result<(), String> {
+    // `b` decodes to an indirect jump from D=0 to C=98. The generated
+    // recurrence gives non-graphical memory[98], so neither backend may
+    // encrypt the target or commit the attempted jump.
+    let harness = format!(
+        "#define EXPECTED_STATUS MB_STATUS_INVALID_ENCRYPTION\n\
+         #define EXPECTED_STEPS 0\n\
+         #define STEP_BUDGET 1\n{MEMORY_HARNESS}",
+    );
+    for profile in [historical_profile(), current_profile()] {
+        verify_generated_state_against_vm(GeneratedVmCase {
+            expected_output: &[],
+            expected_steps: 0,
+            harness: &harness,
+            invalid_encryption: true,
+            profile,
+            source: INVALID_JUMP_SOURCE,
+        })?;
+    }
+    Ok(())
 }
