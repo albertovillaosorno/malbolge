@@ -48,7 +48,12 @@ half requires
 `README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via
 `check-ignore --no-index`, whether `algorithms/<id>/out/` itself is ignored.
 A rule matching only a synthetic child filename cannot satisfy this
-directory-level output policy. Optional `math/algorithms/<id>.tex` remains a
+directory-level output policy. The Git ignore probe requires a native completed
+process with an exact integer exit of zero (ignored) or one (not ignored);
+boolean, floating-point, missing, or foreign process receipts cannot establish
+output policy. CLI diagnostics preserve the repository validator's own errors
+without invoking arbitrary host-exception formatting hooks.
+Optional `math/algorithms/<id>.tex` remains a
 research-specific addition rather than a universal mirror requirement.
 
 Research conclusions may recommend promotion, rejection, or retirement, but an
@@ -104,7 +109,7 @@ Executable evidence:
 
 - `.dependencies/python/3.14.7/Scripts/python-jig.cmd
   src/automation/repository/composition/scripts/validate/research_mirror.py`
-  currently validates eight mirrored IDs, including the repository template;
+  currently validates nine mirrored IDs, including the repository template;
 - `tests/test_research_mirror.py` covers the current repository plus
   documentation-only, executable-only, empty-mirror, and product-algorithm
   exception boundaries;

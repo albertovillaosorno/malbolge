@@ -38,6 +38,7 @@ import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import] - Git-only fixture.
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -326,6 +327,74 @@ def test_mirror_git_output_probe_failure_is_typed(
     monkeypatch.setattr(sp, "run", fail_git)
     with pytest.raises(validator.ResearchMirrorError, match="Git ignore probe failed"):
         _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("receipt", [None, False, 0, 0.0, {}, object()])
+def test_mirror_git_probe_rejects_nonprocess_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only real process receipts may certify that Git ignored output."""
+    entry = validator.MirrorEntry(
+        document=validator.ROOT / "docs/fixture",
+        executable=validator.ROOT / "algorithms/fixture",
+        research_id="fixture",
+    )
+
+    def forged_run(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        return receipt
+
+    monkeypatch.setattr(sp, "run", forged_run)
+    with pytest.raises(validator.ResearchMirrorError, match="malformed Git"):
+        # ruff: ignore[private-member-access]
+        _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("returncode", [False, True, 0.0, 1.0, None, "0"])
+def test_mirror_git_probe_rejects_noninteger_exit_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    returncode: object,
+) -> None:
+    """Boolean, float and missing exits must not impersonate Git status."""
+    entry = validator.MirrorEntry(
+        document=validator.ROOT / "docs/fixture",
+        executable=validator.ROOT / "algorithms/fixture",
+        research_id="fixture",
+    )
+    completed = sp.CompletedProcess[str](
+        args=[], returncode=cast("int", returncode)
+    )
+
+    def forged_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+        del args, kwargs
+        return completed
+
+    monkeypatch.setattr(sp, "run", forged_run)
+    with pytest.raises(validator.ResearchMirrorError, match="malformed Git"):
+        # ruff: ignore[private-member-access]
+        _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_mirror_cli_does_not_format_foreign_os_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Host subclasses cannot run custom formatters in the CLI boundary."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError
+
+    foreign = type("ForeignGitError", (OSError,), {"__str__": unsafe_str})
+    fault = foreign("untrusted Git error")
+
+    def failed_validation() -> tuple[str, ...]:
+        raise fault
+
+    monkeypatch.setattr(validator, "validate_repository", failed_validation)
+    assert validator.main() == 1
+    assert foreign.__name__ in capsys.readouterr().err
 
 
 def test_output_policy_checks_directory_not_just_one_marker(

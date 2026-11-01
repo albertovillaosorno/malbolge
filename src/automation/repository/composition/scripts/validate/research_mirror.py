@@ -237,6 +237,11 @@ def _out_is_ignored(entry: MirrorEntry) -> bool:
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         detail = _host_error_detail(error)
         raise ResearchMirrorError(f"Git ignore probe failed: {detail}") from error
+    if (
+        type(completed) is not subprocess.CompletedProcess
+        or type(completed.returncode) is not int
+    ):
+        _fail("malformed Git ignore process receipt")
     if completed.returncode not in {0, 1}:
         message = (
             "git check-ignore failed for research output probe: "
@@ -310,7 +315,12 @@ def main() -> int:
     try:
         research_ids = validate_repository()
     except (OSError, ResearchMirrorError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        detail = (
+            str(error)
+            if type(error) is ResearchMirrorError
+            else _host_error_detail(error)
+        )
+        _ = sys.stderr.write(f"error: {detail}\n")
         return 1
     _ = sys.stdout.write(f"research mirror valid: {len(research_ids)} ids\n")
     return 0
