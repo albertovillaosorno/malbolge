@@ -660,6 +660,10 @@ exact native boolean before any truth-value dispatch. Forged status objects
 and integer approximations cannot certify an unlinked pointer, writer-lock,
 checkpoint, or parent-directory path. Red-first pointer read/write cases
 cover both probes; genuine false results preserve ordinary publication.
+An unexpected ordinary filesystem or adapter exception during either link
+probe is a typed prepublication error with the original fault as its cause.
+Twelve red-first pointer read/write cases cover `OSError`, `ValueError`, and
+`IndexError` without allowing an untyped exception to escape direct publication.
 Platforms without `O_DIRECTORY` check the opened descriptor's directory type.
 
 A linked parent or a parent replaced with a link during directory sync thus

@@ -2754,6 +2754,25 @@ def _write_atomic_bytes(
     return destination
 
 
+def _native_link_status(
+    probe: Callable[[], bool], kind: str
+) -> bool:
+    """Admit native link receipts and preserve host failure evidence.
+
+    Returns:
+        The exact native redirect verdict.
+
+    """
+    try:
+        verdict = probe()
+    except Exception as error:  # ruff: ignore[blind-except]
+        detail = _host_error_detail(error)
+        _fail_with_source(f"progress path {kind} probe failed: {detail}", error)
+    if type(verdict) is not bool:
+        _fail(f"progress path {kind} probe must return a native boolean")
+    return verdict
+
+
 def _path_redirects(path: Path) -> bool:
     """Reject foreign link-status receipts before truth-value dispatch.
 
@@ -2761,15 +2780,9 @@ def _path_redirects(path: Path) -> bool:
         Whether the path is a symbolic link or junction.
 
     """
-    symlink = path.is_symlink()
-    if type(symlink) is not bool:
-        _fail("progress path symlink probe must return a native boolean")
-    if symlink:
-        return True
-    junction = path.is_junction()
-    if type(junction) is not bool:
-        _fail("progress path junction probe must return a native boolean")
-    return junction
+    return _native_link_status(
+        path.is_symlink, "symlink"
+    ) or _native_link_status(path.is_junction, "junction")
 
 
 def _redirecting_component(path: Path) -> Path | None:

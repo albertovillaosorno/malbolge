@@ -15479,3 +15479,49 @@ def test_writer_lock_presence_probe_accepts_native_boolean(
         _ = lock_path.write_bytes(b"")
     assert progress.write_atomic(candidate) == destination
     assert progress.read(destination) == candidate
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        (read, method, fault_type)
+        for read in (True, False)
+        for method in ("is_symlink", "is_junction")
+        for fault_type in (OSError, ValueError, IndexError)
+    ],
+)
+def test_progress_link_probe_host_fault_preserves_typed_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: tuple[bool, str, type[Exception]],
+) -> None:
+    """A broken native link probe cannot leak an untyped publication error."""
+    read, method, fault_type = scenario
+    sidecar = _sidecar(tmp_path)
+    destination = Path(sidecar.progress_path)
+    if read:
+        _ = progress.write_atomic(sidecar)
+    original = cast("Callable[[Path], bool]", getattr(Path, method))
+    fault = fault_type("injected path link inspection failure")
+    observed: list[Path] = []
+
+    def failed_probe(path: Path) -> bool:
+        if path == destination:
+            observed.append(path)
+            raise fault
+        return original(path)
+
+    action: Callable[[], object] = (
+        (lambda: progress.read(destination))
+        if read
+        else (lambda: progress.write_atomic(sidecar))
+    )
+    with monkeypatch.context() as context:
+        context.setattr(Path, method, failed_probe)
+        with pytest.raises(
+            ERROR, match=r"progress path.*probe failed"
+        ) as captured:
+            _ = action()
+    assert captured.value.__cause__ is fault
+    assert observed == [destination]
+    assert destination.exists() is read
