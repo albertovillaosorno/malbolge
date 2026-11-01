@@ -963,6 +963,47 @@ def _manifest(
     return text
 
 
+_STUDY_WORKSPACE_PREFIX = "arena-target-echo-"
+
+
+def _admit_new_study_workspace(receipt: object) -> Path:
+    """Admit only a physical empty study child before writes or cleanup.
+
+    Static pathname and content checks cannot prove race-free directory
+    ownership after the allocation; no retained evidence is trusted on drift.
+    """
+    if type(receipt) is not str or not receipt:
+        _fail("target echo study workspace allocator returned nonnative path")
+    try:
+        directory = Path(receipt)
+        if (
+            not directory.is_absolute()
+            or str(directory) != receipt
+            or directory.parent != _TEMP
+            or not directory.name.startswith(_STUDY_WORKSPACE_PREFIX)
+            or directory.name == _STUDY_WORKSPACE_PREFIX
+        ):
+            _fail("target echo study workspace allocator returned foreign path")
+        details = directory.lstat()
+    except TargetEchoStudyError:
+        raise
+    except Exception as error:
+        message = "target echo study workspace path unavailable"
+        raise TargetEchoStudyError(message) from error
+    if type(details) is not os.stat_result or not stat.S_ISDIR(details.st_mode):
+        _fail("target echo study workspace must be a physical directory")
+    try:
+        with os.scandir(directory) as entries:
+            if next(entries, None) is not None:
+                _fail("target echo study workspace was not initially empty")
+    except TargetEchoStudyError:
+        raise
+    except Exception as error:
+        message = "target echo study workspace contents unavailable"
+        raise TargetEchoStudyError(message) from error
+    return directory
+
+
 def _initialize_workspace_folders(directory: Path, names: tuple[str, ...]) -> None:
     """Create study subdirectories with typed failure and owned cleanup."""
     try:
@@ -1013,7 +1054,9 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
         _fail("target echo host identity requires bounded printable native text")
     toolchain = _tool_identity(emitter, runner)
     try:
-        directory = Path(tempfile.mkdtemp(prefix="arena-target-echo-", dir=_TEMP))
+        directory = _admit_new_study_workspace(
+            tempfile.mkdtemp(prefix=_STUDY_WORKSPACE_PREFIX, dir=_TEMP)
+        )
     except Exception as error:
         message = "target echo study workspace creation failed"
         raise TargetEchoStudyError(message) from error

@@ -228,6 +228,14 @@ analysis; separate external-process and tampering regressions constrain this
 claim. The prior lack of an actual `.malbolge` measurement is narrowed only
 for this small, fixed classic target-subset.
 
+The real-target producer now rejects a forged temporary-study-directory receipt
+before making subdirectories or attempting recursive cleanup. The returned path
+must be native absolute text, a canonical child of the physical `.temp` root
+with the expected prefix, a non-symlink ordinary directory and initially empty.
+Red-first regressions demonstrate that an untrusted allocator result formerly
+reached both a child write and `rmtree` against an unrelated directory. These
+observed admission checks do not guarantee race-free filesystem ownership.
+
 The producer and opt-in replay now run external emitter/VM children through
 `benchmarks/arena/target_process.py`: POSIX-isolated child sessions,
 selector-drained stdout/stderr (4 KiB and 16 KiB separately), and one 15-second

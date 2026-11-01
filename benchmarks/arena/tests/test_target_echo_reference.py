@@ -766,6 +766,143 @@ def test_failed_workspace_setup_is_typed_and_removes_partial_study(
     assert not list(temp_root.glob("arena-target-echo-*"))
 
 
+class _ForgedTargetWorkspaceText(str):
+    """Caller-defined tempfile text may not redirect a retained trial tree."""
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "parent-root",
+        "outside-root",
+        "symlink",
+        "regular-file",
+        "foreign-text",
+        "foreign-type",
+        "occupied-prefix",
+        "relative-path",
+    ],
+)
+def test_target_echo_refuses_unowned_workspace_before_writes_or_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """An allocator's forged result must not cause writes or recursive delete."""
+    emitter, runner = tmp_path / "emitter", tmp_path / "runner"
+    emitter.write_bytes(b"test emitter")
+    runner.write_bytes(b"test runner")
+    source_profile = target_echo_reference._ROOT / "malbolge.json"
+    (tmp_path / "malbolge.json").write_bytes(source_profile.read_bytes())
+    scratch = tmp_path / ".temp"
+    scratch.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = scratch / "arena-target-echo-fake"
+    if kind == "parent-root":
+        target = scratch
+    elif kind == "outside-root":
+        target = outside
+    elif kind == "symlink":
+        target.symlink_to(outside, target_is_directory=True)
+    elif kind == "regular-file":
+        target.write_bytes(b"original")
+    elif kind in ("foreign-text", "occupied-prefix"):
+        target.mkdir()
+        if kind == "occupied-prefix":
+            (target / "original.txt").write_text("preserve")
+    receipt: object = str(target)
+    if kind == "foreign-text":
+        receipt = _ForgedTargetWorkspaceText(str(target))
+    elif kind == "foreign-type":
+        receipt = target
+    elif kind == "relative-path":
+        receipt = target.name
+    operations: list[str] = []
+
+    def forged_allocate(**kwargs: object) -> object:
+        del kwargs
+        return receipt
+
+    def forbid_mkdir(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        operations.append("mkdir")
+        raise OSError("unowned workspace reached subdirectory creation")
+
+    def forbid_cleanup(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        operations.append("rmtree")
+
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_echo_reference, "_TEMP", scratch)
+    monkeypatch.setattr(target_echo_reference, "_commit", lambda: "a" * 40)
+    monkeypatch.setattr(target_echo_reference.tempfile, "mkdtemp", forged_allocate)
+    monkeypatch.setattr(target_echo_reference.Path, "mkdir", forbid_mkdir)
+    monkeypatch.setattr(target_echo_reference.shutil, "rmtree", forbid_cleanup)
+    with pytest.raises(target_echo_reference.TargetEchoStudyError, match="workspace"):
+        target_echo_reference._prepare_context(emitter, runner)
+    assert not operations
+    assert outside.is_dir()
+    if kind == "regular-file":
+        assert target.read_bytes() == b"original"
+    if kind == "occupied-prefix":
+        assert (target / "original.txt").read_text() == "preserve"
+
+
+class _ForeignTargetStudyWorkspaceStat:
+    """Reject fabricated leaf metadata without evaluating untrusted fields."""
+
+    def __getattribute__(self, name: str) -> object:
+        if name.startswith("st_"):
+            raise AssertionError("foreign temporary stat field was accessed")
+        return super().__getattribute__(name)
+
+
+@pytest.mark.parametrize(
+    "kind", ["foreign-stat", "stat-fault", "scandir-fault", "occupied", "valid"]
+)
+def test_target_echo_workspace_receipt_metadata_is_typed_and_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Admit only a physical empty child, with typed host-probe failures."""
+    workspace = tmp_path / "arena-target-echo-receipt"
+    workspace.mkdir()
+    if kind == "occupied":
+        (workspace / "preserve.txt").write_text("preserve")
+    original_lstat = Path.lstat
+    original_scandir = os.scandir
+
+    def probe_lstat(path: Path) -> object:
+        if path == workspace:
+            if kind == "foreign-stat":
+                return _ForeignTargetStudyWorkspaceStat()
+            if kind == "stat-fault":
+                raise RuntimeError("injected tempfile lstat fault")
+        return original_lstat(path)
+
+    def probe_scandir(path: Path) -> object:
+        if path == workspace and kind == "scandir-fault":
+            raise OSError("injected tempfile inventory fault")
+        return original_scandir(path)
+
+    monkeypatch.setattr(target_echo_reference, "_TEMP", tmp_path)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(Path, "lstat", probe_lstat)
+        scoped.setattr(os, "scandir", probe_scandir)
+        if kind == "valid":
+            assert (
+                target_echo_reference._admit_new_study_workspace(str(workspace))
+                == workspace
+            )
+        else:
+            with pytest.raises(
+                target_echo_reference.TargetEchoStudyError, match="workspace"
+            ):
+                target_echo_reference._admit_new_study_workspace(str(workspace))
+    if kind == "occupied":
+        assert (workspace / "preserve.txt").read_text() == "preserve"
+
+
 @pytest.mark.parametrize(
     "error_type", [ValueError, RuntimeError, IndexError, OverflowError]
 )
