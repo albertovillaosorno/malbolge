@@ -36,7 +36,7 @@
 
 //! Pure guest-runtime byte-stream helper semantic lowering.
 
-use super::model::{InputWordDecodeSemantics, RuntimeHelperOperation};
+use super::model::{InputWordDecodeSemantics, RuntimeHelperOperation, eof_word_has_all_two_trits};
 use super::runtime_helper_input::RuntimeHelperRequest;
 use super::target_profile_input::TargetProfileIo;
 
@@ -68,6 +68,7 @@ pub fn lower_runtime_helper(
         || profile.profile_id != TARGET_PROFILE
         || request.target_profile != profile.profile_id
         || profile.eof_word <= 255
+        || !eof_word_has_all_two_trits(profile.eof_word)
     {
         return Err(RuntimeHelperLoweringError::UnsupportedProfile);
     }

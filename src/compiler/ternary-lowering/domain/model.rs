@@ -1721,3 +1721,23 @@ pub struct TernaryProgram {
     /// Exact target-profile identity.
     pub target_profile: String,
 }
+
+// An all-two-trit word has value 3^n - 1. This validates the shape of a
+// projected EOF sentinel, not the provenance or width of a VM descriptor.
+/// Returns whether an EOF word has an all-two-trit base-three representation.
+#[must_use]
+pub(super) const fn eof_word_has_all_two_trits(word: u32) -> bool {
+    if word == 0 {
+        return false;
+    }
+    let Some(mut memory_words) = word.checked_add(1) else {
+        return false;
+    };
+    while memory_words > 1 {
+        if !memory_words.is_multiple_of(3) {
+            return false;
+        }
+        memory_words = memory_words.div_euclid(3);
+    }
+    true
+}

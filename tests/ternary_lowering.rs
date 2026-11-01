@@ -20889,7 +20889,7 @@ fn runtime_helper_realization_rejects_profile_drift() -> Result<(), String> {
     if realize_runtime_helper(
         &RuntimeHelperOperation::DecodeInputWord(semantics.clone()),
         &drifted_eof,
-    ) != Err(RuntimeHelperRealizationError::InvalidPlan)
+    ) != Err(RuntimeHelperRealizationError::InvalidProfile)
     {
         return Err(String::from("changed profile EOF was realized"));
     }
@@ -20941,6 +20941,61 @@ fn runtime_helper_identity_or_profile_drift_fails_closed() -> Result<(), String>
         ) != Err(RuntimeHelperLoweringError::UnsupportedProfile)
     {
         return Err(String::from("runtime-helper drift was not rejected"));
+    }
+    Ok(())
+}
+
+#[test]
+fn pure_runtime_helpers_reject_non_ternary_eof_word_geometry() -> Result<(), String> {
+    let baseline = current_profile_io();
+    for eof_word in [
+        256u32,
+        257,
+        727,
+        729,
+        baseline.eof_word.saturating_add(1),
+        u32::MAX,
+    ] {
+        let mut projected = baseline.clone();
+        projected.eof_word = eof_word;
+        for identity in [
+            "malbolge_guest_decode_input_word",
+            "malbolge_guest_output_byte",
+        ] {
+            let request = RuntimeHelperRequest {
+                identity: String::from(identity),
+                target_profile: String::from("malbolge-2026"),
+            };
+            if lower_runtime_helper(&request, &projected)
+                != Err(RuntimeHelperLoweringError::UnsupportedProfile)
+            {
+                return Err(format!(
+                    "malformed EOF word {eof_word} reached {identity} semantics"
+                ));
+            }
+            let canonical = lower_runtime_helper(&request, &baseline)
+                .map_err(|error| format!("lower canonical helper: {error:?}"))?;
+            if realize_runtime_helper(&canonical, &projected)
+                != Err(RuntimeHelperRealizationError::InvalidProfile)
+            {
+                return Err(format!(
+                    "malformed EOF word {eof_word} reached {identity} control flow"
+                ));
+            }
+        }
+        for identity in ["getchar", "putchar"] {
+            let request = ByteStreamWrapperRequest {
+                identity: String::from(identity),
+                target_profile: String::from("malbolge-2026"),
+            };
+            if plan_byte_stream_wrapper(&request, &projected)
+                != Err(ByteStreamWrapperPlanningError::InvalidProfileProjection)
+            {
+                return Err(format!(
+                    "malformed EOF word {eof_word} reached {identity} wrapper plan"
+                ));
+            }
+        }
     }
     Ok(())
 }
