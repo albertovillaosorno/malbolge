@@ -811,6 +811,49 @@ def test_unrepresented_record_layout_attributes_fail_closed(
     )
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "_Alignas(64) int aligned;\n",
+        "typedef int AlignedInt __attribute__((aligned(64)));\n",
+    ],
+)
+def test_unrepresented_value_alignment_fails_closed(
+    tmp_path: Path, declaration: str
+) -> None:
+    """Aligned values and aliases cannot silently normalize to plain i32."""
+    source = tmp_path / "aligned-value.c"
+    _ = source.write_text(declaration, encoding="utf-8")
+    completed = _run_frontend(source, "fixtures/aligned-value.c")
+    assert completed.returncode == NORMALIZE_STATUS
+    assert not completed.stdout
+    assert completed.stderr == (
+        "MALBOLGE-FRONTEND-002 unsupported C declaration alignment\n"
+    )
+
+
+def test_imported_aligned_typedef_fails_closed(tmp_path: Path) -> None:
+    """Imported aligned typedefs also carry unrepresented layout semantics."""
+    _ = (tmp_path / "types.h").write_text(
+        "typedef int AlignedInt __attribute__((aligned(64)));\n",
+        encoding="utf-8",
+    )
+    source = tmp_path / "source.c"
+    _ = source.write_text(
+        '#include "types.h"\nAlignedInt imported;\n', encoding="utf-8"
+    )
+    completed = _run_frontend(
+        source,
+        "fixtures/aligned-alias.c",
+        guest_include=tmp_path,
+    )
+    assert completed.returncode == NORMALIZE_STATUS
+    assert not completed.stdout
+    assert completed.stderr == (
+        "MALBOLGE-FRONTEND-002 unsupported C declaration alignment\n"
+    )
+
+
 def test_imported_packed_record_type_fails_closed(tmp_path: Path) -> None:
     """Header-defined packing still affects main-source value layout."""
     _ = (tmp_path / "types.h").write_text(

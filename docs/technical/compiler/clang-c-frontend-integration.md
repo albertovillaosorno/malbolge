@@ -175,6 +175,9 @@ attributes (packing, explicit alignment, and `#pragma pack`) similarly fail
 closed with `MALBOLGE-FRONTEND-002`, including when the affected record comes
 from an included header. The normalized type grammar does not encode those
 layout constraints and cannot silently treat an attributed record as plain.
+Explicitly aligned values and aligned typedef aliases likewise fail with
+`MALBOLGE-FRONTEND-002`, including aligned aliases imported from headers;
+normalizing them to a plain integer type would erase alignment semantics.
 
 ### Declaration semantics
 

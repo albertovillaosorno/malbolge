@@ -202,6 +202,12 @@ private:
     if (input.isNull()) {
       return std::nullopt;
     }
+    if (const auto *alias =
+            llvm::dyn_cast<clang::TypedefType>(input.getTypePtr());
+        alias != nullptr && has_layout_attributes(*alias->getDecl())) {
+      failure_ = "MALBOLGE-FRONTEND-002 unsupported C declaration alignment";
+      return std::nullopt;
+    }
     clang::QualType canonical = input.getCanonicalType();
     if (canonical.hasAddressSpace() &&
         canonical.getAddressSpace() != clang::LangAS::Default) {
@@ -787,6 +793,12 @@ private:
     if (!span.has_value()) {
       fail_node("declaration-location", declaration.getDeclKindName(),
                 declaration.getLocation());
+      return std::nullopt;
+    }
+    if ((llvm::isa<clang::VarDecl>(declaration) ||
+         llvm::isa<clang::TypedefNameDecl>(declaration)) &&
+        has_layout_attributes(declaration)) {
+      failure_ = "MALBOLGE-FRONTEND-002 unsupported C declaration alignment";
       return std::nullopt;
     }
     Node node;
