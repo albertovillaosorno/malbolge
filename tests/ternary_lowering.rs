@@ -21144,6 +21144,35 @@ fn byte_stream_wrapper_plan_rejects_drift() -> Result<(), String> {
 }
 
 #[test]
+fn byte_stream_wrappers_reject_colliding_profile_io_opcodes() -> Result<(), String> {
+    let original = current_profile_io();
+    let mut forged = original.clone();
+    forged.input_instruction = forged.output_instruction;
+    for identity in ["getchar", "putchar"] {
+        let request = ByteStreamWrapperRequest {
+            identity: String::from(identity),
+            target_profile: String::from("malbolge-2026"),
+        };
+        let canonical = plan_byte_stream_wrapper(&request, &original)
+            .map_err(|error| format!("canonical {identity} plan: {error:?}"))?;
+        let machine = realize_byte_stream_wrapper(&canonical, &original)
+            .map_err(|error| format!("canonical {identity} machine: {error:?}"))?;
+        if plan_byte_stream_wrapper(&request, &forged)
+            != Err(ByteStreamWrapperPlanningError::InvalidProfileProjection)
+            || realize_byte_stream_wrapper(&canonical, &forged)
+                != Err(ByteStreamWrapperRealizationError::InvalidProfile)
+            || realize_byte_stream_control_flow(&machine, &forged)
+                != Err(ByteStreamControlFlowError::InvalidProfile)
+        {
+            return Err(format!(
+                "colliding I/O opcodes reached {identity} wrapper execution"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn byte_stream_wrapper_machine_io_uses_current_profile() -> Result<(), String> {
     let profile = current_profile_io();
     let getchar = plan_byte_stream_wrapper(
