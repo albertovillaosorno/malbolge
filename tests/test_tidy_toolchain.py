@@ -472,6 +472,68 @@ def test_manifest_rejects_same_byte_swap_after_read(
     assert swapped
 
 
+@pytest.mark.parametrize("source_kind", ["manifest", "archive"])
+@pytest.mark.parametrize("fault_point", ["fdopen", "fstat"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_tidy_source_stream_fault_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+    fault_point: str,
+    fault_type: type[Exception],
+) -> None:
+    """A failed source wrapper or admission cannot leak its descriptor."""
+    identity = tidy_toolchain.load_identity(root=tmp_path)
+    if source_kind == "manifest":
+        source = _write_manifest(tmp_path, _canonical_document())
+    else:
+        source = tmp_path / "archive.tar.xz"
+        _ = source.write_bytes(b"reviewed archive")
+    native_open = os.open
+    native_fdopen = os.fdopen
+    native_fstat = os.fstat
+    descriptors: list[int] = []
+    fault = fault_type("injected LLVM source wrapper failure")
+
+    def capture_open(path: Path, flags: int) -> int:
+        descriptor = native_open(path, flags)
+        if path == source:
+            descriptors.append(descriptor)
+        return descriptor
+
+    def reject_fdopen(descriptor: int, mode: str) -> object:
+        if fault_point == "fdopen" and descriptor in descriptors and mode == "rb":
+            raise fault
+        return native_fdopen(descriptor, mode)
+
+    def reject_fstat(descriptor: int) -> os.stat_result:
+        if fault_point == "fstat" and descriptor in descriptors:
+            raise fault
+        return native_fstat(descriptor)
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "fdopen", reject_fdopen)
+    monkeypatch.setattr(os, "fstat", reject_fstat)
+    try:
+        with pytest.raises(
+            tidy_toolchain.ToolchainError, match="cannot read"
+        ) as caught:
+            if source_kind == "manifest":
+                _ = tidy_toolchain.load_identity(source, root=tmp_path)
+            else:
+                tidy_toolchain.verify_archive(source, identity)
+        assert caught.value.__cause__ is fault
+        assert len(descriptors) == 1
+        with pytest.raises(OSError, match="Bad file descriptor|Invalid handle"):
+            _ = native_fstat(descriptors[0])
+    finally:
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
 def test_archive_rejects_fifo_without_waiting_for_writer(
     tmp_path: Path,
 ) -> None:

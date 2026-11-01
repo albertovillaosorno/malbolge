@@ -70,7 +70,9 @@ extent, and timestamps throughout the read before
 JSON parsing. Archive verification similarly hashes through a regular-file
 descriptor (no-follow opening where supported) and rejects source replacement
 or modification during streaming. Neither check accepts linked evidence paths
-or treats a matching hash as permission to replace inputs.
+or treats a matching hash as permission to replace inputs. A failed source
+stream wrapper or descriptor-identity preflight closes the owned descriptor
+and reports a typed toolchain error with the underlying host failure as cause.
 
 Linux LLVM development RPM publication also requires a physical, unlinked
 completion marker and physical regular required headers under the tracked

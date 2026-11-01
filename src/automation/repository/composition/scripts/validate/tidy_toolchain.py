@@ -278,14 +278,27 @@ def _open_regular_source(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    stream = os.fdopen(descriptor, "rb")
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        # fdopen did not transfer ownership of the source descriptor.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise ToolchainError(f"cannot read {label}: {error}") from error
     try:
         opened = _regular_source_identity(os.fstat(stream.fileno()), label)
         if opened != expected:
             _fail(f"{label} changed before read")
-    except OSError, ToolchainError:
-        stream.close()
-        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        try:
+            stream.close()
+        except OSError:
+            pass
+        if isinstance(error, ToolchainError):
+            raise
+        raise ToolchainError(f"cannot read {label}: {error}") from error
     return stream, admitted
 
 
