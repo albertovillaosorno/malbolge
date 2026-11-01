@@ -106,6 +106,29 @@ def test_linux_import_materializes_local_runtime_and_neutral_aliases(
     assert llvm_validation.import_linux_llvm(tmp_path, observation) == root
 
 
+@pytest.mark.parametrize("fault", (OSError, ValueError, RuntimeError, TypeError))
+def test_llvm_marker_fdopen_failure_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Host stream wrapper failures cannot leak a marker file descriptor."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    owned: list[int] = []
+
+    def faulty_stream(descriptor: int, _mode: str) -> None:
+        owned.append(descriptor)
+        raise fault("simulated LLVM marker stream failure")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation.os, "fdopen", faulty_stream)
+        assert not llvm_validation._valid_marker(root, LINUX_PLATFORM)
+    assert len(owned) == 1
+    for descriptor in owned:
+        with pytest.raises(OSError):
+            _ = os.fstat(descriptor)
+
+
 @pytest.mark.parametrize(
     "staging_fault",
     ("redirected-root", "nondirectory-root", "redirected-stage"),

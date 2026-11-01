@@ -143,7 +143,16 @@ def _stable_marker_descriptor(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except (OSError, ValueError, TypeError, RuntimeError):
+        # The raw fd remains owned by this caller if wrapper creation fails.
+        try:
+            os.close(descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError):
+            pass
+        raise
+    with stream:
         before = _marker_identity(os.fstat(stream.fileno()))
         content = stream.read(len(expected) + 1)
         after = _marker_identity(os.fstat(stream.fileno()))
@@ -164,7 +173,7 @@ def _valid_marker(root: Path, platform_id: str) -> bool:
             and _physical_file(marker)
             and _marker_identity(marker.lstat()) == admitted
         )
-    except OSError, ValueError:
+    except (OSError, ValueError, TypeError, RuntimeError):
         return False
 
 
