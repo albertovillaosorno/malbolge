@@ -570,7 +570,11 @@ def _read_cli_descriptor(
             )
         raise
     with owned_stream as stream:
-        if _cli_source_identity(os.fstat(stream.fileno()), label) != expected:
+        stream_descriptor = stream.fileno()
+        if type(stream_descriptor) is not int or stream_descriptor != descriptor:
+            message = f"{label} stream returned an invalid descriptor"
+            raise SearchCliError(message)
+        if _cli_source_identity(os.fstat(descriptor), label) != expected:
             message = f"{label} changed before read"
             raise SearchCliError(message)
         payload = stream.read(MAX_SEARCH_INPUT_BYTES + 1)
@@ -581,7 +585,7 @@ def _read_cli_descriptor(
             message = f"{label} changed during read or exceeds byte limit"
             raise SearchCliError(message)
         if (
-            _cli_source_identity(os.fstat(stream.fileno()), label) != expected
+            _cli_source_identity(os.fstat(descriptor), label) != expected
             or _cli_source_identity(path.stat(), label) != expected
         ):
             message = f"{label} changed during read"

@@ -175,7 +175,11 @@ def _read_config_descriptor(
             raise SearchConfigurationError(message) from failure
         raise
     with owned_stream as stream:
-        if _config_source_identity(os.fstat(stream.fileno())) != expected:
+        stream_descriptor = stream.fileno()
+        if type(stream_descriptor) is not int or stream_descriptor != descriptor:
+            message = "search configuration stream returned an invalid descriptor"
+            raise SearchConfigurationError(message)
+        if _config_source_identity(os.fstat(descriptor)) != expected:
             message = "search configuration changed before read"
             raise SearchConfigurationError(message)
         payload = stream.read(MAX_SEARCH_CONFIGURATION_BYTES + 1)
@@ -189,7 +193,7 @@ def _read_config_descriptor(
             )
             raise SearchConfigurationError(message)
         if (
-            _config_source_identity(os.fstat(stream.fileno())) != expected
+            _config_source_identity(os.fstat(descriptor)) != expected
             or _config_source_identity(path.stat()) != expected
         ):
             message = "search configuration changed during read"

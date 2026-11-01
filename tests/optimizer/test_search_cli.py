@@ -1500,3 +1500,64 @@ def test_cli_rejects_non_native_binary_read_receipts(
     assert status == CONFIGURATION_ERROR
     assert not output
     assert "non-native bytes" in error
+
+
+@pytest.mark.parametrize("source_kind", ["problem", "checkpoint"])
+@pytest.mark.parametrize(
+    "receipt",
+    [None, True, -1, 2, "8", 2**80, type("ForeignFd", (int,), {})(8)],
+    ids=["none", "boolean", "negative", "other-fd", "text", "huge", "subclass"],
+)
+def test_cli_rejects_foreign_opened_stream_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+    receipt: object,
+) -> None:
+    """A forged stream fileno cannot redirect filesystem identity probes."""
+    config, problem, checkpoint, _ = _resume_cli_inputs(tmp_path)
+    selected = problem if source_kind == SOURCE_KIND_PROBLEM else checkpoint
+    real_open = os.open
+    real_fdopen = os.fdopen
+    selected_fd: int | None = None
+    reached = False
+
+    class ForgedStream:
+        def __init__(self, inner: BinaryIO) -> None:
+            self.inner: BinaryIO = inner
+
+        def __enter__(self) -> ForgedStream:
+            return self
+
+        def __exit__(self, exc_type: object, exc_value: object, trace: object) -> None:
+            del exc_type, exc_value, trace
+            self.inner.close()
+
+        def fileno(self) -> int:
+            nonlocal reached
+            reached = True
+            return cast("int", receipt)
+
+        def read(self, count: int) -> bytes:
+            return self.inner.read(count)
+
+    def fake_open(path: Path, flags: int) -> int:
+        nonlocal selected_fd
+        descriptor = real_open(path, flags)
+        if path == selected:
+            selected_fd = descriptor
+        return descriptor
+
+    def fake_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        inner = cast("BinaryIO", real_fdopen(descriptor, mode))
+        if descriptor == selected_fd:
+            return cast("BinaryIO", cast("object", ForgedStream(inner)))
+        return inner
+
+    monkeypatch.setattr(os, "open", fake_open)
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    status, output, error = _file_input_cli(config, problem, checkpoint)
+    assert reached
+    assert status == CONFIGURATION_ERROR
+    assert not output
+    assert "descriptor" in error

@@ -698,3 +698,47 @@ def test_search_config_rejects_non_native_binary_read_receipts(
     with pytest.raises(SearchConfigurationError, match="non-native bytes"):
         _ = load_search_configuration(source)
     assert intercepted
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [None, True, -1, 2, "8", 2**80, type("ForeignFd", (int,), {})(8)],
+    ids=["none", "boolean", "negative", "other-fd", "text", "huge", "subclass"],
+)
+def test_search_config_rejects_foreign_opened_stream_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Stream fileno must be the exact raw FD before the first fstat."""
+    source = tmp_path / SEARCH_CONFIG_SOURCE
+    _ = source.write_text(_config(), encoding="utf-8")
+    real_fdopen = os.fdopen
+    reached = False
+
+    class ForgedStream:
+        def __init__(self, inner: BinaryIO) -> None:
+            self.inner: BinaryIO = inner
+
+        def __enter__(self) -> ForgedStream:
+            return self
+
+        def __exit__(self, exc_type: object, exc_value: object, trace: object) -> None:
+            del exc_type, exc_value, trace
+            self.inner.close()
+
+        def fileno(self) -> int:
+            nonlocal reached
+            reached = True
+            return cast("int", receipt)
+
+        def read(self, count: int) -> bytes:
+            return self.inner.read(count)
+
+    def fake_fdopen(descriptor: int, mode: str) -> ForgedStream:
+        return ForgedStream(cast("BinaryIO", real_fdopen(descriptor, mode)))
+
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    with pytest.raises(SearchConfigurationError, match="descriptor"):
+        _ = load_search_configuration(source)
+    assert reached

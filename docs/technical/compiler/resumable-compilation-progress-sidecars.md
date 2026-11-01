@@ -893,6 +893,13 @@ checkpoint state, and records checkpoint SHA-256 plus
 `evaluated-search-prefix-resume-v1` in resumed JSON output. Fresh-search JSON is
 unchanged.
 
+Opened optimizer TOML, binary problem, and resume-checkpoint streams now
+verify that the stream's `fileno()` is an exact native integer matching the
+originally opened raw descriptor before any descriptor metadata probes. All
+subsequent probes use that admitted raw descriptor, not repeated foreign
+`fileno()` calls. Invalid, boolean, oversized, subclassed, and substituted
+stream descriptors are rejected without dereferencing unrelated host FDs.
+
 Both the optimizer binary-file reader and its upstream TOML reader admit only
 exact native immutable `bytes` from an opened stream before measuring the
 receipt length, checking stable inode metadata, or decoding/searching. Foreign
