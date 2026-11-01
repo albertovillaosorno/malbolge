@@ -200,6 +200,22 @@ int main(void)
         return 54;
     }
     emitted = emit_state(output, 255, memory, &result);
+    if (emitted != 0) { free(memory); return emitted; }
+
+    // Exhaust input only at the last read; output its profile-specific EOF.
+    memset(memory, 0, MB_MEMORY_WORDS * sizeof(*memory));
+    memset(output, 0, sizeof(output));
+    status = malbolge_decompiled_run(memory, MB_MEMORY_WORDS,
+        input, 255, output, sizeof(output), 513, &result);
+    if (status != MB_STATUS_HALT || result.status != MB_STATUS_HALT
+        || result.steps != 513 || result.output_len != sizeof(output)
+        || result.input_consumed != 255
+        || memcmp(input, output, 255) != 0
+        || output[255] != (uint8_t)(MB_EOF_WORD % UINT32_C(256))) {
+        free(memory);
+        return 55;
+    }
+    emitted = emit_state(output, sizeof(output), memory, &result);
     free(memory);
     return emitted;
 }
@@ -491,6 +507,44 @@ fn full_binary_stream_source(profile: &ProfileDescriptor) -> Result<[u8; 513], S
     }))
 }
 
+fn output_and_reached_code_state(machine: &ProfileMachine) -> Vec<u8> {
+    let mut expected = machine.output().to_vec();
+    for word in machine.memory().iter().take(513).copied().chain([
+        machine.registers().accumulator,
+        machine.registers().code_pointer,
+        machine.registers().data_pointer,
+    ]) {
+        expected.extend_from_slice(&word.to_le_bytes());
+    }
+    expected
+}
+
+fn expected_vm_late_eof(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<Vec<u8>, String> {
+    let input = (u8::MIN..u8::MAX).collect::<Vec<_>>();
+    let mut machine = ProfileMachine::from_source(profile, source, input.clone())
+        .map_err(|error| error.to_string())?;
+    let outcome = machine.run(513).map_err(|error| error.to_string())?;
+    let mut expected_bytes = input;
+    expected_bytes.push(profile.eof_word().to_le_bytes()[0]);
+    if outcome
+        != (RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 513,
+        })
+        || machine.input_consumed() != 255
+        || machine.output() != expected_bytes
+    {
+        return Err(format!(
+            "unexpected late-EOF normative stream for {}: {outcome:?}",
+            profile.id()
+        ));
+    }
+    Ok(output_and_reached_code_state(&machine))
+}
+
 fn expected_vm_full_binary_stream(
     profile: &'static ProfileDescriptor,
     source: &[u8],
@@ -511,26 +565,18 @@ fn expected_vm_full_binary_stream(
         511 => (RunOutcome::BudgetExhausted { steps: 511 }, 255),
         _ => return Err(format!("unwitnessed binary step count {steps}")),
     };
-    let expected_output = input.get(..expected_output_len)
+    let expected_output = input
+        .get(..expected_output_len)
         .ok_or("expected binary output length exceeds source domain")?;
     let consumed_all_input = machine.input_consumed() == input.len();
     let output_matches_prefix = machine.output() == expected_output;
-    if outcome != expected_outcome || !consumed_all_input || !output_matches_prefix
-    {
+    if outcome != expected_outcome || !consumed_all_input || !output_matches_prefix {
         return Err(format!(
             "unexpected normative binary stream for {} at step {steps}: {outcome:?}",
             profile.id()
         ));
     }
-    let mut expected = machine.output().to_vec();
-    for word in machine.memory().iter().take(513).copied().chain([
-        machine.registers().accumulator,
-        machine.registers().code_pointer,
-        machine.registers().data_pointer,
-    ]) {
-        expected.extend_from_slice(&word.to_le_bytes());
-    }
-    Ok(expected)
+    Ok(output_and_reached_code_state(&machine))
 }
 
 fn verify_generated_full_binary_stream_against_vm(
@@ -550,6 +596,7 @@ fn verify_generated_full_binary_stream_against_vm(
             .map_err(|error| format!("execute full binary C for {}: {error}", profile.id()))?;
         let mut expected = expected_vm_full_binary_stream(profile, &source, 513)?;
         expected.extend(expected_vm_full_binary_stream(profile, &source, 511)?);
+        expected.extend(expected_vm_late_eof(profile, &source)?);
         if !executed.status.success() || !executed.stderr.is_empty() || executed.stdout != expected
         {
             return Err(format!(

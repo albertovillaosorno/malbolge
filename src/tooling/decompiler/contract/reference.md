@@ -54,9 +54,11 @@ match the normative VM's entire output and input cursor, the final `A`/`C`/`D`
 registers, and all 513 reached (post-encryption) source cells. The same
 all-profile harness then restricts output to 255 bytes, verifies 255 committed
 outputs, rejects the 256th without overwriting its guard byte, and compares
-all reached code cells and registers with the VM's 511-step prefix. This is
-bounded successful-stream and atomic refusal evidence, not EOF or arbitrary
-program equivalence.
+all reached code cells and registers with the VM's 511-step prefix. A third
+run exhausts input only on the 256th read and verifies the profile-specific EOF
+low byte and complete post-encryption code/register state against the VM. These
+are bounded stream, late-EOF and atomic refusal results, not arbitrary program
+equivalence.
 Current-profile fixtures verify the larger 15-trit
 geometry and EOF low-byte output without assuming the historical 10-trit
 sentinel. Both profiles also reject an indirect jump to a non-graphical
