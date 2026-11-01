@@ -1220,6 +1220,117 @@ def test_tool_fingerprint_close_error_does_not_hide_read_failure(
         assert observed.value.__cause__ is close_error
 
 
+class _ForeignToolDescriptor(int):
+    """An integer subclass is not an admitted native OS descriptor."""
+
+
+@pytest.mark.parametrize(
+    "receipt", [None, False, True, -1, 2**32, _ForeignToolDescriptor(9), object()]
+)
+def test_tool_fingerprint_rejects_foreign_open_descriptor_before_host_use(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A fabricated os.open result cannot reach fstat, read or close."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"trusted-emitter")
+    runner.write_bytes(b"trusted-runner")
+    seen: list[str] = []
+
+    def forged_open(path: Path, flags: int) -> int:
+        del path, flags
+        return cast("int", receipt)
+
+    def forbidden_fstat(descriptor: int) -> os.stat_result:
+        del descriptor
+        seen.append("fstat")
+        pytest.fail("unadmitted descriptor reached fstat")
+
+    def forbidden_close(descriptor: int) -> None:
+        del descriptor
+        seen.append("close")
+        pytest.fail("unadmitted descriptor reached close")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(target_echo_reference.os, "open", forged_open)
+        patch.setattr(target_echo_reference.os, "fstat", forbidden_fstat)
+        patch.setattr(target_echo_reference.os, "close", forbidden_close)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match=r"executable.*descriptor",
+        ):
+            target_echo_reference._tool_identity(emitter, runner)
+    assert not seen
+
+
+@pytest.mark.parametrize("receipt", [True, False, 0, 1, "closed"])
+def test_tool_fingerprint_requires_native_close_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A nonnative close receipt cannot certify a hashed executable."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"trusted-emitter")
+    runner.write_bytes(b"trusted-runner")
+    original_close = target_echo_reference.os.close
+    closed: list[int] = []
+
+    def forged_close(descriptor: int) -> None:
+        original_close(descriptor)
+        closed.append(descriptor)
+        return cast("None", receipt)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(target_echo_reference.os, "close", forged_close)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match=r"executable.*close receipt",
+        ):
+            target_echo_reference._tool_identity(emitter, runner)
+    assert len(closed) == 1
+
+
+def test_tool_fingerprint_false_close_receipt_keeps_primary_read_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged close receipt stays secondary to the original hash error."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"trusted-emitter")
+    runner.write_bytes(b"trusted-runner")
+    original_close = target_echo_reference.os.close
+    primary = OSError("injected read failure")
+    closed: list[int] = []
+
+    def fail_read(descriptor: int, amount: int) -> bytes:
+        del descriptor, amount
+        raise primary
+
+    def fake_close(descriptor: int) -> bool:
+        original_close(descriptor)
+        closed.append(descriptor)
+        return True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(target_echo_reference.os, "read", fail_read)
+        patch.setattr(target_echo_reference.os, "close", fake_close)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="executable identity changed",
+        ) as caught:
+            target_echo_reference._tool_identity(emitter, runner)
+    assert caught.value.__cause__ is primary
+    assert len(closed) == 1
+    assert primary.__notes__ == [
+        "target echo executable descriptor cleanup failed: TargetEchoStudyError"
+    ]
+
+
 @pytest.mark.parametrize("site", ["lstat", "open", "fstat", "read", "close"])
 @pytest.mark.parametrize(
     "failure_type",

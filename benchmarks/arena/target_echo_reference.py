@@ -48,6 +48,7 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 from io import StringIO
 from pathlib import Path
+from struct import calcsize
 from time import perf_counter_ns
 from typing import Any, Never
 
@@ -76,6 +77,7 @@ MAX_LEVELS = 4
 MAX_TRIALS = 3
 MAX_TARGET_BYTES = 256
 MAX_TOOL_BYTES = 128 * 1024 * 1024
+MAX_TOOL_DESCRIPTOR = (1 << (8 * calcsize("@i") - 1)) - 1
 MAX_HOST_LABEL_CHARS = 256
 COMMIT_HEX_WIDTH = 40
 GRAPHICAL_LOW = 33
@@ -322,6 +324,12 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 | getattr(os, "O_NOFOLLOW", 0)
             )
             descriptor = os.open(path, flags)
+            if (
+                type(descriptor) is not int
+                or descriptor < 0
+                or descriptor > MAX_TOOL_DESCRIPTOR
+            ):
+                _fail("target echo executable open descriptor invalid")
             try:
                 opened = os.fstat(descriptor)
                 if type(opened) is not os.stat_result:
@@ -352,7 +360,8 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             finally:
                 primary = sys.exception()
                 try:
-                    os.close(descriptor)
+                    if os.close(descriptor) is not None:
+                        _fail("target echo executable close receipt invalid")
                 except Exception as cleanup_error:
                     # An unexpected host cleanup fault must not overwrite the
                     # original read/hash rejection or execute foreign hooks.

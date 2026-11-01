@@ -305,9 +305,14 @@ checks exact source length, graphical byte domain, the per-attempt output
 path, and exact executable identity before/after the study. Producer and
 independent replay auditor fingerprint executable bytes through regular,
 non-following descriptors with nonblocking POSIX opens and device/inode/size/
-change-time rechecks. This rejects a linked or FIFO executable substituted
-after path admission; the byte fingerprint does not attest which executable
-was actually run or prevent later tool replacement.
+change-time rechecks. Executable hash opens additionally require exact native,
+nonnegative signed C-int descriptors before any descriptor operations; a
+foreign open receipt cannot authorize `fstat`, reads, or cleanup. After a
+successful hash, descriptor close must return native `None`. False success-
+looking close results reject the fingerprint, while cleanup errors after an
+earlier hash failure stay secondary to that failure. This rejects a linked or
+FIFO executable substituted after path admission; the byte fingerprint does
+not attest which executable was actually run or prevent later tool replacement.
 
 After the producer calls the independent retained-study auditor, it reopens
 `study.json` through the same bounded, link-rejecting regular-file reader and
