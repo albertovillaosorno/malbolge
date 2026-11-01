@@ -30,7 +30,10 @@ blocking on a pipe. An actually missing CUDA index still selects the legacy
 direct manifest; a missing direct manifest retains its `missing` readiness
 state. Opened file identity and timestamps are checked before/after each read,
 and invalid UTF-8, oversized input, or changed inodes produce typed bootstrap
-errors before any tool import is attempted. The pinned `uv-toolchain.json`
+errors before any tool import is attempted. If wrapping an opened bootstrap
+authority descriptor as a stream fails, bootstrap closes the descriptor and
+reports a typed initialization error preserving the host failure as its cause.
+The pinned `uv-toolchain.json`
 uses the same one-MiB physical regular-file admission and stable descriptor
 checks before its URL, version, artifact, and digest fields are interpreted.
 Failed uv manifest stream wrapping closes its owned descriptor and surfaces

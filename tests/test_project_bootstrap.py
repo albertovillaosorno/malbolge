@@ -1211,6 +1211,50 @@ def test_bootstrap_cuda_authority_rejects_inode_replacement(
         _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
 
 
+@pytest.mark.parametrize("cuda_index", [False, True])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, ValueError, TypeError, RuntimeError]
+)
+def test_bootstrap_authority_fdopen_fault_closes_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    cuda_index: bool,
+    fault_type: type[Exception],
+) -> None:
+    """Bootstrap authority readers own and close failed stream descriptors."""
+    if cuda_index:
+        _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+        authority = _write_cuda_manifest_index(tmp_path)
+    else:
+        authority = _write_rust_manifest(tmp_path)
+
+    def inspect() -> None:
+        if cuda_index:
+            _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+        else:
+            _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+
+    opened, fault = _inject_binary_source_wrapper_failure(
+        monkeypatch, authority, fault_type
+    )
+    try:
+        with pytest.raises(
+            project.InitializationError, match="bootstrap authority"
+        ) as caught:
+            inspect()
+        assert caught.value.__cause__ is fault
+        assert len(opened) == 1
+        with pytest.raises(
+            OSError, match=r"Bad file descriptor|Invalid handle"
+        ):
+            _ = os.fstat(opened[0])
+    finally:
+        for descriptor in opened:
+            with suppress(OSError):
+                os.close(descriptor)
+
+
 def test_bootstrap_cuda_authority_rejects_nonregular_fifo(
     tmp_path: Path,
 ) -> None:

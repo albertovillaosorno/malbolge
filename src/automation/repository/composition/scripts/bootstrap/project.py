@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 import json
@@ -52,6 +53,7 @@ import stat
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed Rustup argv.
 import sys
 import tomllib
+from typing import BinaryIO
 from typing import Final
 from typing import Never
 from typing import cast
@@ -85,7 +87,8 @@ GIT_IMPORT_MARKER: Final = ".malbolge-git-import-v1"
 CARGO_HOME_RELATIVE: Final = Path(".dependencies/cargo-home")
 UNKNOWN_PLATFORM: Final = "unknown"
 PARENT_SEGMENT: Final = ".."
-PATH_SEPARATORS: Final = frozenset(("/", "\\"))
+WINDOWS_SEPARATOR: Final = "\\"
+PATH_SEPARATORS: Final = frozenset(("/", WINDOWS_SEPARATOR))
 CUDA_TOOLCHAIN_MANIFEST: Final = (
     Path("src")
     / "optimization"
@@ -256,7 +259,7 @@ def _repository_relative_path(value: str, label: str) -> Path:
     )
     if not native_relative or not windows_relative:
         _fail(f"{label} must stay within the repository")
-    if "\\" in value:
+    if WINDOWS_SEPARATOR in value:
         _fail(f"{label} must use forward slashes")
     return path
 
@@ -313,6 +316,27 @@ def _authority_identity(status: os.stat_result) -> tuple[int, ...]:
     )
 
 
+def _open_authority_stream(descriptor: int) -> BinaryIO:
+    """Transfer ownership of an opened authority descriptor to a stream.
+
+    Returns:
+        The binary stream owning the descriptor.
+
+    Raises:
+        InitializationError: The host cannot wrap the descriptor as a stream.
+
+    """
+    try:
+        return cast("BinaryIO", os.fdopen(descriptor, "rb"))
+    except BaseException as error:
+        with suppress(OSError):
+            os.close(descriptor)
+        if isinstance(error, (OSError, ValueError, TypeError, RuntimeError)):
+            message = "cannot open bootstrap authority stream"
+            raise InitializationError(message) from error
+        raise
+
+
 def _read_authority_bytes(path: Path) -> bytes:
     """Read bounded nonredirected authority bytes from one stable inode.
 
@@ -332,7 +356,7 @@ def _read_authority_bytes(path: Path) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
+    with _open_authority_stream(descriptor) as stream:
         if _authority_identity(os.fstat(stream.fileno())) != expected:
             _fail("bootstrap authority changed before read")
         content = stream.read(MAX_AUTHORITY_BYTES + 1)
