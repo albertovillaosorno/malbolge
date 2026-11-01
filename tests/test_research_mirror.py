@@ -96,7 +96,11 @@ def test_executable_only_research_id_fails_closed() -> None:
 
 @pytest.mark.parametrize(
     "aliases",
-    [frozenset({"alpha", "ALPHA"}), frozenset({"analysis-v2", "ANALYSIS-v2"})],
+    [
+        frozenset({"alpha", "ALPHA"}),
+        frozenset({"analysis-v2", "ANALYSIS-v2"}),
+        frozenset({"caf\u00e9", "cafe\u0301"}),
+    ],
 )
 def test_casefold_colliding_research_ids_fail_closed(
     aliases: frozenset[str],

@@ -36,8 +36,9 @@ research ID under either mirror root must exist on both sides. The special
 composition state-graph experiment and domain algorithm directories must not
 publish the same research ID: discovery rejects a collision instead of silently
 replacing either physical experiment. Mirror identity also rejects research
-IDs differing only by Unicode case folding: those names are distinct on some
-POSIX filesystems but can alias one directory on case-insensitive hosts.
+IDs differing only under Unicode case folding and canonical NFC normalization:
+those names are distinct on some POSIX filesystems but can alias on
+case-insensitive or normalization-insensitive hosts.
 Each research ID must also be one portable path component: `.`/`..`, forward
 or backward separators, Windows device names, NTFS alternate stream suffixes,
 and trailing dots or spaces are not admissible, even on POSIX hosts.

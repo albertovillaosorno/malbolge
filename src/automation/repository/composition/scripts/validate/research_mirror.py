@@ -48,6 +48,7 @@ from scripts.repository_root import repository_root
 from scripts.research_layout import (
     research_algorithm_directories,
     research_algorithm_test_directory,
+    research_id_alias_key,
     research_id_is_portable,
 )
 
@@ -166,7 +167,7 @@ def validate_id_sets(
     for identifier in sorted(document_ids):
         if not research_id_is_portable(identifier):
             _fail(f"research ID not portable across hosts: {identifier}")
-        previous = casefolded.setdefault(identifier.casefold(), identifier)
+        previous = casefolded.setdefault(research_id_alias_key(identifier), identifier)
         if previous != identifier:
             message = f"case-insensitive research mirror ID collision: {previous}"
             _fail(f"{message} and {identifier}")

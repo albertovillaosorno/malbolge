@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import ntpath
+import unicodedata
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING
 
@@ -52,6 +53,11 @@ def research_id_is_portable(identifier: str) -> bool:
         and "\\" not in identifier
         and not ntpath.isreserved(identifier)
     )
+
+
+def research_id_alias_key(identifier: str) -> str:
+    """Fold case and canonical Unicode spelling for host-portable identity."""
+    return unicodedata.normalize("NFC", identifier.casefold())
 
 
 def _unlinked_directory(root: Path, directory: Path) -> bool:
@@ -124,7 +130,7 @@ def research_algorithm_directories(root: Path) -> tuple[tuple[str, Path], ...]:
     for identifier in sorted(entries):
         if not research_id_is_portable(identifier):
             raise OSError(f"research ID not portable across hosts: {identifier}")
-        previous = casefolded.setdefault(identifier.casefold(), identifier)
+        previous = casefolded.setdefault(research_id_alias_key(identifier), identifier)
         if previous != identifier:
             message = f"case-insensitive research ID collision: {previous}"
             raise OSError(f"{message} and {identifier}")

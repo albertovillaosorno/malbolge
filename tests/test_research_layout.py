@@ -139,6 +139,7 @@ def test_linked_state_graph_directory_is_not_discovered(tmp_path: Path) -> None:
     [
         (("candidate", "CANDIDATE"), False),
         ((research_layout.STATE_GRAPH_ID.swapcase(),), True),
+        (("caf\u00e9", "cafe\u0301"), False),
     ],
 )
 def test_discovery_rejects_casefold_colliding_experiments(
