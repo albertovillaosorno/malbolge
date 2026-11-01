@@ -504,6 +504,19 @@ def _native_stat(status: os.stat_result, context: str) -> os.stat_result:
     return status
 
 
+def _native_junction_status(path: Path, context: str) -> bool:
+    """Require an exact boolean before trusting a path's redirect status.
+
+    Returns:
+        Whether the named path is an OS junction.
+
+    """
+    receipt = path.is_junction()
+    if type(receipt) is not bool:
+        _fail(f"{context} requires native junction receipt")
+    return receipt
+
+
 def _matching_regular_status(
     expected: os.stat_result, observed: os.stat_result
 ) -> bool:
@@ -527,7 +540,9 @@ def _check_physical_parents(path: Path, context: str) -> None:
     for parent in path.parents:
         try:
             status = _native_stat(parent.lstat(), f"{context} parent status")
-            redirected = S_ISLNK(status.st_mode) or parent.is_junction()
+            redirected = S_ISLNK(status.st_mode) or _native_junction_status(
+                parent, f"{context} parent"
+            )
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             detail = _host_error_detail(error)
             raise BenchmarkProtocolError(
@@ -567,7 +582,7 @@ def _read_verified_bytes(
     if (
         not _matching_regular_status(admitted, os.fstat(descriptor))
         or not _matching_regular_status(admitted, path.lstat())
-        or path.is_junction()
+        or _native_junction_status(path, context)
     ):
         _fail(f"{context} changed during file read")
     _check_physical_parents(path, context)
@@ -637,7 +652,9 @@ def _regular_file_status(path: Path, context: str) -> os.stat_result | None:
         raise BenchmarkProtocolError(f"{context} status failed: {detail}") from error
     status = _native_stat(status, f"{context} status")
     try:
-        redirected = S_ISLNK(status.st_mode) or path.is_junction()
+        redirected = S_ISLNK(status.st_mode) or _native_junction_status(
+            path, context
+        )
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         detail = _host_error_detail(error)
         raise BenchmarkProtocolError(f"{context} status failed: {detail}") from error

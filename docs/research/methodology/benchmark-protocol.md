@@ -55,8 +55,10 @@ The validator admits only physical regular evidence files whose parent
 components are unlinked directories, before reading and again after. It pins
 the opened descriptor to its device, inode, byte length, and modification/change
 timestamps. Parent and leaf statuses, and opened-descriptor checks before and
-after reading, require exact native stat receipts before inspecting fields. The
-reader rejects parent redirects, post-admission leaf replacement or in-place
+after reading, require exact native stat receipts before inspecting fields.
+Junction/redirect verdicts for source parents, initial source leaves, and
+post-read source leaves must be exact native booleans before truthiness checks.
+The reader rejects parent redirects, post-admission leaf replacement or in-place
 mutation, uses nonblocking/no-follow opens where available, and reads
 text in at most 64 KiB chunks under a 1 MiB admission limit. Host file
 opening must return an exact native signed descriptor before stream wrapping

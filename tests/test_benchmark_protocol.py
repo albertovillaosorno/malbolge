@@ -54,6 +54,9 @@ SWAP_RUN = "run"
 SWAP_FIFO = "fifo"
 SWAP_LINK = "symlink"
 SWAP_REGULAR = "regular"
+PARENT_JUNCTION = "parent"
+LEAF_JUNCTION = "leaf"
+AFTER_READ_JUNCTION = "after-read"
 DETERMINISTIC = (
     ROOT
     / "benchmarks"
@@ -572,6 +575,60 @@ def test_benchmark_stat_receipts_are_native_before_field_access(
             _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
                 protocol, context, admitted
             )
+
+
+@final
+class _ForeignBenchmarkJunction:
+    """A caller-owned redirect verdict with unsafe truthiness."""
+
+    def __bool__(self) -> bool:
+        """Ensure file admission never invokes foreign truthiness.
+
+        Raises:
+            AssertionError: When a caller coerces this hostile result.
+
+        """
+        message = "foreign benchmark junction truthiness executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (component, receipt)
+        for component in (PARENT_JUNCTION, LEAF_JUNCTION, AFTER_READ_JUNCTION)
+        for receipt in (0, 1, _ForeignBenchmarkJunction())
+    ],
+)
+def test_benchmark_rejects_non_native_junction_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, object],
+) -> None:
+    """Parent, leaf and rechecked leaf status require exact native booleans."""
+    component, receipt = case
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    native_junction = Path.is_junction
+    leaf_checks = 0
+    victim = protocol.parent if component == PARENT_JUNCTION else protocol
+
+    def forged_junction(path: Path) -> bool:
+        nonlocal leaf_checks
+        if path == protocol:
+            leaf_checks += 1
+        if path == victim and (
+            component != AFTER_READ_JUNCTION or leaf_checks > 1
+        ):
+            return cast("bool", receipt)
+        return native_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    with pytest.raises(
+        validator.BenchmarkProtocolError, match="native junction"
+    ):
+        _ = validator.validate_example(protocol)
+    if component == AFTER_READ_JUNCTION:
+        assert leaf_checks > 1
 
 
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
