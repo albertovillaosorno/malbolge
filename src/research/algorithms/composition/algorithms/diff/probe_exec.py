@@ -1076,9 +1076,11 @@ def _update_exit_digest(
     hasher.update(code_bytes)
 
 
-def _temporary_probe_root(prefix: str) -> tempfile.TemporaryDirectory[str]:
+def _temporary_probe_root(
+    prefix: str, *, parent: Path
+) -> tempfile.TemporaryDirectory[str]:
     try:
-        return tempfile.TemporaryDirectory(prefix=prefix)
+        return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
     except (OSError, ValueError, RuntimeError) as error:
         message = f"probe temporary root failed: {error}"
         raise ProbeExecutionError(message) from error
@@ -1088,10 +1090,13 @@ def _run_program(
     program: ProbeProgram,
     context: ProbeRunContext,
     baseline: TreeSnapshot,
+    temporary_parent: Path,
 ) -> ProbeTranscript:
     hasher = hashlib.sha256()
     digested_commands = _ZERO
-    with _temporary_probe_root("diff-probe-") as scratch:
+    with _temporary_probe_root(
+        "diff-probe-", parent=temporary_parent
+    ) as scratch:
         scratch_root = Path(scratch)
         for command_index, command in enumerate(program.commands):
             try:
@@ -1267,7 +1272,20 @@ def _run_isolated_batch(
     programs: tuple[ProbeProgram, ...], context: ProbeRunContext
 ) -> tuple[ProbeTranscript, ...]:
     source = _snapshot_probe_tree(context.source_root, "source")
-    with _temporary_probe_root("diff-probe-batch-") as batch:
+    # A host TMPDIR inside the source would copy the new batch directory into
+    # itself recursively. Reject before creating any temporary directories.
+    try:
+        temporary_parent = Path(tempfile.gettempdir()).resolve()
+    except (OSError, ValueError, RuntimeError) as error:
+        message = "probe temporary parent resolution failed"
+        raise ProbeExecutionError(message) from error
+    original_source = _resolved_root(context.source_root, "source")
+    if temporary_parent.is_relative_to(original_source):
+        message = "probe temporary parent overlaps original source tree"
+        raise ProbeExecutionError(message)
+    with _temporary_probe_root(
+        "diff-probe-batch-", parent=temporary_parent
+    ) as batch:
         batch_root = Path(batch)
         try:
             mirror_root = Path(
@@ -1289,7 +1307,9 @@ def _run_isolated_batch(
             raise ProbeExecutionError(message)
         transcripts: list[ProbeTranscript] = []
         for program in programs:
-            transcripts.append(_run_program(program, isolated, baseline))
+            transcripts.append(
+                _run_program(program, isolated, baseline, temporary_parent)
+            )
             _require_mirror_unchanged(mirror_root, baseline)
         return tuple(transcripts)
 

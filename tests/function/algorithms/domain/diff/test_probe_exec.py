@@ -1544,6 +1544,130 @@ def test_probe_created_symlink_is_rejected_inside_execution_boundary(
     _expect(outside.read_bytes() == _OUTSIDE_BYTES, "external file changed")
 
 
+@pytest.mark.parametrize("location", ["direct", "nested", "symlink"])
+def test_probe_rejects_temporary_parent_inside_source_before_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, location: str
+) -> None:
+    """TMPDIR inside source must not trigger recursive mirror copying."""
+    source = tmp_path / "source"
+    source.mkdir()
+    input_file = source / "input.txt"
+    _ = input_file.write_bytes(_ADMITTED_INPUT)
+    temporary_parent = source
+    if location == "nested":
+        temporary_parent = source / "nested-temp"
+        temporary_parent.mkdir()
+    elif location == "symlink":
+        temporary_parent = tmp_path / "temp-alias"
+        try:
+            temporary_parent.symlink_to(source, target_is_directory=True)
+        except OSError, NotImplementedError:
+            pytest.skip("temporary-parent symlink creation unavailable")
+    before = sorted(path.relative_to(source) for path in source.rglob("*"))
+    context = replace(
+        _context(source, tmp_path), enforce_source_immutable=False
+    )
+
+    def reject_copy(*_args: object, **_kwargs: object) -> Path:
+        message = "source-rooted temporary directory reached recursive copy"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(tempfile, "tempdir", str(temporary_parent))
+        patch.setattr(probe_exec_module.shutil, "copytree", reject_copy)
+        with pytest.raises(ProbeExecutionError, match="temporary.*source"):
+            _ = run_probe_program(
+                _program("source-tempdir", "print('unreachable')"), context
+            )
+
+    _expect(input_file.read_bytes() == _ADMITTED_INPUT, "input changed")
+    _expect(
+        sorted(path.relative_to(source) for path in source.rglob("*")) == before,
+        "unsafe probe scratch root was created inside the source",
+    )
+
+
+@pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
+def test_probe_temporary_parent_resolution_errors_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A broken temporary parent must reject before source mirroring."""
+    source = tmp_path / "source"
+    source.mkdir()
+    input_file = source / "input.txt"
+    _ = input_file.write_bytes(_ADMITTED_INPUT)
+
+    def fail_temporary_parent() -> str:
+        message = "temporary parent unavailable"
+        raise failure_type(message)
+
+    def reject_copy(*_args: object, **_kwargs: object) -> Path:
+        message = "failed temporary-parent admission reached source copy"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(tempfile, "gettempdir", fail_temporary_parent)
+        patch.setattr(shutil, "copytree", reject_copy)
+        with pytest.raises(
+            ProbeExecutionError, match="temporary parent resolution failed"
+        ):
+            _ = run_probe_program(
+                _program("failed-tempdir", "print('unreachable')"),
+                replace(_context(source, tmp_path), enforce_source_immutable=False),
+            )
+
+    _expect(input_file.read_bytes() == _ADMITTED_INPUT, "source changed")
+
+
+def test_probe_pins_temporary_parent_for_nested_scratch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A changed global TMPDIR cannot redirect later scratch into source."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _ = (source / "input.txt").write_bytes(_ADMITTED_INPUT)
+    safe_parent = tmp_path / "safe-temp"
+    safe_parent.mkdir()
+    original_copytree = shutil.copytree
+    original_temporary_root = tempfile.TemporaryDirectory
+    created_parents: list[Path] = []
+
+    def change_tempdir_after_copy(
+        root: Path, destination: Path, *, symlinks: bool = False
+    ) -> Path:
+        copied = original_copytree(root, destination, symlinks=symlinks)
+        tempfile.tempdir = str(source)
+        return copied
+
+    def record_temporary_root(
+        *, prefix: str, dir: Path
+    ) -> tempfile.TemporaryDirectory[str]:
+        del prefix
+        created_parents.append(dir)
+        return original_temporary_root(dir=dir)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(tempfile, "tempdir", str(safe_parent))
+        patch.setattr(shutil, "copytree", change_tempdir_after_copy)
+        patch.setattr(tempfile, "TemporaryDirectory", record_temporary_root)
+        result = run_probe_program(
+            _program("tempdir-stable", "print('stable')"),
+            replace(_context(source, tmp_path), enforce_source_immutable=False),
+        )
+
+    _expect(result.digested_commands == 1, "probe did not execute")
+    _expect(
+        created_parents == [safe_parent, safe_parent],
+        "nested scratch followed a changed global temp directory",
+    )
+    _expect(
+        sorted(entry.name for entry in source.iterdir()) == ["input.txt"],
+        "probe scratch redirected into candidate source",
+    )
+
+
 def test_mirror_snapshot_catches_copy_time_source_drift(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1635,12 +1759,12 @@ def test_probe_temporary_workspace_errors_are_typed(
     original_temporary_root = tempfile.TemporaryDirectory
 
     def denied_temporary_root(
-        *, prefix: str
+        *, prefix: str, dir: Path
     ) -> tempfile.TemporaryDirectory[str]:
         if prefix == failed_prefix:
             message = "temporary root host failure"
             raise failure_type(message)
-        return original_temporary_root(prefix=prefix)
+        return original_temporary_root(prefix=prefix, dir=dir)
 
     monkeypatch.setattr(tempfile, "TemporaryDirectory", denied_temporary_root)
     with pytest.raises(ProbeExecutionError, match="temporary root failed"):

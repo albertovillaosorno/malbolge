@@ -320,7 +320,12 @@ detach their POSIX session are also outside cleanup. Cross-platform child-tree
 cleanup remains open.
 
 A probe batch validates the candidate source as a regular-file-only tree and
-copies it into an isolated temporary mirror without following symbolic links.
+rejects an OS temporary-directory parent resolving inside that source before
+creating scratch state, preventing recursive self-copying when `TMPDIR` points
+into the candidate. The admitted absolute temporary parent is pinned for the
+batch and each nested scratch workspace, so a later global TMPDIR selection
+change cannot redirect them into the source. The runner then copies the source
+into an isolated temporary mirror without following symbolic links.
 The mirror's complete byte snapshot must match the pre-copy source snapshot,
 including when post-run original-source immutability checks are disabled.
 Invalid trees, unexpected links, or copy drift fail within the probe error
