@@ -1880,6 +1880,28 @@ def test_rooted_probe_arguments_reject_windows_drive_paths(
         _ = RootedExecutable(ProbeRoot.REPOSITORY, unsafe)
 
 
+@pytest.mark.parametrize("kind", ["rooted-path", "rooted-tool", "raw-argv"])
+def test_probe_rejects_surrogateescape_text_from_portable_records(
+    kind: str,
+) -> None:
+    """Host-encodable byte escapes cannot form cross-host probe programs."""
+    malformed = "nonutf8" + chr(0xDCFF)
+    try:
+        _ = os.fsencode(malformed)
+    except UnicodeError:
+        pytest.skip("host does not admit surrogateescape filesystem text")
+    with pytest.raises(ProbeProgramError, match="portable UTF-8"):
+        if kind == "rooted-path":
+            _ = PathArgument(ProbeRoot.SOURCE, malformed)
+        elif kind == "rooted-tool":
+            _ = RootedExecutable(ProbeRoot.SCRATCH, malformed)
+        else:
+            _ = ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(malformed,),
+            )
+
+
 def test_probe_paths_reject_host_unencodable_metadata() -> None:
     """Process and filesystem paths must fail typed before any launch."""
     malformed = "unencodable" + chr(0xD800)

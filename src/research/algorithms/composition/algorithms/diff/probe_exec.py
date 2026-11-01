@@ -127,12 +127,16 @@ def _require_portable_probe_identifier(value: object, context: str) -> str:
     if _NUL in value:
         message = f"{context} must not contain NUL bytes"
         raise ProbeProgramError(message)
+    _require_portable_utf8_text(value, context)
+    return value
+
+
+def _require_portable_utf8_text(value: str, context: str) -> None:
     try:
         _ = value.encode("utf-8")
     except UnicodeEncodeError as error:
         message = f"{context} must use portable UTF-8 text"
         raise ProbeProgramError(message) from error
-    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +189,7 @@ def _validate_argv_strings(arguments: tuple[ProbeArgument, ...]) -> None:
     for argument in arguments:
         if type(argument) is str:
             _require_fs_encodable(argument, "probe argv string")
+            _require_portable_utf8_text(argument, "probe argv string")
 
 
 def _validate_command_shape(command: ProbeCommand) -> None:
@@ -408,6 +413,7 @@ def _validate_relative_path(relative_path: object) -> None:
         message = "probe relative paths must not contain NUL bytes"
         raise ProbeProgramError(message)
     _require_fs_encodable(relative_path, "probe relative path")
+    _require_portable_utf8_text(relative_path, "probe relative path")
     unsafe = (
         not relative_path
         or _BACKSLASH in relative_path

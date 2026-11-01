@@ -347,8 +347,8 @@ scratch executable consumed by a later command.
 
 The executor validates the complete process description before snapshotting,
 copying, or launching anything: roots/enums, executable records, argv tuples,
-NUL-free argv and rooted paths/tool identifiers, stdin bytes, exit codes,
-timeout/output limits, digest flags, program batches,
+NUL-free portable UTF-8 argv strings, relative paths, and tool identifiers,
+stdin bytes, exit codes, timeout/output limits, digest flags, program batches,
 tool bindings, and source-immutability flags all use exact admitted types.
 The `ProbeRunContext` admission further requires exact host-native `Path`
 values for the source root, repository root, and bound tool executable paths,
