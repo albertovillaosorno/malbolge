@@ -119,7 +119,10 @@ const fn is_identifier_continue(byte: u8) -> bool {
 }
 
 const fn is_identifier_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
+    // C23 admits UTF-8 identifier letters. Treat every high-bit byte as
+    // identifier content so an ASCII adapter suffix cannot be mistaken for a
+    // separate symbol; the compiler still owns full Unicode validity.
+    byte.is_ascii_alphabetic() || byte == b'_' || byte >= 0x80
 }
 
 fn read_identifier(first: u8, bytes: &mut SourceBytes<'_>) -> Vec<u8> {

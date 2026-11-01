@@ -152,8 +152,11 @@ for native debugging only. Input returns bytes `0..255` or classic EOF word
 
 Lexical discovery applies C line
 splicing and ignores comments, string literals, character literals, identifier
-prefixes, and non-function-like uses. The guest source still includes no hosted
-headers and calls no host libc routine. The adapters map input/output only for
+prefixes (including UTF-8 C23 identifier prefixes), and non-function-like
+uses. High-bit source bytes are conservatively considered identifier content,
+not a claim that the lexical scanner validates all Unicode C identifiers. The
+guest source still includes no hosted headers and calls no host libc routine.
+The adapters map input/output only for
 `.c` debug execution. They are not linked into generated `.malbolge` artifacts
 and are not evidence that C-to-Malbolge lowering,
 

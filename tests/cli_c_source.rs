@@ -73,6 +73,33 @@ fn guest_output_requires_exact_function_like_code_token() {
 }
 
 #[test]
+fn utf8_prefixed_c23_identifiers_cannot_impersonate_host_adapters() {
+    // Clang C23 admits these as one identifier, not a standalone ASCII
+    // function token. A high-bit prefix must not select native adapters.
+    let source = b"int caf\xc3\xa9__malbolge_input_word(void);\n\
+        int caf\xc3\xa9__malbolge_output_byte(void);\n\
+        void caf\xc3\xa9DoomHost_GuestMemoryRegion(void);\n\
+        void caf\xc3\xa9DoomHost_VideoInitialize(void);";
+    let adapters = inspect_c_source(source);
+    assert!(!adapters.guest_input());
+    assert!(!adapters.guest_output());
+    assert!(!adapters.doom_host());
+}
+
+#[test]
+fn standalone_ascii_adapter_calls_follow_utf8_source_tokens() {
+    let source = b"int caf\xc3\xa9(void);\n\
+        unsigned __malbolge_input_word(void);\n\
+        void __malbolge_output_byte(unsigned);\n\
+        void DoomHost_GuestMemoryRegion(void);\n\
+        void DoomHost_VideoInitialize(void);";
+    let adapters = inspect_c_source(source);
+    assert!(adapters.guest_input());
+    assert!(adapters.guest_output());
+    assert!(adapters.doom_host());
+}
+
+#[test]
 fn comments_between_identifier_and_call_are_admitted() {
     let source =
         b"void __malbolge_output_byte/* compiler intrinsic */(unsigned);";
