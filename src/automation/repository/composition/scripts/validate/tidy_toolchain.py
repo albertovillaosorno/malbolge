@@ -249,7 +249,7 @@ def _mapping(value: object, label: str) -> dict[str, object]:
 
 
 def _regular_source_identity(
-    status: os.stat_result,
+    status: object,
     label: str,
 ) -> tuple[int, int, int, int, int]:
     """Admit regular source evidence and capture file mutation identity.
@@ -258,14 +258,17 @@ def _regular_source_identity(
         Device, inode, size, mtime and ctime of the regular file.
 
     """
-    if not S_ISREG(status.st_mode):
+    if type(status) is not os.stat_result:
+        _fail(f"invalid {label} stat receipt")
+    native = status
+    if not S_ISREG(native.st_mode):
         _fail(f"{label} must be a regular file")
     return (
-        status.st_dev,
-        status.st_ino,
-        status.st_size,
-        status.st_mtime_ns,
-        status.st_ctime_ns,
+        native.st_dev,
+        native.st_ino,
+        native.st_size,
+        native.st_mtime_ns,
+        native.st_ctime_ns,
     )
 
 
@@ -302,6 +305,8 @@ def _open_regular_source(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
+    if type(descriptor) is not int or descriptor < 0:
+        _fail(f"invalid {label} open descriptor receipt")
     try:
         stream = os.fdopen(descriptor, "rb")
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -344,6 +349,19 @@ def _check_source_after_read(
     _check_source_parents(path, label)
 
 
+def _read_native_bytes(stream: BinaryIO, size: int, label: str) -> bytes:
+    """Reject untrusted byte receipts before using their length or contents.
+
+    Returns:
+        Exact native source bytes.
+
+    """
+    raw = stream.read(size)
+    if type(raw) is not bytes:
+        _fail(f"invalid {label} read bytes receipt")
+    return raw
+
+
 def _read_manifest_bytes(path: Path) -> bytes:
     """Read only bounded regular toolchain JSON with stable source identity.
 
@@ -356,7 +374,7 @@ def _read_manifest_bytes(path: Path) -> bytes:
     with stream:
         if admitted.st_size > MAX_MANIFEST_BYTES:
             _fail(f"{label} exceeds byte limit")
-        raw = stream.read(MAX_MANIFEST_BYTES + 1)
+        raw = _read_native_bytes(stream, MAX_MANIFEST_BYTES + 1, label)
         if len(raw) != admitted.st_size:
             _fail(f"{label} changed during read or exceeds byte limit")
         _check_source_after_read(stream, path, admitted, label=label)
@@ -664,6 +682,23 @@ def load_identity(
     )
 
 
+def _native_version_receipt(completed: object) -> bool:
+    """Admit only native subprocess exit and decoded text evidence.
+
+    Returns:
+        Whether the process receipt is fully native.
+
+    """
+    if type(completed) is not sp.CompletedProcess:
+        return False
+    native = cast("sp.CompletedProcess[object]", completed)
+    return (
+        type(native.returncode) is int
+        and type(native.stdout) is str
+        and type(native.stderr) is str
+    )
+
+
 def _tool_output(path: Path) -> str:
     try:
         # jig-ignore-next-line: indivisible reviewed Ruff rule identifier
@@ -676,8 +711,11 @@ def _tool_output(path: Path) -> str:
             errors="replace",
             shell=False,
         )
-    except OSError as error:
-        _fail(f"failed to execute LLVM version query {path}: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = f"failed to execute LLVM version query {path}: "
+        raise ToolchainError(message + _host_error_detail(error)) from error
+    if not _native_version_receipt(completed):
+        _fail(f"invalid LLVM version query process receipt: {path}")
     if completed.returncode != 0:
         _fail(f"LLVM version query failed: {path}")
     return completed.stdout + chr(10) + completed.stderr
@@ -734,7 +772,9 @@ def _hash_archive(path: Path, required_size: int) -> str:
             _fail(f"{prefix}{required_size}; observed {size}")
         digest = hashlib.sha256()
         consumed = 0
-        while chunk := stream.read(ARCHIVE_HASH_CHUNK_BYTES):
+        while chunk := _read_native_bytes(
+            stream, ARCHIVE_HASH_CHUNK_BYTES, label
+        ):
             consumed += len(chunk)
             if consumed > size:
                 _fail(f"{label} changed during read")

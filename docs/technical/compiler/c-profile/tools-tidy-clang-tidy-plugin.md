@@ -74,7 +74,14 @@ or treats a matching hash as permission to replace inputs. A failed source
 stream wrapper or descriptor-identity preflight closes the owned descriptor
 and reports a typed toolchain error with the underlying host failure as cause.
 Native source errors retain their diagnostic text; foreign host exceptions use
-their type name rather than executing custom string-formatting hooks.
+their type name rather than executing custom string-formatting hooks. Source
+admission requires exact native stat receipts, nonnegative native `os.open`
+descriptors, and exact native read bytes before inspecting lengths or hashes.
+Clang and clang-tidy version probes likewise require native subprocess results,
+exact integer exit statuses, and native decoded stdout/stderr; booleans, floats,
+foreign objects, and malformed host receipts cannot prove a ready toolchain.
+Probe failures preserve their original host exception as the typed error cause
+without invoking foreign exception formatters.
 
 Linux LLVM development RPM publication also requires a physical, unlinked
 completion marker and physical regular required headers under the tracked

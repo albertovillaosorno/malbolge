@@ -41,6 +41,7 @@ import os
 from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from typing import Self
 from typing import TYPE_CHECKING
 from typing import cast
 from typing import override
@@ -971,3 +972,297 @@ def test_manual_validator_rejects_loader_without_plugin_registry() -> None:
     assert completed.returncode == CONFIGURATION_ERROR_STATUS
     assert PLUGIN_MISMATCH in completed.stderr
     assert OBSERVED_NONE in completed.stderr
+
+
+SOURCE_MANIFEST = "manifest"
+READ_TEXT = "text"
+READ_BYTES_SUBCLASS = "bytes-subclass"
+EXPECTED_LLVM_PROBE = "clang version 22.1.8\nwarning"
+FORGED_SUCCESS = False
+
+
+class ForgedVersionReceipt:
+    """Untrusted process evidence whose fields cannot be inspected."""
+
+    @property
+    def returncode(self) -> int:
+        """Reject inspection of a foreign process receipt.
+
+        Raises:
+            AssertionError: The unvalidated field was accessed.
+
+        """
+        message = "foreign LLVM process receipt accessed"
+        raise AssertionError(message)
+
+
+def _mock_version_run(monkeypatch: pytest.MonkeyPatch, receipt: object) -> None:
+    def fake_run(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        return receipt
+
+    monkeypatch.setattr(sp, "run", fake_run)
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        ForgedVersionReceipt(),
+        sp.CompletedProcess(
+            ["clang"], FORGED_SUCCESS, "clang version 22.1.8", ""
+        ),
+        sp.CompletedProcess(
+            ["clang"], cast("int", 0.0), "clang version 22.1.8", ""
+        ),
+        sp.CompletedProcess(
+            ["clang"],
+            cast("int", cast("object", "0")),
+            "clang version 22.1.8",
+            "",
+        ),
+        sp.CompletedProcess(["clang"], 0, b"clang version 22.1.8", ""),
+        sp.CompletedProcess(["clang"], 0, "clang version 22.1.8", None),
+        sp.CompletedProcess(["clang"], 0, "clang version 22.1.8", b""),
+    ],
+)
+def test_llvm_version_probe_rejects_foreign_process_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only exact native process success and text can prove an LLVM version."""
+    _mock_version_run(monkeypatch, receipt)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="invalid LLVM version"
+    ):
+        _ = tidy_toolchain._tool_output(Path("clang"))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "fault_type",
+    [OSError, ValueError, TypeError, RuntimeError, UntrustedHostFormatterError],
+)
+def test_llvm_version_probe_wraps_host_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Version-probe host faults preserve their cause without foreign hooks."""
+    fault = fault_type("injected LLVM version execution failure")
+
+    def failed_run(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    monkeypatch.setattr(sp, "run", failed_run)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="failed to execute"
+    ) as caught:
+        _ = tidy_toolchain._tool_output(Path("clang"))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is fault
+
+
+def test_llvm_version_probe_keeps_native_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exact native subprocess results preserve the readable version text."""
+    receipt = sp.CompletedProcess(
+        ["clang"], 0, "clang version 22.1.8", "warning"
+    )
+    _mock_version_run(monkeypatch, receipt)
+    output = tidy_toolchain._tool_output(Path("clang"))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert output == EXPECTED_LLVM_PROBE
+
+
+class ForgedLLVMStat:
+    """Foreign filesystem metadata must never supply source authority."""
+
+    @property
+    def st_mode(self) -> int:
+        """Reject inspection of a foreign stat receipt.
+
+        Raises:
+            AssertionError: The unvalidated field was accessed.
+
+        """
+        message = "foreign LLVM stat fields accessed"
+        raise AssertionError(message)
+
+
+def _tidy_source_case(
+    tmp_path: Path, source_kind: str
+) -> tuple[Path, tidy_toolchain.ToolchainIdentity]:
+    identity = tidy_toolchain.load_identity(root=tmp_path)
+    if source_kind == SOURCE_MANIFEST:
+        source = _write_manifest(tmp_path, _canonical_document())
+    else:
+        source = tmp_path / "llvm.tar.xz"
+        _ = source.write_bytes(b"reviewed archive")
+    return source, identity
+
+
+def _verify_tidy_source(
+    source: Path,
+    identity: tidy_toolchain.ToolchainIdentity,
+    source_kind: str,
+) -> None:
+    if source_kind == SOURCE_MANIFEST:
+        _ = tidy_toolchain.load_identity(source, root=source.parent)
+    else:
+        tidy_toolchain.verify_archive(source, identity)
+
+
+@pytest.mark.parametrize("source_kind", [SOURCE_MANIFEST, "archive"])
+def test_tidy_source_rejects_foreign_stat_without_field_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+) -> None:
+    """Neither JSON nor archive evidence may trust foreign lstat results."""
+    source, identity = _tidy_source_case(tmp_path, source_kind)
+    native_lstat = Path.lstat
+
+    def forged_lstat(path: Path) -> object:
+        return ForgedLLVMStat() if path == source else native_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(tidy_toolchain.ToolchainError, match=r"invalid .*stat"):
+        _verify_tidy_source(source, identity, source_kind)
+
+
+@pytest.mark.parametrize("source_kind", [SOURCE_MANIFEST, "archive"])
+def test_tidy_source_rejects_foreign_fstat_without_field_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+) -> None:
+    """Opened descriptors require native file identity receipts."""
+    source, identity = _tidy_source_case(tmp_path, source_kind)
+    native_open, native_fstat = os.open, os.fstat
+    opened_descriptors: list[int] = []
+
+    def tracked_open(path: Path, flags: int) -> int:
+        descriptor = native_open(path, flags)
+        if path == source:
+            opened_descriptors.append(descriptor)
+        return descriptor
+
+    def forged_fstat(descriptor: int) -> object:
+        if descriptor in opened_descriptors:
+            return ForgedLLVMStat()
+        return native_fstat(descriptor)
+
+    monkeypatch.setattr(os, "open", tracked_open)
+    monkeypatch.setattr(os, "fstat", forged_fstat)
+    with pytest.raises(tidy_toolchain.ToolchainError, match=r"invalid .*stat"):
+        _verify_tidy_source(source, identity, source_kind)
+    assert len(opened_descriptors) == 1
+    with pytest.raises(OSError, match=r"Bad file descriptor|Invalid handle"):
+        _ = native_fstat(opened_descriptors[0])
+
+
+@pytest.mark.parametrize("source_kind", [SOURCE_MANIFEST, "archive"])
+@pytest.mark.parametrize("receipt", [False, 0.0, "3", -1])
+def test_tidy_source_rejects_foreign_open_descriptor_before_fdopen(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    source_kind: str,
+    receipt: object,
+) -> None:
+    """Bogus descriptors cannot read arbitrary host streams including stdin."""
+    source, identity = _tidy_source_case(tmp_path, source_kind)
+    native_open = os.open
+
+    def forged_open(path: Path, flags: int) -> object:
+        return receipt if path == source else native_open(path, flags)
+
+    def forbidden_fdopen(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        message = "foreign LLVM descriptor reached fdopen"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(os, "open", forged_open)
+    monkeypatch.setattr(os, "fdopen", forbidden_fdopen)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match=r"invalid .*descriptor"
+    ):
+        _verify_tidy_source(source, identity, source_kind)
+
+
+class ForeignReadBytes(bytes):
+    """A bytes subclass may carry foreign evidence behavior."""
+
+    @override
+    def __len__(self) -> int:
+        """Reject use of an untrusted byte-count hook.
+
+        Raises:
+            AssertionError: The byte subclass was inspected.
+
+        """
+        message = "foreign LLVM read byte count accessed"
+        raise AssertionError(message)
+
+
+class ForgedSourceReadStream:
+    """Simulate one host stream with an untrusted read receipt."""
+
+    def __init__(self, receipt: object) -> None:
+        """Retain the forged read receipt."""
+        self.receipt: object = receipt
+
+    def __enter__(self) -> Self:
+        """Enter the fake stream context.
+
+        Returns:
+            The stream itself.
+
+        """
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        """Exit without external resources."""
+        del args
+
+    def read(self, size: int) -> object:
+        """Return the forged receipt unchanged.
+
+        Returns:
+            Untrusted host data.
+
+        """
+        del size
+        return self.receipt
+
+
+@pytest.mark.parametrize("source_kind", [SOURCE_MANIFEST, "archive"])
+@pytest.mark.parametrize(
+    "receipt_kind", [READ_TEXT, READ_BYTES_SUBCLASS, "list"]
+)
+def test_tidy_source_rejects_foreign_read_receipt_before_use(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    source_kind: str,
+    receipt_kind: str,
+) -> None:
+    """Only exact bytes can establish manifest content or archive hashes."""
+    identity = tidy_toolchain.load_identity(root=tmp_path)
+    source = tmp_path / "source.bin"
+    payload = b"reviewed archive"
+    _ = source.write_bytes(payload)
+    identity = replace(identity, asset_size_bytes=len(payload))
+    receipts: dict[str, object] = {
+        READ_TEXT: payload.decode("ascii"),
+        READ_BYTES_SUBCLASS: ForeignReadBytes(payload),
+        "list": list(payload),
+    }
+
+    def forged_source(
+        *args: object, **kwargs: object
+    ) -> tuple[object, os.stat_result]:
+        del args, kwargs
+        return ForgedSourceReadStream(receipts[receipt_kind]), source.lstat()
+
+    monkeypatch.setattr(tidy_toolchain, "_open_regular_source", forged_source)
+    with pytest.raises(tidy_toolchain.ToolchainError, match=r"invalid .*bytes"):
+        _verify_tidy_source(source, identity, source_kind)
