@@ -499,7 +499,7 @@ fn publish_new_with_directory_sync_hook(
     bytes: &[u8],
     after_sync: impl FnOnce(&Path) -> Result<(), String>,
     after_link: impl FnOnce(&Path) -> Result<(), String>,
-    sync_directory: impl FnOnce(&Path) -> Result<(), String>,
+    sync_directory: impl FnMut(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
     publish_new_with_postverify_hook(
         path,
@@ -521,12 +521,17 @@ fn verified_output_basename(path: &Path) -> Result<&str, String> {
 }
 
 fn verify_cleaned_publication(
-    path: &Path,
+    paths: (&Path, Option<&Path>),
     bytes: &[u8],
     file: &mut fs::File,
-    resolved_target: Option<&Path>,
+    sync_directory: &mut impl FnMut(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
+    let (path, resolved_target) = paths;
     let target = resolved_target.ok_or("missing original resolved output path")?;
+    let parent = target.parent().ok_or("cannot identify cleanup directory")?;
+    // A synced final link does not persist the subsequent stage unlink.
+    // Sync the same resolved directory again before reporting success.
+    sync_directory(parent)?;
     let final_metadata = file
         .metadata()
         .map_err(|error| format!("cannot inspect cleaned output: {error}"))?;
@@ -562,7 +567,7 @@ fn publish_new_with_postverify_hook(
     bytes: &[u8],
     after_sync: impl FnOnce(&Path) -> Result<(), String>,
     after_link: impl FnOnce(&Path) -> Result<(), String>,
-    sync_directory: impl FnOnce(&Path) -> Result<(), String>,
+    mut sync_directory: impl FnMut(&Path) -> Result<(), String>,
     after_final_verify: impl FnOnce(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
     let name = verified_output_basename(path)?;
@@ -628,7 +633,12 @@ fn publish_new_with_postverify_hook(
     // final output to be its only surviving hard link. A foreign alias created
     // after the last pre-cleanup verification must not authorize success.
     let post_cleanup = if outcome.is_ok() && cleanup.is_ok() {
-        verify_cleaned_publication(path, bytes, &mut file, resolved_final_path.as_deref())
+        verify_cleaned_publication(
+            (path, resolved_final_path.as_deref()),
+            bytes,
+            &mut file,
+            &mut sync_directory,
+        )
     } else {
         Ok(())
     };

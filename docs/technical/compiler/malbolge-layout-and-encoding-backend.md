@@ -178,13 +178,15 @@ byte, inode, resolved-path and single-link check. A foreign hard link added
 after final pre-cleanup verification, a rewritten final byte, or equal-byte
 final inode substitution must not report success; tests inject all three
 changes immediately before cleanup. The already-visible final file is retained
-on rejection. The post-cleanup stage unlink has no second directory fsync;
-a crash can leave a hidden staging link even after successful publication.
-The single-link check is a live-state admission, not a claim of durable stage
-removal. These checks narrow observable publication races but do not make
-ongoing foreign writes an atomic snapshot. Windows retains file-sync and
-no-overwrite guarantees but does not claim parent-directory crash durability
-through portable `std::fs`.
+on rejection. On Unix, the original resolved publication directory is
+synced again after cleanup, so successful publication also has a durability
+barrier for stage unlink. A failed second sync refuses success while retaining
+the already-visible final target; a crash before this barrier can leave a
+hidden stage. The final descriptor/path/byte/single-link check follows this
+second barrier. These checks narrow observable publication races but do not
+make ongoing foreign writes an atomic snapshot. Windows retains file-sync
+and no-overwrite guarantees but does not claim parent-directory crash
+durability through portable `std::fs`.
 Existing targets and symlinks are never replaced; invalid profiles, operands,
 paths or layout shapes fail closed. Process-level integration tests execute
 the built binary, reopen emitted files under historical/current canonical profiles with real

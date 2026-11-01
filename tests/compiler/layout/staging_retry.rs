@@ -909,6 +909,44 @@ fn publication_directory_sync_failure_preserves_linked_output() -> Result<(), St
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "stage unlink must have its own durable directory barrier"
+)]
+fn postcleanup_directory_sync_failure_cannot_report_success() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let syncs = std::cell::Cell::new(0_usize);
+    let result = super::publish_new_with_directory_sync_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        |directory| {
+            syncs.set(syncs.get().saturating_add(1));
+            if syncs.get() == 2 {
+                return Err(String::from("injected postcleanup directory sync failure"));
+            }
+            super::sync_published_directory(directory)
+        },
+    );
+    assert_eq!(syncs.get(), 2, "stage unlink was not sync-admitted");
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.contains("postcleanup directory sync failure")),
+        "unsynced stage unlink falsely succeeded: {result:?}"
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "sync may only run after final integrity admission"
 )]
 fn publication_directory_sync_runs_only_after_final_admission() -> Result<(), String> {
