@@ -66,6 +66,7 @@ TEX_SUFFIX = ".tex"
 NOTATION_INCLUDE = r"\input{../malbolge-notation.tex}"
 LATEX_COMPILER = "pdflatex"
 LATEX_TIMEOUT_SECONDS = 120
+PDF_SIGNATURE = b"%PDF-"
 REQUIRED_MACROS = (
     r"\CostVector",
     r"\CrazyN",
@@ -787,6 +788,53 @@ def _run_latex_process(command: list[str], directory: Path) -> tuple[int, str]:
     return completed.returncode, completed.stdout + completed.stderr
 
 
+def _require_latex_pdf_descriptor(
+    descriptor: int, observed: os.stat_result
+) -> None:
+    """Bind a PDF header to the same previously admitted physical inode."""
+    opened = _native_stat(os.fstat(descriptor), "LaTeX PDF")
+    if (
+        (opened.st_dev, opened.st_ino) != (observed.st_dev, observed.st_ino)
+        or not S_ISREG(opened.st_mode)
+        or opened.st_size < len(PDF_SIGNATURE)
+    ):
+        _fail("LaTeX PDF artifact changed or is incomplete")
+    header = os.read(descriptor, len(PDF_SIGNATURE))
+    if type(header) is not bytes or header != PDF_SIGNATURE:
+        _fail("LaTeX PDF artifact has an invalid header")
+
+
+def _probe_latex_pdf(pdf: Path) -> None:
+    """Inspect the physical PDF leaf and its opened descriptor."""
+    observed = _native_stat(pdf.lstat(), "LaTeX PDF")
+    if not S_ISREG(observed.st_mode) or observed.st_nlink != 1:
+        _fail("LaTeX PDF must be a physical regular file")
+    descriptor = _native_descriptor(
+        os.open(pdf, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)),
+        "LaTeX PDF",
+    )
+    try:
+        _require_latex_pdf_descriptor(descriptor, observed)
+    finally:
+        os.close(descriptor)
+
+
+def _require_latex_pdf(source: Path, output: Path) -> None:
+    """Require a physical regular PDF carrying the native PDF signature.
+
+    Raises:
+        MathSpecificationError: When the successful build has no physical PDF.
+
+    """
+    try:
+        _probe_latex_pdf(output / f"{source.stem}.pdf")
+    except MathSpecificationError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = f"LaTeX PDF status failed: {_host_error_detail(error)}"
+        raise MathSpecificationError(message) from error
+
+
 def _compile_document(source: Path) -> None:
     _physical_math_status(source, directory=False)
     output = output_directory(source)
@@ -814,6 +862,7 @@ def _compile_document(source: Path) -> None:
             f"log={output.relative_to(ROOT).as_posix()}/build.stdout.txt"
         )
         _fail(message)
+    _require_latex_pdf(source, output)
 
 
 def build_documents() -> tuple[Path, ...]:

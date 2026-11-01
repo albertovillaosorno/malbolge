@@ -50,7 +50,11 @@ and TeX shell escape and write only beneath `.cache/latex/`. Each
 failure with the original host cause and no successful log publication.
 The compiler result must carry an exact native command argument list matching
 the invoked executable, options, output directory and input source before its
-return code and captured diagnostics can be accepted as build evidence.
+return code and captured diagnostics can be accepted as build evidence. A
+successful exit must also leave a physical, singly linked regular PDF at the
+expected output path, with a native descriptor identity and `%PDF-` signature.
+This checks artifact existence and structure at observation time, not freshness
+or atomic immunity to concurrent replacement.
 Math source discovery and direct builds reject symlink/junction redirects to
 TeX files or ancestor directories and require physical regular inputs. Direct
 output-cache mapping also rejects parent-traversal source paths. Cache builds

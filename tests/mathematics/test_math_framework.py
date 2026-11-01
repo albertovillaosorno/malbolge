@@ -1050,11 +1050,12 @@ def test_math_log_replaces_regular_output_atomically(
         )
 
     monkeypatch.setattr(sp, "run", fake_latex)
+    _ = (log.parent / "proof.pdf").write_bytes(b"%PDF-1.7\n")
     _compile_math_source(source)
     assert log.read_text(encoding="utf-8") == COMPILED_LOG_TEXT
     _compile_math_source(source)
     assert log.read_text(encoding="utf-8") == COMPILED_LOG_TEXT
-    assert tuple(log.parent.iterdir()) == (log,)
+    assert set(log.parent.iterdir()) == {log, log.parent / "proof.pdf"}
 
 
 def test_math_log_rejects_nonregular_existing_output(
@@ -1918,6 +1919,7 @@ def test_math_latex_execution_has_a_bounded_timeout(
         )
 
     monkeypatch.setattr(sp, "run", capture_run)
+    _ = (log.parent / "proof.pdf").write_bytes(b"%PDF-1.7\n")
     _compile_math_source(source)
     assert log.read_text(encoding="utf-8") == COMPILED_LOG_TEXT
 
@@ -2182,3 +2184,38 @@ def test_math_log_payload_validates_empty_and_unicode(
     _, log = _math_log_fixture(tmp_path, monkeypatch)
     _publish_math_log(log, text)
     assert log.read_bytes() == text.encode("utf-8")
+
+
+MATH_EMPTY_PDF = "empty"
+MATH_DIRECTORY_PDF = "directory"
+MATH_BAD_PDF = "invalid-header"
+
+
+@pytest.mark.parametrize(
+    "artifact", ["missing", MATH_EMPTY_PDF, MATH_DIRECTORY_PDF, MATH_BAD_PDF]
+)
+def test_math_successful_latex_exit_requires_physical_pdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, artifact: str
+) -> None:
+    """Successful process and log receipts alone do not certify a PDF."""
+    source, log = _math_log_fixture(tmp_path, monkeypatch)
+    pdf = log.parent / "proof.pdf"
+    if artifact == MATH_EMPTY_PDF:
+        _ = pdf.write_bytes(b"")
+    if artifact == MATH_DIRECTORY_PDF:
+        pdf.mkdir()
+    if artifact == MATH_BAD_PDF:
+        _ = pdf.write_bytes(b"NOT-A-PDF")
+
+    def fake_run(
+        command: list[str], **kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        del kwargs
+        return sp.CompletedProcess(
+            args=command, returncode=0, stdout=COMPILED_LOG_TEXT, stderr=""
+        )
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    with pytest.raises(validator.MathSpecificationError, match="PDF"):
+        _compile_math_source(source)
+    assert log.read_text(encoding="utf-8") == COMPILED_LOG_TEXT
