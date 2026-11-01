@@ -147,8 +147,13 @@ It includes:
 - ordered `const`, `restrict`, and `volatile` qualifiers.
 
 Typedef spellings are intentionally normalized to their canonical semantic type.
-Anonymous main-source tags use their source byte offset rather than a Clang
-pointer identity. Non-default address spaces and unrecognized Clang types fail
+Anonymous main-source tags and named tags outside file scope use the
+canonical tag declaration's source byte offset rather than a Clang pointer
+identity. This preserves distinct C tag types when one block shadows a file-
+scope name or two functions declare separate tags with the same spelling;
+references and redeclarations of one type share its canonical anchor. Named
+file-scope tags retain their stable name-based encoding. Non-default address
+spaces and unrecognized Clang types fail
 with `MALBOLGE-FRONTEND-002`. The regression suite uses `_BitInt(17)` to prove
 that a construct accepted by the parser cannot silently escape the normalized
 type grammar.

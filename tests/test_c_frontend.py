@@ -340,6 +340,89 @@ def test_regular_file_symlink_retains_exact_normalized_artifact(
     assert result.stdout == GOLDEN.read_text(encoding="utf-8")
 
 
+def test_scoped_tags_retain_distinct_semantic_types(tmp_path: Path) -> None:
+    """Separate block-scoped tags must not alias file or sibling scopes."""
+    source = tmp_path / "scoped-tags.c"
+    _ = source.write_text(
+        "struct Record { int value; };\n"
+        "union Variant { int value; };\n"
+        "enum Flag { FLAG_GLOBAL };\n"
+        "int left(void) {\n"
+        "  struct Record { short value; };\n"
+        "  union Variant { short value; };\n"
+        "  enum Flag { FLAG_LEFT };\n"
+        "  struct Record left_record;\n"
+        "  union Variant left_variant;\n"
+        "  enum Flag left_flag;\n"
+        "  return 0;\n"
+        "}\n"
+        "int right(void) {\n"
+        "  struct Record { long long value; };\n"
+        "  union Variant { long long value; };\n"
+        "  enum Flag { FLAG_RIGHT };\n"
+        "  struct Record right_record;\n"
+        "  union Variant right_variant;\n"
+        "  enum Flag right_flag;\n"
+        "  return 0;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    artifact = _artifact(_run_frontend(source, "fixtures/scoped-tags.c"))
+    nodes = cast("list[dict[str, object]]", artifact["nodes"])
+    for prefix, name, declaration_kind, suffix in (
+        ("struct", "Record", "record-declaration", "record"),
+        ("union", "Variant", "record-declaration", "variant"),
+        ("enum", "Flag", "enum-declaration", "flag"),
+    ):
+        declarations = [
+            node
+            for node in nodes
+            if node["kind"] == declaration_kind and node.get("name") == name
+        ]
+        assert len(declarations) == 3
+        types = [node["type"] for node in declarations]
+        assert types[0] == f"{prefix}({name})"
+        assert len(set(types)) == 3
+        for scope, scoped_type in zip(
+            ("left", "right"), types[1:], strict=True
+        ):
+            assert isinstance(scoped_type, str)
+            assert scoped_type.startswith(f"{prefix}(@")
+            variable = _named_node(artifact, f"{scope}_{suffix}")
+            assert variable["type"] == scoped_type
+
+
+def test_local_tag_forward_declaration_uses_one_canonical_anchor(
+    tmp_path: Path,
+) -> None:
+    """Forward declarations and definitions of one scoped tag stay bound."""
+    source = tmp_path / "forward-local-tag.c"
+    _ = source.write_text(
+        "struct Local { int value; };\n"
+        "int use(void) {\n"
+        "  struct Local;\n"
+        "  struct Local { short value; };\n"
+        "  struct Local local;\n"
+        "  return 0;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    artifact = _artifact(_run_frontend(source, "fixtures/forward-local-tag.c"))
+    nodes = cast("list[dict[str, object]]", artifact["nodes"])
+    declarations = [
+        node
+        for node in nodes
+        if node["kind"] == "record-declaration" and node.get("name") == "Local"
+    ]
+    assert len(declarations) == 3
+    assert declarations[0]["type"] == "struct(Local)"
+    assert declarations[1]["type"] == declarations[2]["type"]
+    scoped_type = declarations[1]["type"]
+    assert isinstance(scoped_type, str)
+    assert scoped_type.startswith("struct(@")
+    assert _named_node(artifact, "local")["type"] == scoped_type
+
+
 def test_frontend_contract_is_closed_and_versioned() -> None:
     """Tracked artifact authority pins exact Clang/profile semantics."""
     document = cast("dict[str, object]", json.loads(CONTRACT.read_text()))

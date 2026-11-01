@@ -388,16 +388,20 @@ private:
 
   [[nodiscard]] std::string
   declaration_anchor(const clang::NamedDecl &declaration) const {
-    const std::string name = declaration.getNameAsString();
-    if (!name.empty()) {
+    const clang::NamedDecl &canonical =
+        *llvm::cast<clang::NamedDecl>(declaration.getCanonicalDecl());
+    const std::string name = canonical.getNameAsString();
+    // File-scope names identify one C tag. A block-scoped tag may shadow a
+    // different declaration with the same name in the file or another block.
+    if (!name.empty() && canonical.getDeclContext()->isTranslationUnit()) {
       return name;
     }
     const clang::SourceLocation location =
-        source_manager_.getExpansionLoc(declaration.getLocation());
+        source_manager_.getExpansionLoc(canonical.getLocation());
     if (location.isValid() && source_manager_.isWrittenInMainFile(location)) {
       return "@" + std::to_string(source_manager_.getFileOffset(location));
     }
-    return "external-anonymous";
+    return name.empty() ? "external-anonymous" : name;
   }
 
   void fail_type(const clang::Type &type, llvm::StringRef detail) {
