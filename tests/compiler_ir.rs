@@ -2015,6 +2015,30 @@ fn typed_ir_progress_for_source_rejects_valid_empty_checkpoint()
 }
 
 #[test]
+fn typed_ir_progress_for_source_rejects_valid_extra_type()
+-> Result<(), String> {
+    let expected = frontend_return_projection();
+    let fresh = lower_frontend_artifact(&expected)
+        .map_err(|error| format!("lower type source: {error:?}"))?;
+    let mut types = fresh.types().to_vec();
+    types.push(TypeEntry::new(TypeId::new(2), TypeDef::U8));
+    let saved = Module::new(ModuleSpec {
+        abi_id: String::from(fresh.abi_id()),
+        format_version: fresh.format_version(),
+        functions: fresh.functions().to_vec(),
+        globals: fresh.globals().to_vec(),
+        proof_obligations: fresh.proof_obligations().to_vec(),
+        source_id: String::from(fresh.source_id()),
+        source_sha256: *fresh.source_sha256(),
+        target_profile: String::from(fresh.target_profile()),
+        types,
+    });
+    assert_source_bound_rejects_admitted_module(
+        &expected, &saved, "extra-type-checkpoint",
+    )
+}
+
+#[test]
 fn typed_ir_progress_for_source_rejects_valid_extra_global()
 -> Result<(), String> {
     let expected = frontend_return_projection();

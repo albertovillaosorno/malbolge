@@ -217,6 +217,26 @@ fn matches_expected_inner_slice(
         && matches_span(instruction.span(), source.value_span())
 }
 
+// The supported frontend lowering emits only i32 and fn()->i32, in that
+// exact type-ID order. A valid but extended checkpoint type table is not
+// source-equivalent to the fresh compiler stage even when currently unused.
+fn matches_supported_type_table(saved: &Module) -> bool {
+    let [integer, signature] = saved.types() else {
+        return false;
+    };
+    integer.id().value() == 0
+        && matches!(integer.definition(), TypeDef::I32)
+        && signature.id().value() == 1
+        && matches!(
+            signature.definition(),
+            TypeDef::Function {
+                parameters,
+                result: Some(result),
+                variadic: false,
+            } if parameters.is_empty() && *result == integer.id()
+        )
+}
+
 fn matches_expected_frontend(
     saved: &Module,
     expected: &FrontendArtifact,
@@ -225,6 +245,7 @@ fn matches_expected_frontend(
         && !expected.functions().is_empty()
         && saved.globals().is_empty()
         && saved.proof_obligations().is_empty()
+        && matches_supported_type_table(saved)
         && saved.abi_id() == expected.abi_id()
         && saved.source_id() == expected.source_id()
         && saved.source_sha256() == expected.source_sha256()
