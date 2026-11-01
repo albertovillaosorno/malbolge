@@ -1574,3 +1574,43 @@ def test_tidy_required_file_accepts_physical_installed_file(
     """An existing local physical file remains valid installation evidence."""
     _ = (tmp_path / "compiler").write_bytes(b"native LLVM binary")
     _require_llvm_fixture(tmp_path, Path("compiler"))
+
+
+class ForeignToolchainCliError(tidy_toolchain.ToolchainError):
+    """A foreign toolchain CLI failure with unsafe exception formatting."""
+
+    @override
+    def __str__(self) -> str:
+        """Detect untrusted exception formatter access.
+
+        Raises:
+            AssertionError: The untrusted formatter was accessed.
+
+        """
+        message = "foreign toolchain CLI error formatter was invoked"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    ("failure_type", "expected_diagnostic"),
+    [
+        (tidy_toolchain.ToolchainError, "native LLVM validation failure"),
+        (ForeignToolchainCliError, "ForeignToolchainCliError"),
+    ],
+)
+def test_toolchain_cli_does_not_format_foreign_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    failure_type: type[tidy_toolchain.ToolchainError],
+    expected_diagnostic: str,
+) -> None:
+    """CLI reports exact built-in toolchain text without foreign hooks."""
+    fault = failure_type("native LLVM validation failure")
+
+    def fail_load() -> None:
+        raise fault
+
+    monkeypatch.setattr(tidy_toolchain, "load_identity", fail_load)
+    assert tidy_toolchain.main([]) == 1
+    assert expected_diagnostic in capsys.readouterr().err

@@ -89,7 +89,9 @@ only to a native binary buffer wrapper; a foreign `fdopen` result is rejected
 without reading its fields or leaking the opened descriptor. Manifest decoding,
 source inspection, and archive hashing preserve the original host or UTF-8
 failure as the typed error cause. Native error text is retained; foreign
-exception formatters are never consulted.
+exception formatters are never consulted. The toolchain CLI similarly prints
+exact local `ToolchainError` messages but only the exception class name for
+untrusted subclasses, avoiding their custom formatting hooks.
 
 Linux LLVM development RPM publication also requires a physical, unlinked
 completion marker and physical regular required headers under the tracked

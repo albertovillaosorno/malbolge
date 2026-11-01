@@ -217,6 +217,7 @@ def _host_error_detail(error: Exception) -> str:
 
     """
     if type(error) in {
+        ToolchainError,
         OSError,
         ValueError,
         TypeError,
@@ -913,7 +914,7 @@ def main(argv: list[str] | None = None) -> int:
         if archive is not None:
             verify_archive(archive, identity)
     except ToolchainError as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_host_error_detail(error)}\n")
         return 1
     message = (
         "clang-tidy development toolchain ready: LLVM "
