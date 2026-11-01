@@ -56,8 +56,11 @@ components are unlinked directories, before reading and again after. It pins
 the opened descriptor to its device, inode, byte length, and modification/change
 timestamps. It rejects parent redirects, post-admission leaf replacement or
 in-place mutation, uses nonblocking/no-follow opens where available, and reads
-text in at most 64 KiB chunks under a 1 MiB admission limit. Linked run
-manifests and retained raw CSV evidence obey the same physical-parent boundary.
+text in at most 64 KiB chunks under a 1 MiB admission limit. Host file
+opening must return an exact native signed descriptor before stream wrapping
+or cleanup; the wrapped stream must report that same descriptor both before and
+after reading, and mismatches cannot authorize byte checks. Linked run manifests
+and retained raw CSV evidence obey the same physical-parent boundary.
 The retained raw CSV is checked for regular-file presence and nonzero size, not
 parsed as performance proof. TOML-escaped NUL bytes are rejected in linked run
 and raw sample paths before any host filesystem access.

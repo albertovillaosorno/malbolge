@@ -38,7 +38,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Never, cast
+from typing import TYPE_CHECKING, Never, Self, cast, final, override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -494,6 +494,154 @@ def test_benchmark_fdopen_failure_closes_owned_descriptor(
     assert len(opened) == 1
     with pytest.raises(OSError):
         _ = os.fstat(opened[0])
+
+
+@final
+class _ForeignDescriptor(int):
+    """Hostile integer subtype must never be accepted as a file descriptor."""
+
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("foreign descriptor formatting executed")
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(True, id="boolean"),
+        pytest.param(-1, id="negative"),
+        pytest.param(1 << 40, id="oversized"),
+        pytest.param(3.0, id="float"),
+        pytest.param("3", id="text"),
+        pytest.param(_ForeignDescriptor(3), id="foreign-integer"),
+    ],
+)
+def test_benchmark_open_requires_native_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A forged open receipt cannot reach stream construction or OS cleanup."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+        protocol, "benchmark protocol"
+    )
+    assert admitted is not None
+    real_open = os.open
+
+    def forged_open(path: Path, flags: int) -> int:
+        if path == protocol:
+            return cast("int", receipt)
+        return real_open(path, flags)
+
+    def forbidden_fdopen(_descriptor: int, _mode: str) -> Never:
+        raise AssertionError("invalid descriptor reached fdopen")
+
+    def forbidden_close(_descriptor: int) -> Never:
+        raise AssertionError("invalid descriptor reached close")
+
+    monkeypatch.setattr(os, "open", forged_open)
+    monkeypatch.setattr(os, "fdopen", forbidden_fdopen)
+    monkeypatch.setattr(os, "close", forbidden_close)
+    with pytest.raises(validator.BenchmarkProtocolError, match="native descriptor"):
+        _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+            protocol, "benchmark protocol", admitted
+        )
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(True, id="boolean"),
+        pytest.param(-1, id="negative"),
+        pytest.param(1 << 40, id="oversized"),
+        pytest.param(3.0, id="float"),
+        pytest.param("3", id="text"),
+        pytest.param(1, id="unrelated-native"),
+        pytest.param(_ForeignDescriptor(3), id="foreign-integer"),
+    ],
+)
+def test_benchmark_stream_requires_bound_native_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A forged stream handle cannot authorize a different OS descriptor."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+        protocol, "benchmark protocol"
+    )
+    assert admitted is not None
+    real_fdopen = os.fdopen
+    real_fstat = os.fstat
+    opened: list[int] = []
+
+    @final
+    class ForgedStream:
+        def __init__(self, descriptor: int, mode: str) -> None:
+            self.real_stream = real_fdopen(descriptor, mode)
+            opened.append(descriptor)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.real_stream.close()
+
+        def fileno(self) -> object:
+            return receipt
+
+    def forbidden_fstat(descriptor: int) -> os.stat_result:
+        if not opened or descriptor != opened[0] or type(descriptor) is not int:
+            raise AssertionError("forged stream descriptor reached fstat")
+        return real_fstat(descriptor)
+
+    monkeypatch.setattr(os, "fdopen", ForgedStream)
+    monkeypatch.setattr(os, "fstat", forbidden_fstat)
+    with pytest.raises(validator.BenchmarkProtocolError, match="stream descriptor"):
+        _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+            protocol, "benchmark protocol", admitted
+        )
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = real_fstat(opened[0])
+
+
+def test_benchmark_stream_rejects_descriptor_switch_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable stream handle cannot change its identity after byte checks."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+        protocol, "benchmark protocol"
+    )
+    assert admitted is not None
+    real_fdopen = os.fdopen
+    calls: list[int] = []
+
+    @final
+    class SwitchingStream:
+        def __init__(self, descriptor: int, mode: str) -> None:
+            self.real_stream = real_fdopen(descriptor, mode)
+            self.descriptor = descriptor
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.real_stream.close()
+
+        def fileno(self) -> int:
+            calls.append(self.descriptor)
+            return self.descriptor if len(calls) == 1 else -1
+
+    monkeypatch.setattr(os, "fdopen", SwitchingStream)
+    with pytest.raises(validator.BenchmarkProtocolError, match="stream descriptor"):
+        _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+            protocol, "benchmark protocol", admitted
+        )
+    assert len(calls) == 2
 
 
 def test_repository_protocol_examples_are_valid_and_retain_raw_data() -> None:

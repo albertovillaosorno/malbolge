@@ -53,6 +53,7 @@ PARENT_SEGMENT = ".."
 MIN_REPETITIONS = 3
 MAX_PROTOCOL_BYTES = 1_048_576
 FILE_READ_CHUNK_BYTES = 65_536
+MAX_NATIVE_DESCRIPTOR = (1 << 31) - 1
 DETERMINISTIC_KIND = "deterministic"
 STOCHASTIC_KIND = "stochastic"
 STUDY_KINDS = frozenset({DETERMINISTIC_KIND, STOCHASTIC_KIND})
@@ -570,6 +571,8 @@ def _read_utf8(path: Path, context: str, admitted: os.stat_result) -> str:
     )
     try:
         descriptor = os.open(path, flags)
+        if type(descriptor) is not int or not 0 <= descriptor <= MAX_NATIVE_DESCRIPTOR:
+            _fail(f"{context} open requires native descriptor")
         try:
             stream = os.fdopen(descriptor, "rb")
         except BaseException:
@@ -580,9 +583,13 @@ def _read_utf8(path: Path, context: str, admitted: os.stat_result) -> str:
                 pass
             raise
         with stream:
-            raw = _read_verified_bytes(
-                stream.fileno(), path, context, admitted=admitted
-            )
+            opened = stream.fileno()
+            if type(opened) is not int or opened != descriptor:
+                _fail(f"{context} stream descriptor does not match opened file")
+            raw = _read_verified_bytes(opened, path, context, admitted=admitted)
+            after = stream.fileno()
+            if type(after) is not int or after != descriptor:
+                _fail(f"{context} stream descriptor changed after read")
     except BenchmarkProtocolError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
