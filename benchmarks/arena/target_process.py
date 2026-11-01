@@ -781,6 +781,11 @@ def _rss_report_directory(workspace: Path) -> Iterator[Path]:
     temporary = tempfile.TemporaryDirectory(dir=workspace, prefix="arena-child-rss-")
     receipt = temporary.__enter__()
     folder = _admit_rss_directory_receipt(receipt, workspace)
+    # TemporaryDirectory removes its own name in __exit__, not the name
+    # yielded by __enter__. Both must identify the same admitted directory.
+    cleanup_target = temporary.name
+    if type(cleanup_target) is not str or cleanup_target != receipt:
+        _fail("bounded target RSS directory cleanup target mismatches receipt")
     try:
         yield folder
     except BaseException as primary:

@@ -469,9 +469,11 @@ report-directory receipt before launching a child or invoking recursive cleanup.
 The path must be exact native absolute text naming an initially empty physical
 directory immediately under the repository's physical `.temp` root with the
 expected staging prefix. A redirected, linked, occupied, or nonnative receipt
-fails without trusting the temporary context's cleanup method. Red-first
-forgery regressions demonstrate that the previous unchecked return could reach
-a subprocess launch with a foreign report path. These checks cannot prevent
+fails without trusting the temporary context's cleanup method. The context's
+cleanup target must match that admitted path: an otherwise valid entry receipt
+cannot authorize a different recursive-removal target. Red-first forgery
+regressions demonstrate that unchecked returns could reach a subprocess launch
+or recursive cleanup against foreign storage. These checks cannot prevent
 atomic filesystem races or certify the host's temporary-directory allocator.
 
 The observed cost is the maximum of those **three per-child** peaks, not

@@ -1913,7 +1913,7 @@ def test_measured_rss_cleanup_boolean_receipt_does_not_suppress_failure(
 
     class ForgedCleanup:
         def __init__(self, **_kwargs: object) -> None:
-            pass
+            self.name = directory
 
         def __enter__(self) -> str:
             return directory
@@ -1943,6 +1943,51 @@ def test_measured_rss_cleanup_boolean_receipt_does_not_suppress_failure(
             target_process.invoke_limited_measured(_child("pass"))
 
 
+def test_measured_rss_rejects_mismatched_context_cleanup_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A validated entry path must not authorize foreign recursive cleanup."""
+    workspace = tmp_path / ".temp"
+    workspace.mkdir()
+    folder = workspace / "arena-child-rss-admitted"
+    folder.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "preserve.txt"
+    marker.write_bytes(b"preserve")
+    cleanup: list[str] = []
+
+    class MismatchedDirectory:
+        name = str(outside)
+
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> str:
+            return str(folder)
+
+        def __exit__(self, *_args: object) -> None:
+            cleanup.append("outside")
+            shutil.rmtree(self.name)
+
+    def completed(command: list[str], **_kwargs: object) -> sp.CompletedProcess[bytes]:
+        return sp.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr(target_process, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_process, "require_child_rss_measurement", lambda: None)
+    monkeypatch.setattr(target_process, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(
+        target_process.tempfile, "TemporaryDirectory", MismatchedDirectory
+    )
+    monkeypatch.setattr(target_process, "_run", completed)
+    monkeypatch.setattr(target_process, "_rss_report_bytes", lambda _path: b"10\n")
+    with pytest.raises(target_process.TargetProcessError, match="RSS directory"):
+        target_process.invoke_limited_measured(_child("pass"))
+    assert cleanup == []
+    assert marker.read_bytes() == b"preserve"
+
+
 def _rss_fixture_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     """Give fault-injecting contexts a real empty in-root cleanup target."""
     workspace = tmp_path / ".temp"
@@ -1970,6 +2015,7 @@ def test_measured_rss_unexpected_directory_fault_is_typed(
     class BrokenDirectory:
         def __init__(self, *args: object, **kwargs: object) -> None:
             del args, kwargs
+            self.name = directory
             if phase == "constructor":
                 raise fault
 
@@ -2025,6 +2071,7 @@ def test_measured_rss_unexpected_cleanup_preserves_primary_child_failure(
     class BrokenDirectory:
         def __init__(self, *args: object, **kwargs: object) -> None:
             del args, kwargs
+            self.name = directory
 
         def __enter__(self) -> str:
             return directory
@@ -2073,6 +2120,7 @@ def test_measured_rss_transparent_directory_preserves_primary_child_exception(
     class TransparentDirectory:
         def __init__(self, *args: object, **kwargs: object) -> None:
             del args, kwargs
+            self.name = directory
 
         def __enter__(self) -> str:
             return directory
@@ -2111,6 +2159,7 @@ def test_measured_rss_directory_fault_is_typed(
     class BrokenDirectory:
         def __init__(self, *args: object, **kwargs: object) -> None:
             _ = (args, kwargs)
+            self.name = directory
             if phase == "constructor":
                 raise OSError("injected RSS directory creation failure")
 
@@ -2150,6 +2199,7 @@ def test_measured_rss_cleanup_preserves_primary_child_failure(
     class BrokenCleanupDirectory:
         def __init__(self, *args: object, **kwargs: object) -> None:
             _ = (args, kwargs)
+            self.name = directory
 
         def __enter__(self) -> str:
             return directory
@@ -2191,6 +2241,7 @@ def test_measured_rss_cleanup_preserves_primary_under_hostile_diagnostic(
     class BrokenCleanupDirectory:
         def __init__(self, *args: object, **kwargs: object) -> None:
             del args, kwargs
+            self.name = directory
 
         def __enter__(self) -> str:
             return directory
