@@ -64,10 +64,14 @@ def _unredirected_launcher(path: Path) -> bool:
 
     """
     try:
-        return not any(
-            component.is_symlink() or component.is_junction()
-            for component in (path, *path.parents)
-        )
+        for component in (path, *path.parents):
+            symlink = component.is_symlink()
+            if type(symlink) is not bool or symlink:
+                return False
+            junction = component.is_junction()
+            if type(junction) is not bool or junction:
+                return False
+        return True
     except OSError, ValueError, TypeError, RuntimeError:
         return False
 
@@ -80,7 +84,11 @@ def _regular_executable(path: Path) -> bool:
 
     """
     try:
-        return S_ISREG(path.lstat().st_mode) and os.access(path, os.X_OK)
+        status = path.lstat()
+        if type(status) is not os.stat_result or not S_ISREG(status.st_mode):
+            return False
+        executable = os.access(path, os.X_OK)
+        return type(executable) is bool and executable
     except OSError, ValueError, TypeError, RuntimeError:
         return False
 
@@ -105,8 +113,17 @@ def _external_tool_bin(root: Path, directory: str) -> Path:
             or os.pathsep in directory
             or ".." in candidate.parts
             or not _unredirected_launcher(candidate)
-            or not candidate.is_dir()
-            or candidate.resolve().is_relative_to(root.resolve())
+        ):
+            raise JigRunnerError(message)
+        directory_status = candidate.is_dir()
+        if type(directory_status) is not bool or not directory_status:
+            raise JigRunnerError(message)
+        physical = candidate.resolve()
+        physical_root = root.resolve()
+        if (
+            type(physical) is not type(candidate)
+            or type(physical_root) is not type(root)
+            or physical.is_relative_to(physical_root)
         ):
             raise JigRunnerError(message)
         executable = candidate / "chktex"
@@ -179,10 +196,14 @@ def run_jig(command: str, *, root: Path = ROOT) -> int:
     if executable is None:
         message = "external Jig executable is unavailable"
         raise JigRunnerError(message)
+    if type(executable) is not str:
+        message = "external Jig returned invalid executable discovery receipt"
+        raise JigRunnerError(message)
     environment = jig_environment(root, dict(os.environ))
+    arguments = [executable, command, "--root", str(root)]
     try:
         result = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [executable, command, "--root", str(root)],
+            arguments,
             check=False,
             cwd=root,
             env=environment,
@@ -195,7 +216,16 @@ def run_jig(command: str, *, root: Path = ROOT) -> int:
         if type(error) is OSError:
             message = f"{message}: {error}"
         raise JigRunnerError(message) from error
-    if type(result) is not sp.CompletedProcess or type(result.returncode) is not int:
+    if (
+        type(result) is not sp.CompletedProcess
+        or type(result.returncode) is not int
+        or type(result.args) is not list
+        or len(result.args) != len(arguments)
+        or any(type(argument) is not str for argument in result.args)
+        or result.args != arguments
+        or result.stdout is not None
+        or result.stderr is not None
+    ):
         message = "external Jig returned invalid process completion"
         raise JigRunnerError(message)
     return result.returncode
@@ -214,7 +244,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return run_jig(cast("str", arguments.command))
     except JigRunnerError as error:
-        _ = sys.stderr.write(f"jig runner: {error}\n")
+        detail = str(error) if type(error) is JigRunnerError else type(error).__name__
+        _ = sys.stderr.write(f"jig runner: {detail}\n")
         return 1
 
 

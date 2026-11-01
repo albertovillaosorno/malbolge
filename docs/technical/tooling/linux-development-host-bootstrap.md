@@ -107,8 +107,11 @@ python3.14 -B -m scripts.validate.jig_runner check
 
 The runner admits only one absolute, nonredirected external directory with a
 physical executable `chktex`; it rejects symlinks in either path, missing
-executables, path-list injection and directories inside the repository. The
-explicit directory sits after `.dependencies/bin` and before the system
+executables, path-list injection and directories inside the repository. Native
+filesystem evidence is required: redirect checks and directory/executable-mode
+queries must yield exact booleans, and file status must be an exact native
+`os.stat_result`. A foreign resolved-path object cannot supply path authority.
+The explicit directory sits after `.dependencies/bin` and before the system
 default on the child `PATH`. If host filesystem status or path resolution
 raises a type or runtime exception, pinned launchers are treated as unavailable
 and external opt-in directories are rejected with a typed runner error; neither
@@ -116,7 +119,11 @@ failure allows a fallback to ambient binaries.
 
 With no opt-in, the original pinned-and-system selection remains unchanged.
 Jig still owns version/digest attestation, launcher regeneration, validation
-policy and exact exit status; the runner does not bypass any tool proof.
+policy and exact exit status; the runner does not bypass any tool proof. The
+runner admits an exact native executable path from discovery and accepts only an
+exact `CompletedProcess` with native integer return code, the invoked argument
+list, and no captured output for this inherited-I/O launch. Forged process
+receipts or foreign error formatting cannot falsely report a successful check.
 Prefer a dedicated directory containing only the intended external tool if
 additional user-local commands should not be visible to Jig.
 

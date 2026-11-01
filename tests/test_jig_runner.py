@@ -297,9 +297,7 @@ def test_pinned_launcher_status_fault_is_typed(
         _inject_launcher_status_fault(
             isolated, launcher, operation=operation, fault=fault
         )
-        with pytest.raises(
-            jig_runner.JigRunnerError, match="Jig validation tool"
-        ):
+        with pytest.raises(jig_runner.JigRunnerError, match="Jig validation tool"):
             _ = jig_runner.jig_environment(tmp_path, {"PATH": "/usr/bin"})
 
 
@@ -335,9 +333,7 @@ def test_external_launcher_status_fault_is_typed(
         _inject_launcher_status_fault(
             isolated, target, operation=operation, fault=fault
         )
-        with pytest.raises(
-            jig_runner.JigRunnerError, match=r"external.*directory"
-        ):
+        with pytest.raises(jig_runner.JigRunnerError, match=r"external.*directory"):
             _ = jig_runner.jig_environment(
                 tmp_path,
                 {jig_runner.EXTERNAL_TOOL_BIN_VARIABLE: str(external)},
@@ -608,3 +604,229 @@ def test_runner_preserves_hostile_launch_cause_without_formatting(
     ) as caught:
         _ = jig_runner.run_jig("check", root=tmp_path)
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        "wrong_command",
+        "tuple_args",
+        "foreign_args",
+        "foreign_argument",
+        "unexpected_stdout",
+        "unexpected_stderr",
+        "foreign_stdout",
+        "foreign_stderr",
+    ],
+)
+def test_runner_rejects_forged_uncaptured_process_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    malformed: str,
+) -> None:
+    """An uncaptured Jig success must match exactly the launched argv and IO."""
+    _ = _pinned_launchers(tmp_path)
+    monkeypatch.setattr(jig_runner.shutil, "which", _resolve_fixture_jig)
+
+    class ForeignArgs(list[str]):
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign args equality executed")
+
+    class ForeignText(str):
+        def __str__(self) -> str:
+            raise AssertionError("foreign output formatting executed")
+
+    def execute(args: list[str], **_options: object) -> sp.CompletedProcess[str]:
+        receipt_args: object = args
+        stdout: object = None
+        stderr: object = None
+        if malformed == "wrong_command":
+            receipt_args = [args[0], "doctor", *args[2:]]
+        elif malformed == "tuple_args":
+            receipt_args = tuple(args)
+        elif malformed == "foreign_args":
+            receipt_args = ForeignArgs(args)
+        elif malformed == "foreign_argument":
+            receipt_args = [ForeignText(args[0]), *args[1:]]
+        elif malformed == "unexpected_stdout":
+            stdout = ""
+        elif malformed == "unexpected_stderr":
+            stderr = b""
+        elif malformed == "foreign_stdout":
+            stdout = ForeignText("")
+        elif malformed == "foreign_stderr":
+            stderr = ForeignText("")
+        return sp.CompletedProcess(
+            cast("list[str]", cast("object", receipt_args)),
+            0,
+            stdout=cast("str", stdout),
+            stderr=cast("str", stderr),
+        )
+
+    monkeypatch.setattr(jig_runner.sp, "run", execute)
+    with pytest.raises(jig_runner.JigRunnerError, match="invalid process completion"):
+        _ = jig_runner.run_jig("check", root=tmp_path)
+
+
+@pytest.mark.parametrize("operation", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("malformed", [0, None, object()])
+def test_runner_rejects_non_native_redirect_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    malformed: object,
+) -> None:
+    """Untrusted boolean-like redirect answers cannot admit pinned tools."""
+    pinned = _pinned_launchers(tmp_path)
+    target = pinned / "chktex"
+    original = getattr(Path, operation)
+
+    def forged_status(path: Path) -> object:
+        if path == target:
+            return malformed
+        return original(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, forged_status)
+        with pytest.raises(jig_runner.JigRunnerError, match="redirected"):
+            _ = jig_runner.jig_environment(tmp_path, {})
+
+
+@pytest.mark.parametrize("operation", ["lstat", "access"])
+def test_runner_rejects_non_native_executable_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """A forged file-status or executable-mode receipt fails closed."""
+    pinned = _pinned_launchers(tmp_path)
+    target = pinned / "chktex"
+    if operation == "lstat":
+        native = Path.lstat
+
+        class ForeignStat:
+            @property
+            def st_mode(self) -> object:
+                raise AssertionError("foreign stat hook executed")
+
+        def forged_lstat(path: Path) -> object:
+            return ForeignStat() if path == target else native(path)
+
+        with monkeypatch.context() as isolated:
+            isolated.setattr(Path, "lstat", forged_lstat)
+            with pytest.raises(jig_runner.JigRunnerError, match="missing executable"):
+                _ = jig_runner.jig_environment(tmp_path, {})
+    else:
+        native_access = os.access
+
+        def forged_access(path: Path, mode: int) -> object:
+            return 1 if path == target else native_access(path, mode)
+
+        with monkeypatch.context() as isolated:
+            isolated.setattr(os, "access", forged_access)
+            with pytest.raises(jig_runner.JigRunnerError, match="missing executable"):
+                _ = jig_runner.jig_environment(tmp_path, {})
+
+
+def test_runner_cli_never_formats_foreign_tool_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A forged runner error must not execute its formatting hooks."""
+
+    class ForeignError(jig_runner.JigRunnerError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign runner error formatter executed")
+
+    def fail(_command: str) -> int:
+        raise ForeignError("unsafe private diagnostic")
+
+    monkeypatch.setattr(jig_runner, "run_jig", fail)
+    assert jig_runner.main(["check"]) == 1
+    output = capsys.readouterr()
+    assert "ForeignError" in output.err
+    assert "unsafe private diagnostic" not in output.err
+    assert not output.out
+
+
+@pytest.mark.parametrize("receipt", [object(), b"/real/jig", "subclass"])
+def test_runner_rejects_foreign_executable_discovery_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only a native executable path may be sent to a Jig subprocess."""
+    _ = _pinned_launchers(tmp_path)
+
+    class ForeignPath(str):
+        def __fspath__(self) -> str:
+            raise AssertionError("foreign executable path hook executed")
+
+    result = ForeignPath("/real/jig") if receipt == "subclass" else receipt
+    monkeypatch.setattr(jig_runner.shutil, "which", lambda _: result)
+
+    def forbidden_run(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("foreign executable reached subprocess")
+
+    monkeypatch.setattr(jig_runner.sp, "run", forbidden_run)
+    with pytest.raises(jig_runner.JigRunnerError, match="discovery receipt"):
+        _ = jig_runner.run_jig("check", root=tmp_path)
+
+
+@pytest.mark.parametrize("response", [0, 1, None, object()])
+def test_external_runner_rejects_non_native_directory_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    response: object,
+) -> None:
+    """An external directory must produce a native boolean status."""
+    _ = _pinned_launchers(tmp_path)
+    external = tmp_path.parent / f"native-bin-{tmp_path.name}"
+    external.mkdir()
+    tool = external / "chktex"
+    _ = tool.write_bytes(b"#!/bin/sh\nexit 0\n")
+    tool.chmod(0o700)
+    original_is_dir = Path.is_dir
+
+    def forged_is_dir(path: Path) -> object:
+        return response if path == external else original_is_dir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_dir", forged_is_dir)
+        with pytest.raises(jig_runner.JigRunnerError, match="external.*directory"):
+            _ = jig_runner.jig_environment(
+                tmp_path,
+                {jig_runner.EXTERNAL_TOOL_BIN_VARIABLE: str(external)},
+            )
+
+
+def test_external_runner_rejects_foreign_resolved_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Never invoke a foreign resolved-path method as authority."""
+    _ = _pinned_launchers(tmp_path)
+    external = tmp_path.parent / f"native-resolved-{tmp_path.name}"
+    external.mkdir()
+    tool = external / "chktex"
+    _ = tool.write_bytes(b"#!/bin/sh\nexit 0\n")
+    tool.chmod(0o700)
+
+    class ForeignResolved:
+        def is_relative_to(self, _other: object) -> bool:
+            raise AssertionError("foreign path membership hook executed")
+
+    native_resolve = Path.resolve
+
+    def forged_resolve(path: Path, strict: bool = False) -> object:
+        if path == external:
+            return ForeignResolved()
+        return native_resolve(path, strict=strict)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "resolve", forged_resolve)
+        with pytest.raises(jig_runner.JigRunnerError, match="external.*directory"):
+            _ = jig_runner.jig_environment(
+                tmp_path,
+                {jig_runner.EXTERNAL_TOOL_BIN_VARIABLE: str(external)},
+            )
