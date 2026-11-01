@@ -6719,6 +6719,130 @@ def test_checkpoint_generation_reports_committed_durability_failure(
     assert progress.read(destination) == sidecar
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX immutable hard-link stage deletion needs directory durability",
+)
+def test_immutable_stage_unlink_sync_failure_keeps_checkpoint_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Do not publish a pointer before the staging hard link is durably gone."""
+    checkpoint = b"checkpoint-cleanup-durability"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    pointer_path = Path(sidecar.progress_path)
+    original_flush = cast(
+        "Callable[..., None]", vars(progress)["_flush_parent"]
+    )
+    flush_count = 0
+
+    def fail_cleanup_flush(path: Path, *, platform: str = os.name) -> None:
+        nonlocal flush_count
+        flush_count += 1
+        if flush_count == 2:
+            raise OSError("injected post-unlink directory sync failure")
+        original_flush(path, platform=platform)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_flush_parent", fail_cleanup_flush)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="post-unlink directory sync failure",
+        ) as caught:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+
+    assert flush_count == 2
+    assert caught.value.published_path == checkpoint_path
+    assert checkpoint_path.read_bytes() == checkpoint
+    assert not pointer_path.exists()
+    assert not tuple(tmp_path.glob(f".{checkpoint_path.name}.*.tmp"))
+    assert progress.write_checkpoint_generation(sidecar, checkpoint) == pointer_path
+    assert progress.read(pointer_path) == sidecar
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX immutable hard-link stage deletion needs directory durability",
+)
+def test_partial_stage_unlink_sync_failure_keeps_partial_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both immutable members need durable staging cleanup before pointer."""
+    checkpoint = b"checkpoint-complete"
+    partial = b"partial-complete"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=partial
+    )
+    checkpoint_path = Path(sidecar.checkpoint_path or "")
+    partial_path = Path(sidecar.partial_path or "")
+    pointer_path = Path(sidecar.progress_path)
+    original_flush = cast(
+        "Callable[..., None]", vars(progress)["_flush_parent"]
+    )
+    flush_count = 0
+
+    def fail_partial_cleanup(path: Path, *, platform: str = os.name) -> None:
+        nonlocal flush_count
+        flush_count += 1
+        if flush_count == 4:
+            raise OSError("injected partial stage unlink sync failure")
+        original_flush(path, platform=platform)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_flush_parent", fail_partial_cleanup)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match="partial stage unlink sync failure",
+        ) as caught:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint, partial)
+
+    assert flush_count == 4
+    assert caught.value.published_path == partial_path
+    assert checkpoint_path.read_bytes() == checkpoint
+    assert partial_path.read_bytes() == partial
+    assert not pointer_path.exists()
+    assert progress.write_checkpoint_generation(sidecar, checkpoint, partial) == pointer_path
+    assert progress.read(pointer_path) == sidecar
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="POSIX hard-link publication alone requires an extra unlink sync",
+)
+def test_immutable_collision_reuse_skips_stage_unlink_sync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a newly hard-linked generation needs the second directory sync."""
+    destination = tmp_path / "checkpoint"
+    payload = b"existing-immutable-generation"
+    original_flush = cast(
+        "Callable[..., None]", vars(progress)["_flush_parent"]
+    )
+    parent_syncs: list[Path] = []
+
+    def record_flush(path: Path, *, platform: str = os.name) -> None:
+        original_flush(path, platform=platform)
+        parent_syncs.append(path)
+
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_flush_parent", record_flush)
+        assert writer(destination, payload, platform=os.name) == destination
+        assert parent_syncs == [tmp_path, tmp_path]
+        parent_syncs.clear()
+        assert writer(destination, payload, platform=os.name) == destination
+        assert parent_syncs == [tmp_path]
+
+    assert destination.read_bytes() == payload
+    assert destination.stat().st_nlink == 1
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
 @pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
 def test_partial_file_sync_failure_reports_committed_checkpoint(
     tmp_path: Path,
@@ -6925,7 +7049,8 @@ def test_partial_generation_reports_committed_durability_failure(
         partial=partial,
     )
     fail_partial_flush = FlushFailure(
-        fail_on=2,
+        # POSIX also syncs the removal of the checkpoint's staging link.
+        fail_on=2 if os.name == progress.WINDOWS_PLATFORM else 3,
         message="injected partial directory sync failure",
     )
 

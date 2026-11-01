@@ -2086,7 +2086,7 @@ def _flush_parent(path: Path, *, platform: str = os.name) -> None:
                 raise _DirectoryCloseAfterSyncError(message) from error
 
 
-def _confirm_publication_durability(
+def _confirm_directory_durability(
     published_path: Path,
     *,
     context: str,
@@ -2106,6 +2106,17 @@ def _confirm_publication_durability(
             f"{_host_error_detail(error)}"
         )
         raise ProgressSidecarDurabilityError(message, published_path) from error
+
+
+def _confirm_publication_durability(
+    published_path: Path,
+    *,
+    context: str,
+    platform: str = os.name,
+) -> None:
+    _confirm_directory_durability(
+        published_path, context=context, platform=platform
+    )
 
 
 def _writer_lock_path(destination: Path) -> Path:
@@ -3032,6 +3043,17 @@ def _write_immutable(
             destination,
             durable=durable,
             identity=temporary_identity,
+        )
+    # POSIX no-replace publication creates two hard links to one inode.
+    # The first parent sync makes the new generation durable, but unlinking
+    # its staging name afterward is a separate directory mutation. Do not
+    # report a completed generation while a crash can restore that alias.
+    # Collision reuse does not link the existing generation to our stage.
+    if collision_identity is None and platform != WINDOWS_PLATFORM:
+        _confirm_directory_durability(
+            destination,
+            context="immutable progress payload stage cleanup",
+            platform=platform,
         )
     _confirm_immutable_postcleanup_identity(
         destination, expected_identity, payload

@@ -448,9 +448,17 @@ a diagnostic admission rather than rollback, and cannot prevent filesystem
 mutation after its final check.
 
 The immutable POSIX publisher's intentional no-replace hard link happens only
-after these staging checks and is cleaned up when staging completes. After
-successfully confirming directory durability and removing the temporary entry,
-the immutable writer now re-admits the published path as a regular single-link
+after these staging checks and is cleaned up when staging completes. Because
+that staging unlink follows the first parent-directory `fsync`, a newly linked
+generation requires a second parent-directory `fsync` after cleanup and before
+a successful return. Otherwise a crash could restore the staging hard link,
+leaving a checkpoint with two writable names despite a successful publication.
+Failure of the second sync preserves the exact committed generation path via
+`ProgressSidecarDurabilityError` and prevents sidecar-pointer publication.
+A byte-identical existing-generation collision does not need this second sync:
+its temporary staging inode was never linked to the committed generation.
+After this cleanup durability check, the immutable writer re-admits the
+published path as a regular single-link
 inode and compares its device/inode with the one recorded directly after the
 no-replace publication or collision reuse. It additionally repeats the staged
 content SHA-256 comparison using the existing 64 KiB raw-read chunk budget,
@@ -1423,7 +1431,9 @@ jobs that requested resumability.
   crosses commit, clean the temporary pathname, and preserve any prior pointer.
 - Durability-failure tests inject parent-directory synchronization failure
   after checkpoint, partial, and mutable sidecar publication and retain the
-  exact committed path as evidence.
+  exact committed path as evidence. POSIX tests additionally reject failures
+  in each member's post-staging-unlink directory sync before publishing the
+  progress pointer; collision reuse does not require this additional sync.
 - Resume tests cover unchanged jobs, monotonic transitions, exact repository
   revision and source/profile/toolchain mismatch, overwritten or missing
   generations, durable cancellation/failure/completion publication, and
