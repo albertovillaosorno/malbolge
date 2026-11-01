@@ -32,8 +32,9 @@ tests, verifier integration, and Git-ignored local `out/` artifacts.
 enforces the repository shape. The shared research layout discovery also
 rejects linked algorithm directories and redirected in-root directory
 ancestors before admitting an `experiment.toml` identity. Discovery requires
-exact native filesystem stat receipts and boolean junction results before
-inspecting their fields or truthiness; forged host results fail closed. The
+exact native filesystem stat receipts, integer file-mode members, and boolean
+junction results before interpreting modes or truthiness; forged host results
+fail closed. The
 direct research-mirror validator separately requires native stat containers,
 exact integer file-mode fields, and boolean junction receipts for each path
 component and discovered algorithm ID; foreign modes and truthiness hooks

@@ -249,6 +249,52 @@ def test_discovery_requires_native_status_receipts(
         _ = research_layout.research_algorithm_directories(tmp_path)
 
 
+@pytest.mark.parametrize("position", ("domain", "candidate", "manifest"))
+@pytest.mark.parametrize(
+    "mode_kind", ("missing", "boolean", "float", "text", "foreign")
+)
+def test_discovery_requires_native_mode_in_stat_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    position: str,
+    mode_kind: str,
+) -> None:
+    """Neither physical parent nor manifest leaf trusts forged stat mode fields."""
+    domain = _domain_root(tmp_path)
+    candidate = domain / "candidate"
+    candidate.mkdir(parents=True)
+    manifest = candidate / "experiment.toml"
+    _ = manifest.write_bytes(b"schema_version = 1\n")
+    target = {"domain": domain, "candidate": candidate, "manifest": manifest}[position]
+
+    @final
+    class ForeignMode(int):
+        @override
+        def __and__(self, other: object) -> Never:
+            del self, other
+            raise AssertionError("foreign research stat mode hook executed")
+
+    bad_mode: object = {
+        "missing": None,
+        "boolean": True,
+        "float": 1.5,
+        "text": "directory",
+        "foreign": ForeignMode(target.lstat().st_mode),
+    }[mode_kind]
+    original_lstat = Path.lstat
+    native = target.lstat()
+    fields: list[object] = [*native]
+    fields[0] = bad_mode
+    forged = os.stat_result(cast("tuple[int, ...]", tuple(fields)))
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        return forged if path == target else original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(OSError, match="native stat mode"):
+        _ = research_layout.research_algorithm_directories(tmp_path)
+
+
 @pytest.mark.parametrize("position", ("candidate", "manifest"))
 @pytest.mark.parametrize("receipt_kind", ("truthy", "falsey", "hostile"))
 def test_discovery_requires_native_junction_receipts(
