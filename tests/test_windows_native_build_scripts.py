@@ -583,7 +583,10 @@ def test_frontend_build_rejects_redirected_executable_parent(
     external_executable = external / "frontend.exe"
     _ = external_executable.write_bytes(b"foreign executable")
     linked_parent = tmp_path / "output"
-    linked_parent.symlink_to(external, target_is_directory=True)
+    try:
+        linked_parent.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory links unavailable: {error}")
     executable = linked_parent / "frontend.exe"
     monkeypatch.setattr(
         c_frontend_build, "HOST_PLATFORM_ID", tidy_toolchain.WINDOWS_PLATFORM

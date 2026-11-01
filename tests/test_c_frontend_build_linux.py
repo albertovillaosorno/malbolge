@@ -158,6 +158,12 @@ def test_linux_frontend_rejects_path_swap_after_configure(
     monkeypatch.setattr(c_frontend_build_linux, "BUILD_ROOT", cache)
     external = tmp_path / "foreign"
     external.mkdir()
+    probe = tmp_path / "link-capability-probe"
+    try:
+        probe.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory links unavailable: {error}")
+    probe.unlink()
     sentinel = external / "sentinel.txt"
     _ = sentinel.write_bytes(b"foreign data")
     calls: list[str] = []
