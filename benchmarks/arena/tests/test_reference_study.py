@@ -1020,6 +1020,45 @@ def test_host_reference_types_workspace_root_inspection_failures(
     assert isinstance(error.value.__cause__, error_type)
 
 
+class _ForgedWorkspaceRootStat:
+    """A dependency can falsely label a symlink as a physical directory."""
+
+    st_mode = 0o040700
+
+
+def test_host_reference_rejects_forged_workspace_root_metadata_before_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A foreign lstat receipt cannot make a linked local root authoritative."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    root = tmp_path / "linked"
+    root.symlink_to(outside, target_is_directory=True)
+    native_lstat = reference_study.Path.lstat
+    allocated: list[str] = []
+
+    def forged_stat(path: Path) -> object:
+        if path == root:
+            return _ForgedWorkspaceRootStat()
+        return native_lstat(path)
+
+    def forbid_allocate(**kwargs: object) -> str:
+        del kwargs
+        allocated.append("called")
+        raise AssertionError("forged root metadata allocated host-C workspace")
+
+    monkeypatch.setattr(reference_study, "_validate_plan", lambda _: None)
+    monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
+    monkeypatch.setattr(reference_study, "_LOCAL", root)
+    monkeypatch.setattr(reference_study.Path, "lstat", forged_stat)
+    monkeypatch.setattr(reference_study.tempfile, "mkdtemp", forbid_allocate)
+    with pytest.raises(reference_study.ReferenceStudyError, match="workspace root"):
+        reference_study.run_study(reference_study.StudyPlan(FAMILY, (4,), 7, 1))
+    assert not allocated
+    assert list(outside.iterdir()) == []
+
+
 class _ForgedWorkspaceName(str):
     """A foreign tempfile text receipt must not redirect output or cleanup."""
 
@@ -1043,11 +1082,13 @@ def test_host_reference_rejects_unowned_workspace_before_writes_or_cleanup(
     kind: str,
 ) -> None:
     """A forged allocator return cannot target an existing foreign directory."""
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
     outer = tmp_path / "other"
     outer.mkdir()
-    target = tmp_path / "arena-host-c-study-unowned"
+    target = workspace_root / "arena-host-c-study-unowned"
     if kind == "parent-root":
-        target = tmp_path
+        target = workspace_root
     elif kind == "outside-root":
         target = outer
     elif kind == "symlink":
@@ -1080,7 +1121,7 @@ def test_host_reference_rejects_unowned_workspace_before_writes_or_cleanup(
         del args, kwargs
         attempted.append("rmtree")
 
-    monkeypatch.setattr(reference_study, "_LOCAL", tmp_path)
+    monkeypatch.setattr(reference_study, "_LOCAL", workspace_root)
     monkeypatch.setattr(reference_study, "_validate_plan", lambda _: None)
     monkeypatch.setattr(reference_study, "_commit", lambda: "0" * 40)
     monkeypatch.setattr(reference_study.tempfile, "mkdtemp", forged_allocate)

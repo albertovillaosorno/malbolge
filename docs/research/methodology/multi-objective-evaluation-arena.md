@@ -1047,7 +1047,9 @@ The original study records remain the result authority.
   New study workspace allocation now checks that the returned temporary path
   is a native absolute child of the admitted `.temp` root, has the expected
   study prefix, identifies a physical directory and is initially empty before
-  any trial write or recursive setup cleanup. Red-first forged allocator
+  any trial write or recursive setup cleanup. The parent root also requires
+  an exact native `stat_result`, rather than trusting foreign mode metadata.
+  Red-first forged allocator
   receipts previously reached child writes and potentially redirected cleanup;
   they now reject without touching the claimed foreign path. These observed
   checks do not prove race-free ownership or an atomic directory snapshot.

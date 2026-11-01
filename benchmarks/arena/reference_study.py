@@ -900,11 +900,13 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
     # Only an existing physical .temp directory may contain new host-C trials.
     # This is static admission, not a cross-process filesystem race guarantee.
     try:
-        local_mode = _LOCAL.lstat().st_mode
+        local_metadata = _LOCAL.lstat()
     except Exception as error:
         message = "host-C reference workspace root is unavailable"
         raise ReferenceStudyError(message) from error
-    if not stat.S_ISDIR(local_mode):
+    if type(local_metadata) is not os.stat_result:
+        _fail("host-C reference workspace root returned invalid native metadata")
+    if not stat.S_ISDIR(local_metadata.st_mode):
         _fail("host-C reference workspace requires a physical output directory")
     try:
         directory = _admit_study_workspace(
