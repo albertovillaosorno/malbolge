@@ -729,6 +729,12 @@ instruction.
   retain their earliest duplicated prefixes. Counts above thirty,
   unseeded values and foreign profiles still reject. This does not
   implement arbitrary guest constants or general C lowering.
+- A separate thirty-one-output VM scan admits 22/26 short phases
+  (excluding four through seven), retaining 19 distinct shortest guest
+  nonzero bytes. The typed MCTI/MCTR and real publisher/runner paths
+  verify 22 and 160 with exact repeated output and no input consumed.
+  Repeated 7, 29 and 39 seeds preserve earliest safe prefixes.
+  Thirty-two or more outputs and unwitnessed values still reject.
 - Bounded third- and fourth-output literal rotation tables now prove 21 and
   24 distinct nonzero guest byte values respectively, each under its own
   positional `j`, `*`, repeated `<`, `v` source. An ignored optimized scan
