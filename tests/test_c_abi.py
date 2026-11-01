@@ -424,6 +424,157 @@ def test_c_abi_fdopen_failure_closes_owned_descriptor(
         _ = os.fstat(opened[0])
 
 
+@pytest.mark.parametrize("location", ["parent", "leaf"])
+@pytest.mark.parametrize("operation", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("receipt", [0, None, object()])
+def test_c_abi_rejects_foreign_redirect_status_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    location: str,
+    operation: str,
+    receipt: object,
+) -> None:
+    """Only native redirect-status booleans may admit authority paths."""
+    source = tmp_path / "c-abi.json"
+    _ = source.write_text(_canonical_text(), encoding="utf-8")
+    target = source if location == "leaf" else tmp_path
+    native = getattr(Path, operation)
+
+    def forged_redirect(path: Path) -> object:
+        if path == target:
+            return receipt
+        return native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, forged_redirect)
+        with pytest.raises(c_abi.CAbiValidationError, match="redirect"):
+            _ = c_abi.load_document(source)
+
+
+@pytest.mark.parametrize("phase", ["admitted", "opened", "after", "visible"])
+def test_c_abi_rejects_foreign_file_status_without_field_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """Source identity may only come from native os.stat_result receipts."""
+    source = tmp_path / "c-abi.json"
+    _ = source.write_text(_canonical_text(), encoding="utf-8")
+
+    class ForeignStat:
+        @property
+        def st_mode(self) -> object:
+            raise AssertionError("foreign C ABI stat field evaluated")
+
+    native_lstat = Path.lstat
+    native_fstat = os.fstat
+    lstat_calls = 0
+    fstat_calls = 0
+
+    def forged_lstat(path: Path) -> object:
+        nonlocal lstat_calls
+        if path == source:
+            lstat_calls += 1
+            if phase == "admitted" and lstat_calls == 1:
+                return ForeignStat()
+            if phase == "visible" and lstat_calls == 2:
+                return ForeignStat()
+        return native_lstat(path)
+
+    def forged_fstat(fd: int) -> object:
+        nonlocal fstat_calls
+        fstat_calls += 1
+        if phase == "opened" and fstat_calls == 1:
+            return ForeignStat()
+        if phase == "after" and fstat_calls == 2:
+            return ForeignStat()
+        return native_fstat(fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", forged_lstat)
+        isolated.setattr(os, "fstat", forged_fstat)
+        with pytest.raises(c_abi.CAbiValidationError, match="status"):
+            _ = c_abi.load_document(source)
+
+
+@pytest.mark.parametrize("descriptor", [False, True, -1, 0.0, "5"])
+def test_c_abi_rejects_foreign_raw_descriptors_before_fdopen(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    descriptor: object,
+) -> None:
+    """A coerced or forged descriptor must never touch host FD operations."""
+    source = tmp_path / "c-abi.json"
+    _ = source.write_text(_canonical_text(), encoding="utf-8")
+    wrapped: list[object] = []
+    closed: list[object] = []
+
+    monkeypatch.setattr(os, "open", lambda *_args, **_kwargs: descriptor)
+
+    def forged_fdopen(fd: object, _mode: str) -> object:
+        wrapped.append(fd)
+        raise AssertionError("foreign descriptor passed to fdopen")
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    monkeypatch.setattr(os, "close", lambda fd: closed.append(fd))
+    with pytest.raises(c_abi.CAbiValidationError, match="descriptor"):
+        _ = c_abi.load_document(source)
+    assert not wrapped
+    assert not closed
+
+
+def test_c_abi_rejects_foreign_stream_wrapper_and_releases_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign wrapper never gains authority or leaks its raw descriptor."""
+    source = tmp_path / "c-abi.json"
+    _ = source.write_text(_canonical_text(), encoding="utf-8")
+    opened: list[int] = []
+    native_open = os.open
+
+    def track_open(path: Path, flags: int) -> int:
+        fd = native_open(path, flags)
+        opened.append(fd)
+        return fd
+
+    class ForeignStream:
+        def __enter__(self) -> object:
+            raise AssertionError("foreign ABI stream entered")
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", lambda *_args: ForeignStream())
+    with pytest.raises(c_abi.CAbiValidationError, match="stream"):
+        _ = c_abi.load_document(source)
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize("receipt_kind", ["str", "subclass"])
+def test_c_abi_rejects_foreign_byte_snapshots_before_decoding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_kind: str,
+) -> None:
+    """Only exact native ABI bytes may reach the UTF-8 document decoder."""
+    source = tmp_path / "c-abi.json"
+    _ = source.write_text(_canonical_text(), encoding="utf-8")
+
+    class ForeignBytes(bytes):
+        def decode(self, *_args: object, **_kwargs: object) -> str:
+            raise AssertionError("foreign C ABI bytes decoder executed")
+
+    def forged_read(_path: Path) -> object:
+        if receipt_kind == "str":
+            return "{}"
+        return ForeignBytes(b"{}")
+
+    monkeypatch.setattr(c_abi, "_read_document_bytes", forged_read)
+    with pytest.raises(c_abi.CAbiValidationError, match="bytes"):
+        _ = c_abi.load_document(source)
+
+
 def test_missing_guest_source_fails_closed(tmp_path: Path) -> None:
     """A vanished guest source is reported through the ABI error contract."""
     _require_llvm()

@@ -321,6 +321,15 @@ arbitrary C has a complete Malbolge lowering.
 
 ## Verification
 
+The canonical `c-abi-v1.json` authority loader requires exact native filesystem
+receipts before parsing schema policy: direct symlink/junction checks must be
+booleans, file status must be `os.stat_result`, opened descriptors must be
+nonnegative integers, and stream/byte receipts must have the native binary
+shapes. A failed stream wrapper releases its descriptor. Forged or nonnative
+read evidence fails closed instead of invoking foreign formatting or decoding
+hooks. These checks supplement the bounded no-follow read and pre/post file
+identity comparison; they do not replace canonical ABI schema validation.
+
 The independent ABI source preflight reads a stable regular-file snapshot with
 no-follow descriptor admission. Before using source-offset diagnostics, it
 compares the source's regular-file identity, extent, and bytes to a second

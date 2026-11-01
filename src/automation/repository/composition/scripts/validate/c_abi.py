@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
@@ -302,6 +303,8 @@ def _document_identity(
         Device, inode, size, mtime, and ctime.
 
     """
+    if type(status) is not os.stat_result:
+        _fail("invalid C ABI document status receipt")
     if not S_ISREG(status.st_mode):
         _fail("C ABI document must be a regular file")
     return (
@@ -325,11 +328,20 @@ def _check_document_identity(
         _fail("C ABI document changed during read")
 
 
+def _check_document_redirect(path: Path) -> None:
+    """Reject linked or foreign redirect status for one path component."""
+    symlink = path.is_symlink()
+    if type(symlink) is not bool or symlink:
+        _fail("C ABI document path must not redirect")
+    junction = path.is_junction()
+    if type(junction) is not bool or junction:
+        _fail("C ABI document path must not redirect")
+
+
 def _check_document_parents(path: Path) -> None:
     """Reject directory aliases along the ABI document pathname."""
     for parent in path.parents:
-        if parent.is_symlink() or parent.is_junction():
-            _fail("C ABI document path must not redirect")
+        _check_document_redirect(parent)
 
 
 def _read_open_document(
@@ -345,6 +357,8 @@ def _read_open_document(
     """
     try:
         stream = os.fdopen(descriptor, "rb")
+        if type(stream) is not io.BufferedReader:
+            _fail("invalid C ABI document stream receipt")
     except BaseException:
         # This reader retains descriptor ownership until wrapping succeeds.
         try:
@@ -353,10 +367,15 @@ def _read_open_document(
             pass
         raise
     with stream:
-        opened = os.fstat(stream.fileno())
+        stream_descriptor = stream.fileno()
+        if type(stream_descriptor) is not int or stream_descriptor < 0:
+            _fail("invalid C ABI document stream descriptor receipt")
+        opened = os.fstat(stream_descriptor)
         _check_document_identity(admitted, opened)
         data = stream.read(MAX_DOCUMENT_BYTES + 1)
-        _check_document_identity(opened, os.fstat(stream.fileno()))
+        if type(data) is not bytes:
+            _fail("invalid C ABI document bytes receipt")
+        _check_document_identity(opened, os.fstat(stream_descriptor))
         _check_document_identity(opened, path.lstat())
         if len(data) != opened.st_size or len(data) > MAX_DOCUMENT_BYTES:
             _fail("C ABI document changed during read or exceeds byte limit")
@@ -372,10 +391,8 @@ def _read_document_bytes(path: Path) -> bytes:
     """
     _check_document_parents(path)
     admitted = path.lstat()
-    if path.is_symlink() or path.is_junction():
-        _fail("C ABI document path must not redirect")
-    if not S_ISREG(admitted.st_mode):
-        _fail("C ABI document must be a regular file")
+    _check_document_redirect(path)
+    _ = _document_identity(admitted)
     if admitted.st_size > MAX_DOCUMENT_BYTES:
         _fail("C ABI document exceeds byte limit")
     flags = (
@@ -385,6 +402,8 @@ def _read_document_bytes(path: Path) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("invalid C ABI document descriptor receipt")
     return _read_open_document(descriptor, path, admitted)
 
 
@@ -396,7 +415,10 @@ def load_document(path: Path = DEFAULT_ABI) -> JsonObject:
 
     """
     try:
-        text = _read_document_bytes(path).decode("utf-8-sig")
+        snapshot = _read_document_bytes(path)
+        if type(snapshot) is not bytes:
+            _fail("invalid C ABI document bytes receipt")
+        text = snapshot.decode("utf-8-sig")
     except CAbiValidationError:
         raise
     except UnicodeDecodeError as error:
