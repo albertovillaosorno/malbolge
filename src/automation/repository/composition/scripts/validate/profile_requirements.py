@@ -407,7 +407,7 @@ def _canonical_profile_requirement(
         )
     except ProfileRequirementValidationError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = (
             "target profile requirement canonical profile authority "
             "is unavailable or invalid"

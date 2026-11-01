@@ -109,7 +109,9 @@ runtime identities are revalidated too: `safe-rust-classic` and
 `safe-rust-profiled` cannot be reused with forged feature, word, or memory
 capabilities. Canonical authority re-resolution maps unreadable or invalid
 `malbolge.json` state into `ProfileRequirementValidationError`, so direct
-preflight never leaks raw filesystem or target-profile parser exceptions.
+preflight never leaks raw filesystem or target-profile parser exceptions,
+including host `TypeError` failures from canonical authority loading. The
+original loader error remains chained as the cause.
 Canonical profile parsing admits the top-level mapping and public
 JSON/path input types before iteration, JSON decoding, or pathlib access. Named
 profile IDs are validated before dictionary lookup or hashing, and runtime

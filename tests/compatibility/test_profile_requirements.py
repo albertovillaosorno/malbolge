@@ -624,7 +624,7 @@ def test_preflight_rejects_foreign_runtime_type() -> None:
         )
 
 
-@pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
 @pytest.mark.parametrize("entrypoint", ["preflight", "direct_error"])
 def test_canonical_authority_host_loader_faults_are_typed(
     monkeypatch: pytest.MonkeyPatch,
