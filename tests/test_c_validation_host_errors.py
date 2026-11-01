@@ -93,6 +93,57 @@ def test_native_validator_admits_only_trusted_host_error_text(
     assert expected in str(caught.value)
 
 
+@pytest.mark.parametrize("probe", ("version", "registration"))
+def test_manual_c_probe_requires_finite_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+) -> None:
+    """Read-only Clang identity and plugin queries have a finite latency bound."""
+
+    def inspect_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        assert kwargs.get("timeout") == 15
+        output = (
+            "clang version 22.1.8\n"
+            if probe == "version"
+            else "\n".join(sorted(validator.PLUGIN_CHECKS))
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", inspect_run)
+    _execute_probe(probe, Path("/synthetic/clang"))
+
+
+@pytest.mark.parametrize("probe", ("version", "registration"))
+@pytest.mark.parametrize("hostile", (False, True))
+def test_manual_c_probe_timeout_stays_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    hostile: bool,
+) -> None:
+    """A hung compiler discovery probe never escapes as a raw timeout."""
+
+    def unsafe_str(self: Exception) -> Never:
+        del self
+        raise AssertionError("foreign timeout formatter executed")
+
+    timeout_type = (
+        type("ForeignTimeout", (subprocess.TimeoutExpired,), {"__str__": unsafe_str})
+        if hostile
+        else subprocess.TimeoutExpired
+    )
+    fault = timeout_type(["/synthetic/clang"], timeout=15)
+
+    def fail_run(*_args: object, **_kwargs: object) -> Never:
+        raise fault
+
+    monkeypatch.setattr(subprocess, "run", fail_run)
+    with pytest.raises(validator.InputError, match="failed") as caught:
+        _execute_probe(probe, Path("/synthetic/clang"))
+    assert caught.value.__cause__ is fault
+
+
 @pytest.mark.parametrize("probe", ["version", "registration", "validation"])
 @pytest.mark.parametrize(
     "receipt_kind",

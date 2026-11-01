@@ -146,7 +146,9 @@ errors to typed configuration failures without invoking foreign exception
 formatters, retaining the original host error as the cause. Tool, profile,
 and plugin-file admission and implicit default host/plugin selection also
 require exact native boolean regular-file verdicts before using filesystem
-evidence, never foreign truthiness. The official LLVM
+evidence, never foreign truthiness. Read-only Clang version and plugin check-list
+queries each have a 15-second execution bound; timeout exceptions become typed
+configuration failures with their original causes. The official LLVM
 22.1.8 Windows release layout has
 plugin symbol exporting disabled, so its prebuilt `clang-tidy.exe` does not
 export the registry operation required by an out-of-tree DLL.

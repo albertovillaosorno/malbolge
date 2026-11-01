@@ -358,8 +358,15 @@ def _tool_version_output(path: Path, label: str) -> str:
             encoding="utf-8",
             errors="replace",
             shell=False,
+            timeout=15,
         )
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        subprocess.TimeoutExpired,
+    ) as error:
         message = (
             f"failed to execute {label} version query {path}: "
             f"{_safe_error_detail(error)}"
@@ -396,8 +403,15 @@ def _require_plugin_registration(clang_tidy: Path, plugin: Path) -> None:
             encoding="utf-8",
             errors="replace",
             shell=False,
+            timeout=15,
         )
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        subprocess.TimeoutExpired,
+    ) as error:
         message = (
             "failed to probe clang-tidy plugin registration: "
             f"{_safe_error_detail(error)}"
