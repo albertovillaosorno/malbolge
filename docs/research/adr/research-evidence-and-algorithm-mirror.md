@@ -54,10 +54,11 @@ half requires
 `README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via
 `check-ignore --no-index`, whether `algorithms/<id>/out/` itself is ignored.
 A rule matching only a synthetic child filename cannot satisfy this
-directory-level output policy. The Git ignore probe requires a native completed
-process with an exact integer exit of zero (ignored) or one (not ignored);
-boolean, floating-point, missing, or foreign process receipts cannot establish
-output policy. CLI diagnostics preserve the repository validator's own errors
+directory-level output policy. The Git ignore probe has a 15-second timeout
+and requires a native completed process whose exact native command arguments
+match the requested directory and whose integer exit is zero (ignored) or one
+(not ignored). Boolean, floating-point, missing, or foreign process receipts
+cannot establish output policy. CLI diagnostics preserve the validator's errors
 without invoking arbitrary host-exception formatting hooks.
 Optional `math/algorithms/<id>.tex` remains a
 research-specific addition rather than a universal mirror requirement.

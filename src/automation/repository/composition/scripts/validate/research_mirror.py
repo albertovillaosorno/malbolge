@@ -42,7 +42,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 from scripts.repository_root import repository_root
 from scripts.research_layout import (
@@ -247,29 +247,53 @@ def _out_directory(entry: MirrorEntry) -> str:
 
 
 def _out_is_ignored(entry: MirrorEntry) -> bool:
+    command = [
+        GIT,
+        "check-ignore",
+        "--quiet",
+        "--no-index",
+        "--",
+        _out_directory(entry),
+    ]
     # jig-ignore-next-line: indivisible reviewed identifier
     try:
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Git argv, no shell.
-            [GIT, "check-ignore", "--quiet", "--no-index", "--", _out_directory(entry)],
+            command,
             cwd=ROOT,
             check=False,
             shell=False,
+            timeout=15,
         )
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        subprocess.TimeoutExpired,
+    ) as error:
         detail = _host_error_detail(error)
         raise ResearchMirrorError(f"Git ignore probe failed: {detail}") from error
+    if type(completed) is not subprocess.CompletedProcess:
+        _fail("malformed Git ignore process receipt")
+    native = cast("subprocess.CompletedProcess[object]", completed)
+    argv = cast("object", native.args)
+    if type(argv) is not list:
+        _fail("malformed Git ignore process receipt")
+    observed = cast("list[object]", argv)
     if (
-        type(completed) is not subprocess.CompletedProcess
-        or type(completed.returncode) is not int
+        type(native.returncode) is not int
+        or len(observed) != len(command)
+        or any(type(argument) is not str for argument in observed)
+        or observed != command
     ):
         _fail("malformed Git ignore process receipt")
-    if completed.returncode not in {0, 1}:
+    if native.returncode not in {0, 1}:
         message = (
             "git check-ignore failed for research output probe: "
-            f"{entry.research_id} exit={completed.returncode}"
+            f"{entry.research_id} exit={native.returncode}"
         )
         _fail(message)
-    return completed.returncode == 0
+    return native.returncode == 0
 
 
 def _validate_entry(

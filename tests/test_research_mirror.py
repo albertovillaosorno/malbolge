@@ -374,6 +374,104 @@ def test_mirror_git_probe_rejects_noninteger_exit_receipts(
         _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize(
+    "kind",
+    (
+        "missing",
+        "tuple",
+        "wrong-command",
+        "wrong-target",
+        "foreign-list",
+        "foreign-string",
+        "opaque",
+    ),
+)
+def test_mirror_git_probe_requires_exact_command_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Only the requested directory's Git verdict can certify its ignore rule."""
+    entry = validator.MirrorEntry(
+        document=validator.ROOT / "docs/fixture",
+        executable=validator.ROOT / "algorithms/fixture",
+        research_id="fixture",
+    )
+    expected = [
+        "git",
+        "check-ignore",
+        "--quiet",
+        "--no-index",
+        "--",
+        "algorithms/fixture/out/",
+    ]
+
+    class ForeignList(list[str]):
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign Git command list compared")
+
+    class ForeignString(str):  # ruff: ignore[subclass-builtin]
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign Git command member compared")
+
+    altered: object = {
+        "missing": None,
+        "tuple": tuple(expected),
+        "wrong-command": ["git", "version"],
+        "wrong-target": [*expected[:-1], "algorithms/other/out/"],
+        "foreign-list": ForeignList(expected),
+        "foreign-string": [ForeignString("git"), *expected[1:]],
+        "opaque": object(),
+    }[kind]
+    completed = sp.CompletedProcess[str](args=cast("list[str]", altered), returncode=0)
+
+    def forged_run(*_args: object, **_kwargs: object) -> sp.CompletedProcess[str]:
+        return completed
+
+    monkeypatch.setattr(sp, "run", forged_run)
+    with pytest.raises(validator.ResearchMirrorError, match="malformed Git"):
+        _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_mirror_git_probe_uses_finite_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The local Git verdict must not hang the research validation runner."""
+    entry = validator.MirrorEntry(
+        document=validator.ROOT / "docs/fixture",
+        executable=validator.ROOT / "algorithms/fixture",
+        research_id="fixture",
+    )
+
+    def inspect_run(command: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+        assert kwargs.get("timeout") == 15
+        return sp.CompletedProcess(args=command, returncode=0)
+
+    monkeypatch.setattr(sp, "run", inspect_run)
+    assert validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_mirror_git_probe_timeout_is_typed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A delayed Git ignore verdict remains a typed research policy failure."""
+    entry = validator.MirrorEntry(
+        document=validator.ROOT / "docs/fixture",
+        executable=validator.ROOT / "algorithms/fixture",
+        research_id="fixture",
+    )
+
+    def timed_out(*_args: object, **_kwargs: object) -> sp.CompletedProcess[str]:
+        raise sp.TimeoutExpired(cmd=["git", "check-ignore"], timeout=15)
+
+    monkeypatch.setattr(sp, "run", timed_out)
+    with pytest.raises(validator.ResearchMirrorError, match="Git ignore probe failed"):
+        _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_mirror_cli_does_not_format_foreign_os_errors(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
