@@ -74,6 +74,7 @@ RUST_RUSTC_BYTES = b"rustc-1.98.1"
 RUST_STD_BYTES = b"rust-std"
 RUFF_BYTES = b"ruff"
 OUTSIDE_JIG_ALIAS_BYTES = b"retain outside"
+EMPTY_JIG_STAGE_BYTES = b""
 PYTHON_LAUNCHER_NAME = "python"
 PYTEST_LAUNCHER_NAME = "pytest"
 STALE_LAUNCHER_BYTES = b"stale"
@@ -2380,6 +2381,66 @@ def test_jig_alias_publisher_rejects_foreign_mkstemp_name(
             OSError, match=r"Bad file descriptor|Invalid handle"
         ):
             _ = os.fstat(descriptors[0])
+    finally:
+        for stage in stages:
+            stage.unlink(missing_ok=True)
+
+
+def _hardlink_jig_mkstemp_receipt(
+    monkeypatch: pytest.MonkeyPatch, foreign: Path
+) -> list[Path]:
+    """Create a shared-inode stage for the first Jig alias invocation.
+
+    Returns:
+        The actual private stage pathnames for fixture-only cleanup.
+
+    """
+    real_mkstemp = tempfile.mkstemp
+    stages: list[Path] = []
+
+    def linked_mkstemp(**kwargs: object) -> tuple[int, str]:
+        descriptor, name = real_mkstemp(
+            prefix=cast("str", kwargs["prefix"]),
+            dir=cast("Path", kwargs["dir"]),
+        )
+        stage = Path(name)
+        stages.append(stage)
+        if len(stages) == 1:
+            try:
+                os.link(stage, foreign)
+            except OSError as error:
+                os.close(descriptor)
+                stage.unlink(missing_ok=True)
+                pytest.skip(f"hardlinks unavailable: {error}")
+        return descriptor, name
+
+    monkeypatch.setattr(tempfile, "mkstemp", linked_mkstemp)
+    return stages
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_jig_alias_publisher_rejects_hardlinked_staging_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    windows: bool,
+) -> None:
+    """A private stage must not share its inode with a foreign hardlink."""
+    layout = _jig_alias_fixture(tmp_path, windows=windows)
+    alias_root = layout.environment / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "basedpyright.bin"
+    previous = b"original alias"
+    _ = target.write_bytes(previous)
+    foreign = tmp_path / "unrelated-hardlink.bin"
+    stages = _hardlink_jig_mkstemp_receipt(monkeypatch, foreign)
+    try:
+        with pytest.raises(python_validation.ProvisionError, match="temporary"):
+            _ = python_validation.write_jig_tool_aliases(
+                layout, windows=windows
+            )
+        assert foreign.read_bytes() == EMPTY_JIG_STAGE_BYTES
+        assert target.read_bytes() == previous
     finally:
         for stage in stages:
             stage.unlink(missing_ok=True)

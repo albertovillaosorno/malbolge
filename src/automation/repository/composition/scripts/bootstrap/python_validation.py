@@ -797,12 +797,15 @@ def _admit_jig_alias_temporary(
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = "Jig alias temporary receipt cannot be verified"
         raise ProvisionError(message) from error
-    if (
-        not stat.S_ISREG(descriptor_status.st_mode)
-        or not stat.S_ISREG(pathname_status.st_mode)
-        or (descriptor_status.st_dev, descriptor_status.st_ino)
-        != (pathname_status.st_dev, pathname_status.st_ino)
-    ):
+    regular = stat.S_ISREG(descriptor_status.st_mode) and stat.S_ISREG(
+        pathname_status.st_mode
+    )
+    same_inode = (descriptor_status.st_dev, descriptor_status.st_ino) == (
+        pathname_status.st_dev,
+        pathname_status.st_ino,
+    )
+    single_link = descriptor_status.st_nlink == pathname_status.st_nlink == 1
+    if not all((regular, same_inode, single_link)):
         _fail("Jig alias temporary receipt does not match its descriptor")
     return temporary
 

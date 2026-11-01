@@ -49,8 +49,10 @@ private temporary files rather than followed or truncated; preflight rejects
 redirected targets before publishing any of the three aliases. Private Jig tool
 alias publication also binds the exact native `mkstemp` receipt to its requested
 alias directory and the open descriptor's regular-file inode before any write,
-replacement, or cleanup. A forged foreign pathname is rejected without unlinking
-or replacing that foreign file; the owned descriptor is closed on rejection.
+replacement, or cleanup. A single-link inode is required so hardlinked stages
+cannot modify foreign files by writing through a shared inode. A forged foreign
+pathname is rejected without unlinking or replacing that foreign file; the
+owned descriptor is closed on rejection.
 Native Windows
 CMD and POSIX Python/pytest launcher scripts use the same physical preflight
 and private atomic replacement, checking both launcher destinations before
