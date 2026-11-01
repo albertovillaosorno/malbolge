@@ -770,6 +770,31 @@ const ROTATED_TWENTY_NINE_BYTE_SEEDS: &[(u8, usize)] = &[
     (165, 20),
 ];
 
+/// Thirty-two outputs have 21 successful VM phases; three through seven fail.
+/// Only the earliest guest-computed witness for byte 139 is retained.
+const ROTATED_THIRTY_TWO_BYTE_SEEDS: &[(u8, usize)] = &[
+    (15, 24),
+    (19, 21),
+    (20, 18),
+    (21, 15),
+    (47, 14),
+    (48, 13),
+    (50, 10),
+    (56, 2),
+    (58, 8),
+    (59, 11),
+    (136, 22),
+    (137, 19),
+    (139, 16),
+    (150, 23),
+    (154, 20),
+    (156, 17),
+    (183, 1),
+    (194, 9),
+    (196, 12),
+    (200, 0),
+];
+
 /// Thirty-one-output source layout admits 22/26 independent VM phases.
 /// Only shortest nonzero byte witnesses are included (7, 29, 39 repeat).
 const ROTATED_THIRTY_ONE_BYTE_SEEDS: &[(u8, usize)] = &[
@@ -871,6 +896,7 @@ const fn rotated_byte_seeds(outputs: usize) -> Option<RotatedByteSeedTable> {
         29 => Some(ROTATED_TWENTY_NINE_BYTE_SEEDS),
         30 => Some(ROTATED_THIRTY_BYTE_SEEDS),
         31 => Some(ROTATED_THIRTY_ONE_BYTE_SEEDS),
+        32 => Some(ROTATED_THIRTY_TWO_BYTE_SEEDS),
         _ => None,
     }
 }
@@ -1179,9 +1205,9 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
     Some((*result, *value))
 }
 
-/// Emits a nonzero `u8` one to thirty-one times using guest data rotation.
+/// Emits a nonzero `u8` one to thirty-two times using guest data rotation.
 ///
-/// Accepts one `MaterializeU8` with one to thirty-one same-SSA `ByteOutput`s and
+/// Accepts one `MaterializeU8` with one to thirty-two same-SSA `ByteOutput`s and
 /// `ReturnVoid` for the current profile. A bounded source-address-specific
 /// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
 /// memory word; the guest `*` changes its own accumulator, not the host.

@@ -734,7 +734,14 @@ instruction.
   nonzero bytes. The typed MCTI/MCTR and real publisher/runner paths
   verify 22 and 160 with exact repeated output and no input consumed.
   Repeated 7, 29 and 39 seeds preserve earliest safe prefixes.
-  Thirty-two or more outputs and unwitnessed values still reject.
+  Thirty-three or more outputs and unwitnessed values still reject.
+- An independent thirty-two-output real-VM scan passes 21/26 short
+  phases (not three through seven) and retains 20 shortest distinct
+  guest-computed nonzero bytes. Byte 139 repeats at phase 25; its phase-16
+  prefix is retained. Typed MCTI/MCTR and raw/capsule real-runner tests
+  verify 200 and 15, no guest input, and rejection of all unwitnessed
+  values and thirty-three or more writes. The bounded seed table does not
+  prove arbitrary constant materialization or general C lowering.
 - Bounded third- and fourth-output literal rotation tables now prove 21 and
   24 distinct nonzero guest byte values respectively, each under its own
   positional `j`, `*`, repeated `<`, `v` source. An ignored optimized scan

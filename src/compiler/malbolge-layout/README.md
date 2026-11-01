@@ -369,7 +369,7 @@ failed I/O, memory, arbitrary C, or guest ABI is realized.
 ### Guest-computed finite nonzero byte literals
 
 An explicit `--seeded-byte-literal` canonical MCTI or MCTR file/stdin mode
-admits one source `u8` constant followed by one to thirty-one same-SSA
+admits one source `u8` constant followed by one to thirty-two same-SSA
 outputs.
 The exact output counts have independent current-profile witness tables:
 14 distinct bytes with one output, 10 with two, 21 with three, 24 with four,
@@ -380,15 +380,16 @@ and 25 with ten, plus 17 with eleven, 20 with twelve, 19 with thirteen,
 and 25 with twenty-two, 21 with twenty-three, 21 with twenty-four,
 19 with twenty-five, 22 with twenty-six, 18 with twenty-seven and
 22 with twenty-eight, 19 with twenty-nine, 20 with thirty and
-19 with thirty-one.
-For each count from three through thirty-one, a bounded source-prefix
-scan confirms that 22 to 26 tested phases emit identical nonzero bytes.
+19 with thirty-one and 20 with thirty-two.
+For each count from three through thirty-two, a bounded source-prefix
+scan confirms that 21 to 26 tested phases emit identical nonzero bytes.
 The admission keeps the shortest prefix per value; the 24- and
 25-output scans exclude phase seven, the 26-output scan excludes
 phases six and seven, the 27-output scan excludes six through eight,
 both the 28- and 29-output scans exclude five through seven, and the
 30- and 31-output scans each exclude four through seven (22 valid
-phases per count).
+phases per count); the 32-output scan excludes phases three
+through seven (21 valid phases).
 Every extra `<` changes source positions and loader-expanded data, so
 seeds cannot be shared across counts.
 The admitted `j`/`*`/`<`/`v` layout computes bytes through actual
@@ -407,7 +408,7 @@ cargo run --bin malbolge_layout -- \
 ```
 
 This mode is separate from strict echo, identity-bitcast, latest-read,
-initial-zero and zero-prefixed traces. Unknown constants, thirty-two
+initial-zero and zero-prefixed traces. Unknown constants, thirty-three
 or more writes, input consumption, guest heap, EOF and general C
 arithmetic still reject.
 
