@@ -1672,20 +1672,58 @@ def test_llvm_inspection_rejects_nonphysical_resource_members(
     assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
 
 
+@pytest.mark.parametrize("phase", ("preflight", "readiness"))
+def test_llvm_resource_scan_rejects_unreadable_nested_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """An OS scan error must not let rglob silently omit resource members."""
+    observation = _host_observation(tmp_path)
+    source_nested = observation.resource_dir / "include" / "hidden"
+    source_nested.mkdir(parents=True)
+    _ = (source_nested / "hidden.h").write_bytes(b"hidden header")
+    if phase == "readiness":
+        root = llvm_validation.import_linux_llvm(tmp_path, observation)
+        scan_target = root / "lib/clang/22/include/hidden"
+        assert llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+    else:
+        scan_target = source_nested
+
+    real_scandir = os.scandir
+    scan_fault = PermissionError("LLVM resource directory unreadable")
+
+    def fail_nested_scan(path: str | os.PathLike[str]):
+        if Path(path) == scan_target:
+            raise scan_fault
+        return real_scandir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "scandir", fail_nested_scan)
+        if phase == "readiness":
+            assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+        else:
+            with pytest.raises(llvm_validation.LlvmImportError) as raised:
+                llvm_validation._require_physical_resources(  # pyright: ignore[reportPrivateUsage]
+                    observation.resource_dir
+                )
+            assert raised.value.__cause__ is scan_fault
+
+
 def test_llvm_inspection_rejects_resource_traversal_fault(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Readiness treats failed native directory scans as missing evidence."""
     root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
     resources = root / "lib/clang/22"
-    native_rglob = Path.rglob
+    native_walk = Path.walk
 
-    def failed_scan(path: Path, pattern: str):
+    def failed_scan(path: Path, **kwargs: object):  # type: ignore[no-untyped-def]
         if path == resources:
             raise OSError("resource traversal interrupted")
-        return native_rglob(path, pattern)
+        return native_walk(path, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(Path, "rglob", failed_scan)
+    monkeypatch.setattr(Path, "walk", failed_scan)
     assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
 
 
@@ -1842,14 +1880,14 @@ def test_linux_import_types_resource_traversal_failure(
     """Host filesystem traversal faults become typed, cause-preserving errors."""
     observation = _host_observation(tmp_path)
     error = _ResourceTraversalError("untrusted")
-    original = Path.rglob
+    original = Path.walk
 
-    def broken_resource_traversal(path: Path, pattern: str):
+    def broken_resource_traversal(path: Path, **kwargs: object):  # type: ignore[no-untyped-def]
         if path == observation.resource_dir:
             raise error
-        return original(path, pattern)
+        return original(path, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(Path, "rglob", broken_resource_traversal)
+    monkeypatch.setattr(Path, "walk", broken_resource_traversal)
     with pytest.raises(
         llvm_validation.LlvmImportError, match="resource traversal"
     ) as raised:
@@ -4419,15 +4457,15 @@ def test_llvm_resource_preflight_rejects_forged_recursive_members(
         member = str(outside)
     else:
         member = outside
-    native_rglob = Path.rglob
+    native_walk = Path.walk
 
-    def forged_rglob(path: Path, pattern: str):  # type: ignore[no-untyped-def]
-        if path == root and pattern == "*":
-            return iter((member,))
-        return native_rglob(path, pattern)
+    def forged_walk(path: Path, **kwargs: object):  # type: ignore[no-untyped-def]
+        if path == root:
+            return iter(((root, [], [member]),))
+        return native_walk(path, **kwargs)  # type: ignore[arg-type]
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(Path, "rglob", forged_rglob)
+        isolated.setattr(Path, "walk", forged_walk)
         with pytest.raises(llvm_validation.LlvmImportError, match="resource member"):
             llvm_validation._require_physical_resources(  # pyright: ignore[reportPrivateUsage]
                 root

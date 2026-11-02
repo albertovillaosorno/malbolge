@@ -633,17 +633,37 @@ def _copy_file(
 def _require_physical_resources(root: Path) -> None:
     if not _physical_directory(root):
         _fail("host LLVM resource directory must not redirect")
+
+    def fail_scan(error: OSError) -> Never:
+        raise LlvmImportError(
+            f"host LLVM resource traversal failed: {type(error).__name__}"
+        ) from error
+
     try:
-        for member in root.rglob("*"):
+        # Path.rglob silently suppresses scandir failures. Readiness and
+        # preflight must reject a subtree whose members cannot be inspected.
+        for directory, folders, files in root.walk(on_error=fail_scan):
             if (
-                type(member) is not type(root)
-                or member == root
-                or not member.is_relative_to(root)
-                or ".." in member.relative_to(root).parts
+                type(directory) is not type(root)
+                or not directory.is_relative_to(root)
+                or ".." in directory.relative_to(root).parts
+                or not _physical_directory(directory)
             ):
-                _fail("host LLVM resource member must be inside its root")
-            if not (_physical_file(member) or _physical_directory(member)):
-                _fail(f"host LLVM resource member must be physical: {member}")
+                _fail("host LLVM resource member directory must be physical")
+            for name in (*folders, *files):
+                if (
+                    type(name) is not str
+                    or not name
+                    or name in (".", "..")
+                    or "/" in name
+                    or "\\" in name
+                ):
+                    _fail("host LLVM resource member must be a direct native child")
+                member = directory / name
+                if member.parent != directory or not (
+                    _physical_file(member) or _physical_directory(member)
+                ):
+                    _fail(f"host LLVM resource member must be physical: {member}")
     except LlvmImportError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
