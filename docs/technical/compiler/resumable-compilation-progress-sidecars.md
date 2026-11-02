@@ -473,7 +473,14 @@ a diagnostic admission rather than rollback, and cannot prevent filesystem
 mutation after its final check.
 
 The immutable POSIX publisher's intentional no-replace hard link happens only
-after these staging checks and is cleaned up when staging completes. Because
+after these staging checks. Link completion requires the exact native `None`
+receipt. A forged success response cannot authorize a checkpoint: if the
+physical destination still matches the staged regular inode, publication is
+reported with the exact path and uncertain directory durability; a missing or
+unrelated destination instead rejects without claiming commitment or changing
+foreign bytes. No sidecar pointer is published after either rejection. This
+recheck cannot authenticate a deliberately forged native stat result.
+The staging name is cleaned up when publication completes. Because
 that staging unlink follows the first parent-directory `fsync`, a newly linked
 generation requires a second parent-directory `fsync` after cleanup and before
 a successful return. Otherwise a crash could restore the staging hard link,

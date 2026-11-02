@@ -2973,6 +2973,48 @@ def _reject_path_redirect(path: Path, context: str) -> None:
         _fail(f"{context} path is linked: {redirect}")
 
 
+def _admit_immutable_link_receipt(
+    temporary: Path, destination: Path, receipt: object
+) -> None:
+    """Reject forged link completion with evidence of physical publication.
+
+    A noncanonical return can follow a real hard link, or an untrusted no-op.
+    Do not claim committed durability without matching named inode evidence.
+
+    Raises:
+        ProgressSidecarDurabilityError: If publication occurred, without a
+            trustworthy completion receipt or confirmed durability.
+
+    """
+    if receipt is None:
+        return
+    _reject_path_redirect(destination, "immutable progress payload")
+    try:
+        linked = _admit_native_stat(
+            destination.stat(follow_symlinks=False),
+            "immutable progress payload",
+        )
+        staged = _admit_native_stat(
+            temporary.stat(follow_symlinks=False),
+            "immutable progress temporary",
+        )
+    except FileNotFoundError:
+        _fail("immutable progress link receipt lacks a published inode")
+    except Exception as error:  # ruff: ignore[blind-except]
+        detail = _host_error_detail(error)
+        _fail_with_source(
+            f"immutable progress link receipt cannot be verified: {detail}",
+            error,
+        )
+    if not stat.S_ISREG(linked.st_mode) or (
+        linked.st_dev,
+        linked.st_ino,
+    ) != (staged.st_dev, staged.st_ino):
+        _fail("immutable progress link receipt mismatches published inode")
+    message = "immutable progress link receipt invalid; durability unconfirmed"
+    raise ProgressSidecarDurabilityError(message, destination)
+
+
 def _publish_no_replace(
     temporary: Path,
     destination: Path,
@@ -2982,7 +3024,8 @@ def _publish_no_replace(
     if platform == WINDOWS_PLATFORM:
         _ = temporary.rename(destination)
     else:
-        os.link(temporary, destination)
+        receipt = os.link(temporary, destination)
+        _admit_immutable_link_receipt(temporary, destination, receipt)
 
 
 def _require_complete_payload_write(written: int, expected: int) -> None:

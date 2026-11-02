@@ -6004,6 +6004,73 @@ def test_immutable_publication_selects_platform_no_replace_primitive(
     assert len(link_calls) == 1
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Native POSIX hard-link receipt boundary",
+)
+@pytest.mark.parametrize("receipt", [False, True, 7, "linked"])
+def test_immutable_link_requires_native_none_publication_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A forged link reply cannot certify an actual new generation."""
+    destination = tmp_path / "noncanonical-link-generation"
+    payload = b"immutable-payload"
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+    actual_link = os.link
+
+    def link_then_forge(source: Path, target: Path) -> object:
+        actual_link(source, target)
+        return receipt
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "link", link_then_forge)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match=r"link.*receipt",
+        ) as captured:
+            _ = writer(destination, payload, platform="posix")
+    assert captured.value.published_path == destination
+    assert destination.read_bytes() == payload
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Native POSIX hard-link receipt boundary",
+)
+@pytest.mark.parametrize("existing", [False, True], ids=["missing", "foreign"])
+def test_immutable_link_forged_without_publication_is_not_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    existing: bool,
+) -> None:
+    """A forged reply cannot commit a missing or unrelated destination."""
+    destination = tmp_path / "unpublished-link-generation"
+    foreign = b"unrelated-foreign-generation"
+    if existing:
+        _ = destination.write_bytes(foreign)
+    writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+
+    def forged_link(_source: Path, _target: Path) -> bool:
+        del _source, _target
+        return True
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "link", forged_link)
+        with pytest.raises(ERROR, match=r"link.*receipt") as captured:
+            _ = writer(destination, b"opaque-payload", platform="posix")
+    assert not isinstance(
+        captured.value, progress.ProgressSidecarCommittedError
+    )
+    assert destination.exists() is existing
+    if existing:
+        assert destination.read_bytes() == foreign
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
 @pytest.mark.parametrize("existing", [False, True], ids=["missing", "matching"])
 def test_immutable_publication_rejects_foreign_collision_exception(
     tmp_path: Path,
