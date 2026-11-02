@@ -28,6 +28,7 @@
 
 from __future__ import annotations
 
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - synthetic receipts only.
 from pathlib import Path
 
 import pytest
@@ -159,3 +160,58 @@ def test_python_tool_version_rejects_executable_swapped_during_probe(
         )
     assert swapped
     assert previous.read_bytes() == original
+
+
+@pytest.mark.parametrize("executable", ["pytest", "uv"])
+def test_python_version_probe_rejects_success_with_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    executable: str,
+) -> None:
+    """A successful exit and pinned stdout cannot conceal host diagnostics."""
+    command = [str(tmp_path / executable), "--version"]
+
+    def fake_run(
+        argv: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        assert argv == command
+        assert kwargs == {
+            "cwd": python_validation.ROOT,
+            "check": True,
+            "capture_output": True,
+            "shell": False,
+            "text": True,
+        }
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            f"{executable} 9.1.1\n",
+            "error: binary integrity mismatch\n",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(python_validation.ProvisionError, match="stderr"):
+        _ = python_validation._run(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+
+def test_python_provision_command_allows_informational_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Installer progress is not equivalent to a version probe receipt."""
+    command = ["uv", "pip", "sync"]
+    expected = "installed"
+
+    def fake_run(
+        argv: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        assert argv == command
+        assert kwargs["cwd"] == python_validation.ROOT
+        return subprocess.CompletedProcess(
+            argv, 0, f"{expected}\n", "Resolved 2 packages\n"
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    output = python_validation._run(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert output == expected

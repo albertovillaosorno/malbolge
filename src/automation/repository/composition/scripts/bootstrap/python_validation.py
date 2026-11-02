@@ -103,6 +103,7 @@ JIG_FAST_VERSION_TOOL_IDS: Final = frozenset((
     PYTEST_TOOL_ID,
 ))
 SHELL_UNSAFE_VERSION_CHARACTERS: Final = frozenset(("'", "\n", "\r"))
+VERSION_PROBE_ARGUMENTS: Final = ("--version",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1335,6 +1336,8 @@ def _run(command: list[str]) -> str:
         or type(completed.stderr) is not str
     ):
         _fail("invalid Python bootstrap process receipt")
+    if tuple(command[1:]) == VERSION_PROBE_ARGUMENTS and completed.stderr:
+        _fail("Python bootstrap version probe emitted stderr diagnostics")
     return completed.stdout.strip()
 
 
