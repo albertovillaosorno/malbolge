@@ -202,6 +202,85 @@ def test_historical_source_preserves_native_bounded_bytes(
     )
 
 
+
+class _ForgedHistoricalDigest(str):
+    """An injected hash receipt must not get to inspect its own text."""
+
+    def __len__(self) -> int:
+        raise AssertionError("foreign historical hash length hook executed")
+
+    def __iter__(self) -> Iterator[str]:
+        raise AssertionError("foreign historical hash iterator executed")
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [None, 1, False, "a" * 63, "G" * 64, "F" * 64, _ForgedHistoricalDigest("a" * 64)],
+)
+def test_historical_source_rejects_untrusted_hash_receipts(
+    monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Reported source fingerprints must be exact native lowercase SHA-256."""
+    monkeypatch.setattr(
+        historical_pairs.evidence, "read_bounded_regular", lambda *_args, **_kw: b"source"
+    )
+
+    class HashReceipt:
+        def hexdigest(self) -> object:
+            return receipt
+
+    monkeypatch.setattr(historical_pairs, "sha256", lambda *_: HashReceipt())
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="SHA-256"):
+        historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
+
+
+def test_historical_source_rejects_plausible_but_wrong_hash_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A canonical-looking digest cannot describe unrelated source bytes."""
+    monkeypatch.setattr(
+        historical_pairs.evidence, "read_bounded_regular", lambda *_args, **_kw: b"source"
+    )
+
+    class WrongHash:
+        def hexdigest(self) -> str:
+            return "a" * 64
+
+    monkeypatch.setattr(historical_pairs, "sha256", lambda *_: WrongHash())
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="SHA-256"):
+        historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
+
+
+@pytest.mark.parametrize("stage", ["construct", "digest"])
+def test_historical_source_types_untrusted_hash_dependency_fault(
+    monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    """An unexpected ordinary hash failure stays typed without its formatter."""
+    monkeypatch.setattr(
+        historical_pairs.evidence, "read_bounded_regular", lambda *_args, **_kw: b"source"
+    )
+
+    class ForeignHashFault(RuntimeError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign historical hash exception formatter executed")
+
+    fault = ForeignHashFault("host failed")
+
+    class HashReceipt:
+        def hexdigest(self) -> str:
+            raise fault
+
+    def hashed(*_args: object) -> HashReceipt:
+        if stage == "construct":
+            raise fault
+        return HashReceipt()
+
+    monkeypatch.setattr(historical_pairs, "sha256", hashed)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="hash") as caught:
+        historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
+    assert caught.value.__cause__ is fault
+
+
 def _copy_source(tmp_path: Path, name: str) -> Path:
     directory = tmp_path / TEMP
     directory.mkdir(parents=True)

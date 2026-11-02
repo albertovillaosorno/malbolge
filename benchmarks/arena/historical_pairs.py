@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import string
 import sys
@@ -143,7 +144,23 @@ def _source(root: Path, relative: str) -> tuple[str, str]:
     # Validate its exact receipt before decoding or hashing source evidence.
     if type(raw) is not bytes or not 0 < len(raw) <= MAX_SOURCE_BYTES:
         _fail("historical source requires exact nonempty bounded bytes")
-    return raw.decode("utf-8"), sha256(raw).hexdigest()
+    try:
+        digest = sha256(raw).hexdigest()
+        # Cross-check against the separately accessed standard hash entrypoint.
+        # A dependency-injected, valid-looking digest cannot bind other bytes.
+        independent_digest = hashlib.new("sha256", raw).hexdigest()
+    except Exception as error:
+        # Hash dependencies are not an authority for exception formatting.
+        message = "historical source hash computation failed"
+        raise HistoricalEvidenceError(message) from error
+    if any(
+        type(fingerprint) is not str
+        or len(fingerprint) != analyze.SHA256_HEX_LENGTH
+        or not set(fingerprint) <= analyze.SHA256_ALPHABET
+        for fingerprint in (digest, independent_digest)
+    ) or digest != independent_digest:
+        _fail("historical source returned invalid SHA-256 fingerprint")
+    return raw.decode("utf-8"), digest
 
 
 def _recheck_source_fingerprints(
