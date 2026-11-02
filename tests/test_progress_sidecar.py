@@ -49,6 +49,7 @@ import sys
 import tempfile
 import time
 from typing import Protocol
+from typing import Self
 from typing import TYPE_CHECKING
 from typing import cast
 from typing import final
@@ -8138,6 +8139,65 @@ def test_retained_alias_scan_uses_the_admitted_filename_only_once(
         retained = finder(destination, (2, 1))
     assert retained == tmp_path / matching_name
     assert name_reads == 1
+
+
+@pytest.mark.parametrize("failure", ["iterator", "directory-budget"])
+def test_retained_alias_scan_rejects_suppressed_context_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """A context-manager __exit__ cannot certify a partial alias inventory."""
+    finder = cast(
+        "Callable[[Path, tuple[int, int]], Path | None]",
+        vars(progress)["_find_retained_immutable_stage"],
+    )
+    destination = tmp_path / "checkpoint"
+    matched_name = ".checkpoint.abcdefgh.tmp"
+    scan_failed = False
+
+    class MatchingEntry:
+        name: str = matched_name
+
+        @staticmethod
+        def stat(*, follow_symlinks: bool = True) -> os.stat_result:
+            assert not follow_symlinks
+            return os.stat_result(
+                (stat.S_IFREG | 0o600, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            )
+
+    class UnrelatedEntry:
+        name: str = "unrelated"
+
+    class Scan:
+        def __enter__(self) -> Self:
+            return self
+
+        def __iter__(self) -> Iterator[MatchingEntry | UnrelatedEntry]:
+            nonlocal scan_failed
+            yield MatchingEntry()
+            if failure == "iterator":
+                scan_failed = True
+                raise ERROR("staging inventory iterator failed")
+            scan_failed = True
+            for _ in range(4_096):
+                yield UnrelatedEntry()
+
+        def __exit__(
+            self, exception: object, value: object, traceback: object
+        ) -> bool:
+            del exception, value, traceback
+            return True
+
+    def fake_scandir(directory: Path) -> Scan:
+        assert directory == tmp_path
+        return Scan()
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "scandir", fake_scandir)
+        with pytest.raises(
+            ERROR, match="inventory iterator|staging alias directory scan"
+        ):
+            _ = finder(destination, (2, 1))
+    assert scan_failed
 
 
 def test_retained_alias_scan_rejects_foreign_entry_stat() -> None:

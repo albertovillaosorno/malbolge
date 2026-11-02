@@ -3141,17 +3141,29 @@ def _find_retained_immutable_stage(
     """
     matches: list[Path] = []
     raw_prefix = _temporary_stage_prefix(destination)
-    with os.scandir(destination.parent) as entries:
-        for count, entry in enumerate(entries, start=1):
-            if count > _MAX_RETAINED_STAGING_DIRECTORY_ENTRIES:
-                _fail("immutable staging alias directory scan exceeds budget")
-            name = entry.name
-            if type(name) is not str:
-                continue
-            if _matches_retained_immutable_stage(
-                entry, raw_prefix, identity, name=name
-            ):
-                matches.append(destination.parent / name)
+    complete = False
+    try:
+        with os.scandir(destination.parent) as entries:
+            for count, entry in enumerate(entries, start=1):
+                if count > _MAX_RETAINED_STAGING_DIRECTORY_ENTRIES:
+                    _fail("immutable staging alias directory scan exceeds budget")
+                name = entry.name
+                if type(name) is not str:
+                    continue
+                if _matches_retained_immutable_stage(
+                    entry, raw_prefix, identity, name=name
+                ):
+                    matches.append(destination.parent / name)
+            # A substituted scan context may swallow an iterator or bound
+            # failure. A partial inventory can never certify the sole alias.
+            complete = True
+    except ProgressSidecarError:
+        raise
+    except Exception as error:
+        message = "immutable staging alias directory scan failed"
+        raise ProgressSidecarError(message) from error
+    if not complete:
+        _fail("immutable staging alias directory scan was suppressed")
     return matches[0] if len(matches) == 1 else None
 
 
