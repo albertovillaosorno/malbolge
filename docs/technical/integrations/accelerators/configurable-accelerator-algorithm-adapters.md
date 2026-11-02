@@ -132,7 +132,12 @@ crazy-target durable evaluated-search state. Resumed execution keeps configured
 and actual backend identity separate, falls back from accelerator execution
 failure to CPU reference, and records checkpoint SHA-256 plus resume executor
 identity in JSON. Unsupported algorithms, malformed checkpoints, and request or
-batch drift fail explicitly.
+batch drift fail explicitly. The portable evaluated-search checkpoint codec
+now corroborates public JSON serialization against the standard-library writer
+bound at module import for both encoding and restoration. Even a substituted
+public decoder and serializer together cannot invent completed evidence absent
+from canonical checkpoint bytes. This does not protect against compromise of
+the shared underlying standard-library JSON implementation.
 
 Prepared rotate/crazy execution also supports durable evidence-prefix resume
 under `prepared-evaluated-search-prefix-resume-v1`. The checkpoint binds the

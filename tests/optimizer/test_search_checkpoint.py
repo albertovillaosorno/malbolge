@@ -609,3 +609,114 @@ def test_checkpoint_decoder_rejects_foreign_base64_encode_receipts(
         SearchCheckpointError, match="encoded payload must use exact bytes"
     ):
         _ = decode_search_checkpoint(encoded, request, batch)
+
+
+def test_search_checkpoint_rejects_joint_json_decoder_encoder_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged parser and serializer cannot invent completed checkpoint work."""
+    request = _request()
+    batch = _batch()
+    empty_checkpoint = encode_search_checkpoint(request, batch, ())
+    fabricated = json.loads(encode_search_checkpoint(request, batch, _evidence()))
+    empty_json = empty_checkpoint.decode("utf-8").removesuffix("\n")
+
+    def invented_decoder(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return fabricated
+
+    monkeypatch.setattr(json, "loads", invented_decoder)
+    monkeypatch.setattr(json, "dumps", lambda *_args, **_kwargs: empty_json)
+
+    with pytest.raises(SearchCheckpointError, match="serializer|not canonical"):
+        _ = decode_search_checkpoint(empty_checkpoint, request, batch)
+
+
+def test_search_checkpoint_rejects_substituted_json_serializer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An encoder cannot publish a checkpoint whose bytes do not fit its state."""
+    monkeypatch.setattr(json, "dumps", lambda *_args, **_kwargs: "{}")
+
+    with pytest.raises(SearchCheckpointError, match="serializer"):
+        _ = encode_search_checkpoint(_request(), _batch(), _evidence())
+
+
+def test_search_checkpoint_admits_equivalent_json_serializer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public serializer wrapper may agree with the source-bound reference."""
+    original_dumps = json.dumps
+    monkeypatch.setattr(
+        json, "dumps", lambda *args, **kwargs: original_dumps(*args, **kwargs)
+    )
+
+    request = _request()
+    batch = _batch()
+    evidence = _evidence()
+    encoded = encode_search_checkpoint(request, batch, evidence)
+    assert decode_search_checkpoint(encoded, request, batch).completed_evidence == evidence
+
+
+class _ForeignJsonText(str):
+    """A serializer receipt may carry hostile equality behavior."""
+
+    @override
+    def __eq__(self, other: object) -> Never:
+        del other
+        raise AssertionError("foreign JSON text comparison invoked")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(None, id="absent"),
+        pytest.param(b"{}", id="binary"),
+        pytest.param(_ForeignJsonText("{}"), id="foreign-string"),
+    ],
+)
+def test_search_checkpoint_rejects_foreign_json_serializer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only native canonical strings can influence checkpoint publication."""
+    monkeypatch.setattr(json, "dumps", lambda *_args, **_kwargs: receipt)
+    with pytest.raises(SearchCheckpointError, match="serializer"):
+        _ = encode_search_checkpoint(_request(), _batch(), _evidence())
+
+
+@pytest.mark.parametrize(
+    "error_type", [RuntimeError, AttributeError, IndexError, OverflowError]
+)
+def test_search_checkpoint_contains_json_serializer_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+) -> None:
+    """Unexpected serializer failures retain typed rejection and exact cause."""
+    failure = error_type("injected serializer failure")
+
+    def fail_serializer(*_args: object, **_kwargs: object) -> Never:
+        raise failure
+
+    monkeypatch.setattr(json, "dumps", fail_serializer)
+    with pytest.raises(SearchCheckpointError, match="serializer") as caught:
+        _ = encode_search_checkpoint(_request(), _batch(), _evidence())
+    assert caught.value.__cause__ is failure
+
+
+def test_search_checkpoint_rejects_serializer_mutating_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public serializer cannot alter candidate evidence before admission."""
+    original_dumps = json.dumps
+
+    def change_document(document: dict[str, object], **kwargs: object) -> str:
+        document["completed_evidence"] = []
+        document["completed_units"] = 0
+        return original_dumps(document, **kwargs)
+
+    monkeypatch.setattr(json, "dumps", change_document)
+    with pytest.raises(SearchCheckpointError, match="serializer"):
+        _ = encode_search_checkpoint(_request(), _batch(), _evidence())

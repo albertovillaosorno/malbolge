@@ -40,6 +40,7 @@ from binascii import Error as BinasciiError
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+from json import dumps as _SOURCE_JSON_DUMPS
 from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
@@ -188,6 +189,33 @@ def _document(
     }
 
 
+def _canonical_json(document: JsonObject) -> str:
+    """Corroborate the public JSON writer against its import-bound reference."""
+    try:
+        # Capture source-owned bytes before consulting a mutable public writer.
+        source_rendered = _SOURCE_JSON_DUMPS(
+            document,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        rendered = json.dumps(
+            document,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except Exception as error:  # noqa: BLE001 - provider failure must stay typed
+        message = (
+            "search checkpoint JSON serializer failed: "
+            + _decode_error_detail(error)
+        )
+        raise SearchCheckpointError(message) from error
+    if type(rendered) is not str or rendered != source_rendered:
+        _fail("search checkpoint JSON serializer disagrees with source")
+    return source_rendered
+
+
 def encode_search_checkpoint(
     request: SearchRequest,
     batch: CandidateEvaluationBatch,
@@ -199,12 +227,7 @@ def encode_search_checkpoint(
         Canonical compact UTF-8 JSON suitable for a portable checkpoint payload.
 
     """
-    text = json.dumps(
-        _document(request, batch, evidence),
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    text = _canonical_json(_document(request, batch, evidence))
     return (text + "\n").encode("utf-8")
 
 
@@ -418,9 +441,7 @@ def decode_search_checkpoint(
     admitted = _admit_evidence_prefix(
         document["completed_evidence"], validated_batch, completed_units
     )
-    canonical = json.dumps(
-        document, sort_keys=True, ensure_ascii=True, separators=(",", ":")
-    )
+    canonical = _canonical_json(document)
     if (canonical + "\n").encode("utf-8") != payload:
         _fail("search checkpoint is not canonical")
     evidence = _decode_admitted_evidence(admitted)
