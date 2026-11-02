@@ -89,6 +89,15 @@ PYTEST_LAUNCHER_NAME = "pytest"
 STALE_LAUNCHER_BYTES = b"stale"
 GIT_VERSION = "2.55.0"
 GIT_BYTES = b"git-2.55.0"
+GIT_COMPONENT = "git"
+SYMLINK_SUBSTITUTION = "symlink"
+POSIX_NAME = "posix"
+CARGO_FILENAME = "cargo"
+IMPORT_MANIFEST = "manifest"
+IMPORT_SOURCE_MUTATION = "source"
+FOREIGN_PARENT_BYTES = b"foreign-parent"
+FOREIGN_ROOT_BYTES = b"foreign-root"
+FOREIGN_TOOLCHAIN_BYTES = b"foreign-toolchain"
 GIT_HELPER_BYTES = b"git-helper"
 GIT_MARKER_BYTES = b"malbolge-git-import/v1\n"
 RUST_MARKER_BYTES = b"malbolge-rust-toolchain-import/v1\n"
@@ -4664,6 +4673,7 @@ def test_git_import_preserves_runtime_tree_and_neutral_alias(
     assert project.git_import_complete(destination)
 
 
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="POSIX root creation")
 def test_git_import_rejects_late_occupied_destination(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -4675,24 +4685,24 @@ def test_git_import_rejects_late_occupied_destination(
     destination = tmp_path / "git" / GIT_VERSION
     destination.parent.mkdir()
     sentinel = destination / "foreign-sentinel"
-    native_mkdir = Path.mkdir
+    native_mkdir = os.mkdir
     occupied = False
 
     def occupy_on_mkdir(
-        path: Path,
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         mode: int = 0o777,
-        parents: bool = False,
-        exist_ok: bool = False,
+        *,
+        dir_fd: int | None = None,
     ) -> None:
         nonlocal occupied
-        if path == destination and not occupied:
+        if path == destination.name and dir_fd is not None and not occupied:
             occupied = True
-            native_mkdir(destination)
+            native_mkdir(path, mode, dir_fd=dir_fd)
             _ = sentinel.write_bytes(b"retain foreign file")
-        native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        native_mkdir(path, mode, dir_fd=dir_fd)
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(Path, "mkdir", occupy_on_mkdir)
+        isolated.setattr(os, "mkdir", occupy_on_mkdir)
         with pytest.raises(FileExistsError):
             _ = project.import_git_installation(
                 source, helpers, destination, windows=False
@@ -6822,3 +6832,444 @@ def test_jig_observation_accepts_native_path(
     status = project.inspect_jig(tmp_path, LINUX_PLATFORM)
     assert status.state is project.ComponentState.READY
     assert status.path == executable
+
+
+@pytest.mark.skipif(
+    os.name != POSIX_NAME, reason="POSIX import descriptor race"
+)
+@pytest.mark.parametrize("component", ["git", "rust"])
+@pytest.mark.parametrize("substitution", ["symlink", "physical"])
+def test_import_copy_never_writes_to_replaced_destination_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    component: str,
+    *,
+    substitution: str,
+) -> None:
+    """A late imported-root exchange must never populate a foreign bin tree."""
+    source = tmp_path / "host"
+    source_bin = source / "bin"
+    source_bin.mkdir(parents=True)
+    native_name = "git" if component == GIT_COMPONENT else "cargo"
+    payload = GIT_BYTES if component == GIT_COMPONENT else RUST_CARGO_BYTES
+    _ = (source_bin / native_name).write_bytes(payload)
+    destination = tmp_path / ".dependencies" / component / GIT_VERSION
+    parked = tmp_path / "retained-import"
+    foreign = tmp_path / "foreign-import"
+    (foreign / "bin").mkdir(parents=True)
+    sentinel = b"do not change foreign tree"
+    _ = (foreign / "sentinel").write_bytes(sentinel)
+    native_link = os.link
+    swapped = False
+
+    def exchange_on_copy(
+        source_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        target_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and Path(os.fsdecode(target_path)).name == native_name:
+            destination.rename(parked)
+            if substitution == SYMLINK_SUBSTITUTION:
+                destination.symlink_to(foreign, target_is_directory=True)
+            else:
+                foreign.rename(destination)
+            swapped = True
+        native_link(
+            source_path,
+            target_path,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", exchange_on_copy)
+        with pytest.raises(project.InitializationError):
+            if component == GIT_COMPONENT:
+                _ = project.import_git_installation(
+                    source_bin / native_name,
+                    source,
+                    destination,
+                    windows=False,
+                )
+            else:
+                _ = project.import_rust_toolchain(
+                    source,
+                    destination,
+                    tool_ids=("cargo",),
+                    windows=False,
+                )
+    assert swapped
+    foreign_root = (
+        foreign if substitution == SYMLINK_SUBSTITUTION else destination
+    )
+    assert (foreign_root / "sentinel").read_bytes() == sentinel
+    assert not (foreign_root / "bin" / native_name).exists()
+    assert (parked / "bin" / native_name).read_bytes() == payload
+    assert not project.git_import_complete(destination)
+    assert not project.rust_toolchain_import_complete(destination)
+
+
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="POSIX import directory race")
+@pytest.mark.parametrize("component", ["git", "rust"])
+@pytest.mark.parametrize("substitution", ["symlink", "physical"])
+def test_import_root_parent_swap_before_creation_preserves_foreign_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    component: str,
+    *,
+    substitution: str,
+) -> None:
+    """Parent replacement after admission cannot create under a foreign root."""
+    source = tmp_path / "host"
+    source.mkdir()
+    native = source / "git"
+    _ = native.write_bytes(GIT_BYTES)
+    (source / "bin").mkdir()
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies" / component / GIT_VERSION
+    parent = destination.parent
+    parent.mkdir(parents=True)
+    parked = tmp_path / "retained-parent"
+    foreign = tmp_path / "foreign-parent"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"foreign-parent")
+    original_admit = (
+        project._admit_import_destination  # pyright: ignore[reportPrivateUsage]
+    )
+    swapped = False
+
+    def exchange_after_admission(path: Path, label: str) -> None:
+        nonlocal swapped
+        original_admit(path, label)
+        if not swapped:
+            parent.rename(parked)
+            if substitution == SYMLINK_SUBSTITUTION:
+                parent.symlink_to(foreign, target_is_directory=True)
+            else:
+                foreign.rename(parent)
+            swapped = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            project, "_admit_import_destination", exchange_after_admission
+        )
+        with pytest.raises(project.InitializationError):
+            if component == GIT_COMPONENT:
+                _ = project.import_git_installation(
+                    native, source, destination, windows=False
+                )
+            else:
+                _ = project.import_rust_toolchain(
+                    source, destination, tool_ids=("cargo",), windows=False
+                )
+    assert swapped
+    foreign_root = foreign if substitution == SYMLINK_SUBSTITUTION else parent
+    assert (foreign_root / "sentinel").read_bytes() == FOREIGN_PARENT_BYTES
+    assert not (foreign_root / GIT_VERSION).exists()
+    assert not project.git_import_complete(destination)
+    assert not project.rust_toolchain_import_complete(destination)
+
+
+@pytest.mark.skipif(
+    os.name != POSIX_NAME, reason="POSIX import descriptor race"
+)
+@pytest.mark.parametrize("substitution", ["symlink", "physical"])
+def test_rust_import_nested_directory_swap_cannot_write_to_foreign_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: str
+) -> None:
+    """Descriptor-held nested Rust sysroot imports never follow a new parent."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    (source / "lib/rustlib").mkdir(parents=True)
+    _ = (source / "lib/rustlib/manifest").write_bytes(RUST_STD_BYTES)
+    destination = tmp_path / ".dependencies/rust" / GIT_VERSION
+    rustlib = destination / "lib/rustlib"
+    parked = tmp_path / "retained-rustlib"
+    foreign = tmp_path / "foreign-rustlib"
+    foreign.mkdir()
+    sentinel = b"foreign-rustlib"
+    _ = (foreign / "sentinel").write_bytes(sentinel)
+    native_link = os.link
+    swapped = False
+
+    def swap_during_nested_copy(
+        source_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        target_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal swapped
+        if (
+            not swapped
+            and Path(os.fsdecode(target_path)).name == IMPORT_MANIFEST
+        ):
+            _ = rustlib.rename(parked)
+            if substitution == SYMLINK_SUBSTITUTION:
+                _ = rustlib.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(rustlib)
+            swapped = True
+        native_link(
+            source_path,
+            target_path,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", swap_during_nested_copy)
+        with pytest.raises(project.InitializationError, match="parent changed"):
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert swapped
+    foreign_root = foreign if substitution == SYMLINK_SUBSTITUTION else rustlib
+    assert (foreign_root / "sentinel").read_bytes() == sentinel
+    assert not (foreign_root / "manifest").exists()
+    assert (parked / "manifest").read_bytes() == RUST_STD_BYTES
+    assert not project.rust_toolchain_import_complete(destination)
+
+
+@pytest.mark.skipif(
+    os.name != POSIX_NAME, reason="POSIX import descriptor copy"
+)
+def test_rust_import_file_copy_fallback_and_source_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Restricted hardlinks preserve native executable and symlink semantics."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    (source / "lib/rustlib").mkdir(parents=True)
+    cargo = source / "bin/cargo"
+    _ = cargo.write_bytes(RUST_CARGO_BYTES)
+    cargo.chmod(0o700)
+    manifest = source / "lib/rustlib/manifest"
+    _ = manifest.write_bytes(RUST_STD_BYTES)
+    _ = (source / "lib/rustlib/manifest-link").symlink_to("manifest")
+    alias_source = tmp_path / "source-alias"
+    _ = alias_source.symlink_to(source, target_is_directory=True)
+    destination = tmp_path / ".dependencies/rust" / GIT_VERSION
+    original_link = os.link
+    blocked: set[str] = set()
+
+    def deny_import_hardlink(
+        from_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        to_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        if Path(os.fsdecode(to_path)).name in {"cargo", "manifest"}:
+            blocked.add(Path(os.fsdecode(to_path)).name)
+            raise OSError("host hardlink restricted")
+        original_link(
+            from_path,
+            to_path,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", deny_import_hardlink)
+        aliases = project.import_rust_toolchain(
+            alias_source, destination, tool_ids=("cargo",), windows=False
+        )
+    assert blocked == {"cargo", "manifest"}
+    assert aliases == (destination / "bin/cargo.bin",)
+    assert (destination / "bin/cargo").read_bytes() == RUST_CARGO_BYTES
+    assert (destination / "bin/cargo").stat().st_mode & stat.S_IXUSR
+    assert (destination / "lib/rustlib/manifest").read_bytes() == RUST_STD_BYTES
+    assert (destination / "lib/rustlib/manifest-link").is_symlink()
+    assert project.rust_toolchain_import_complete(destination)
+
+
+@pytest.mark.skipif(
+    os.name != POSIX_NAME, reason="POSIX import hardlink identity"
+)
+@pytest.mark.parametrize("mutation", ["source", "destination"])
+def test_rust_import_rejects_same_size_file_swap_after_hardlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A forged same-size file cannot pass imported file inode verification."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    cargo = source / "bin/cargo"
+    _ = cargo.write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / GIT_VERSION
+    native_link = os.link
+    swapped = False
+
+    def swap_after_link(
+        source_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        destination_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal swapped
+        native_link(
+            source_path,
+            destination_path,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+        if (
+            not swapped
+            and Path(os.fsdecode(destination_path)).name == CARGO_FILENAME
+        ):
+            target = (
+                cargo
+                if mutation == IMPORT_SOURCE_MUTATION
+                else destination / "bin/cargo"
+            )
+            _ = target.unlink()
+            _ = target.write_bytes(b"X" * len(RUST_CARGO_BYTES))
+            swapped = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", swap_after_link)
+        with pytest.raises(
+            project.InitializationError, match="changed during copy"
+        ):
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert swapped
+    assert not project.rust_toolchain_import_complete(destination)
+
+
+@pytest.mark.skipif(
+    os.name != POSIX_NAME, reason="POSIX import completion race"
+)
+@pytest.mark.parametrize("component", ["git", "rust"])
+@pytest.mark.parametrize("substitution", ["symlink", "physical"])
+def test_import_completion_rejects_late_replaced_destination_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    component: str,
+    substitution: str,
+) -> None:
+    """Late root replacement must not receive a false completion marker."""
+    source = tmp_path / "host"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/git").write_bytes(GIT_BYTES)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies" / component / GIT_VERSION
+    parked = tmp_path / "retained-import"
+    foreign = tmp_path / "foreign-import"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"foreign-root")
+    original_write = (
+        project._write_import_completion_marker_at_parent  # pyright: ignore[reportPrivateUsage]
+    )
+    swapped = False
+
+    def swap_before_marker(
+        marker: Path,
+        content: str,
+        parent_fd: int | None,
+        *,
+        executable: bool = False,
+    ) -> None:
+        nonlocal swapped
+        if not swapped:
+            _ = destination.rename(parked)
+            if substitution == SYMLINK_SUBSTITUTION:
+                _ = destination.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(destination)
+            swapped = True
+        original_write(marker, content, parent_fd, executable=executable)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            project,
+            "_write_import_completion_marker_at_parent",
+            swap_before_marker,
+        )
+        with pytest.raises(project.InitializationError):
+            if component == GIT_COMPONENT:
+                _ = project.import_git_installation(
+                    source / "bin/git", source, destination, windows=False
+                )
+            else:
+                _ = project.import_rust_toolchain(
+                    source, destination, tool_ids=("cargo",), windows=False
+                )
+    assert swapped
+    foreign_root = (
+        foreign if substitution == SYMLINK_SUBSTITUTION else destination
+    )
+    assert (foreign_root / "sentinel").read_bytes() == FOREIGN_ROOT_BYTES
+    assert not (foreign_root / project.GIT_IMPORT_MARKER).exists()
+    assert not (foreign_root / project.RUST_IMPORT_MARKER).exists()
+
+
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="POSIX Rust alias race")
+@pytest.mark.parametrize("substitution", ["symlink", "physical"])
+def test_rust_import_alias_rejects_replaced_root_before_alias_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: str
+) -> None:
+    """Imported Rust bin identity must remain bound through alias creation."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / GIT_VERSION
+    parked = tmp_path / "retained-toolchain"
+    foreign = tmp_path / "foreign-toolchain"
+    (foreign / "bin").mkdir(parents=True)
+    _ = (foreign / "bin/cargo").write_bytes(b"outside-cargo")
+    _ = (foreign / "sentinel").write_bytes(b"foreign-toolchain")
+    native_aliases = project._ensure_rust_toolchain_aliases  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def exchange_before_aliases(
+        root: Path,
+        tools: tuple[str, ...],
+        *,
+        windows: bool,
+        expected_bin_identity: tuple[int, int] | None = None,
+    ) -> tuple[Path, ...]:
+        nonlocal swapped
+        if not swapped:
+            _ = destination.rename(parked)
+            if substitution == SYMLINK_SUBSTITUTION:
+                _ = destination.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(destination)
+            swapped = True
+        return native_aliases(
+            root,
+            tools,
+            windows=windows,
+            expected_bin_identity=expected_bin_identity,
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            project, "_ensure_rust_toolchain_aliases", exchange_before_aliases
+        )
+        with pytest.raises(project.InitializationError):
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert swapped
+    foreign_root = (
+        foreign if substitution == SYMLINK_SUBSTITUTION else destination
+    )
+    assert (foreign_root / "sentinel").read_bytes() == FOREIGN_TOOLCHAIN_BYTES
+    assert not (foreign_root / "bin/cargo.bin").exists()
+    assert not (foreign_root / project.RUST_IMPORT_MARKER).exists()

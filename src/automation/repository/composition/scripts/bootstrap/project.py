@@ -1125,6 +1125,247 @@ def _admit_import_destination(destination: Path, component: str) -> None:
     _fail(f"{component} import destination already exists: {destination}")
 
 
+def _create_posix_import_root(destination: Path, component: str) -> int:
+    """Create an absent root via the originally opened physical ancestor.
+
+    Returns:
+        Descriptor of the newly created directory, owned by the caller.
+
+    """
+    _reject_authority_parent_redirects(destination)
+    ancestor = destination.parent
+    absent: list[Path] = []
+    while True:
+        try:
+            observed = ancestor.lstat()
+        except FileNotFoundError:
+            absent.append(ancestor)
+            ancestor = ancestor.parent
+            continue
+        if type(observed) is not os.stat_result or not stat.S_ISDIR(
+            observed.st_mode
+        ):
+            _fail("import destination ancestor must be a physical directory")
+        break
+    parent_fd = _open_local_state_parent(
+        ancestor, expected_identity=(observed.st_dev, observed.st_ino)
+    )
+    try:
+        _admit_import_destination(destination, component)
+        for child in reversed(absent):
+            _require_local_state_parent_identity(ancestor, parent_fd)
+            os.mkdir(child.name, dir_fd=parent_fd)
+            _require_local_state_parent_identity(ancestor, parent_fd)
+            nested_fd = _open_local_state_parent(child)
+            previous_fd = parent_fd
+            parent_fd = nested_fd
+            _close_local_state_parent(previous_fd)
+            ancestor = child
+        _require_local_state_parent_identity(ancestor, parent_fd)
+        os.mkdir(destination.name, dir_fd=parent_fd)
+        _require_local_state_parent_identity(ancestor, parent_fd)
+        return _open_local_state_parent(destination)
+    finally:
+        _close_local_state_parent(parent_fd)
+
+
+def _copy_import_file_at_parent(
+    source: Path | str,
+    destination: Path,
+    parent_fd: int,
+    *,
+    source_fd: int | None = None,
+) -> None:
+    """Copy or hardlink a regular host file into a pinned physical directory."""
+    try:
+        _require_local_state_parent_identity(destination.parent, parent_fd)
+        original = os.stat(source, dir_fd=source_fd, follow_symlinks=False)
+        if type(original) is not os.stat_result or not stat.S_ISREG(
+            original.st_mode
+        ):
+            _fail("import source file must be physical")
+        copied_inode: tuple[int, int] = (original.st_dev, original.st_ino)
+        try:
+            os.link(
+                source,
+                destination.name,
+                src_dir_fd=source_fd,
+                dst_dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+        except OSError:
+            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            input_fd = os.open(source, flags, dir_fd=source_fd)
+            try:
+                opened = os.fstat(input_fd)
+                if (
+                    type(opened) is not os.stat_result
+                    or not stat.S_ISREG(opened.st_mode)
+                    or (opened.st_dev, opened.st_ino)
+                    != (original.st_dev, original.st_ino)
+                ):
+                    _fail("import source changed before copy")
+                output_fd = os.open(
+                    destination.name,
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | getattr(os, "O_NOFOLLOW", 0),
+                    0o600,
+                    dir_fd=parent_fd,
+                )
+                try:
+                    while content := os.read(input_fd, 1_048_576):
+                        remaining = memoryview(content)
+                        while remaining:
+                            written = os.write(output_fd, remaining)
+                            if type(written) is not int or written <= 0:
+                                _fail("import file copy byte count invalid")
+                            remaining = remaining[written:]
+                    os.fchmod(output_fd, stat.S_IMODE(opened.st_mode))
+                    copied = os.fstat(output_fd)
+                    if (
+                        type(copied) is not os.stat_result
+                        or copied.st_size != original.st_size
+                    ):
+                        _fail("import file copy size mismatch")
+                    copied_inode = copied.st_dev, copied.st_ino
+                finally:
+                    os.close(output_fd)
+            finally:
+                os.close(input_fd)
+        current = os.stat(source, dir_fd=source_fd, follow_symlinks=False)
+        observed = os.stat(
+            destination.name, dir_fd=parent_fd, follow_symlinks=False
+        )
+        if (
+            type(current) is not os.stat_result
+            or (current.st_dev, current.st_ino)
+            != (original.st_dev, original.st_ino)
+            or type(observed) is not os.stat_result
+            or not stat.S_ISREG(observed.st_mode)
+            or (observed.st_dev, observed.st_ino) != copied_inode
+            or observed.st_size != original.st_size
+        ):
+            _fail("import file changed during copy")
+        _require_local_state_parent_identity(destination.parent, parent_fd)
+    except InitializationError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("import file copy failed") from error
+
+
+def _copy_import_tree_at_parent(
+    source: Path, destination: Path, destination_fd: int
+) -> None:
+    """Copy a tree through an anchored import root descriptor."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        # The source root may be a legitimate host-managed directory alias.
+        source_fd = os.open(source, flags & ~getattr(os, "O_NOFOLLOW", 0))
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError(
+            "cannot open physical import source tree"
+        ) from error
+    try:
+        _copy_import_members_at_parent(source_fd, destination, destination_fd)
+    finally:
+        _close_local_state_parent(source_fd)
+
+
+def _open_posix_import_child(parent: Path, descriptor: int, name: str) -> int:
+    """Create and open a new import child through the original parent."""
+    _require_local_state_parent_identity(parent, descriptor)
+    os.mkdir(name, dir_fd=descriptor)
+    _require_local_state_parent_identity(parent, descriptor)
+    return _open_local_state_parent(parent / name)
+
+
+def _copy_import_members_at_parent(
+    source_fd: int, destination: Path, destination_fd: int
+) -> None:
+    """Recurse through descriptor-relative source and destination members."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        _require_local_state_parent_identity(destination, destination_fd)
+        with os.scandir(source_fd) as members:
+            for member in members:
+                if (
+                    type(member) is not os.DirEntry
+                    or type(member.name) is not str
+                ):
+                    _fail("import source requires native directory members")
+                name = member.name
+                if not name or name in {".", ".."} or os.sep in name:
+                    _fail("import source has invalid member name")
+                target = destination / name
+                original = os.stat(
+                    name, dir_fd=source_fd, follow_symlinks=False
+                )
+                if type(original) is not os.stat_result:
+                    _fail("import source requires native member status")
+                _require_local_state_parent_identity(
+                    destination, destination_fd
+                )
+                if stat.S_ISDIR(original.st_mode):
+                    os.mkdir(name, 0o700, dir_fd=destination_fd)
+                    nested_source_fd = os.open(name, flags, dir_fd=source_fd)
+                    try:
+                        nested_destination_fd = _open_local_state_parent(target)
+                        try:
+                            actual = os.fstat(nested_source_fd)
+                            if type(actual) is not os.stat_result or (
+                                actual.st_dev,
+                                actual.st_ino,
+                            ) != (original.st_dev, original.st_ino):
+                                _fail("import source directory changed")
+                            _copy_import_members_at_parent(
+                                nested_source_fd, target, nested_destination_fd
+                            )
+                            os.fchmod(
+                                nested_destination_fd,
+                                stat.S_IMODE(original.st_mode),
+                            )
+                        finally:
+                            _close_local_state_parent(nested_destination_fd)
+                    finally:
+                        _close_local_state_parent(nested_source_fd)
+                elif stat.S_ISLNK(original.st_mode):
+                    link = os.readlink(name, dir_fd=source_fd)
+                    if type(link) is not str:
+                        _fail("import source link requires native target")
+                    current = os.stat(
+                        name, dir_fd=source_fd, follow_symlinks=False
+                    )
+                    if type(current) is not os.stat_result or (
+                        current.st_dev,
+                        current.st_ino,
+                    ) != (original.st_dev, original.st_ino):
+                        _fail("import source link changed during copy")
+                    os.symlink(link, name, dir_fd=destination_fd)
+                elif stat.S_ISREG(original.st_mode):
+                    _copy_import_file_at_parent(
+                        name, target, destination_fd, source_fd=source_fd
+                    )
+                else:
+                    _fail("import source tree requires regular files and links")
+                _require_local_state_parent_identity(
+                    destination, destination_fd
+                )
+    except InitializationError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("import source tree copy failed") from error
+
+
 def import_git_installation(
     git: Path,
     exec_path: Path,
@@ -1138,24 +1379,58 @@ def import_git_installation(
         Repository-local platform-neutral Git executable alias.
 
     """
-    _admit_import_destination(destination, "Git")
-    destination.mkdir(parents=True, exist_ok=False)
     native_name = "git.exe" if windows else "git"
     native = destination / "bin" / native_name
-    native.parent.mkdir(parents=True)
-    _ = _link_or_copy(str(git), str(native))
     alias = destination / "bin" / "git.bin"
-    _ = _link_or_copy(str(native), str(alias))
-    _ = shutil.copytree(
-        exec_path,
-        destination / "libexec" / "git-core",
-        copy_function=_link_or_copy,
-        symlinks=True,
-    )
-    _write_import_completion_marker(
-        destination / GIT_IMPORT_MARKER,
-        "malbolge-git-import/v1\n",
-    )
+    if _supports_pinned_local_state_directories():
+        root_fd = _create_posix_import_root(destination, "Git")
+        try:
+            bin_fd = _open_posix_import_child(destination, root_fd, "bin")
+            try:
+                _copy_import_file_at_parent(git, native, bin_fd)
+                _copy_import_file_at_parent(
+                    native.name, alias, bin_fd, source_fd=bin_fd
+                )
+            finally:
+                _close_local_state_parent(bin_fd)
+            libexec = destination / "libexec"
+            libexec_fd = _open_posix_import_child(
+                destination, root_fd, "libexec"
+            )
+            try:
+                git_core_fd = _open_posix_import_child(
+                    libexec, libexec_fd, "git-core"
+                )
+            finally:
+                _close_local_state_parent(libexec_fd)
+            git_core = libexec / "git-core"
+            try:
+                _copy_import_tree_at_parent(exec_path, git_core, git_core_fd)
+            finally:
+                _close_local_state_parent(git_core_fd)
+            _write_import_completion_marker_at_parent(
+                destination / GIT_IMPORT_MARKER,
+                "malbolge-git-import/v1\n",
+                root_fd,
+            )
+        finally:
+            _close_local_state_parent(root_fd)
+    else:
+        _admit_import_destination(destination, "Git")
+        destination.mkdir(parents=True, exist_ok=False)
+        native.parent.mkdir(parents=True)
+        _ = _link_or_copy(str(git), str(native))
+        _ = _link_or_copy(str(native), str(alias))
+        _ = shutil.copytree(
+            exec_path,
+            destination / "libexec" / "git-core",
+            copy_function=_link_or_copy,
+            symlinks=True,
+        )
+        _write_import_completion_marker(
+            destination / GIT_IMPORT_MARKER,
+            "malbolge-git-import/v1\n",
+        )
     return alias
 
 
@@ -1645,6 +1920,7 @@ def _ensure_rust_toolchain_aliases(
     tool_ids: tuple[str, ...],
     *,
     windows: bool,
+    expected_bin_identity: tuple[int, int] | None = None,
 ) -> tuple[Path, ...]:
     """Materialize neutral executable aliases for imported Rust tools.
 
@@ -1655,7 +1931,11 @@ def _ensure_rust_toolchain_aliases(
     _admit_rust_import_tool_ids(tool_ids)
     suffix = ".exe" if windows else ""
     parent = toolchain_root / "bin"
-    expected = _rust_adapter_parent_identity(parent) if os.name == "posix" else None
+    expected = (
+        expected_bin_identity or _rust_adapter_parent_identity(parent)
+        if _supports_pinned_local_state_directories()
+        else None
+    )
     parent_fd = (
         _open_local_state_parent(parent, expected_identity=expected)
         if expected is not None
@@ -1714,22 +1994,50 @@ def import_rust_toolchain(
 
     """
     _admit_rust_import_tool_ids(tool_ids)
-    _admit_import_destination(destination, "Rust")
-    _ = shutil.copytree(
-        source,
-        destination,
-        copy_function=_link_or_copy,
-        symlinks=True,
-    )
-    aliases = _ensure_rust_toolchain_aliases(
-        destination,
-        tool_ids,
-        windows=windows,
-    )
-    _write_import_completion_marker(
-        destination / RUST_IMPORT_MARKER,
-        "malbolge-rust-toolchain-import/v1\n",
-    )
+    if _supports_pinned_local_state_directories():
+        root_fd = _create_posix_import_root(destination, "Rust")
+        try:
+            _copy_import_tree_at_parent(source, destination, root_fd)
+            try:
+                bin_status = os.stat(
+                    "bin", dir_fd=root_fd, follow_symlinks=False
+                )
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                detail = "imported Rust bin missing"
+                raise InitializationError(detail) from error
+            if (
+                type(bin_status) is not os.stat_result
+                or not stat.S_ISDIR(bin_status.st_mode)
+            ):
+                _fail("imported Rust bin must be a physical directory")
+            aliases = _ensure_rust_toolchain_aliases(
+                destination,
+                tool_ids,
+                windows=windows,
+                expected_bin_identity=(bin_status.st_dev, bin_status.st_ino),
+            )
+            _write_import_completion_marker_at_parent(
+                destination / RUST_IMPORT_MARKER,
+                "malbolge-rust-toolchain-import/v1\n",
+                root_fd,
+            )
+        finally:
+            _close_local_state_parent(root_fd)
+    else:
+        _admit_import_destination(destination, "Rust")
+        _ = shutil.copytree(
+            source,
+            destination,
+            copy_function=_link_or_copy,
+            symlinks=True,
+        )
+        aliases = _ensure_rust_toolchain_aliases(
+            destination, tool_ids, windows=windows
+        )
+        _write_import_completion_marker(
+            destination / RUST_IMPORT_MARKER,
+            "malbolge-rust-toolchain-import/v1\n",
+        )
     return aliases
 
 
