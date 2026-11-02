@@ -772,6 +772,88 @@ def test_host_c_canonical_generation_rejects_malformed_result(
             )
 
 
+class _ForgedHostDigest(str):
+    """A substituted digest subclass can lie about source hash equality."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        return True
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+
+@pytest.mark.parametrize(
+    "forged",
+    [None, 0, b"digest", "a" * 64, _ForgedHostDigest("forged")],
+    ids=["null", "integer", "bytes", "wrong-hash", "equality-spoof"],
+)
+def test_host_c_canonical_replay_requires_native_source_hash_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    forged: object,
+) -> None:
+    """A substituted digest must never authorize host-C compilation."""
+    expected = _digest()
+
+    class Digest:
+        def hexdigest(self) -> object:
+            return forged
+
+    monkeypatch.setattr(host_c_oracle, "sha256", lambda _source: Digest())
+    with pytest.raises(host_c_oracle.HostOracleError, match="source.*identity"):
+        host_c_oracle._canonical_payload(_case(), PROFILE, expected)
+
+
+def test_host_c_forged_source_hash_never_enters_native_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A spoofed hash cannot launch compilation, even on direct replay entry."""
+    expected = _digest()
+    entered = False
+
+    class Digest:
+        def hexdigest(self) -> str:
+            return cast("str", _ForgedHostDigest("untrusted"))
+
+    def forbidden_workspace(_prefix: str) -> None:
+        nonlocal entered
+        entered = True
+        message = "forged SHA-256 reached host compiler workspace"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(host_c_oracle, "sha256", lambda _source: Digest())
+    monkeypatch.setattr(host_c_oracle, "_require_local_scratch_root", lambda: None)
+    monkeypatch.setattr(host_c_oracle, "_native_workspace", forbidden_workspace)
+    with pytest.raises(host_c_oracle.HostOracleError, match="source.*identity"):
+        host_c_oracle.replay_one(_case(), PROFILE, expected)
+    assert not entered
+
+
+@pytest.mark.parametrize("stage", ["construct", "hexdigest"])
+def test_host_c_canonical_replay_hash_faults_are_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Opaque digest failures retain their cause without foreign formatting."""
+    expected = _digest()
+    fault = _HostileGeneratorFailure("opaque SHA-256 dependency error")
+
+    class Digest:
+        def hexdigest(self) -> str:
+            raise fault
+
+    def forge_hash(_source: bytes) -> Digest:
+        if stage == "construct":
+            raise fault
+        return Digest()
+
+    monkeypatch.setattr(host_c_oracle, "sha256", forge_hash)
+    with pytest.raises(host_c_oracle.HostOracleError, match="source.*hash") as caught:
+        host_c_oracle._canonical_payload(_case(), PROFILE, expected)
+    assert caught.value.__cause__ is fault
+
+
 def test_host_c_replay_rejects_noncanonical_source_digest() -> None:
     """No unadmitted candidate C source may run through this bounded gate."""
     with pytest.raises(host_c_oracle.HostOracleError, match="source"):

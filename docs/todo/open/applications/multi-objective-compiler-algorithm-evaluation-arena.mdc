@@ -466,8 +466,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   return receipts equal to the previously admitted workload hash before
   reporting success. Fourteen red-first negative cases reject altered, missing,
   numeric, byte, and equality-spoofing subclass receipts; two positive cases
-  retain the legitimate matching-hash path. This checks dependency receipts,
-  not host-C attestation.
+  retain the legitimate matching-hash path. The separate direct host-C
+  canonical replay entry now also requires exact native hash text before
+  comparison and converts unexpected digest faults into typed failures.
+  Eight red-first native/foreign/fault tests include an explicit no-compiler-
+  workspace assertion for equality-spoofing receipts. This checks dependency
+  receipts, not host-C attestation.
 - A synthetic all-checks integration fixture combines generated challenge
   provenance with versioned energy CSV, raw hashes, individual trial runs,
   exact budget agreement and matched accelerator labels. It proves admission

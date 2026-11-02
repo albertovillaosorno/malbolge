@@ -206,7 +206,10 @@ The `--challenge-root` prerequisite is mandatory. All retained
 regeneration, SHA-256, profile, and canonical-file admission; the host oracle
 checker then regenerates the same source in memory. It never compiles a
 caller-provided candidate program or follows a reported candidate-artifact
-path. The repository-pinned LLVM 22.1.8 Clang compiles that source at both
+path. The direct host-C canonical replay checks an exact native digest
+receipt before comparison and contains hash dependency faults as typed errors;
+foreign equality methods cannot admit source identities before compilation.
+The repository-pinned LLVM 22.1.8 Clang compiles that source at both
 `-O0` and `-O2`, links a small separate entry-function harness, and executes
 each result to compare the complete 32-bit return value with `oracle.bin`.
 The generated program's standalone `main` is not used for oracle comparison.

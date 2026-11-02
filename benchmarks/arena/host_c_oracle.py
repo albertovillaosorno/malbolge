@@ -609,8 +609,18 @@ def _canonical_payload(
         ),
         scope="challenge",
     )
-    digest = sha256(generated.source).hexdigest()
-    if digest != source_sha256 or len(generated.oracle) != ORACLE_BYTES:
+    try:
+        digest = sha256(generated.source).hexdigest()
+    except Exception as error:
+        # Hashing is a dependency; its faults must remain typed replay
+        # failures without invoking foreign exception formatting hooks.
+        message = "host-C challenge source hash computation failed"
+        raise HostOracleError(message) from error
+    if (
+        type(digest) is not str
+        or digest != source_sha256
+        or len(generated.oracle) != ORACLE_BYTES
+    ):
         _fail("host-C challenge oracle source or output identity differs")
     return generated
 
