@@ -479,6 +479,47 @@ def test_development_provision_rechecks_destination_after_extraction(
     assert not identity.development_root.exists()
 
 
+def test_development_cleanup_preserves_foreign_replacement_directory(
+    tmp_path: Path,
+) -> None:
+    """Cleanup must not delete another directory swapped over its stage."""
+    identity = _identity(tmp_path)
+    staging = tmp_path / ".temp/llvm-development-provision-linux-x86_64"
+    parked = tmp_path / "parked-owned-stage"
+    sentinel = staging / "foreign-sentinel.txt"
+    content = b"protected foreign staging data"
+    swapped = False
+
+    def swapped_extractor(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        nonlocal swapped
+        _extract_headers(data, asset, destination, staging=staging)
+        _ = staging.parent.rename(parked)
+        staging.parent.mkdir()
+        _ = sentinel.write_bytes(content)
+        swapped = True
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="staging ownership changed",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path,
+            identity,
+            downloader=_downloader([]),
+            extractor=swapped_extractor,
+        )
+    assert swapped
+    assert sentinel.read_bytes() == content
+    assert parked.is_dir()
+    assert not identity.development_root.exists()
+
+
 def test_development_provision_rejects_swapped_staged_root(
     tmp_path: Path,
 ) -> None:

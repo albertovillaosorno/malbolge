@@ -656,6 +656,25 @@ def _prepare_staging(staging: Path) -> None:
     _require_physical_directories(staging, "staging")
 
 
+def _staging_directory_identity(staging: Path) -> tuple[int, int]:
+    """Snapshot the native directory device and inode before cleanup."""
+    try:
+        physical = staging.lstat()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            f"LLVM development staging ownership check failed: {staging}"
+        ) from error
+    if (
+        not _native_directory_status(physical)
+        or type(physical.st_dev) is not int
+        or type(physical.st_ino) is not int
+        or physical.st_dev < 0
+        or physical.st_ino < 0
+    ):
+        _fail(f"LLVM development staging requires native ownership: {staging}")
+    return physical.st_dev, physical.st_ino
+
+
 def _stage_development_assets(
     identity: tidy_toolchain.ToolchainIdentity,
     staged_root: Path,
@@ -720,6 +739,7 @@ def provision_development_identity(
     )
     staged_root = staging / "development"
     _prepare_staging(staging)
+    staging_identity = _staging_directory_identity(staging)
     staged_root.mkdir()
     functions = _ProvisionFunctions(
         download=downloader,
@@ -744,6 +764,8 @@ def provision_development_identity(
     finally:
         _require_physical_directories(staging, "staging")
         if _preflight_path_status(staging, staging.exists, "staging"):
+            if _staging_directory_identity(staging) != staging_identity:
+                _fail(f"LLVM development staging ownership changed: {staging}")
             shutil.rmtree(staging)
     return identity.development_root
 
