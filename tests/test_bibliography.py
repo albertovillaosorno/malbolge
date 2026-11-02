@@ -153,6 +153,25 @@ def test_source_record_requires_dated_provenance() -> None:
     _expect_failure(text, "lacks a dated retrieval/review provenance marker")
 
 
+@pytest.mark.parametrize(
+    "heading",
+    (
+        "## Status",
+        "## Subject",
+        "## Repository Use",
+        "## Provenance",
+        "## License Or Terms",
+    ),
+)
+def test_source_record_requires_substantive_required_sections(heading: str) -> None:
+    """Mandatory provenance sections cannot be blank despite present headings."""
+    text = _c_record()
+    start = text.index(heading) + len(heading)
+    end = text.index("\n## ", start)
+    text = text[:start] + "\n" + text[end:]
+    _expect_failure(text, f"{heading.removeprefix('## ')} section is empty")
+
+
 def test_source_record_requires_standalone_heading_lines() -> None:
     """An inline heading substring is not a real bibliography section."""
     text = _c_record().replace("## Subject", "Prose mentions ## Subject", 1)

@@ -80,6 +80,13 @@ REQUIRED_HEADINGS = (
     "## Evidence",
     "## Sources",
 )
+NONEMPTY_SECTION_HEADINGS = (
+    "## Status",
+    "## Subject",
+    "## Repository Use",
+    "## Provenance",
+    "## License Or Terms",
+)
 BASELINE_RECORDS = (
     "languages/c.md",
     "languages/python.md",
@@ -606,6 +613,9 @@ def _validate_source_entries(text: str, label: str) -> None:
 def validate_source_text(text: str, label: str = "source record") -> None:
     """Validate one bibliography source-record body."""
     _ = _heading_positions(text, label)
+    for heading in NONEMPTY_SECTION_HEADINGS:
+        if not _section(text, heading):
+            _fail(f"{label} {heading.removeprefix('## ')} section is empty")
     _validate_placeholders(text, label)
     _validate_dated_uncertainty(text, label)
     _validate_source_entries(text, label)
