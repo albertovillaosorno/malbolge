@@ -1263,9 +1263,11 @@ The original study records remain the result authority.
   one false source fingerprint; fixes `82141dba1` and `7163af004` reject it
   while retaining a native positive audit digest. The raw CSV suite passed
   127 post-commit tests, and 85 selected host-C auditor hash/Git tests passed.
-  A separate raw/challenge/host-C cross-module run passed 937 tests. The full
-  253-case host-C audit and repository-wide Jig gates remain unverified due to
-  bounded timeouts. This is local byte/receipt consistency, not authenticated
+  A separate raw/challenge/host-C cross-module run passed 937 tests. All
+  253 host-C audit cases subsequently passed in four independent bounded
+  batches (64, 64, 64, 61); an uninterrupted full-suite run and repository-wide
+  Jig gates remain unverified due to timeouts. This is local byte/receipt
+  consistency, not authenticated
   hashing, independent OS provenance, or physical measurement verification.
 - One end-to-end synthetic admission test composes strict per-trial run
   identity, exact resource declarations, v2 energy CSV, matched reported
