@@ -1956,8 +1956,17 @@ def _provision(
     *,
     root: Path = ROOT,
 ) -> None:
+    # uv pip sync can modify the selected Python interpreter and environment.
+    # Refuse redirected ancestors, foreign leaves, and externally linked inodes
+    # before executing the provisioner or creating a virtual environment.
+    _ = _check_jig_alias_path(layout.environment, directory=True, required=False)
+    python_status = _check_jig_alias_path(
+        layout.python, directory=False, required=False
+    )
+    if python_status is not None and python_status.st_nlink != 1:
+        _fail("Python provisioned interpreter must be single-link")
     uv = ensure_uv(root)
-    if not layout.python.is_file():
+    if python_status is None:
         builder = venv.EnvBuilder(with_pip=False, clear=False)
         builder.create(layout.environment)
     _ = _run([
