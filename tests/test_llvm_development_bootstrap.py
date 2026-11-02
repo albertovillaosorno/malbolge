@@ -740,6 +740,114 @@ def test_rpm_overlay_does_not_overwrite_external_destination_hardlink(
     assert not identity.development_root.exists()
 
 
+@pytest.mark.parametrize(
+    "existing, incoming, accepted",
+    [
+        (b"first content", b"different bytes", False),
+        (b"same header", b"same header", True),
+    ],
+)
+def test_rpm_overlay_rejects_conflicting_header_bytes(
+    tmp_path: Path,
+    existing: bytes,
+    incoming: bytes,
+    *,
+    accepted: bool,
+) -> None:
+    """Pinned packages cannot silently overwrite incompatible shared headers."""
+    source = tmp_path / "package/usr/include/clang"
+    source.mkdir(parents=True)
+    _ = (source / "AST.h").write_bytes(incoming)
+    destination = tmp_path / "development/include/clang"
+    destination.mkdir(parents=True)
+    previous = destination / "AST.h"
+    _ = previous.write_bytes(existing)
+
+    if accepted:
+        llvm_development_validation._copy_rpm_include_tree(
+            source.parent, destination.parent
+        )
+    else:
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="conflicting header",
+        ):
+            llvm_development_validation._copy_rpm_include_tree(
+                source.parent, destination.parent
+            )
+    assert previous.read_bytes() == (incoming if accepted else existing)
+
+
+@pytest.mark.parametrize("conflicting", [False, True])
+def test_two_rpm_header_overlays_preserve_shared_byte_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    conflicting: bool,
+) -> None:
+    """Two pinned RPMs may share exact headers, not silently replace them."""
+    first_asset = _asset()
+    second_asset = replace(first_asset, name="llvm-devel-22.1.8-4.fc44.x86_64.rpm")
+    identity = replace(
+        _identity(tmp_path), development_assets=(first_asset, second_asset)
+    )
+    extracts = 0
+
+    def synthetic_cpio(
+        arguments: list[str],
+        *,
+        cwd: Path | None = None,
+        stdin: bytes | None = None,
+        pass_fds: tuple[int, ...] = (),
+    ) -> bytes:
+        nonlocal extracts
+        del stdin, pass_fds
+        if arguments[0] == "cpio" and cwd is not None:
+            extracts += 1
+            header = cwd / "usr/include/clang/AST/AST.h"
+            header.parent.mkdir(parents=True)
+            contents = (
+                FOREIGN_CONTENT_BYTES
+                if conflicting and extracts == 2
+                else HEADER_BYTES
+            )
+            _ = header.write_bytes(contents)
+        return b""
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_payload",
+            _synthetic_hardlinked_payload,
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            _synthetic_hardlinked_members,
+        )
+        isolated.setattr(
+            llvm_development_validation, "_command_bytes", synthetic_cpio
+        )
+        if conflicting:
+            with pytest.raises(
+                llvm_development_validation.LlvmDevelopmentProvisionError,
+                match="conflicting header",
+            ):
+                _ = llvm_development_validation.provision_development_identity(
+                    tmp_path, identity, downloader=_downloader([])
+                )
+        else:
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert extracts == 2
+    assert identity.development_root.exists() != conflicting
+    if not conflicting:
+        assert (
+            identity.development_root / "include/clang/AST/AST.h"
+        ).read_bytes() == HEADER_BYTES
+
+
 @pytest.mark.parametrize("failure", [OSError, shutil.Error, RuntimeError])
 def test_rpm_overlay_copy_host_fault_is_typed_and_not_published(
     tmp_path: Path,

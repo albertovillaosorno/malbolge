@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import ctypes
 import errno
+import filecmp
 import hashlib
 import io
 import json
@@ -492,14 +493,27 @@ def _extract_cpio_headers(payload: bytes, package_staging: Path) -> None:
 
 
 def _copy_rpm_include_tree(include_root: Path, destination_include: Path) -> None:
-    """Translate host overlay copy faults into typed provision failures."""
+    """Allow shared headers only when their existing bytes match exactly."""
     try:
+        for source in include_root.rglob("*"):
+            if not _preflight_path_status(source, source.is_file, "staging"):
+                continue
+            destination = destination_include / source.relative_to(include_root)
+            if _preflight_path_status(
+                destination, destination.exists, "staging"
+            ) and (
+                not _preflight_path_status(destination, destination.is_file, "staging")
+                or not filecmp.cmp(source, destination, shallow=False)
+            ):
+                _fail("LLVM RPM overlay has conflicting header bytes")
         _ = shutil.copytree(
             include_root,
             destination_include,
             dirs_exist_ok=True,
             symlinks=True,
         )
+    except LlvmDevelopmentProvisionError:
+        raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         detail = "LLVM RPM header overlay copy failed"
         raise LlvmDevelopmentProvisionError(detail) from error
