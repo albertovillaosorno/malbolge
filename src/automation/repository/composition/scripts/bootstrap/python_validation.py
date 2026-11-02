@@ -635,6 +635,70 @@ def _admit_uv_provision_path(
     return _admit_uv_regular_file(path, required=required)
 
 
+def _open_uv_physical_parent(
+    path: Path, *, create: bool = False
+) -> int | None:
+    """Pin each POSIX directory component without following ancestor aliases.
+
+    Returns:
+        Owned physical parent descriptor on POSIX, or None on Windows.
+
+    """
+    parent = path.parent.absolute()
+    if os.name != "posix":
+        _ = _admit_uv_provision_path(parent, directory=True, required=True)
+        return None
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor: int | None = None
+    complete = False
+    try:
+        descriptor = os.open(parent.anchor, flags)
+        if type(descriptor) is not int or descriptor < 0:
+            _fail("uv parent descriptor requires native handle")
+        for component in parent.parts[1:]:
+            try:
+                child = os.open(component, flags, dir_fd=descriptor)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(component, mode=0o755, dir_fd=descriptor)
+                child = os.open(component, flags, dir_fd=descriptor)
+            if type(child) is not int or child < 0:
+                _fail("uv parent descriptor requires native handle")
+            os.close(descriptor)
+            descriptor = child
+        opened = os.fstat(descriptor)
+        named = parent.lstat()
+        if (
+            type(opened) is not os.stat_result
+            or type(named) is not os.stat_result
+            or any(
+                type(field) is not int
+                for status in (opened, named)
+                for field in (status.st_mode, status.st_dev, status.st_ino)
+            )
+            or not stat.S_ISDIR(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            _fail("uv parent descriptor does not match physical directory")
+        _ = _admit_uv_provision_path(parent, directory=True, required=True)
+        complete = True
+        return descriptor
+    except ProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = "uv parent physical descriptor admission failed"
+        raise ProvisionError(message) from error
+    finally:
+        if not complete and type(descriptor) is int and descriptor >= 0:
+            with suppress(OSError):
+                os.close(descriptor)
+
+
 def _uv_stage_is_owned(
     temporary: Path,
     identity: tuple[int, int],
@@ -689,11 +753,20 @@ def _create_uv_stage(temporary: Path) -> tuple[int, tuple[int, int]]:
         | getattr(os, "O_NOFOLLOW", 0)
         | getattr(os, "O_BINARY", 0)
     )
+    parent_descriptor = _open_uv_physical_parent(temporary)
     try:
-        descriptor = os.open(temporary, flags, 0o600)
+        if parent_descriptor is None:
+            descriptor = os.open(temporary, flags, 0o600)
+        else:
+            descriptor = os.open(
+                temporary.name, flags, 0o600, dir_fd=parent_descriptor
+            )
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = "uv staging descriptor creation failed"
         raise ProvisionError(message) from error
+    finally:
+        if parent_descriptor is not None:
+            os.close(parent_descriptor)
     if type(descriptor) is not int or descriptor < 0:
         _fail("uv staging descriptor must be native")
     try:
@@ -921,40 +994,64 @@ def _publish_uv_stage(
         message = "uv staging publication verification failed"
         raise ProvisionError(message) from error
     # A rename overwrites a late competing destination. Linking is atomic
-    # no-replace publication on supported hosts; never adopt another inode.
+    # no-replace publication, pinned to one physical POSIX directory.
+    parent_descriptor = _open_uv_physical_parent(executable)
     try:
-        os.link(temporary, executable, follow_symlinks=False)
-    except FileExistsError as error:
-        message = f"uv executable appeared during provisioning: {executable}"
-        raise ProvisionError(message) from error
-    except (OSError, ValueError, TypeError, RuntimeError, NotImplementedError) as error:
-        message = "uv staging publication link failed"
-        raise ProvisionError(message) from error
-    if not _uv_linked_stage_is_owned(temporary, executable, identity, len(binary)):
-        _fail("uv linked stage changed during publication")
-    try:
-        temporary.unlink()
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        message = "uv staging source removal failed"
-        raise ProvisionError(message) from error
-    checked = _admit_uv_provision_path(executable, required=True)
-    if checked is None or (checked.st_dev, checked.st_ino) != identity:
-        _fail("uv executable changed during publication")
-    try:
-        descriptor = os.open(executable, flags)
-        if type(descriptor) is not int or descriptor < 0:
-            _fail("uv published read descriptor must be native")
         try:
-            _verify_uv_stage_descriptor_bytes(
-                executable, descriptor, identity, binary
-            )
-        finally:
-            os.close(descriptor)
-    except ProvisionError:
-        raise
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        message = "uv published executable byte verification failed"
-        raise ProvisionError(message) from error
+            if parent_descriptor is None:
+                os.link(temporary, executable, follow_symlinks=False)
+            else:
+                os.link(
+                    temporary.name,
+                    executable.name,
+                    src_dir_fd=parent_descriptor,
+                    dst_dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+        except FileExistsError as error:
+            message = f"uv executable appeared during provisioning: {executable}"
+            raise ProvisionError(message) from error
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            message = "uv staging publication link failed"
+            raise ProvisionError(message) from error
+        if not _uv_linked_stage_is_owned(
+            temporary, executable, identity, len(binary)
+        ):
+            _fail("uv linked stage changed during publication")
+        try:
+            if parent_descriptor is None:
+                temporary.unlink()
+            else:
+                os.unlink(temporary.name, dir_fd=parent_descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            message = "uv staging source removal failed"
+            raise ProvisionError(message) from error
+        checked = _admit_uv_provision_path(executable, required=True)
+        if checked is None or (checked.st_dev, checked.st_ino) != identity:
+            _fail("uv executable changed during publication")
+        try:
+            if parent_descriptor is None:
+                descriptor = os.open(executable, flags)
+            else:
+                descriptor = os.open(
+                    executable.name, flags, dir_fd=parent_descriptor
+                )
+            if type(descriptor) is not int or descriptor < 0:
+                _fail("uv published read descriptor must be native")
+            try:
+                _verify_uv_stage_descriptor_bytes(
+                    executable, descriptor, identity, binary
+                )
+            finally:
+                os.close(descriptor)
+        except ProvisionError:
+            raise
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            message = "uv published executable byte verification failed"
+            raise ProvisionError(message) from error
+    finally:
+        if parent_descriptor is not None:
+            os.close(parent_descriptor)
 
 
 def _provision_uv_binary(
@@ -965,7 +1062,13 @@ def _provision_uv_binary(
 ) -> None:
     """Provision one new uv executable without following staging aliases."""
     _ = _admit_uv_provision_path(executable.parent, directory=True)
-    executable.parent.mkdir(parents=True, exist_ok=True)
+    if os.name == "posix":
+        parent_descriptor = _open_uv_physical_parent(executable, create=True)
+        if parent_descriptor is None:
+            _fail("uv provisioning parent requires native descriptor")
+        os.close(parent_descriptor)
+    else:
+        executable.parent.mkdir(parents=True, exist_ok=True)
     _ = _admit_uv_provision_path(
         executable.parent, directory=True, required=True
     )

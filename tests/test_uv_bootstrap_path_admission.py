@@ -110,6 +110,169 @@ def test_uv_rejects_linked_provision_parent(
     assert list(foreign.iterdir()) == []
 
 
+def test_uv_does_not_create_directories_through_late_parent_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late symlink must not receive newly created provisioning directories."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    admitted = python_validation._admit_uv_provision_path
+    swapped = False
+
+    def redirect_after_first_check(
+        path: Path, *, directory: bool = False, required: bool = False
+    ) -> os.stat_result | None:
+        nonlocal swapped
+        result = admitted(path, directory=directory, required=required)
+        if path == executable.parent and directory and not swapped:
+            swapped = True
+            _symlink(root / ".dependencies", foreign, directory=True)
+        return result
+
+    monkeypatch.setattr(
+        python_validation, "_admit_uv_provision_path", redirect_after_first_check
+    )
+    with pytest.raises(python_validation.ProvisionError):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert swapped
+    assert list(foreign.iterdir()) == []
+
+
+def test_uv_does_not_write_through_swapped_stage_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A parent replaced after path admission must not receive staged bytes."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    stage = executable.with_name(f"{executable.name}.tmp")
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    retained = tmp_path / "retained-bin"
+    admitted = python_validation._admit_uv_provision_path
+    native_write = os.write
+    swapped = False
+    wrote_foreign = False
+
+    def swap_after_admission(
+        path: Path, *, directory: bool = False, required: bool = False
+    ) -> os.stat_result | None:
+        nonlocal swapped
+        result = admitted(path, directory=directory, required=required)
+        if path == stage and not swapped:
+            swapped = True
+            _ = executable.parent.rename(retained)
+            _symlink(executable.parent, foreign, directory=True)
+        return result
+
+    def watch_write(descriptor: int, payload: bytes) -> int:
+        nonlocal wrote_foreign
+        if (foreign / stage.name).exists():
+            wrote_foreign = True
+        return native_write(descriptor, payload)
+
+    monkeypatch.setattr(
+        python_validation, "_admit_uv_provision_path", swap_after_admission
+    )
+    monkeypatch.setattr(os, "write", watch_write)
+    with pytest.raises(python_validation.ProvisionError):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert swapped
+    assert not wrote_foreign
+    assert list(foreign.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX dirfd support")
+def test_uv_parent_swap_after_descriptor_pin_does_not_escape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late parent swap after pinning cannot redirect the staging open."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    stage = executable.with_name(f"{executable.name}.tmp")
+    retained = tmp_path / "retained-bin"
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    native_open = os.open
+    swapped = False
+
+    def swap_before_stage_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if os.fspath(path) == stage.name and dir_fd is not None:
+            swapped = True
+            _ = executable.parent.rename(retained)
+            _symlink(executable.parent, foreign, directory=True)
+        if dir_fd is not None:
+            return native_open(path, flags, mode, dir_fd=dir_fd)
+        return native_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", swap_before_stage_open)
+    with pytest.raises(python_validation.ProvisionError, match="uv staging"):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert swapped
+    assert list(foreign.iterdir()) == []
+    assert (retained / stage.name).read_bytes() == b""
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX dirfd support")
+def test_uv_rejects_forged_physical_parent_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An opened foreign directory cannot impersonate the selected UV bin."""
+    artifact = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    python_validation.uv_executable(artifact, root).parent.mkdir(parents=True)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    native_open = os.open
+    injected: list[int] = []
+
+    def forged_parent_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if os.fspath(path) == "bin" and dir_fd is not None:
+            descriptor = native_open(foreign, os.O_RDONLY | os.O_DIRECTORY)
+            injected.append(descriptor)
+            return descriptor
+        if dir_fd is not None:
+            return native_open(path, flags, mode, dir_fd=dir_fd)
+        return native_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", forged_parent_open)
+    with pytest.raises(
+        python_validation.ProvisionError, match="parent descriptor does not match"
+    ):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert len(injected) == 1
+    assert list(foreign.iterdir()) == []
+    with pytest.raises(OSError, match=r"Bad file descriptor|Invalid handle"):
+        _ = os.fstat(injected[0])
+
+
 def test_uv_rejects_non_directory_provision_parent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -223,12 +386,18 @@ def test_uv_rejects_forged_staging_descriptor(
     original_open = os.open
 
     def forged_open(
-        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
-        if os.fspath(path) == os.fspath(stage):
+        if os.fspath(path) in (os.fspath(stage), stage.name):
             descriptor = original_open(foreign, os.O_WRONLY)
             opened.append(descriptor)
             return descriptor
+        if dir_fd is not None:
+            return original_open(path, flags, mode, dir_fd=dir_fd)
         return original_open(path, flags, mode)
 
     monkeypatch.setattr(os, "open", forged_open)
@@ -417,6 +586,8 @@ def test_uv_rejects_nonphysical_new_stage_descriptor_status(
 
     def forged_status(descriptor: int) -> os.stat_result:
         observed = original(descriptor)
+        if stat.S_ISDIR(observed.st_mode):
+            return observed
         observed_fds.append(descriptor)
         if status_kind == "proxy":
             return cast("os.stat_result", cast("object", _ForeignUvStatus(observed)))
@@ -687,6 +858,55 @@ def test_uv_does_not_replace_competing_destination_during_publication(
     assert not stage.exists()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX dirfd support")
+def test_uv_parent_swap_during_link_cannot_publish_outside_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A swapped publication parent cannot receive the staged executable."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    retained = tmp_path / "retained-bin"
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    native_link = os.link
+    swapped = False
+
+    def swap_parent_at_link(
+        source: str | os.PathLike[str],
+        destination: str | os.PathLike[str],
+        *,
+        follow_symlinks: bool = True,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        assert not swapped
+        swapped = True
+        _ = executable.parent.rename(retained)
+        _symlink(executable.parent, foreign, directory=True)
+        _ = (foreign / "uv.tmp").write_bytes(PRESERVED)
+        if src_dir_fd is not None and dst_dir_fd is not None:
+            native_link(
+                source, destination,
+                src_dir_fd=src_dir_fd,
+                dst_dir_fd=dst_dir_fd,
+                follow_symlinks=follow_symlinks,
+            )
+        else:
+            native_link(source, destination, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(os, "link", swap_parent_at_link)
+    with pytest.raises(python_validation.ProvisionError):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert swapped
+    assert not (foreign / executable.name).exists()
+    assert (foreign / "uv.tmp").read_bytes() == PRESERVED
+
+
 def test_uv_rejects_staging_swap_during_atomic_publication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -708,12 +928,22 @@ def test_uv_rejects_staging_swap_during_atomic_publication(
         destination: str | os.PathLike[str],
         *,
         follow_symlinks: bool = True,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
     ) -> None:
-        assert os.fspath(source) == os.fspath(stage)
-        assert os.fspath(destination) == os.fspath(executable)
+        assert os.fspath(source) in (os.fspath(stage), stage.name)
+        assert os.fspath(destination) in (os.fspath(executable), executable.name)
         _ = stage.replace(retained)
         _symlink(stage, foreign, directory=False)
-        native_link(source, destination, follow_symlinks=follow_symlinks)
+        if src_dir_fd is not None and dst_dir_fd is not None:
+            native_link(
+                source, destination,
+                src_dir_fd=src_dir_fd,
+                dst_dir_fd=dst_dir_fd,
+                follow_symlinks=follow_symlinks,
+            )
+        else:
+            native_link(source, destination, follow_symlinks=follow_symlinks)
 
     monkeypatch.setattr(os, "link", swap_source_before_link)
     with pytest.raises(
@@ -745,8 +975,18 @@ def test_uv_rejects_mutation_after_atomic_publication_link(
         destination: str | os.PathLike[str],
         *,
         follow_symlinks: bool = True,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
     ) -> None:
-        native_link(source, destination, follow_symlinks=follow_symlinks)
+        if src_dir_fd is not None and dst_dir_fd is not None:
+            native_link(
+                source, destination,
+                src_dir_fd=src_dir_fd,
+                dst_dir_fd=dst_dir_fd,
+                follow_symlinks=follow_symlinks,
+            )
+        else:
+            native_link(source, destination, follow_symlinks=follow_symlinks)
         with executable.open("r+b") as stream:
             assert stream.write(b"!") == 1
 
