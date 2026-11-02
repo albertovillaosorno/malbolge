@@ -52,6 +52,8 @@ typed provisioning errors that preserve their original cause without evaluating
 foreign exception formatters. Selected tar.gz and ZIP executable members also
 require native size receipts and bounded 128-MiB reads before installation; tar
 links and oversized extracted executables are rejected without a full read.
+The executable writer independently requires native bounded bytes before it
+creates its exclusive staging file, even if called with an injected extractor.
 Pinned uv executable provisioning rejects symlinked, junction, non-directory,
 and multiply linked executable paths before executing an already-installed
 binary or creating new files. New uv payloads use an exclusively created

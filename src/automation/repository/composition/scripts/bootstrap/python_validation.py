@@ -743,6 +743,10 @@ def _write_verified_uv_binary(
         ProvisionError: A stage write or physical identity cannot be admitted.
 
     """
+    if type(binary) is not bytes:
+        _fail("uv executable payload requires native bytes")
+    if len(binary) > MAX_UV_BINARY_BYTES:
+        _fail("uv executable payload exceeds byte limit")
     descriptor, identity = _create_uv_stage(temporary)
     complete = False
     try:

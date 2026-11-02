@@ -433,3 +433,24 @@ def test_uv_rejects_nonphysical_new_stage_descriptor_status(
     assert stage.read_bytes() == b""
     with pytest.raises(OSError, match=r"Bad file descriptor|Invalid handle"):
         _ = original(observed_fds[-1])
+
+
+class _UvExecutableBytesSubclass(bytes):
+    """A byte-compatible object does not constitute native executable data."""
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [bytearray(BINARY), memoryview(BINARY), _UvExecutableBytesSubclass(BINARY)],
+)
+def test_uv_staging_rejects_foreign_executable_bytes_before_file_creation(
+    tmp_path: Path,
+    payload: object,
+) -> None:
+    """A fake extractor cannot write a nonnative executable payload."""
+    stage = tmp_path / "uv.tmp"
+    with pytest.raises(python_validation.ProvisionError, match="native bytes"):
+        _ = python_validation._write_verified_uv_binary(
+            stage, cast("bytes", payload), windows=True
+        )
+    assert not stage.exists()
