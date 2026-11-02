@@ -3751,3 +3751,52 @@ def test_llvm_copy_file_does_not_create_missing_parent_in_swapped_stage(
     foreign_stage = foreign if replacement == "symlink" else staged
     assert (foreign_stage / "sentinel").read_bytes() == b"foreign bytes"
     assert not (foreign_stage / "bin").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+def test_llvm_aliases_reject_parent_swapped_between_directory_and_wrapper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """An alias parent exchanged after mkdir cannot receive wrapper bytes."""
+    staged = tmp_path / "stage"
+    staged.mkdir()
+    alias_root = staged / "jig-bin"
+    parked = tmp_path / "parked-aliases"
+    foreign = tmp_path / "foreign-aliases"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"foreign alias directory")
+    original_write = llvm_validation._write_linux_alias  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def substitute_before_first_wrapper(
+        path: Path,
+        content: str,
+        *,
+        expected_parent_inode: tuple[int, int] | None = None,
+    ) -> None:
+        nonlocal swapped
+        if path.parent == alias_root and not swapped:
+            _ = alias_root.rename(parked)
+            if replacement == "symlink":
+                _ = alias_root.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(alias_root)
+            swapped = True
+        if expected_parent_inode is None:
+            original_write(path, content)
+        else:
+            original_write(path, content, expected_parent_inode=expected_parent_inode)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_write_linux_alias", substitute_before_first_wrapper
+        )
+        with pytest.raises(llvm_validation.LlvmImportError, match="parent"):
+            llvm_validation._write_linux_aliases(  # pyright: ignore[reportPrivateUsage]
+                staged
+            )
+    assert swapped
+    foreign_root = foreign if replacement == "symlink" else alias_root
+    assert (foreign_root / "sentinel").read_bytes() == b"foreign alias directory"
+    assert not (foreign_root / "clang.bin").exists()

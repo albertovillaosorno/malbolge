@@ -689,8 +689,10 @@ def _verify_linux_alias_bytes(path: Path, descriptor: int, content: bytes) -> No
         _fail("LLVM wrapper identity changed during content verification")
 
 
-def _write_linux_alias(path: Path, text: str) -> None:
-    """Publish an executable wrapper against a pinned physical parent."""
+def _write_linux_alias(
+    path: Path, text: str, *, expected_parent_inode: tuple[int, int] | None = None
+) -> None:
+    """Publish an executable wrapper against its original physical parent."""
     if not _physical_directory(path.parent):
         _fail("LLVM wrapper parent must be a physical directory")
     try:
@@ -703,6 +705,11 @@ def _write_linux_alias(path: Path, text: str) -> None:
         initial_parent.st_mode
     ):
         _fail("LLVM wrapper parent status must be native")
+    if (
+        expected_parent_inode is not None
+        and (initial_parent.st_dev, initial_parent.st_ino) != expected_parent_inode
+    ):
+        _fail("LLVM wrapper parent changed before publication")
     content = text.encode("utf-8")
     parent_flags = (
         os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -726,6 +733,10 @@ def _write_linux_alias(path: Path, text: str) -> None:
             or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
             or (opened.st_dev, opened.st_ino)
             != (initial_parent.st_dev, initial_parent.st_ino)
+            or (
+                expected_parent_inode is not None
+                and (opened.st_dev, opened.st_ino) != expected_parent_inode
+            )
         ):
             _fail("LLVM wrapper parent descriptor does not match the path")
         flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
@@ -928,9 +939,14 @@ def _write_linux_aliases(root: Path) -> tuple[Path, ...]:
     aliases: list[Path] = []
     alias_root = root / "jig-bin"
     _create_physical_import_directory(alias_root, label="LLVM import staging aliases")
+    alias_inode = _native_directory_inode(alias_root)
+    if alias_inode is None:
+        _fail("LLVM wrapper alias parent must be physical")
     for tool in _TOOL_NAMES:
         alias = alias_root / f"{tool}.bin"
-        _write_linux_alias(alias, _linux_wrapper(tool))
+        _write_linux_alias(
+            alias, _linux_wrapper(tool), expected_parent_inode=alias_inode
+        )
         aliases.append(alias)
     return tuple(aliases)
 
