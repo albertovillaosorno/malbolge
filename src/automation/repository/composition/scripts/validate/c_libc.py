@@ -57,7 +57,7 @@ INCLUDE_ROOT = ROOT / "src/runtime/guest-c-library/contract/include"
 LIBC_ID = "malbolge-libc-v1"
 SCHEMA_VERSION = 1
 MAX_DOCUMENT_BYTES = 1024 * 1024
-_NATIVE_JSON_LOADS = json.loads
+_NATIVE_JSON_DECODER = json.JSONDecoder
 
 COMPILER_HEADERS = (
     "float.h",
@@ -321,27 +321,24 @@ def loads_document(text: str) -> JsonObject:
     except (ValueError, RecursionError) as error:
         raise CLibcValidationError("invalid C libc JSON") from error
     document = _mapping(parsed, "C libc document")
-    # A substituted public decoder can yield native, schema-valid values that
-    # do not occur in the source. Corroborate against the import-bound native
-    # parser, retaining duplicate-key rejection and original syntax failures.
-    if decoder is not _NATIVE_JSON_LOADS:
-        try:
-            source = cast(
-                "object",
-                _NATIVE_JSON_LOADS(
-                    text, object_pairs_hook=_reject_duplicate_pairs
-                ),
-            )
-            if not _same_native_json(document, source):
-                _fail("C libc JSON decoder provider differs from source")
-        except CLibcValidationError:
-            raise
-        except (ValueError, RecursionError, TypeError, RuntimeError) as error:
-            raise CLibcValidationError("invalid C libc JSON") from error
-        # An equivalent adapter still owns its returned mutable objects.
-        # Use the independently parsed source tree for admitted identity.
-        document = _mapping(source, "C libc document")
-    return document
+    # An import-bound json.loads still resolves the public JSONDecoder class
+    # at runtime. Independently parse every source through the import-bound
+    # class, including when public providers jointly replace or restore it.
+    try:
+        source = cast(
+            "object",
+            _NATIVE_JSON_DECODER(object_pairs_hook=_reject_duplicate_pairs).decode(
+                text
+            ),
+        )
+        if not _same_native_json(document, source):
+            _fail("C libc JSON decoder provider differs from source")
+    except CLibcValidationError:
+        raise
+    except (ValueError, RecursionError, TypeError, RuntimeError) as error:
+        raise CLibcValidationError("invalid C libc JSON") from error
+    # Never expose an equivalent public adapter's mutable nested object graph.
+    return _mapping(source, "C libc document")
 
 
 def _regular_identity(status: object) -> tuple[int, int, int, int, int]:

@@ -85,6 +85,11 @@ routines without hidden host shortcuts.
   invoking it, rejecting self-restoring forged contract receipts, and uses an
   independently decoded source tree for accepted equivalent wrappers. Three
   red-first text/file/mutable-alias regressions now pass.
+- 2026-11-02 import-bound decoder follow-up: three red-first cases reject
+  decoder-only, joint-provider, and mid-call-restoring JSON substitutions.
+  Every libc contract receipt now agrees with the import-bound `JSONDecoder`
+  source tree, instead of relying on an import-bound `json.loads` that still
+  consults mutable public class state. The returned policy is source-owned.
 - A second 2026-11-02 follow-up binds Clang AST JSON admission to original
   stdout under substituted public decoders. Six red-first direct/process,
   malformed/duplicate/nonfinite and nested hostile-key cases now reject; a

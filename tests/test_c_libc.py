@@ -370,6 +370,43 @@ def test_libc_json_parser_preserves_duplicate_key_failure_with_shim(
         _ = c_libc.loads_document('{"schema_version":1,"schema_version":1}')
 
 
+@pytest.mark.parametrize(
+    "providers", ("decoder-only", "joint", "self-restoring-decoder")
+)
+def test_libc_json_reference_rejects_joint_provider_forgery(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """A public decoder cannot forge routine signatures absent from source."""
+    source = LIBC_PATH.read_text(encoding="utf-8")
+    forged = cast("c_libc.JsonObject", json.loads(source))
+    routines = cast("list[c_libc.JsonValue]", forged["available_routines"])
+    first = cast("dict[str, c_libc.JsonValue]", routines[0])
+    first["signature"] = "void forged_libc(void)"
+    _ = c_libc.validate_document(forged)
+    native_decoder = json.JSONDecoder
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring-decoder":
+                patch.setattr(json, "JSONDecoder", native_decoder)
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "joint":
+            patch.setattr(json, "loads", forged_loads)
+        with pytest.raises(
+            c_libc.CLibcValidationError,
+            match="JSON decoder provider differs from source",
+        ):
+            _ = c_libc.loads_document(source)
+
+
 def test_libc_json_parser_allows_equivalent_delegating_decoder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
