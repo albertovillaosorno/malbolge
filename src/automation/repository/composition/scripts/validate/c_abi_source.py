@@ -249,6 +249,7 @@ def _ast_command(source: Path, clang: Path, target: str) -> list[str]:
 def _checked_clang_output(
     completed: sp.CompletedProcess[str],
     context: str,
+    command: list[str],
 ) -> tuple[str, str]:
     """Admit only a decoded, integer-exit Clang process receipt.
 
@@ -256,21 +257,33 @@ def _checked_clang_output(
         Stdout and stderr from one valid subprocess receipt.
 
     """
+    if type(completed) is not sp.CompletedProcess:
+        _fail(f"malformed Clang {context} process receipt")
     if (
-        type(completed) is not sp.CompletedProcess
-        or type(completed.returncode) is not int
+        type(completed.returncode) is not int
         or type(completed.stdout) is not str
         or type(completed.stderr) is not str
     ):
+        _fail(f"malformed Clang {context} process receipt")
+    arguments = cast("object", completed.args)
+    if type(arguments) is not list:
+        _fail(f"malformed Clang {context} process receipt")
+    native_argv = cast("list[object]", arguments)
+    if len(native_argv) != len(command):
+        _fail(f"malformed Clang {context} process receipt")
+    if any(type(arg) is not str for arg in native_argv):
+        _fail(f"malformed Clang {context} process receipt")
+    if native_argv != command:
         _fail(f"malformed Clang {context} process receipt")
     return completed.stdout, completed.stderr
 
 
 def _clang_identity(clang: Path) -> str:
+    command = [str(clang), "--version"]
     try:
         # jig-ignore-next-line: indivisible reviewed identifier
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [str(clang), "--version"],
+            command.copy(),
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -281,7 +294,7 @@ def _clang_identity(clang: Path) -> str:
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = f"failed to execute Clang version query {clang}: {_safe_error_detail(error)}"
         raise SourceAnalysisError(message) from error
-    stdout, stderr = _checked_clang_output(completed, "version")
+    stdout, stderr = _checked_clang_output(completed, "version", command)
     if completed.returncode != 0:
         _fail(f"Clang version query failed for {clang}")
     return stdout + chr(10) + stderr
@@ -319,10 +332,11 @@ def _parse_ast_output(text: str, source: Path) -> JsonObject:
 
 def _run_ast(source: Path, clang: Path, target: str) -> JsonObject:
     _require_ast_inputs(source, clang)
+    command = _ast_command(source, clang, target)
     try:
         # jig-ignore-next-line: indivisible reviewed identifier
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            _ast_command(source, clang, target),
+            command.copy(),
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -335,7 +349,7 @@ def _run_ast(source: Path, clang: Path, target: str) -> JsonObject:
             f"failed to execute Clang AST parse {clang}: {_safe_error_detail(error)}"
         )
         raise SourceAnalysisError(message) from error
-    stdout, stderr = _checked_clang_output(completed, "AST")
+    stdout, stderr = _checked_clang_output(completed, "AST", command)
     if completed.returncode != 0:
         detail = stderr.strip()
         _fail(detail or f"Clang AST parse failed for {source}")

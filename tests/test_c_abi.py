@@ -40,7 +40,7 @@ import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import BinaryIO, TextIO, cast
+from typing import BinaryIO, TextIO, cast, override
 
 import pytest
 
@@ -1450,3 +1450,110 @@ def test_guest_abi_source_valid_help_flushes_before_zero_exit(
     assert caught.value.code == 0
     assert records and "usage:" in records[0]
     assert records[-1] == "flush"
+
+
+@pytest.mark.parametrize("stage", ["version", "ast"])
+@pytest.mark.parametrize(
+    "receipt_kind",
+    [
+        "wrong-binary",
+        "missing-argument",
+        "extra-argument",
+        "tuple-arguments",
+        "foreign-list",
+        "foreign-token",
+        "mutated-command",
+    ],
+)
+def test_guest_abi_source_clang_requires_exact_command_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    receipt_kind: str,
+) -> None:
+    """Clang identity and AST evidence must attest to their launched argv."""
+    source = tmp_path / "unit.c"
+    _ = source.write_text("int x;\n", encoding="utf-8")
+
+    class ForeignList(list[str]):
+        @override
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign Clang list equality executed")
+
+    class ForeignToken(str):
+        @override
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign Clang token equality executed")
+
+    def fake_run(
+        argv: list[str], **_kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        forged: object = {
+            "wrong-binary": ["other-clang", *argv[1:]],
+            "missing-argument": argv[:-1],
+            "extra-argument": [*argv, "--other"],
+            "tuple-arguments": tuple(argv),
+            "foreign-list": ForeignList(argv),
+            "foreign-token": [ForeignToken(argv[0]), *argv[1:]],
+            "mutated-command": argv,
+        }[receipt_kind]
+        if receipt_kind == "mutated-command":
+            argv[0] = "other-clang"
+        return sp.CompletedProcess(
+            cast("list[str]", forged),
+            0,
+            stdout="clang version 22.1.8" if stage == "version" else "{}",
+            stderr="",
+        )
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    if stage == "ast":
+        def accepted_inputs(_source: Path, _clang: Path) -> None:
+            pass
+
+        monkeypatch.setattr(
+            c_abi_source, "_require_ast_inputs", accepted_inputs
+        )
+
+    def action() -> object:
+        if stage == "ast":
+            return c_abi_source._run_ast(source, source, "target")
+        return c_abi_source._clang_identity(source)
+
+    with pytest.raises(
+        c_abi_source.SourceAnalysisError, match="process receipt"
+    ):
+        _ = action()
+
+
+@pytest.mark.parametrize("stage", ["version", "ast"])
+def test_guest_abi_source_clang_accepts_authentic_command_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """The original native Clang command is retained as admissible evidence."""
+    source = tmp_path / "unit.c"
+    _ = source.write_text("int x;\n", encoding="utf-8")
+
+    def fake_run(
+        argv: list[str], **_kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(
+            argv,
+            0,
+            stdout="clang version 22.1.8" if stage == "version" else "{}",
+            stderr="",
+        )
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    if stage == "ast":
+        def accepted_inputs(_source: Path, _clang: Path) -> None:
+            pass
+
+        monkeypatch.setattr(
+            c_abi_source, "_require_ast_inputs", accepted_inputs
+        )
+        assert c_abi_source._run_ast(source, source, "target") == {}
+    else:
+        assert "clang version 22.1.8" in c_abi_source._clang_identity(source)

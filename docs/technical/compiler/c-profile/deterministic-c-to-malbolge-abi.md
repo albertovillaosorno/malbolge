@@ -356,8 +356,11 @@ standard binary input streams, and exact bytes before trusting identity or
 content evidence. Clang version and AST results must be exact Python
 `CompletedProcess` receipts with native integer exits and decoded text; boolean
 or floating-point exits and foreign text subclasses cannot impersonate valid
-Clang evidence. Unexpected host failures retain their original exception causes,
-while operator diagnostics avoid invoking foreign formatting hooks. Invalid
+Clang evidence. Both version and AST process receipts must also retain the
+exact launched native argv (binary, target, mode, and source) and cannot share
+a mutable command list with an untrusted process wrapper. Unexpected host
+failures retain their original exception causes, while operator diagnostics
+avoid invoking foreign formatting hooks. Invalid
 source UTF-8 likewise preserves the underlying decoder failure.
 
 ### Compatibility fixtures
