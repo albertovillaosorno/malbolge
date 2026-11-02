@@ -426,6 +426,12 @@ can execute the retained guest again with the recorded binary fingerprint;
 it cannot authenticate the original measured duration. This is a real second
 execution, not a distinct independent interpreter, arbitrary C translation,
 physically enforced whole-study budgets or an attested performance estimate.
+The audit now admits only native VM subprocess receipts with an exact string
+argument list, integer status and byte-string stdout/stderr before trusting
+replayed guest or step equality. Its retained replay path also rejects foreign
+expected-output byte subclasses. Nine forged-receipt regressions and one
+native positive control exercise these checks, without asserting independent
+process provenance or authentication of the original measured run.
 
 A separate v4 target study adds **actually enforced per-child Linux
 resource ceilings** to the measured source-plus-second-VM replay protocol.

@@ -319,6 +319,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   check also rejects observed changes after source admission and before
   report construction. A real 64-pair pilot regression exercises both source
   layouts across the classic 94-position decode phase cycle.
+  Both read-only target VM replay modes now require native child receipt
+  arguments/status/stdout/stderr before comparing expected bytes and steps;
+  the general replay also rejects a foreign expected-output byte subclass.
+  Nine forged-receipt cases and one native control pass, preserving the
+  limitation that local replay does not attest prior measured execution.
   The offline auditor additionally pins complete study JSON and per-trial
   manifest/raw byte digests before linked-evidence admission, checks them
   again before returning a report, and rescans run/raw/candidate inventories.
