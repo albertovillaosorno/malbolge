@@ -41,6 +41,7 @@ import re
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from dataclasses import dataclass
+from io import BufferedReader
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 from typing import Final, Never, cast
@@ -162,6 +163,8 @@ def _stable_marker_descriptor(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
+    if type(cast("object", descriptor)) is not int or descriptor < 0:
+        return False
     try:
         stream = os.fdopen(descriptor, "rb")
     except (OSError, ValueError, TypeError, RuntimeError):
@@ -172,9 +175,20 @@ def _stable_marker_descriptor(
             pass
         raise
     with stream:
-        before = _marker_identity(os.fstat(stream.fileno()))
+        if type(cast("object", stream)) is not BufferedReader:
+            return False
+        stream_fd = stream.fileno()
+        if type(cast("object", stream_fd)) is not int or stream_fd != descriptor:
+            # fdopen returned a different native stream: its context owns that
+            # stream, but cannot release our original descriptor.
+            try:
+                os.close(descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError):
+                pass
+            return False
+        before = _marker_identity(os.fstat(stream_fd))
         content = stream.read(len(expected) + 1)
-        after = _marker_identity(os.fstat(stream.fileno()))
+        after = _marker_identity(os.fstat(stream_fd))
     return (
         before == admitted
         and after == admitted

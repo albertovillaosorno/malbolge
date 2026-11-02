@@ -258,17 +258,79 @@ def test_llvm_marker_fdopen_failure_closes_owned_descriptor(
             _ = os.fstat(descriptor)
 
 
+@pytest.mark.parametrize("invalid_descriptor", [False, True, None, -1])
+def test_llvm_marker_reader_rejects_nonnative_open_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_descriptor: object,
+) -> None:
+    """A false marker-open receipt cannot wrap or close another descriptor."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    native_open = os.open
+
+    def false_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        if Path(path) == marker:
+            return cast("int", invalid_descriptor)
+        return native_open(path, flags, mode)
+
+    def forbid_fdopen(_fd: int, _mode: str) -> None:
+        raise AssertionError("non-native marker descriptor wrapped")
+
+    def forbid_close(_fd: int) -> None:
+        raise AssertionError("non-native marker descriptor closed")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", false_open)
+        isolated.setattr(os, "fdopen", forbid_fdopen)
+        isolated.setattr(os, "close", forbid_close)
+        assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
+def test_llvm_marker_reader_rejects_different_native_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native stream from another inode cannot certify an import marker."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    outside = tmp_path / "borrowed-marker-stream"
+    _ = outside.write_bytes(marker.read_bytes())
+    opened: list[int] = []
+
+    def wrong_fdopen(fd: int, mode: str) -> object:
+        opened.append(fd)
+        return outside.open(mode)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fdopen", wrong_fdopen)
+        assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+    assert len(opened) == 1
+    try:
+        with pytest.raises(OSError):
+            _ = os.fstat(opened[0])
+    finally:
+        try:
+            os.close(opened[0])
+        except OSError:
+            pass
+    # The marker was rejected, not rewritten, and ordinary reading still works.
+    assert marker.read_bytes() == outside.read_bytes()
+
+
 class _ForeignMarkerBytes(bytes):
     """Digest-matching contents are not evidence from a native byte read."""
 
 
-@pytest.mark.parametrize("kind", ("mutable", "view", "subclass"))
+@pytest.mark.parametrize("kind", ("mutable", "view", "subclass", "exact"))
 def test_llvm_marker_rejects_nonnative_stream_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     kind: str,
 ) -> None:
-    """An injected stream cannot certify marker bytes via lookalike types."""
+    """An injected stream cannot certify marker bytes, even when exact."""
     root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
     marker = root / llvm_validation.LLVM_IMPORT_MARKER
     original = os.fdopen
@@ -277,6 +339,7 @@ def test_llvm_marker_rejects_nonnative_stream_bytes(
         "mutable": bytearray(raw),
         "view": memoryview(raw),
         "subclass": _ForeignMarkerBytes(raw),
+        "exact": bytes(raw),
     }
 
     @final
