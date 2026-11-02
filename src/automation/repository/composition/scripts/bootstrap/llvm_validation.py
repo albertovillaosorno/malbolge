@@ -1193,6 +1193,24 @@ def _write_linux_alias(
             raise LlvmImportError(
                 f"LLVM wrapper parent close failed: {type(error).__name__}"
             ) from error
+    try:
+        closed = path.lstat()
+        if (
+            not _physical_file(path)
+            or type(closed) is not os.stat_result
+            or closed.st_nlink != 1
+            or S_IMODE(closed.st_mode) != 0o755
+            or closed.st_size != len(content)
+            or not _stable_marker_descriptor(path, _marker_identity(closed), content)
+            or _marker_identity(path.lstat()) != _marker_identity(closed)
+        ):
+            _fail("LLVM wrapper changed after parent close")
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM wrapper postclose status failed: {type(error).__name__}"
+        ) from error
 
 
 def _existing_import_marker(root: Path, platform_id: str) -> bool:
@@ -1293,6 +1311,9 @@ def _write_import_marker(
         return
     marker = root / LLVM_IMPORT_MARKER
     content = _marker_bytes(platform_id)
+    original_parent = _native_directory_inode(root)
+    if original_parent is None:
+        _fail("LLVM import marker parent must be physical")
     parent_descriptor = (
         _open_physical_import_parent(root, "LLVM import marker")
         if os.name == "posix"
@@ -1361,21 +1382,20 @@ def _write_import_marker(
             raise LlvmImportError(
                 f"LLVM import marker write failed: {type(error).__name__}"
             ) from error
-        if (
+        if not (
             type(written) is int
             and written == len(content)
             and _valid_marker(root, platform_id)
         ):
-            return
-        if owned_inode is not None:
-            try:
-                _discard_owned_file(marker, owned_inode)
-            except (OSError, ValueError, TypeError, RuntimeError) as error:
-                error_type = type(error).__name__
-                raise LlvmImportError(
-                    f"LLVM marker write count mismatch; cleanup failed: {error_type}"
-                ) from error
-        _fail("LLVM marker write count or content verification mismatch")
+            if owned_inode is not None:
+                try:
+                    _discard_owned_file(marker, owned_inode)
+                except (OSError, ValueError, TypeError, RuntimeError) as error:
+                    error_type = type(error).__name__
+                    raise LlvmImportError(
+                        f"LLVM marker write count mismatch; cleanup failed: {error_type}"
+                    ) from error
+            _fail("LLVM marker write count or content verification mismatch")
 
     finally:
         if parent_descriptor is not None:
@@ -1385,6 +1405,19 @@ def _write_import_marker(
                 raise LlvmImportError(
                     f"LLVM import marker parent close failed: {type(error).__name__}"
                 ) from error
+    if _native_directory_inode(root) != original_parent or not _valid_marker(
+        root, platform_id
+    ):
+        # A close callback may have rewritten or swapped the marker after its
+        # first verified readback. Only retire our unique originally opened leaf.
+        if owned_inode is not None and _native_directory_inode(root) == original_parent:
+            try:
+                _discard_owned_file(marker, owned_inode)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmImportError(
+                    f"LLVM marker postclose cleanup failed: {type(error).__name__}"
+                ) from error
+        _fail("LLVM import marker changed after parent close")
 
 
 def _write_linux_aliases(root: Path) -> tuple[Path, ...]:
@@ -1458,6 +1491,13 @@ def _stage_linux_llvm(
     _write_import_marker(
         staged, LINUX_PLATFORM, expected_parent_inode=expected_staged_inode
     )
+    # A late wrapper or marker callback must not establish a trusted stage
+    # baseline merely because its modified bytes were captured in the digest.
+    if not _valid_marker(staged, LINUX_PLATFORM) or not all(
+        _valid_linux_wrapper(staged / "jig-bin" / f"{tool}.bin", tool)
+        for tool in _TOOL_NAMES
+    ):
+        _fail("LLVM staged wrapper or marker changed during publication")
     # A marker callback can still change an earlier hardlinked source or
     # independently copied stage member. Recheck the original source bytes,
     # the published member bytes, and the complete resource inventories.

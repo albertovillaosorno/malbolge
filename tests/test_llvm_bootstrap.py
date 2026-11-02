@@ -386,6 +386,57 @@ def test_linux_import_rejects_digest_stream_postclose_mutation(
     assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
 
 
+@pytest.mark.parametrize(
+    "mutation", ("wrapper-after-write", "wrapper-after-marker", "marker-after-write")
+)
+def test_linux_import_does_not_certify_invalid_wrapper_or_marker_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """Published metadata must be canonical before the stage digest is pinned."""
+    observed = _host_observation(tmp_path)
+    destination = tmp_path / llvm_validation.LLVM_ROOT
+    native_aliases = llvm_validation._write_linux_aliases  # pyright: ignore[reportPrivateUsage]
+    native_marker = llvm_validation._write_import_marker  # pyright: ignore[reportPrivateUsage]
+    altered = False
+
+    def corrupt(path: Path) -> None:
+        nonlocal altered
+        content = path.read_bytes()
+        _ = path.write_bytes(b"!" + content[1:])
+        altered = True
+
+    def write_and_corrupt_aliases(staged: Path) -> tuple[Path, ...]:
+        aliases = native_aliases(staged)
+        corrupt(aliases[0])
+        return aliases
+
+    def write_and_corrupt_marker(
+        staged: Path,
+        platform_id: str,
+        *,
+        expected_parent_inode: tuple[int, int] | None = None,
+    ) -> None:
+        native_marker(staged, platform_id, expected_parent_inode=expected_parent_inode)
+        if mutation == "marker-after-write":
+            corrupt(staged / llvm_validation.LLVM_IMPORT_MARKER)
+        else:
+            corrupt(staged / "jig-bin/clang.bin")
+
+    with monkeypatch.context() as isolated:
+        if mutation == "wrapper-after-write":
+            isolated.setattr(
+                llvm_validation, "_write_linux_aliases", write_and_corrupt_aliases
+            )
+        else:
+            isolated.setattr(
+                llvm_validation, "_write_import_marker", write_and_corrupt_marker
+            )
+        with pytest.raises(llvm_validation.LlvmImportError, match="wrapper|marker"):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observed)
+    assert altered
+    assert not destination.exists()
+
+
 def test_linux_import_materializes_local_runtime_and_neutral_aliases(
     tmp_path: Path,
 ) -> None:
@@ -425,6 +476,60 @@ def test_linux_import_uses_required_sonames_for_resolved_host_libraries(
     assert (local / "lib/libclang-cpp.so.22.1").read_bytes() == CLANG_CPP_BYTES
     assert llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
     assert llvm_validation.import_linux_llvm(tmp_path, observation) == local
+
+
+@pytest.mark.skipif(os.name != HOST_POSIX, reason="requires parent descriptor")
+@pytest.mark.parametrize("mutation", ("overwrite", "replace"))
+def test_llvm_marker_writer_rechecks_after_parent_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A close callback cannot invalidate an already accepted marker."""
+    root = tmp_path / "runtime"
+    root.mkdir()
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    native_open = os.open
+    native_close = os.close
+    owned_parents: set[int] = set()
+    altered = False
+
+    def track_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        fd = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == root:
+            owned_parents.add(fd)
+        return fd
+
+    def mutate_on_close(fd: int) -> None:
+        nonlocal altered
+        native_close(fd)
+        if fd in owned_parents:
+            owned_parents.remove(fd)
+            altered = True
+            if mutation == "overwrite":
+                content = marker.read_bytes()
+                _ = marker.write_bytes(b"!" + content[1:])
+            else:
+                marker.rename(root / "parked-original-marker")
+                _ = marker.write_bytes(b"foreign marker")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", track_open)
+        isolated.setattr(os, "close", mutate_on_close)
+        with pytest.raises(llvm_validation.LlvmImportError, match="marker"):
+            llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+                root, LINUX_PLATFORM
+            )
+    assert altered
+    assert not owned_parents
+    if mutation == "overwrite":
+        assert not marker.exists()
+    else:
+        assert marker.read_bytes() == b"foreign marker"
 
 
 def test_llvm_marker_writer_rejects_substituted_open_descriptor(
@@ -1751,6 +1856,50 @@ def test_linux_wrapper_parent_close_failure_is_typed(
     assert caught.value.__cause__ is fault
     assert not opened_parent
     assert wrapper.read_bytes() == b"#!/bin/sh\n"
+
+
+def test_linux_wrapper_rejects_mutation_after_parent_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The final directory close cannot invalidate a verified wrapper."""
+    wrapper = tmp_path / "clang.bin"
+    content = "#!/bin/sh\nexec true\n"
+    native_open = os.open
+    native_close = os.close
+    opened_parent: set[int] = set()
+    altered = False
+
+    def track_parent(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        fd = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == wrapper.parent:
+            opened_parent.add(fd)
+        return fd
+
+    def corrupt_on_close(fd: int) -> None:
+        nonlocal altered
+        native_close(fd)
+        if fd in opened_parent:
+            opened_parent.remove(fd)
+            original = wrapper.read_bytes()
+            _ = wrapper.write_bytes(b"!" + original[1:])
+            altered = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", track_parent)
+        isolated.setattr(os, "close", corrupt_on_close)
+        with pytest.raises(llvm_validation.LlvmImportError, match="wrapper"):
+            llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+                wrapper, content
+            )
+    assert altered
+    assert not opened_parent
+    assert wrapper.read_bytes() != content.encode("utf-8")
 
 
 def test_linux_wrapper_rejects_foreign_open_descriptor(
