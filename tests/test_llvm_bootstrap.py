@@ -4032,3 +4032,197 @@ def test_windows_aliases_reject_unowned_directory_inserted_during_mkdir(
     assert inserted
     assert list(alias_root.iterdir()) == []
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX pinned cleanup")
+@pytest.mark.parametrize("replacement", ("physical", "symlink"))
+@pytest.mark.parametrize("phase", ("success", "failure"))
+def test_linux_import_cleanup_never_deletes_swapped_staging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+    phase: str,
+) -> None:
+    """Cleanup must never recursively remove a late foreign staging tree."""
+    observation = _host_observation(tmp_path)
+    staging = tmp_path / ".temp/llvm-import-linux-x86_64"
+    parked = tmp_path / "parked-cleanup-stage"
+    foreign = tmp_path / "foreign-cleanup-stage"
+    foreign.mkdir()
+    sentinel = foreign / "preserve"
+    _ = sentinel.write_bytes(b"foreign staging contents")
+    original_guard = llvm_validation._owned_staging_safe_to_clean  # pyright: ignore[reportPrivateUsage]
+    original_stage = llvm_validation._stage_linux_llvm  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def swap_after_check(
+        path: Path,
+        staged: Path,
+        owned_staging: tuple[int, int],
+        owned_child: tuple[int, int] | None,
+    ) -> bool:
+        nonlocal swapped
+        ready = original_guard(path, staged, owned_staging, owned_child)
+        if ready and not swapped:
+            staging.rename(parked)
+            if replacement == "physical":
+                foreign.rename(staging)
+            else:
+                staging.symlink_to(foreign, target_is_directory=True)
+            swapped = True
+        return ready
+
+    def fail_after_staging(
+        staged: Path,
+        observed: llvm_validation.LlvmHostObservation,
+        *,
+        expected_staged_inode: tuple[int, int] | None = None,
+    ) -> None:
+        original_stage(staged, observed, expected_staged_inode=expected_staged_inode)
+        raise llvm_validation.LlvmImportError("intentional staging failure")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_owned_staging_safe_to_clean", swap_after_check
+        )
+        if phase == "failure":
+            isolated.setattr(llvm_validation, "_stage_linux_llvm", fail_after_staging)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert swapped
+    outside = staging if replacement == "physical" else foreign
+    assert (outside / "preserve").read_bytes() == b"foreign staging contents"
+    if phase == "failure":
+        assert (parked / "llvm/bin/clang").read_bytes() == CLANG_BYTES
+        assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+    else:
+        assert (tmp_path / llvm_validation.LLVM_ROOT / "bin/clang").is_file()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX pinned cleanup")
+@pytest.mark.parametrize("replacement", ("physical", "symlink"))
+def test_linux_import_cleanup_pins_stage_before_recursive_child_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """A swap during recursive removal must not delete foreign contents."""
+    observation = _host_observation(tmp_path)
+    staging = tmp_path / ".temp/llvm-import-linux-x86_64"
+    parked = tmp_path / "parked-recursive-cleanup"
+    foreign = tmp_path / "foreign-recursive-cleanup"
+    foreign.mkdir()
+    _ = (foreign / "preserve").write_bytes(b"foreign recursive cleanup")
+    original_stage = llvm_validation._stage_linux_llvm  # pyright: ignore[reportPrivateUsage]
+    original_remove = shutil.rmtree
+    swapped = False
+
+    def fail_after_staging(
+        staged: Path,
+        observed: llvm_validation.LlvmHostObservation,
+        *,
+        expected_staged_inode: tuple[int, int] | None = None,
+    ) -> None:
+        original_stage(staged, observed, expected_staged_inode=expected_staged_inode)
+        raise llvm_validation.LlvmImportError("expected staging error")
+
+    def swap_during_remove(
+        path: str | os.PathLike[str], *, dir_fd: int | None = None
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (Path(path) == staging or path == "bin"):
+            staging.rename(parked)
+            if replacement == "physical":
+                foreign.rename(staging)
+            else:
+                staging.symlink_to(foreign, target_is_directory=True)
+            swapped = True
+        original_remove(path, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation, "_stage_linux_llvm", fail_after_staging)
+        isolated.setattr(shutil, "rmtree", swap_during_remove)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert swapped
+    outside = staging if replacement == "physical" else foreign
+    assert (outside / "preserve").read_bytes() == b"foreign recursive cleanup"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX pinned cleanup")
+def test_linux_import_rejects_false_successful_staging_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An absent native rmdir receipt cannot claim completed cleanup."""
+    observation = _host_observation(tmp_path)
+    staging = tmp_path / ".temp/llvm-import-linux-x86_64"
+    native_rmdir = os.rmdir
+    suppressed = False
+
+    def false_cleanup_rmdir(
+        path: str | os.PathLike[str], *, dir_fd: int | None = None
+    ) -> object:
+        nonlocal suppressed
+        if Path(path) == staging or (path == staging.name and dir_fd is not None):
+            suppressed = True
+            return False
+        return native_rmdir(path, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "rmdir", false_cleanup_rmdir)
+        with pytest.raises(llvm_validation.LlvmImportError, match="cleanup"):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert suppressed
+    assert staging.is_dir()
+    assert (tmp_path / llvm_validation.LLVM_ROOT / "bin/clang").is_file()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX pinned cleanup")
+@pytest.mark.parametrize("replacement", ("physical", "symlink"))
+def test_linux_import_cleanup_rejects_child_swapped_after_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """The importer's owned staging child cannot be replaced before removal."""
+    observation = _host_observation(tmp_path)
+    child = tmp_path / ".temp/llvm-import-linux-x86_64/llvm"
+    parked = tmp_path / "parked-staged-child"
+    foreign = tmp_path / "foreign-staged-child"
+    foreign.mkdir()
+    _ = (foreign / "preserve").write_bytes(b"foreign child content")
+    original_stage = llvm_validation._stage_linux_llvm  # pyright: ignore[reportPrivateUsage]
+    original_stat = os.stat
+    swapped = False
+
+    def fail_after_staging(
+        staged: Path,
+        observed: llvm_validation.LlvmHostObservation,
+        *,
+        expected_staged_inode: tuple[int, int] | None = None,
+    ) -> None:
+        original_stage(staged, observed, expected_staged_inode=expected_staged_inode)
+        raise llvm_validation.LlvmImportError("expected staging error")
+
+    def swap_after_child_stat(
+        path: str | os.PathLike[str],
+        *,
+        dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        nonlocal swapped
+        result = original_stat(path, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+        if not swapped and path == child.name and dir_fd is not None:
+            child.rename(parked)
+            if replacement == "physical":
+                foreign.rename(child)
+            else:
+                child.symlink_to(foreign, target_is_directory=True)
+            swapped = True
+        return result
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation, "_stage_linux_llvm", fail_after_staging)
+        isolated.setattr(os, "stat", swap_after_child_stat)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert swapped
+    outside = child if replacement == "physical" else foreign
+    assert (outside / "preserve").read_bytes() == b"foreign child content"
+    assert (parked / "bin/clang").read_bytes() == CLANG_BYTES

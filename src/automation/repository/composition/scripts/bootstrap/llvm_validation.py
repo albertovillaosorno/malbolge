@@ -1188,6 +1188,107 @@ def _owned_staging_safe_to_clean(
     return owned_child is not None and _native_directory_inode(staged) == owned_child
 
 
+def _cleanup_owned_linux_staging(
+    staging: Path,
+    staged: Path,
+    owned_staging: tuple[int, int],
+    owned_child: tuple[int, int] | None,
+) -> None:
+    """Remove only the owned staging tree through pinned directory handles."""
+    if os.name != "posix":
+        # Linux import is used on Linux; keep legacy simulation support on
+        # hosts without descriptor-relative directory operations.
+        shutil.rmtree(staging)
+        return
+    parent_fd: int | None = None
+    staging_fd: int | None = None
+    child_fd: int | None = None
+    try:
+        parent_fd = _open_physical_import_parent(staging.parent, "LLVM staging cleanup")
+        flags = (
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        )
+        staging_fd = os.open(staging.name, flags, dir_fd=parent_fd)
+        if type(cast("object", staging_fd)) is not int or staging_fd < 0:
+            _fail("LLVM staging cleanup directory descriptor must be native")
+        opened = os.fstat(staging_fd)
+        if (
+            type(opened) is not os.stat_result
+            or not S_ISDIR(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != owned_staging
+            or _native_directory_inode(staging) != owned_staging
+        ):
+            _fail("LLVM staging cleanup directory identity changed")
+        try:
+            child = os.stat(staged.name, dir_fd=staging_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            if (
+                type(child) is not os.stat_result
+                or not S_ISDIR(child.st_mode)
+                or (child.st_dev, child.st_ino) != owned_child
+            ):
+                _fail("LLVM staging cleanup child identity changed")
+            child_fd = os.open(staged.name, flags, dir_fd=staging_fd)
+            if type(cast("object", child_fd)) is not int or child_fd < 0:
+                _fail("LLVM staging cleanup child descriptor must be native")
+            opened_child = os.fstat(child_fd)
+            if (
+                type(opened_child) is not os.stat_result
+                or not S_ISDIR(opened_child.st_mode)
+                or (opened_child.st_dev, opened_child.st_ino) != owned_child
+            ):
+                _fail("LLVM staging cleanup child descriptor identity changed")
+            with os.scandir(child_fd) as members:
+                for member in members:
+                    if member.is_dir(follow_symlinks=False):
+                        shutil.rmtree(member.name, dir_fd=child_fd)
+                    else:
+                        os.unlink(member.name, dir_fd=child_fd)
+            named_child = os.stat(staged.name, dir_fd=staging_fd, follow_symlinks=False)
+            if (
+                type(named_child) is not os.stat_result
+                or (named_child.st_dev, named_child.st_ino) != owned_child
+            ):
+                _fail("LLVM staging cleanup child changed during removal")
+            child_receipt = os.rmdir(staged.name, dir_fd=staging_fd)
+            if child_receipt is not None:
+                _fail("LLVM staging cleanup child removal receipt must be native")
+        if _native_directory_inode(staging) != owned_staging:
+            _fail("LLVM staging cleanup directory changed before removal")
+        final_status = os.stat(staging.name, dir_fd=parent_fd, follow_symlinks=False)
+        if (
+            type(final_status) is not os.stat_result
+            or (final_status.st_dev, final_status.st_ino) != owned_staging
+        ):
+            _fail("LLVM staging cleanup original directory was replaced")
+        receipt = os.rmdir(staging.name, dir_fd=parent_fd)
+        if receipt is not None:
+            _fail("LLVM staging cleanup removal receipt must be native")
+        try:
+            _ = os.stat(staging.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            _fail("LLVM staging cleanup did not remove the owned directory")
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM staging cleanup failed: {type(error).__name__}"
+        ) from error
+    finally:
+        for descriptor in (child_fd, staging_fd, parent_fd):
+            if type(descriptor) is int and descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except (OSError, ValueError, TypeError, RuntimeError) as error:
+                    raise LlvmImportError(
+                        f"LLVM staging cleanup close failed: {type(error).__name__}"
+                    ) from error
+
+
 def _require_absent_import_destination(destination: Path) -> None:
     """Reject late occupancy using native leaf status before publication."""
     try:
@@ -1409,7 +1510,7 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
         if owned_staging is not None and _owned_staging_safe_to_clean(
             staging, staged, owned_staging, owned_child
         ):
-            shutil.rmtree(staging)
+            _cleanup_owned_linux_staging(staging, staged, owned_staging, owned_child)
     return destination
 
 
