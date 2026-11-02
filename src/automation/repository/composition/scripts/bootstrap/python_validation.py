@@ -1141,12 +1141,24 @@ def _open_owned_binary_stream(descriptor: int, *, mode: str = "rb") -> BinaryIO:
         RuntimeError: The host stream adapter cannot create a stream.
 
     """
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("bootstrap binary descriptor must be a native nonnegative integer")
     try:
-        return cast("BinaryIO", os.fdopen(descriptor, mode))
+        stream = os.fdopen(descriptor, mode)
     except OSError, ValueError, TypeError, RuntimeError:
         with suppress(OSError):
             os.close(descriptor)
         raise
+    if mode == "rb" and not (
+        type(stream) is io.BufferedReader
+        and type(stream.raw) is io.FileIO
+        and stream.fileno() == descriptor
+        and stream.raw.fileno() == descriptor
+    ):
+        with suppress(OSError):
+            os.close(descriptor)
+        _fail("bootstrap requires native buffered binary stream on owned descriptor")
+    return cast("BinaryIO", stream)
 
 
 def _read_open_jig_binary(

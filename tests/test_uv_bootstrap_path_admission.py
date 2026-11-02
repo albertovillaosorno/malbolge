@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import BinaryIO
+from typing import Self
 from typing import cast
 
 import pytest
@@ -454,3 +456,107 @@ def test_uv_staging_rejects_foreign_executable_bytes_before_file_creation(
             stage, cast("bytes", payload), windows=True
         )
     assert not stage.exists()
+
+@pytest.mark.parametrize("authority", ["uv-manifest", "jig-binary"])
+def test_binary_authority_rejects_forged_fdopen_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authority: str,
+) -> None:
+    """An injected stream cannot substitute valid-looking native file bytes."""
+    if authority == "uv-manifest":
+        path = tmp_path / "uv.json"
+        genuine = python_validation.UV_MANIFEST.read_bytes()
+        _ = path.write_bytes(b"!" + genuine[1:])
+    else:
+        path = tmp_path / "ruff"
+        genuine = b"genuine-jig-tool"
+        _ = path.write_bytes(b"foreign-jig-tool")
+    real_fdopen = os.fdopen
+    opened_streams: list[ForgedStream] = []
+
+    class ForgedStream:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream: BinaryIO = stream
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, _size: int) -> bytes:
+            return genuine
+
+    def forged_fdopen(descriptor: int, mode: str) -> object:
+        forged = ForgedStream(cast("BinaryIO", real_fdopen(os.dup(descriptor), mode)))
+        opened_streams.append(forged)
+        return forged
+
+    try:
+        with monkeypatch.context() as isolated:
+            isolated.setattr(os, "fdopen", forged_fdopen)
+            with pytest.raises(python_validation.ProvisionError, match="native.*stream"):
+                if authority == "uv-manifest":
+                    _ = python_validation.uv_artifact("linux-x86_64", path)
+                else:
+                    _ = python_validation._read_jig_binary_source(  # pyright: ignore[reportPrivateUsage]
+                        path
+                    )
+    finally:
+        for forged in opened_streams:
+            forged.stream.close()
+    assert path.read_bytes() != genuine
+
+
+@pytest.mark.parametrize("authority", ["uv-manifest", "jig-binary"])
+def test_binary_authority_rejects_native_stream_on_duplicated_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authority: str,
+) -> None:
+    """A native reader on a different FD must not impersonate the opened FD."""
+    path = tmp_path / "authority"
+    payload = (
+        python_validation.UV_MANIFEST.read_bytes()
+        if authority == "uv-manifest"
+        else BINARY
+    )
+    _ = path.write_bytes(payload)
+    native_fdopen = os.fdopen
+    original_descriptors: list[int] = []
+    duplicate_streams: list[BinaryIO] = []
+
+    def rewrapped_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        original_descriptors.append(descriptor)
+        stream = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        duplicate_streams.append(stream)
+        return stream
+
+    try:
+        with monkeypatch.context() as isolated:
+            isolated.setattr(os, "fdopen", rewrapped_fdopen)
+            with pytest.raises(
+                python_validation.ProvisionError, match="native.*descriptor"
+            ):
+                if authority == "uv-manifest":
+                    _ = python_validation.uv_artifact(PLATFORM_ID, path)
+                else:
+                    _ = python_validation._read_jig_binary_source(  # pyright: ignore[reportPrivateUsage]
+                        path
+                    )
+        assert len(original_descriptors) == 1
+        with pytest.raises(OSError, match=r"Bad file descriptor|Invalid handle"):
+            _ = os.fstat(original_descriptors[0])
+    finally:
+        for descriptor in original_descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        for stream in duplicate_streams:
+            stream.close()
+    assert path.read_bytes() == payload
