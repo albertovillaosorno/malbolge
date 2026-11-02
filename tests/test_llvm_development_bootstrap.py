@@ -517,6 +517,54 @@ def test_development_child_stage_creation_fault_cleans_owned_root(
     assert not identity.development_root.exists()
 
 
+@pytest.mark.parametrize("hide_exists", [False, True])
+def test_development_rejects_late_occupied_final_destination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hide_exists: bool,
+) -> None:
+    """Publication must not replace an independently created empty directory."""
+    identity = _identity(tmp_path)
+    inserted = False
+
+    def insert_destination(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        nonlocal inserted
+        _extract_headers(data, asset, destination, staging=staging)
+        identity.development_root.mkdir(parents=True)
+        inserted = True
+
+    native_exists = Path.exists
+
+    def hidden_exists(path: Path) -> bool:
+        return False if path == identity.development_root else native_exists(path)
+
+    with monkeypatch.context() as isolated:
+        if hide_exists:
+            isolated.setattr(Path, "exists", hidden_exists)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="destination.*occupied",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path,
+                identity,
+                downloader=_downloader([]),
+                extractor=insert_destination,
+            )
+    assert inserted
+    assert identity.development_root.is_dir()
+    assert list(identity.development_root.iterdir()) == []
+    assert not (
+        tmp_path / ".temp/llvm-development-provision-linux-x86_64"
+    ).exists()
+
+
 def test_development_cleanup_preserves_foreign_replacement_directory(
     tmp_path: Path,
 ) -> None:

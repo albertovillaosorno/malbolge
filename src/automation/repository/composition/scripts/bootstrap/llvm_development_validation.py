@@ -764,6 +764,16 @@ def provision_development_identity(
         _require_development_destination(identity.development_root)
         identity.development_root.parent.mkdir(parents=True, exist_ok=True)
         _require_development_destination(identity.development_root)
+        try:
+            _ = identity.development_root.lstat()
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                "LLVM development destination occupancy check failed"
+            ) from error
+        else:
+            _fail("LLVM development destination became occupied before publication")
         _require_physical_directories(staged_root, "staging")
         _ = staged_root.replace(identity.development_root)
     finally:
