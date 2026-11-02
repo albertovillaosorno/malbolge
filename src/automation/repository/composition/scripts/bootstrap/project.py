@@ -1865,11 +1865,17 @@ def _copy_import_members_at_parent(
     """
     try:
         _require_local_state_parent_identity(destination, destination_fd)
+        complete = False
         with os.scandir(source_fd) as members:
             for member in members:
                 _copy_scanned_import_member(
                     source_fd, destination, destination_fd, member=member
                 )
+            # A substituted scan context may suppress a mid-copy failure.
+            # A partial source inventory cannot certify import completion.
+            complete = True
+        if not complete:
+            _fail("import source tree scan was suppressed")
     except InitializationError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:

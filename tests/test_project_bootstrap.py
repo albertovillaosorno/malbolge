@@ -44,6 +44,7 @@ import tarfile
 import tempfile
 import urllib.request
 import zipfile
+from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
@@ -9055,3 +9056,55 @@ def test_rust_import_alias_rejects_replaced_root_before_alias_open(
     assert (foreign_root / "sentinel").read_bytes() == FOREIGN_TOOLCHAIN_BYTES
     assert not (foreign_root / "bin/cargo.bin").exists()
     assert not (foreign_root / project.RUST_IMPORT_MARKER).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX import descriptor scan")
+def test_import_tree_copy_rejects_suppressed_source_iterator_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scan context cannot turn partial source copying into success."""
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    _ = (source / "first.txt").write_bytes(b"source-data")
+    source_fd = os.open(source, os.O_RDONLY | os.O_DIRECTORY)
+    destination_fd = os.open(destination, os.O_RDONLY | os.O_DIRECTORY)
+    native_scandir = os.scandir
+    injected = False
+    try:
+        with native_scandir(source_fd) as directory:
+            first = next(directory)
+
+        class SuppressingScan:
+            def __enter__(self) -> Self:
+                return self
+
+            def __iter__(self) -> Iterator[os.DirEntry[str]]:
+                yield first
+                raise project.InitializationError("injected source traversal fault")
+
+            def __exit__(
+                self, exception: object, value: object, traceback: object
+            ) -> bool:
+                del exception, value, traceback
+                return True
+
+        def fake_scandir(path: str | os.PathLike[str] | int) -> object:
+            nonlocal injected
+            if type(path) is int and path == source_fd:
+                injected = True
+                return SuppressingScan()
+            return native_scandir(path)
+
+        with monkeypatch.context() as context:
+            context.setattr(os, "scandir", fake_scandir)
+            with pytest.raises(project.InitializationError, match="source tree|scan"):
+                project._copy_import_members_at_parent(  # pyright: ignore[reportPrivateUsage]
+                    source_fd, destination, destination_fd
+                )
+    finally:
+        os.close(destination_fd)
+        os.close(source_fd)
+    assert injected
+    assert (destination / "first.txt").read_bytes() == b"source-data"
