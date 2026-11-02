@@ -662,9 +662,11 @@ def _safe_tar_extract(data: bytes, staging: Path) -> Path:
     try:
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as archive:
             return _extract_tar_archive(archive, staging)
+    except CudaProvisionError:
+        raise
     except KeyError as error:
         raise CudaProvisionError("cannot resolve CUDA tar archive hard link") from error
-    except (OSError, tarfile.TarError) as error:
+    except (OSError, tarfile.TarError, TypeError, ValueError, RuntimeError) as error:
         raise CudaProvisionError(
             f"cannot extract CUDA tar archive: {type(error).__name__}"
         ) from error
@@ -697,7 +699,9 @@ def _safe_zip_extract(data: bytes, staging: Path) -> Path:
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             return _extract_zip_archive(archive, staging)
-    except (OSError, zipfile.BadZipFile) as error:
+    except CudaProvisionError:
+        raise
+    except (OSError, zipfile.BadZipFile, TypeError, ValueError, RuntimeError) as error:
         raise CudaProvisionError(
             f"cannot extract CUDA zip archive: {type(error).__name__}"
         ) from error

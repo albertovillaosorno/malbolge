@@ -4031,3 +4031,42 @@ def test_cuda_rejects_excessive_combined_archive_expansion(
             payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
         )
     assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()
+
+
+@pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
+@pytest.mark.parametrize("failure_type", [UnprintableHostRuntimeError, ValueError])
+def test_cuda_archive_member_open_faults_remain_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    archive_format: str,
+    failure_type: type[Exception],
+) -> None:
+    """Archive stream adapters cannot escape the CUDA provisioning error contract."""
+    is_zip = archive_format == _ZIP_FORMAT
+    payload = _zip_payload() if is_zip else _payload()
+    manifest = _manifest(
+        tmp_path, payload,
+        {"relative_path": _ZIP_PACKAGE_PATH if is_zip else PACKAGE_PATH},
+    )
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    failure = failure_type("untrusted archive stream failure")
+
+    def reject_open(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    with monkeypatch.context() as isolated:
+        if is_zip:
+            isolated.setattr(zipfile.ZipFile, "open", reject_open)
+        else:
+            isolated.setattr(tarfile.TarFile, "extractfile", reject_open)
+        kind = "zip" if is_zip else "tar"
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match=f"cannot extract CUDA {kind} archive"
+        ) as caught:
+            cuda_validation.extract_cuda_package(
+                payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+            )
+    assert caught.value.__cause__ is failure
+    assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()
