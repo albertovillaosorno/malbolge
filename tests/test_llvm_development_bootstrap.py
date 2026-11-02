@@ -807,6 +807,35 @@ def test_rpm_overlay_rejects_conflicting_header_bytes(
     assert previous.read_bytes() == (incoming if accepted else existing)
 
 
+def test_rpm_overlay_rechecks_bytes_after_same_mtime_source_mutation(
+    tmp_path: Path,
+) -> None:
+    """An earlier identical overlay may not cache a later conflict as equal."""
+    source = tmp_path / "package/usr/include/clang/AST.h"
+    source.parent.mkdir(parents=True)
+    _ = source.write_bytes(b"original-1")
+    destination = tmp_path / "development/include/clang/AST.h"
+    destination.parent.mkdir(parents=True)
+    _ = destination.write_bytes(b"original-1")
+    original = source.stat()
+    os.utime(destination, ns=(original.st_atime_ns, original.st_mtime_ns))
+
+    llvm_development_validation._copy_rpm_include_tree(
+        source.parent.parent, destination.parent.parent
+    )
+    _ = source.write_bytes(b"modified-1")
+    os.utime(source, ns=(original.st_atime_ns, original.st_mtime_ns))
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="conflicting header",
+    ):
+        llvm_development_validation._copy_rpm_include_tree(
+            source.parent.parent, destination.parent.parent
+        )
+    assert destination.read_bytes() == b"original-1"
+
+
 @pytest.mark.parametrize("conflicting", [False, True])
 def test_two_rpm_header_overlays_preserve_shared_byte_identity(
     tmp_path: Path,

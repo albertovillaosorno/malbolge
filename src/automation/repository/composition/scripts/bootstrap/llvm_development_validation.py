@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import ctypes
 import errno
-import filecmp
 import hashlib
 import io
 import json
@@ -496,6 +495,20 @@ def _extract_cpio_headers(payload: bytes, package_staging: Path) -> None:
         _close_physical_parent(parent, "CPIO")
 
 
+def _same_header_bytes(source: Path, destination: Path) -> bool:
+    """Compare current header bytes without cached size/mtime equivalence."""
+    with source.open("rb") as incoming, destination.open("rb") as existing:
+        while True:
+            candidate = incoming.read(1024 * 1024)
+            retained = existing.read(1024 * 1024)
+            if type(candidate) is not bytes or type(retained) is not bytes:
+                _fail("LLVM RPM overlay comparison requires native bytes")
+            if candidate != retained:
+                return False
+            if not candidate:
+                return True
+
+
 def _copy_rpm_include_tree(include_root: Path, destination_include: Path) -> None:
     """Allow shared headers only when their existing bytes match exactly."""
     try:
@@ -507,7 +520,7 @@ def _copy_rpm_include_tree(include_root: Path, destination_include: Path) -> Non
                 destination, destination.exists, "staging"
             ) and (
                 not _preflight_path_status(destination, destination.is_file, "staging")
-                or not filecmp.cmp(source, destination, shallow=False)
+                or not _same_header_bytes(source, destination)
             ):
                 _fail("LLVM RPM overlay has conflicting header bytes")
         _ = shutil.copytree(
