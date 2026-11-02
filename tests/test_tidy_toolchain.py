@@ -304,6 +304,94 @@ def test_toolchain_manifest_decoder_corroborates_original_plugin_path(
             _ = tidy_toolchain.load_identity(manifest, root=tmp_path)
 
 
+@pytest.mark.parametrize("entrypoint", ("document", "identity"))
+@pytest.mark.parametrize("providers", ("decoder-only", "joint", "self-restoring"))
+def test_toolchain_json_decoder_cannot_forge_plugin_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    entrypoint: str,
+    providers: str,
+) -> None:
+    """A public JSONDecoder cannot alter the source-owned plugin path."""
+    manifest = _write_manifest(tmp_path, _canonical_document())
+    forged = _canonical_document()
+    platforms = cast("dict[str, object]", forged["platforms"])
+    windows = cast("dict[str, object]", platforms[WINDOWS_PLATFORM])
+    windows["plugin_library"] = "bin/foreign-toolchain.dll"
+    native_decoder = json.JSONDecoder
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring":
+                patch.setattr(json, "JSONDecoder", native_decoder)
+
+        def decode(self, _source: str) -> object:
+            return forged
+
+    def forged_loads(_source: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "joint":
+            patch.setattr(json, "loads", forged_loads)
+        with pytest.raises(
+            tidy_toolchain.ToolchainError,
+            match="JSON decoder provider differs from source",
+        ):
+            if entrypoint == "document":
+                _ = tidy_toolchain._document(manifest)  # pyright: ignore[reportPrivateUsage]
+            else:
+                _ = tidy_toolchain.load_identity(manifest, root=tmp_path)
+
+
+def test_toolchain_public_decoder_cannot_admit_malformed_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The underlying syntax is authoritative even under a forged decoder."""
+    source = tmp_path / "invalid-toolchain.json"
+    _ = source.write_text('{"schema_version":2,,}', encoding="utf-8")
+    forged = _canonical_document()
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def decode(self, _source: str) -> object:
+            return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        with pytest.raises(tidy_toolchain.ToolchainError, match="cannot read") as caught:
+            _ = tidy_toolchain._document(source)  # pyright: ignore[reportPrivateUsage]
+    assert type(caught.value.__cause__) is json.JSONDecodeError
+
+
+def test_toolchain_source_equivalent_public_json_decoder_is_admitted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Source-preserving decoder adapters still admit the same identity."""
+    source = _write_manifest(tmp_path, _canonical_document())
+    native_decoder = json.JSONDecoder
+
+    class DelegatingDecoder:
+        def __init__(self, *, object_pairs_hook: object) -> None:
+            self.decoder = native_decoder(
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]",
+                    object_pairs_hook,
+                )
+            )
+
+        def decode(self, text: str) -> object:
+            return self.decoder.decode(text)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", DelegatingDecoder)
+        identity = tidy_toolchain.load_identity(source, root=tmp_path)
+        assert identity.plugin_library.name == "malbolge-tidy.dll"
+
+
 def test_toolchain_manifest_decoder_accepts_equivalent_adapter(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

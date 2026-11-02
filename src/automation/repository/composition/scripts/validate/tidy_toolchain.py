@@ -74,7 +74,7 @@ MANIFEST: Final = (
 )
 SCHEMA_VERSION: Final = 2
 MAX_MANIFEST_BYTES: Final = 1024 * 1024
-_NATIVE_JSON_LOADS: Final = json.loads
+_NATIVE_JSON_DECODER: Final = json.JSONDecoder
 ARCHIVE_HASH_CHUNK_BYTES: Final = 1024 * 1024
 LLVM_VERSION: Final = "22.1.8"
 RELEASE_TAG: Final = f"llvmorg-{LLVM_VERSION}"
@@ -451,19 +451,19 @@ def _document(path: Path) -> dict[str, object]:
             "object",
             decoder(source_text, object_pairs_hook=_reject_duplicate_pairs),
         )
-        # Native-looking values are not source evidence. Compare the entire
-        # tree against the bound source decoder and return only source-owned
-        # objects, never a mutable alias retained by an injected adapter.
-        if decoder is not _NATIVE_JSON_LOADS:
-            original = cast(
-                "object",
-                _NATIVE_JSON_LOADS(
-                    source_text, object_pairs_hook=_reject_duplicate_pairs
-                ),
-            )
-            if not _same_native_json(parsed, original):
-                _fail("clang-tidy toolchain JSON decoder provider differs from source")
-            parsed = original
+        # json.loads still delegates through the mutable public JSONDecoder.
+        # Independently decode through the import-bound class on every call,
+        # even when both public providers or their restoration are substituted.
+        original = cast(
+            "object",
+            _NATIVE_JSON_DECODER(object_pairs_hook=_reject_duplicate_pairs).decode(
+                source_text
+            ),
+        )
+        if not _same_native_json(parsed, original):
+            _fail("clang-tidy toolchain JSON decoder provider differs from source")
+        # Keep only source-owned values, not an adapter's mutable aliases.
+        parsed = original
     except ToolchainError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
