@@ -245,3 +245,60 @@ def test_python_fast_jig_alias_rejects_blank_or_padded_version(
         _ = pv._posix_jig_tool_alias_text(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
             "pytest", version_line
         )
+
+
+@pytest.mark.parametrize(
+    "banner",
+    [
+        " pytest 9.1.1\n",
+        "\tpytest 9.1.1\n",
+        "\npytest 9.1.1\n",
+        "pytest 9.1.1 \n",
+        "pytest 9.1.1\n\n",
+        "pytest 9.1.1\r",
+    ],
+)
+def test_python_version_probe_rejects_trimmed_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    banner: str,
+) -> None:
+    """Whitespace cleanup must not turn a false banner into the exact pin."""
+    command = [str(tmp_path / "pytest"), "--version"]
+
+    def fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        assert argv == command
+        assert kwargs["cwd"] == python_validation.ROOT
+        return subprocess.CompletedProcess(argv, 0, banner, "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    pv = python_validation
+    with pytest.raises(pv.ProvisionError, match="stdout"):
+        _ = pv._run(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "banner", ["pytest 9.1.1", "pytest 9.1.1\n", "pytest 9.1.1\r\n"]
+)
+def test_python_version_probe_accepts_single_native_line_ending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    banner: str,
+) -> None:
+    """A single terminal LF or CRLF is transport, not version metadata."""
+    expected = "pytest 9.1.1"
+    command = [str(tmp_path / "pytest"), "--version"]
+
+    def fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        assert argv == command
+        assert kwargs["cwd"] == python_validation.ROOT
+        return subprocess.CompletedProcess(argv, 0, banner, "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    pv = python_validation
+    output = pv._run(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert output == expected

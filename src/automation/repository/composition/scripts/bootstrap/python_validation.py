@@ -1345,8 +1345,16 @@ def _run(command: list[str]) -> str:
         or type(completed.stderr) is not str
     ):
         _fail("invalid Python bootstrap process receipt")
-    if tuple(command[1:]) == VERSION_PROBE_ARGUMENTS and completed.stderr:
-        _fail("Python bootstrap version probe emitted stderr diagnostics")
+    if tuple(command[1:]) == VERSION_PROBE_ARGUMENTS:
+        if completed.stderr:
+            _fail("Python bootstrap version probe emitted stderr diagnostics")
+        if completed.stdout.endswith("\r\n"):
+            version_output = completed.stdout[:-2]
+        else:
+            version_output = completed.stdout.removesuffix("\n")
+        if version_output != version_output.strip():
+            _fail("Python bootstrap version probe stdout is not canonical")
+        return version_output
     return completed.stdout.strip()
 
 
