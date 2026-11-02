@@ -52,6 +52,7 @@ LLVM_BYTES = b"libLLVM"
 CLANG_CPP_BYTES = b"libclang-cpp"
 RESOURCE_BYTES = b"resource-header"
 FORGED_ALIAS_BYTES = b"forged neutral alias"
+WINDOWS_MARKER_BYTES = f"llvm={LLVM_VERSION}\nplatform={WINDOWS_PLATFORM}\n".encode()
 WRAPPER_LIBRARY_PATH = "LD_LIBRARY_PATH"
 WRAPPER_CLANG_EXEC = 'exec "$ROOT/bin/clang" "$@"'
 
@@ -577,6 +578,133 @@ def test_windows_aliases_reject_linked_source_tool(tmp_path: Path) -> None:
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
 
 
+@pytest.mark.parametrize("kind", ("symlink", "hardlink", "regular"))
+def test_windows_aliases_reject_preexisting_invalid_marker_before_writing(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    """A poisoned marker cannot redirect writes or publish partial aliases."""
+    root = _windows_tool_bundle(tmp_path)
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    sentinel = tmp_path / "unrelated-marker"
+    _ = sentinel.write_bytes(b"unrelated-sentinel")
+    if kind == "symlink":
+        try:
+            marker.symlink_to(sentinel)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"symlinks unavailable: {error}")
+    elif kind == "hardlink":
+        try:
+            os.link(sentinel, marker)
+        except OSError as error:
+            pytest.skip(f"hardlinks unavailable: {error}")
+    else:
+        _ = marker.write_bytes(b"stale-marker")
+    with pytest.raises(llvm_validation.LlvmImportError, match="marker"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert sentinel.read_bytes() == b"unrelated-sentinel"
+    assert not (root / "jig-bin").exists()
+    assert (marker.is_symlink() if kind == "symlink" else marker.exists())
+
+
+def test_windows_aliases_reject_exact_hardlinked_marker(tmp_path: Path) -> None:
+    """Even matching marker bytes borrowed by hardlink are not unique state."""
+    root = _windows_tool_bundle(tmp_path)
+    outside = tmp_path / "borrowed-marker"
+    _ = outside.write_bytes(WINDOWS_MARKER_BYTES)
+    try:
+        os.link(outside, root / llvm_validation.LLVM_IMPORT_MARKER)
+    except OSError as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    with pytest.raises(llvm_validation.LlvmImportError, match="marker"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert not (root / "jig-bin").exists()
+    assert outside.read_bytes() == WINDOWS_MARKER_BYTES
+
+
+def test_windows_aliases_cannot_follow_marker_inserted_during_create(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exclusive publication rejects an inserted symlink, preserving its target."""
+    root = _windows_tool_bundle(tmp_path)
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    sentinel = tmp_path / "unrelated-marker-race"
+    _ = sentinel.write_bytes(b"outside-bytes")
+    original = os.open
+
+    def racing_open(path: str | os.PathLike[str], flags: int, mode: int = 0o777) -> int:
+        if Path(path) == marker:
+            try:
+                marker.symlink_to(sentinel)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"symlinks unavailable: {error}")
+        return original(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", racing_open)
+    with pytest.raises(llvm_validation.LlvmImportError, match="exclusive creation"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert sentinel.read_bytes() == b"outside-bytes"
+    assert marker.is_symlink()
+
+
+def test_llvm_inspection_rejects_hardlinked_import_marker(
+    tmp_path: Path,
+) -> None:
+    """A borrowed marker inode cannot attest local LLVM readiness."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    outside = tmp_path / "borrowed-linux-marker"
+    _ = marker.replace(outside)
+    try:
+        os.link(outside, marker)
+    except OSError as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
+def test_windows_aliases_reuse_marker_without_rewriting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid existing marker is already published and must not be rewritten."""
+    root = _windows_tool_bundle(tmp_path)
+    expected = llvm_validation.write_windows_llvm_aliases(root)
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    original_status = marker.stat()
+
+    def forbid_marker_rewrite(_descriptor: int, _data: bytes) -> int:
+        raise AssertionError("valid LLVM marker was rewritten")
+
+    monkeypatch.setattr(os, "write", forbid_marker_rewrite)
+    assert llvm_validation.write_windows_llvm_aliases(root) == expected
+    assert marker.stat().st_mtime_ns == original_status.st_mtime_ns
+
+
+def test_llvm_marker_writer_closes_descriptor_after_host_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Typed marker write failure cannot leak a descriptor or publish a marker."""
+    root = _windows_tool_bundle(tmp_path)
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    error = _ResourceTraversalError("marker write failed")
+    observed: list[int] = []
+
+    def faulty_write(descriptor: int, _data: bytes) -> int:
+        observed.append(descriptor)
+        raise error
+
+    monkeypatch.setattr(os, "write", faulty_write)
+    with pytest.raises(llvm_validation.LlvmImportError, match="marker write failed") as raised:
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert raised.value.__cause__ is error
+    assert len(observed) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(observed[0])
+    assert not marker.exists()
+
+
 def test_windows_aliases_reuse_exact_unlinked_aliases(tmp_path: Path) -> None:
     """Idempotent setup preserves previously verified native PE bytes."""
     root = _windows_tool_bundle(tmp_path)
@@ -689,15 +817,13 @@ def _mock_bad_marker_write(
     monkeypatch: pytest.MonkeyPatch,
     invalid_count: str,
 ) -> None:
-    real_write = Path.write_bytes
+    real_write = os.write
 
-    def wrong_write(path: Path, data: bytes) -> int:
-        if path.name == llvm_validation.LLVM_IMPORT_MARKER:
-            _ = real_write(path, data[:-1])
-            return _invalid_count(invalid_count, len(data))
-        return real_write(path, data)
+    def wrong_write(descriptor: int, data: bytes) -> int:
+        _ = real_write(descriptor, data[:-1])
+        return _invalid_count(invalid_count, len(data))
 
-    monkeypatch.setattr(Path, "write_bytes", wrong_write)
+    monkeypatch.setattr(os, "write", wrong_write)
 
 
 @pytest.mark.parametrize("invalid_count", list(_INVALID_COUNTS))

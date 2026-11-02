@@ -130,6 +130,7 @@ def _marker_identity(status: os.stat_result) -> tuple[int, ...]:
         status.st_dev,
         status.st_ino,
         status.st_size,
+        status.st_nlink,
         status.st_mtime_ns,
         status.st_ctime_ns,
     )
@@ -172,7 +173,9 @@ def _valid_marker(root: Path, platform_id: str) -> bool:
         initial = marker.lstat()
         admitted = _marker_identity(initial)
         return (
-            initial.st_size == len(expected)
+            type(initial.st_nlink) is int
+            and initial.st_nlink == 1
+            and initial.st_size == len(expected)
             and _stable_marker_descriptor(marker, admitted, expected)
             and _physical_file(marker)
             and _marker_identity(marker.lstat()) == admitted
@@ -259,17 +262,56 @@ def _write_linux_alias(path: Path, text: str) -> None:
         _fail(f"LLVM wrapper write count mismatch: {path.name}")
 
 
+def _existing_import_marker(root: Path, platform_id: str) -> bool:
+    """Admit only an exact, singly linked marker or a truly absent leaf."""
+    marker = root / LLVM_IMPORT_MARKER
+    try:
+        _ = marker.lstat()
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM import marker status failed: {type(error).__name__}"
+        ) from error
+    if not _valid_marker(root, platform_id):
+        _fail("LLVM import marker already exists without exact physical identity")
+    return True
+
+
 def _write_import_marker(root: Path, platform_id: str) -> None:
-    """Publish a complete marker or fail without retaining a partial one."""
+    """Publish an exclusive marker or reuse only exact physical evidence."""
+    if _existing_import_marker(root, platform_id):
+        return
     marker = root / LLVM_IMPORT_MARKER
     content = _marker_bytes(platform_id)
-    written = marker.write_bytes(content)
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+    try:
+        descriptor = os.open(marker, flags, 0o600)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM import marker exclusive creation failed: {type(error).__name__}"
+        ) from error
+    try:
+        try:
+            written = os.write(descriptor, content)
+        finally:
+            os.close(descriptor)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        try:
+            marker.unlink(missing_ok=True)
+        except (OSError, ValueError, TypeError, RuntimeError):
+            pass
+        raise LlvmImportError(
+            f"LLVM import marker write failed: {type(error).__name__}"
+        ) from error
     if type(written) is int and written == len(content):
         return
     try:
         marker.unlink(missing_ok=True)
-    except (OSError, ValueError) as error:
-        _fail(f"LLVM marker write count mismatch; cleanup failed: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM marker write count mismatch; cleanup failed: {type(error).__name__}"
+        ) from error
     _fail("LLVM marker write count mismatch")
 
 
@@ -439,7 +481,8 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
         )
         for tool in _TOOL_NAMES
     )
-    # Check every member before creating an alias or publishing the marker.
+    # Check existing markers and aliases before publishing any new aliases.
+    _ = _existing_import_marker(root, WINDOWS_PLATFORM)
     for source, alias in pairs:
         _admit_windows_alias(source, alias)
     alias_root.mkdir(parents=True, exist_ok=True)
