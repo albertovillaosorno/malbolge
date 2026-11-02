@@ -612,6 +612,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   raw close; it pins the stream descriptor number across the bounded read.
   Dependency-forgery tests cover booleans, negatives, foreign types and large
   integers without acting on unrelated OS descriptors.
+  The study-file `fdopen` handoff now binds exact native buffered and raw
+  file types to the original opened descriptor. Three red-first forgeries
+  previously admitted invented source bytes or same-inode alternate streams;
+  these reject before reading. A 940-test postcommit arena subset passed,
+  without proving source provenance or a filesystem snapshot.
   Retained arena evidence-file reads now enforce the same native signed
   descriptor receipt boundary for raw `os.open` and stream `fileno` before
   procfs, `fdopen`, `fstat`, or raw cleanup, and reject a switched descriptor

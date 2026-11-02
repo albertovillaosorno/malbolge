@@ -1205,7 +1205,13 @@ The original study records remain the result authority.
   cleanup only as secondary evidence. Close-only read-stream faults likewise
   become typed failures; when read and close both fail, the original rejection
   remains primary and cleanup is annotated as secondary. Neither CLI emits
-  a report on failure.
+  a report on failure. The `os.fdopen` handoff additionally requires an exact
+  native buffered reader with a native `FileIO` raw source and the same
+  descriptor returned by `os.open`. Three red-first substitutions previously
+  admitted foreign read bytes, a same-inode alternate stream, or a native
+  buffer over a foreign raw source. These now fail before reading. This checks
+  local stream ownership, not compromised host-I/O provenance or an atomic
+  filesystem snapshot.
 - The retained evidence file reader applies the same descriptor ownership rule:
   injected stream-constructor exceptions have a typed evidence rejection,
   release the raw descriptor, and preserve any cleanup error as secondary
