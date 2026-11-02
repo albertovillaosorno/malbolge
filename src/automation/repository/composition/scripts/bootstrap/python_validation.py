@@ -87,6 +87,7 @@ UV_SCHEMA_VERSION: Final = 1
 MAX_UV_MANIFEST_BYTES: Final = 1_048_576
 MAX_UV_ARCHIVE_BYTES: Final = 128 * 1024 * 1024
 MAX_UV_BINARY_BYTES: Final = 128 * 1024 * 1024
+MAX_UV_ARCHIVE_MEMBERS: Final = 4096
 MAX_JIG_TOOL_BINARY_BYTES: Final = 256 * 1024 * 1024
 UV_BINARY_MODE: Final = 0o755
 JIG_BINARY_MODE: Final = 0o755
@@ -451,8 +452,11 @@ def _bounded_uv_member_bytes(content: bytes) -> bytes:
 
 def _zip_member_bytes(data: bytes, member: str) -> bytes:
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        inventory = archive.infolist()
+        if len(inventory) > MAX_UV_ARCHIVE_MEMBERS:
+            _fail("uv archive exceeds member limit")
         info = archive.getinfo(member)
-        if sum(item.filename == member for item in archive.infolist()) != 1:
+        if sum(item.filename == member for item in inventory) != 1:
             _fail("duplicate uv zip member name")
         if (
             type(info) is not zipfile.ZipInfo
@@ -476,9 +480,20 @@ def _zip_member_bytes(data: bytes, member: str) -> bytes:
 
 def _tar_member_bytes(data: bytes, member_name: str) -> bytes:
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
-        info = archive.getmember(member_name)
-        if sum(item.name == member_name for item in archive.getmembers()) != 1:
-            _fail("duplicate uv tar member name")
+        selected: tarfile.TarInfo | None = None
+        for index in range(MAX_UV_ARCHIVE_MEMBERS + 1):
+            candidate = archive.next()
+            if candidate is None:
+                break
+            if index == MAX_UV_ARCHIVE_MEMBERS:
+                _fail("uv archive exceeds member limit")
+            if candidate.name == member_name:
+                if selected is not None:
+                    _fail("duplicate uv tar member name")
+                selected = candidate
+        if selected is None:
+            raise KeyError(member_name)
+        info = selected
         if type(info) is not tarfile.TarInfo or type(info.size) is not int:
             _fail("uv tar member requires native size metadata")
         if not info.isfile():

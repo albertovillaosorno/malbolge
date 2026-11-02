@@ -36,16 +36,22 @@ import tarfile
 import warnings
 import zipfile
 from pathlib import Path
-from typing import BinaryIO, Self, cast
+from typing import TYPE_CHECKING, BinaryIO, Self, cast
 
 import pytest
 from scripts.bootstrap import python_validation
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 PLATFORM_ID = "linux-x86_64"
 BINARY = b"synthetic-pinned-uv"
 PRESERVED = b"preserve"
 SYMBOLIC = "symbolic"
 VERSION_FLAG = "--version"
+ZIP_ARCHIVE_KIND = "zip"
+FIRST_SELECTED = "first"
+MINI_ARCHIVE_MEMBER_LIMIT = 4
 
 
 def _mock_uv(monkeypatch: pytest.MonkeyPatch) -> python_validation.UvArtifact:
@@ -816,6 +822,58 @@ def test_uv_tar_rejects_duplicate_selected_executable() -> None:
         python_validation.ProvisionError, match="duplicate uv tar member"
     ):
         _ = python_validation._tar_member_bytes(output.getvalue(), member_name)
+
+
+@pytest.mark.parametrize("archive_kind", ["zip", "tar"])
+@pytest.mark.parametrize("entry_count", [MINI_ARCHIVE_MEMBER_LIMIT, 5])
+@pytest.mark.parametrize("selected_position", [FIRST_SELECTED, "last"])
+def test_uv_archive_rejects_excessive_member_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    archive_kind: str,
+    entry_count: int,
+    selected_position: str,
+) -> None:
+    """UV archive scanning must bound entries even after the executable."""
+    monkeypatch.setattr(
+        python_validation, "MAX_UV_ARCHIVE_MEMBERS", MINI_ARCHIVE_MEMBER_LIMIT
+    )
+    member_name = (
+        "uv.exe" if archive_kind == ZIP_ARCHIVE_KIND else "uv-release/uv"
+    )
+    padding = [f"padding-{index}" for index in range(entry_count - 1)]
+    names = (
+        [member_name, *padding]
+        if selected_position == FIRST_SELECTED
+        else [*padding, member_name]
+    )
+    output = io.BytesIO()
+    if archive_kind == ZIP_ARCHIVE_KIND:
+        with zipfile.ZipFile(output, "w") as archive:
+            for name in names:
+                archive.writestr(name, BINARY if name == member_name else b"x")
+        extract = cast(
+            "Callable[[bytes, str], bytes]",
+            vars(python_validation)["_zip_member_bytes"],
+        )
+    else:
+        with tarfile.open(fileobj=output, mode="w:gz") as archive:
+            for name in names:
+                payload = BINARY if name == member_name else b"x"
+                info = tarfile.TarInfo(name)
+                info.size = len(payload)
+                archive.addfile(info, io.BytesIO(payload))
+        extract = cast(
+            "Callable[[bytes, str], bytes]",
+            vars(python_validation)["_tar_member_bytes"],
+        )
+    if entry_count > MINI_ARCHIVE_MEMBER_LIMIT:
+        with pytest.raises(
+            python_validation.ProvisionError, match="member limit"
+        ):
+            _ = extract(output.getvalue(), member_name)
+    else:
+        assert extract(output.getvalue(), member_name) == BINARY
 
 
 def test_uv_does_not_replace_competing_destination_during_publication(
