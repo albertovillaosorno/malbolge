@@ -203,8 +203,8 @@ def test_rpm_copy_rejects_header_swapped_to_link(
         return b""
 
     def swapped_copytree(
-        src: Path,
-        dst: Path,
+        src: Path | os.DirEntry[str],
+        dst: Path | os.DirEntry[str],
         *args: object,
         **kwargs: object,
     ) -> Path:
@@ -217,19 +217,24 @@ def test_rpm_copy_rejects_header_swapped_to_link(
             except (OSError, NotImplementedError) as error:
                 pytest.skip(f"file aliases unavailable: {error}")
             swapped = True
-        return native_copytree(src, dst, *args, **kwargs)
+        dynamic_copytree = cast("Callable[..., Path]", native_copytree)
+        return dynamic_copytree(src, dst, *args, **kwargs)
+
+    def synthetic_payload(_rpm: Path) -> bytes:
+        return b"cpio"
+
+    def synthetic_members(_data: bytes) -> tuple[str, ...]:
+        return ("./usr/include/clang/AST/AST.h",)
 
     with monkeypatch.context() as isolated:
         isolated.setattr(
-            llvm_development_validation, "_cpio_payload", lambda _rpm: b"cpio"
+            llvm_development_validation, "_cpio_payload", synthetic_payload
         )
         isolated.setattr(
-            llvm_development_validation,
-            "_cpio_members",
-            lambda _data: ("./usr/include/clang/AST/AST.h",),
+            llvm_development_validation, "_cpio_members", synthetic_members
         )
         isolated.setattr(llvm_development_validation, "_command_bytes", synthetic_cpio)
-        isolated.setattr(llvm_development_validation.shutil, "copytree", swapped_copytree)
+        isolated.setattr(shutil, "copytree", swapped_copytree)
         with pytest.raises(
             llvm_development_validation.LlvmDevelopmentProvisionError,
             match="missing|symlink|physical member",
