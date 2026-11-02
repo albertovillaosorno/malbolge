@@ -3080,3 +3080,71 @@ def test_host_c_tool_preflight_requires_native_host_receipts(
     monkeypatch.setattr(host_c_oracle.os, "access", forged_access)
     with pytest.raises(host_c_oracle.HostOracleError, match="inspection|executable"):
         host_c_oracle._system_tool(host_c_oracle.RESOURCE_LIMIT_TOOL)
+
+
+@pytest.mark.parametrize("route", ["replay", "rebuild", "measure"])
+def test_host_c_direct_calls_reject_suppressed_workspace_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """A substitute workspace exit cannot hide failed native replay evidence."""
+    failure = host_c_oracle.HostOracleError("injected source write rejection")
+    exited = False
+
+    class SuppressingWorkspace:
+        def __enter__(self) -> Path:
+            return tmp_path
+
+        def __exit__(self, *_args: object) -> bool:
+            nonlocal exited
+            exited = True
+            return True
+
+    def forbidden_source_write(*_args: object) -> None:
+        raise failure
+
+    identity = generate.ChallengeIdentity(
+        family=_case()["family"],
+        version=_case()["version"],
+        seed=_case()["seed"],
+        profile=PROFILE,
+        nodes=NODES,
+    )
+    with monkeypatch.context() as context:
+        context.setattr(host_c_oracle, "_native_workspace", lambda _: SuppressingWorkspace())
+        context.setattr(host_c_oracle, "_write_canonical_source", forbidden_source_write)
+        with pytest.raises(host_c_oracle.HostOracleError) as captured:
+            if route == "replay":
+                _ = host_c_oracle.replay_one(_case(), PROFILE, _digest())
+            elif route == "rebuild":
+                _ = host_c_oracle.rebuild_reference(identity, "-O0")
+            else:
+                _ = host_c_oracle.measure_reference(identity, "-O0")
+    assert captured.value is failure
+    assert exited
+
+
+def test_host_c_direct_workspace_preserves_rejection_over_exit_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second foreign context failure must not replace source rejection."""
+    primary = host_c_oracle.HostOracleError("original source verification failure")
+    secondary = OSError("injected foreign cleanup failure")
+
+    class FailingWorkspace:
+        def __enter__(self) -> Path:
+            return tmp_path
+
+        def __exit__(self, *_args: object) -> None:
+            raise secondary
+
+    def fail_source(*_args: object) -> None:
+        raise primary
+
+    with monkeypatch.context() as context:
+        context.setattr(host_c_oracle, "_native_workspace", lambda _: FailingWorkspace())
+        context.setattr(host_c_oracle, "_write_canonical_source", fail_source)
+        with pytest.raises(host_c_oracle.HostOracleError) as caught:
+            _ = host_c_oracle.replay_one(_case(), PROFILE, _digest())
+    assert caught.value is primary
+    assert len(getattr(primary, "__notes__", [])) == 1
+    assert "workspace cleanup also failed" in primary.__notes__[0]

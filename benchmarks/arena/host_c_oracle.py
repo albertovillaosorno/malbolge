@@ -722,6 +722,29 @@ def _native_workspace(prefix: str) -> Iterator[Path]:
             _fail("host-C workspace cleanup returned invalid receipt")
 
 
+@contextmanager
+def _checked_native_workspace(prefix: str) -> Iterator[Path]:
+    """Retain a failed replay even if a substituted context exit suppresses it."""
+    primary: BaseException | None = None
+    try:
+        with _native_workspace(prefix) as directory:
+            try:
+                yield directory
+            except BaseException as error:
+                primary = error
+                raise
+    except Exception as error:
+        if primary is not None and error is not primary:
+            BaseException.add_note(
+                primary,
+                "host-C workspace cleanup also failed: " + _cleanup_error_detail(error),
+            )
+            raise primary
+        raise
+    if primary is not None:
+        raise primary
+
+
 def replay_one(
     case: dict[str, Any],
     profile: str,
@@ -740,7 +763,7 @@ def replay_one(
     _require_local_scratch_root()
     generated = _canonical_payload(case, profile, source_sha256)
     try:
-        with _native_workspace("arena-host-c-oracle-") as directory:
+        with _checked_native_workspace("arena-host-c-oracle-") as directory:
             _write_canonical_source(directory, generated)
             for mode in OPTIMIZATION_MODES:
                 _replay_mode(directory, mode)
@@ -822,7 +845,7 @@ def rebuild_reference(
     """
     generated = _reference_source(identity, mode)
     try:
-        with _native_workspace("arena-host-c-rebuild-") as directory:
+        with _checked_native_workspace("arena-host-c-rebuild-") as directory:
             _write_canonical_source(directory, generated)
             _replay_mode(directory, mode)
             return _read_reference_executable(directory)
@@ -849,7 +872,7 @@ def measure_reference(
     """
     generated = _reference_source(identity, mode)
     try:
-        with _native_workspace("arena-host-c-measure-") as directory:
+        with _checked_native_workspace("arena-host-c-measure-") as directory:
             _write_canonical_source(directory, generated)
             started = time.perf_counter_ns()
             peak_rss = _replay_mode(directory, mode)
