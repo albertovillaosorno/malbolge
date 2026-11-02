@@ -491,6 +491,14 @@ def _tar_member_bytes(data: bytes, member_name: str) -> bytes:
                 break
             if index == MAX_UV_ARCHIVE_MEMBERS:
                 _fail("uv archive exceeds member limit")
+            if candidate.name != member_name:
+                if (
+                    type(candidate) is not tarfile.TarInfo
+                    or type(candidate.size) is not int
+                ):
+                    _fail("uv tar member requires native size metadata")
+                if candidate.size < 0 or candidate.size > MAX_UV_BINARY_BYTES:
+                    _fail("uv archive member exceeds byte limit")
             if candidate.name == member_name:
                 if selected is not None:
                     _fail("duplicate uv tar member name")

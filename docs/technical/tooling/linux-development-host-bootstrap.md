@@ -62,10 +62,12 @@ foreign exception formatters. Selected tar.gz and ZIP executable members also
 require native size receipts and bounded 128-MiB reads before installation; tar
 links and oversized extracted executables are rejected without a full read.
 UV archives admit at most 4,096 members; TAR scanning stops at the limit
-without first materializing its full inventory, and ZIP inventory size is
-checked before selecting or opening the executable. Both reject over-limit
-archives even when the selected member appears first. Truncated gzip
-streams fail with typed provisioning errors retaining the original EOF cause.
+without first materializing its full inventory, and all scanned TAR member
+sizes are bounded even when the members are not selected. ZIP inventory size is
+checked before selecting or opening the executable. Both reject archives over
+the member-count limit even when the selected member appears first. Truncated
+gzip streams fail with typed provisioning errors retaining the original
+EOF cause.
 Malformed ZIP deflate, LZMA, and Zstandard streams similarly produce typed
 provisioning errors with the original decompression cause preserved.
 ZIP entries must also have regular-file Unix type metadata when encoded, and

@@ -829,6 +829,33 @@ def test_uv_tar_rejects_duplicate_selected_executable() -> None:
         _ = python_validation._tar_member_bytes(output.getvalue(), member_name)
 
 
+@pytest.mark.parametrize("selected_position", [FIRST_SELECTED, "last"])
+def test_uv_tar_rejects_oversized_nonselected_member(
+    monkeypatch: pytest.MonkeyPatch,
+    selected_position: str,
+) -> None:
+    """Scanning beyond the selected uv must bound ignored TAR entries."""
+    monkeypatch.setattr(python_validation, "MAX_UV_BINARY_BYTES", 4)
+    members = [("padding", b"large"), ("uv-release/uv", b"u")]
+    if selected_position == FIRST_SELECTED:
+        members.reverse()
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+        for name, payload in members:
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+    extract = cast(
+        "Callable[[bytes, str], bytes]",
+        vars(python_validation)["_tar_member_bytes"],
+    )
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="archive member exceeds byte limit",
+    ):
+        _ = extract(output.getvalue(), "uv-release/uv")
+
+
 @pytest.mark.parametrize("archive_kind", ["zip", "tar"])
 @pytest.mark.parametrize("entry_count", [MINI_ARCHIVE_MEMBER_LIMIT, 5])
 @pytest.mark.parametrize("selected_position", [FIRST_SELECTED, "last"])
