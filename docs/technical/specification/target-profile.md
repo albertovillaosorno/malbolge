@@ -78,13 +78,18 @@ Decoder failures retain their original cause, and only native decoder errors
 contribute diagnostic text; foreign exception formatters are never invoked.
 Parser capacity failures, including integer-token digit limits, also produce a
 typed profile-validation error without hiding duplicate-key diagnostics.
-When the public JSON loader is substituted, the parser corroborates its
-native-looking result against an independent parse by the original import-bound
-loader. Every nested value and native key must agree with the source before
-profile admission, and foreign equality hooks are not invoked. Delegating
-loaders that preserve every source value remain supported; this check protects
-against loader substitution, not arbitrary modification of Python
-internals. The validator also enforces exact schema keys, ternary word
+The parser corroborates every decoded JSON tree against the original source
+using the import-bound `JSONDecoder` class. An import-bound `json.loads` alone
+is insufficient because it still consults the mutable public `JSONDecoder`
+attribute; jointly substituted loaders and decoders, including ones that
+restore the attribute mid-call, cannot invent admitted source values. Every
+nested value and native key must agree before profile admission, and foreign
+equality hooks are not invoked. The returned tree belongs to the independent
+source decode, not the public parser's mutable alias. Delegating loaders that
+preserve every source value remain supported. This does not authenticate the
+source or arbitrary changes to the original Python implementation.
+
+The validator also enforces exact schema keys, ternary word
 consistency, single-word memory consistency, EOF at the maximum profile
 word, the frozen 1998 machine envelope, exactly one selected
 current identity, preservation of the sequential deterministic

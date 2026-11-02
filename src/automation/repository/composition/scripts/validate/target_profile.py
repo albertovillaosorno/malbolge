@@ -70,7 +70,7 @@ CURRENT_PROFILE_ID = "malbolge-2026"
 CURRENT_VERSION = "2026"
 SCHEMA_VERSION = 2
 MAX_DOCUMENT_BYTES = 1024 * 1024
-_NATIVE_JSON_LOADS = json.loads
+_NATIVE_JSON_DECODER = json.JSONDecoder
 CURRENT_KIND = "current"
 HISTORICAL_KIND = "historical-conformance"
 VERSIONED_KIND = "versioned"
@@ -370,27 +370,31 @@ def loads_document(text: str) -> JsonObject:
         message = "invalid JSON host parser failure"
         raise ProfileValidationError(message) from error
     document = _expect_mapping(parsed, "target profile document")
-    # A substituted public decoder can return an entirely native, schema-valid
-    # document that was never present in the source. Independently parse with
-    # the import-bound provider before accepting any such receipt.
-    if decoder is not _NATIVE_JSON_LOADS:
-        try:
-            source = cast(
-                "object",
-                _NATIVE_JSON_LOADS(text, object_pairs_hook=_reject_duplicate_pairs),
-            )
-            equivalent = _same_native_json(document, source)
-        except ProfileValidationError:
-            raise
-        except (TypeError, ValueError, RecursionError, RuntimeError) as error:
-            message = "target profile JSON decoder provider differs from source"
-            raise ProfileValidationError(message) from error
-        if not equivalent:
-            _fail("target profile JSON decoder provider differs from source")
-        # A substituted decoder may retain and mutate its original mapping.
-        # Return the independently parsed source tree instead of its alias.
-        document = _expect_mapping(source, "target profile document")
-    return document
+    # A bound json.loads still resolves the public JSONDecoder class at call
+    # time. Decode the original bytes through the import-bound class too: a
+    # jointly replaced or self-restoring provider cannot forge agreement.
+    try:
+        source = cast(
+            "object",
+            _NATIVE_JSON_DECODER(object_pairs_hook=_reject_duplicate_pairs).decode(
+                text
+            ),
+        )
+        equivalent = _same_native_json(document, source)
+    except ProfileValidationError:
+        raise
+    except json.JSONDecodeError as error:
+        detail = (
+            str(error) if type(error) is json.JSONDecodeError else type(error).__name__
+        )
+        raise ProfileValidationError(f"invalid JSON: {detail}") from error
+    except (TypeError, ValueError, RecursionError, RuntimeError) as error:
+        message = "target profile JSON decoder provider differs from source"
+        raise ProfileValidationError(message) from error
+    if not equivalent:
+        _fail("target profile JSON decoder provider differs from source")
+    # Never return an untrusted decoder's mutable alias, even if equivalent.
+    return _expect_mapping(source, "target profile document")
 
 
 def _validated_profile_path(value: object) -> Path:

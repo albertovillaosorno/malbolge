@@ -859,6 +859,43 @@ def test_profile_json_parser_binds_native_receipts_to_original_text(
             _ = validator.loads_document(source)
 
 
+@pytest.mark.parametrize(
+    "providers",
+    ("decoder-only", "loads-and-decoder", "self-restoring-decoder"),
+)
+def test_profile_parser_refuses_joint_json_provider_forgery(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """The source must win even if public JSON providers agree on a forgery."""
+    source = _canonical_text()
+    forged = cast("validator.JsonObject", json.loads(source))
+    width = cast("dict[str, object]", forged["semantic_width_model"])
+    width["maximum_trits"] = 100
+    validator.validate_document(forged)
+    native_decoder = json.JSONDecoder
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring-decoder":
+                patch.setattr(json, "JSONDecoder", native_decoder)
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "loads-and-decoder":
+            patch.setattr(json, "loads", forged_loads)
+        with pytest.raises(
+            validator.ProfileValidationError,
+            match="JSON decoder provider differs from source",
+        ):
+            validator.loads_document(source)
+
+
 def test_profile_json_parser_allows_equivalent_delegating_decoder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

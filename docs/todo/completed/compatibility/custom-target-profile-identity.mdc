@@ -47,6 +47,11 @@ that reverse engineering can be made cryptographically impossible.
   independent source-owned tree, so later mutation cannot rewrite admitted
   profile semantics. Regression cases demonstrate both gaps; the
   import-bound source agreement is not independent parser provenance.
+- 2026-11-02 JSON provider follow-up: three red-first decoder-only, jointly
+  substituted, and self-restoring `JSONDecoder` cases demonstrated that an
+  import-bound `json.loads` still consults mutable module state. Every parsed
+  profile now corroborates against an import-bound `JSONDecoder` and returns
+  its source-owned map, rejecting substituted profile geometry.
 - `malbolge-profile-v1` canonicalizes profile ID, version, target schema,
   word/memory geometry, and semantics to compact sorted ASCII JSON, then binds
   those bytes with a self-describing SHA-256 fingerprint.
