@@ -37,6 +37,13 @@ from __future__ import annotations
 import json
 from typing import Any, Never, Protocol
 
+# Retain a bound stdlib iterator before a runtime provider can replace the
+# public JSONEncoder class or either encoding method. The reported record
+# must agree byte-for-byte with this independently invoked canonical path.
+_CANONICAL_JSON_CHUNKS = json.JSONEncoder(
+    sort_keys=True, indent=2, allow_nan=False
+).iterencode
+
 
 class TextReportStream(Protocol):
     """Minimal text-stream contract accepted by the arena operator."""
@@ -138,6 +145,13 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
         ).encode(report)
         if type(canonical) is not str or serialized != canonical:
             message = "arena report JSON encoder returned a noncanonical record"
+            raise ValueError(message)
+        # json.dumps and json.JSONEncoder normally share a single replaceable
+        # class. Agreement between both is not independent when that class is
+        # substituted or its encoder methods are modified after module import.
+        independent = "".join(_CANONICAL_JSON_CHUNKS(report))
+        if type(independent) is not str or serialized != independent:
+            message = "arena report JSON differs from canonical source encoding"
             raise ValueError(message)
         record = serialized + "\n"
     except Exception as error:

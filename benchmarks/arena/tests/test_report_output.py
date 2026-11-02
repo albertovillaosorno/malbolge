@@ -620,3 +620,78 @@ def test_native_json_admission_never_calls_custom_metaclass_equality(
     assert isinstance(error.value.__cause__, TypeError)
     assert not output.records
     assert not output.flushed
+
+
+@pytest.mark.parametrize(
+    "forged",
+    ['{"status":"tampered"}', '{"status":"ready"}', "not-json"],
+    ids=["wrong-value", "noncanonical-format", "invalid-json"],
+)
+def test_shared_json_encoder_substitution_cannot_publish_forged_record(
+    monkeypatch: pytest.MonkeyPatch, forged: str
+) -> None:
+    """The two encoder calls must not both trust a substituted class."""
+    output = _FakeStream("healthy")
+
+    class ForgedEncoder:
+        def __init__(self, **_options: object) -> None:
+            pass
+
+        def encode(self, _report: object) -> str:
+            return forged
+
+    monkeypatch.setattr(report_output.json, "JSONEncoder", ForgedEncoder)
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish({"status": "ready"}, output)
+    assert not output.records
+    assert not output.flushed
+
+
+def test_mutated_shared_encoder_method_cannot_publish_wrong_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even an in-place encoder method replacement must be rejected."""
+    output = _FakeStream("healthy")
+    monkeypatch.setattr(
+        report_output.json.encoder.JSONEncoder,
+        "encode",
+        lambda _self, _report: '{"status": "tampered"}',
+    )
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish({"status": "ready"}, output)
+    assert not output.records
+    assert not output.flushed
+
+
+def test_mutated_shared_encoder_iterator_cannot_publish_wrong_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The canonical encoder must survive an in-place iterator replacement."""
+    output = _FakeStream("healthy")
+    monkeypatch.setattr(
+        report_output.json.encoder.JSONEncoder,
+        "iterencode",
+        lambda _self, _report, _one_shot=False: iter(['{"status": "tampered"}']),
+    )
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish({"status": "ready"}, output)
+    assert not output.records
+    assert not output.flushed
+
+
+def test_shared_json_iterator_factory_cannot_publish_wrong_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged iterator factory must not change the report value on stdout."""
+    output = _FakeStream("healthy")
+    monkeypatch.setattr(
+        report_output.json.encoder,
+        "_make_iterencode",
+        lambda *_args, **_kw: lambda _report, _indent: iter(
+            ['{"status": "tampered"}']
+        ),
+    )
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish({"status": "ready"}, output)
+    assert not output.records
+    assert not output.flushed
