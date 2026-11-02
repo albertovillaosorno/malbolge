@@ -29,6 +29,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import cast
 
@@ -73,6 +74,7 @@ class ForeignStatus:
 
     def __init__(self, observed: os.stat_result) -> None:
         self.st_mode: int = observed.st_mode
+        self.st_nlink: int = observed.st_nlink
         self.st_dev: int = observed.st_dev
         self.st_ino: int = observed.st_ino
         self.st_size: int = observed.st_size
@@ -153,3 +155,85 @@ def test_jig_source_types_host_lstat_failure(
             source
         )
     assert caught.value.__cause__ is fault
+
+
+def test_jig_alias_stage_rejects_foreign_ownership_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged stage status cannot authorize a foreign leaf cleanup."""
+    stage = tmp_path / "jig.tmp"
+    _ = stage.write_bytes(BINARY)
+    native = Path.lstat
+    recorded = native(stage)
+
+    def forged_status(path: Path) -> os.stat_result:
+        if path == stage:
+            return cast("os.stat_result", cast("object", ForeignStatus(recorded)))
+        return native(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_status)
+    assert not python_validation._jig_alias_stage_is_owned(  # pyright: ignore[reportPrivateUsage]
+        stage,
+        (recorded.st_dev, recorded.st_ino),
+        expected_size=len(BINARY),
+    )
+
+
+def test_jig_alias_swap_with_forged_stage_status_preserves_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged stage metadata must not publish a foreign replacement binary."""
+    if not hasattr(os, "fchmod"):
+        pytest.skip("descriptor chmod unsupported")
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+    original = b"verified-jig-alias"
+    _ = target.write_bytes(original)
+    unrelated = tmp_path / "unrelated"
+    sentinel = b"x" * len(BINARY)
+    _ = unrelated.write_bytes(sentinel)
+    retained = tmp_path / "retained-stage"
+    native_mkstemp = tempfile.mkstemp
+    native_lstat = Path.lstat
+    native_fchmod = os.fchmod
+    stages: list[Path] = []
+    stage_statuses: list[os.stat_result] = []
+    swapped = False
+
+    def capture_mkstemp(*, prefix: str, dir: Path) -> tuple[int, str]:
+        descriptor, pathname = native_mkstemp(prefix=prefix, dir=dir)
+        stages.append(Path(pathname))
+        stage_statuses.append(native_lstat(stages[0]))
+        return descriptor, pathname
+
+    def swapping_chmod(descriptor: int, mode: int) -> None:
+        nonlocal swapped
+        native_fchmod(descriptor, mode)
+        assert stages
+        _ = stages[0].replace(retained)
+        _ = unrelated.replace(stages[0])
+        swapped = True
+
+    def spoofing_lstat(path: Path) -> os.stat_result:
+        if swapped and stages and path == stages[0]:
+            forged = ForeignStatus(stage_statuses[0])
+            forged.st_size = len(BINARY)
+            return cast("os.stat_result", cast("object", forged))
+        return native_lstat(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(tempfile, "mkstemp", capture_mkstemp)
+        isolated.setattr(os, "fchmod", swapping_chmod)
+        isolated.setattr(Path, "lstat", spoofing_lstat)
+        with pytest.raises(python_validation.ProvisionError, match="temporary changed"):
+            python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+                target, BINARY, windows=False
+            )
+    assert swapped
+    assert len(stages) == 1
+    assert stages[0].read_bytes() == sentinel
+    assert retained.read_bytes() == BINARY
+    assert target.read_bytes() == original

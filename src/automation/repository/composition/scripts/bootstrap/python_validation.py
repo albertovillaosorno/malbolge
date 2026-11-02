@@ -1312,7 +1312,18 @@ def _jig_alias_stage_is_owned(
     except OSError, ValueError, TypeError, RuntimeError:
         return False
     valid = (
-        stat.S_ISREG(status.st_mode)
+        type(status) is os.stat_result
+        and all(
+            type(field) is int
+            for field in (
+                status.st_mode,
+                status.st_nlink,
+                status.st_dev,
+                status.st_ino,
+                status.st_size,
+            )
+        )
+        and stat.S_ISREG(status.st_mode)
         and status.st_nlink == 1
         and (status.st_dev, status.st_ino) == identity
     )
