@@ -170,6 +170,14 @@ the study's declared `time_ns` and `memory_bytes`, without rounding or allowing
 one algorithm a different recorded resource budget. This is a reporting
 consistency check only, not physical runtime or peak-memory enforcement.
 
+Both optional run-extension readers reparse the exact TOML source with an
+import-time bound standard-library decoder before accepting their values.
+Four red-first synthetic tests showed that a substituted parser could otherwise
+forge native `seconds`, `memory_mib`, `trial`, or `raw_sha256` fields while the
+manifest text stayed unchanged; these conflicts now fail typed admission.
+This checks local parser consistency, not authenticated run provenance or
+physical verification.
+
 Version-two `arena-raw-v2` evidence adds an optional exact integer `energy_uj`
 (microjoules) cost to the six preexisting dimensions. Its CSV schema marker is
 `2` and its fixed header adds one column without changing version-one bytes.

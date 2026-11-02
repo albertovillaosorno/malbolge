@@ -89,6 +89,13 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   and MiB budget declarations to agree exactly with the arena study's
   nanosecond and byte limits, rejecting stale or unequal research budgets.
   This is not evidence of actual resource monitoring or enforcement.
+- Both optional run-extension TOML readers now cross-check native budget and
+  trial/digest parser receipts against an import-time bound parser of the
+  original manifest text. Four red-first substituted-provider cases changed
+  valid native `seconds`, `memory_mib`, `trial`, or `raw_sha256` fields without
+  changing source bytes; mismatches now fail typed admission. The 890-case
+  combined analyzer/evidence/raw test set and arena BasedPyright gate pass.
+  Source authenticity and actual resource enforcement remain unproven.
 - A package-local BasedPyright project now checks the independent arena
   implementation and test files without modifying repository-wide tooling
   selection; the imported historical CSV header is typed as a sequence.

@@ -967,6 +967,42 @@ TRIAL_MANIFEST = (
 )
 
 
+@pytest.mark.parametrize("field", ["seconds", "memory_mib"])
+def test_budget_extension_rejects_native_forged_toml_source_values(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Parser substitution cannot change a source-declared resource budget."""
+    declared = {"seconds": 1, "memory_mib": 128}
+    altered = {**declared, field: declared[field] + 1}
+    with monkeypatch.context() as context:
+        context.setattr(
+            budget_links.tomllib, "loads", lambda _text: {"budget": altered}
+        )
+        with pytest.raises(budget_links.BudgetLinkError, match="source"):
+            budget_links.parse_run_budgets(BUDGET_MANIFEST)
+
+
+@pytest.mark.parametrize("field", ["trial", "raw_sha256"])
+def test_trial_extension_rejects_native_forged_toml_source_values(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Parser substitution cannot change recorded trial identity or digest."""
+    declared: dict[str, object] = {
+        "schema_version": 1,
+        "trial": 0,
+        "raw_sha256": "a" * analyze.SHA256_HEX_LENGTH,
+    }
+    altered = {**declared, field: 1 if field == "trial" else "b" * 64}
+    with monkeypatch.context() as context:
+        context.setattr(
+            trial_runs.tomllib, "loads", lambda _text: {"arena_trial": altered}
+        )
+        with pytest.raises(trial_runs.TrialRunError, match="source"):
+            trial_runs.parse_trial_run(TRIAL_MANIFEST)
+
+
 class _ForgedManifestText(str):  # ruff: ignore[subclass-builtin]
     """Malformed wire text that replaces itself with a different TOML input."""
 

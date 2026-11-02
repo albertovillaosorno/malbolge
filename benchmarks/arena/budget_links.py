@@ -35,8 +35,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import tomllib
 from typing import Never
+
+import tomllib
+
+# Preserve a source parser independent of the mutable public module entrypoint.
+_SOURCE_TOML_LOADS = tomllib.loads
 
 NANOSECONDS_PER_SECOND = 1_000_000_000
 BYTES_PER_MIB = 1_048_576
@@ -107,7 +111,26 @@ def parse_run_budgets(text: str) -> RunBudgets:
         _fail("experiment run budget table is missing")
     if any(type(key) is not str for key in budget):
         _fail("experiment run budget table requires native string keys")
+    seconds = _positive_integer(budget, "seconds")
+    memory_mib = _positive_integer(budget, "memory_mib")
+    # A substituted decoder can return a perfectly native but fabricated
+    # budget. Compare the admitted fields with an import-time bound parser of
+    # the actual source, not another invocation through the mutable module.
+    try:
+        source = _SOURCE_TOML_LOADS(text)
+    except Exception as error:
+        message = "experiment run budget source TOML could not be parsed"
+        raise BudgetLinkError(message) from error
+    source_budget = source.get("budget")
+    if (
+        type(source_budget) is not dict
+        or type(source_budget.get("seconds")) is not int
+        or source_budget["seconds"] != seconds
+        or type(source_budget.get("memory_mib")) is not int
+        or source_budget["memory_mib"] != memory_mib
+    ):
+        _fail("experiment run budget differs from source TOML")
     return RunBudgets(
-        time_ns=_positive_integer(budget, "seconds") * NANOSECONDS_PER_SECOND,
-        memory_bytes=_positive_integer(budget, "memory_mib") * BYTES_PER_MIB,
+        time_ns=seconds * NANOSECONDS_PER_SECOND,
+        memory_bytes=memory_mib * BYTES_PER_MIB,
     )

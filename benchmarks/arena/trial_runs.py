@@ -35,10 +35,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import tomllib
 from typing import Never
 
+import tomllib
+
 from benchmarks.arena import analyze
+
+# Preserve an independent source parse when a decoder provider is replaced.
+_SOURCE_TOML_LOADS = tomllib.loads
 
 EXTENSION_NAME = "arena_trial"
 EXTENSION_FIELDS = frozenset({"schema_version", "trial", "raw_sha256"})
@@ -121,4 +125,25 @@ def parse_trial_run(text: str) -> TrialRun:
     trial = table["trial"]
     if type(trial) is not int or trial < 0:
         _fail("arena_trial requires nonnegative integer trial")
-    return TrialRun(trial=trial, raw_sha256=_digest(table["raw_sha256"]))
+    digest = _digest(table["raw_sha256"])
+    # The native shape of a returned mapping does not prove that its values
+    # were parsed from this manifest. Compare against the retained source
+    # parser before binding a trial number or raw-file hash.
+    try:
+        source = _SOURCE_TOML_LOADS(text)
+    except Exception as error:
+        message = "per-trial manifest source TOML could not be parsed"
+        raise TrialRunError(message) from error
+    source_table = source.get(EXTENSION_NAME)
+    if (
+        type(source_table) is not dict
+        or set(source_table) != EXTENSION_FIELDS
+        or type(source_table.get("schema_version")) is not int
+        or source_table["schema_version"] != version
+        or type(source_table.get("trial")) is not int
+        or source_table["trial"] != trial
+        or type(source_table.get("raw_sha256")) is not str
+        or source_table["raw_sha256"] != digest
+    ):
+        _fail("per-trial manifest identity differs from source TOML")
+    return TrialRun(trial=trial, raw_sha256=digest)
