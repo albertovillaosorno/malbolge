@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
@@ -623,6 +624,28 @@ def _source_snapshot(source: Path) -> _SourceSnapshot:
             except (OSError, ValueError, RuntimeError, TypeError, AttributeError):
                 pass
             raise
+        # A forged fdopen wrapper could report our descriptor while supplying
+        # unrelated same-length C bytes. Authenticate both native stream layers.
+        if type(stream) is not io.BufferedReader:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            _fail("guest C source requires native stream receipt")
+        raw_stream = stream.raw
+        if (
+            type(raw_stream) is not io.FileIO
+            or type(raw_stream.name) is not int
+            or raw_stream.name != descriptor
+            or raw_stream.fileno() != descriptor
+            or stream.fileno() != descriptor
+        ):
+            # The foreign wrapper may own another descriptor; close ours only.
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            _fail("guest C source requires native stream receipt")
         with stream:
             return _snapshot_open_source(stream, source, admitted)
     except LibcSourceError:

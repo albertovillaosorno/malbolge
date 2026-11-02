@@ -36,8 +36,11 @@ after Clang AST parsing. File replacement or concurrent source edits invalidate
 the analysis, including a same-byte replacement with a different inode. The
 reader admits only exact native stat receipts, nonnegative native descriptor
 integers, and exact native byte-read results before inspecting their fields or
-length. A foreign host return value cannot invoke a caller-owned hook or
-certify the guest source snapshot. The pinned Clang executable status must
+length. The source reader also requires an exact native buffered/raw file
+stream bound to the opened descriptor before reading any C bytes. A foreign
+wrapper cannot substitute same-length source bytes while retaining the original
+status identity. A foreign host return value cannot invoke a caller-owned hook
+or certify the guest source snapshot. The pinned Clang executable status must
 also be an exact host boolean. CLI diagnostics exclude foreign exception
 formatters.
 Clang macro-expanded library references are attributed to the physical source

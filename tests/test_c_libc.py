@@ -1410,11 +1410,88 @@ class _LibcSourceForgedStream:
         return cast("bytes", self.payload)
 
 
+def test_libc_source_rejects_forged_same_extent_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Equal-length forged source bytes cannot certify a C input snapshot."""
+    path = tmp_path / "source.c"
+    native = b"int main(void) { return 0; }\n"
+    _ = path.write_bytes(native)
+    forged = b"x" * len(native)
+    native_fdopen = os.fdopen
+    descriptor_receipts: list[int] = []
+    hooks: list[str] = []
+
+    class ForgedReader:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor: int = descriptor
+            descriptor_receipts.append(descriptor)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            os.close(self.descriptor)
+
+        def fileno(self) -> int:
+            hooks.append("fileno")
+            return self.descriptor
+
+        def read(self) -> bytes:
+            hooks.append("read")
+            return forged
+
+    def fake_fdopen(descriptor: int, mode: str) -> object:
+        if mode == "rb":
+            return ForgedReader(descriptor)
+        return native_fdopen(descriptor, mode)
+
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
+        _ = c_libc_source._source_snapshot(path)  # pyright: ignore[reportPrivateUsage]
+    assert not hooks
+    assert len(descriptor_receipts) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(descriptor_receipts[0])
+
+
+def test_libc_source_rejects_native_stream_of_duplicate_fd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A native buffered reader of a duplicate is not our open descriptor."""
+    path = tmp_path / "source.c"
+    _ = path.write_bytes(b"int main(void) { return 0; }\n")
+    native_fdopen = os.fdopen
+    originals: list[int] = []
+    borrowed: list[BinaryIO] = []
+
+    def fake_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        originals.append(descriptor)
+        stream = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        borrowed.append(stream)
+        return stream
+
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    try:
+        with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
+            _ = c_libc_source._source_snapshot(path)  # pyright: ignore[reportPrivateUsage]
+        with pytest.raises(OSError):
+            _ = os.fstat(originals[0])
+    finally:
+        for stream in reversed(borrowed):
+            stream.close()
+        for descriptor in originals:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
 @pytest.mark.parametrize("kind", ["str", "list", "subclass"])
 def test_libc_source_native_stream_bytes_reject_foreign_receipts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
-    """Source extent comparison must not call an inherited byte hook."""
+    """A foreign reader is rejected before its byte-length hook runs."""
     source = tmp_path / "source.c"
     raw = b"int guest(void) { return 0; }\n"
     _ = source.write_bytes(raw)
@@ -1432,13 +1509,13 @@ def test_libc_source_native_stream_bytes_reject_foreign_receipts(
     }
 
     def forged_fdopen(fd: int, mode: str) -> BinaryIO:
-        stream = cast("BinaryIO", original_fdopen(fd, mode))
+        stream = cast("BinaryIO", original_fdopen(os.dup(fd), mode))
         return cast(
             "BinaryIO", cast("object", _LibcSourceForgedStream(stream, payloads[kind]))
         )
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
-    with pytest.raises(c_libc_source.LibcSourceError, match="native byte"):
+    with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
         _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
 
 
@@ -1446,20 +1523,20 @@ def test_libc_source_native_stream_bytes_reject_foreign_receipts(
 def test_libc_source_native_stream_descriptor_rejects_foreign_receipts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
 ) -> None:
-    """A forged stream descriptor cannot certify a source inode."""
+    """A foreign source reader cannot certify an opened inode."""
     source = tmp_path / "source.c"
     raw = b"int guest(void) { return 0; }\n"
     _ = source.write_bytes(raw)
     original_fdopen = os.fdopen
 
     def forged_fdopen(fd: int, mode: str) -> BinaryIO:
-        stream = cast("BinaryIO", original_fdopen(fd, mode))
+        stream = cast("BinaryIO", original_fdopen(os.dup(fd), mode))
         return cast(
             "BinaryIO", cast("object", _LibcSourceForgedStream(stream, raw, receipt))
         )
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
-    with pytest.raises(c_libc_source.LibcSourceError, match="native descriptor"):
+    with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
         _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
 
 
@@ -1522,7 +1599,7 @@ def test_libc_clang_status_rejects_foreign_boolean_receipts(
 def test_libc_stream_descriptor_after_read_requires_native_int(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
 ) -> None:
-    """A changed fileno receipt after source bytes cannot certify identity."""
+    """A non-native source reader cannot perform post-read identity checks."""
     source = tmp_path / "source.c"
     raw = b"int guest(void) { return 0; }\n"
     _ = source.write_bytes(raw)
@@ -1539,11 +1616,11 @@ def test_libc_stream_descriptor_after_read_requires_native_int(
             return cast("int", receipt) if self.calls == 2 else self.stream.fileno()
 
     def forged_fdopen(fd: int, mode: str) -> BinaryIO:
-        stream = cast("BinaryIO", original_fdopen(fd, mode))
+        stream = cast("BinaryIO", original_fdopen(os.dup(fd), mode))
         return cast("BinaryIO", cast("object", ForgedSecondDescriptor(stream)))
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
-    with pytest.raises(c_libc_source.LibcSourceError, match="native descriptor"):
+    with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
         _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
 
 
