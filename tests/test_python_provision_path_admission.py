@@ -151,6 +151,123 @@ def test_python_initialize_keeps_relative_checkout_identity(
     assert verified == [result.environment]
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    ["linked_interpreter", "hardlinked_interpreter", "new_interpreter", "linked_bin"],
+)
+def test_python_provision_rechecks_interpreter_after_uv_callback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A uv callback cannot redirect pip to a new or externally owned Python."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python.write_bytes(PAYLOAD)
+    foreign = tmp_path / "outside"
+    foreign.mkdir()
+    external_python = foreign / "python"
+    _ = external_python.write_bytes(PAYLOAD)
+    original = tmp_path / "original-python"
+    pip_commands: list[list[str]] = []
+
+    def mutate_during_uv(requested_root: Path) -> Path:
+        assert requested_root == root
+        if mutation == "linked_bin":
+            _ = layout.scripts.rename(tmp_path / "old-bin")
+            _ = layout.scripts.symlink_to(foreign, target_is_directory=True)
+        else:
+            _ = layout.python.rename(original)
+            if mutation == "linked_interpreter":
+                _ = layout.python.symlink_to(external_python)
+            elif mutation == "hardlinked_interpreter":
+                os.link(external_python, layout.python)
+            else:
+                _ = layout.python.write_bytes(PAYLOAD)
+        return root / "uv"
+
+    def reject_pip(command: list[str]) -> Never:
+        pip_commands.append(command)
+        raise AssertionError("uv pip reached changed interpreter")
+
+    monkeypatch.setattr(python_validation, "ensure_uv", mutate_during_uv)
+    monkeypatch.setattr(python_validation, "_run", reject_pip)
+    with pytest.raises(python_validation.ProvisionError, match="interpreter|redirect"):
+        python_validation._provision(layout, root=root)
+    assert pip_commands == []
+    assert external_python.read_bytes() == PAYLOAD
+
+
+@pytest.mark.parametrize("mutation", ["symlink", "hardlink", "replacement"])
+def test_python_provision_rechecks_interpreter_between_pip_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A pip sync callback cannot redirect the subsequent uninstall target."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python.write_bytes(PAYLOAD)
+    outside = tmp_path / "outside-python"
+    _ = outside.write_bytes(PAYLOAD)
+    pip_commands: list[list[str]] = []
+
+    def sync_then_substitute(command: list[str]) -> str:
+        pip_commands.append(command)
+        if len(pip_commands) > 1:
+            raise AssertionError("uv uninstall reached changed Python")
+        _ = layout.python.unlink()
+        if mutation == "symlink":
+            _ = layout.python.symlink_to(outside)
+        elif mutation == "hardlink":
+            os.link(outside, layout.python)
+        else:
+            _ = layout.python.write_bytes(PAYLOAD)
+        return ""
+
+    monkeypatch.setattr(python_validation, "ensure_uv", lambda _root: root / "uv")
+    monkeypatch.setattr(python_validation, "_run", sync_then_substitute)
+    with pytest.raises(python_validation.ProvisionError, match="interpreter|redirect"):
+        python_validation._provision(layout, root=root)
+    assert len(pip_commands) == 1
+    assert pip_commands[0][1:3] == ["pip", "sync"]
+    assert outside.read_bytes() == PAYLOAD
+
+
+def test_python_provision_rejects_late_installed_interpreter_before_builder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When no Python exists at preflight, uv cannot insert one before venv."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    foreign = tmp_path / "outside-python"
+    _ = foreign.write_bytes(PAYLOAD)
+    builder_created = False
+
+    def late_link(requested_root: Path) -> Path:
+        assert requested_root == root
+        layout.scripts.mkdir(parents=True)
+        _ = layout.python.symlink_to(foreign)
+        return root / "uv"
+
+    class ForbiddenBuilder:
+        def __init__(self, *, with_pip: bool, clear: bool) -> None:
+            _ = (with_pip, clear)
+
+        def create(self, _environment: Path) -> None:
+            nonlocal builder_created
+            builder_created = True
+            raise AssertionError("venv builder reached late interpreter")
+
+    monkeypatch.setattr(python_validation, "ensure_uv", late_link)
+    monkeypatch.setattr(python_validation.venv, "EnvBuilder", ForbiddenBuilder)
+    with pytest.raises(python_validation.ProvisionError, match="interpreter|redirect"):
+        python_validation._provision(layout, root=root)
+    assert not builder_created
+    assert foreign.read_bytes() == PAYLOAD
+
+
 @pytest.mark.parametrize("link", ["interpreter", "environment", "ancestor"])
 def test_python_provision_rejects_redirected_environment_before_pip(
     tmp_path: Path,

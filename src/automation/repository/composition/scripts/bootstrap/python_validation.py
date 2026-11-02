@@ -2096,6 +2096,31 @@ def write_jig_tool_aliases(
     return tuple(aliases)
 
 
+def _require_python_interpreter_identity(
+    path: Path,
+    expected: os.stat_result | None,
+    *,
+    context: str,
+) -> os.stat_result | None:
+    """Recheck one Python target before following it in a new process.
+
+    Returns:
+        Current native interpreter status or None for an absent target.
+
+    """
+    observed = _check_jig_alias_path(path, directory=False, required=False)
+    if expected is None:
+        if observed is not None:
+            _fail(f"Python interpreter appeared during {context}")
+    elif (
+        observed is None
+        or observed.st_nlink != 1
+        or _jig_file_identity(observed) != _jig_file_identity(expected)
+    ):
+        _fail(f"Python interpreter changed during {context}")
+    return observed
+
+
 def _provision(
     layout: ValidationEnvironmentLayout,
     *,
@@ -2116,9 +2141,19 @@ def _provision(
     if python_status is not None and python_status.st_nlink != 1:
         _fail("Python provisioned interpreter must be single-link")
     uv = ensure_uv(selected_root)
+    # Reject a post-uv redirect or inode substitution before running pip.
+    _ = _require_python_interpreter_identity(
+        layout.python, python_status, context="uv bootstrap"
+    )
     if python_status is None:
         builder = venv.EnvBuilder(with_pip=False, clear=False)
         builder.create(layout.environment)
+    # A new venv Python must be physical and private before subprocess use.
+    sync_target = _check_jig_alias_path(
+        layout.python, directory=False, required=False
+    )
+    if sync_target is not None and sync_target.st_nlink != 1:
+        _fail("Python provisioned interpreter must be single-link")
     _ = _run([
         str(uv),
         "pip",
@@ -2129,6 +2164,9 @@ def _provision(
         str(layout.python),
         str(REQUIREMENTS),
     ])
+    _ = _require_python_interpreter_identity(
+        layout.python, sync_target, context="pip sync"
+    )
     _ = _run([
         str(uv),
         "pip",
@@ -2138,6 +2176,9 @@ def _provision(
         str(layout.python),
         "pip",
     ])
+    _ = _require_python_interpreter_identity(
+        layout.python, sync_target, context="pip uninstall"
+    )
     write_launchers(layout, windows=WINDOWS)
     _ = write_jig_tool_aliases(layout, windows=WINDOWS)
 
