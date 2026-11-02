@@ -425,3 +425,141 @@ def test_jig_alias_rejects_oversized_payload_before_staging(
             target, BINARY, windows=True
         )
     assert list(alias_root.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory descriptor race")
+def test_jig_alias_rejects_symlinked_parent_swapped_after_stage_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late parent symlink must not publish into an unrelated directory."""
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+    owned = b"original-jig-alias"
+    _ = target.write_bytes(owned)
+    retained = tmp_path / "retained-jig-bin"
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    foreign_target = foreign / "ruff.bin"
+    sentinel = b"foreign-jig-alias"
+    _ = foreign_target.write_bytes(sentinel)
+    original_verify = (
+        python_validation._verify_jig_alias_stage_bytes  # pyright: ignore[reportPrivateUsage]
+    )
+    swapped = False
+
+    def swap_after_verification(
+        stage: Path, identity: tuple[int, int], payload: bytes
+    ) -> None:
+        nonlocal swapped
+        original_verify(stage, identity, payload)
+        if not swapped and stage.parent == alias_root:
+            _ = alias_root.rename(retained)
+            _ = (foreign / stage.name).write_bytes(b"injected-stage")
+            _ = alias_root.symlink_to(foreign, target_is_directory=True)
+            swapped = True
+
+    monkeypatch.setattr(
+        python_validation,
+        "_verify_jig_alias_stage_bytes",
+        swap_after_verification,
+    )
+    with pytest.raises(python_validation.ProvisionError):
+        python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+            target, BINARY, windows=False
+        )
+    assert swapped
+    assert foreign_target.read_bytes() == sentinel
+    assert (retained / "ruff.bin").read_bytes() == owned
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory descriptor race")
+def test_jig_alias_parent_swap_during_replace_preserves_foreign_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pinned replacement cannot overwrite a newly substituted parent."""
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+    _ = target.write_bytes(b"original-jig-alias")
+    retained = tmp_path / "retained-jig-bin"
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    foreign_target = foreign / "ruff.bin"
+    sentinel = b"foreign-jig-alias"
+    _ = foreign_target.write_bytes(sentinel)
+    native_replace = os.replace
+    swapped = False
+
+    def swap_during_replace(
+        source: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        destination: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped:
+            _ = (foreign / Path(os.fsdecode(source)).name).write_bytes(
+                b"injected-stage"
+            )
+            _ = alias_root.rename(retained)
+            _ = foreign.rename(alias_root)
+            swapped = True
+        native_replace(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+
+    monkeypatch.setattr(os, "replace", swap_during_replace)
+    with pytest.raises(python_validation.ProvisionError):
+        python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+            target, BINARY, windows=False
+        )
+    assert swapped
+    assert target.read_bytes() == sentinel
+    assert (retained / "ruff.bin").read_bytes() == BINARY
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX pinned publication")
+def test_jig_alias_rejects_stage_exchanged_after_byte_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A same-sized substitute stage must not replace an existing alias."""
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+    original = b"original-jig-alias"
+    _ = target.write_bytes(original)
+    retained = tmp_path / "retained-stage"
+    rogue = b"x" * len(BINARY)
+    original_verify = (
+        python_validation._verify_jig_alias_stage_bytes  # pyright: ignore[reportPrivateUsage]
+    )
+    swapped = False
+
+    def substitute_after_check(
+        stage: Path, identity: tuple[int, int], payload: bytes
+    ) -> None:
+        nonlocal swapped
+        original_verify(stage, identity, payload)
+        if not swapped and stage.parent == alias_root:
+            _ = stage.replace(retained)
+            _ = stage.write_bytes(rogue)
+            swapped = True
+
+    monkeypatch.setattr(
+        python_validation, "_verify_jig_alias_stage_bytes", substitute_after_check
+    )
+    with pytest.raises(python_validation.ProvisionError, match="stage changed"):
+        python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+            target, BINARY, windows=False
+        )
+    assert swapped
+    assert target.read_bytes() == original
+    assert retained.read_bytes() == BINARY
+    stages = list(alias_root.glob(".ruff.bin.*"))
+    assert len(stages) == 1
+    assert stages[0].read_bytes() == rogue

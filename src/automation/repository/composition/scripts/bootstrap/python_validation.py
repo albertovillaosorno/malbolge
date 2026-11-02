@@ -1811,6 +1811,58 @@ def _verify_jig_alias_stage_bytes(
         _fail("Jig alias stage changed during byte verification")
 
 
+def _replace_jig_alias_stage(
+    temporary: Path,
+    target: Path,
+    identity: tuple[int, int],
+    size: int,
+    *,
+    windows: bool,
+) -> None:
+    """Replace within the pinned POSIX parent, never a late path redirect."""
+    if windows or os.name != "posix":
+        _ = temporary.replace(target)
+        return
+    if temporary.parent != target.parent:
+        _fail("Jig alias stage and target require one physical parent")
+    # Reuse the descriptor-by-component traversal used by uv publication.
+    parent_descriptor = _open_uv_physical_parent(target)
+    if parent_descriptor is None:
+        _fail("Jig alias publication requires a POSIX parent descriptor")
+    try:
+        stage = os.stat(temporary.name, dir_fd=parent_descriptor, follow_symlinks=False)
+        if (
+            type(stage) is not os.stat_result
+            or any(
+                type(field) is not int
+                for field in (
+                    stage.st_mode,
+                    stage.st_nlink,
+                    stage.st_dev,
+                    stage.st_ino,
+                    stage.st_size,
+                )
+            )
+            or not stat.S_ISREG(stage.st_mode)
+            or stage.st_nlink != 1
+            or (stage.st_dev, stage.st_ino) != identity
+            or stage.st_size != size
+        ):
+            _fail("Jig alias stage changed before pinned replacement")
+        os.replace(
+            temporary.name,
+            target.name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+        )
+    except ProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise ProvisionError("Jig alias pinned replacement failed") from error
+    finally:
+        _close_uv_parent_descriptor(parent_descriptor, context="Jig alias")
+
+
 def _publish_owned_jig_alias_stage(
     stage_receipt: tuple[Path, int, tuple[int, int]],
     target: Path,
@@ -1833,7 +1885,7 @@ def _publish_owned_jig_alias_stage(
     ):
         _fail("Jig alias temporary changed before publication")
     _verify_jig_alias_stage_bytes(temporary, identity, payload)
-    _ = temporary.replace(target)
+    _replace_jig_alias_stage(temporary, target, identity, len(payload), windows=windows)
     _ = _check_jig_alias_path(target, directory=False, required=True)
     _verify_jig_alias_stage_bytes(target, identity, payload)
 
