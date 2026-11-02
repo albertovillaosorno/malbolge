@@ -387,6 +387,41 @@ def test_cuda_manifest_decoder_rejects_self_restoring_forgery(
             )
 
 
+@pytest.mark.parametrize(
+    "providers", ("decoder-only", "joint", "self-restoring-decoder")
+)
+def test_cuda_manifest_json_reference_rejects_forged_package_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Mutable public JSONDecoder must not rewrite a pinned package SHA."""
+    manifest = _manifest(tmp_path, _payload())
+    forged = cast("dict[str, object]", json.loads(manifest.read_text()))
+    package = cast("dict[str, object]", cast("list[object]", forged["packages"])[0])
+    package["sha256"] = "0" * 64
+    native_decoder = json.JSONDecoder
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring-decoder":
+                patch.setattr(json, "JSONDecoder", native_decoder)
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "joint":
+            patch.setattr(json, "loads", forged_loads)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError,
+            match="CUDA JSON decoder provider differs from source",
+        ):
+            _ = cuda_validation._read_document(manifest, "CUDA provision manifest")
+
+
 def test_cuda_manifest_decoder_returns_independent_source_tree(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

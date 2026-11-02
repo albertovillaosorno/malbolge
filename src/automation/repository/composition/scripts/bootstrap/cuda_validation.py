@@ -74,7 +74,7 @@ CUDA_PROVISION_MARKER: Final = ".malbolge-cuda-toolkit-provision-v1.json"
 CUDA_PROVISION_SCHEMA_VERSION: Final = 1
 CUDA_TOOLCHAIN_SCHEMA_VERSION: Final = 1
 _MAX_MANIFEST_BYTES: Final = 1024 * 1024
-_NATIVE_JSON_LOADS: Final = json.loads
+_NATIVE_JSON_DECODER: Final = json.JSONDecoder
 _MAX_MARKER_BYTES: Final = 16 * 1024
 _MAX_CUDA_DOWNLOAD_BYTES: Final = 512 * 1024 * 1024
 _MAX_CUDA_ARCHIVE_MEMBER_BYTES: Final = 512 * 1024 * 1024
@@ -379,18 +379,19 @@ def _read_document(path: Path, label: str) -> tuple[dict[str, object], bytes]:
             "object",
             decoder(source_text, object_pairs_hook=_reject_duplicate_pairs),
         )
-        # Corroborate complete source bytes against the bound original decoder.
-        # Use only its independent objects, not an adapter-retained alias.
-        if decoder is not _NATIVE_JSON_LOADS:
-            original = cast(
-                "object",
-                _NATIVE_JSON_LOADS(
-                    source_text, object_pairs_hook=_reject_duplicate_pairs
-                ),
-            )
-            if not _cuda_same_native_json(parsed, original):
-                _fail("CUDA JSON decoder provider differs from source")
-            parsed = original
+        # json.loads still resolves the public JSONDecoder attribute at call
+        # time. Independently decode the exact source with the import-bound
+        # class to detect joint substitutions and mid-call restoration.
+        original = cast(
+            "object",
+            _NATIVE_JSON_DECODER(object_pairs_hook=_reject_duplicate_pairs).decode(
+                source_text
+            ),
+        )
+        if not _cuda_same_native_json(parsed, original):
+            _fail("CUDA JSON decoder provider differs from source")
+        # Retain source-owned data, never a public decoder's mutable alias.
+        parsed = original
     except CudaProvisionError:
         raise
     except (UnicodeDecodeError, json.JSONDecodeError, OSError, TypeError, ValueError, RuntimeError) as error:

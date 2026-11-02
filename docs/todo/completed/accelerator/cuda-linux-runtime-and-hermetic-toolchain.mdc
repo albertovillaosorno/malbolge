@@ -118,6 +118,10 @@ fallback, verifier authority, and existing Windows support.
   at invocation, rejecting callbacks that restore the module provider before
   source verification. Equivalent adapters yield an independent source tree,
   with three red-first direct/manifest/alias regression cases.
+- 2026-11-02 import-bound JSONDecoder follow-up: three red-first decoder-only,
+  joint-substitution, and self-restoring class cases could forge a native
+  package hash. The manifest reader now checks every receipt against original
+  source decoded by the import-bound class, returning its source-owned tree.
 - Foundation completion evidence: `linux-development-host-bootstrap` and
   `documentation-readiness-and-implementation-gate`. The active
   `cuda-exact-vm-adapter` supplies the implementation surface being ported but
