@@ -722,12 +722,7 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
     )
     try:
         _ = process.wait(timeout=_CHILD_REAP_SECONDS)
-    except (
-        OSError,
-        RuntimeError,
-        ValueError,
-        subprocess.TimeoutExpired,
-    ) as error:
+    except (*_PIPE_DEPENDENCY_ERRORS, subprocess.TimeoutExpired) as error:
         message = "probe direct child reaping failed: " + _safe_probe_error_detail(error)
         raise ProbeExecutionError(message) from error
     if direct_error is not None:
@@ -774,7 +769,7 @@ def _spawn_probe(
             shell=False,
             start_new_session=os.name == _POSIX_OS_NAME,
         )
-    except OSError as error:
+    except _PIPE_DEPENDENCY_ERRORS as error:
         message = "probe command launch failed: " + _safe_probe_error_detail(error)
         raise ProbeExecutionError(message) from error
 

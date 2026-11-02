@@ -297,8 +297,10 @@ observation transcript. A command may instead require one exact exit code when
 its
 
 return value is a success precondition rather than behavior data. Executable
-spawn and reader/writer thread startup failures are wrapped as probe execution
-errors while terminating the launched child. Child stdout and stderr now use
+spawn and reader/writer thread startup failures, including unexpected ordinary
+host dependency errors, are wrapped as probe execution errors while terminating
+the launched child. Direct-child wait failures remain typed after attempted
+cleanup, preserving the original native cause. Child stdout and stderr now use
 concurrent pipe readers that enforce output byte quotas. They abort
 overflowing commands before completion. Pipe read/write/close failures are
 recorded by worker threads and reject the transcript. Raw reads now require

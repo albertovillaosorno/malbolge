@@ -1064,6 +1064,49 @@ def test_probe_child_stop_never_formats_foreign_host_faults(
             _expect("native stop denied" in str(caught.value), "native detail lost")
 
 
+@pytest.mark.parametrize(
+    "failure_type", [ValueError, RuntimeError, TypeError, AttributeError, IndexError, OverflowError]
+)
+def test_probe_spawn_unexpected_host_fault_remains_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure_type: type[Exception],
+) -> None:
+    """Native subprocess launch faults must preserve typed probe admission."""
+    primary = failure_type("synthetic subprocess startup failure")
+
+    def fail_launch(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise primary
+
+    monkeypatch.setattr(probe_exec_module.subprocess, "Popen", fail_launch)
+    with pytest.raises(ProbeExecutionError, match="command launch failed") as caught:
+        _ = probe_exec_module._spawn_probe(["probe"], tmp_path)
+    assert caught.value.__cause__ is primary
+
+
+@pytest.mark.parametrize(
+    "failure_type", [TypeError, AttributeError, IndexError, OverflowError]
+)
+def test_probe_reap_unexpected_host_fault_remains_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """A foreign child-wait adapter cannot leave an untyped teardown error."""
+    primary = failure_type("synthetic wait failure")
+
+    class FakeProcess:
+        def wait(self, *, timeout: float | None = None) -> int:
+            del timeout
+            raise primary
+
+    monkeypatch.setattr(probe_exec_module, "_signal_probe_group", lambda *_: None)
+    monkeypatch.setattr(probe_exec_module, "_kill_direct_probe_child", lambda *_: None)
+    with pytest.raises(ProbeExecutionError, match="reaping failed") as caught:
+        probe_exec_module._stop_child(cast("Popen[bytes]", cast("object", FakeProcess())))
+    assert caught.value.__cause__ is primary
+
+
 @pytest.mark.parametrize("site", ["launch", "worker"])
 @pytest.mark.parametrize("fault_kind", ["foreign", "hostile-args", "native"])
 def test_probe_host_launch_and_worker_failures_reject_foreign_hooks(
