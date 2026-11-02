@@ -224,31 +224,43 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
         _fail("bounded target cleanup requires a positive native PID")
     # A positive forged child PID could still equal our own process group.
     # Signaling -pid in that case kills the caller and its ordinary peers.
+    group_error: Exception | None = None
+    caller_lookup_error: Exception | None = None
     try:
         # getpgid is available only on POSIX; cross-platform stubs omit it.
         caller_group = os.getpgid(0)  # pyright: ignore[reportAttributeAccessIssue]
     except Exception as error:
-        message = "bounded target cleanup cannot inspect caller process group"
-        raise TargetProcessError(message) from error
-    if type(caller_group) is not int or caller_group <= 0:
-        _fail("bounded target cleanup has invalid caller process group")
-    if pid == caller_group:
-        _fail("bounded target cleanup refuses caller process group")
-    group_error: Exception | None = None
-    try:
-        signal_receipt: object = os.kill(-pid, GROUP_KILL_SIGNAL)
-        if signal_receipt is not None:
+        # Unknown group identity prohibits group signaling, but not the
+        # direct-child kill/reap fallback. Retain the lookup fault as cause.
+        group_error = TargetProcessError(
+            "bounded target cleanup cannot inspect caller process group"
+        )
+        caller_lookup_error = error
+    else:
+        if type(caller_group) is not int or caller_group <= 0:
             group_error = TargetProcessError(
-                "bounded target cleanup has invalid group signal receipt"
+                "bounded target cleanup has invalid caller process group"
             )
-    except ProcessLookupError as error:
-        # Only the native kernel ESRCH exception proves group absence.
-        # A foreign subclass must not forge a successful cleanup receipt.
-        if type(error) is not ProcessLookupError:
+        elif pid == caller_group:
+            # Never invoke even a child wrapper's kill() when its PID names
+            # our own process group: the child identity itself is suspect.
+            _fail("bounded target cleanup refuses caller process group")
+
+    if group_error is None:
+        try:
+            signal_receipt: object = os.kill(-pid, GROUP_KILL_SIGNAL)
+            if signal_receipt is not None:
+                group_error = TargetProcessError(
+                    "bounded target cleanup has invalid group signal receipt"
+                )
+        except ProcessLookupError as error:
+            # Only the native kernel ESRCH exception proves group absence.
+            # A foreign subclass must not forge a successful cleanup receipt.
+            if type(error) is not ProcessLookupError:
+                group_error = error
+        except Exception as error:
+            # Unexpected host signaling faults must not bypass the direct reap.
             group_error = error
-    except Exception as error:
-        # Unexpected host signaling faults must not bypass the direct reap.
-        group_error = error
 
     # A refused group signal must not skip direct-child termination and reap.
     direct_error: Exception | None = None
@@ -291,6 +303,8 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
                 group_error,
                 "direct child cleanup also failed: " + _cleanup_error_detail(direct_error),
             )
+        if caller_lookup_error is not None:
+            raise group_error from caller_lookup_error
         raise group_error
     if direct_error is not None:
         raise direct_error

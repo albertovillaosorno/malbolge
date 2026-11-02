@@ -189,6 +189,131 @@ def test_child_pid_equal_to_own_group_cannot_signal_caller(
     assert events == []
 
 
+@pytest.mark.parametrize("lookup", ["fault", "boolean", "zero", "float"])
+@pytest.mark.parametrize("active", [False, True])
+def test_unavailable_caller_group_still_reaps_direct_child(
+    monkeypatch: pytest.MonkeyPatch, lookup: str, active: bool
+) -> None:
+    """A missing group identity prevents group signals, not direct reaping."""
+    events: list[str] = []
+    fault = RuntimeError("caller group lookup unavailable")
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> int | None:
+            events.append("poll")
+            return None if active else 0
+
+        def kill(self) -> None:
+            events.append("kill")
+
+        def wait(self) -> int:
+            events.append("wait")
+            return 0
+
+    def failed_lookup(_pid: int) -> object:
+        if lookup == "fault":
+            raise fault
+        return {"boolean": True, "zero": 0, "float": 2.5}[lookup]
+
+    def forbidden_group_signal(*_args: object) -> None:
+        events.append("dangerous-group-signal")
+
+    monkeypatch.setattr(target_process.os, "getpgid", failed_lookup)
+    monkeypatch.setattr(target_process.os, "kill", forbidden_group_signal)
+    with pytest.raises(
+        target_process.TargetProcessError, match="caller process group"
+    ) as caught:
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert events == (["poll", "kill", "wait"] if active else ["poll", "wait"])
+    if lookup == "fault":
+        assert caught.value.__cause__ is fault
+    else:
+        assert caught.value.__cause__ is None
+
+
+def test_unavailable_caller_group_preserves_direct_reap_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later failed direct reap cannot hide the original group error."""
+    events: list[str] = []
+    lookup_fault = OSError("caller group unavailable")
+    reap_fault = RuntimeError("direct reap failed")
+
+    class ChildProbe:
+        pid = 123456
+
+        def poll(self) -> int:
+            events.append("poll")
+            return 0
+
+        def wait(self) -> int:
+            events.append("wait")
+            raise reap_fault
+
+    def failed_lookup(_pid: int) -> int:
+        raise lookup_fault
+
+    monkeypatch.setattr(target_process.os, "getpgid", failed_lookup)
+    with pytest.raises(
+        target_process.TargetProcessError, match="caller process group"
+    ) as caught:
+        target_process._terminate_group(  # ruff: ignore[private-member-access]
+            cast("sp.Popen[bytes]", ChildProbe())
+        )
+    assert events == ["poll", "wait"]
+    assert caught.value.__cause__ is lookup_fault
+    assert any("direct child cleanup also failed" in note for note in caught.value.__notes__)
+
+
+def test_caller_group_lookup_failure_reaps_real_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed host group probe cannot leave a live isolated child behind."""
+    child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
+        _child("import time; time.sleep(20)"),
+        shell=False,
+        stdin=sp.DEVNULL,
+        stdout=sp.PIPE,
+        stderr=sp.PIPE,
+        start_new_session=True,
+    )
+    fault = PermissionError("injected caller group inspection refusal")
+    actual_kill = os.kill
+
+    def blocked_group_lookup(pid: int) -> int:
+        assert pid == 0
+        raise fault
+
+    def no_group_signal(pid: int, signal: int) -> None:
+        assert pid > 0, "unknown caller group must skip group signaling"
+        actual_kill(pid, signal)
+
+    try:
+        monkeypatch.setattr(target_process.os, "getpgid", blocked_group_lookup)
+        monkeypatch.setattr(target_process.os, "kill", no_group_signal)
+        with pytest.raises(
+            target_process.TargetProcessError, match="caller process group"
+        ) as caught:
+            target_process._terminate_group(  # ruff: ignore[private-member-access]
+                child
+            )
+        assert caught.value.__cause__ is fault
+        assert child.returncode is not None
+        assert child.poll() is not None
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=LARGE_TIMEOUT_SECONDS)
+        if child.stdout is not None:
+            child.stdout.close()
+        if child.stderr is not None:
+            child.stderr.close()
+
+
 @pytest.mark.parametrize("pid", [None, False, True, 0, -1, -2, 1.5, "42"])
 @pytest.mark.parametrize("active", [False, True])
 def test_invalid_child_pid_never_signals_unrelated_process_group(
