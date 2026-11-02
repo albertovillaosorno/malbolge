@@ -237,3 +237,40 @@ def test_jig_alias_swap_with_forged_stage_status_preserves_target(
     assert stages[0].read_bytes() == sentinel
     assert retained.read_bytes() == BINARY
     assert target.read_bytes() == original
+
+
+@pytest.mark.parametrize("receipt", ["descriptor", "path", "both"])
+def test_jig_alias_temporary_rejects_foreign_status_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """A forged stat proxy cannot bind one Jig temporary to its descriptor."""
+    descriptor, name = tempfile.mkstemp(prefix=".ruff.", dir=tmp_path)
+    temporary = Path(name)
+    native_fstat = os.fstat
+    native_lstat = Path.lstat
+
+    def forged_fstat(fd: int) -> os.stat_result:
+        observed = native_fstat(fd)
+        if fd == descriptor and receipt in ("descriptor", "both"):
+            return cast("os.stat_result", cast("object", ForeignStatus(observed)))
+        return observed
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        observed = native_lstat(path)
+        if path == temporary and receipt in ("path", "both"):
+            return cast("os.stat_result", cast("object", ForeignStatus(observed)))
+        return observed
+
+    try:
+        with monkeypatch.context() as isolated:
+            isolated.setattr(os, "fstat", forged_fstat)
+            isolated.setattr(Path, "lstat", forged_lstat)
+            with pytest.raises(python_validation.ProvisionError, match="native"):
+                _ = python_validation._admit_jig_alias_temporary(  # pyright: ignore[reportPrivateUsage]
+                    descriptor, name, alias_root=tmp_path, prefix=".ruff."
+                )
+    finally:
+        os.close(descriptor)
+        temporary.unlink()

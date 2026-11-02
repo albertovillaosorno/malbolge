@@ -1282,6 +1282,21 @@ def _admit_jig_alias_temporary(
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = "Jig alias temporary receipt cannot be verified"
         raise ProvisionError(message) from error
+    if any(
+        type(observed) is not os.stat_result
+        or any(
+            type(field) is not int
+            for field in (
+                observed.st_mode,
+                observed.st_nlink,
+                observed.st_dev,
+                observed.st_ino,
+                observed.st_size,
+            )
+        )
+        for observed in (descriptor_status, pathname_status)
+    ):
+        _fail("Jig alias temporary requires native file status")
     regular = stat.S_ISREG(descriptor_status.st_mode) and stat.S_ISREG(
         pathname_status.st_mode
     )
