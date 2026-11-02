@@ -916,9 +916,11 @@ def _run_git_version(git: Path) -> str | None:
 
 def _run_git_exec_path(git: Path) -> Path | None:
     output = _optional_host_command_output([str(git), "--exec-path"])
-    if output is None:
+    if output is None or not output.isprintable():
         return None
     path = Path(output)
+    if not path.is_absolute():
+        return None
     try:
         directory = path.is_dir()
     except (OSError, ValueError, TypeError, RuntimeError):
@@ -1675,9 +1677,10 @@ def _optional_host_executable(executable_name: str) -> Path | None:
         resolved = which(executable_name)
     except (OSError, ValueError, TypeError, RuntimeError):
         return None
-    if type(resolved) is not str or not resolved:
+    if type(resolved) is not str or not resolved or not resolved.isprintable():
         return None
-    return Path(resolved)
+    executable = Path(resolved)
+    return executable if executable.is_absolute() else None
 
 
 def observe_host_git(platform_id: str) -> GitHostObservation | None:
@@ -2414,7 +2417,7 @@ def rustup_executable(
     """
     windows = platform_id.startswith(WINDOWS_SYSTEM)
     executable = "rustup.exe" if windows else "rustup"
-    cargo_home = (home or Path.home()) / ".cargo" / "bin" / executable
+    cargo_home = (home or Path.home()).absolute() / ".cargo" / "bin" / executable
     try:
         present = cargo_home.is_file()
     except (OSError, ValueError, TypeError, RuntimeError):

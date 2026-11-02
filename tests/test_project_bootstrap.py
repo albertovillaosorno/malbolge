@@ -4071,6 +4071,41 @@ def test_optional_host_executable_resolver_admits_native_path(
         assert project.rustup_executable(LINUX_PLATFORM, home=tmp_path) == resolved
 
 
+def test_rustup_explicit_relative_home_is_pinned_to_initial_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The explicit home path stays stable when later callbacks alter cwd."""
+    expected = tmp_path / "home/.cargo/bin/rustup"
+    expected.parent.mkdir(parents=True)
+    _ = expected.write_bytes(b"host rustup")
+    monkeypatch.chdir(tmp_path)
+    assert project.rustup_executable(
+        LINUX_PLATFORM, home=Path("home"), search_path=False
+    ) == expected
+
+
+@pytest.mark.parametrize("probe", ["git", "rustup"])
+@pytest.mark.parametrize("bad_path", ["relative", "control"])
+def test_optional_host_executable_rejects_unstable_which_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    bad_path: str,
+) -> None:
+    """Optional host tool identities cannot depend on cwd or control bytes."""
+    name = "git" if probe == "git" else "rustup"
+    candidate = (
+        f"bin/{name}" if bad_path == "relative" else str(tmp_path / f"{name}\n")
+    )
+    monkeypatch.setattr(project, "which", lambda _name: candidate)
+    if probe == "git":
+        monkeypatch.setattr(project, "_run_git_version", lambda _tool: "git version 2.55.0")
+        monkeypatch.setattr(project, "_run_git_exec_path", lambda _tool: tmp_path)
+        assert project.observe_host_git(LINUX_PLATFORM) is None
+    else:
+        assert project.rustup_executable(LINUX_PLATFORM, home=tmp_path) is None
+
+
 @pytest.mark.parametrize("probe", ["git", "rustup"])
 @pytest.mark.parametrize("receipt", [False, 1, "", "subclass", object()])
 def test_optional_host_executable_resolver_requires_native_path(
@@ -7085,6 +7120,30 @@ def test_optional_host_probes_fail_closed_on_host_exceptions(
     else:
         observed = project._run_rustup_which(Path("rustup"), RUST_CHANNEL)  # pyright: ignore[reportPrivateUsage]
     assert observed == (() if probe == "rustup-list" else None)
+
+
+@pytest.mark.parametrize("bad_path", ["relative", "control"])
+def test_host_git_exec_path_rejects_ambiguous_directory_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_path: str
+) -> None:
+    """Git helper roots must be stable absolute printable paths."""
+    if bad_path == "control" and os.name != POSIX_NAME:
+        pytest.skip("native test filesystem does not support control paths")
+    target = (
+        Path("relative/git-core")
+        if bad_path == "relative"
+        else tmp_path / "git\ncore"
+    )
+    monkeypatch.chdir(tmp_path)
+    target.mkdir(parents=True)
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 0, stdout=f"{target}\n", stderr="")
+
+    monkeypatch.setattr(sp, "run", run)
+    assert project._run_git_exec_path(  # pyright: ignore[reportPrivateUsage]
+        Path("git")
+    ) is None
 
 
 @pytest.mark.parametrize("probe", ("git-helper", "rustup-cargo"))
