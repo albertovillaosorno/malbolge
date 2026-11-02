@@ -2932,6 +2932,152 @@ def _linux_adapter_writer_tree(tmp_path: Path) -> tuple[Path, Path]:
     return root, linker
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Rust adapter publication")
+@pytest.mark.parametrize("closing", ("bin", "root"))
+@pytest.mark.parametrize(
+    "member", ("bin/cc", "bin/cargo.bin", project.RUST_LINUX_ADAPTER_MARKER)
+)
+def test_rust_adapter_writer_rejects_published_mutation_after_parent_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    closing: str,
+    member: str,
+) -> None:
+    """A parent-close callback cannot leave corrupted adapter output trusted."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    marker = root / project.RUST_LINUX_ADAPTER_MARKER
+    target = root / member
+    parent = root / closing if closing == "bin" else root
+    native_close = project._close_local_state_parent  # pyright: ignore[reportPrivateUsage]
+    mutated = False
+
+    def overwrite_after_close(descriptor: int) -> None:
+        nonlocal mutated
+        opened = os.fstat(descriptor)
+        is_target = (
+            not mutated
+            and marker.is_file()
+            and (opened.st_dev, opened.st_ino)
+            == (parent.stat().st_dev, parent.stat().st_ino)
+        )
+        native_close(descriptor)
+        if is_target:
+            before = target.stat()
+            payload = target.read_bytes()
+            _ = target.write_bytes(b"!" + payload[1:])
+            os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+            mutated = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            project, "_close_local_state_parent", overwrite_after_close
+        )
+        with pytest.raises(project.InitializationError, match="adapter.*changed"):
+            _ = project.write_rust_linker_adapters(
+                (root,), LINUX_PLATFORM, linker=linker
+            )
+    assert mutated
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Rust adapter receipt")
+@pytest.mark.parametrize(
+    "member", ("bin/cc", "bin/cargo.bin", project.RUST_LINUX_ADAPTER_MARKER)
+)
+def test_rust_adapter_writer_rejects_same_byte_leaf_swap_after_root_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, member: str
+) -> None:
+    """Same bytes and permissions cannot replace published adapter inode."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    marker = root / project.RUST_LINUX_ADAPTER_MARKER
+    target = root / member
+    retained = tmp_path / "retained-generated-adapter"
+    native_close = project._close_local_state_parent  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def replace_after_root_close(descriptor: int) -> None:
+        nonlocal swapped
+        opened = os.fstat(descriptor)
+        is_root = (
+            not swapped
+            and marker.is_file()
+            and (opened.st_dev, opened.st_ino)
+            == (root.stat().st_dev, root.stat().st_ino)
+        )
+        native_close(descriptor)
+        if is_root:
+            previous = target.stat()
+            content = target.read_bytes()
+            _ = target.rename(retained)
+            _ = target.write_bytes(content)
+            target.chmod(stat.S_IMODE(previous.st_mode))
+            swapped = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            project, "_close_local_state_parent", replace_after_root_close
+        )
+        with pytest.raises(project.InitializationError, match="adapter.*changed"):
+            _ = project.write_rust_linker_adapters(
+                (root,), LINUX_PLATFORM, linker=linker
+            )
+    assert swapped
+    assert retained.read_bytes() == target.read_bytes()
+    if member != project.RUST_LINUX_ADAPTER_MARKER:
+        assert not marker.exists()
+    else:
+        assert marker.read_bytes() == project.RUST_LINUX_ADAPTER_CONTENT
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Rust adapter root")
+@pytest.mark.parametrize("closing", ("bin", "root"))
+def test_rust_adapter_writer_preserves_foreign_tree_on_postclose_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, closing: str
+) -> None:
+    """Failure cleanup must not remove a replacement tree's foreign marker."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    marker = root / project.RUST_LINUX_ADAPTER_MARKER
+    changed = root / "bin" if closing == "bin" else root
+    parked = tmp_path / "parked-rust-adapter"
+    foreign = tmp_path / "untrusted-adapter-tree"
+    foreign.mkdir()
+    sentinel = b"foreign Rust adapter state"
+    foreign_marker = foreign / project.RUST_LINUX_ADAPTER_MARKER
+    _ = foreign_marker.write_bytes(sentinel)
+    _ = (foreign / "cc").write_bytes(sentinel)
+    native_close = project._close_local_state_parent  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def swap_after_close(descriptor: int) -> None:
+        nonlocal swapped
+        opened = os.fstat(descriptor)
+        should_swap = (
+            not swapped
+            and marker.is_file()
+            and (opened.st_dev, opened.st_ino)
+            == (changed.stat().st_dev, changed.stat().st_ino)
+        )
+        native_close(descriptor)
+        if should_swap:
+            _ = changed.rename(parked)
+            _ = foreign.rename(changed)
+            swapped = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(project, "_close_local_state_parent", swap_after_close)
+        with pytest.raises(project.InitializationError, match="adapter.*changed"):
+            _ = project.write_rust_linker_adapters(
+                (root,), LINUX_PLATFORM, linker=linker
+            )
+    assert swapped
+    if closing == "root":
+        assert (root / project.RUST_LINUX_ADAPTER_MARKER).read_bytes() == sentinel
+        assert (parked / project.RUST_LINUX_ADAPTER_MARKER).exists()
+    else:
+        assert (root / "bin/cc").read_bytes() == sentinel
+        assert not marker.exists()
+
+
 def test_rust_adapter_writer_rejects_linked_cc_target(tmp_path: Path) -> None:
     """Writing a pinned linker shim must not overwrite an aliased target."""
     root, linker = _linux_adapter_writer_tree(tmp_path)

@@ -2094,6 +2094,19 @@ def _write_verified_rust_adapter_script(
     _fail(message)
 
 
+def _rust_validation_alias_script(tool_id: str, linker_environment: str) -> str:
+    """Return deterministic Linux Cargo validation wrapper source."""
+    return (
+        "\n".join((
+            "#!/bin/sh",
+            "tool_dir=${0%/*}",
+            f'export {linker_environment}="$tool_dir/cc"',
+            f'exec "$tool_dir/{tool_id}" "$@"',
+        ))
+        + "\n"
+    )
+
+
 def _write_rust_validation_alias(
     toolchain_root: Path,
     tool_id: str,
@@ -2109,15 +2122,7 @@ def _write_rust_validation_alias(
         alias.unlink(missing_ok=True)
     else:
         _require_local_state_parent_identity(alias.parent, parent_fd)
-    script = (
-        "\n".join((
-            "#!/bin/sh",
-            "tool_dir=${0%/*}",
-            f'export {linker_environment}="$tool_dir/cc"',
-            f'exec "$tool_dir/{tool_id}" "$@"',
-        ))
-        + "\n"
-    )
+    script = _rust_validation_alias_script(tool_id, linker_environment)
     _write_verified_rust_adapter_script(
         alias, script, parent_fd=parent_fd, allow_hardlink=True
     )
@@ -2192,6 +2197,83 @@ def _rust_adapter_parent_identity(parent: Path) -> tuple[int, int]:
     return observed.st_dev, observed.st_ino
 
 
+def _rust_adapter_owned_leaf_identity(
+    leaf: Path, parent_fd: int | None
+) -> tuple[int, int]:
+    """Capture a publisher-owned regular inode before closing its parent."""
+    try:
+        observed = _import_marker_leaf_status(leaf, parent_fd)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("Rust adapter published leaf missing") from error
+    if (
+        type(observed) is not os.stat_result
+        or not stat.S_ISREG(observed.st_mode)
+        or observed.st_nlink != 1
+    ):
+        _fail("Rust adapter published leaf changed during creation")
+    return observed.st_dev, observed.st_ino
+
+
+def _rust_adapter_outputs_ready(
+    marker: Path,
+    owned_marker: tuple[int, int],
+    generated: tuple[tuple[Path, bytes, tuple[int, int]], ...],
+) -> bool:
+    """Reattest owned script inodes and bytes after closing both parents."""
+    if (
+        not _import_completion_marker_matches(marker, RUST_LINUX_ADAPTER_CONTENT)
+        or _rust_adapter_owned_leaf_identity(marker, None) != owned_marker
+    ):
+        return False
+    for script, payload, owned in generated:
+        if not _import_completion_marker_matches(script, payload):
+            return False
+        try:
+            observed = script.lstat()
+            if (
+                type(observed) is not os.stat_result
+                or not observed.st_mode & stat.S_IXUSR
+                or (observed.st_dev, observed.st_ino) != owned
+            ):
+                return False
+        except (OSError, ValueError, TypeError, RuntimeError):
+            return False
+    return True
+
+
+def _retire_owned_rust_adapter_marker(
+    marker: Path,
+    owned: tuple[int, int],
+    root_identity: tuple[int, int] | None,
+) -> None:
+    """Invalidate only the original marker, never a swapped foreign leaf."""
+    try:
+        parent_fd = (
+            _open_local_state_parent(marker.parent, expected_identity=root_identity)
+            if root_identity is not None
+            else None
+        )
+        try:
+            if parent_fd is not None:
+                _require_local_state_parent_identity(marker.parent, parent_fd)
+            current = _import_marker_leaf_status(marker, parent_fd)
+            if (
+                type(current) is os.stat_result
+                and stat.S_ISREG(current.st_mode)
+                and current.st_nlink == 1
+                and (current.st_dev, current.st_ino) == owned
+            ):
+                if parent_fd is None:
+                    marker.unlink()
+                else:
+                    os.unlink(marker.name, dir_fd=parent_fd)
+        finally:
+            if parent_fd is not None:
+                _close_local_state_parent(parent_fd)
+    except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
+        pass
+
+
 def _write_rust_toolchain_linker_adapters(
     toolchain_root: Path,
     linker_path: str,
@@ -2199,9 +2281,12 @@ def _write_rust_toolchain_linker_adapters(
 ) -> Path:
     adapter = toolchain_root / "bin" / "cc"
     marker = toolchain_root / RUST_LINUX_ADAPTER_MARKER
-    aliases = tuple(
-        toolchain_root / "bin" / f"{tool_id}.bin"
-        for tool_id in _rust_validation_tool_ids(toolchain_root)
+    tool_ids = _rust_validation_tool_ids(toolchain_root)
+    aliases = tuple(toolchain_root / "bin" / f"{tool_id}.bin" for tool_id in tool_ids)
+    adapter_script = f'#!/bin/sh\nexec {linker_path} "$@"\n'
+    generated = ((adapter, adapter_script.encode("ascii")),) + tuple(
+        (alias, _rust_validation_alias_script(tool_id, linker_environment).encode("ascii"))
+        for tool_id, alias in zip(tool_ids, aliases, strict=True)
     )
     root_identity = (
         _rust_adapter_parent_identity(toolchain_root) if os.name == "posix" else None
@@ -2223,6 +2308,7 @@ def _write_rust_toolchain_linker_adapters(
         else None
     )
     try:
+        generated_identities: list[tuple[int, int]] = []
         bin_fd = (
             _open_local_state_parent(adapter.parent, expected_identity=bin_identity)
             if bin_identity is not None
@@ -2232,31 +2318,48 @@ def _write_rust_toolchain_linker_adapters(
             if root_fd is not None:
                 _require_local_state_parent_identity(toolchain_root, root_fd)
             _write_verified_rust_adapter_script(
-                adapter,
-                f'#!/bin/sh\nexec {linker_path} "$@"\n',
-                parent_fd=bin_fd,
+                adapter, adapter_script, parent_fd=bin_fd
             )
             if bin_fd is None:
                 adapter.chmod(adapter.stat().st_mode | stat.S_IXUSR)
-            for tool_id in _rust_validation_tool_ids(toolchain_root):
+            generated_identities.append(_rust_adapter_owned_leaf_identity(adapter, bin_fd))
+            for tool_id in tool_ids:
                 if root_fd is not None:
                     _require_local_state_parent_identity(toolchain_root, root_fd)
-                _ = _write_rust_validation_alias(
+                alias = _write_rust_validation_alias(
                     toolchain_root,
                     tool_id,
                     linker_environment,
                     parent_fd=bin_fd,
                 )
+                generated_identities.append(_rust_adapter_owned_leaf_identity(alias, bin_fd))
             if root_fd is not None:
                 _require_local_state_parent_identity(toolchain_root, root_fd)
             _write_verified_rust_adapter_marker(marker, parent_fd=root_fd)
-            return adapter
+            owned_marker = _rust_adapter_owned_leaf_identity(marker, root_fd)
         finally:
             if bin_fd is not None:
                 _close_local_state_parent(bin_fd)
     finally:
         if root_fd is not None:
             _close_local_state_parent(root_fd)
+
+    generated_receipts = tuple(
+        (leaf, payload, owned)
+        for (leaf, payload), owned in zip(generated, generated_identities, strict=True)
+    )
+    stable = _rust_adapter_outputs_ready(marker, owned_marker, generated_receipts)
+    if root_identity is not None:
+        try:
+            _require_import_root_after_close(toolchain_root, root_identity)
+            if bin_identity is not None:
+                _require_import_root_after_close(adapter.parent, bin_identity)
+        except InitializationError:
+            stable = False
+    if not stable:
+        _retire_owned_rust_adapter_marker(marker, owned_marker, root_identity)
+        _fail("Rust adapter generated outputs changed after parent close")
+    return adapter
 
 
 def write_rust_linker_adapters(

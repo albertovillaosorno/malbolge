@@ -335,6 +335,10 @@ linked launcher ancestors, or nonexecutable scripts are not ready evidence.
 Adapter publication also preflights the `cc`, marker, and generated neutral
 alias destinations before writing, rejecting linked leaves or parent paths
 rather than modifying unrelated files through filesystem redirects.
+After publishing, it reattests original marker and wrapper inodes, exact
+bytes, and executable modes after closing both parent handles. Late mutations
+invalidate the operation and retire only the owned readiness marker, preserving
+swapped foreign leaves.
 Windows keeps its native
 executable layout behind the same neutral Jig-facing paths where applicable.
 
