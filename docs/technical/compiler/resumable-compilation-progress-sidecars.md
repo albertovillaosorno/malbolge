@@ -840,6 +840,13 @@ output progress path, operation ID, and job start timestamp stay fixed. Reusing
 it for a second job fails before rate suppression can hide a missing first
 publication; a separate job must create a separate limiter.
 
+A writer result, including the published path carried by a post-commit error,
+consumes the limiter window only when it names the candidate's exact native
+progress-pointer `Path`. A string, subclass, or different destination is
+rejected before caching the commit; the next valid publication can still run.
+A rejected post-commit error retains the original failure as its cause. This
+receipt admission is not independent filesystem attestation.
+
 Directly constructed limiter state also requires every prior-commit timestamp
 to have a matching, fully validated committed sidecar; an orphan timestamp or
 malformed cached record cannot suppress a new job or authorize a write. Cached

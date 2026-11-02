@@ -490,6 +490,19 @@ class ProgressWriteLimiter:
     def _job_identity(sidecar: ProgressSidecar) -> tuple[str, str, str]:
         return sidecar.operation_id, sidecar.progress_path, sidecar.started_at
 
+    @staticmethod
+    def _admit_writer_path(receipt: object, sidecar: ProgressSidecar) -> Path:
+        """Admit only the exact native pointer path before caching a commit.
+
+        Returns:
+            Canonical destination, never a foreign or misdirected receipt.
+
+        """
+        expected = Path(sidecar.progress_path)
+        if type(receipt) is not type(expected) or receipt != expected:
+            _fail("progress write limiter received invalid committed path")
+        return expected
+
     def _record_committed(
         self, path: Path, fallback_ns: int, sidecar: ProgressSidecar
     ) -> None:
@@ -563,14 +576,19 @@ class ProgressWriteLimiter:
             destination = write_atomic(validated)
         except ProgressSidecarCommittedError as error:
             try:
-                self._record_committed(
-                    error.published_path, now, validated
+                committed_path = self._admit_writer_path(
+                    error.published_path, validated
                 )
+            except ProgressSidecarError as receipt_error:
+                raise receipt_error from error
+            try:
+                self._record_committed(committed_path, now, validated)
             except ProgressSidecarCommittedError as clock_error:
                 BaseException.add_note(error, f"limiter clock also failed: {_host_error_detail(clock_error)}")
             raise
-        self._record_committed(destination, now, validated)
-        return destination
+        committed_path = self._admit_writer_path(destination, validated)
+        self._record_committed(committed_path, now, validated)
+        return committed_path
 
 
 @dataclass(frozen=True, slots=True)

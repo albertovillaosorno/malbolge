@@ -13394,6 +13394,52 @@ def test_progress_write_limiter_retries_prepublication_failure(
     assert attempts == expected_attempts
 
 
+@pytest.mark.parametrize("receipt_kind", ["text", "wrong-path", "foreign-path"])
+@pytest.mark.parametrize("committed_failure", [False, True])
+def test_progress_limiter_rejects_false_committed_path_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    receipt_kind: str,
+    committed_failure: bool,
+) -> None:
+    """A false writer receipt cannot consume the limiter's next real write."""
+    candidate = _sidecar(tmp_path)
+    expected = Path(candidate.progress_path)
+
+    class ForeignPath(type(expected)):
+        def __eq__(self, other: object) -> bool:
+            del other
+            pytest.fail("foreign path equality hook executed")
+
+    forged = {
+        "text": str(expected),
+        "wrong-path": tmp_path / "other.progress.json",
+        "foreign-path": ForeignPath(str(expected)),
+    }[receipt_kind]
+
+    def fake_writer(sidecar: progress.ProgressSidecar) -> Path:
+        assert sidecar is candidate
+        if committed_failure:
+            raise progress.ProgressSidecarDurabilityError(
+                "injected false committed path", cast("Path", forged)
+            )
+        return cast("Path", forged)
+
+    limiter = progress.ProgressWriteLimiter.start(
+        10, clock=SequenceClock([100, 100, 101, 102])
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "write_atomic", fake_writer)
+        with pytest.raises(ERROR, match="committed path") as captured:
+            _ = limiter.publish(candidate)
+    if committed_failure:
+        assert type(captured.value.__cause__) is progress.ProgressSidecarDurabilityError
+    assert not expected.exists()
+    assert limiter.publish(candidate) == expected
+    assert progress.read(expected) == candidate
+
+
 def test_progress_write_limiter_fails_closed_on_invalid_timing(
     tmp_path: Path,
 ) -> None:
