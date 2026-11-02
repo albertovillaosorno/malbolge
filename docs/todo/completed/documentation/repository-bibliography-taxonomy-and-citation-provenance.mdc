@@ -84,7 +84,8 @@ repository policy merely because they are cited.
   Markdown section headings, stable IDs, review dates, source entries, or
   externally cataloged URLs; external-reference admission rejects non-native
   URL containers and members before their hooks execute; malformed URL hosts,
-  schemes, or ports are rejected with typed errors. Source records,
+  schemes, or ports are rejected with typed errors; valid IPv6 authority brackets
+  remain intact during trailing punctuation cleanup. Source records,
   identity entries, and dependency pins likewise require native text/containers.
   Inline comment removal
   cannot synthesize headings or bullets. Visible evidence surrounding literal

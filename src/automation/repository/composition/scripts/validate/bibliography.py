@@ -814,7 +814,10 @@ def _validate_validation_requirements() -> None:
 
 
 def _normalized_url(value: str) -> str:
-    cleaned = value.rstrip(".,;:)]}")
+    cleaned = value.rstrip(".,;:)}")
+    # A closing IPv6 authority bracket is structural, not Markdown punctuation.
+    while cleaned.endswith("]") and cleaned.count("]") > cleaned.count("["):
+        cleaned = cleaned[:-1]
     try:
         parts = urlsplit(cleaned)
         hostname = parts.hostname

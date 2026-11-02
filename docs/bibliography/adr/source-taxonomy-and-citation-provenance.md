@@ -102,6 +102,8 @@ exact validation-package pins, durable external-reference coverage, and the
 required baseline. External URL coverage admits exact native tuples and strings
 before normalization. URL identities require an HTTP(S) scheme, host, and
 valid port syntax; malformed address parsing fails closed with a typed error.
+Trailing Markdown punctuation is removed without stripping balanced IPv6 host
+brackets.
 Public source-record and dependency-pin validators require
 native text and native record entries before their fields can be inspected.
 A source-record marker counts only outside fenced or

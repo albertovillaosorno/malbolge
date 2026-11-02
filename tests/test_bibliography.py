@@ -881,6 +881,34 @@ def test_external_coverage_accepts_valid_absolute_http_urls(url: str) -> None:
     assert validator.validate_external_reference_coverage((url,), (url,)) == 1
 
 
+@pytest.mark.parametrize(
+    "url",
+    (
+        "https://[::1]",
+        "https://[2001:db8::1]",
+        "https://[2001:db8::1]]",
+    ),
+)
+def test_external_coverage_preserves_ipv6_authority_brackets(url: str) -> None:
+    """Markdown punctuation cleanup must retain IPv6 host delimiters."""
+    assert (
+        validator.validate_external_reference_coverage(
+            (url,), ("https://[2001:db8::1]", "https://[::1]")
+        )
+        == 1
+    )
+
+
+def test_external_coverage_removes_extra_unbalanced_trailing_bracket() -> None:
+    """An extra Markdown bracket is not part of the external source identity."""
+    assert (
+        validator.validate_external_reference_coverage(
+            ("https://example.com]",), ("https://example.com",)
+        )
+        == 1
+    )
+
+
 def test_git_transport_suffix_does_not_split_source_identity() -> None:
     """A Git transport suffix resolves to the canonical repository identity."""
     count = validator.validate_external_reference_coverage(
