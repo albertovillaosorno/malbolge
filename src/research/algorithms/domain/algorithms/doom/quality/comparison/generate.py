@@ -51,6 +51,9 @@ import sys
 from typing import Never
 
 
+_SOURCE_JSON_ENCODER = json.JSONEncoder
+
+
 class _ComparisonError(RuntimeError):
     """Deterministic comparison configuration or stability failure."""
 
@@ -791,9 +794,18 @@ def _emit_json(path: Path, comparison: _Comparison) -> None:
             "validation": dataclasses.asdict(after_validation),
         },
     }
+    try:
+        # json.dumps resolves the mutable public JSONEncoder even when bound.
+        source_text = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        rendered = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"quality JSON writer failed: {type(error).__name__}"
+        raise _ComparisonError(message) from error
+    if type(source_text) is not str or type(rendered) is not str or rendered != source_text:
+        _fail("quality JSON writer disagrees with source")
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        source_text + "\n",
         encoding="utf-8",
         newline="\n",
     )

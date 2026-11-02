@@ -25,6 +25,12 @@ clang-tidy policy over both trees. It emits aggregate counts only:
 - `report.tex` is the human-readable report with tables and charts;
 - `metrics.json` contains the same aggregate measurements for auditing.
 
+The JSON metrics writer also checks the public serializer against the native
+`JSONEncoder` class bound at module import. It refuses to publish if a
+substituted writer or encoder returns measurements different from the
+source-owned aggregates; equivalent JSON providers preserve exact output.
+The Python JSON implementation itself remains a trusted dependency.
+
 Individual finding paths and messages are never copied into either artifact.
 This keeps the report size independent of the number of diagnostics and avoids
 artificially inflating repository source-line metrics with a diagnostic ledger.

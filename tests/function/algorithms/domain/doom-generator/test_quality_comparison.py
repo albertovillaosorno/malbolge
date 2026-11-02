@@ -38,6 +38,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -54,6 +55,89 @@ ROOT = Path(__file__).resolve().parents[5]
 class _ProbeResult:
     returncode: int = 0
     stdout: str = ""
+
+
+def _synthetic_comparison() -> generate._Comparison:
+    """Construct offline aggregate evidence without launching LLVM."""
+    corpus = generate._CorpusMetrics(
+        files=1,
+        c_files=1,
+        headers=0,
+        source_bytes=42,
+        physical_source_lines=2,
+        nonblank_source_lines=2,
+        asset_files=0,
+        asset_bytes=0,
+        asset_sha256="0" * 64,
+        source_sha256="1" * 64,
+    )
+    validation = generate._ValidationMetrics(
+        raw_findings=1,
+        unique_findings=1,
+        by_gate={"compiler": 1},
+        by_rule_family={"compiler": 1},
+    )
+    return generate._Comparison(
+        before_root=generate.REPO_ROOT / "doom",
+        after_root=generate.REPO_ROOT / "src/research/algorithms/domain/algorithms/doom/quality/out/doom_fixed",
+        before_corpus=corpus,
+        after_corpus=corpus,
+        before_validation=validation,
+        after_validation=validation,
+    )
+
+
+@pytest.mark.parametrize("providers", ("encoder-only", "dumps-only", "joint"))
+def test_quality_json_report_rejects_forged_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Public JSON provider cannot substitute different measured aggregates."""
+    comparison = _synthetic_comparison()
+    original = tmp_path / "baseline.json"
+    generate._emit_json(original, comparison)
+    original_document = json.loads(original.read_text())
+    assert original_document["before"]["corpus"]["files"] == 1
+    original_document["before"]["corpus"]["files"] = 500
+    forged_text = json.dumps(original_document, indent=2, sort_keys=True)
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _mapping: object) -> str:
+            return forged_text
+
+    forged_path = tmp_path / "forged.json"
+    with monkeypatch.context() as patch:
+        if providers != "dumps-only":
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers != "encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: forged_text)
+        with pytest.raises(
+            generate._ComparisonError, match="quality JSON writer disagrees with source"
+        ):
+            generate._emit_json(forged_path, comparison)
+    assert not forged_path.exists()
+    assert json.loads(original.read_text())["before"]["corpus"]["files"] == 1
+
+
+def test_quality_json_report_accepts_equivalent_encoder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An equivalent public encoder preserves the checked-in report format."""
+    comparison = _synthetic_comparison()
+    baseline = tmp_path / "baseline.json"
+    generate._emit_json(baseline, comparison)
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    equivalent = tmp_path / "equivalent.json"
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        generate._emit_json(equivalent, comparison)
+    assert equivalent.read_bytes() == baseline.read_bytes()
 
 
 def test_repository_and_policy_paths_resolve_exactly() -> None:
