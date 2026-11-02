@@ -532,26 +532,35 @@ def _validate_topology() -> None:
 
 
 def _heading_positions(text: str, label: str) -> tuple[int, ...]:
+    lines = text.splitlines()
     positions: list[int] = []
     for heading in REQUIRED_HEADINGS:
-        position = text.find(heading)
-        if position < 0:
+        matches = [index for index, line in enumerate(lines) if line == heading]
+        if not matches:
             _fail(f"{label} missing required heading: {heading}")
-        positions.append(position)
+        if len(matches) != 1:
+            _fail(f"{label} duplicate required heading: {heading}")
+        positions.append(matches[0])
     if positions != sorted(positions):
         _fail(f"{label} bibliography headings are out of order")
     return tuple(positions)
 
 
 def _section(text: str, heading: str) -> str:
-    start = text.find(heading)
-    if start < 0:
+    lines = text.splitlines()
+    try:
+        start = lines.index(heading)
+    except ValueError:
         return ""
-    body_start = start + len(heading)
-    next_heading = text.find("\n## ", body_start)
-    if next_heading < 0:
-        return text[body_start:].strip()
-    return text[body_start:next_heading].strip()
+    stop = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].startswith("## ")
+        ),
+        len(lines),
+    )
+    return "\n".join(lines[start + 1 : stop]).strip()
 
 
 def _validate_placeholders(text: str, label: str) -> None:

@@ -91,7 +91,8 @@ padded with fabricated source records.
 
 `src/automation/repository/composition/scripts/validate/bibliography.py`
 enforces the closed first-level taxonomy,
-README coverage, one canonical template, source-record heading order, dated
+README coverage, one canonical template, exact single-occurrence required
+source-record heading lines and order, dated
 provenance, explicit uncertainty, nonempty sources, unique stable identities,
 exact validation-package pins, durable external-reference coverage, and the
 required baseline. `tests/test_bibliography.py` exercises those fail-closed

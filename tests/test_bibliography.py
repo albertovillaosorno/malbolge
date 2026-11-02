@@ -153,6 +153,18 @@ def test_source_record_requires_dated_provenance() -> None:
     _expect_failure(text, "lacks a dated retrieval/review provenance marker")
 
 
+def test_source_record_requires_standalone_heading_lines() -> None:
+    """An inline heading substring is not a real bibliography section."""
+    text = _c_record().replace("## Subject", "Prose mentions ## Subject", 1)
+    _expect_failure(text, "missing required heading: ## Subject")
+
+
+def test_source_record_rejects_repeated_required_heading() -> None:
+    """A second required section cannot be hidden behind the first one."""
+    text = _c_record().replace("## Sources", "## Sources\n## Sources", 1)
+    _expect_failure(text, "duplicate required heading: ## Sources")
+
+
 def test_source_record_requires_nonempty_sources() -> None:
     """Verified records require at least one source entry."""
     text = _c_record().replace(
