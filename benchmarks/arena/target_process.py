@@ -370,6 +370,30 @@ def _checked_selector() -> Iterator[selectors.BaseSelector]:
             _fail("bounded target selector cleanup returned invalid receipt")
 
 
+@contextmanager
+def _verified_capture_selector() -> Iterator[selectors.BaseSelector]:
+    """Keep rejected pipe capture primary across substituted selector exits."""
+    body_error: BaseException | None = None
+    try:
+        with _checked_selector() as watched:
+            try:
+                yield watched
+            except BaseException as error:
+                body_error = error
+                raise
+    except BaseException as error:
+        if body_error is not None and error is not body_error:
+            BaseException.add_note(
+                body_error,
+                "bounded target selector context cleanup also failed: "
+                + _cleanup_error_detail(error),
+            )
+            raise body_error
+        raise
+    if body_error is not None:
+        raise body_error
+
+
 def _collect(
     child: sp.Popen[bytes],
     limits: _ProcessLimits,
@@ -391,7 +415,7 @@ def _collect(
         )
         if stream_fds[0] == stream_fds[1]:
             _fail("bounded target output requires distinct pipe descriptors")
-        with _checked_selector() as watched:
+        with _verified_capture_selector() as watched:
             # Register the already validated integer snapshots, not mutable
             # stream objects whose fileno() could change during registration.
             # A forged readiness key must not relabel or redirect the pipes.

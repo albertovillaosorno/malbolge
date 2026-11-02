@@ -4070,3 +4070,84 @@ def test_measured_rss_rejects_suppressed_directory_body_failure(
     assert captured.value is primary
     assert exited
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("kind", ["rejection", "deadline"])
+def test_output_capture_rejects_suppressed_selector_body_failure(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A substituted selector context cannot conceal failed pipe capture."""
+    original = (
+        target_process.TargetProcessError("injected registration rejection")
+        if kind == "rejection"
+        else sp.TimeoutExpired([sys.executable], LARGE_TIMEOUT_SECONDS)
+    )
+    exited = False
+
+    class FakePipe:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor = descriptor
+
+        def fileno(self) -> int:
+            return self.descriptor
+
+    class FakeChild:
+        stdout = FakePipe(41)
+        stderr = FakePipe(42)
+        args = (sys.executable,)
+
+    class SuppressingSelector:
+        def __enter__(self) -> SuppressingSelector:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            nonlocal exited
+            exited = True
+            return True
+
+        def register(self, *_args: object) -> None:
+            raise original
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            target_process, "_checked_selector", lambda: SuppressingSelector()
+        )
+        with pytest.raises(type(original)) as caught:
+            _ = target_process._collect(
+                cast("sp.Popen[bytes]", FakeChild()),
+                target_process._ProcessLimits(
+                    timeout_seconds=LARGE_TIMEOUT_SECONDS,
+                    stdout_limit=STDOUT_LIMIT,
+                    stderr_limit=STDERR_LIMIT,
+                ),
+                deadline=monotonic() + LARGE_TIMEOUT_SECONDS,
+            )
+    assert caught.value is original
+    assert exited
+
+
+def test_selector_capture_keeps_original_failure_over_context_exit_fault(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign selector teardown fault stays secondary to capture rejection."""
+    original = target_process.TargetProcessError("original capture rejection")
+    secondary = RuntimeError("injected selector context cleanup rejection")
+
+    class FailingSelectorContext:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, *_args: object) -> None:
+            raise secondary
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            target_process, "_checked_selector", lambda: FailingSelectorContext()
+        )
+        with (
+            pytest.raises(target_process.TargetProcessError) as caught,
+            target_process._verified_capture_selector(),
+        ):
+            raise original
+    assert caught.value is original
+    assert "selector context cleanup also failed" in original.__notes__[0]
