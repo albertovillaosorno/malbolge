@@ -52,6 +52,7 @@ from typing import BinaryIO
 from typing import Never, Self, cast, final, override
 
 import pytest
+from scripts.bootstrap import cuda_validation
 from scripts.bootstrap import llvm_development_validation
 from scripts.bootstrap import llvm_validation
 from scripts.bootstrap import project
@@ -1328,6 +1329,117 @@ def test_explicit_llvm_development_provisioning_rejects_other_platforms(
     assert calls == []
 
 
+@pytest.mark.parametrize("component", ["llvm", "llvm-dev", "cuda"])
+def test_optional_project_tool_failure_does_not_format_foreign_exception(
+    tmp_path: Path, component: str
+) -> None:
+    """A typed component failure retains native details without host hooks."""
+
+    class NoHostFormatting:
+        def __str__(self) -> Never:
+            raise AssertionError("host error formatter was invoked")
+
+    class ForeignLlvmImport(NoHostFormatting, llvm_validation.LlvmImportError):
+        pass
+
+    class ForeignLlvmDevelopment(
+        NoHostFormatting, llvm_development_validation.LlvmDevelopmentProvisionError
+    ):
+        pass
+
+    class ForeignCudaProvision(NoHostFormatting, cuda_validation.CudaProvisionError):
+        pass
+
+    if component == "llvm":
+        fault = ForeignLlvmImport("pinned LLVM host unavailable")
+
+        def failing_observer() -> Never:
+            raise fault
+
+        status = project.prepare_llvm(
+            tmp_path, LINUX_PLATFORM, linux_observer=failing_observer
+        )
+        assert status.state is project.ComponentState.MISSING
+        assert "pinned LLVM host unavailable" in status.detail
+        return
+
+    if component == "llvm-dev":
+        fault = ForeignLlvmDevelopment("pinned LLVM dev unavailable")
+
+        def failing_development(_root: Path) -> Never:
+            raise fault
+
+        with pytest.raises(
+            project.InitializationError, match="pinned LLVM dev unavailable"
+        ) as caught:
+            project.provision_llvm_development_if_requested(
+                tmp_path, LINUX_PLATFORM, requested=True,
+                provisioner=failing_development,
+            )
+    else:
+        fault = ForeignCudaProvision("pinned CUDA unavailable")
+        _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+
+        def failing_cuda(_root: Path, _manifest: Path, _platform: str) -> Never:
+            raise fault
+
+        with pytest.raises(
+            project.InitializationError, match="pinned CUDA unavailable"
+        ) as caught:
+            project.provision_cuda_if_requested(
+                tmp_path, LINUX_PLATFORM, requested=True, provisioner=failing_cuda
+            )
+    assert caught.value.__cause__ is fault
+
+
+def test_native_exception_detail_ignores_foreign_attribute_hooks() -> None:
+    """Error reporting uses native arguments, not foreign getters or text."""
+
+    class ForeignHostOSError(OSError):
+        @override
+        def __getattribute__(self, name: str) -> object:
+            if name == "args":
+                raise AssertionError("foreign exception args getter was invoked")
+            return super().__getattribute__(name)
+
+        @override
+        def __str__(self) -> Never:
+            raise AssertionError("foreign exception formatter was invoked")
+
+    safe = ForeignHostOSError("stable native message")
+    opaque = ForeignHostOSError({"not": "native text"})
+    assert (
+        project._native_exception_detail(safe)  # pyright: ignore[reportPrivateUsage]
+        == "stable native message"
+    )
+    assert (
+        project._native_exception_detail(opaque)  # pyright: ignore[reportPrivateUsage]
+        == "ForeignHostOSError"
+    )
+
+
+def test_bootstrap_cli_does_not_format_foreign_host_exception(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Bootstrap prints an error without evaluating host-defined __str__."""
+
+    class ForeignHostOSError(OSError):
+        @override
+        def __str__(self) -> Never:
+            raise AssertionError("foreign host error formatter was invoked")
+
+    fault = ForeignHostOSError("physical host filesystem failure")
+
+    def failing_initialize(**_kwargs: object) -> Never:
+        raise fault
+
+    monkeypatch.setattr(project, "initialize_project", failing_initialize)
+    assert project.main(["--skip-python"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "error: physical host filesystem failure\n"
+
+
 def test_llvm_development_inspection_reports_exact_marker_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1594,6 +1706,45 @@ def test_bootstrap_rust_authority_rejects_invalid_utf8(tmp_path: Path) -> None:
     _ = rust.write_bytes(b"\xff")
     with pytest.raises(project.InitializationError, match="cannot read"):
         _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+
+
+@pytest.mark.parametrize("document_type", ["json", "toml"])
+def test_bootstrap_document_parser_does_not_format_host_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    document_type: str,
+) -> None:
+    """An unprintable host read failure stays a typed, caused parse failure."""
+
+    class ForeignHostOSError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("host error formatter must not be called")
+
+    filename = "manifest.json" if document_type == "json" else "tool.toml"
+    authority = tmp_path / filename
+    fault = ForeignHostOSError("host status unavailable")
+    native_lstat = Path.lstat
+
+    def failing_lstat(path: Path) -> os.stat_result:
+        if path == authority:
+            raise fault
+        return native_lstat(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", failing_lstat)
+        with pytest.raises(
+            project.InitializationError, match="cannot read host manifest"
+        ) as caught:
+            if document_type == "json":
+                project._json_document(  # pyright: ignore[reportPrivateUsage]
+                    authority, "host manifest"
+                )
+            else:
+                project._toml_document(  # pyright: ignore[reportPrivateUsage]
+                    authority, "host manifest"
+                )
+    assert caught.value.__cause__ is fault
 
 
 def test_bootstrap_rust_authority_rejects_oversized_toml(

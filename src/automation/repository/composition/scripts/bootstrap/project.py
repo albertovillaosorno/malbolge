@@ -57,6 +57,7 @@ import tomllib
 from typing import BinaryIO
 from typing import Final
 from typing import Never
+from typing import Protocol
 from typing import cast
 
 from scripts.bootstrap import cuda_validation
@@ -174,6 +175,29 @@ class InitializationError(RuntimeError):
 
 def _fail(message: str) -> Never:
     raise InitializationError(message)
+
+
+class _NativeExceptionArgsDescriptor(Protocol):
+    """Typed view of CPython's built-in BaseException args descriptor."""
+
+    def __get__(
+        self, instance: BaseException, owner: type[BaseException]
+    ) -> object: ...
+
+
+def _native_exception_detail(error: BaseException) -> str:
+    """Describe a host failure without dispatching an exception formatter."""
+    descriptor = cast(
+        "_NativeExceptionArgsDescriptor", cast("object", BaseException.args)
+    )
+    native_args = descriptor.__get__(error, BaseException)
+    if (
+        type(native_args) is tuple
+        and len(native_args) == 1
+        and type(native_args[0]) is str
+    ):
+        return cast("str", native_args[0])
+    return type(error).__name__
 
 
 def _mapping(value: object, label: str) -> dict[str, object]:
@@ -439,7 +463,7 @@ def _json_document(path: Path, label: str) -> dict[str, object]:
         UnicodeDecodeError,
         RecursionError,
     ) as error:
-        _fail(f"cannot read {label}: {error}")
+        raise InitializationError(f"cannot read {label}") from error
     return _mapping(parsed, label)
 
 
@@ -455,7 +479,7 @@ def _toml_document(path: Path, label: str) -> dict[str, object]:
         RecursionError,
         tomllib.TOMLDecodeError,
     ) as error:
-        _fail(f"cannot read {label}: {error}")
+        raise InitializationError(f"cannot read {label}") from error
     return _mapping(parsed, label)
 
 
@@ -1590,7 +1614,7 @@ def prepare_llvm(
         _prepare_llvm_platform(root, platform_id, linux_observer)
     except llvm_validation.LlvmImportError as error:
         return ComponentStatus(
-            detail=f"exact LLVM import failed: {error}",
+            detail=f"exact LLVM import failed: {_native_exception_detail(error)}",
             name="llvm",
             path=root / llvm_validation.LLVM_ROOT,
             state=ComponentState.MISSING,
@@ -1652,7 +1676,8 @@ def provision_llvm_development_if_requested(
     try:
         return selected(root)
     except llvm_development_validation.LlvmDevelopmentProvisionError as error:
-        _fail(f"cannot provision LLVM development kit: {error}")
+        message = "cannot provision LLVM development kit: "
+        raise InitializationError(message + _native_exception_detail(error)) from error
 
 
 def provision_cuda_if_requested(
@@ -1677,7 +1702,9 @@ def provision_cuda_if_requested(
     try:
         return selected(root, manifest_path, platform_id)
     except cuda_validation.CudaProvisionError as error:
-        _fail(f"cannot provision CUDA: {error}")
+        raise InitializationError(
+            f"cannot provision CUDA: {_native_exception_detail(error)}"
+        ) from error
 
 
 def initialize_project(
@@ -1829,7 +1856,7 @@ def main(argv: list[str] | None = None) -> int:
         OSError,
         python_validation.ProvisionError,
     ) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_native_exception_detail(error)}\n")
         return 1
     _ = sys.stdout.write(render_report(report))
     return 0
