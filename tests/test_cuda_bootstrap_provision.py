@@ -4801,6 +4801,55 @@ def test_cuda_nonposix_overlay_rejects_wrong_copied_symlink_target(
     assert (destination / "lib64" / "alias.dll").is_symlink()
 
 
+@pytest.mark.parametrize("forgery", ("parent_dir", "parent_entry", "nested_entry"))
+def test_cuda_nonposix_overlay_rejects_forged_walk_members_before_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """Invented source traversal may not reach outside or skip direct children."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    _ = (source / "lib64" / "nvrtc.dll").write_bytes(b"trusted")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    status = source.stat()
+    copied = False
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def forged_walk(
+        path: Path, *, follow_symlinks: bool = False,
+        on_error: Callable[[OSError], object] | None = None,
+    ) -> Iterator[tuple[Path, list[str], list[str]]]:
+        assert path == source
+        if forgery == "parent_dir":
+            yield source / "..", [], []
+        elif forgery == "parent_entry":
+            yield source, [".."], []
+        else:
+            yield source, [], ["lib64/nvrtc.dll"]
+
+    def copy_unchecked(_src: Path, _dst: Path, **_kwargs: object) -> Path:
+        nonlocal copied
+        copied = True
+        return destination
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(Path, "walk", forged_walk)
+        isolated.setattr(shutil, "copytree", copy_unchecked)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="source enumeration"
+        ):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino)
+            )
+    assert not copied
+
+
 @pytest.mark.parametrize("existing", [b"matching", b"different"])
 def test_cuda_nonposix_overlay_preserves_existing_file_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bytes,

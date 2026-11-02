@@ -1083,6 +1083,34 @@ def _copy_cuda_overlay(
                 "CUDA staged overlay source tree scan failed"
             ) from error
 
+        def admit_walk_directory(directory: Path) -> Path:
+            if type(directory) is not type(source):
+                _fail("CUDA staged overlay source enumeration has foreign paths")
+            try:
+                relative = directory.relative_to(source)
+            except ValueError as error:
+                raise CudaProvisionError(
+                    "CUDA staged overlay source enumeration escaped root"
+                ) from error
+            if PARENT_SEGMENT in relative.parts:
+                _fail("CUDA staged overlay source enumeration escaped root")
+            return relative
+
+        def admit_walk_member(directory: Path, name: str) -> Path:
+            if (
+                type(name) is not str
+                or not name
+                or name in {".", ".."}
+                or "/" in name
+                or "\\" in name
+            ):
+                _fail("CUDA staged overlay source enumeration has unsafe names")
+            member = directory / name
+            if member.parent != directory:
+                _fail("CUDA staged overlay source enumeration escaped parent")
+            _ = admit_walk_directory(member)
+            return member
+
         source_inventory: dict[
             Path, tuple[int, int, int, int, int, int, int, str]
         ] = {}
@@ -1090,16 +1118,17 @@ def _copy_cuda_overlay(
             for source_dir, dirnames, filenames in source.walk(
                 follow_symlinks=False, on_error=fail_source_scan
             ):
+                relative_dir = admit_walk_directory(source_dir)
                 _require_physical_directories(source_dir, "staged overlay source")
-                target_dir = destination / source_dir.relative_to(source)
+                target_dir = destination / relative_dir
                 _require_physical_directories(target_dir, "staged overlay destination")
                 for name in dirnames:
-                    member = source_dir / name
+                    member = admit_walk_member(source_dir, name)
                     source_inventory[member.relative_to(source)] = admit_source_member(
                         member, directory=True
                     )
                 for name in filenames:
-                    member = source_dir / name
+                    member = admit_walk_member(source_dir, name)
                     source_inventory[member.relative_to(source)] = admit_source_member(
                         member, directory=False
                     )
@@ -1192,14 +1221,15 @@ def _copy_cuda_overlay(
             for source_dir, dirnames, filenames in source.walk(
                 follow_symlinks=False, on_error=fail_source_scan
             ):
+                _ = admit_walk_directory(source_dir)
                 _require_physical_directories(source_dir, "staged overlay source")
                 for name in dirnames:
-                    member = source_dir / name
+                    member = admit_walk_member(source_dir, name)
                     observed_inventory[member.relative_to(source)] = admit_source_member(
                         member, directory=True
                     )
                 for name in filenames:
-                    member = source_dir / name
+                    member = admit_walk_member(source_dir, name)
                     observed_inventory[member.relative_to(source)] = admit_source_member(
                         member, directory=False
                     )
