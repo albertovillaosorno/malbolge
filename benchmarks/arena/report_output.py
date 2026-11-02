@@ -43,6 +43,10 @@ from typing import Any, Never, Protocol
 _CANONICAL_JSON_CHUNKS = json.JSONEncoder(
     sort_keys=True, indent=2, allow_nan=False
 ).iterencode
+# Both JSONEncoder's C and Python iterators consult the same module-global
+# ASCII string escaper. Preserve its native provider to prevent a shared
+# runtime substitution from making three agreeing but forged JSON records.
+_CANONICAL_ASCII_ESCAPER = json.encoder.encode_basestring_ascii
 
 
 class TextReportStream(Protocol):
@@ -149,6 +153,9 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
         # Fully render strict JSON before touching stdout: even nested nonfinite
         # costs must not produce an invalid but apparently successful report.
         _admit_native_json(report)
+        if json.encoder.encode_basestring_ascii is not _CANONICAL_ASCII_ESCAPER:
+            message = "arena report JSON string escaper provider changed"
+            raise ValueError(message)
         serialized = json.dumps(report, sort_keys=True, indent=2, allow_nan=False)
         if type(serialized) is not str:
             message = "arena report JSON encoder returned nonnative text"

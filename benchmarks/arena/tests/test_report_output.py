@@ -698,6 +698,30 @@ def test_shared_json_iterator_factory_cannot_publish_wrong_report(
 
 
 @pytest.mark.parametrize(
+    ("original", "forged"),
+    [("ready", "tampered"), ("caf\u00e9", "other")],
+    ids=["ascii-value", "unicode-value"],
+)
+def test_shared_json_string_escaper_cannot_publish_forged_values(
+    monkeypatch: pytest.MonkeyPatch, original: str, forged: str
+) -> None:
+    """The two JSON encoders share one mutable string-escape provider."""
+    output = _FakeStream("healthy")
+    source_encoder = json.encoder.encode_basestring_ascii
+
+    def substituted_encoder(value: str) -> str:
+        return source_encoder(forged if value == original else value)
+
+    monkeypatch.setattr(
+        report_output.json.encoder, "encode_basestring_ascii", substituted_encoder
+    )
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish({"status": original}, output)
+    assert not output.records
+    assert not output.flushed
+
+
+@pytest.mark.parametrize(
     "report",
     [
         {"identity": "\ud800"},
