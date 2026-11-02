@@ -109,6 +109,11 @@ fallback, verifier authority, and existing Windows support.
 - Required durable artifacts: platform loader tests, Linux CUDA package
   manifest, native toolchain resolution, exact fallback tests, and retained
   Linux device evidence.
+- Subsequent CUDA package authority hardening independently corroborates
+  changed public JSON loader receipts with the original manifest bytes.
+  Two red-first forged package-digest entrypoints, masked syntax errors, and
+  foreign nested-key controls now fail closed; source-equivalent adapters pass.
+  The focused CUDA bootstrap provisioning suite passes 410 tests.
 - Foundation completion evidence: `linux-development-host-bootstrap` and
   `documentation-readiness-and-implementation-gate`. The active
   `cuda-exact-vm-adapter` supplies the implementation surface being ported but

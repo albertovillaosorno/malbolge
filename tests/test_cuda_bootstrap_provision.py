@@ -326,6 +326,116 @@ def test_manifest_parses_exact_linux_nvrtc_package(tmp_path: Path) -> None:
     assert package.sha256 == hashlib.sha256(payload).hexdigest()
 
 
+@pytest.mark.parametrize("entrypoint", ["document", "manifest"])
+def test_cuda_manifest_decoder_cannot_forge_package_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    """A substituted JSON loader cannot pair forged packages with real hashes."""
+    manifest = _manifest(tmp_path, _payload())
+    observed = cast("dict[str, object]", json.loads(manifest.read_text()))
+    package = cast("dict[str, object]", cast("list[object]", observed["packages"])[0])
+    assert package["sha256"] != "0" * 64
+    package["sha256"] = "0" * 64
+
+    def injected(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return observed
+
+    monkeypatch.setattr(json, "loads", injected)
+    with pytest.raises(
+        cuda_validation.CudaProvisionError,
+        match="CUDA JSON decoder provider differs from source",
+    ):
+        if entrypoint == "document":
+            _ = cuda_validation._read_document(manifest, "CUDA provision manifest")
+        else:
+            _ = cuda_validation.load_cuda_provision_manifest(
+                tmp_path, manifest, LINUX_PLATFORM
+            )
+
+
+def test_cuda_manifest_decoder_accepts_equivalent_adapter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source-equivalent JSON adapter remains an allowed manifest decoder."""
+    manifest = _manifest(tmp_path, _payload())
+    native = json.loads
+
+    def delegated(text: str, *, object_pairs_hook: object) -> object:
+        return native(
+            text,
+            object_pairs_hook=cast(
+                "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+            ),
+        )
+
+    monkeypatch.setattr(json, "loads", delegated)
+    result = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    )
+    assert result.packages[0].sha256 != "0" * 64
+
+
+def test_cuda_manifest_decoder_cannot_hide_invalid_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged decoder cannot replace the source's syntax error."""
+    manifest = _manifest(tmp_path, _payload())
+    forged = cast("dict[str, object]", json.loads(manifest.read_text()))
+    _ = manifest.write_text('{"schema_version": 1,,}', encoding="utf-8")
+
+    def injected(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return forged
+
+    monkeypatch.setattr(json, "loads", injected)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="cannot read") as caught:
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+    assert type(caught.value.__cause__) is json.JSONDecodeError
+
+
+def test_cuda_manifest_decoder_rejects_foreign_nested_key_without_equality(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A colliding foreign key cannot run equality during source verification."""
+
+    class ForeignKey(str):
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign CUDA package key equality executed")
+
+    manifest = _manifest(tmp_path, _payload())
+    forged = cast("dict[str, object]", json.loads(manifest.read_text()))
+    package = cast("dict[str, object]", cast("list[object]", forged["packages"])[0])
+    digest = package.pop("sha256")
+    package[ForeignKey("sha256")] = digest
+
+    def injected(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return forged
+
+    monkeypatch.setattr(json, "loads", injected)
+    with pytest.raises(
+        cuda_validation.CudaProvisionError,
+        match="CUDA JSON decoder provider differs from source",
+    ):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+
+
 @pytest.mark.parametrize("field", ("toolkit_root", "relative_path"))
 def test_cuda_provision_manifest_rejects_host_dependent_paths(
     tmp_path: Path,

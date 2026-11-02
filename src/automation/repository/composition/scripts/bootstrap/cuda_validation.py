@@ -74,6 +74,7 @@ CUDA_PROVISION_MARKER: Final = ".malbolge-cuda-toolkit-provision-v1.json"
 CUDA_PROVISION_SCHEMA_VERSION: Final = 1
 CUDA_TOOLCHAIN_SCHEMA_VERSION: Final = 1
 _MAX_MANIFEST_BYTES: Final = 1024 * 1024
+_NATIVE_JSON_LOADS: Final = json.loads
 _MAX_MARKER_BYTES: Final = 16 * 1024
 _MAX_CUDA_DOWNLOAD_BYTES: Final = 512 * 1024 * 1024
 _MAX_CUDA_ARCHIVE_MEMBER_BYTES: Final = 512 * 1024 * 1024
@@ -342,16 +343,50 @@ def _read_manifest_source(
     return payload
 
 
+def _cuda_same_native_json(actual: object, expected: object) -> bool:
+    """Corroborate complete manifest JSON without foreign key equality hooks."""
+    kind = type(expected)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        observed = cast("dict[object, object]", actual)
+        source = cast("dict[object, object]", expected)
+        # Native keys must be admitted before a colliding lookup.
+        if any(type(key) is not str for key in observed):
+            return False
+        return len(observed) == len(source) and all(
+            key in observed and _cuda_same_native_json(observed[key], value)
+            for key, value in source.items()
+        )
+    if kind is list:
+        observed = cast("list[object]", actual)
+        source = cast("list[object]", expected)
+        return len(observed) == len(source) and all(
+            _cuda_same_native_json(left, right)
+            for left, right in zip(observed, source, strict=True)
+        )
+    return kind in (bool, int, float, str, type(None)) and actual == expected
+
+
 def _read_document(path: Path, label: str) -> tuple[dict[str, object], bytes]:
     payload = _read_manifest_source(path, label)
     try:
+        source_text = payload.decode("utf-8")
         parsed = cast(
             "object",
-            json.loads(
-                payload.decode("utf-8"),
-                object_pairs_hook=_reject_duplicate_pairs,
-            ),
+            json.loads(source_text, object_pairs_hook=_reject_duplicate_pairs),
         )
+        # Source bytes own the package identity even if public JSON decoding
+        # is replaced with a native-looking but unrelated package document.
+        if json.loads is not _NATIVE_JSON_LOADS:
+            original = cast(
+                "object",
+                _NATIVE_JSON_LOADS(
+                    source_text, object_pairs_hook=_reject_duplicate_pairs
+                ),
+            )
+            if not _cuda_same_native_json(parsed, original):
+                _fail("CUDA JSON decoder provider differs from source")
     except CudaProvisionError:
         raise
     except (UnicodeDecodeError, json.JSONDecodeError, OSError, TypeError, ValueError, RuntimeError) as error:

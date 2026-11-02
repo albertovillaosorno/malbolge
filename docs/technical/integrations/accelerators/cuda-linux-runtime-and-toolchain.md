@@ -106,6 +106,14 @@ reads; only native `os.stat_result` metadata may attest a tracked source inode.
 The admitted source read itself must return exact immutable native `bytes`,
 not a matching-size mutable buffer or subclass. Read-adapter faults become typed
 CUDA provision failures with the original cause retained.
+The CUDA package manifest parser also independently corroborates an altered
+public JSON loader with the original import-bound loader against the same
+admitted source snapshot. Exact native keys, values, and containers must agree
+before any package version, size, or digest can be used, and no foreign string
+key equality hook is invoked. A substituted decoder cannot pair a real manifest
+file SHA-256 with invented package hashes or disguise invalid JSON syntax;
+source-equivalent delegating loaders remain valid. This check protects decoder
+substitution, not arbitrary mutation of the Python interpreter.
 Source file opens must likewise yield a native nonnegative integer descriptor;
 foreign or boolean handles cannot be wrapped or closed as though host-owned.
 CUDA HTTP reads are bounded by the tracked per-package byte size plus one
