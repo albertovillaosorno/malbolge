@@ -656,7 +656,12 @@ def _prepare_staging(path: Path) -> None:
     if path.exists():
         shutil.rmtree(path)
     _require_physical_directories(path, "staging")
-    path.mkdir(parents=True)
+    try:
+        path.mkdir(parents=True)
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            "CUDA staging directory creation failed"
+        ) from error
     _require_physical_directories(path, "staging")
 
 
@@ -993,7 +998,12 @@ def provision_cuda_manifest(
         ):
             _fail("CUDA completion marker changed before publication")
         _require_toolkit_destination(manifest.toolkit_root)
-        manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA toolkit destination parent creation failed"
+            ) from error
         _require_toolkit_destination(manifest.toolkit_root)
         _publish_cuda_toolkit(staged_toolkit, manifest.toolkit_root)
     finally:

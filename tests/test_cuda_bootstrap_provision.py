@@ -1323,6 +1323,56 @@ def test_cuda_authority_status_host_faults_are_typed(
 
 
 
+@pytest.mark.parametrize(
+    "phase", ["staging-root", "package-root", "destination-parent"]
+)
+def test_cuda_provision_types_directory_creation_host_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """Provisioning reports typed directory-creation faults without host text."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    staging = tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}"
+    if phase == "staging-root":
+        target = staging
+    elif phase == "package-root":
+        target = staging / "packages" / PACKAGE_NAME
+    else:
+        target = (tmp_path / TOOLKIT_ROOT).parent
+    native_mkdir = Path.mkdir
+    failure = UnprintableHostOSError("denied directory creation")
+    injected = False
+
+    def fail_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        nonlocal injected
+        if path == target:
+            injected = True
+            raise failure
+        native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "mkdir", fail_mkdir)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="creation"
+        ) as caught:
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path,
+                manifest,
+                LINUX_PLATFORM,
+                downloader=_download_fixture(payload),
+            )
+    assert injected
+    assert caught.value.__cause__ is failure
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
 def test_cuda_marker_status_host_runtime_fault_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
