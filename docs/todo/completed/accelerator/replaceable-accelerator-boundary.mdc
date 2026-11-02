@@ -1098,6 +1098,10 @@ timed.
   file, environment, network, discovery, retry, persistence, certificate
   validation,
   PKI, algorithm selection, or policy operation.
+  The 2026-11-02 lineage trust-manifest writer follow-up rejects two
+  red-first public `JSONEncoder` forgeries (class-only and joint writer/class)
+  that could invent secret-free key references. Canonical output now comes from
+  the import-bound encoder class, not from `json.dumps`' mutable class lookup.
   `ticket-admission-telemetry-lineage-public-key-bundle-v1` persists one
   explicit
 

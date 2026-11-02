@@ -36,6 +36,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from json import dumps
 from json import loads
 from typing import TYPE_CHECKING
@@ -804,6 +805,33 @@ def test_trust_manifest_rejects_joint_json_decoder_writer_substitution(
     monkeypatch.setattr(codec.json, "dumps", lambda *_args, **_kwargs: untrusted_text)
     with pytest.raises(TicketAdmissionTelemetryLineageTrustManifestError, match="serializer|canonical"):
         _ = decode_ticket_admission_telemetry_lineage_trust_manifest(source_bytes)
+
+
+@pytest.mark.parametrize("providers", ("encoder-only", "encoder-and-dumps"))
+def test_trust_manifest_rejects_public_encoder_source_forgery(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """A replaceable JSONEncoder cannot invent canonical trust references."""
+    manifest = _rotation_manifest()
+    authentic = encode_ticket_admission_telemetry_lineage_trust_manifest(manifest)
+    assert authentic != b"{}\n"
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _mapping: object) -> str:
+            return "{}"
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers == "encoder-and-dumps":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: "{}")
+        with pytest.raises(
+            TicketAdmissionTelemetryLineageTrustManifestError,
+            match="trust manifest JSON serializer disagrees with source",
+        ):
+            _ = encode_ticket_admission_telemetry_lineage_trust_manifest(manifest)
 
 
 def test_trust_manifest_rejects_forged_json_writer(

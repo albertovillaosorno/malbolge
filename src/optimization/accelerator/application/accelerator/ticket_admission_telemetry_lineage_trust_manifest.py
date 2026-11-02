@@ -40,7 +40,6 @@ from dataclasses import dataclass
 from dataclasses import field
 from hashlib import sha256
 import json
-from json import dumps as _SOURCE_JSON_DUMPS
 import os
 from pathlib import Path
 from re import compile as compile_pattern
@@ -75,6 +74,7 @@ TICKET_ADMISSION_TELEMETRY_LINEAGE_TRUST_MANIFEST_ID: Final = (
     "ticket-admission-telemetry-lineage-trust-manifest-v1"
 )
 TICKET_ADMISSION_TELEMETRY_LINEAGE_TRUST_MANIFEST_SCHEMA_VERSION: Final = 1
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 TICKET_ADMISSION_TELEMETRY_LINEAGE_TRUST_MANIFEST_FINGERPRINT_PREFIX: Final = (
     "ticket-admission-telemetry-lineage-trust-manifest-v1:sha256:"
 )
@@ -199,13 +199,14 @@ def _canonical_json(mapping: dict[str, object]) -> str:
     try:
         # Capture source content before a mutable public writer can erase,
         # fabricate, or mutate a key-reference identity or validity window.
-        source_text = _SOURCE_JSON_DUMPS(
-            mapping,
+        # An import-bound json.dumps still resolves the replaceable public
+        # JSONEncoder class. Capture the source with the import-bound class.
+        source_text = _SOURCE_JSON_ENCODER(
             allow_nan=False,
             ensure_ascii=True,
             separators=(",", ":"),
             sort_keys=True,
-        )
+        ).encode(mapping)
         rendered = json.dumps(
             mapping,
             allow_nan=False,
