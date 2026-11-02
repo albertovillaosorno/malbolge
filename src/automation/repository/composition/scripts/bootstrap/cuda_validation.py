@@ -543,28 +543,43 @@ def _read_bounded_archive_member(stream: IO[bytes], size: int) -> bytes:
     return data
 
 
-def _tar_payload_size(archive: tarfile.TarFile, member: tarfile.TarInfo) -> int:
-    """Resolve hard-link chains to the real contained file's declared size."""
-    current = member
-    seen: set[str] = set()
-    while current.islnk():
-        if current.name in seen:
-            _fail("CUDA archive contains a cyclic hard link")
-        seen.add(current.name)
-        try:
-            current = archive.getmember(current.linkname)
-        except KeyError as error:
-            raise CudaProvisionError("CUDA archive hard link target missing") from error
-    if current.isreg():
-        return current.size
-    if member.islnk():
-        _fail("CUDA archive hard link does not target a regular member")
-    return 0
+def _tar_resolved_files(
+    members: tuple[tarfile.TarInfo, ...],
+) -> dict[tarfile.TarInfo, tarfile.TarInfo]:
+    """Resolve preceding TAR hardlinks once, with bounded expansion accounting.
+
+    Returns:
+        The regular source member for each regular file or hardlink.
+
+    """
+    previous: dict[str, tarfile.TarInfo] = {}
+    resolved: dict[tarfile.TarInfo, tarfile.TarInfo] = {}
+    sizes: list[int] = []
+    for member in members:
+        if member.islnk():
+            # TarFile resolves a hardlink against the last matching prior
+            # member, not against a later or globally last entry.
+            target = previous.get(os.path.normpath(member.linkname))
+            if target is None:
+                _fail("CUDA archive hard link target missing")
+            regular = resolved.get(target)
+            if regular is None:
+                _fail("CUDA archive hard link does not target a regular member")
+            resolved[member] = regular
+            sizes.append(regular.size)
+        elif member.isreg():
+            resolved[member] = member
+            sizes.append(member.size)
+        else:
+            sizes.append(0)
+        previous[os.path.normpath(member.name)] = member
+    _validate_cuda_archive_expansion(tuple(sizes))
+    return resolved
 
 
 def _tar_members(
     archive: tarfile.TarFile,
-) -> tuple[str, tuple[tarfile.TarInfo, ...]]:
+) -> tuple[str, tuple[tarfile.TarInfo, ...], dict[tarfile.TarInfo, tarfile.TarInfo]]:
     # TarFile.getmembers() reads the entire inventory before returning. Stop
     # while scanning instead so an oversized archive cannot exhaust memory
     # before the member-count admission check.
@@ -584,10 +599,7 @@ def _tar_members(
             target = _archive_member_path(member.linkname)
             if target.parts[0] != root_name:
                 _fail("CUDA archive hard link outside package root")
-    _validate_cuda_archive_expansion(
-        tuple(_tar_payload_size(archive, member) for member in members)
-    )
-    return root_name, members
+    return root_name, members, _tar_resolved_files(members)
 
 
 def _write_verified_bytes(path: Path, payload: bytes) -> None:
@@ -599,6 +611,7 @@ def _write_tar_member(
     archive: tarfile.TarFile,
     member: tarfile.TarInfo,
     staging: Path,
+    resolved: dict[tarfile.TarInfo, tarfile.TarInfo],
 ) -> None:
     destination = staging.joinpath(*_archive_member_path(member.name).parts)
     if member.isdir():
@@ -662,20 +675,21 @@ def _write_tar_member(
         return
     if not (member.isreg() or member.islnk()):
         _fail("CUDA archive contains an unsupported member type")
-    source = archive.extractfile(member)
+    source_member = resolved[member]
+    source = archive.extractfile(source_member)
     if source is None:
         _fail(f"CUDA archive member is not readable: {member.name}")
     with source:
         _write_verified_bytes(
             destination,
-            _read_bounded_archive_member(source, _tar_payload_size(archive, member)),
+            _read_bounded_archive_member(source, source_member.size),
         )
 
 
 def _extract_tar_archive(archive: tarfile.TarFile, staging: Path) -> Path:
-    root_name, members = _tar_members(archive)
+    root_name, members, resolved = _tar_members(archive)
     for member in members:
-        _write_tar_member(archive, member, staging)
+        _write_tar_member(archive, member, staging, resolved)
     extracted = staging / root_name
     if not extracted.is_dir():
         _fail("CUDA archive package root is not a directory")

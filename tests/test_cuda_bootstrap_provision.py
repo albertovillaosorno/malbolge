@@ -594,6 +594,72 @@ def test_tar_extraction_admits_contained_hardlink(tmp_path: Path) -> None:
     assert (tmp_path / "toolkit/lib64/alias.so").read_bytes() == NVRTC_BYTES
 
 
+def test_cuda_tar_hardlink_chain_does_not_lookup_each_member_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Archive-local chain resolution must not repeatedly search the TAR index."""
+    output = io.BytesIO()
+    chain_length = 200
+    with tarfile.open(fileobj=output, mode="w:xz") as archive:
+        original = tarfile.TarInfo(NVRTC_MEMBER)
+        original.size = len(NVRTC_BYTES)
+        archive.addfile(original, io.BytesIO(NVRTC_BYTES))
+        previous = NVRTC_MEMBER
+        for index in range(chain_length):
+            name = f"{ARCHIVE_ROOT}/lib64/alias-{index:03d}.so"
+            link = tarfile.TarInfo(name)
+            link.type = tarfile.LNKTYPE
+            link.linkname = previous
+            archive.addfile(link)
+            previous = name
+    payload = output.getvalue()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM,
+    ).packages[0]
+
+    def reject_repeated_lookup(_archive: tarfile.TarFile, _name: str) -> None:
+        raise AssertionError
+
+    monkeypatch.setattr(tarfile.TarFile, "getmember", reject_repeated_lookup)
+    cuda_validation.extract_cuda_package(
+        payload, package, tmp_path / "toolkit", staging=tmp_path / "stage",
+    )
+    if (tmp_path / "toolkit/lib64/alias-199.so").read_bytes() != NVRTC_BYTES:
+        pytest.fail("TAR hardlink did not preserve its source bytes")
+
+
+def test_cuda_tar_hardlink_copies_count_toward_expansion_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every copied link consumes its source bytes in the expansion budget."""
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:xz") as archive:
+        pairs = ((NVRTC_MEMBER, NVRTC_BYTES), (BUILTINS_MEMBER, BUILTINS_BYTES))
+        for name, data in pairs:
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            archive.addfile(member, io.BytesIO(data))
+        alias = tarfile.TarInfo(f"{ARCHIVE_ROOT}/lib64/alias.so")
+        alias.type = tarfile.LNKTYPE
+        alias.linkname = NVRTC_MEMBER
+        archive.addfile(alias)
+    payload = output.getvalue()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM,
+    ).packages[0]
+    monkeypatch.setattr(
+        cuda_validation,
+        "_MAX_CUDA_EXTRACTED_BYTES",
+        len(NVRTC_BYTES) + len(BUILTINS_BYTES),
+    )
+    with pytest.raises(cuda_validation.CudaProvisionError, match="expanded byte limit"):
+        cuda_validation.extract_cuda_package(
+            payload, package, tmp_path / "toolkit", staging=tmp_path / "stage",
+        )
+    if (tmp_path / "toolkit").exists():
+        pytest.fail("over-expanded TAR published a toolkit")
+
+
 @pytest.mark.parametrize(
     "member",
     ("C:/escaped/absolute", "D:drive-relative", "e:/root/escape"),
