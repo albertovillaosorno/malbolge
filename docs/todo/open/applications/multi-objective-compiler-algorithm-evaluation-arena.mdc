@@ -472,6 +472,24 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   Eight red-first native/foreign/fault tests include an explicit no-compiler-
   workspace assertion for equality-spoofing receipts. This checks dependency
   receipts, not host-C attestation.
+- The target-echo producer re-reads retained study JSON only after the
+  separate read-only source audit, and now requires its own SHA-256 result
+  to be exact native lowercase text corroborated by a second standard hash
+  entrypoint before matching the auditor's recorded source bytes. Five
+  red-first forged-digest and dependency-fault cases reject apparent agreement
+  on modified JSON; this is local byte integrity, not historical attestation.
+- Linked arena evidence now checks canonical SHA-256 receipts against a second
+  hash calculation both when admitting experiment-run manifests and challenge
+  bundles and when rechecking later manifest, raw CSV and bundle bytes.
+  Eight red-first cases reject forged manifest fingerprints, malformed hash
+  providers, and late source replacements hidden by a false digest. The
+  checks do not authenticate independently reported workload or measurement.
+- Target-echo producer and read-only auditor now stream each admitted tool
+  executable through two SHA-256 computations using the same size-prefixed
+  byte framing; only matching native canonical digest text is accepted as a
+  toolchain fingerprint. Ten red-first forged-provider and failure cases
+  reject unverified tool identities without changing valid digest values.
+  Neither verifier attests the operating system or historic executable bytes.
 - A synthetic all-checks integration fixture combines generated challenge
   provenance with versioned energy CSV, raw hashes, individual trial runs,
   exact budget agreement and matched accelerator labels. It proves admission
