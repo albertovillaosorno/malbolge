@@ -46,7 +46,7 @@ import tempfile
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Never, cast
 
 import pytest
 import tomllib
@@ -624,6 +624,81 @@ def test_retained_rss_extension_contains_toml_parser_capacity_failure(
     ) as error:
         audit._rss_digest({"experiment_manifest": RSS_RUN_RELATIVE}, version=1)
     assert type(error.value.__cause__) is source_error
+
+
+@pytest.mark.parametrize("case", ["forged_digest", "hidden_link", "bad_source"])
+def test_retained_rss_manifest_rejects_substituted_toml_source_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    """The run's linked receipt identity must originate in its TOML bytes."""
+    pinned = "a" * 64
+    manifest = (
+        f'[arena_rss]\nschema_version = 1\nsha256 = "{pinned}"\n'.encode()
+        if case != "bad_source"
+        else b"[arena_rss\nschema_version = 1"
+    )
+    monkeypatch.setattr(
+        audit.evidence, "read_bounded_regular", lambda *_a, **_kw: manifest
+    )
+    parsed = (
+        {"arena_rss": {"schema_version": 1, "sha256": "b" * 64}}
+        if case != "hidden_link"
+        else {}
+    )
+    monkeypatch.setattr(audit.tomllib, "loads", lambda *_a, **_kw: parsed)
+    version = None if case == "hidden_link" else 1
+
+    with pytest.raises(audit.TargetEchoAuditError, match="source TOML|invalid TOML"):
+        audit._rss_digest({"experiment_manifest": RSS_RUN_RELATIVE}, version=version)
+
+
+@pytest.mark.parametrize("fault_type", [RuntimeError, TypeError, OverflowError])
+def test_retained_rss_manifest_contains_foreign_decoder_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A public TOML decoder fault must remain typed without formatting it."""
+    pinned = "a" * 64
+    manifest = f'[arena_rss]\nschema_version = 1\nsha256 = "{pinned}"\n'.encode()
+    monkeypatch.setattr(
+        audit.evidence, "read_bounded_regular", lambda *_a, **_kw: manifest
+    )
+
+    def forbidden_format(_self: Exception) -> str:
+        raise AssertionError("foreign decoder exception formatter executed")
+
+    hostile_type = type("HostileTomlFault", (fault_type,), {"__str__": forbidden_format})
+    fault = hostile_type("untrusted TOML decoder failure")
+
+    def failing_decoder(_text: str) -> Never:
+        raise fault
+
+    monkeypatch.setattr(audit.tomllib, "loads", failing_decoder)
+    with pytest.raises(audit.TargetEchoAuditError, match="invalid TOML") as caught:
+        audit._rss_digest({"experiment_manifest": RSS_RUN_RELATIVE}, version=1)
+    assert caught.value.__cause__ is fault
+
+
+def test_retained_rss_manifest_accepts_equivalent_toml_decoder_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Decoder adapter identity is not itself an evidence mismatch."""
+    pinned = "a" * 64
+    manifest = f'[arena_rss]\nschema_version = 1\nsha256 = "{pinned}"\n'.encode()
+    monkeypatch.setattr(
+        audit.evidence, "read_bounded_regular", lambda *_a, **_kw: manifest
+    )
+    original = audit.tomllib.loads
+
+    def equivalent(text: str) -> dict[str, Any]:
+        return original(text)
+
+    monkeypatch.setattr(audit.tomllib, "loads", equivalent)
+    assert (
+        audit._rss_digest({"experiment_manifest": RSS_RUN_RELATIVE}, version=1)
+        == pinned
+    )
 
 
 @pytest.mark.skipif(

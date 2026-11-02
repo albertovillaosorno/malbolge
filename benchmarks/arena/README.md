@@ -658,6 +658,11 @@ Unexpected, linked, missing, oversized, malformed, and swapped receipts
 reject before publishing an audit. The auditor also rechecks the complete
 linked byte snapshot and receipt inventory after any requested VM replay.
 
+The RSS manifest-link reader independently reparses the retained TOML text
+with an import-time bound decoder. A substituted parser cannot invent an RSS
+hash, hide a link for an unmeasured run, or override invalid source syntax;
+these checks do not independently attest the original resource measurements.
+
 These are **retained producer-reported samples**, not preserved GNU time raw
 output, a signed witness or historical kernel attestations. A malicious
 producer could rewrite a receipt, its digest, the claimed peak, raw CSV and

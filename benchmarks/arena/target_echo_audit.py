@@ -61,6 +61,9 @@ from benchmarks.arena import (
 from benchmarks.arena import target_echo_reference as producer
 from scripts.validate import experiment_manifest
 
+# Keep the source decoder separate from the mutable public TOML entrypoint.
+_SOURCE_TOML_LOADS = tomllib.loads
+
 _ROOT = Path(__file__).resolve().parents[2]
 MAX_STUDY_BYTES = 16 * 1024 * 1024
 STUDY_LEAF = "study.json"
@@ -1411,10 +1414,11 @@ def _check_rss_receipt_inventory(
 
 
 def _admit_rss_manifest_table(table: object, *, version: int) -> str:
-    if not isinstance(table, dict) or set(table) != {
-        "schema_version",
-        "sha256",
-    }:
+    if (
+        type(table) is not dict
+        or any(type(key) is not str for key in table)
+        or set(table) != {"schema_version", "sha256"}
+    ):
         _fail("v6 target run is missing exact RSS receipt link")
     if type(table["schema_version"]) is not int or table["schema_version"] != version:
         _fail("target RSS receipt manifest schema_version differs from study")
@@ -1437,15 +1441,35 @@ def _rss_digest(
         limit=evidence.MAX_MANIFEST_BYTES,
     )
     try:
-        table = tomllib.loads(manifest.decode("utf-8")).get(RSS_HASH_TABLE)
-    except (ValueError, RecursionError, UnicodeError) as error:
+        text = manifest.decode("utf-8")
+        decoded = tomllib.loads(text)
+    except Exception as error:
+        # A substituted decoder can fail outside stdlib's declared types;
+        # never format its exception or let it escape the typed audit API.
         message = "target RSS run manifest is invalid TOML"
         raise TargetEchoAuditError(message) from error
+    if type(decoded) is not dict:
+        _fail("target RSS run manifest has invalid native TOML root")
+    table = decoded.get(RSS_HASH_TABLE)
+    # The retained source bytes, rather than a substituted decoder's native-
+    # looking receipt, must authorize both present and absent RSS hash links.
+    try:
+        source = _SOURCE_TOML_LOADS(text)
+    except Exception as error:
+        message = "target RSS run manifest source is invalid TOML"
+        raise TargetEchoAuditError(message) from error
+    source_table = source.get(RSS_HASH_TABLE)
     if version is None:
-        if table is not None:
-            _fail("unmeasured target run has unexpected RSS receipt link")
+        if table is not None or source_table is not None:
+            _fail(
+                "unmeasured target run has unexpected RSS receipt link in source TOML"
+            )
         return None
-    return _admit_rss_manifest_table(table, version=version)
+    digest = _admit_rss_manifest_table(table, version=version)
+    source_digest = _admit_rss_manifest_table(source_table, version=version)
+    if digest != source_digest:
+        _fail("target RSS receipt digest differs from source TOML")
+    return digest
 
 
 def _rss_record(data: bytes, *, raw: bool) -> dict[str, Any]:
