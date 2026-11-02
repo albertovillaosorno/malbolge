@@ -195,6 +195,8 @@ def _relative_path(value: str, context: str) -> str:
     if "\x00" in value:
         _fail(f"{context} must not contain NUL")
     path = Path(value)
+    if not path.parts:
+        _fail(f"{context} must name a path below repository root")
     windows_path = PureWindowsPath(value)
     native_relative = not path.is_absolute() and PARENT_SEGMENT not in path.parts
     windows_relative = (

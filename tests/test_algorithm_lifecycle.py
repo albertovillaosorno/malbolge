@@ -296,6 +296,52 @@ def test_lifecycle_paths_reject_toml_escaped_nul(field: str) -> None:
     _expect_failure(text, "must not contain NUL")
 
 
+@pytest.mark.parametrize("root_alias", (".", "./"))
+@pytest.mark.parametrize(
+    ("state", "field", "original", "additional"),
+    (
+        (validator.EXPERIMENTAL, "research_record", RESEARCH, ""),
+        (validator.EXPERIMENTAL, "experiment_manifest", EXPERIMENT, ""),
+        (validator.PROMOTION_CANDIDATE, "correctness", EVIDENCE, _promotion()),
+        (
+            validator.PROMOTION_CANDIDATE,
+            "reproducibility",
+            "docs/research/methodology/experiment-identity.md",
+            _promotion(),
+        ),
+        (
+            validator.PROMOTION_CANDIDATE,
+            "measured_benefit",
+            BENEFIT,
+            _promotion(),
+        ),
+        (
+            validator.REJECTED,
+            "evidence",
+            EVIDENCE,
+            _decision(negative_results=EVIDENCE),
+        ),
+        (
+            validator.REJECTED,
+            "negative_results",
+            EVIDENCE,
+            _decision(negative_results=EVIDENCE),
+        ),
+    ),
+)
+def test_lifecycle_evidence_paths_cannot_name_repository_root(
+    root_alias: str, state: str, field: str, original: str, additional: str
+) -> None:
+    """Neither identity nor evidence may name the repository directory."""
+    source = _base(state) + additional
+    existing = f'{field} = "{original}"'
+    assert existing in source
+    _expect_failure(
+        source.replace(existing, f'{field} = "{root_alias}"', 1),
+        "must name a path below repository root",
+    )
+
+
 def test_lifecycle_rejects_windows_drive_relative_path() -> None:
     """Drive-relative Windows syntax cannot redirect lifecycle evidence."""
     text = _base(validator.EXPERIMENTAL).replace(
