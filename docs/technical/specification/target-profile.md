@@ -67,6 +67,13 @@ file object bound to the opened descriptor, preventing forged same-length JSON
 from a substituted stream. These checks establish read-time identity, not
 immutability after validation. File loading rejects invalid UTF-8 as a typed
 profile-validation failure before JSON admission.
+
+The target-profile validation CLI admits only native argument lists and exact
+string tokens before evaluating help or optional profile paths. Successful help
+and validation responses require complete native write counts and flushed
+output. Incomplete stdout or failed flushes fail the command; failed diagnostic
+delivery does not turn an invalid profile into success.
+
 Decoder failures retain their original cause, and only native decoder errors
 contribute diagnostic text; foreign exception formatters are never invoked.
 Parser capacity failures, including integer-token digit limits, also produce a

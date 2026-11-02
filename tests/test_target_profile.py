@@ -1186,6 +1186,142 @@ def test_profile_foreign_stream_descriptor_rejected_before_stat(
         _ = validator.load_document(source)
 
 
+@pytest.mark.parametrize("supplied", ("list", "token"))
+def test_target_profile_cli_rejects_foreign_arguments_before_hooks(
+    supplied: str,
+) -> None:
+    """Malformed CLI containers and tokens cannot decide profile admission."""
+
+    class ForeignList(list[str]):  # ruff: ignore[subclass-builtin]
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign CLI argument truthiness executed")
+
+    class ForeignToken(str):  # ruff: ignore[subclass-builtin]
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign CLI token equality executed")
+
+    arguments = ForeignList(["--help"]) if supplied == "list" else [ForeignToken("--help")]
+    parser = cast("Callable[[list[str]], Path]", vars(validator)["_profile_argument"])
+    with pytest.raises(validator.ProfileValidationError, match="native CLI"):
+        _ = parser(arguments)
+
+
+@pytest.mark.parametrize("command", ("success", "help"))
+def test_target_profile_cli_rejects_short_success_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+) -> None:
+    """Partial success/help responses never certify canonical target profiles."""
+
+    class ShortOutput:
+        def write(self, message: str) -> int:
+            return len(message) - 1
+
+        def flush(self) -> None:
+            raise AssertionError("output flushed after short write")
+
+    argument = "--help" if command == "help" else str(PROFILE_PATH)
+    monkeypatch.setattr(sys, "argv", ["target_profile", argument])
+    monkeypatch.setattr(sys, "stdout", ShortOutput())
+    assert validator.main() == 1
+    assert "output" in capsys.readouterr().err
+
+
+class _UntrustedTargetWriteCount(int):
+    """A hostile write-count subclass whose equality cannot be invoked."""
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign target write-count equality invoked")
+
+
+@pytest.mark.parametrize("command", ("success", "help"))
+@pytest.mark.parametrize(
+    "receipt",
+    ("overlong", "bool", "foreign", "none", "write-error", "flush-error", "flush-receipt"),
+)
+def test_target_profile_cli_requires_complete_native_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    receipt: str,
+) -> None:
+    """Hostile output cannot certify a canonical profile or successful help."""
+    flushes: list[bool] = []
+
+    class BrokenOutput:
+        def write(self, message: str) -> int:
+            if receipt == "write-error":
+                raise OSError("injected target output failure")
+            values: dict[str, object] = {
+                "overlong": len(message) + 1,
+                "bool": True,
+                "foreign": _UntrustedTargetWriteCount(len(message)),
+                "none": None,
+            }
+            return cast("int", values.get(receipt, len(message)))
+
+        def flush(self) -> None:
+            flushes.append(True)
+            if receipt == "flush-error":
+                raise RuntimeError("injected target flush failure")
+            if receipt == "flush-receipt":
+                return cast("None", True)
+            return None
+
+    argument = "--help" if command == "help" else str(PROFILE_PATH)
+    monkeypatch.setattr(sys, "argv", ["target_profile", argument])
+    monkeypatch.setattr(sys, "stdout", BrokenOutput())
+    assert validator.main() == 1
+    assert "output" in capsys.readouterr().err
+    assert bool(flushes) == (receipt in ("flush-error", "flush-receipt"))
+
+
+@pytest.mark.parametrize("receipt", ("short", "write-error", "flush-error", "bad-flush"))
+def test_target_profile_cli_diagnostic_fault_preserves_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """A failed profile still fails with broken diagnostic stream delivery."""
+
+    class BrokenErrorOutput:
+        def write(self, message: str) -> int:
+            if receipt == "write-error":
+                raise OSError("injected target error output failure")
+            return len(message) - 1 if receipt == "short" else len(message)
+
+        def flush(self) -> None:
+            if receipt == "flush-error":
+                raise ValueError("injected target error flush failure")
+            if receipt == "bad-flush":
+                return cast("None", True)
+            return None
+
+    monkeypatch.setattr(sys, "argv", ["target_profile", "invalid", "extra"])
+    monkeypatch.setattr(sys, "stderr", BrokenErrorOutput())
+    assert validator.main() == 1
+
+
+def test_target_profile_cli_preserves_normal_success_and_help_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Native output preserves the original stable CLI success/help contract."""
+    monkeypatch.setattr(sys, "argv", ["target_profile"])
+    assert validator.main() == 0
+    result = capsys.readouterr()
+    assert result.out == f"target profile valid: {PROFILE_PATH}\n"
+    assert not result.err
+    monkeypatch.setattr(sys, "argv", ["target_profile", "--help"])
+    with pytest.raises(SystemExit) as exit_status:
+        _ = validator.main()
+    assert exit_status.value.code == 0
+    assert capsys.readouterr().out == "usage: target_profile.py [PROFILE.json]\n"
+
+
 @pytest.mark.parametrize("fault_type", [OSError, validator.ProfileValidationError])
 def test_profile_foreign_cli_exception_formatter_not_invoked(
     tmp_path: Path,

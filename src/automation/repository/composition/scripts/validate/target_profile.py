@@ -42,7 +42,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-from typing import Never, cast
+from typing import TYPE_CHECKING, Never, cast
+
+if TYPE_CHECKING:
+    from typing import TextIO
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -1409,11 +1412,44 @@ def validate_text(text: str) -> None:
     validate_document(loads_document(text))
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Require a complete native text write and successfully flushed record.
+
+    Returns:
+        Whether the record was fully delivered to the host text stream.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
+def _write_cli_success(message: str) -> None:
+    if not _write_cli_record(sys.stdout, message):
+        _fail("target-profile CLI output write or flush failed")
+
+
 def _profile_argument(arguments: list[str]) -> Path:
+    if type(arguments) is not list or any(
+        type(argument) is not str for argument in arguments
+    ):
+        _fail("target-profile CLI requires native CLI arguments")
     if not arguments:
         return DEFAULT_PROFILE
     if arguments in (["-h"], ["--help"]):
-        _ = sys.stdout.write("usage: target_profile.py [PROFILE.json]\n")
+        _write_cli_success("usage: target_profile.py [PROFILE.json]\n")
         raise SystemExit(0)
     if len(arguments) != 1:
         _fail("expected zero or one target-profile path")
@@ -1430,15 +1466,15 @@ def main() -> int:
     try:
         profile = _profile_argument(sys.argv[1:])
         validate_document(load_document(profile))
+        _write_cli_success(f"target profile valid: {profile}\n")
     except (OSError, ProfileValidationError) as error:
         detail = (
             str(error)
             if type(error) in (OSError, ProfileValidationError)
             else type(error).__name__
         )
-        _ = sys.stderr.write(f"error: {detail}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {detail}\n")
         return 1
-    _ = sys.stdout.write(f"target profile valid: {profile}\n")
     return 0
 
 
