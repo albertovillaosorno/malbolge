@@ -3280,6 +3280,34 @@ def test_llvm_ldd_accepts_parenthesized_library_directory(
     assert resolve(tmp_path / "clang", "libLLVM.so.22.1") == library
 
 
+@pytest.mark.parametrize(
+    "separator",
+    ("  => ", "\t=> ", " =>\t", " =>  "),
+)
+def test_llvm_ldd_rejects_noncanonical_duplicate_soname_lines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, separator: str
+) -> None:
+    """Whitespace differences cannot conceal a second mapping for one soname."""
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+    other = tmp_path / "another-library"
+    _ = other.write_bytes(b"foreign library")
+    soname = "libLLVM.so.22.1"
+    output = f"{soname} => {library} (0x1234)\n{soname}{separator}{other} (0x5678)"
+
+    def capture(args: list[str]) -> str:
+        assert args == ["ldd", str(tmp_path / "clang")]
+        return output
+
+    monkeypatch.setattr(llvm_validation, "_capture", capture)
+    assert (
+        llvm_validation._ldd_library(  # pyright: ignore[reportPrivateUsage]
+            tmp_path / "clang", soname
+        )
+        is None
+    )
+
+
 @pytest.mark.parametrize("second_line", ["same", "other", "missing"])
 def test_llvm_ldd_rejects_ambiguous_duplicate_soname(
     tmp_path: Path,

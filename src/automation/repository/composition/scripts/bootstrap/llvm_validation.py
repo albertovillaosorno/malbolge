@@ -1911,11 +1911,12 @@ def _ldd_library(executable: Path, soname: str) -> Path | None:
     ):
         return None
     prefix = f"{soname} => "
+    # Detect even noncanonical whitespace variants as duplicate mappings, then
+    # only admit the one exact GNU ldd prefix as an authority receipt.
+    mapping_prefix = re.compile(rf"^{re.escape(soname)}[ \t]*=>")
     stripped_lines = (line.strip() for line in output.splitlines())
-    matches = [line for line in stripped_lines if line.startswith(prefix)]
-    # Multiple records for a single soname are ambiguous, even if the first
-    # receipt resolves to a physical library.
-    if len(matches) != 1:
+    matches = [line for line in stripped_lines if mapping_prefix.match(line)]
+    if len(matches) != 1 or not matches[0].startswith(prefix):
         return None
     mapping = matches[0].removeprefix(prefix)
     # The address trailer is required; do not admit a truncated or diagnostic
