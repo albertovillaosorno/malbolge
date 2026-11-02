@@ -43,6 +43,7 @@ from pathlib import Path
 import subprocess as sp
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
+from typing import Self
 from typing import cast
 
 import pytest
@@ -1454,3 +1455,113 @@ def test_rpm_include_tree_accepts_physical_regular_members(tmp_path: Path) -> No
     header.parent.mkdir(parents=True)
     _ = header.write_bytes(HEADER_BYTES)
     llvm_development_validation._reject_include_symlinks(include_root)
+
+
+@pytest.mark.parametrize("receipt", [None, "rpm", bytearray(PACKAGE_BYTES)])
+def test_llvm_development_download_rejects_foreign_binary_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only exact native bytes can become an LLVM RPM package candidate."""
+
+    class Response:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, _kind: object, _error: object, _trace: object) -> bool:
+            return False
+
+        def read(self) -> object:
+            return receipt
+
+    monkeypatch.setattr(
+        llvm_development_validation.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: Response(),
+    )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="download receipt",
+    ):
+        llvm_development_validation._download_asset(
+            "https://example.invalid/pinned.rpm"
+        )
+
+
+@pytest.mark.parametrize("failure", [OSError, ValueError, TypeError, RuntimeError])
+def test_llvm_development_download_preserves_native_host_error(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[Exception],
+) -> None:
+    """Network and stream failures do not escape the typed provision boundary."""
+    fault = failure("injected URL host fault")
+
+    def fail_download(*_args: object, **_kwargs: object) -> object:
+        raise fault
+
+    monkeypatch.setattr(
+        llvm_development_validation.urllib.request, "urlopen", fail_download
+    )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="cannot download pinned LLVM development package",
+    ) as observed:
+        llvm_development_validation._download_asset(
+            "https://example.invalid/pinned.rpm"
+        )
+    assert observed.value.__cause__ is fault
+
+
+def test_llvm_development_download_does_not_format_foreign_host_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign urllib exception text must not execute arbitrary formatters."""
+
+    class ForeignHostError(OSError):
+        def __str__(self) -> str:
+            raise AssertionError("untrusted download exception was formatted")
+
+    fault = ForeignHostError("untrusted")
+
+    def fail_download(*_args: object, **_kwargs: object) -> object:
+        raise fault
+
+    monkeypatch.setattr(
+        llvm_development_validation.urllib.request, "urlopen", fail_download
+    )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="ForeignHostError",
+    ) as observed:
+        llvm_development_validation._download_asset(
+            "https://example.invalid/pinned.rpm"
+        )
+    assert observed.value.__cause__ is fault
+
+
+def test_llvm_development_download_accepts_native_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ordinary byte response preserves its exact payload for SHA admission."""
+
+    class Response:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, _kind: object, _error: object, _trace: object) -> bool:
+            return False
+
+        def read(self) -> bytes:
+            return PACKAGE_BYTES
+
+    monkeypatch.setattr(
+        llvm_development_validation.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: Response(),
+    )
+    assert (
+        llvm_development_validation._download_asset(
+            "https://example.invalid/pinned.rpm"
+        )
+        == PACKAGE_BYTES
+    )

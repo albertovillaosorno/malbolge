@@ -290,9 +290,19 @@ def _download_asset(url: str) -> bytes:
             ),
         )
         with response:
-            return response.read()
-    except (OSError, urllib.error.URLError) as error:
-        _fail(f"cannot download pinned LLVM development package: {error}")
+            data = response.read()
+    except (OSError, ValueError, TypeError, RuntimeError, urllib.error.URLError) as error:
+        detail = (
+            str(error)
+            if type(error) in (OSError, ValueError, TypeError, RuntimeError)
+            else type(error).__name__
+        )
+        raise LlvmDevelopmentProvisionError(
+            f"cannot download pinned LLVM development package: {detail}"
+        ) from error
+    if type(data) is not bytes:
+        _fail("invalid LLVM development package download receipt")
+    return data
 
 
 def _marker_bytes(identity: tidy_toolchain.ToolchainIdentity) -> bytes:
