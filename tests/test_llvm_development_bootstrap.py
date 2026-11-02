@@ -894,6 +894,79 @@ def test_rpm_overlay_rejects_false_successful_copy_receipt(
             )
 
 
+@pytest.mark.parametrize("existing", [False, True])
+def test_rpm_overlay_uses_pinned_native_header_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    existing: bool,
+) -> None:
+    """Late FIFO or symlink replacement cannot reach a blocking Path.open."""
+    incoming = tmp_path / "incoming.h"
+    _ = incoming.write_bytes(HEADER_BYTES)
+    destination = tmp_path / "included.h"
+    if existing:
+        _ = destination.write_bytes(HEADER_BYTES)
+    native_open = Path.open
+
+    def forbid_pathname_read(
+        path: Path, *args: object, **kwargs: object
+    ) -> BinaryIO:
+        if path in (incoming, destination):
+            pytest.fail("header overlay used a replaceable pathname stream")
+        return cast("Callable[..., BinaryIO]", native_open)(path, *args, **kwargs)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "open", forbid_pathname_read)
+        result = llvm_development_validation._copy_header_no_replace(
+            str(incoming), str(destination)
+        )
+    assert result == str(destination)
+    assert destination.read_bytes() == HEADER_BYTES
+
+
+@pytest.mark.skipif(os.name != POSIX_OS_NAME, reason="requires native FIFO flags")
+@pytest.mark.parametrize("existing", [False, True])
+def test_rpm_overlay_rejects_late_fifo_before_native_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    existing: bool,
+) -> None:
+    """Path substitution after lstat never blocks or reads a pipe."""
+    incoming = tmp_path / "incoming.h"
+    _ = incoming.write_bytes(HEADER_BYTES)
+    destination = tmp_path / "included.h"
+    if existing:
+        _ = destination.write_bytes(HEADER_BYTES)
+    victim = destination if existing else incoming
+    native_open = os.open
+    opened: list[int] = []
+
+    def swap_to_fifo(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+    ) -> int:
+        if Path(path) == victim:
+            if not opened:
+                victim.unlink()
+                os.mkfifo(victim)
+            opened.append(flags)
+        return native_open(path, flags)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", swap_to_fifo)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="physical header|descriptor identity",
+        ):
+            _ = llvm_development_validation._copy_header_no_replace(
+                str(incoming), str(destination)
+            )
+    assert opened
+    assert all(flag & os.O_NONBLOCK for flag in opened)
+    assert all(flag & os.O_NOFOLLOW for flag in opened)
+    assert victim.is_fifo()
+
+
 def test_rpm_overlay_rejects_late_source_header_drift(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

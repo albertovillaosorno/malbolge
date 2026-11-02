@@ -146,7 +146,9 @@ or skipped subtree visits cannot certify an otherwise incomplete inventory.
 Digest reads pin a native nonblocking, no-follow descriptor and verify its
 inode, extent, and mutation
 metadata against the physical path, rejecting foreign pathname streams and
-late descriptor substitution. A copy that reports success
+late descriptor substitution. Overlay header comparisons and copies also read
+bounded bytes through the native nonblocking, no-follow descriptor rather than
+opening replaceable pathname streams. A copy that reports success
 but omits, mutates, or adds a member fails before the completion marker is
 published; existing identical headers remain untouched. Immediately before
 final publication, the complete physical header inventory, byte digests, and

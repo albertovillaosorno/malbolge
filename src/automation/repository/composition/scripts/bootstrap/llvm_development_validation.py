@@ -570,18 +570,30 @@ def _extract_cpio_headers(payload: bytes, package_staging: Path) -> None:
         _close_physical_parent(parent, "CPIO")
 
 
+def _read_physical_header_bytes(path: Path) -> bytes:
+    """Read bounded exact header bytes from a pinned nonblocking descriptor."""
+    try:
+        admitted = path.lstat()
+        if not _native_regular_status(admitted):
+            _fail("LLVM RPM overlay source requires a physical regular header")
+        if admitted.st_nlink != 1:
+            _fail("LLVM RPM overlay source header has an external hardlink")
+        if not 0 <= admitted.st_size <= MAX_RPM_DOWNLOAD_BYTES:
+            _fail("LLVM RPM header exceeds bounded native extraction size")
+        chunks: list[bytes] = []
+        _ = _physical_header_digest(path, admitted, chunks=chunks)
+    except LlvmDevelopmentProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            "LLVM RPM overlay physical header read failed"
+        ) from error
+    return b"".join(chunks)
+
+
 def _same_header_bytes(source: Path, destination: Path) -> bool:
-    """Compare current header bytes without cached size/mtime equivalence."""
-    with source.open("rb") as incoming, destination.open("rb") as existing:
-        while True:
-            candidate = incoming.read(1024 * 1024)
-            retained = existing.read(1024 * 1024)
-            if type(candidate) is not bytes or type(retained) is not bytes:
-                _fail("LLVM RPM overlay comparison requires native bytes")
-            if candidate != retained:
-                return False
-            if not candidate:
-                return True
+    """Compare byte-exact physically pinned source and destination headers."""
+    return _read_physical_header_bytes(source) == _read_physical_header_bytes(destination)
 
 
 def _copy_header_no_replace(source: str, destination: str) -> str:
@@ -596,15 +608,14 @@ def _copy_header_no_replace(source: str, destination: str) -> str:
         if not _direct_regular(target) or not _same_header_bytes(Path(source), target):
             _fail("LLVM RPM overlay has conflicting header bytes")
     else:
-        with Path(source).open("rb") as incoming:
-            content = incoming.read(MAX_RPM_DOWNLOAD_BYTES + 1)
-        if type(content) is not bytes or len(content) > MAX_RPM_DOWNLOAD_BYTES:
-            _fail("LLVM RPM header exceeds bounded native extraction size")
+        content = _read_physical_header_bytes(Path(source))
         _write_verified_staging_bytes(target, content)
     return destination
 
 
-def _physical_header_digest(path: Path, admitted: os.stat_result) -> bytes:
+def _physical_header_digest(
+    path: Path, admitted: os.stat_result, *, chunks: list[bytes] | None = None
+) -> bytes:
     """Hash one pinned physical header without opening a late FIFO or symlink."""
     flags = (
         os.O_RDONLY
@@ -647,6 +658,8 @@ def _physical_header_digest(path: Path, admitted: os.stat_result) -> bytes:
             if read_bytes > admitted.st_size:
                 _fail("LLVM RPM header receipt content grew during read")
             digest.update(chunk)
+            if chunks is not None:
+                chunks.append(chunk)
         after = os.fstat(descriptor)
         named = path.lstat()
         if (
