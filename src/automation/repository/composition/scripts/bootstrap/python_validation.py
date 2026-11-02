@@ -1744,7 +1744,9 @@ def _read_open_jig_binary(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(source, flags)
-    with _open_owned_binary_stream(descriptor) as stream:
+    stream = _open_owned_binary_stream(descriptor)
+    read_completed = False
+    with stream:
         observed = os.fstat(stream.fileno())
         if not stat.S_ISREG(observed.st_mode):
             _fail("Jig alias source must be a regular file")
@@ -1760,6 +1762,9 @@ def _read_open_jig_binary(
             or _jig_file_identity(os.fstat(stream.fileno())) != expected
         ):
             _fail("Jig alias source changed during read")
+        read_completed = True
+    if not read_completed:
+        _fail("Jig alias source read was suppressed")
     return data
 
 

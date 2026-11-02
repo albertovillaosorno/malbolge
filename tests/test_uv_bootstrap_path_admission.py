@@ -1583,6 +1583,93 @@ def test_uv_manifest_uses_owned_stream_not_substituted_enter(
     assert python_validation._read_uv_manifest_bytes(manifest) == BINARY
 
 
+@pytest.mark.parametrize("failure", ["read", "post-read-identity"])
+def test_jig_source_rejects_suppressed_authority_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """Jig must not accept partial or stale source bytes after a hidden fault."""
+    source = tmp_path / "ruff"
+    _ = source.write_bytes(BINARY)
+    native_open = python_validation._open_owned_binary_stream
+
+    class SuppressingStream:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream = stream
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            self.stream.close()
+            return True
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, size: int) -> bytes:
+            if failure == "read":
+                raise OSError("cannot read jig source")
+            content = self.stream.read(size)
+            _ = source.write_bytes(b"X" * len(content))
+            return content
+
+    def injected_stream(descriptor: int) -> BinaryIO:
+        return cast(
+            "BinaryIO", cast("object", SuppressingStream(native_open(descriptor)))
+        )
+
+    monkeypatch.setattr(
+        python_validation, "_open_owned_binary_stream", injected_stream
+    )
+    with pytest.raises(python_validation.ProvisionError):
+        _ = python_validation._read_jig_binary_source(source)
+
+
+def test_jig_source_uses_owned_stream_not_substituted_enter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign stream returned at entry cannot substitute tool bytes."""
+    source = tmp_path / "ruff"
+    _ = source.write_bytes(BINARY)
+    native_open = python_validation._open_owned_binary_stream
+
+    class ForeignStream:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor = descriptor
+
+        def fileno(self) -> int:
+            return self.descriptor
+
+        def read(self, _size: int) -> bytes:
+            return b"X" * len(BINARY)
+
+    class RedirectingStream:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream = stream
+
+        def __enter__(self) -> ForeignStream:
+            return ForeignStream(self.stream.fileno())
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, size: int) -> bytes:
+            return self.stream.read(size)
+
+    def injected_stream(descriptor: int) -> BinaryIO:
+        return cast(
+            "BinaryIO", cast("object", RedirectingStream(native_open(descriptor)))
+        )
+
+    monkeypatch.setattr(
+        python_validation, "_open_owned_binary_stream", injected_stream
+    )
+    assert python_validation._read_jig_binary_source(source) == BINARY
+
+
 @pytest.mark.parametrize("authority", ["uv-manifest", "jig-binary"])
 def test_binary_authority_rejects_forged_fdopen_content(
     tmp_path: Path,
