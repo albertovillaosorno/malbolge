@@ -1247,6 +1247,46 @@ def test_windows_aliases_preserve_existing_executable_bytes(
     assert llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
 
 
+@pytest.mark.parametrize(
+    "mutation", ("remove-alias", "rewrite-alias", "rewrite-marker")
+)
+def test_windows_aliases_reject_mutation_during_marker_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """A successful marker callback must not revoke admitted PE aliases."""
+    root = _windows_tool_bundle(tmp_path)
+    original_marker = llvm_validation._write_import_marker  # pyright: ignore[reportPrivateUsage]
+    changed = False
+
+    def mutate_after_marker(
+        path: Path,
+        platform_id: str,
+        *,
+        expected_parent_inode: tuple[int, int] | None = None,
+    ) -> None:
+        nonlocal changed
+        original_marker(path, platform_id, expected_parent_inode=expected_parent_inode)
+        changed = True
+        if mutation == "remove-alias":
+            (root / "jig-bin/clang.bin").unlink()
+        elif mutation == "rewrite-alias":
+            target = root / "jig-bin/clang.bin"
+            original = target.read_bytes()
+            _ = target.write_bytes(b"!" + original[1:])
+        else:
+            marker = root / llvm_validation.LLVM_IMPORT_MARKER
+            original = marker.read_bytes()
+            _ = marker.write_bytes(b"!" + original[1:])
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation, "_write_import_marker", mutate_after_marker)
+        with pytest.raises(llvm_validation.LlvmImportError, match="Windows LLVM"):
+            _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert changed
+
+
 @pytest.mark.parametrize("mutation", ("wrong-size", "same-size", "external-link"))
 def test_windows_inspection_rejects_corrupted_fallback_alias(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
