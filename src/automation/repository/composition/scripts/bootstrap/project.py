@@ -279,6 +279,14 @@ def _reject_authority_parent_redirects(path: Path) -> None:
     for parent in path.parents:
         if parent.is_symlink() or parent.is_junction():
             _fail("bootstrap authority parent path must not redirect")
+        try:
+            physical = parent.lstat()
+        except FileNotFoundError:
+            continue
+        if type(physical) is not os.stat_result:
+            _fail("bootstrap authority parent requires native file status")
+        if not stat.S_ISDIR(physical.st_mode):
+            _fail("bootstrap authority parent path must not redirect")
 
 
 def _authority_present(path: Path) -> bool:

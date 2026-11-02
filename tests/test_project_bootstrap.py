@@ -1492,6 +1492,73 @@ def test_bootstrap_cuda_authority_rejects_linked_parent(
         _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
 
 
+@pytest.mark.parametrize("authority", ["rust", "cuda"])
+@pytest.mark.parametrize("masked", [False, 0])
+def test_bootstrap_authority_rejects_masked_linked_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authority: str,
+    masked: object,
+) -> None:
+    """A linked directory is not native authority despite a masked predicate."""
+    if authority == "rust":
+        source = _write_rust_manifest(tmp_path)
+        inspect = lambda: project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+    else:
+        source = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+        inspect = lambda: project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+    parent = source.parent
+    relocated = tmp_path / "real-authority-directory"
+    _ = parent.replace(relocated)
+    _ = parent.symlink_to(relocated, target_is_directory=True)
+    native = Path.is_symlink
+
+    def masked_status(path: Path) -> bool:
+        if path == parent:
+            return cast("bool", masked)
+        return native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_symlink", masked_status)
+        with pytest.raises(project.InitializationError, match="redirect"):
+            _ = inspect()
+
+
+@pytest.mark.parametrize("authority", ["rust", "cuda"])
+def test_bootstrap_authority_rejects_foreign_parent_lstat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authority: str,
+) -> None:
+    """Foreign parent metadata cannot certify physical authority ancestry."""
+    if authority == "rust":
+        source = _write_rust_manifest(tmp_path)
+        inspect = lambda: project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+    else:
+        source = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+        inspect = lambda: project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+    parent = source.parent
+    native = Path.lstat
+
+    class ForeignStat:
+        def __init__(self, status: os.stat_result) -> None:
+            self.status: os.stat_result = status
+
+        def __getattr__(self, name: str) -> object:
+            return cast("object", getattr(self.status, name))
+
+    def fake_lstat(path: Path) -> os.stat_result:
+        status = native(path)
+        if path == parent:
+            return cast("os.stat_result", cast("object", ForeignStat(status)))
+        return status
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", fake_lstat)
+        with pytest.raises(project.InitializationError, match="native|redirect"):
+            _ = inspect()
+
+
 def test_bootstrap_rust_authority_rejects_linked_leaf(tmp_path: Path) -> None:
     """Rust toolchain version cannot be borrowed through an alias."""
     original = _write_rust_manifest(tmp_path)
