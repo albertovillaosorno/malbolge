@@ -86,5 +86,7 @@ run Jig without inheriting Windows executable paths or ambient PATH authority.
 - Subsequent uv bootstrap manifest hardening independently corroborates
   changed public JSON loader receipts with source-native values before using
   pinned release metadata. Red-first forged release, source-syntax, and foreign
-  nested-key cases now reject while equivalent adapters succeed; all 150 uv
-  path-admission tests pass.
+  nested-key cases now reject while equivalent adapters succeed. Three
+  further red-first tests reject a decoder that restores its public provider
+  during its own call and prevent equivalent adapters from mutating nested
+  pinned uv metadata after validation; 153 uv path-admission tests pass.

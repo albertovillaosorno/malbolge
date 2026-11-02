@@ -62,8 +62,11 @@ independently parses the exact snapshot text with the original import-bound
 loader and compares every exact native key, value, and container. A forged
 release version, URL, or digest, malformed original syntax, or foreign nested
 key cannot certify an installed or downloadable tool. Source-equivalent
-adapters continue to work; this protects against loader substitution, not
-arbitrary modification of Python internals.
+adapters continue to work; the provider is captured before invocation so
+mid-call restoration cannot conceal forged values, and equivalent adapters
+return only the independently decoded source-owned tree, not retained mutable
+aliases. This protects against loader substitution, not arbitrary modification
+of Python internals.
 Manifest descriptor reads also require exact immutable native `bytes` before
 size or JSON decoding, so mutable stream proxies cannot supply trusted records.
 Bootstrap authority reads now retain in-body rejections across substituted

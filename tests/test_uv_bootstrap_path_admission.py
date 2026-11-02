@@ -1633,6 +1633,69 @@ def test_uv_manifest_json_provider_accepts_equivalent_adapter(
     assert python_validation.uv_artifact(PLATFORM_ID).version == "0.12.20"
 
 
+@pytest.mark.parametrize("entrypoint", ["document", "artifact"])
+def test_uv_manifest_decoder_rejects_self_restoring_forgery(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """An injected decoder cannot restore itself mid-call to hide forged data."""
+    original_loads = json.loads
+    forged = cast(
+        "dict[str, object]",
+        original_loads(python_validation.UV_MANIFEST.read_text(encoding="utf-8")),
+    )
+    forged["version"] = "0.99.99"
+    with monkeypatch.context() as context:
+
+        def restore_and_forge(_text: str, *, object_pairs_hook: object) -> object:
+            del object_pairs_hook
+            context.setattr(json, "loads", original_loads)
+            return forged
+
+        context.setattr(json, "loads", restore_and_forge)
+        with pytest.raises(
+            python_validation.ProvisionError,
+            match="uv JSON decoder provider differs from source",
+        ):
+            if entrypoint == "document":
+                _ = python_validation._uv_manifest_document(python_validation.UV_MANIFEST)
+            else:
+                _ = python_validation.uv_artifact(PLATFORM_ID)
+
+
+def test_uv_manifest_equivalent_adapter_cannot_mutate_source_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Adapter-owned aliases cannot rewrite admitted nested manifest fields."""
+    original_loads = json.loads
+    returned: list[object] = []
+
+    def equivalent(text: str, *, object_pairs_hook: object) -> object:
+        parsed = cast(
+            "object",
+            original_loads(
+                text,
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]",
+                    object_pairs_hook,
+                ),
+            ),
+        )
+        returned.append(parsed)
+        return parsed
+
+    monkeypatch.setattr(json, "loads", equivalent)
+    admitted = python_validation._uv_manifest_document(python_validation.UV_MANIFEST)
+    assert admitted == returned[0]
+    assert admitted is not returned[0]
+    external = cast("dict[str, object]", returned[0])
+    external_artifacts = cast("dict[str, object]", external["artifacts"])
+    external_target = cast("dict[str, object]", external_artifacts[PLATFORM_ID])
+    external_target["asset"] = "foreign-uv.zip"
+    admitted_artifacts = cast("dict[str, object]", admitted["artifacts"])
+    admitted_target = cast("dict[str, object]", admitted_artifacts[PLATFORM_ID])
+    assert admitted_target["asset"] != "foreign-uv.zip"
+
+
 def test_uv_manifest_json_provider_cannot_hide_invalid_syntax(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

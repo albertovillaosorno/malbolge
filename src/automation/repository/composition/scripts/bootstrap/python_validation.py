@@ -357,13 +357,16 @@ def _uv_same_native_json(actual: object, expected: object) -> bool:
 def _uv_manifest_document(manifest_path: Path) -> dict[str, object]:
     try:
         source_text = _read_uv_manifest_bytes(manifest_path).decode("utf-8")
+        # Bind the provider before invocation: an injected loader can restore
+        # the public module entry mid-call and conceal fabricated evidence.
+        decoder = json.loads
         parsed = cast(
             "object",
-            json.loads(source_text, object_pairs_hook=_reject_duplicate_pairs),
+            decoder(source_text, object_pairs_hook=_reject_duplicate_pairs),
         )
         # A substituted public JSON loader must not change the version,
         # download URL, or SHA-256 identity proved by the original bytes.
-        if json.loads is not _NATIVE_JSON_LOADS:
+        if decoder is not _NATIVE_JSON_LOADS:
             original = cast(
                 "object",
                 _NATIVE_JSON_LOADS(
@@ -372,6 +375,8 @@ def _uv_manifest_document(manifest_path: Path) -> dict[str, object]:
             )
             if not _uv_same_native_json(parsed, original):
                 _fail("uv JSON decoder provider differs from source")
+            # Retain independently decoded source data, never a mutable alias.
+            parsed = original
     except ProvisionError:
         raise
     except (
