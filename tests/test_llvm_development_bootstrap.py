@@ -89,6 +89,21 @@ def _identity(tmp_path: Path) -> tidy_toolchain.ToolchainIdentity:
     )
 
 
+@pytest.mark.parametrize("name", [r"nested\clang-devel.rpm", r"nested\..\clang-devel.rpm"])
+def test_development_rpm_filename_rejects_windows_path_components(
+    tmp_path: Path,
+    name: str,
+) -> None:
+    """Linux asset URLs still require one portable basename, not backslash paths."""
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="one RPM filename",
+    ):
+        _ = llvm_development_validation._asset_url(
+            _identity(tmp_path), replace(_asset(), name=name)
+        )
+
+
 def test_package_verification_rejects_size_and_sha_drift() -> None:
     """RPM bytes must satisfy both exact tracked size and SHA-256 identity."""
     asset = _asset()

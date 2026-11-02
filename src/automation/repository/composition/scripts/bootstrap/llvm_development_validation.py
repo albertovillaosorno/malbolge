@@ -399,6 +399,7 @@ def _asset_url(
     windows = PureWindowsPath(asset.name)
     if (
         native.name != asset.name
+        or windows.name != asset.name
         or bool(windows.drive or windows.root)
         or not asset.name.endswith(RPM_SUFFIX)
     ):
