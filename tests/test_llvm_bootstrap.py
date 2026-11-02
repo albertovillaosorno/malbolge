@@ -37,8 +37,9 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Self, cast, final, override
+from typing import Self, cast, final, override
 
 import pytest
 from scripts.bootstrap import llvm_validation
@@ -720,6 +721,58 @@ def test_linux_wrapper_rejects_newly_hardlinked_descriptor(
             wrapper, "#!/bin/sh\n"
         )
     assert outside.read_bytes() == b""
+
+
+@pytest.mark.parametrize("forgery", ("empty", "incorrect"))
+def test_linux_wrapper_rejects_forged_complete_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """A complete write receipt cannot authorize physically different bytes."""
+    wrapper = tmp_path / "clang.bin"
+    content = "#!/bin/sh\nexec true\n"
+    native_write = os.write
+
+    def forged_write(descriptor: int, data: bytes) -> int:
+        if forgery == "incorrect":
+            _ = native_write(descriptor, b"x" * len(data))
+        return len(data)
+
+    monkeypatch.setattr(os, "write", forged_write)
+    with pytest.raises(llvm_validation.LlvmImportError, match="content"):
+        llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+            wrapper, content
+        )
+    assert wrapper.read_bytes() != content.encode()
+
+
+def test_linux_wrapper_rejects_leaf_swapped_after_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced wrapper path cannot be published after a valid write."""
+    wrapper = tmp_path / "clang.bin"
+    parked = tmp_path / "parked-wrapper"
+    outside = tmp_path / "outside-wrapper"
+    sentinel = b"external executable bytes"
+    _ = outside.write_bytes(sentinel)
+    native_write = os.write
+
+    def swapped_write(descriptor: int, data: bytes) -> int:
+        count = native_write(descriptor, data)
+        wrapper.rename(parked)
+        _ = wrapper.symlink_to(outside)
+        return count
+
+    monkeypatch.setattr(os, "write", swapped_write)
+    with pytest.raises(llvm_validation.LlvmImportError, match="identity"):
+        llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+            wrapper, "#!/bin/sh\n"
+        )
+    assert parked.read_bytes() == b"#!/bin/sh\n"
+    assert wrapper.is_symlink()
+    assert outside.read_bytes() == sentinel
 
 
 @pytest.mark.parametrize("target_kind", ["file", "directory"])

@@ -342,12 +342,49 @@ def _owned_exclusive_descriptor(path: Path, descriptor: int) -> bool:
         return False
 
 
+def _verify_linux_alias_bytes(path: Path, descriptor: int, content: bytes) -> None:
+    """Recheck the owned wrapper inode and its exact on-disk bytes."""
+    opened = os.fstat(descriptor)
+    named = path.lstat()
+    if (
+        not _physical_file(path)
+        or type(opened) is not os.stat_result
+        or type(named) is not os.stat_result
+        or not S_ISREG(opened.st_mode)
+        or _marker_identity(opened) != _marker_identity(named)
+        or opened.st_nlink != 1
+    ):
+        _fail("LLVM wrapper identity changed during publication")
+    if opened.st_size != len(content):
+        _fail("LLVM wrapper content length does not match the intended script")
+    admitted = _marker_identity(opened)
+    offset = os.lseek(descriptor, 0, os.SEEK_SET)
+    if type(offset) is not int or offset != 0:
+        _fail("LLVM wrapper content read offset is not native")
+    observed = bytearray()
+    while len(observed) <= len(content):
+        chunk = os.read(descriptor, len(content) + 1 - len(observed))
+        if type(chunk) is not bytes:
+            _fail("LLVM wrapper content read receipt is not native")
+        if not chunk:
+            break
+        observed.extend(chunk)
+    if observed != content:
+        _fail("LLVM wrapper content does not match the intended script")
+    if (
+        not _physical_file(path)
+        or _marker_identity(os.fstat(descriptor)) != admitted
+        or _marker_identity(path.lstat()) != admitted
+    ):
+        _fail("LLVM wrapper identity changed during content verification")
+
+
 def _write_linux_alias(path: Path, text: str) -> None:
     """Publish a complete executable wrapper through an exclusive descriptor."""
     if not _physical_directory(path.parent):
         _fail("LLVM wrapper parent must be a physical directory")
     content = text.encode("utf-8")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags, 0o600)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -363,8 +400,10 @@ def _write_linux_alias(path: Path, text: str) -> None:
             written = os.write(descriptor, content)
             if type(written) is not int or written != len(content):
                 _fail(f"LLVM wrapper write count mismatch: {path.name}")
+            _verify_linux_alias_bytes(path, descriptor, content)
             # A path chmod would follow an alias swapped in after publication.
             os.fchmod(descriptor, 0o755)
+            _verify_linux_alias_bytes(path, descriptor, content)
         finally:
             os.close(descriptor)
     except LlvmImportError:
