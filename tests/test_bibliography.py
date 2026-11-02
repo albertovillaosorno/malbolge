@@ -165,6 +165,26 @@ def test_source_record_rejects_repeated_required_heading() -> None:
     _expect_failure(text, "duplicate required heading: ## Sources")
 
 
+def test_source_record_rejects_impossible_provenance_date() -> None:
+    """A date-shaped token must represent an actual calendar day."""
+    text = _c_record()
+    for value in ("2026-07-26", "2026-08-08", "2026-08-09"):
+        text = text.replace(value, "2026-99-99")
+    _expect_failure(text, "lacks a dated retrieval/review provenance marker")
+
+
+def test_source_record_requires_standalone_unresolved_heading() -> None:
+    """An inline uncertainty mention is not a Markdown evidence heading."""
+    text = _c_record().replace("### Unresolved", "Prose mentions ### Unresolved", 1)
+    _expect_failure(text, "lacks explicit unresolved/uncertainty evidence")
+
+
+def test_source_record_rejects_duplicate_unresolved_heading() -> None:
+    """Uncertainty evidence must have one unambiguous section boundary."""
+    text = _c_record().replace("### Unresolved", "### Unresolved\n### Unresolved", 1)
+    _expect_failure(text, "lacks explicit unresolved/uncertainty evidence")
+
+
 def test_source_record_requires_nonempty_sources() -> None:
     """Verified records require at least one source entry."""
     text = _c_record().replace(

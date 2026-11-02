@@ -39,6 +39,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING, Never
@@ -570,11 +571,21 @@ def _validate_placeholders(text: str, label: str) -> None:
             _fail(message)
 
 
+def _has_calendar_date(text: str) -> bool:
+    for match in DATE_PATTERN.finditer(text):
+        try:
+            _ = date.fromisoformat(match.group())
+        except ValueError:
+            continue
+        return True
+    return False
+
+
 def _validate_dated_uncertainty(text: str, label: str) -> None:
-    if DATE_PATTERN.search(text) is None:
+    if not _has_calendar_date(text):
         _fail(f"{label} lacks a dated retrieval/review provenance marker")
     evidence = _section(text, "## Evidence")
-    if UNRESOLVED_HEADING not in evidence:
+    if evidence.splitlines().count(UNRESOLVED_HEADING) != 1:
         _fail(f"{label} lacks explicit unresolved/uncertainty evidence")
 
 
