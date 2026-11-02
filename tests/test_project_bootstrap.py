@@ -4615,7 +4615,10 @@ def test_optional_host_tool_paths_treat_native_stat_failures_as_missing(
         )
     assert result is None
 
-@pytest.mark.parametrize("receipt", [None, "", "   ", 7, True, "foreign-string"])
+
+@pytest.mark.parametrize(
+    "receipt", [None, "", "   ", 7, True, "foreign-string"]
+)
 def test_jig_observation_rejects_foreign_path_receipts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4623,10 +4626,13 @@ def test_jig_observation_rejects_foreign_path_receipts(
 ) -> None:
     """An optional Jig lookup must supply a native nonblank path."""
 
+    @final
     class ForeignString(str):
-        @override
+        __slots__ = ()
+
         def __bool__(self) -> Never:
-            raise AssertionError("foreign Jig path truthiness executed")
+            message = "foreign Jig path truthiness executed"
+            raise AssertionError(message)
 
     observed: object = (
         ForeignString(str(tmp_path / "jig"))

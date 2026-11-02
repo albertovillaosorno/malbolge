@@ -950,10 +950,13 @@ def _write_verified_rust_adapter_script(path: Path, script: str) -> None:
     complete_count = type(written) is int and written == len(script)
     if complete_count:
         try:
-            if _read_authority_bytes(path) == script.encode("ascii"):
-                return
-        except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
-            pass
+            verified = _read_authority_bytes(path)
+        except (
+            InitializationError, OSError, ValueError, TypeError, RuntimeError
+        ):
+            verified = None
+        if verified == script.encode("ascii"):
+            return
     message = (
         "Rust adapter script content mismatch"
         if complete_count
@@ -1016,10 +1019,13 @@ def _write_verified_rust_adapter_marker(marker: Path) -> None:
     )
     if complete_count:
         try:
-            if _read_authority_bytes(marker) == RUST_LINUX_ADAPTER_CONTENT:
-                return
-        except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
-            pass
+            verified = _read_authority_bytes(marker)
+        except (
+            InitializationError, OSError, ValueError, TypeError, RuntimeError
+        ):
+            verified = None
+        if verified == RUST_LINUX_ADAPTER_CONTENT:
+            return
     message = (
         "Rust adapter marker content mismatch"
         if complete_count
