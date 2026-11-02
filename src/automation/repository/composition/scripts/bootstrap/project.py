@@ -845,6 +845,7 @@ def _verified_import_file_digest(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor: int | None = None
+    closed_receipt: os.stat_result | None = None
 
     def matches(observed: object) -> bool:
         return (
@@ -870,11 +871,19 @@ def _verified_import_file_digest(
                 _fail("import physical file digest is incomplete")
             digest.update(chunk)
             remaining -= len(chunk)
-        if os.read(descriptor, 1) != b"":
+        final_byte = os.read(descriptor, 1)
+        if type(final_byte) is not bytes or final_byte != b"":
             _fail("import physical file digest changed size")
         named = os.stat(source, dir_fd=source_fd, follow_symlinks=False)
-        if not matches(os.fstat(descriptor)) or not matches(named):
+        opened = os.fstat(descriptor)
+        if (
+            not matches(opened)
+            or not matches(named)
+            or opened.st_ctime_ns != named.st_ctime_ns
+            or opened.st_nlink != named.st_nlink
+        ):
             _fail("import physical file changed during digest")
+        closed_receipt = opened
         return digest.digest()
     except InitializationError:
         raise
@@ -888,6 +897,21 @@ def _verified_import_file_digest(
                 raise InitializationError(
                     "import physical file digest close failed"
                 ) from error
+            if closed_receipt is not None:
+                try:
+                    after_close = os.stat(
+                        source, dir_fd=source_fd, follow_symlinks=False
+                    )
+                except (OSError, ValueError, TypeError, RuntimeError) as error:
+                    raise InitializationError(
+                        "import physical file post-close status failed"
+                    ) from error
+                if (
+                    not matches(after_close)
+                    or after_close.st_ctime_ns != closed_receipt.st_ctime_ns
+                    or after_close.st_nlink != closed_receipt.st_nlink
+                ):
+                    _fail("import physical file changed after descriptor close")
 
 
 def _link_or_copy(source: str, destination: str) -> str:

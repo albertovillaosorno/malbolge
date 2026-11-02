@@ -5250,6 +5250,60 @@ def test_git_import_link_rejects_same_inode_mutation_with_restored_mtime(
     assert source.read_bytes() == b"X" * len(GIT_BYTES)
 
 
+@pytest.mark.skipif(
+    os.name != POSIX_NAME, reason="requires pinned POSIX file descriptors"
+)
+@pytest.mark.parametrize("pathway", ["portable", "posix"])
+def test_git_import_link_rejects_digest_close_rewrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pathway: str,
+) -> None:
+    """Close of the last source hash handle cannot authorize changed bytes."""
+    source = tmp_path / "host-git"
+    _ = source.write_bytes(GIT_BYTES)
+    target = tmp_path / "git.bin"
+    source_status = source.stat()
+    native_close = os.close
+    source_closes = 0
+    mutated = False
+
+    def mutate_after_second_source_close(fd: int) -> None:
+        nonlocal source_closes, mutated
+        current = os.fstat(fd)
+        is_source = (current.st_dev, current.st_ino) == (
+            source_status.st_dev,
+            source_status.st_ino,
+        )
+        native_close(fd)
+        if is_source:
+            source_closes += 1
+        if is_source and source_closes == 2:
+            before = source.stat()
+            _ = source.write_bytes(b"X" * len(GIT_BYTES))
+            os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+            mutated = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "close", mutate_after_second_source_close)
+        with pytest.raises(project.InitializationError, match="changed|digest|link"):
+            if pathway == "portable":
+                _ = project._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+                    str(source), str(target)
+                )
+            else:
+                parent_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    project._copy_import_file_at_parent(  # pyright: ignore[reportPrivateUsage]
+                        source, target, parent_fd
+                    )
+                finally:
+                    native_close(parent_fd)
+    assert mutated
+    assert source_closes == 2
+    assert source.read_bytes() == b"X" * len(GIT_BYTES)
+
+
 @pytest.mark.skipif(os.name != POSIX_NAME, reason="requires POSIX write descriptors")
 @pytest.mark.parametrize("pathway", ["portable", "posix"])
 def test_git_import_copy_rejects_corrupted_complete_output(
