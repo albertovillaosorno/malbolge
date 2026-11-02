@@ -122,11 +122,14 @@ original cause as a typed provisioning error without formatting foreign host
 exception subclasses. Staged RPM and completion-marker writes additionally
 require a previously unused, unlinked physical file path with nonredirected
 parent directories. Existing regular files, symlinks, hardlinks, and nonnative
-host status cannot be overwritten through the staging writer; preflights do
-not make concurrent pathname replacement atomic. Publication also admits
-each required extracted header only through the physical regular-file check
-used for readiness: linked header leaves, redirected ancestors, missing files,
-and forged `is_file` results cannot complete an extracted development kit.
+host status cannot be overwritten through the staging writer. RPM and marker
+bytes use an exclusive no-follow create, a native regular-file descriptor
+matched to the new leaf, and an exact native write count. An inserted
+symlink or hardlink leaf cannot redirect a write after preflight. Publication
+also admits each required extracted header through the physical regular-file
+check used for readiness: linked header leaves, redirected ancestors,
+missing files, and forged `is_file` results cannot complete an extracted
+development kit.
 CPIO extraction also admits only a physical `/usr/include` root and native
 symlink/junction decisions for each enumerated include member. Linked include
 roots, junctions, and false-like foreign path status cannot authorize copying

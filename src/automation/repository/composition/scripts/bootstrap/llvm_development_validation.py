@@ -35,23 +35,18 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import dataclass
 import hashlib
 import json
 import os
-from pathlib import Path
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
 import shutil
-from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-from typing import Final
-from typing import Never
-from typing import TYPE_CHECKING
-from typing import cast
 import urllib.error
 import urllib.request
+from contextlib import suppress
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from stat import S_ISREG
+from typing import TYPE_CHECKING, Final, Never, cast
 
 from scripts.validate import tidy_toolchain
 
@@ -206,7 +201,9 @@ def _reject_include_symlinks(include_root: Path) -> None:
 
 
 def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
-    """Require an unused physical leaf before writing exact staging bytes."""
+    """Create a new physical staging file exclusively and write exact bytes."""
+    if type(content) is not bytes:
+        _fail(f"LLVM development staging requires native bytes: {path.name}")
     _require_physical_directories(path.parent, "staging")
     linked = _preflight_path_status(path, path.is_symlink, "staging")
     junction = _preflight_path_status(path, path.is_junction, "staging")
@@ -214,10 +211,48 @@ def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
         _fail(f"LLVM development staging file must not redirect: {path.name}")
     if _preflight_path_status(path, path.exists, "staging"):
         _fail(f"LLVM development staging file already exists: {path.name}")
-    # Path admission alone cannot make concurrent pathname replacement atomic.
-    written = path.write_bytes(content)
-    if type(written) is not int or written != len(content):
-        _fail(f"LLVM development staging write count mismatch: {path.name}")
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            f"LLVM development staging file creation failed: {path.name}"
+        ) from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail(f"LLVM development staging returned invalid descriptor: {path.name}")
+    try:
+        try:
+            opened = os.fstat(descriptor)
+            physical = path.lstat()
+            if (
+                not _native_regular_status(opened)
+                or not _native_regular_status(physical)
+                or (opened.st_dev, opened.st_ino)
+                != (physical.st_dev, physical.st_ino)
+            ):
+                _fail(f"LLVM development staging descriptor mismatch: {path.name}")
+            written = os.write(descriptor, content)
+        except LlvmDevelopmentProvisionError:
+            raise
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                f"LLVM development staging file write failed: {path.name}"
+            ) from error
+        if type(written) is not int or written != len(content):
+            _fail(f"LLVM development staging write count mismatch: {path.name}")
+    finally:
+        try:
+            os.close(descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                f"LLVM development staging file close failed: {path.name}"
+            ) from error
 
 
 def _extract_rpm_headers(

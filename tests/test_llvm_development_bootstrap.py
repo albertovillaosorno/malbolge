@@ -34,17 +34,15 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import replace
 import hashlib
 import os
 import shutil
-from pathlib import Path
 import subprocess as sp
+from contextlib import suppress
+from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
-from typing import Self
-from typing import cast
+from typing import TYPE_CHECKING, Self, cast
 
 import pytest
 from scripts.bootstrap import llvm_development_validation
@@ -688,15 +686,13 @@ def test_provision_rejects_incomplete_marker_write(
 ) -> None:
     """No development tree publishes when marker write reports bad count."""
     identity = _identity(tmp_path)
-    real_write = Path.write_bytes
+    real_write = os.write
 
-    def wrong_write(path: Path, data: bytes) -> int:
-        if path.name == llvm_development_validation.LLVM_DEVELOPMENT_MARKER:
-            _ = real_write(path, data[:-1])
-            return _bad_write_count(invalid_count, len(data))
-        return real_write(path, data)
+    def wrong_write(descriptor: int, data: bytes) -> int:
+        _ = real_write(descriptor, data[:-1])
+        return _bad_write_count(invalid_count, len(data))
 
-    monkeypatch.setattr(Path, "write_bytes", wrong_write)
+    monkeypatch.setattr(os, "write", wrong_write)
     with pytest.raises(
         llvm_development_validation.LlvmDevelopmentProvisionError,
         match="write count",
@@ -720,18 +716,16 @@ def test_rpm_extraction_rejects_incomplete_staging_write(
 ) -> None:
     """Never execute a staged RPM with an invalid host write count."""
     identity = _identity(tmp_path)
-    real_write = Path.write_bytes
+    real_write = os.write
 
-    def wrong_write(path: Path, data: bytes) -> int:
-        if path.name == PACKAGE_NAME:
-            _ = real_write(path, data[:-1])
-            return _bad_write_count(invalid_count, len(data))
-        return real_write(path, data)
+    def wrong_write(descriptor: int, data: bytes) -> int:
+        _ = real_write(descriptor, data[:-1])
+        return _bad_write_count(invalid_count, len(data))
 
     def unexpected_cpio(path: Path) -> bytes:
         pytest.fail(f"unverified RPM reached CPIO: {path.name}")
 
-    monkeypatch.setattr(Path, "write_bytes", wrong_write)
+    monkeypatch.setattr(os, "write", wrong_write)
     monkeypatch.setattr(
         llvm_development_validation, "_cpio_payload", unexpected_cpio
     )
@@ -1218,6 +1212,156 @@ def test_development_marker_staging_rejects_foreign_file_alias(
     assert sentinel.read_bytes() == original
     assert list(external.iterdir()) == [sentinel]
     assert not identity.development_root.exists()
+
+
+@pytest.mark.parametrize("alias_kind", ["symlink", "hardlink"])
+def test_development_staging_rejects_leaf_swap_after_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias_kind: str
+) -> None:
+    """An existing target cannot replace an empty leaf just before create."""
+    target = tmp_path / "stage.rpm"
+    sentinel = tmp_path / "external.rpm"
+    original = b"protected RPM outside staging"
+    _ = sentinel.write_bytes(original)
+    native_exists = Path.exists
+    swapped = False
+
+    def swap_during_exists(path: Path) -> bool:
+        nonlocal swapped
+        if path == target and not swapped:
+            swapped = True
+            try:
+                if alias_kind == "symlink":
+                    _ = path.symlink_to(sentinel)
+                else:
+                    os.link(sentinel, path)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"file aliases unavailable: {error}")
+            return False
+        return native_exists(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "exists", swap_during_exists)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staging",
+        ):
+            llvm_development_validation._write_verified_staging_bytes(
+                target, PACKAGE_BYTES
+            )
+    assert swapped
+    assert sentinel.read_bytes() == original
+
+
+@pytest.mark.parametrize("invalid_descriptor", [None, False, 0.5, -1])
+def test_staging_writer_rejects_non_native_open_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_descriptor: object,
+) -> None:
+    """A forged descriptor never supplies authority to overwrite a file."""
+    path = tmp_path / "staged.rpm"
+    native_open = os.open
+
+    def false_open(candidate: Path, flags: int, mode: int = 0o777) -> int:
+        if candidate == path:
+            return cast("int", invalid_descriptor)
+        return native_open(candidate, flags, mode)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", false_open)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="invalid descriptor",
+        ):
+            llvm_development_validation._write_verified_staging_bytes(
+                path, PACKAGE_BYTES
+            )
+    assert not path.exists()
+
+
+def test_staging_writer_rejects_forged_regular_fd_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A duck-typed fstat cannot authorize a newly created RPM file."""
+    path = tmp_path / "staged.rpm"
+    opened: list[int] = []
+    native_open = os.open
+    native_fstat = os.fstat
+
+    def capture_open(candidate: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = native_open(candidate, flags, mode)
+        if candidate == path:
+            opened.append(descriptor)
+        return descriptor
+
+    def fake_fstat(descriptor: int) -> object:
+        if descriptor in opened:
+            return SimpleNamespace(st_mode=0o100600, st_dev=1, st_ino=1)
+        return native_fstat(descriptor)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", capture_open)
+        isolated.setattr(os, "fstat", fake_fstat)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="descriptor mismatch",
+        ):
+            llvm_development_validation._write_verified_staging_bytes(
+                path, PACKAGE_BYTES
+            )
+    assert opened
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+    assert path.read_bytes() == b""
+
+
+def test_staging_writer_retains_host_open_fault_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An OS open failure is a typed provision error with the same cause."""
+    path = tmp_path / "staged.rpm"
+    fault = OSError("cannot create local RPM")
+
+    def fault_open(*_args: object, **_kwargs: object) -> int:
+        raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", fault_open)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="creation failed",
+        ) as observed:
+            llvm_development_validation._write_verified_staging_bytes(
+                path, PACKAGE_BYTES
+            )
+    assert observed.value.__cause__ is fault
+    assert not path.exists()
+
+
+def test_staging_writer_retains_host_close_fault_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A descriptor close failure cannot report successful publication."""
+    path = tmp_path / "staged.rpm"
+    native_close = os.close
+    fault = OSError("cannot close local RPM")
+
+    def fault_close(descriptor: int) -> None:
+        native_close(descriptor)
+        raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "close", fault_close)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="close failed",
+        ) as observed:
+            llvm_development_validation._write_verified_staging_bytes(
+                path, PACKAGE_BYTES
+            )
+    assert observed.value.__cause__ is fault
+    assert path.read_bytes() == PACKAGE_BYTES
 
 
 def test_development_staging_write_requires_unused_leaf(tmp_path: Path) -> None:
