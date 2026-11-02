@@ -82,11 +82,17 @@ short member read or staging write failure. The archive objects themselves
 also bypass replaceable enter and exit hooks, so authenticated package bytes
 cannot be redirected to another archive after digest verification, and a
 failed member inventory cannot be accepted through context suppression.
-These safeguards have 21 injected red-first regressions (eight member-stream,
-five network-response, eight archive-object cases), plus a passing CUDA
-provisioning suite of 399 cases, project bootstrap 730, and LLVM bootstrap 465.
-They defend these adapter substitution boundaries; they do not attest native
-filesystem drivers or make concurrent external mutations atomic.
+TAR archive inventories must reach native EOF and match their opened archive
+member cache by identity and order. ZIP inventories must match the opened ZIP
+filelist and be an exact native list within the member-count cap before
+materialization. A substituted iterator cannot hide, reorder, or multiply
+verified archive entries, or demand unbounded inventory allocation.
+These safeguards have 27 injected red-first regressions (eight member-stream,
+five network-response, eight archive-object, six inventory-adapter cases),
+plus a passing CUDA provisioning suite of 405 cases, project bootstrap 730,
+and LLVM bootstrap 465. They defend these adapter substitution boundaries;
+they do not attest native filesystem drivers or make concurrent external
+mutations atomic.
 Tar archive hardlink targets must remain under their package root; unresolved
 hardlinks become typed extraction errors instead of escaping as host key errors.
 Direct package extraction also preflights the toolkit overlay destination and
