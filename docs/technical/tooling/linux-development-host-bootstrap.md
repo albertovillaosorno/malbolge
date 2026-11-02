@@ -83,6 +83,10 @@ host status and filesystem query faults cannot admit installed binaries or
 staging aliases. Newly created stage descriptors likewise require native,
 empty, singly linked regular-file `fstat` receipts before writing. Untrusted
 staging descriptor status closes the opened descriptor instead of publishing.
+POSIX provisioning, staging, and publication parent descriptor close failures
+remain typed with the original host error as cause. A staging parent close
+failure also closes its just-opened stage descriptor and removes only an
+identity-verified private empty stage rather than leaking a half-install.
 Stage ownership rechecks likewise reject foreign stat proxies.
 Existing staging paths are not truncated, and executables that appear during
 provisioning are not overwritten. Both existing and newly installed executables

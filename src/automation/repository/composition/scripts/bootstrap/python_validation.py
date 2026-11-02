@@ -697,6 +697,15 @@ def _open_uv_physical_parent(
                 os.close(descriptor)
 
 
+def _close_uv_parent_descriptor(descriptor: int, *, context: str) -> None:
+    """Keep descriptor-close faults within the typed uv trust boundary."""
+    try:
+        os.close(descriptor)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = f"uv {context} parent descriptor close failed"
+        raise ProvisionError(message) from error
+
+
 def _uv_stage_is_owned(
     temporary: Path,
     identity: tuple[int, int],
@@ -752,6 +761,7 @@ def _create_uv_stage(temporary: Path) -> tuple[int, tuple[int, int]]:
         | getattr(os, "O_BINARY", 0)
     )
     parent_descriptor = _open_uv_physical_parent(temporary)
+    descriptor: int | None = None
     try:
         if parent_descriptor is None:
             descriptor = os.open(temporary, flags, 0o600)
@@ -764,7 +774,31 @@ def _create_uv_stage(temporary: Path) -> tuple[int, tuple[int, int]]:
         raise ProvisionError(message) from error
     finally:
         if parent_descriptor is not None:
-            os.close(parent_descriptor)
+            try:
+                _close_uv_parent_descriptor(parent_descriptor, context="staging")
+            except ProvisionError:
+                # Exclusive creation may already have opened a new stage.
+                # Do not leak that handle or leave an owned half-stage behind.
+                if type(descriptor) is int and descriptor >= 0:
+                    try:
+                        opened = os.fstat(descriptor)
+                        if (
+                            type(opened) is os.stat_result
+                            and type(opened.st_dev) is int
+                            and type(opened.st_ino) is int
+                            and _uv_stage_is_owned(
+                                temporary,
+                                (opened.st_dev, opened.st_ino),
+                                expected_size=0,
+                            )
+                        ):
+                            temporary.unlink()
+                    except (OSError, ValueError, TypeError, RuntimeError):
+                        pass
+                    finally:
+                        with suppress(OSError):
+                            os.close(descriptor)
+                raise
     if type(descriptor) is not int or descriptor < 0:
         _fail("uv staging descriptor must be native")
     try:
@@ -1049,7 +1083,7 @@ def _publish_uv_stage(
             raise ProvisionError(message) from error
     finally:
         if parent_descriptor is not None:
-            os.close(parent_descriptor)
+            _close_uv_parent_descriptor(parent_descriptor, context="publication")
 
 
 def _provision_uv_binary(
@@ -1064,7 +1098,7 @@ def _provision_uv_binary(
         parent_descriptor = _open_uv_physical_parent(executable, create=True)
         if parent_descriptor is None:
             _fail("uv provisioning parent requires native descriptor")
-        os.close(parent_descriptor)
+        _close_uv_parent_descriptor(parent_descriptor, context="provisioning")
     else:
         executable.parent.mkdir(parents=True, exist_ok=True)
     _ = _admit_uv_provision_path(

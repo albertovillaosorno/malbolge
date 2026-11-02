@@ -31,14 +31,12 @@ from __future__ import annotations
 import io
 import json
 import os
-from pathlib import Path
 import stat
 import tarfile
 import warnings
 import zipfile
-from typing import BinaryIO
-from typing import Self
-from typing import cast
+from pathlib import Path
+from typing import BinaryIO, Self, cast
 
 import pytest
 from scripts.bootstrap import python_validation
@@ -1075,7 +1073,9 @@ def test_binary_authority_rejects_forged_fdopen_content(
     try:
         with monkeypatch.context() as isolated:
             isolated.setattr(os, "fdopen", forged_fdopen)
-            with pytest.raises(python_validation.ProvisionError, match="native.*stream"):
+            with pytest.raises(
+                python_validation.ProvisionError, match="native.*stream"
+            ):
                 if authority == "uv-manifest":
                     _ = python_validation.uv_artifact("linux-x86_64", path)
                 else:
@@ -1171,3 +1171,157 @@ def test_uv_manifest_rejects_windows_reserved_path_segments(
     _ = manifest.write_text(json.dumps(document))
     with pytest.raises(python_validation.ProvisionError, match="path segment"):
         _ = python_validation.uv_artifact(PLATFORM_ID, manifest)
+
+
+class _UnprintableUvCloseError(OSError):
+    """A host failure whose human-readable representation must not be read."""
+
+    def __str__(self) -> str:
+        raise AssertionError("untrusted close failure was formatted")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX dirfd support")
+def test_uv_types_provision_parent_close_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed parent close before staging must remain a typed host fault."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    stage = executable.with_name(f"{executable.name}.tmp")
+    native_close = os.close
+    fault = _UnprintableUvCloseError("unprintable parent close")
+    triggered = False
+
+    def fail_parent_close(descriptor: int) -> None:
+        nonlocal triggered
+        status = os.fstat(descriptor)
+        if (
+            not triggered
+            and executable.parent.exists()
+            and not stage.exists()
+            and (status.st_dev, status.st_ino)
+            == (executable.parent.stat().st_dev, executable.parent.stat().st_ino)
+        ):
+            triggered = True
+            native_close(descriptor)
+            raise fault
+        native_close(descriptor)
+
+    monkeypatch.setattr(os, "close", fail_parent_close)
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv provisioning parent.*close"
+    ) as captured:
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert captured.value.__cause__ is fault
+    assert triggered
+    assert not stage.exists()
+    assert not executable.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX dirfd support")
+def test_uv_types_staging_parent_close_fault_without_leaking_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failure after exclusive stage creation must close and discard that stage."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    stage = executable.with_name(f"{executable.name}.tmp")
+    native_close = os.close
+    native_open = os.open
+    opened: list[int] = []
+    fault = _UnprintableUvCloseError("unprintable staging close")
+    triggered = False
+
+    def track_stage(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if dir_fd is not None:
+            descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        else:
+            descriptor = native_open(path, flags, mode)
+        if os.fspath(path) in (stage.name, os.fspath(stage)) and flags & os.O_EXCL:
+            opened.append(descriptor)
+        return descriptor
+
+    def fail_parent_close(descriptor: int) -> None:
+        nonlocal triggered
+        status = os.fstat(descriptor)
+        if (
+            not triggered
+            and stage.exists()
+            and (status.st_dev, status.st_ino)
+            == (stage.parent.stat().st_dev, stage.parent.stat().st_ino)
+        ):
+            triggered = True
+            native_close(descriptor)
+            raise fault
+        native_close(descriptor)
+
+    monkeypatch.setattr(os, "open", track_stage)
+    monkeypatch.setattr(os, "close", fail_parent_close)
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv staging parent.*close"
+    ) as captured:
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert captured.value.__cause__ is fault
+    assert triggered
+    assert len(opened) == 1
+    for descriptor in opened:
+        with pytest.raises(OSError):
+            _ = os.fstat(descriptor)
+    assert not stage.exists()
+    assert not executable.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX dirfd support")
+def test_uv_types_publication_parent_close_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The final parent close cannot turn publication into an untyped crash."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    stage = executable.with_name(f"{executable.name}.tmp")
+    native_close = os.close
+    fault = _UnprintableUvCloseError("unprintable publication close")
+    triggered = False
+
+    def fail_parent_close(descriptor: int) -> None:
+        nonlocal triggered
+        status = os.fstat(descriptor)
+        if (
+            not triggered
+            and executable.exists()
+            and not stage.exists()
+            and (status.st_dev, status.st_ino)
+            == (executable.parent.stat().st_dev, executable.parent.stat().st_ino)
+        ):
+            triggered = True
+            native_close(descriptor)
+            raise fault
+        native_close(descriptor)
+
+    monkeypatch.setattr(os, "close", fail_parent_close)
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv publication parent.*close"
+    ) as captured:
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert captured.value.__cause__ is fault
+    assert triggered
+    assert executable.read_bytes() == BINARY
+    assert not stage.exists()
