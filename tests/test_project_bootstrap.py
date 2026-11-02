@@ -3285,6 +3285,62 @@ def test_git_import_preserves_runtime_tree_and_neutral_alias(
     assert project.git_import_complete(destination)
 
 
+@pytest.mark.parametrize("component", ["git", "rust"])
+def test_toolchain_import_rejects_linked_parent_before_copy(
+    tmp_path: Path, component: str
+) -> None:
+    """Import must not write a foreign tree before marker admission fails."""
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    parent = tmp_path / ".dependencies" / component
+    parent.parent.mkdir()
+    try:
+        parent.symlink_to(foreign, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+    source = tmp_path / "native"
+    source.mkdir()
+    destination = parent / GIT_VERSION
+    with pytest.raises(project.InitializationError, match="parent path"):
+        if component == "git":
+            executable = source / "git"
+            _ = executable.write_bytes(GIT_BYTES)
+            _ = project.import_git_installation(
+                executable, source, destination, windows=False
+            )
+        else:
+            source_bin = source / "bin"
+            source_bin.mkdir()
+            _ = (source_bin / "cargo").write_bytes(RUST_CARGO_BYTES)
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert list(foreign.iterdir()) == []
+
+
+def test_git_import_rejects_occupied_root_with_masked_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A false high-level exists result cannot admit an unowned import root."""
+    destination = tmp_path / "imported-git"
+    destination.mkdir()
+    source = tmp_path / "native-git"
+    _ = source.write_bytes(GIT_BYTES)
+    helpers = tmp_path / "helpers"
+    helpers.mkdir()
+    native_exists = Path.exists
+
+    def masked_exists(path: Path) -> bool:
+        return False if path == destination else native_exists(path)
+
+    monkeypatch.setattr(Path, "exists", masked_exists)
+    with pytest.raises(project.InitializationError, match="destination already exists"):
+        _ = project.import_git_installation(
+            source, helpers, destination, windows=False
+        )
+    assert list(destination.iterdir()) == []
+
+
 @pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)
 @pytest.mark.parametrize(
     "mutation", [MARKER_SHORT, MARKER_SAME_LENGTH, MARKER_LONG]

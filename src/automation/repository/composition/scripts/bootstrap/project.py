@@ -816,6 +816,18 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
                     pass
 
 
+def _admit_import_destination(destination: Path, component: str) -> None:
+    """Require a physically absent import root under nonredirected parents."""
+    _reject_authority_parent_redirects(destination)
+    try:
+        physical = destination.lstat()
+    except FileNotFoundError:
+        return
+    if type(physical) is not os.stat_result:
+        _fail(f"{component} import destination requires native file status")
+    _fail(f"{component} import destination already exists: {destination}")
+
+
 def import_git_installation(
     git: Path,
     exec_path: Path,
@@ -829,8 +841,7 @@ def import_git_installation(
         Repository-local platform-neutral Git executable alias.
 
     """
-    if destination.exists():
-        _fail(f"Git import destination already exists: {destination}")
+    _admit_import_destination(destination, "Git")
     native_name = "git.exe" if windows else "git"
     native = destination / "bin" / native_name
     native.parent.mkdir(parents=True)
@@ -1139,8 +1150,7 @@ def import_rust_toolchain(
         Alias paths inside the imported native toolchain `bin` directory.
 
     """
-    if destination.exists():
-        _fail(f"Rust import destination already exists: {destination}")
+    _admit_import_destination(destination, "Rust")
     _ = shutil.copytree(
         source,
         destination,
