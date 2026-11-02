@@ -417,6 +417,10 @@ def _tar_members(
         _ = _archive_member_path(member.name)
         if member.isdev() or member.isfifo():
             _fail("CUDA archive contains an unsupported special member")
+        if member.islnk():
+            target = _archive_member_path(member.linkname)
+            if target.parts[0] != root_name:
+                _fail("CUDA archive hard link outside package root")
     return root_name, members
 
 
@@ -464,6 +468,8 @@ def _safe_tar_extract(data: bytes, staging: Path) -> Path:
     try:
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as archive:
             return _extract_tar_archive(archive, staging)
+    except KeyError as error:
+        raise CudaProvisionError("cannot resolve CUDA tar archive hard link") from error
     except (OSError, tarfile.TarError) as error:
         _fail(f"cannot extract CUDA tar archive: {error}")
 

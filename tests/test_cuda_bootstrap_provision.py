@@ -404,6 +404,69 @@ def test_tar_extraction_rejects_parent_escape(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("link_target", "error_match"),
+    [
+        (f"{ARCHIVE_ROOT}/lib64/not-present", "hard link"),
+        (f"{ARCHIVE_ROOT}/../../escape", "archive member escapes"),
+        ("another-root/lib64/file.so", "hard link outside"),
+        ("/tmp/outside.so", "archive member escapes"),
+        ("D:/outside.so", "archive member escapes"),
+        (f"{ARCHIVE_ROOT}\\..\\escape", "must use forward slashes"),
+    ],
+)
+def test_tar_extraction_rejects_invalid_hardlink_target(
+    tmp_path: Path,
+    link_target: str,
+    error_match: str,
+) -> None:
+    """Hardlink references need contained target names and resolvable content."""
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:xz") as archive:
+        member = tarfile.TarInfo(f"{ARCHIVE_ROOT}/lib64/alias.so")
+        member.type = tarfile.LNKTYPE
+        member.linkname = link_target
+        archive.addfile(member)
+        data = tarfile.TarInfo(BUILTINS_MEMBER)
+        data.size = len(BUILTINS_BYTES)
+        archive.addfile(data, io.BytesIO(BUILTINS_BYTES))
+    payload = output.getvalue()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM
+    ).packages[0]
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match=error_match):
+        cuda_validation.extract_cuda_package(
+            payload,
+            package,
+            tmp_path / "toolkit",
+            staging=tmp_path / "staging",
+        )
+    assert not (tmp_path / "toolkit").exists()
+
+
+def test_tar_extraction_admits_contained_hardlink(tmp_path: Path) -> None:
+    """An in-package hardlink still extracts stable file bytes."""
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:xz") as archive:
+        data = tarfile.TarInfo(NVRTC_MEMBER)
+        data.size = len(NVRTC_BYTES)
+        archive.addfile(data, io.BytesIO(NVRTC_BYTES))
+        link = tarfile.TarInfo(f"{ARCHIVE_ROOT}/lib64/alias.so")
+        link.type = tarfile.LNKTYPE
+        link.linkname = NVRTC_MEMBER
+        archive.addfile(link)
+    payload = output.getvalue()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM
+    ).packages[0]
+
+    cuda_validation.extract_cuda_package(
+        payload, package, tmp_path / "toolkit", staging=tmp_path / "staging"
+    )
+    assert (tmp_path / "toolkit/lib64/alias.so").read_bytes() == NVRTC_BYTES
+
+
+@pytest.mark.parametrize(
     "member",
     ("C:/escaped/absolute", "D:drive-relative", "e:/root/escape"),
 )

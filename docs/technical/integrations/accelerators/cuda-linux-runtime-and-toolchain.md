@@ -55,6 +55,8 @@ regular, linked, or dangling marker leaf for the provisioner to overwrite.
 The HTTP downloader also requires native response bytes and raises typed CUDA
 provision errors for network-open and body-read host faults, preserving the
 original cause without invoking foreign exception formatting.
+Tar archive hardlink targets must remain under their package root; unresolved
+hardlinks become typed extraction errors instead of escaping as host key errors.
 Normal bootstrap remains offline with respect to CUDA and reports a missing
 toolkit instead of installing one implicitly. The current Linux package
 surface is the NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed
