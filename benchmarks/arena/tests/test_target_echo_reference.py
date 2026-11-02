@@ -2185,6 +2185,60 @@ def test_retained_study_rejects_foreign_audit_digest_before_equality(
         target_echo_reference._audit_retained_study(tmp_path / "study.json")
 
 
+class _UntrustedHashText(str):  # ruff: ignore[subclass-builtin]
+    """A foreign digest can forge mismatch tests via rich comparison."""
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    ["claimed", "foreign", "nontext", "short", "raised"],
+)
+def test_retained_study_hash_provider_cannot_override_audited_byte_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """Audited bytes and re-read bytes must agree despite forged hash receipts."""
+    original = sample_study(tmp_path)
+    claimed = sha256(json.dumps(original).encode("utf-8")).hexdigest()
+    changed = json.loads(json.dumps(original))
+    changed["study"]["id"] = "modified-after-audit"
+    altered = json.dumps(changed).encode("utf-8")
+    assert sha256(altered).hexdigest() != claimed
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_audit,
+        "audit",
+        lambda _relative: {"retained_study_sha256": claimed},
+    )
+    monkeypatch.setattr(evidence, "read_bounded_regular", lambda *_a, **_k: altered)
+    fault = RuntimeError("untrusted SHA provider failed")
+
+    class ForgedHash:
+        def hexdigest(self) -> object:
+            if receipt == "raised":
+                raise fault
+            return {
+                "claimed": claimed,
+                "foreign": _UntrustedHashText(claimed),
+                "nontext": 123,
+                "short": "0",
+            }[receipt]
+
+    monkeypatch.setattr(target_echo_reference, "sha256", lambda _raw: ForgedHash())
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="SHA-256|changed after independent audit",
+    ) as caught:
+        target_echo_reference._audit_retained_study(tmp_path / "study.json")
+    if receipt == "raised":
+        assert caught.value.__cause__ is fault
+
+
 @pytest.mark.parametrize("tamper_after_audit", [False, True])
 def test_publisher_uses_exact_audited_study_bytes(
     tmp_path: Path,

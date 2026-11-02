@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import platform
@@ -1318,6 +1319,27 @@ def _make_document(
     }
 
 
+def _retained_study_sha256(raw: bytes) -> str:
+    """Require a native SHA-256 receipt matching a separate byte digest."""
+    try:
+        reported = sha256(raw).hexdigest()
+        independent = hashlib.new("sha256", raw).hexdigest()
+    except Exception as error:
+        message = "target echo retained study SHA-256 dependency failed"
+        raise TargetEchoStudyError(message) from error
+    if (
+        type(reported) is not str
+        or type(independent) is not str
+        or len(reported) != analyze.SHA256_HEX_LENGTH
+        or len(independent) != analyze.SHA256_HEX_LENGTH
+        or not set(reported) <= analyze.SHA256_ALPHABET
+        or not set(independent) <= analyze.SHA256_ALPHABET
+        or reported != independent
+    ):
+        _fail("target echo retained study SHA-256 differs from source bytes")
+    return reported
+
+
 def _audit_retained_study(path: Path) -> dict[str, Any]:
     """Admit the complete retained source graph before returning a study.
 
@@ -1354,7 +1376,7 @@ def _audit_retained_study(path: Path) -> dict[str, Any]:
     ):
         _fail("target echo audit requires exact native retained SHA-256")
     raw = _read_source_bytes(relative, limit=target_echo_audit.MAX_STUDY_BYTES)
-    if sha256(raw).hexdigest() != reported_digest:
+    if _retained_study_sha256(raw) != reported_digest:
         _fail("target echo retained study changed after independent audit")
     return analyze.parse_document(raw.decode("utf-8"))
 
