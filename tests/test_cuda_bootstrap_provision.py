@@ -4724,6 +4724,83 @@ def test_cuda_nonposix_overlay_rejects_suppressed_directory_scan_failure(
     assert copied == (scan_phase == "recheck")
 
 
+@pytest.mark.parametrize("copy_fault", ("omitted", "wrong_bytes"))
+def test_cuda_nonposix_overlay_rejects_false_copytree_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, copy_fault: str
+) -> None:
+    """A successful copytree receipt must attest actual destination bytes."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    _ = (source / "lib64" / "nvrtc.dll").write_bytes(b"verified library")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    status = source.stat()
+    copy_called = False
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def false_success(_src: Path, _dst: Path, **_kwargs: object) -> Path:
+        nonlocal copy_called
+        copy_called = True
+        if copy_fault == "wrong_bytes":
+            (destination / "lib64").mkdir()
+            _ = (destination / "lib64" / "nvrtc.dll").write_bytes(b"wrong data")
+        return destination
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(shutil, "copytree", false_success)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="destination copy receipt"
+        ):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino)
+            )
+    assert copy_called
+    assert (destination / "lib64" / "nvrtc.dll").exists() == (
+        copy_fault == "wrong_bytes"
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX symlink fixture")
+def test_cuda_nonposix_overlay_rejects_wrong_copied_symlink_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The portable copy must preserve the original relative symlink target."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    _ = (source / "lib64" / "alias.dll").symlink_to("correct.dll")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    status = source.stat()
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def wrong_link_copy(_src: Path, _dst: Path, **_kwargs: object) -> Path:
+        (destination / "lib64").mkdir()
+        _ = (destination / "lib64" / "alias.dll").symlink_to("wrong.dll")
+        return destination
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(shutil, "copytree", wrong_link_copy)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="destination copy receipt"
+        ):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino)
+            )
+    assert (destination / "lib64" / "alias.dll").is_symlink()
+
+
 @pytest.mark.parametrize("existing", [b"matching", b"different"])
 def test_cuda_nonposix_overlay_preserves_existing_file_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bytes,

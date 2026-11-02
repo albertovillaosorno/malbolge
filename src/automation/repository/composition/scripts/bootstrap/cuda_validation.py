@@ -1213,6 +1213,54 @@ def _copy_cuda_overlay(
             _fail("CUDA staged overlay source members changed during copy")
         _require_owned_staging(source, source_identity)
         _require_physical_directories(destination, "staged overlay destination")
+        # shutil.copytree can return without copying every source member. Check
+        # the final target contents rather than trusting that success receipt.
+        for relative, expected in source_inventory.items():
+            if relative.is_absolute() or PARENT_SEGMENT in relative.parts:
+                _fail("CUDA staged overlay source member escaped copy root")
+            target = destination / relative
+            _require_physical_directories(target.parent, "staged overlay destination")
+            try:
+                status = target.lstat()
+            except FileNotFoundError as error:
+                raise CudaProvisionError(
+                    "CUDA staged overlay destination copy receipt missing"
+                ) from error
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA staged overlay destination copy receipt failed"
+                ) from error
+            if type(status) is not os.stat_result:
+                _fail("CUDA staged overlay destination requires native copy receipt")
+            if S_ISDIR(expected[2]):
+                _require_physical_directories(target, "staged overlay destination")
+            elif S_ISLNK(expected[2]):
+                try:
+                    observed_link = os.readlink(target)
+                except (OSError, TypeError, ValueError, RuntimeError) as error:
+                    raise CudaProvisionError(
+                        "CUDA staged overlay destination link receipt failed"
+                    ) from error
+                if (
+                    not S_ISLNK(status.st_mode)
+                    or status.st_nlink != 1
+                    or type(observed_link) is not str
+                    or observed_link != expected[-1]
+                ):
+                    _fail("CUDA staged overlay destination copy receipt mismatch")
+            elif not S_ISREG(status.st_mode) or status.st_nlink != 1 or (
+                _read_manifest_source(
+                    source / relative,
+                    "CUDA staged overlay source",
+                    max_bytes=_MAX_CUDA_ARCHIVE_MEMBER_BYTES,
+                )
+                != _read_manifest_source(
+                    target,
+                    "CUDA staged overlay destination",
+                    max_bytes=_MAX_CUDA_ARCHIVE_MEMBER_BYTES,
+                )
+            ):
+                _fail("CUDA staged overlay destination copy receipt mismatch")
         return
 
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
