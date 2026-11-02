@@ -76,7 +76,9 @@ redirected parents/leaves and nonregular existing executable targets before
 invoking native Zig. Clang syntax and Zig sanitizer builds require exact
 native process receipts that identify the unchanged launched argv, integer
 status, and uncaptured output mode; forged success cannot certify validation.
-This admission is not atomic with Zig's later output open.
+Host execution errors retain their original exception as the cause of a typed
+DOOM debug failure without evaluating foreign exception formatters. This
+admission is not atomic with Zig's later output open.
 
 The direct sanitizer-debug runner creates a unique physical log in the
 executable's `logs/` directory for each run, refusing linked log directories

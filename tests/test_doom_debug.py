@@ -37,7 +37,7 @@ from __future__ import annotations
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast, final, override
+from typing import TYPE_CHECKING, Never, cast, final, override
 
 import pytest
 from scripts.debug import doom
@@ -581,3 +581,52 @@ def test_doom_build_probe_accepts_complete_native_process_receipt(
 
     monkeypatch.setattr(sp, "run", native_run)
     doom._run_checked(expected)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "oserror",
+        "typeerror",
+        "valueerror",
+        "runtimeerror",
+        "subprocesserror",
+        "timeout",
+        "foreign-oserror",
+    ],
+)
+def test_doom_build_probe_host_failure_is_typed_with_original_cause(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """A host failure cannot escape the DOOM debug error contract."""
+
+    class ForeignOSError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign DOOM error formatter invoked")
+
+    faults: dict[str, Exception] = {
+        "oserror": OSError("native Clang launch denied"),
+        "typeerror": TypeError("native process error"),
+        "valueerror": ValueError("native process error"),
+        "runtimeerror": RuntimeError("native process error"),
+        "subprocesserror": sp.SubprocessError("native process error"),
+        "timeout": sp.TimeoutExpired(("clang", "--version"), 2),
+        "foreign-oserror": ForeignOSError("untrusted host detail"),
+    }
+    fault = faults[failure]
+
+    def broken_run(*_args: object, **_kwargs: object) -> Never:
+        raise fault
+
+    monkeypatch.setattr(sp, "run", broken_run)
+    with pytest.raises(
+        doom.DoomDebugError, match="DOOM debug command failed"
+    ) as caught:
+        doom._run_checked(("clang", "--version"))  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is fault
+    if failure == "foreign-oserror":
+        assert type(fault).__name__ in str(caught.value)
+    elif failure == "oserror":
+        assert "native Clang launch denied" in str(caught.value)

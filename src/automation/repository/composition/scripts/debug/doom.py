@@ -190,13 +190,38 @@ def _run_checked(command: Sequence[str], *, cwd: Path = ROOT) -> None:
     ):
         _fail("invalid DOOM debug command receipt")
     expected = tuple(command)
-    # jig-ignore-next-line: indivisible reviewed identifier
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        expected,
-        cwd=cwd,
-        check=False,
-        shell=False,
-    )
+    try:
+        # jig-ignore-next-line: indivisible reviewed identifier
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            expected,
+            cwd=cwd,
+            check=False,
+            shell=False,
+        )
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as error:
+        detail = (
+            str(error)
+            if type(error)
+            in {
+                OSError,
+                FileNotFoundError,
+                PermissionError,
+                TypeError,
+                ValueError,
+                RuntimeError,
+                subprocess.SubprocessError,
+                subprocess.TimeoutExpired,
+                subprocess.CalledProcessError,
+            }
+            else type(error).__name__
+        )
+        raise DoomDebugError(f"DOOM debug command failed: {detail}") from error
     if type(completed) is not subprocess.CompletedProcess:
         _fail("invalid DOOM debug process receipt")
     native = cast("subprocess.CompletedProcess[object]", completed)
