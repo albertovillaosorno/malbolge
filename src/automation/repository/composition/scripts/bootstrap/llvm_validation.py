@@ -41,6 +41,7 @@ import os
 import re
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+from contextlib import suppress
 from dataclasses import dataclass
 from io import BufferedRandom, BufferedReader
 from pathlib import Path
@@ -244,7 +245,8 @@ def _stable_marker_descriptor(
             return False
     with stream:
         stream_fd = stream.fileno()
-        if type(cast("object", stream_fd)) is not int or stream_fd != descriptor:
+        native_fd = type(cast("object", stream_fd)) is int
+        if not native_fd or stream_fd != descriptor:
             # fdopen returned a different native stream: its context owns that
             # stream, but cannot release our original descriptor.
             try:
@@ -365,15 +367,45 @@ def _exclusive_import_target(
         _fail("LLVM import fallback destination descriptor must be native")
     try:
         stream = os.fdopen(descriptor, "w+b")
-    except (OSError, ValueError, TypeError, RuntimeError):
-        os.close(descriptor)
-        raise
-    if type(cast("object", stream)) is not BufferedRandom:
-        with stream:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        # A failing fdopen wrapper may have already released its raw fd.
+        with suppress(OSError, ValueError, TypeError, RuntimeError):
+            os.close(descriptor)
+        error_type = type(error).__name__
+        message = f"LLVM fallback destination stream wrap failed: {error_type}"
+        raise LlvmImportError(message) from error
+    try:
+        if type(cast("object", stream)) is not BufferedRandom:
             _fail("LLVM import fallback destination stream must be native")
-    if stream.fileno() != descriptor:
-        with stream:
+        stream_fd: object = stream.fileno()
+        if type(stream_fd) is not int or stream_fd != descriptor:
             _fail("LLVM import fallback destination stream descriptor differs")
+    except (
+        LlvmImportError,
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        AttributeError,
+    ) as error:
+        close_faults = (
+            OSError,
+            ValueError,
+            TypeError,
+            RuntimeError,
+            AttributeError,
+        )
+        with suppress(*close_faults):
+            stream.close()
+        # A substituted wrapper may own a different fd or no fd at all.
+        # Explicitly release the raw fd opened by this function as well.
+        with suppress(OSError, ValueError, TypeError, RuntimeError):
+            os.close(descriptor)
+        if isinstance(error, LlvmImportError):
+            raise
+        error_type = type(error).__name__
+        message = f"LLVM fallback destination stream failed: {error_type}"
+        raise LlvmImportError(message) from error
     return stream
 
 

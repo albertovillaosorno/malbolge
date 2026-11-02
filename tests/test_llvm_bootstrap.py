@@ -38,6 +38,7 @@ import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import replace
 from io import BufferedRandom, BufferedReader
 from pathlib import Path
@@ -647,6 +648,95 @@ def test_llvm_marker_reader_rejects_nonnative_open_descriptor(
         isolated.setattr(os, "fdopen", forbid_fdopen)
         isolated.setattr(os, "close", forbid_close)
         assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
+def _release_import_test_descriptors(opened: list[int], parent_fd: int) -> None:
+    """Reclaim test descriptors even when an injected wrapper leaks one."""
+    try:
+        for descriptor in opened:
+            with suppress(OSError):
+                os.close(descriptor)
+    finally:
+        os.close(parent_fd)
+
+
+@pytest.mark.skipif(os.name != HOST_POSIX, reason="requires dirfd-backed copy")
+@pytest.mark.parametrize("foreign_stream", [True, False])
+def test_llvm_fallback_stream_rejection_closes_owned_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    foreign_stream: bool,
+) -> None:
+    """A substitute destination stream must not leak the new file handle."""
+    parent = tmp_path / "import-parent"
+    parent.mkdir()
+    other = tmp_path / "unrelated"
+    _ = other.write_bytes(b"foreign stream")
+    parent_fd = os.open(parent, os.O_RDONLY)
+    original_fdopen = os.fdopen
+    owned: list[int] = []
+
+    def substituted_stream(descriptor: int, mode: str) -> object:
+        owned.append(descriptor)
+        if foreign_stream:
+            return object()
+        borrowed = os.open(other, os.O_RDWR)
+        return original_fdopen(borrowed, mode)
+
+    try:
+        with monkeypatch.context() as isolated:
+            isolated.setattr(os, "fdopen", substituted_stream)
+            with pytest.raises(llvm_validation.LlvmImportError, match="stream"):
+                _ = cast(
+                    "Callable[[Path, int | None], BufferedRandom]",
+                    vars(llvm_validation)["_exclusive_import_target"],
+                )(parent / "clang", parent_fd)
+        assert len(owned) == 1
+        with pytest.raises(OSError, match="Bad file descriptor"):
+            _ = os.fstat(owned[0])
+    finally:
+        _release_import_test_descriptors(owned, parent_fd)
+
+
+@pytest.mark.skipif(os.name != HOST_POSIX, reason="requires dirfd-backed copy")
+@pytest.mark.parametrize("closed_by_wrapper", [False, True])
+def test_llvm_fallback_fdopen_failure_preserves_cause_and_closes_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    closed_by_wrapper: bool,
+) -> None:
+    """A failing fd wrapper may have already closed the owned destination fd."""
+    parent = tmp_path / "import-parent"
+    parent.mkdir()
+    parent_fd = os.open(parent, os.O_RDONLY)
+    opened: list[int] = []
+    failure = ValueError("simulated destination stream wrap failure")
+
+    def failed_fdopen(descriptor: int, mode: str) -> None:
+        assert mode.endswith("b")
+        opened.append(descriptor)
+        if closed_by_wrapper:
+            os.close(descriptor)
+        raise failure
+
+    try:
+        with monkeypatch.context() as isolated:
+            isolated.setattr(os, "fdopen", failed_fdopen)
+            with pytest.raises(
+                llvm_validation.LlvmImportError, match="stream"
+            ) as error:
+                _ = cast(
+                    "Callable[[Path, int | None], BufferedRandom]",
+                    vars(llvm_validation)["_exclusive_import_target"],
+                )(parent / "clang", parent_fd)
+        assert error.value.__cause__ is failure
+        assert len(opened) == 1
+        with pytest.raises(OSError, match="Bad file descriptor"):
+            _ = os.fstat(opened[0])
+    finally:
+        _release_import_test_descriptors(opened, parent_fd)
 
 
 def test_llvm_marker_reader_closes_fd_on_foreign_plain_stream(
