@@ -828,3 +828,105 @@ def test_encode_rejects_foreign_entries_tuple() -> None:
 
     with pytest.raises(BundleError, match="exact immutable tuple"):
         _ = _encode_bundle(built)
+
+
+def test_bundle_rejects_joint_json_decoder_writer_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No public codec pair can insert detached keys absent from source bytes."""
+    empty_payload = _encode_bundle(_bundle(entries=()))
+    forged = _mapping(_encode_bundle(_bundle()))
+    empty_json = empty_payload.decode("utf-8").removesuffix("\n")
+
+    monkeypatch.setattr(
+        bundle.json, "loads", lambda *_args, **_kwargs: forged
+    )
+    monkeypatch.setattr(
+        bundle.json, "dumps", lambda *_args, **_kwargs: empty_json
+    )
+
+    with pytest.raises(BundleError, match="serializer|canonical"):
+        _ = _decode_bundle(empty_payload)
+
+
+def test_bundle_rejects_forged_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public-key bytes cannot be encoded using an unrelated writer result."""
+    monkeypatch.setattr(bundle.json, "dumps", lambda *_args, **_kwargs: "{}")
+    with pytest.raises(BundleError, match="serializer"):
+        _ = _encode_bundle(_bundle())
+
+
+def test_bundle_rejects_json_writer_mapping_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public writer may not erase a public key before publishing bytes."""
+    original_dumps = bundle.json.dumps
+
+    def altered_writer(value: dict[str, object], **kwargs: object) -> str:
+        value["entries"] = []
+        return original_dumps(value, **kwargs)
+
+    monkeypatch.setattr(bundle.json, "dumps", altered_writer)
+    with pytest.raises(BundleError, match="serializer"):
+        _ = _encode_bundle(_bundle())
+
+
+class _ForeignJsonText(str):
+    """A foreign writer receipt can carry an unsafe comparison method."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign JSON equality invoked")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(None, id="absent"),
+        pytest.param(b"{}", id="binary"),
+        pytest.param(_ForeignJsonText("{}"), id="foreign-string"),
+    ],
+)
+def test_bundle_rejects_non_native_json_writer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only exact native JSON strings may influence public-key persistence."""
+    monkeypatch.setattr(bundle.json, "dumps", lambda *_args, **_kwargs: receipt)
+    with pytest.raises(BundleError, match="serializer"):
+        _ = _encode_bundle(_bundle())
+
+
+@pytest.mark.parametrize(
+    "error_type", [RuntimeError, AttributeError, IndexError, OverflowError]
+)
+def test_bundle_contains_json_writer_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+) -> None:
+    """External JSON failures remain typed and retain the original cause."""
+    failure = error_type("untrusted JSON serializer")
+
+    def fail_writer(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    monkeypatch.setattr(bundle.json, "dumps", fail_writer)
+    with pytest.raises(BundleError, match="serializer failed") as caught:
+        _ = _encode_bundle(_bundle())
+    assert caught.value.__cause__ is failure
+
+
+def test_bundle_accepts_equivalent_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A distinct equivalent public writer preserves exact bundle bytes."""
+    original_dumps = bundle.json.dumps
+    monkeypatch.setattr(
+        bundle.json, "dumps", lambda *args, **kwargs: original_dumps(*args, **kwargs)
+    )
+    document = _bundle()
+    assert _decode_bundle(_encode_bundle(document)) == document

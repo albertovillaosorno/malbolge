@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from hashlib import sha256
 import json
+from json import dumps as _SOURCE_JSON_DUMPS
 from pathlib import Path
 from secrets import token_hex
 from typing import Final
@@ -171,14 +172,35 @@ def encode_ticket_admission_telemetry_lineage_public_key_bundle(
         "provider_id": validated.provider_id,
         "schema_version": validated.schema_version,
     }
-    text = json.dumps(
-        mapping,
-        allow_nan=False,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    text = _canonical_json(mapping)
     return f"{text}\n".encode()
+
+
+def _canonical_json(mapping: dict[str, object]) -> str:
+    """Corroborate public JSON writer against import-bound source authority."""
+    try:
+        # Capture source-owned canonical content before a replaced writer can
+        # alter the mapping or produce unrelated public-key bytes.
+        source_text = _SOURCE_JSON_DUMPS(
+            mapping,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        rendered = json.dumps(
+            mapping,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except Exception as error:  # noqa: BLE001 - provider failures stay typed
+        message = f"public-key bundle JSON serializer failed: {type(error).__name__}"
+        raise TicketAdmissionTelemetryLineagePublicKeyBundleError(message) from error
+    if type(rendered) is not str or rendered != source_text:
+        _raise_bundle("public-key bundle JSON serializer disagrees with source")
+    return source_text
 
 
 def decode_ticket_admission_telemetry_lineage_public_key_bundle(

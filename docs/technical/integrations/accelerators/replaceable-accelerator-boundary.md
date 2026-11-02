@@ -1165,9 +1165,13 @@ trust manifest, this separate document intentionally contains public-key bytes
 as
 lowercase hexadecimal. Construction reuses the memory provider to validate exact
 bytes, fingerprints, identities, windows, uniqueness, cardinality, and reference
-ordering. Encoding uses sorted keys and one trailing newline; decoding requires
-byte
-identity with that canonical encoding, rejects duplicate or unknown JSON keys,
+ordering. Encoding uses sorted keys and one trailing newline. The public JSON
+writer is corroborated against a source-bound standard-library writer, capturing
+canonical bytes before any substituted writer can alter the key mapping. Joint
+public decoder/writer substitution cannot invent detached key material absent
+from exact source bytes; shared JSON internals remain a trust dependency.
+Decoding requires byte identity with that canonical encoding, rejects duplicate
+or unknown JSON keys,
 and
 is bounded by 256 entries and 1 MiB by default. Explicit writes atomically
 replace
