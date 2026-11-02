@@ -44,6 +44,7 @@ from datetime import timezone
 from hashlib import sha256
 import json
 from json import JSONDecoder as _SOURCE_JSON_DECODER
+from json import JSONEncoder as _SOURCE_JSON_ENCODER
 import os
 from pathlib import Path
 from stat import S_ISREG
@@ -155,7 +156,24 @@ def profile_manifest_text(root: Path = ROOT) -> str:
 
     """
     payload = profile_manifest(root)
-    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    try:
+        # The source-owned canonical text must precede any replaceable writer:
+        # a public json.dumps or JSONEncoder can also mutate its input tree.
+        source_text = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except ProfileManifestError:
+        raise
+    except Exception as error:  # noqa: BLE001 - typed foreign writer boundary
+        raise ProfileManifestError(
+            f"profile JSON writer failed: {type(error).__name__}"
+        ) from error
+    if (
+        type(source_text) is not str
+        or type(observed) is not str
+        or observed != source_text
+    ):
+        raise ProfileManifestError("profile JSON writer differs from source")
+    return source_text + "\n"
 
 
 def profile_manifest(root: Path = ROOT) -> dict[str, object]:

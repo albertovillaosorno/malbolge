@@ -117,6 +117,69 @@ RUNTIME_IDENTITY = CudaRuntimeIdentity(
 )
 
 
+@pytest.mark.parametrize("providers", ("dumps-only", "encoder-only", "joint", "self-restoring"))
+def test_generated_manifest_json_writer_cannot_forge_product_profile(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """The validated retained evidence, not a public writer, owns publication."""
+    native_encoder = json.JSONEncoder
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring":
+                patch.setattr(json, "JSONEncoder", native_encoder)
+
+        def encode(self, _document: object) -> str:
+            return "{}"
+
+    def forged_dumps(_document: object, **_kwargs: object) -> str:
+        return "{}"
+
+    with monkeypatch.context() as patch:
+        if providers in ("encoder-only", "joint", "self-restoring"):
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers in ("dumps-only", "joint"):
+            patch.setattr(json, "dumps", forged_dumps)
+        with pytest.raises(
+            generator.ProfileManifestError,
+            match="profile JSON writer differs from source",
+        ):
+            _ = profile_manifest_text()
+
+
+def test_generated_manifest_source_equivalent_json_encoder_still_works(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source-preserving encoder subclass retains tracked profile bytes."""
+    tracked = Path(MANIFEST).read_text(encoding="utf-8")
+    original = json.JSONEncoder
+
+    class DelegatingEncoder(original):
+        """No changes to source JSON semantics."""
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", DelegatingEncoder)
+        assert profile_manifest_text() == tracked
+
+
+def test_generated_manifest_foreign_json_writer_receipt_is_typed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign writer equality hooks cannot execute before fail-closed check."""
+
+    class ForeignText:
+        def __eq__(self, _other: object) -> bool:
+            pytest.fail("foreign writer equality hook executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", lambda _value, **_kwargs: ForeignText())
+        with pytest.raises(
+            generator.ProfileManifestError,
+            match="profile JSON writer differs from source",
+        ):
+            _ = profile_manifest_text()
+
+
 def test_generated_manifest_matches_tracked_product_bytes() -> None:
     """Retained evidence reproduces the tracked runtime manifest exactly."""
     tracked = Path(MANIFEST).read_text(encoding="utf-8")

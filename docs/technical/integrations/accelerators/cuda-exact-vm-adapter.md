@@ -1333,7 +1333,15 @@ public decoder cannot rewrite route measurements under an authentic SHA-256 or
 accept invalid TOML; the shared standard-library implementation itself remains
 a trust dependency. The source commit, exact raw/structured-output hashes,
 tracked CUDA toolchain,
-retained driver build, and host/Python context remain mandatory. Twelve manifest tests require byte equality and reject
+retained driver build, and host/Python context remain mandatory.
+The generated product manifest also corroborates its canonical sorted,
+indented JSON text against the encoder class bound at import.
+This precedes invoking the replaceable public writer.
+Substituted `json.dumps` or `json.JSONEncoder` providers cannot
+forge a published profile from otherwise validated evidence, even if they
+restore their module entry during encoding. Exact source-faithful writers remain
+valid; the bound standard-library JSON implementation is still a trust dependency.
+Twelve manifest tests require byte equality and reject
 duplicate or unknown keys, unsupported schema, duplicate routes, malformed
 display
 versions, invalid host fields, exact runtime-context duplicates, and direct
@@ -1913,8 +1921,10 @@ TODO.
 
 Additional devices or workload profiles require new retained evidence before
 any broader performance claim.
+
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
+
 ## References
 
 ### Host Architecture Baseline
