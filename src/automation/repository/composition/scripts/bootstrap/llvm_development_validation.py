@@ -69,6 +69,7 @@ LLVM_DEVELOPMENT_MARKER_SCHEMA: Final = 1
 PARENT_SEGMENT: Final = ".."
 RPM_SUFFIX: Final = ".rpm"
 CPIO_INCLUDE_PATTERN: Final = "./usr/include/*"
+MAX_RPM_DOWNLOAD_BYTES: Final = 128 * 1024 * 1024
 
 
 class LlvmDevelopmentProvisionError(RuntimeError):
@@ -77,7 +78,7 @@ class LlvmDevelopmentProvisionError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class _ProvisionFunctions:
-    download: Callable[[str], bytes]
+    download: Callable[[str], bytes] | None
     extract: Callable[..., None]
 
 
@@ -278,7 +279,13 @@ def _asset_url(
     return FEDORA_UPDATES_PACKAGE_BASE + package_bucket + "/" + asset.name
 
 
-def _download_asset(url: str) -> bytes:
+def _download_asset(url: str, *, expected_size_bytes: int) -> bytes:
+    """Bound HTTP response memory to the pinned RPM size plus one byte."""
+    if (
+        type(expected_size_bytes) is not int
+        or not 0 < expected_size_bytes <= MAX_RPM_DOWNLOAD_BYTES
+    ):
+        _fail("invalid pinned LLVM development package download size")
     request = urllib.request.Request(  # ruff: ignore[suspicious-url-open-usage]
         url,
         headers={"User-Agent": "malbolge-bootstrap/1"},
@@ -292,7 +299,7 @@ def _download_asset(url: str) -> bytes:
             ),
         )
         with response:
-            data = response.read()
+            data = response.read(expected_size_bytes + 1)
     except (OSError, ValueError, TypeError, RuntimeError, urllib.error.URLError) as error:
         detail = (
             str(error)
@@ -304,6 +311,8 @@ def _download_asset(url: str) -> bytes:
         ) from error
     if type(data) is not bytes:
         _fail("invalid LLVM development package download receipt")
+    if len(data) > expected_size_bytes:
+        _fail("LLVM development package download exceeds pinned size")
     return data
 
 
@@ -521,7 +530,12 @@ def _stage_development_assets(
 ) -> None:
     for asset in identity.development_assets:
         _require_physical_directories(package_staging, "staging")
-        data = functions.download(_asset_url(identity, asset))
+        url = _asset_url(identity, asset)
+        data = (
+            functions.download(url)
+            if functions.download is not None
+            else _download_asset(url, expected_size_bytes=asset.size_bytes)
+        )
         _require_physical_directories(package_staging, "staging")
         verify_development_asset(data, asset)
         functions.extract(
@@ -572,7 +586,7 @@ def provision_development_identity(
     _prepare_staging(staging)
     staged_root.mkdir()
     functions = _ProvisionFunctions(
-        download=downloader or _download_asset,
+        download=downloader,
         extract=extractor or _extract_rpm_headers,
     )
     try:

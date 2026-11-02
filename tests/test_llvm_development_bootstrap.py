@@ -1457,6 +1457,93 @@ def test_rpm_include_tree_accepts_physical_regular_members(tmp_path: Path) -> No
     llvm_development_validation._reject_include_symlinks(include_root)
 
 
+@pytest.mark.parametrize("invalid_size", [None, False, 0, -1, 134217729])
+def test_default_development_download_rejects_unbounded_size(
+    monkeypatch: pytest.MonkeyPatch, invalid_size: object
+) -> None:
+    """A malformed pin cannot authorize unbounded network memory."""
+
+    def unexpected_urlopen(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("unbounded RPM size reached network access")
+
+    monkeypatch.setattr(
+        llvm_development_validation.urllib.request, "urlopen", unexpected_urlopen
+    )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="download size",
+    ):
+        _ = llvm_development_validation._download_asset(
+            "https://example.invalid/pinned.rpm",
+            expected_size_bytes=cast("int", invalid_size),
+        )
+
+
+def test_default_development_download_bounds_read_to_pinned_asset_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default RPM HTTP reader must never make an unbounded read."""
+    identity = _identity(tmp_path)
+    requested: list[int] = []
+
+    class Response:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, _kind: object, _error: object, _trace: object) -> bool:
+            return False
+
+        def read(self, limit: int = -1) -> bytes:
+            requested.append(limit)
+            return PACKAGE_BYTES + b"x"
+
+    monkeypatch.setattr(
+        llvm_development_validation.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: Response(),
+    )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="exceeds pinned size",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path, identity, extractor=_extract_headers
+        )
+    assert requested == [len(PACKAGE_BYTES) + 1]
+    assert not identity.development_root.exists()
+
+
+def test_default_development_download_admits_exact_pinned_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid RPM response remains provisionable with bounded reads."""
+    identity = _identity(tmp_path)
+    requested: list[int] = []
+
+    class Response:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, _kind: object, _error: object, _trace: object) -> bool:
+            return False
+
+        def read(self, limit: int = -1) -> bytes:
+            requested.append(limit)
+            return PACKAGE_BYTES
+
+    monkeypatch.setattr(
+        llvm_development_validation.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: Response(),
+    )
+    result = llvm_development_validation.provision_development_identity(
+        tmp_path, identity, extractor=_extract_headers
+    )
+    assert result == identity.development_root
+    assert requested == [len(PACKAGE_BYTES) + 1]
+    assert llvm_development_validation.development_root_matches(identity)
+
+
 @pytest.mark.parametrize("receipt", [None, "rpm", bytearray(PACKAGE_BYTES)])
 def test_llvm_development_download_rejects_foreign_binary_receipt(
     monkeypatch: pytest.MonkeyPatch,
@@ -1471,7 +1558,7 @@ def test_llvm_development_download_rejects_foreign_binary_receipt(
         def __exit__(self, _kind: object, _error: object, _trace: object) -> bool:
             return False
 
-        def read(self) -> object:
+        def read(self, _limit: int) -> object:
             return receipt
 
     monkeypatch.setattr(
@@ -1484,7 +1571,8 @@ def test_llvm_development_download_rejects_foreign_binary_receipt(
         match="download receipt",
     ):
         llvm_development_validation._download_asset(
-            "https://example.invalid/pinned.rpm"
+            "https://example.invalid/pinned.rpm",
+            expected_size_bytes=len(PACKAGE_BYTES),
         )
 
 
@@ -1507,7 +1595,8 @@ def test_llvm_development_download_preserves_native_host_error(
         match="cannot download pinned LLVM development package",
     ) as observed:
         llvm_development_validation._download_asset(
-            "https://example.invalid/pinned.rpm"
+            "https://example.invalid/pinned.rpm",
+            expected_size_bytes=len(PACKAGE_BYTES),
         )
     assert observed.value.__cause__ is fault
 
@@ -1534,7 +1623,8 @@ def test_llvm_development_download_does_not_format_foreign_host_error(
         match="ForeignHostError",
     ) as observed:
         llvm_development_validation._download_asset(
-            "https://example.invalid/pinned.rpm"
+            "https://example.invalid/pinned.rpm",
+            expected_size_bytes=len(PACKAGE_BYTES),
         )
     assert observed.value.__cause__ is fault
 
@@ -1551,7 +1641,7 @@ def test_llvm_development_download_accepts_native_bytes(
         def __exit__(self, _kind: object, _error: object, _trace: object) -> bool:
             return False
 
-        def read(self) -> bytes:
+        def read(self, _limit: int) -> bytes:
             return PACKAGE_BYTES
 
     monkeypatch.setattr(
@@ -1561,7 +1651,8 @@ def test_llvm_development_download_accepts_native_bytes(
     )
     assert (
         llvm_development_validation._download_asset(
-            "https://example.invalid/pinned.rpm"
+            "https://example.invalid/pinned.rpm",
+            expected_size_bytes=len(PACKAGE_BYTES),
         )
         == PACKAGE_BYTES
     )
