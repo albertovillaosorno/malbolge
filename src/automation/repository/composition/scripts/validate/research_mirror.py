@@ -323,7 +323,10 @@ def _validate_entry(
         research_algorithm_test_directory(ROOT, entry.research_id),
         f"{entry.research_id} executable tests",
     )
-    if not output_policy(entry):
+    ignored = output_policy(entry)
+    if type(ignored) is not bool:
+        _fail(f"{entry.research_id} output policy requires native boolean verdict")
+    if not ignored:
         message = (
             "research output is not Git ignored: "
             f"{(entry.executable / 'out').relative_to(ROOT).as_posix()}/"

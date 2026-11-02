@@ -34,34 +34,48 @@ rejects linked algorithm directories and redirected in-root directory
 ancestors before admitting an `experiment.toml` identity. Discovery requires
 exact native filesystem stat receipts, integer file-mode members, and boolean
 junction results before interpreting modes or truthiness; forged host results
-fail closed. The
-direct research-mirror validator separately requires native stat containers,
+fail closed.
+
+The direct research-mirror validator separately requires native stat containers,
 exact integer file-mode fields, and boolean junction receipts for each path
 component and discovered algorithm ID; foreign modes and truthiness hooks
 cannot certify mirror identity.
+
 Every direct research ID under either mirror root must exist on both sides.
 The special composition state-graph experiment and domain algorithm
 directories must not publish the same research ID: discovery rejects a collision
-instead of silently replacing either physical experiment. Mirror identity also
+instead of silently replacing either physical experiment.
+
+Mirror identity also
 rejects research IDs differing only under Unicode case folding and canonical NFC
 normalization:
 those names are distinct on some POSIX filesystems but can alias on
 case-insensitive or normalization-insensitive hosts.
+
 Each research ID must also be one portable path component: `.`/`..`, forward
 or backward separators, colons (including Windows drive-relative names),
 Windows device names, and trailing dots or spaces are not admissible, even on
 POSIX hosts.
+
 The documentation half requires `README.md` and `research.md`; the executable
 half requires
 `README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via
 `check-ignore --no-index`, whether `algorithms/<id>/out/` itself is ignored.
 A rule matching only a synthetic child filename cannot satisfy this
-directory-level output policy. The Git ignore probe has a 15-second timeout
+directory-level output policy.
+
+The Git ignore probe has a 15-second timeout
 and requires a native completed process whose exact native command arguments
 match the requested directory and whose integer exit is zero (ignored) or one
 (not ignored). Boolean, floating-point, missing, or foreign process receipts
-cannot establish output policy. CLI diagnostics preserve the validator's errors
-without invoking arbitrary host-exception formatting hooks.
+cannot establish output policy.
+
+Injected output-ignore predicates must also
+return an exact native Boolean for each research ID: a truthy integer, string,
+or foreign truthiness hook cannot certify that local artifacts are isolated.
+CLI diagnostics preserve the validator's errors without invoking arbitrary
+host-exception formatting hooks.
+
 Optional `math/algorithms/<id>.tex` remains a
 research-specific addition rather than a universal mirror requirement.
 

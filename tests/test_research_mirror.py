@@ -79,6 +79,26 @@ def test_repository_research_mirror_is_complete() -> None:
     assert validator.validate_repository(_always_ignored) == EXPECTED_IDS
 
 
+@pytest.mark.parametrize("verdict", (None, 0, 1, "ignored", object()))
+def test_research_output_policy_requires_native_boolean(verdict: object) -> None:
+    """A truthy or falsy foreign receipt cannot certify output isolation."""
+
+    class ForeignVerdict:
+        def __bool__(self) -> Never:
+            raise AssertionError("foreign output policy truthiness executed")
+
+    receipt = ForeignVerdict() if type(verdict) is object else verdict
+    observed: list[str] = []
+
+    def policy(entry: validator.MirrorEntry) -> bool:
+        observed.append(entry.research_id)
+        return cast("bool", receipt)
+
+    with pytest.raises(validator.ResearchMirrorError, match="native boolean"):
+        _ = validator.validate_repository(policy)
+    assert observed == [EXPECTED_IDS[0]]
+
+
 def test_document_only_research_id_fails_closed() -> None:
     """Reject a documentation-only algorithm without executable research."""
     _expect_id_failure(
