@@ -57,16 +57,17 @@ The pinned `uv-toolchain.json`
 uses the same one-MiB physical single-link regular-file admission and stable
 descriptor checks before its URL, version, artifact, and digest fields are
 interpreted. Externally hardlinked manifest files are not trusted.
-When the public JSON decoder is substituted, uv manifest admission also
-independently parses the exact snapshot text with the original import-bound
-loader and compares every exact native key, value, and container. A forged
-release version, URL, or digest, malformed original syntax, or foreign nested
-key cannot certify an installed or downloadable tool. Source-equivalent
-adapters continue to work; the provider is captured before invocation so
-mid-call restoration cannot conceal forged values, and equivalent adapters
-return only the independently decoded source-owned tree, not retained mutable
-aliases. This protects against loader substitution, not arbitrary modification
-of Python internals.
+Uv manifest admission always independently parses the exact snapshot text
+through the JSON decoder class bound at import, comparing every exact native
+key, value, and container. Binding `json.loads` alone is insufficient because
+it resolves the mutable public `json.JSONDecoder` class. A forged release
+version, URL, or digest, malformed original syntax, or foreign nested key
+cannot certify an installed or downloadable tool. Source-equivalent adapters
+continue to work; the provider is captured before invocation, and independent
+parsing defeats decoder-only, joint, or self-restoring public substitutions.
+Equivalent adapters return only the source-owned tree, not retained mutable
+aliases. This protects public-provider substitution, not arbitrary modification
+of Python internals or the import-bound decoder implementation.
 Manifest descriptor reads also require exact immutable native `bytes` before
 size or JSON decoding, so mutable stream proxies cannot supply trusted records.
 Bootstrap authority reads now retain in-body rejections across substituted

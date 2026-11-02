@@ -91,7 +91,7 @@ PATH_SEPARATORS: Final = frozenset(("/", "\\"))
 UV_RELEASE_BASE: Final = "https://github.com/astral-sh/uv/releases/download/"
 UV_SCHEMA_VERSION: Final = 1
 MAX_UV_MANIFEST_BYTES: Final = 1_048_576
-_NATIVE_JSON_LOADS: Final = json.loads
+_NATIVE_JSON_DECODER: Final = json.JSONDecoder
 MAX_UV_ARCHIVE_BYTES: Final = 128 * 1024 * 1024
 MAX_UV_BINARY_BYTES: Final = 128 * 1024 * 1024
 MAX_UV_ARCHIVE_MEMBERS: Final = 4096
@@ -364,19 +364,19 @@ def _uv_manifest_document(manifest_path: Path) -> dict[str, object]:
             "object",
             decoder(source_text, object_pairs_hook=_reject_duplicate_pairs),
         )
-        # A substituted public JSON loader must not change the version,
-        # download URL, or SHA-256 identity proved by the original bytes.
-        if decoder is not _NATIVE_JSON_LOADS:
-            original = cast(
-                "object",
-                _NATIVE_JSON_LOADS(
-                    source_text, object_pairs_hook=_reject_duplicate_pairs
-                ),
-            )
-            if not _uv_same_native_json(parsed, original):
-                _fail("uv JSON decoder provider differs from source")
-            # Retain independently decoded source data, never a mutable alias.
-            parsed = original
+        # The public json.loads delegates through mutable json.JSONDecoder.
+        # Decode through the import-bound class even if public providers are
+        # jointly replaced or restore their names while returning forged data.
+        original = cast(
+            "object",
+            _NATIVE_JSON_DECODER(object_pairs_hook=_reject_duplicate_pairs).decode(
+                source_text
+            ),
+        )
+        if not _uv_same_native_json(parsed, original):
+            _fail("uv JSON decoder provider differs from source")
+        # Retain independently decoded source data, never a mutable alias.
+        parsed = original
     except ProvisionError:
         raise
     except (

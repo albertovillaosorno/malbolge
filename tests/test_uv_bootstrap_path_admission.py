@@ -1615,6 +1615,92 @@ def test_uv_manifest_json_provider_cannot_substitute_pinned_release(
             _ = python_validation.uv_artifact(PLATFORM_ID)
 
 
+@pytest.mark.parametrize("entrypoint", ("document", "artifact"))
+@pytest.mark.parametrize("providers", ("decoder-only", "joint", "self-restoring"))
+def test_uv_manifest_public_decoder_cannot_forge_release(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str, providers: str
+) -> None:
+    """Only the pinned file bytes may supply a uv release and artifact identity."""
+    source = python_validation.UV_MANIFEST.read_text(encoding="utf-8")
+    native_decoder = json.JSONDecoder
+    forged = cast("dict[str, object]", native_decoder().decode(source))
+    forged["version"] = "0.99.99"
+    forged["base_url"] = (
+        "https://github.com/astral-sh/uv/releases/download/0.99.99/"
+    )
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring":
+                patch.setattr(json, "JSONDecoder", native_decoder)
+
+        def decode(self, _source: str) -> object:
+            return forged
+
+    def forged_loads(_source: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "joint":
+            patch.setattr(json, "loads", forged_loads)
+        with pytest.raises(
+            python_validation.ProvisionError,
+            match="uv JSON decoder provider differs from source",
+        ):
+            if entrypoint == "document":
+                _ = python_validation._uv_manifest_document(  # pyright: ignore[reportPrivateUsage]
+                    python_validation.UV_MANIFEST
+                )
+            else:
+                _ = python_validation.uv_artifact(PLATFORM_ID)
+
+
+def test_uv_manifest_public_decoder_cannot_mask_invalid_syntax(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A fabricated public document cannot override malformed stored JSON."""
+    invalid = tmp_path / "malformed-uv.json"
+    _ = invalid.write_text('{"schema_version":1,,}', encoding="utf-8")
+    original = json.loads(python_validation.UV_MANIFEST.read_text())
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def decode(self, _source: str) -> object:
+            return original
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        with pytest.raises(python_validation.ProvisionError, match="cannot read") as caught:
+            _ = python_validation.uv_artifact(PLATFORM_ID, invalid)
+    assert type(caught.value.__cause__) is json.JSONDecodeError
+
+
+def test_uv_manifest_source_equivalent_public_decoder_is_admitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An honest public JSONDecoder delegate is compatible with pinned bytes."""
+    native_decoder = json.JSONDecoder
+
+    class DelegatingDecoder:
+        def __init__(self, *, object_pairs_hook: object) -> None:
+            self.decoder = native_decoder(
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]",
+                    object_pairs_hook,
+                )
+            )
+
+        def decode(self, source: str) -> object:
+            return self.decoder.decode(source)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", DelegatingDecoder)
+        assert python_validation.uv_artifact(PLATFORM_ID).version == "0.12.20"
+
+
 def test_uv_manifest_json_provider_accepts_equivalent_adapter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
