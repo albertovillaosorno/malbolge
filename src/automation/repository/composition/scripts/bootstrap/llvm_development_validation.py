@@ -696,12 +696,26 @@ def _prepare_staging(staging: Path) -> None:
     _require_physical_directories(staging, "staging")
     if _preflight_path_status(staging, staging.exists, "staging"):
         _fail(f"LLVM development staging already exists: {staging}")
-    try:
-        staging.mkdir(parents=True)
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        raise LlvmDevelopmentProvisionError(
-            "LLVM development staging creation failed"
-        ) from error
+    if os.name != "posix":
+        try:
+            staging.mkdir(parents=True)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                "LLVM development staging creation failed"
+            ) from error
+    else:
+        parent_descriptor = _open_physical_publication_parent(
+            staging, "staging", create=True
+        )
+        try:
+            try:
+                os.mkdir(staging.name, dir_fd=parent_descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmDevelopmentProvisionError(
+                    "LLVM development staging creation failed"
+                ) from error
+        finally:
+            os.close(parent_descriptor)
     _require_physical_directories(staging, "staging")
 
 
@@ -752,7 +766,9 @@ def _assert_owned_staged_child(
         )
 
 
-def _open_physical_publication_parent(path: Path, label: str) -> int:
+def _open_physical_publication_parent(
+    path: Path, label: str, *, create: bool = False
+) -> int:
     """Pin every POSIX parent component and attest the final native inode.
 
     Returns:
@@ -773,7 +789,13 @@ def _open_physical_publication_parent(path: Path, label: str) -> int:
         if type(descriptor) is not int or descriptor < 0:
             _fail(f"LLVM development {label} parent returned invalid descriptor")
         for component in parent.parts[1:]:
-            child = os.open(component, flags, dir_fd=descriptor)
+            try:
+                child = os.open(component, flags, dir_fd=descriptor)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(component, mode=0o755, dir_fd=descriptor)
+                child = os.open(component, flags, dir_fd=descriptor)
             if type(child) is not int or child < 0:
                 _fail(f"LLVM development {label} parent returned invalid descriptor")
             os.close(descriptor)

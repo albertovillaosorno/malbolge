@@ -582,6 +582,100 @@ def test_development_provision_rejects_redirected_destination_before_download(
         assert identity.development_root.is_symlink()
 
 
+def test_development_stage_creation_does_not_follow_late_parent_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stage parent swapped during mkdir cannot redirect the new directory."""
+    if os.name != "posix":
+        pytest.skip("POSIX directory staging boundary")
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    external, sentinel = _external_sentinel(tmp_path)
+    stage_parent = root / ".temp"
+    stage_parent.mkdir()
+    parked = root / "parked-stage-parent"
+    stage = stage_parent / f"llvm-development-provision-{LINUX_PLATFORM}"
+    native_mkdir = os.mkdir
+    native_rename = os.rename
+    swapped = False
+
+    def swap_at_stage_mkdir(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if path == stage or (path == stage.name and dir_fd is not None):
+            native_rename(stage_parent, parked)
+            _ = stage_parent.symlink_to(external, target_is_directory=True)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_at_stage_mkdir)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staging",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                root,
+                identity,
+                downloader=_downloader([]),
+                extractor=_extract_headers,
+            )
+    assert swapped
+    assert list(external.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not identity.development_root.exists()
+
+
+def test_development_staging_parent_creation_stays_inside_pinned_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An absent .temp is created relative to the original physical root."""
+    if os.name != "posix":
+        pytest.skip("POSIX directory staging boundary")
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    external, sentinel = _external_sentinel(tmp_path)
+    parked = tmp_path / "parked-repository"
+    native_mkdir = os.mkdir
+    native_rename = os.rename
+    swapped = False
+
+    def swap_during_temp_creation(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if path == ".temp" and dir_fd is not None:
+            native_rename(root, parked)
+            _ = root.symlink_to(external, target_is_directory=True)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_during_temp_creation)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staging",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                root, identity, downloader=_downloader([]), extractor=_extract_headers
+            )
+    assert swapped
+    assert list(external.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert (parked / ".temp").is_dir()
+
+
 def test_development_provision_rechecks_staging_after_download(
     tmp_path: Path,
 ) -> None:
@@ -868,6 +962,7 @@ def test_development_host_directory_creation_faults_are_typed(
     }
     fault_path = paths[location]
     native_mkdir = Path.mkdir
+    native_os_mkdir = os.mkdir
     fault = OSError(f"host refused {location} directory")
 
     def faulty_mkdir(
@@ -880,8 +975,20 @@ def test_development_host_directory_creation_faults_are_typed(
             raise fault
         native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
 
+    def faulty_native_mkdir(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        if location == "staging" and path == stage.name and dir_fd is not None:
+            raise fault
+        native_os_mkdir(path, mode, dir_fd=dir_fd)
+
     with monkeypatch.context() as isolated:
         isolated.setattr(Path, "mkdir", faulty_mkdir)
+        if os.name == "posix":
+            isolated.setattr(os, "mkdir", faulty_native_mkdir)
         with pytest.raises(
             llvm_development_validation.LlvmDevelopmentProvisionError,
             match="creation failed",
