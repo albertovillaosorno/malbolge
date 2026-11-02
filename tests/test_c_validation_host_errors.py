@@ -680,3 +680,50 @@ def test_manual_c_selection_keeps_redirect_rejection_for_recursive_doom(
         validator.InputError, match="recursive doom entry must not redirect"
     ):
         _ = validator._validated_files([str(doom)])
+
+
+MUTATE_EXECUTABLE = "executable"
+MUTATE_APPEND = "append"
+MUTATE_REMOVE = "remove"
+
+
+@pytest.mark.parametrize(
+    "probe", [PROBE_VERSION, PROBE_REGISTRATION, "validation"]
+)
+@pytest.mark.parametrize(
+    "mutation", [MUTATE_EXECUTABLE, MUTATE_APPEND, MUTATE_REMOVE]
+)
+def test_manual_validator_rejects_mutated_subprocess_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    mutation: str,
+) -> None:
+    """A borrowed argument list cannot certify its own altered invocation."""
+
+    def mutate_run(
+        command: list[str], **options: object
+    ) -> subprocess.CompletedProcess[str]:
+        if mutation == MUTATE_EXECUTABLE:
+            command[0] = "/foreign/clang"
+        elif mutation == MUTATE_APPEND:
+            command.append("--foreign-option")
+        else:
+            _ = command.pop()
+        capturing = options.get("capture_output") is True
+        output = (
+            "clang version 22.1.8\n"
+            if probe == PROBE_VERSION
+            else "\n".join(sorted(validator.PLUGIN_CHECKS))
+        )
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=output if capturing else None,
+            stderr="" if capturing else None,
+        )
+
+    monkeypatch.setattr(subprocess, "run", mutate_run)
+    with pytest.raises(
+        validator.InputError, match=r"invalid .* process receipt"
+    ):
+        _execute_probe(probe, Path("/synthetic/clang"))

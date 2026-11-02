@@ -353,7 +353,7 @@ def _tool_version_output(path: Path, label: str) -> str:
     try:
         # jig-ignore-next-line: indivisible reviewed identifier
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            arguments,
+            arguments.copy(),
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -398,7 +398,7 @@ def _require_plugin_registration(clang_tidy: Path, plugin: Path) -> None:
     try:
         # jig-ignore-next-line: indivisible reviewed identifier
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            arguments,
+            arguments.copy(),
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -472,7 +472,7 @@ def _run(command: list[str]) -> int:
     try:
         # jig-ignore-next-line: indivisible reviewed identifier
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - no shell; argv is explicit.
-            command,
+            command.copy(),
             cwd=ROOT,
             check=False,
             shell=False,

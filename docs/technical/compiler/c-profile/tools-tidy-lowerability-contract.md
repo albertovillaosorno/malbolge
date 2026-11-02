@@ -49,7 +49,9 @@ UTF-8 stdout/stderr. The pre-Malbolge Clang preflight additionally rejects
 foreign argument-list wrappers, token subclasses, and mismatched commands.
 The manual dispatcher's Clang/tidy version query and plugin-registration probe
 require a native `CompletedProcess` with the invoked argument list and exact
-captured text. The source-validation subprocess instead inherits output and
+captured text. Expected command arguments remain separate from the launched
+list so process wrappers cannot rewrite the expected evidence in place.
+The source-validation subprocess instead inherits output and
 requires unset stdout/stderr receipts. Boolean/floating statuses, foreign
 process results, altered arguments, and untrusted output hooks cannot
 impersonate a successful validation. Host execution failures retain their
