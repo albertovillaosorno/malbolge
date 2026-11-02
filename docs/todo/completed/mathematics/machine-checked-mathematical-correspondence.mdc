@@ -40,7 +40,6 @@ validation:
 Connect mathematical specifications to executable tests or proof tooling so the
 `.tex` files are reviewable mathematics rather than decorative documentation.
 
-
 **Current implementation.**
 
 - Forty correctness-relevant equations across classic, profile, state-graph,
@@ -91,6 +90,10 @@ Connect mathematical specifications to executable tests or proof tooling so the
   mechanism metadata plus executable evidence functions.
 - `math_correspondence.py`, 11 manifest/framework tests, 12 property tests,
   and 116 VM tests passed on 2026-08-06.
+- Three red-first native-looking substituted TOML decoder regressions now
+  reject forged correspondence syntax, schema version or equation ID; all 118
+  current correspondence-manifest tests pass. Decoder-provider identity does
+  not independently authenticate the source or mathematical evidence.
 - Future implementation-relevant equations must extend the same closed graph
   from their owning TODO before making correctness claims.
 - **Completion:** Completed on 2026-08-06 after the 40-equation graph, LaTeX

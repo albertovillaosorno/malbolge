@@ -45,6 +45,9 @@ from typing import Never, TextIO, cast
 
 import tomllib
 
+# Source evidence cannot be admitted through a replaced decoder provider.
+_NATIVE_TOML_LOADS = tomllib.loads
+
 from scripts.repository_root import repository_root
 
 ROOT = repository_root(Path(__file__))
@@ -562,7 +565,12 @@ def _parse(text: str) -> tuple[Correspondence, ...]:
     values = _array(document["correspondence"], "manifest.correspondence")
     if not values:
         _fail("manifest.correspondence must not be empty")
-    return tuple(_entry(value, index) for index, value in enumerate(values))
+    entries = tuple(_entry(value, index) for index, value in enumerate(values))
+    # Preserve explicit malformed-field diagnostics before refusing a swapped
+    # parser that otherwise claims valid native records from different bytes.
+    if tomllib.loads is not _NATIVE_TOML_LOADS:
+        _fail("correspondence TOML decoder provider changed")
+    return entries
 
 
 def _equation_labels() -> frozenset[str]:

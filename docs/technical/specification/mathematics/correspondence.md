@@ -36,6 +36,11 @@ equality between all `eq:*` labels under
 `src/specification/formal-model/math/` and the manifest.
 Renaming/removing an equation or a test therefore breaks correspondence instead
 of silently leaving stale documentation.
+The manifest reader also refuses replacement of its imported standard-library
+TOML decoder provider. Three red-first regressions demonstrated that a
+substitute could otherwise return valid native-looking equation mappings for
+invalid source syntax, a changed schema version, or a forged equation ID.
+This pins the local parser provider, not source provenance or semantic proof.
 The validator requires physical in-repository regular manifest, equation, and
 evidence files and rejects redirected source ancestors, including symlinked
 math directories. The validator reads at most 4 MiB per source, using stable
@@ -124,6 +129,7 @@ extrapolate a proof by convention.
   is traceability, not a substitute oracle.
 - Future implementation-relevant equations must extend the manifest and its
   independent evidence from the owning compiler, optimizer, or research TODO.
+
 ## References
 
 - [Verification Trust Boundary](../../adr/verification-trust-boundary.md)

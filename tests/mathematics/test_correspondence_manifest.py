@@ -86,6 +86,26 @@ def test_direct_correspondence_toml_rejects_noncanonical_wire_text() -> None:
         _ = validator._parse(_ForgedText(base))
 
 
+@pytest.mark.parametrize("tamper", ["syntax", "schema", "equation-id"])
+def test_correspondence_refuses_substituted_native_toml_provider(
+    monkeypatch: pytest.MonkeyPatch, tamper: str
+) -> None:
+    """A changed decoder cannot mint equation mappings from foreign source."""
+    source = validator.MANIFEST.read_text(encoding="utf-8")
+    native = validator.tomllib.loads(source)
+    if tamper == "syntax":
+        source = "this is not correspondence TOML"
+    elif tamper == "schema":
+        source = source.replace("schema_version = 1", "schema_version = 2")
+    else:
+        native["correspondence"][0]["id"] = "forged-source-equation"
+    with monkeypatch.context() as context:
+        context.setattr(validator.tomllib, "loads", lambda _text: native)
+        with pytest.raises(validator.CorrespondenceError, match="TOML.*provider"):
+            _ = validator._parse(source)
+    assert validator._parse(validator.MANIFEST.read_text(encoding="utf-8"))
+
+
 @pytest.mark.parametrize(
     "capacity_token",
     ["[" * 1000 + "1" + "]" * 1000, "9" * 5000],
