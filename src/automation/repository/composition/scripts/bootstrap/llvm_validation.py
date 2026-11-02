@@ -914,13 +914,21 @@ def _write_import_marker(
         if expected_parent_inode is not None:
             if parent_descriptor is None:
                 _fail("LLVM import marker requires a pinned physical stage")
-            parent_status = os.fstat(parent_descriptor)
-            if (
-                type(parent_status) is not os.stat_result
-                or (parent_status.st_dev, parent_status.st_ino) != expected_parent_inode
-                or _native_directory_inode(root) != expected_parent_inode
-            ):
-                _fail("LLVM import marker parent changed before exclusive creation")
+            try:
+                parent_status = os.fstat(parent_descriptor)
+                if (
+                    type(parent_status) is not os.stat_result
+                    or (parent_status.st_dev, parent_status.st_ino)
+                    != expected_parent_inode
+                    or _native_directory_inode(root) != expected_parent_inode
+                ):
+                    _fail("LLVM import marker parent changed before exclusive creation")
+            except LlvmImportError:
+                raise
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmImportError(
+                    f"LLVM import marker parent status failed: {type(error).__name__}"
+                ) from error
         flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
         try:
             descriptor = (

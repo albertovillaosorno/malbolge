@@ -3869,3 +3869,46 @@ def test_linux_import_does_not_write_marker_to_substituted_stage(
 def test_llvm_host_version_rejects_appended_foreign_banner_text(banner: str) -> None:
     """A pinned release cannot mask arbitrary appended version report content."""
     assert not llvm_validation.llvm_version_matches(banner)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
+@pytest.mark.parametrize("fault", [OSError, RuntimeError])
+def test_llvm_staging_marker_parent_stat_failure_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: type[Exception]
+) -> None:
+    """A parent descriptor receipt fault cannot escape the typed import boundary."""
+    root = tmp_path / "owned-stage"
+    root.mkdir()
+    expected = root.lstat()
+    tracked: set[int] = set()
+    native_open_parent = llvm_validation._open_physical_import_parent  # pyright: ignore[reportPrivateUsage]
+    native_fstat = os.fstat
+    failure = fault("invalid parent status receipt")
+
+    def track_parent(path: Path, label: str) -> int:
+        descriptor = native_open_parent(path, label)
+        if path == root:
+            tracked.add(descriptor)
+        return descriptor
+
+    def fail_parent_receipt(descriptor: int) -> os.stat_result:
+        if descriptor in tracked:
+            raise failure
+        return native_fstat(descriptor)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation, "_open_physical_import_parent", track_parent)
+        isolated.setattr(os, "fstat", fail_parent_receipt)
+        with pytest.raises(
+            llvm_validation.LlvmImportError, match="parent status"
+        ) as caught:
+            llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+                root,
+                LINUX_PLATFORM,
+                expected_parent_inode=(expected.st_dev, expected.st_ino),
+            )
+    assert caught.value.__cause__ is failure
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+    for descriptor in tracked:
+        with pytest.raises(OSError):
+            native_fstat(descriptor)
