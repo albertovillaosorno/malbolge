@@ -2131,6 +2131,9 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
     # Check existing markers and aliases before publishing any new aliases.
     _ = _existing_import_marker(root, WINDOWS_PLATFORM)
     existing = tuple(_admit_windows_alias(source, alias) for source, alias in pairs)
+    # Alias-directory setup and each copy are untrusted callbacks. Pin the
+    # original PE content before either phase, not just before marker writes.
+    source_identities = tuple(_import_source_identity(source) for source, _ in pairs)
     _create_physical_import_directory(
         alias_root,
         label="Windows LLVM alias directory",
@@ -2151,10 +2154,13 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
         _fail("Windows LLVM alias evidence changed before marker publication")
     if _native_directory_inode(root) != root_inode:
         _fail("Windows LLVM bundle root changed before marker publication")
-    # Creating the completion marker is another untrusted filesystem phase.
-    # Pin original PE bytes first: hardlinked aliases can otherwise change
-    # together with their source and still appear mutually consistent.
-    source_identities = tuple(_import_source_identity(source) for source, _ in pairs)
+    # Hardlinked aliases may share a mutated source inode and still agree
+    # byte-for-byte. Recheck the original pinned PE receipts before the marker.
+    if any(
+        _import_source_identity(source) != admitted
+        for (source, _), admitted in zip(pairs, source_identities, strict=True)
+    ):
+        _fail("Windows LLVM original source changed during alias publication")
     _write_import_marker(root, WINDOWS_PLATFORM, expected_parent_inode=root_inode)
     if (
         _native_directory_inode(root) != root_inode

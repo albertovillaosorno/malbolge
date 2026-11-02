@@ -1325,6 +1325,65 @@ def test_windows_aliases_reject_mutation_during_marker_publication(
     assert changed
 
 
+@pytest.mark.parametrize("phase", ("directory", "alias-copy"))
+def test_windows_aliases_reject_original_pe_mutation_before_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """Alias setup cannot establish a new original PE source baseline."""
+    root = _windows_tool_bundle(tmp_path)
+    source = root / "bin/clang.exe"
+    alias_root = root / "jig-bin"
+    native_create = llvm_validation._create_physical_import_directory  # pyright: ignore[reportPrivateUsage]
+    native_copy = llvm_validation._copy_file  # pyright: ignore[reportPrivateUsage]
+    mutated = False
+
+    def mutate_source() -> None:
+        nonlocal mutated
+        mutated = True
+        admitted = source.stat()
+        content = source.read_bytes()
+        _ = source.write_bytes(b"!" + content[1:])
+        os.utime(source, ns=(admitted.st_atime_ns, admitted.st_mtime_ns))
+
+    def after_directory(
+        path: Path,
+        *,
+        label: str,
+        expected_parent_inode: tuple[int, int] | None = None,
+        exist_ok: bool = False,
+    ) -> None:
+        native_create(
+            path,
+            label=label,
+            expected_parent_inode=expected_parent_inode,
+            exist_ok=exist_ok,
+        )
+        if phase == "directory" and path == alias_root and not mutated:
+            mutate_source()
+
+    def after_copy(
+        original: Path,
+        target: Path,
+        *,
+        expected_parent_inode: tuple[int, int] | None = None,
+    ) -> None:
+        native_copy(original, target, expected_parent_inode=expected_parent_inode)
+        if phase == "alias-copy" and original == source and not mutated:
+            mutate_source()
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_create_physical_import_directory", after_directory
+        )
+        isolated.setattr(llvm_validation, "_copy_file", after_copy)
+        with pytest.raises(llvm_validation.LlvmImportError, match="Windows LLVM"):
+            _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert mutated
+    assert source.read_bytes() != CLANG_BYTES
+
+
 @pytest.mark.parametrize("mutation", ("wrong-size", "same-size", "external-link"))
 def test_windows_inspection_rejects_corrupted_fallback_alias(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
