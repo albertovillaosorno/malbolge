@@ -233,7 +233,9 @@ def _source_fingerprint(raw: bytes) -> bytes:
         _fail("host-C audit SHA-256 requires exact native source bytes")
     try:
         result = sha256(raw).digest()
-        reference = hashlib.sha256(raw).digest()
+        # Check through an independent constructor, not the mutable module
+        # attribute which can be replaced alongside the bound sha256 alias.
+        reference = hashlib.new("sha256", raw).digest()
     except Exception as error:
         message = "host-C audit SHA-256 fingerprint dependency failed"
         raise ReferenceAuditError(message) from error

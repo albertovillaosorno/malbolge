@@ -2044,6 +2044,32 @@ class _HostDigestFailure(RuntimeError):
         raise AssertionError("foreign hash failure was formatted")
 
 
+def test_host_c_audit_rejects_jointly_substituted_sha256_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two aliased hash providers cannot certify the same false source digest."""
+    source = b"host-C audit source evidence"
+    forged = b"0" * reference_audit.SHA256_DIGEST_BYTES
+    authentic = sha256(source).digest()
+    assert forged != authentic
+    assert reference_audit._source_fingerprint(source) == authentic
+
+    class MockHash:
+        def digest(self) -> bytes:
+            return forged
+
+    def replaced(_raw: bytes) -> MockHash:
+        return MockHash()
+
+    monkeypatch.setattr(reference_audit, "sha256", replaced)
+    monkeypatch.setattr(reference_audit.hashlib, "sha256", replaced)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError,
+        match="SHA-256 fingerprint receipt differs",
+    ):
+        reference_audit._source_fingerprint(source)
+
+
 @pytest.mark.parametrize(
     "bad_digest",
     ["nonnative", "foreign-bytes", "wrong-native", "raised"],
