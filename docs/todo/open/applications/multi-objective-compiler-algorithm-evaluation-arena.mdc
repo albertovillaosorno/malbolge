@@ -387,6 +387,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   existence check. Cross-manifest drift and collectively forged unknown Git
   references are rejected under the relevant policy; no runtime source
   attestation or independently proven historical execution is implied.
+- Both host-C producer `rev-parse` and post-run audit `cat-file` now bind
+  successful completion argv to the original native launch list and unchanged
+  prepared command. Two red-first copied-list completion regressions reject
+  forged matching text/status; actual Git successes, 82 focused audit tests
+  and all 332 producer tests pass. This does not attest that Git ran on the
+  original study host or certify historical program execution.
 - Host-C reference failure evidence now retains per-trial diagnostics in a
   versioned, bounded, sanitized `failures.json` record. Both producer and
   later auditor require exact links to `tool_failed` observations, reject

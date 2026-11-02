@@ -657,6 +657,13 @@ Git database. All four source-commit producer/auditor lookups also resolve the
 Git executable through the OS-default `/bin:/usr/bin` search path; a fake
 caller-`PATH` Git cannot provide a forged SHA-1 or claim an absent commit
 object exists. This still trusts local Git and its object database.
+For host-C reference production and post-run audit, successful Git revision
+and commit-type receipts also require `CompletedProcess.args` to be the exact
+native argument list passed to `subprocess.run`, unchanged from an independent
+prelaunch copy. Red-first copied-list success cases reject despite matching
+text and exit status; genuine `rev-parse` and `cat-file` calls still pass.
+These checks bind local subprocess receipts, not host Git provenance or OS
+execution attestation.
 Neither static admission nor opt-in replay authenticates historical
 measurements, validates reported failures by reexecution, enforces aggregate
 resources, or proves arbitrary guest semantics. Missing original binaries can
