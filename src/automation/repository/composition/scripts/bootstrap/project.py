@@ -1007,7 +1007,7 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
 
 
 def _write_import_completion_marker_at_parent(
-    marker: Path, content: str, parent_fd: int | None
+    marker: Path, content: str, parent_fd: int | None, *, executable: bool = False
 ) -> None:
     """Publish marker bytes through the owned parent descriptor when possible."""
     _reject_authority_parent_redirects(marker)
@@ -1062,6 +1062,8 @@ def _write_import_completion_marker_at_parent(
             owned = opened.st_dev, opened.st_ino
             if parent_fd is not None:
                 _require_import_marker_parent(marker, parent_fd)
+            if executable:
+                os.fchmod(descriptor, 0o700)
             written = os.write(descriptor, payload)
             if type(written) is not int or written != len(payload):
                 _fail("import marker short or invalid byte count")
@@ -1073,6 +1075,7 @@ def _write_import_completion_marker_at_parent(
                 or not stat.S_ISREG(published.st_mode)
                 or finished.st_nlink != 1
                 or finished.st_size != len(payload)
+                or (executable and not finished.st_mode & stat.S_IXUSR)
                 or (finished.st_dev, finished.st_ino) != owned
                 or (published.st_dev, published.st_ino) != owned
             ):
@@ -1248,8 +1251,50 @@ def _rust_validation_tool_ids(toolchain_root: Path) -> tuple[str, ...]:
     return ("cargo",)
 
 
-def _write_verified_rust_adapter_script(path: Path, script: str) -> None:
+def _publish_rust_adapter_file_at_parent(
+    path: Path,
+    payload: bytes,
+    parent_fd: int,
+    *,
+    executable: bool = False,
+    allow_hardlink: bool = False,
+) -> None:
+    """Replace an admitted adapter leaf through its original physical parent."""
+    try:
+        _require_local_state_parent_identity(path.parent, parent_fd)
+        _admit_rust_adapter_write_target(path, allow_hardlink=allow_hardlink)
+        try:
+            os.unlink(path.name, dir_fd=parent_fd)
+        except FileNotFoundError:
+            pass
+        _require_local_state_parent_identity(path.parent, parent_fd)
+        _write_import_completion_marker_at_parent(
+            path, payload.decode("ascii"), parent_fd, executable=executable
+        )
+        _require_local_state_parent_identity(path.parent, parent_fd)
+    except InitializationError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("Rust adapter publication failed") from error
+
+
+def _write_verified_rust_adapter_script(
+    path: Path,
+    script: str,
+    *,
+    parent_fd: int | None = None,
+    allow_hardlink: bool = False,
+) -> None:
     """Reject incomplete generated Rust wrapper source writes."""
+    if parent_fd is not None:
+        _publish_rust_adapter_file_at_parent(
+            path,
+            script.encode("ascii"),
+            parent_fd,
+            executable=True,
+            allow_hardlink=allow_hardlink,
+        )
+        return
     written = path.write_text(
         script,
         encoding="ascii",
@@ -1281,12 +1326,17 @@ def _write_rust_validation_alias(
     toolchain_root: Path,
     tool_id: str,
     linker_environment: str,
+    *,
+    parent_fd: int | None = None,
 ) -> Path:
     native = toolchain_root / "bin" / tool_id
     if not native.is_file():
         _fail(f"imported Rust validation tool is missing: {native}")
     alias = toolchain_root / "bin" / f"{tool_id}.bin"
-    alias.unlink(missing_ok=True)
+    if parent_fd is None:
+        alias.unlink(missing_ok=True)
+    else:
+        _require_local_state_parent_identity(alias.parent, parent_fd)
     script = (
         "\n".join((
             "#!/bin/sh",
@@ -1296,8 +1346,11 @@ def _write_rust_validation_alias(
         ))
         + "\n"
     )
-    _write_verified_rust_adapter_script(alias, script)
-    alias.chmod(alias.stat().st_mode | stat.S_IXUSR)
+    _write_verified_rust_adapter_script(
+        alias, script, parent_fd=parent_fd, allow_hardlink=True
+    )
+    if parent_fd is None:
+        alias.chmod(alias.stat().st_mode | stat.S_IXUSR)
     return alias
 
 
@@ -1319,8 +1372,15 @@ def _admit_rust_adapter_write_target(
         _fail(f"Rust adapter write target must not be hardlinked: {path}")
 
 
-def _write_verified_rust_adapter_marker(marker: Path) -> None:
+def _write_verified_rust_adapter_marker(
+    marker: Path, *, parent_fd: int | None = None
+) -> None:
     """Reject incomplete Linux Rust adapter readiness metadata."""
+    if parent_fd is not None:
+        _publish_rust_adapter_file_at_parent(
+            marker, RUST_LINUX_ADAPTER_CONTENT, parent_fd
+        )
+        return
     written = marker.write_bytes(RUST_LINUX_ADAPTER_CONTENT)
     complete_count = (
         type(written) is int and written == len(RUST_LINUX_ADAPTER_CONTENT)
@@ -1346,6 +1406,20 @@ def _write_verified_rust_adapter_marker(marker: Path) -> None:
     _fail(message)
 
 
+def _rust_adapter_parent_identity(parent: Path) -> tuple[int, int]:
+    """Capture an admitted physical toolchain directory before leaf validation."""
+    try:
+        _admit_local_directory(parent)
+        observed = parent.lstat()
+    except InitializationError as error:
+        raise InitializationError("Rust adapter parent must not redirect") from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("cannot inspect Rust adapter parent") from error
+    if type(observed) is not os.stat_result or not stat.S_ISDIR(observed.st_mode):
+        _fail("Rust adapter parent must be physical")
+    return observed.st_dev, observed.st_ino
+
+
 def _write_rust_toolchain_linker_adapters(
     toolchain_root: Path,
     linker_path: str,
@@ -1357,24 +1431,60 @@ def _write_rust_toolchain_linker_adapters(
         toolchain_root / "bin" / f"{tool_id}.bin"
         for tool_id in _rust_validation_tool_ids(toolchain_root)
     )
+    root_identity = (
+        _rust_adapter_parent_identity(toolchain_root) if os.name == "posix" else None
+    )
+    bin_identity = (
+        _rust_adapter_parent_identity(adapter.parent) if os.name == "posix" else None
+    )
     _admit_rust_adapter_write_target(adapter)
     _admit_rust_adapter_write_target(marker)
     for alias in aliases:
         # Imported neutral aliases can hardlink native tools. They are unlinked
         # before writing wrapper scripts, so their source inodes are not edited.
         _admit_rust_adapter_write_target(alias, allow_hardlink=True)
-    _write_verified_rust_adapter_script(
-        adapter, f'#!/bin/sh\nexec {linker_path} "$@"\n'
+    # Keep both original directory identities through every adapter write.
+    # A physical rename/replacement is not detectable by path checks alone.
+    root_fd = (
+        _open_local_state_parent(toolchain_root, expected_identity=root_identity)
+        if root_identity is not None
+        else None
     )
-    adapter.chmod(adapter.stat().st_mode | stat.S_IXUSR)
-    for tool_id in _rust_validation_tool_ids(toolchain_root):
-        _ = _write_rust_validation_alias(
-            toolchain_root,
-            tool_id,
-            linker_environment,
+    try:
+        bin_fd = (
+            _open_local_state_parent(adapter.parent, expected_identity=bin_identity)
+            if bin_identity is not None
+        else None
         )
-    _write_verified_rust_adapter_marker(marker)
-    return adapter
+        try:
+            if root_fd is not None:
+                _require_local_state_parent_identity(toolchain_root, root_fd)
+            _write_verified_rust_adapter_script(
+                adapter,
+                f'#!/bin/sh\nexec {linker_path} "$@"\n',
+                parent_fd=bin_fd,
+            )
+            if bin_fd is None:
+                adapter.chmod(adapter.stat().st_mode | stat.S_IXUSR)
+            for tool_id in _rust_validation_tool_ids(toolchain_root):
+                if root_fd is not None:
+                    _require_local_state_parent_identity(toolchain_root, root_fd)
+                _ = _write_rust_validation_alias(
+                    toolchain_root,
+                    tool_id,
+                    linker_environment,
+                    parent_fd=bin_fd,
+                )
+            if root_fd is not None:
+                _require_local_state_parent_identity(toolchain_root, root_fd)
+            _write_verified_rust_adapter_marker(marker, parent_fd=root_fd)
+            return adapter
+        finally:
+            if bin_fd is not None:
+                _close_local_state_parent(bin_fd)
+    finally:
+        if root_fd is not None:
+            _close_local_state_parent(root_fd)
 
 
 def write_rust_linker_adapters(

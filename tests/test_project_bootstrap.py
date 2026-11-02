@@ -2796,6 +2796,38 @@ def test_rust_adapter_replaces_native_hardlinked_alias_without_mutating_tool(
     assert alias.read_text(encoding="ascii").startswith("#!/bin/sh\n")
 
 
+def _patch_rust_adapter_publisher(
+    monkeypatch: pytest.MonkeyPatch,
+    target: Path,
+    *,
+    before: Callable[[], None] | None = None,
+    writer: Callable[[int, bytes], int] | None = None,
+) -> None:
+    """Inject a selected directory-bound publication without touching other writes."""
+    original = project._write_import_completion_marker_at_parent
+
+    def intercepted(
+        path: Path,
+        content: str,
+        parent_fd: int | None,
+        *,
+        executable: bool = False,
+    ) -> None:
+        if path == target:
+            if before is not None:
+                before()
+            if writer is not None:
+                with monkeypatch.context() as isolated:
+                    isolated.setattr(os, "write", writer)
+                    original(path, content, parent_fd, executable=executable)
+                return
+        original(path, content, parent_fd, executable=executable)
+
+    monkeypatch.setattr(
+        project, "_write_import_completion_marker_at_parent", intercepted
+    )
+
+
 @pytest.mark.parametrize("bad_write_count", [1, None, True, -1, 1_000_000])
 def test_rust_adapter_marker_requires_complete_staging_write(
     tmp_path: Path,
@@ -2805,14 +2837,23 @@ def test_rust_adapter_marker_requires_complete_staging_write(
     """Do not report linker adapter success after an incomplete marker."""
     root, linker = _linux_adapter_writer_tree(tmp_path)
     marker = root / project.RUST_LINUX_ADAPTER_MARKER
-    original_write = type(tmp_path).write_bytes
+    if os.name == "posix":
+        original_write = os.write
 
-    def incomplete_write(path: Path, data: bytes) -> int:
-        assert path == marker
-        _ = original_write(path, data[:1])
-        return cast("int", bad_write_count)
+        def incomplete_write(descriptor: int, data: bytes) -> int:
+            _ = original_write(descriptor, data[:1])
+            return cast("int", bad_write_count)
 
-    monkeypatch.setattr(type(tmp_path), "write_bytes", incomplete_write)
+        _patch_rust_adapter_publisher(monkeypatch, marker, writer=incomplete_write)
+    else:
+        original_write = Path.write_bytes
+
+        def incomplete_write_legacy(path: Path, data: bytes) -> int:
+            assert path == marker
+            _ = original_write(path, data[:1])
+            return cast("int", bad_write_count)
+
+        monkeypatch.setattr(Path, "write_bytes", incomplete_write_legacy)
     with pytest.raises(
         project.InitializationError, match="short or invalid byte count"
     ):
@@ -2835,25 +2876,35 @@ def test_rust_adapter_scripts_require_complete_character_writes(
     root, linker = _linux_adapter_writer_tree(tmp_path)
     target = root / "bin" / target_name
     marker = root / project.RUST_LINUX_ADAPTER_MARKER
-    original_write = type(tmp_path).write_text
+    if os.name == "posix":
+        original_write = os.write
 
-    def incomplete_write(
-        path: Path,
-        data: str,
-        *,
-        encoding: str | None = None,
-        newline: str | None = None,
-    ) -> int:
-        selected = data[:1] if path == target else data
-        _ = original_write(path, selected, encoding=encoding, newline=newline)
-        if path == target:
+        def incomplete_write(descriptor: int, data: bytes) -> int:
+            _ = original_write(descriptor, data[:1])
             return cast("int", bad_write_count)
-        return len(data)
 
-    monkeypatch.setattr(type(tmp_path), "write_text", incomplete_write)
-    with pytest.raises(
-        project.InitializationError, match="short or invalid character count"
-    ):
+        _patch_rust_adapter_publisher(monkeypatch, target, writer=incomplete_write)
+    else:
+        original_write = Path.write_text
+
+        def incomplete_write_legacy(
+            path: Path,
+            data: str,
+            *,
+            encoding: str | None = None,
+            newline: str | None = None,
+        ) -> int:
+            selected = data[:1] if path == target else data
+            _ = original_write(path, selected, encoding=encoding, newline=newline)
+            return cast("int", bad_write_count) if path == target else len(data)
+
+        monkeypatch.setattr(Path, "write_text", incomplete_write_legacy)
+    match = (
+        "short or invalid byte count"
+        if os.name == "posix"
+        else "short or invalid character count"
+    )
+    with pytest.raises(project.InitializationError, match=match):
         _ = project.write_rust_linker_adapters(
             (root,), LINUX_PLATFORM, linker=linker
         )
@@ -2871,21 +2922,29 @@ def test_rust_adapter_script_rejects_complete_count_with_corrupt_bytes(
     root, linker = _linux_adapter_writer_tree(tmp_path)
     target = root / "bin" / target_name
     marker = root / project.RUST_LINUX_ADAPTER_MARKER
-    original_write = Path.write_text
+    if os.name == "posix":
+        original_write = os.write
 
-    def corrupt_write(
-        path: Path,
-        content: str,
-        *,
-        encoding: str | None = None,
-        newline: str | None = None,
-    ) -> int:
-        actual = "x" * len(content) if path == target else content
-        _ = original_write(path, actual, encoding=encoding, newline=newline)
-        return len(content)
+        def corrupt_write(descriptor: int, content: bytes) -> int:
+            return original_write(descriptor, b"x" * len(content))
 
-    monkeypatch.setattr(Path, "write_text", corrupt_write)
-    with pytest.raises(project.InitializationError, match="script content"):
+        _patch_rust_adapter_publisher(monkeypatch, target, writer=corrupt_write)
+    else:
+        original_write = Path.write_text
+
+        def corrupt_write_legacy(
+            path: Path,
+            content: str,
+            *,
+            encoding: str | None = None,
+            newline: str | None = None,
+        ) -> int:
+            actual = "x" * len(content) if path == target else content
+            _ = original_write(path, actual, encoding=encoding, newline=newline)
+            return len(content)
+
+        monkeypatch.setattr(Path, "write_text", corrupt_write_legacy)
+    with pytest.raises(project.InitializationError, match="(script|marker) content"):
         _ = project.write_rust_linker_adapters(
             (root,), LINUX_PLATFORM, linker=linker
         )
@@ -2900,14 +2959,22 @@ def test_rust_adapter_marker_rejects_complete_count_with_corrupt_bytes(
     """A full reported byte count cannot certify a corrupt readiness marker."""
     root, linker = _linux_adapter_writer_tree(tmp_path)
     marker = root / project.RUST_LINUX_ADAPTER_MARKER
-    original_write = Path.write_bytes
+    if os.name == "posix":
+        original_write = os.write
 
-    def corrupt_write(path: Path, content: bytes) -> int:
-        actual = b"x" * len(content) if path == marker else content
-        _ = original_write(path, actual)
-        return len(content)
+        def corrupt_write(descriptor: int, content: bytes) -> int:
+            return original_write(descriptor, b"x" * len(content))
 
-    monkeypatch.setattr(Path, "write_bytes", corrupt_write)
+        _patch_rust_adapter_publisher(monkeypatch, marker, writer=corrupt_write)
+    else:
+        original_write = Path.write_bytes
+
+        def corrupt_write_legacy(path: Path, content: bytes) -> int:
+            actual = b"x" * len(content) if path == marker else content
+            _ = original_write(path, actual)
+            return len(content)
+
+        monkeypatch.setattr(Path, "write_bytes", corrupt_write_legacy)
     with pytest.raises(project.InitializationError, match="marker content"):
         _ = project.write_rust_linker_adapters(
             (root,), LINUX_PLATFORM, linker=linker
@@ -2952,6 +3019,172 @@ def test_rust_adapter_writer_rejects_linked_bin_directory(
             (root,), LINUX_PLATFORM, linker=linker
         )
     assert not (relocated / "cc").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("redirect", ["symlink", "physical"])
+def test_rust_adapter_writer_rejects_bin_parent_swap_before_script_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, redirect: str
+) -> None:
+    """An exchanged bin parent cannot receive a generated cc script."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    bin_dir = root / "bin"
+    parked = tmp_path / "parked-rust-bin"
+    foreign = tmp_path / "foreign-rust-bin"
+    foreign.mkdir()
+    _ = (foreign / "cargo").write_bytes(RUST_CARGO_BYTES)
+    original = b"foreign linker must survive"
+    _ = (foreign / "cc").write_bytes(original)
+    swapped = False
+
+    def exchange() -> None:
+        nonlocal swapped
+        bin_dir.rename(parked)
+        if redirect == "symlink":
+            bin_dir.symlink_to(foreign, target_is_directory=True)
+        else:
+            foreign.rename(bin_dir)
+        swapped = True
+
+    with monkeypatch.context() as isolated:
+        _patch_rust_adapter_publisher(isolated, bin_dir / "cc", before=exchange)
+        with pytest.raises(project.InitializationError):
+            _ = project.write_rust_linker_adapters(
+                (root,), LINUX_PLATFORM, linker=linker
+            )
+    assert swapped
+    injected = foreign if redirect == "symlink" else bin_dir
+    assert (injected / "cc").read_bytes() == original
+    assert not (parked / "cc").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("redirect", ["symlink", "physical"])
+def test_rust_adapter_writer_rejects_root_swap_before_marker_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, redirect: str
+) -> None:
+    """An exchanged toolchain root cannot receive readiness metadata."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    parked = tmp_path / "parked-rust-root"
+    foreign = tmp_path / "foreign-rust-root"
+    foreign.mkdir()
+    original = b"foreign marker must survive"
+    _ = (foreign / project.RUST_LINUX_ADAPTER_MARKER).write_bytes(original)
+    swapped = False
+
+    def exchange() -> None:
+        nonlocal swapped
+        root.rename(parked)
+        if redirect == "symlink":
+            root.symlink_to(foreign, target_is_directory=True)
+        else:
+            foreign.rename(root)
+        swapped = True
+
+    with monkeypatch.context() as isolated:
+        _patch_rust_adapter_publisher(
+            isolated, root / project.RUST_LINUX_ADAPTER_MARKER, before=exchange
+        )
+        with pytest.raises(project.InitializationError):
+            _ = project.write_rust_linker_adapters(
+                (root,), LINUX_PLATFORM, linker=linker
+            )
+    assert swapped
+    injected = foreign if redirect == "symlink" else root
+    assert (injected / project.RUST_LINUX_ADAPTER_MARKER).read_bytes() == original
+    assert not (parked / project.RUST_LINUX_ADAPTER_MARKER).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("parent_kind", ["root", "bin"])
+def test_rust_adapter_writer_pins_initial_parent_before_admission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, parent_kind: str
+) -> None:
+    """An early physical parent exchange cannot replace the admitted toolchain."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    bin_dir = root / "bin"
+    parent = root if parent_kind == "root" else bin_dir
+    parked = tmp_path / "parked-rust-parent"
+    foreign = tmp_path / "foreign-rust-parent"
+    injected = foreign / "bin" if parent_kind == "root" else foreign
+    injected.mkdir(parents=True)
+    _ = (injected / "cargo").write_bytes(RUST_CARGO_BYTES)
+    expected = b"do not rewrite this cc"
+    _ = (injected / "cc").write_bytes(expected)
+    original_admit = project._admit_rust_adapter_write_target
+    swapped = False
+
+    def swap_during_admission(path: Path, *, allow_hardlink: bool = False) -> None:
+        nonlocal swapped
+        if path == bin_dir / "cc" and not swapped:
+            parent.rename(parked)
+            foreign.rename(parent)
+            swapped = True
+        original_admit(path, allow_hardlink=allow_hardlink)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            project, "_admit_rust_adapter_write_target", swap_during_admission
+        )
+        with pytest.raises(project.InitializationError):
+            _ = project.write_rust_linker_adapters(
+                (root,), LINUX_PLATFORM, linker=linker
+            )
+    assert swapped
+    destination = parent / "bin/cc" if parent_kind == "root" else parent / "cc"
+    assert destination.read_bytes() == expected
+
+
+def test_rust_adapter_writer_replaces_owned_shims_on_rerun(tmp_path: Path) -> None:
+    """A second host linker selection updates scripts without touching cargo."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    first = project.write_rust_linker_adapters(
+        (root,), LINUX_PLATFORM, linker=linker
+    )
+    original_cargo = (root / "bin/cargo").read_bytes()
+    second_linker = tmp_path / "new-host-cc"
+    _ = second_linker.write_bytes(b"another host linker")
+
+    second = project.write_rust_linker_adapters(
+        (root,), LINUX_PLATFORM, linker=second_linker
+    )
+
+    assert first == second == (root / "bin/cc",)
+    assert second[0].read_text(encoding="ascii") == (
+        f'#!/bin/sh\nexec {second_linker.resolve()} "$@"\n'
+    )
+    assert (root / "bin/cargo.bin").stat().st_mode & stat.S_IXUSR
+    assert (root / "bin/cargo").read_bytes() == original_cargo
+    assert (root / project.RUST_LINUX_ADAPTER_MARKER).read_bytes() == (
+        project.RUST_LINUX_ADAPTER_CONTENT
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX file descriptors")
+def test_rust_adapter_writer_chmod_fault_cleans_up_open_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An executable-mode failure cannot publish a partial linker adapter."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    fault = OSError("cannot mark executable")
+    opened: list[int] = []
+
+    def fail_chmod(descriptor: int, _mode: int) -> None:
+        opened.append(descriptor)
+        raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fchmod", fail_chmod)
+        with pytest.raises(project.InitializationError) as caught:
+            _ = project.write_rust_linker_adapters(
+                (root,), LINUX_PLATFORM, linker=linker
+            )
+    assert caught.value.__cause__ is fault
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+    assert not (root / "bin/cc").exists()
+    assert not (root / project.RUST_LINUX_ADAPTER_MARKER).exists()
 
 
 def test_rust_linker_adapters_leave_windows_aliases_unchanged(
