@@ -6899,3 +6899,57 @@ def test_cuda_archive_top_level_close_receipts_are_required(
     if forgery == "body-close-fault":
         assert caught.value is scan_error
         assert any("close also failed" in note for note in caught.value.__notes__)
+
+
+@pytest.mark.parametrize("archive_format", ("tar", "zip"))
+@pytest.mark.parametrize("forgery", ("omit", "reorder"))
+def test_cuda_archive_inventory_cannot_replace_verified_members(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    archive_format: str,
+    forgery: str,
+) -> None:
+    """Inventory adapters cannot omit or reorder the verified members."""
+    is_zip = archive_format == "zip"
+    payload = _zip_payload() if is_zip else _payload()
+    manifest = _manifest(
+        tmp_path,
+        payload,
+        {"relative_path": _ZIP_PACKAGE_PATH if is_zip else PACKAGE_PATH},
+    )
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    visited: list[str] = []
+
+    native_tar_iterator = tarfile.TarFile.__iter__
+
+    def forged_tar(archive: tarfile.TarFile) -> Iterator[tarfile.TarInfo]:
+        visited.append("tar")
+        if forgery == "omit":
+            assert archive.firstmember is not None
+            yield archive.firstmember
+        else:
+            yield from reversed(tuple(native_tar_iterator(archive)))
+
+    native_zip_inventory = zipfile.ZipFile.infolist
+
+    def forged_zip(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+        visited.append("zip")
+        members = native_zip_inventory(archive)
+        return members[:1] if forgery == "omit" else members[::-1]
+
+    with monkeypatch.context() as isolated:
+        if is_zip:
+            isolated.setattr(zipfile.ZipFile, "infolist", forged_zip)
+        else:
+            isolated.setattr(tarfile.TarFile, "__iter__", forged_tar)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError,
+            match="archive member inventory|TAR member inventory|ZIP member inventory",
+        ):
+            cuda_validation.extract_cuda_package(
+                payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+            )
+    assert visited == [archive_format]
+    assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()

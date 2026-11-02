@@ -655,7 +655,22 @@ def _tar_members(
             target = _archive_member_path(member.linkname)
             if target.parts[0] != root_name:
                 _fail("CUDA archive hard link outside package root")
-    return root_name, members, _tar_resolved_files(members)
+    resolved = _tar_resolved_files(members)
+    # A replaced TarFile.__iter__ can omit members or redirect the scan.
+    # Require native EOF and exact opened-archive member object identity;
+    # do not let an injected iterator's apparent exhaustion certify success.
+    cached = cast("object", getattr(archive, "members", None))
+    if (
+        archive.next() is not None
+        or type(cached) is not list
+        or len(members) != len(cached)
+        or any(
+            observed is not recorded
+            for observed, recorded in zip(members, cached)
+        )
+    ):
+        _fail("CUDA TAR member inventory does not match opened archive")
+    return root_name, members, resolved
 
 
 def _write_verified_bytes(path: Path, payload: bytes) -> None:
@@ -854,6 +869,11 @@ def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
     _validate_cuda_archive_expansion(
         tuple(info.file_size if not info.is_dir() else 0 for info in infos)
     )
+    # infolist() may be substituted independently of the actual ZIP filelist.
+    if len(infos) != len(archive.filelist) or any(
+        observed is not recorded for observed, recorded in zip(infos, archive.filelist)
+    ):
+        _fail("CUDA ZIP member inventory does not match opened archive")
     root_name = _common_archive_root(tuple(info.filename for info in infos))
     seen_paths: set[str] = set()
     for info in infos:
