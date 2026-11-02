@@ -64,6 +64,7 @@ from accelerator.work_ports import CandidateEvaluationBatch
 from accelerator.work_ports import SearchRequest
 from optimizer.cli import CONFIGURATION_ERROR
 from optimizer.cli import PROPOSAL_TRUST
+from optimizer.cli import SearchCliError
 from optimizer.cli import SearchRunOptions
 from optimizer.cli import main
 from optimizer.cli import run_configured_search
@@ -367,6 +368,58 @@ def test_cpu_enumeration_output_records_reproducible_identity() -> None:
     assert payload["proposals"] == [
         {"logical_id": "corpus-1", "payload_hex": b"beta".hex()}
     ]
+
+
+@pytest.mark.parametrize("providers", ("encoder-only", "dumps-only", "joint"))
+def test_search_record_rejects_forged_json_provider(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Public JSON providers cannot publish forged proposal-trust evidence."""
+    configuration = _configuration(ENUMERATIVE_ALGORITHM_ID, CPU_BACKEND)
+    problem = EnumerationProblem(candidates=(b"alpha", b"beta")).encode()
+    record = run_configured_search(
+        configuration, problem, SearchRunOptions(evaluation_budget=1)
+    )
+    canonical = _json_object(search_record_json(configuration, problem, record))
+    assert canonical["proposal_trust"] == "untrusted"
+    forged = json.dumps(
+        {**canonical, "proposal_trust": "verified"}, indent=2, sort_keys=True
+    )
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _payload: object) -> str:
+            return forged
+
+    with monkeypatch.context() as patch:
+        if providers != "dumps-only":
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers != "encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: forged)
+        with pytest.raises(SearchCliError, match="search JSON writer disagrees"):
+            _ = search_record_json(configuration, problem, record)
+
+
+def test_search_record_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent public adapters preserve untrusted proposal evidence."""
+    configuration = _configuration(ENUMERATIVE_ALGORITHM_ID, CPU_BACKEND)
+    problem = EnumerationProblem(candidates=(b"alpha", b"beta")).encode()
+    record = run_configured_search(
+        configuration, problem, SearchRunOptions(evaluation_budget=1)
+    )
+    original = search_record_json(configuration, problem, record)
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert search_record_json(configuration, problem, record) == original
 
 
 def test_explicit_overrides_select_another_registered_cpu_algorithm() -> None:

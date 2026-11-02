@@ -113,7 +113,11 @@ same registry externally through `python -m optimizer.cli`. It reads versioned
 TOML configuration plus canonical binary problem bytes, accepts explicit
 algorithm/backend overrides, and emits deterministic JSON with configuration
 source, problem SHA-256, configured and actual backend IDs, device metadata,
-seed/budget, and hex-encoded proposals marked `untrusted`. Both caller-selected
+seed/budget, and hex-encoded proposals marked `untrusted`. The JSON record
+writer corroborates the public serializer against an import-bound `JSONEncoder`
+class before emitting any bytes. Writer-only, encoder-only, and jointly forged
+provider output cannot silently change the proposal trust, backend, or problem
+identity recorded by the CLI. Both caller-selected
 binary problem and resume-checkpoint files require regular stable sources,
 within a 64 MiB read limit. Directory/FIFO files, truncated or changing
 source bytes fail before search execution, while explicit source aliases remain

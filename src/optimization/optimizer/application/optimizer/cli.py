@@ -86,6 +86,8 @@ if TYPE_CHECKING:
     from accelerator.search_selection import SearchSelection
     from accelerator.work_ports import SearchResult
 
+_SOURCE_JSON_ENCODER = json.JSONEncoder
+
 CUDA_BACKEND = "cuda"
 CONFIGURATION_ERROR = 2
 OUTPUT_SCHEMA_VERSION = 1
@@ -340,7 +342,17 @@ def search_record_json(
             resume_checkpoint
         ).hexdigest()
         payload["resume_execution_id"] = resumable_evaluated_search_id()
-    return json.dumps(payload, indent=2, sort_keys=True)
+    try:
+        # Public json.dumps resolves mutable JSONEncoder at invocation time.
+        source_text = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"search JSON writer failed: {type(error).__name__}"
+        raise SearchCliError(message) from error
+    if type(observed) is not str or observed != source_text:
+        message = "search JSON writer disagrees with source"
+        raise SearchCliError(message)
+    return source_text
 
 
 def _cpu_bindings() -> tuple[SearchAdapterBinding, ...]:
