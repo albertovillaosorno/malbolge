@@ -255,7 +255,12 @@ def _runtime_ready(root: Path, platform_id: str) -> bool:
             _valid_linux_wrapper(root / "jig-bin" / f"{tool}.bin", tool)
             for tool in _TOOL_NAMES
         )
-    return all(_physical_file(root / "jig-bin" / f"{tool}.bin") for tool in _TOOL_NAMES)
+    return all(
+        _windows_alias_ready(
+            root / "bin" / f"{tool}.exe", root / "jig-bin" / f"{tool}.bin"
+        )
+        for tool in _TOOL_NAMES
+    )
 
 
 def _matches_open_import_file(
@@ -871,6 +876,59 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
         ):
             shutil.rmtree(staging)
     return destination
+
+
+def _windows_alias_ready(source: Path, alias: Path) -> bool:
+    """Reject a copied PE alias that no longer matches its physical source."""
+    if not _physical_file(source) or not _physical_file(alias):
+        return False
+    try:
+        source_stat = source.lstat()
+        alias_stat = alias.lstat()
+        source_id = _marker_identity(source_stat)
+        alias_id = _marker_identity(alias_stat)
+        same_inode = (source_stat.st_dev, source_stat.st_ino) == (
+            alias_stat.st_dev,
+            alias_stat.st_ino,
+        )
+        expected_links = 2 if same_inode else 1
+        if (
+            source_stat.st_size != alias_stat.st_size
+            or source_stat.st_nlink != expected_links
+            or alias_stat.st_nlink != expected_links
+        ):
+            return False
+        if not same_inode:
+            with source.open("rb") as original, alias.open("rb") as copied:
+                if (
+                    _marker_identity(os.fstat(original.fileno())) != source_id
+                    or _marker_identity(os.fstat(copied.fileno())) != alias_id
+                ):
+                    return False
+                while True:
+                    original_chunk = original.read(65536)
+                    copied_chunk = copied.read(65536)
+                    if (
+                        type(original_chunk) is not bytes
+                        or type(copied_chunk) is not bytes
+                        or original_chunk != copied_chunk
+                    ):
+                        return False
+                    if not original_chunk:
+                        break
+                if (
+                    _marker_identity(os.fstat(original.fileno())) != source_id
+                    or _marker_identity(os.fstat(copied.fileno())) != alias_id
+                ):
+                    return False
+        return (
+            _physical_file(source)
+            and _physical_file(alias)
+            and _marker_identity(source.lstat()) == source_id
+            and _marker_identity(alias.lstat()) == alias_id
+        )
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return False
 
 
 def _require_matching_windows_alias(source: Path, alias: Path) -> None:

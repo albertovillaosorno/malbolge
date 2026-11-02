@@ -724,6 +724,51 @@ def test_windows_aliases_preserve_existing_executable_bytes(
     assert llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
 
 
+@pytest.mark.parametrize("mutation", ("wrong-size", "same-size", "external-link"))
+def test_windows_inspection_rejects_corrupted_fallback_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """Readiness may not reuse a detached copy whose PE bytes have changed."""
+    root = _windows_tool_bundle(tmp_path)
+
+    native_link = os.link
+
+    def no_hardlinks(_source: str, _destination: str) -> None:
+        raise OSError("cross-device import")
+
+    monkeypatch.setattr(os, "link", no_hardlinks)
+    aliases = llvm_validation.write_windows_llvm_aliases(root)
+    assert llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
+    if mutation == "wrong-size":
+        _ = aliases[0].write_bytes(FORGED_ALIAS_BYTES)
+    elif mutation == "same-size":
+        _ = aliases[0].write_bytes(b"x" * len(CLANG_BYTES))
+    else:
+        try:
+            native_link(aliases[0], tmp_path / "borrowed-alias")
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"hardlinks unavailable: {error}")
+    assert (root / "bin/clang.exe").read_bytes() == CLANG_BYTES
+    assert not llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
+
+
+def test_windows_inspection_rejects_externally_linked_imported_source(
+    tmp_path: Path,
+) -> None:
+    """Extra names must not borrow source or alias trust after publication."""
+    root = _windows_tool_bundle(tmp_path)
+    aliases = llvm_validation.write_windows_llvm_aliases(root)
+    source = root / "bin/clang.exe"
+    assert llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
+    try:
+        os.link(source, tmp_path / "external-clang")
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    assert source.stat().st_nlink == 3
+    assert aliases[0].stat().st_ino == source.stat().st_ino
+    assert not llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
+
+
 @pytest.mark.parametrize("alias_kind", ("symlink", "hardlink"))
 def test_linux_wrapper_writer_refuses_linked_leaf(
     tmp_path: Path, alias_kind: str
