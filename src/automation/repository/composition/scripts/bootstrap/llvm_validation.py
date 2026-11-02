@@ -87,14 +87,29 @@ def _fail(message: str) -> Never:
 
 
 def llvm_version_matches(version_text: str) -> bool:
-    """Match one tool banner against the exact pinned LLVM version.
+    """Match a native Clang/LLVM tool banner against the pinned release.
 
     Returns:
-        Whether the banner contains the exact pinned release identity.
+        Whether the primary version banner identifies the pinned release.
 
     """
-    exact = re.compile(r"(?<![\w.+-])" + re.escape(LLVM_VERSION) + r"(?![\w.+-])")
-    return any(exact.search(line) is not None for line in version_text.splitlines())
+    lines = version_text.splitlines()
+    if not lines:
+        return False
+    # Clang/clang-format identify their own release on the first line.  A
+    # diagnostic elsewhere in stdout cannot attest the installed executable.
+    suffix = re.escape(LLVM_VERSION) + r"(?=$|[ \t(])"
+    if re.match(
+        r"^(?:(?:Ubuntu|Debian|Apple) )?clang(?:-format)? version " + suffix,
+        lines[0],
+    ):
+        return True
+    # clang-tidy uses LLVM's two-line banner rather than "clang-tidy version".
+    return (
+        lines[0] == "LLVM (http://llvm.org/):"
+        and len(lines) > 1
+        and re.match(r"^  LLVM version " + suffix, lines[1]) is not None
+    )
 
 
 def _unlinked_path(path: Path) -> bool:

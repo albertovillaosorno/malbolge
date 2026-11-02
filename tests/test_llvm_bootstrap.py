@@ -1288,11 +1288,30 @@ def test_llvm_host_version_rejects_embedded_or_qualified_release(
         "clang version 22.1.8",
         "Ubuntu clang version 22.1.8 (https://llvm.org/)",
         "clang-format version 22.1.8\nTarget: x86_64-pc-linux-gnu",
+        "LLVM (http://llvm.org/):\n  LLVM version 22.1.8\n  Optimized build.",
     ),
 )
 def test_llvm_host_version_preserves_exact_native_banner(banner: str) -> None:
     """Normal full-release tool banners remain accepted."""
     assert llvm_validation.llvm_version_matches(banner)
+
+
+@pytest.mark.parametrize(
+    "banner",
+    (
+        "diagnostic: expected LLVM 22.1.8 but found 21.1.8",
+        "clang version 21.1.8\nwarning: expected LLVM 22.1.8",
+        "clang version 21.1.8\nclang version 22.1.8",
+        "clang-format version 21.1.8\nLLVM version 22.1.8",
+        "LLVM version 22.1.8",
+        "clang-tidy unexpectedly failed: 22.1.8",
+    ),
+)
+def test_llvm_host_version_rejects_diagnostic_or_secondary_version(
+    banner: str,
+) -> None:
+    """An unrelated diagnostic or later line is not a pinned tool banner."""
+    assert not llvm_validation.llvm_version_matches(banner)
 
 
 def test_linux_import_rejects_forged_existing_marker(tmp_path: Path) -> None:
