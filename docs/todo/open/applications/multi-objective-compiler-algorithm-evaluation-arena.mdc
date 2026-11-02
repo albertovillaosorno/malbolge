@@ -350,6 +350,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   references reject without claiming historical execution attestation.
   Hostile inherited `GIT_DIR` or `GIT_OBJECT_DIRECTORY` cannot substitute
   another object's database for this local check.
+  The classic target producer's Git revision (`1e903e12f`) and auditor's
+  opt-in Git commit-object check (`439e424fc`) now bind successful child argv
+  to the original prepared list and unchanged command. Two red-first
+  copied-success receipt regressions reject; full producer/auditor suites
+  passed 421/314 tests, with 50/58 focused post-commit Git cases green.
+  This is local receipt consistency, not historical source attestation.
   The auditor now admits exact native bounded bytes at all retained-file read
   sites before decoding or hashing, rejecting foreign buffer and subclass
   receipts without granting false source provenance. It checks RSS inventory

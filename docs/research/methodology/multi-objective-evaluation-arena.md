@@ -674,6 +674,16 @@ prelaunch copy. Red-first copied-list success cases reject despite matching
 text and exit status; genuine `rev-parse` and `cat-file` calls still pass.
 These checks bind local subprocess receipts, not host Git provenance or OS
 execution attestation.
+
+The classic target producer's `rev-parse HEAD` revision receipt and the
+read-only target auditor's opt-in `cat-file -t` commit-object receipt now
+likewise require the original prepared `CompletedProcess.args` list, with
+unchanged arguments. Signed fixes `1e903e12f` and `439e424fc` reject
+success-looking but equal copied argv lists in red-first regressions. The
+full producer/auditor suites passed 421/314 tests; 50/58 Git-focused tests
+passed after the respective commits. This binds only local child receipts,
+not OS execution, historic Git provenance or guest-measurement authenticity.
+
 Neither static admission nor opt-in replay authenticates historical
 measurements, validates reported failures by reexecution, enforces aggregate
 resources, or proves arbitrary guest semantics. Missing original binaries can
