@@ -721,6 +721,35 @@ def test_shared_json_string_escaper_cannot_publish_forged_values(
     assert not output.flushed
 
 
+@pytest.mark.skipif(
+    getattr(json.encoder, "c_make_encoder", None) is None,
+    reason="host JSON C encoder is unavailable",
+)
+def test_joint_json_factory_substitution_cannot_forge_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged native and Python iterator cannot jointly certify wrong JSON."""
+    output = _FakeStream("healthy")
+    wrong = '{"status": "forged"}'
+
+    def substituted_c_factory(*_args: object, **_kwargs: object):
+        return lambda _report, _indent: [wrong]
+
+    def substituted_python_factory(*_args: object, **_kwargs: object):
+        return lambda _report, _indent: iter([wrong])
+
+    monkeypatch.setattr(
+        report_output.json.encoder, "c_make_encoder", substituted_c_factory
+    )
+    monkeypatch.setattr(
+        report_output.json.encoder, "_make_iterencode", substituted_python_factory
+    )
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish({"status": "ready"}, output)
+    assert not output.records
+    assert not output.flushed
+
+
 @pytest.mark.parametrize(
     "report",
     [

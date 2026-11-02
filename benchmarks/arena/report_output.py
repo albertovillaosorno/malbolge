@@ -47,6 +47,14 @@ _CANONICAL_JSON_CHUNKS = json.JSONEncoder(
 # ASCII string escaper. Preserve its native provider to prevent a shared
 # runtime substitution from making three agreeing but forged JSON records.
 _CANONICAL_ASCII_ESCAPER = json.encoder.encode_basestring_ascii
+# The private runtime factories are not exported by stdlib typing stubs.
+_C_FACTORY_NAME = "c_make_encoder"
+_PY_FACTORY_NAME = "_make_iterencode"
+# Each iterencode path also resolves its own mutable module factory. A joint
+# factory substitution can otherwise make both encoder paths forge the same
+# value without replacing the string escaper.
+_CANONICAL_C_ENCODER_FACTORY = getattr(json.encoder, _C_FACTORY_NAME)
+_CANONICAL_PY_ITERATOR_FACTORY = getattr(json.encoder, _PY_FACTORY_NAME)
 
 
 class TextReportStream(Protocol):
@@ -153,8 +161,12 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
         # Fully render strict JSON before touching stdout: even nested nonfinite
         # costs must not produce an invalid but apparently successful report.
         _admit_native_json(report)
-        if json.encoder.encode_basestring_ascii is not _CANONICAL_ASCII_ESCAPER:
-            message = "arena report JSON string escaper provider changed"
+        if (
+            json.encoder.encode_basestring_ascii is not _CANONICAL_ASCII_ESCAPER
+            or getattr(json.encoder, _C_FACTORY_NAME) is not _CANONICAL_C_ENCODER_FACTORY
+            or getattr(json.encoder, _PY_FACTORY_NAME) is not _CANONICAL_PY_ITERATOR_FACTORY
+        ):
+            message = "arena report JSON source encoder provider changed"
             raise ValueError(message)
         serialized = json.dumps(report, sort_keys=True, indent=2, allow_nan=False)
         if type(serialized) is not str:
