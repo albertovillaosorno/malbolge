@@ -4902,6 +4902,101 @@ def test_cuda_nonposix_overlay_rejects_unlisted_destination_addition(
     assert retained.read_bytes() == b"prior verified package"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX descriptors")
+@pytest.mark.parametrize("tamper", ("delete", "overwrite", "inject"))
+def test_cuda_posix_overlay_rejects_prior_member_and_unlisted_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str,
+) -> None:
+    """POSIX copies cannot silently mutate earlier packages or add new leaves."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _ = (source / "new.bin").write_bytes(b"verified source")
+    destination = tmp_path / "destination"
+    (destination / "bin").mkdir(parents=True)
+    retained = destination / "bin" / "prior.bin"
+    _ = retained.write_bytes(b"verified older package")
+    status = source.stat()
+    original_write = cuda_validation._write_staged_file_at_parent  # noqa: SLF001, RUF100
+    touched = False
+
+    def mutate_on_copy(
+        path: Path, payload: bytes, label: str, parent_descriptor: int | None
+    ) -> tuple[int, int]:
+        nonlocal touched
+        if not touched and path == destination / "new.bin":
+            touched = True
+            if tamper == "delete":
+                retained.unlink()
+            elif tamper == "overwrite":
+                _ = retained.write_bytes(b"altered older package")
+            else:
+                _ = (destination / "bin" / "unlisted.bin").write_bytes(b"unverified")
+        return original_write(path, payload, label, parent_descriptor)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_write_staged_file_at_parent", mutate_on_copy)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="overlay"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino),
+            )
+    assert touched
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX descriptors")
+def test_cuda_second_package_cannot_publish_modified_first_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later package must not publish a marker after corrupting prior bytes."""
+    first_bytes = _payload()
+    second_name = "cuda_cudart"
+    second_path = (
+        f"{second_name}/{LINUX_PLATFORM}/"
+        f"{second_name}-{LINUX_PLATFORM}-1.2.3-archive.tar.xz"
+    )
+    second_bytes = _tar_xz({
+        f"{second_name}-{LINUX_PLATFORM}-1.2.3-archive/bin/cudart.dll": b"new runtime"
+    })
+    manifest = _manifest(tmp_path, first_bytes)
+    document = cast("dict[str, object]", json.loads(manifest.read_text()))
+    packages = cast("list[dict[str, object]]", document["packages"])
+    packages.append({
+        "name": second_name,
+        "version": "1.2.3",
+        "relative_path": second_path,
+        "sha256": hashlib.sha256(second_bytes).hexdigest(),
+        "size": len(second_bytes),
+    })
+    _ = manifest.write_text(json.dumps(document))
+    original_write = cuda_validation._write_staged_file_at_parent  # noqa: SLF001, RUF100
+    corrupted = False
+
+    def corrupt_prior(
+        path: Path, payload: bytes, label: str, parent_descriptor: int | None
+    ) -> tuple[int, int]:
+        nonlocal corrupted
+        if not corrupted and path.name == "cudart.dll" and label == "CUDA staged overlay member":
+            corrupted = True
+            prior = path.parent.parent / "lib64" / "libnvrtc.so.13"
+            _ = prior.write_bytes(b"unverified replacement")
+        return original_write(path, payload, label, parent_descriptor)
+
+    def download(url: str) -> bytes:
+        if url == cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH:
+            return first_bytes
+        assert url == cuda_validation.NVIDIA_CUDA_REDIST_BASE + second_path
+        return second_bytes
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_write_staged_file_at_parent", corrupt_prior)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="prior package member"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=download,
+            )
+    assert corrupted
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+    assert not (tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
+
+
 @pytest.mark.parametrize("tamper", ("delete", "overwrite", "replace-link"))
 def test_cuda_nonposix_overlay_rejects_changes_to_prior_package_members(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str,

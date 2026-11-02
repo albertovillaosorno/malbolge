@@ -1033,6 +1033,68 @@ def _read_cuda_overlay_file(
         return content
 
 
+def _cuda_overlay_destination_members(destination: Path) -> dict[
+    Path, tuple[int, int, int, bytes | str | None]
+]:
+    """Attest both membership and prior-package bytes across a copy."""
+    known: dict[Path, tuple[int, int, int, bytes | str | None]] = {}
+    pending = [destination]
+    while pending:
+        folder = pending.pop()
+        _require_physical_directories(folder, "staged overlay destination")
+        try:
+            entries = tuple(folder.iterdir())
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA staged overlay destination scan failed"
+            ) from error
+        for child in entries:
+            if (
+                type(child) is not type(destination)
+                or child.parent != folder
+                or child.name in {".", ".."}
+            ):
+                _fail("CUDA staged overlay destination enumeration escaped root")
+            try:
+                relative = child.relative_to(destination)
+                status = child.lstat()
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA staged overlay destination member status failed"
+                ) from error
+            if (
+                type(status) is not os.stat_result
+                or relative.is_absolute()
+                or PARENT_SEGMENT in relative.parts
+            ):
+                _fail("CUDA staged overlay destination member has unsafe status")
+            kind = S_IFMT(status.st_mode)
+            content: bytes | str | None = None
+            if S_ISDIR(status.st_mode):
+                pending.append(child)
+            elif S_ISREG(status.st_mode):
+                content = hashlib.sha256(
+                    _read_manifest_source(
+                        child, "CUDA staged overlay prior package member",
+                        max_bytes=_MAX_CUDA_ARCHIVE_MEMBER_BYTES,
+                    )
+                ).digest()
+            elif S_ISLNK(status.st_mode):
+                try:
+                    content = os.readlink(child)
+                except (OSError, TypeError, ValueError, RuntimeError) as error:
+                    raise CudaProvisionError(
+                        "CUDA staged overlay prior package link read failed"
+                    ) from error
+                if type(content) is not str:
+                    _fail("CUDA staged overlay prior package link requires text")
+                _ = _archive_member_path(content)
+            else:
+                _fail("CUDA staged overlay destination has special member")
+            known[relative] = (status.st_dev, status.st_ino, kind, content)
+    return known
+
+
 def _copy_cuda_overlay(
     source: Path, destination: Path, source_identity: tuple[int, int]
 ) -> None:
@@ -1160,68 +1222,7 @@ def _copy_cuda_overlay(
             detail = f"CUDA staged overlay preflight failed: {_native_error_name(error)}"
             raise CudaProvisionError(detail) from error
 
-        def destination_members() -> dict[
-            Path, tuple[int, int, int, bytes | str | None]
-        ]:
-            """Attest both membership and prior-package bytes across a copy."""
-            known: dict[Path, tuple[int, int, int, bytes | str | None]] = {}
-            pending = [destination]
-            while pending:
-                folder = pending.pop()
-                _require_physical_directories(folder, "staged overlay destination")
-                try:
-                    entries = tuple(folder.iterdir())
-                except (OSError, TypeError, ValueError, RuntimeError) as error:
-                    raise CudaProvisionError(
-                        "CUDA staged overlay destination scan failed"
-                    ) from error
-                for child in entries:
-                    if (
-                        type(child) is not type(destination)
-                        or child.parent != folder
-                        or child.name in {".", ".."}
-                    ):
-                        _fail("CUDA staged overlay destination enumeration escaped root")
-                    try:
-                        relative = child.relative_to(destination)
-                        status = child.lstat()
-                    except (OSError, ValueError, TypeError, RuntimeError) as error:
-                        raise CudaProvisionError(
-                            "CUDA staged overlay destination member status failed"
-                        ) from error
-                    if (
-                        type(status) is not os.stat_result
-                        or relative.is_absolute()
-                        or PARENT_SEGMENT in relative.parts
-                    ):
-                        _fail("CUDA staged overlay destination member has unsafe status")
-                    kind = S_IFMT(status.st_mode)
-                    content: bytes | str | None = None
-                    if S_ISDIR(status.st_mode):
-                        pending.append(child)
-                    elif S_ISREG(status.st_mode):
-                        content = hashlib.sha256(
-                            _read_manifest_source(
-                                child, "CUDA staged overlay prior package member",
-                                max_bytes=_MAX_CUDA_ARCHIVE_MEMBER_BYTES,
-                            )
-                        ).digest()
-                    elif S_ISLNK(status.st_mode):
-                        try:
-                            content = os.readlink(child)
-                        except (OSError, TypeError, ValueError, RuntimeError) as error:
-                            raise CudaProvisionError(
-                                "CUDA staged overlay prior package link read failed"
-                            ) from error
-                        if type(content) is not str:
-                            _fail("CUDA staged overlay prior package link requires text")
-                        _ = _archive_member_path(content)
-                    else:
-                        _fail("CUDA staged overlay destination has special member")
-                    known[relative] = (status.st_dev, status.st_ino, kind, content)
-            return known
-
-        destination_before = destination_members()
+        destination_before = _cuda_overlay_destination_members(destination)
 
         def copy_physical_member(
             source_name: str | os.PathLike[str],
@@ -1306,7 +1307,7 @@ def _copy_cuda_overlay(
             _fail("CUDA staged overlay source members changed during copy")
         _require_owned_staging(source, source_identity)
         _require_physical_directories(destination, "staged overlay destination")
-        destination_after = destination_members()
+        destination_after = _cuda_overlay_destination_members(destination)
         unexpected = (
             destination_after.keys() - destination_before.keys()
             - source_inventory.keys()
@@ -1368,6 +1369,10 @@ def _copy_cuda_overlay(
                 _fail("CUDA staged overlay destination copy receipt mismatch")
         return
 
+    # The POSIX path also needs to attest earlier packages and forbid entries
+    # created by filesystem callbacks outside the descriptor-checked copy.
+    destination_before = _cuda_overlay_destination_members(destination)
+    copied_members: set[Path] = set()
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
 
     def copy_directory(
@@ -1410,6 +1415,10 @@ def _copy_cuda_overlay(
             ):
                 _fail("CUDA staged overlay member source identity mismatch")
             _ = _require_staging_parent_unchanged(src, src_descriptor)
+            relative = member.relative_to(source)
+            if relative.is_absolute() or PARENT_SEGMENT in relative.parts:
+                _fail("CUDA staged overlay member escaped source root")
+            copied_members.add(relative)
             if S_ISDIR(status.st_mode):
                 try:
                     src_child = os.open(member.name, flags, dir_fd=src_descriptor)
@@ -1574,6 +1583,17 @@ def _copy_cuda_overlay(
             _fail("CUDA staged overlay requires native destination descriptor")
         try:
             copy_directory(source, destination, source_descriptor, descriptor)
+            destination_after = _cuda_overlay_destination_members(destination)
+            unexpected = (
+                destination_after.keys() - destination_before.keys() - copied_members
+            )
+            if unexpected:
+                _fail("CUDA staged overlay has unexpected destination member")
+            if any(
+                destination_after.get(relative) != receipt
+                for relative, receipt in destination_before.items()
+            ):
+                _fail("CUDA staged overlay prior package member changed during copy")
         finally:
             try:
                 os.close(descriptor)
