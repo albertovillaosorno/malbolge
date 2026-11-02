@@ -129,6 +129,20 @@ def test_bad_caller_counts_produce_no_inferential_result(
     assert paired_exact_tests.two_sided_sign_test(left, right) is None
 
 
+@pytest.mark.parametrize("minority", [1, 47, 1024, 2047])
+def test_maximum_discordance_preserves_exact_asymmetric_tails(
+    minority: int,
+) -> None:
+    """Check extreme and near-balanced 4096-pair tails against comb()."""
+    size = paired_exact_tests.MAX_DISCORDANT_PAIRS
+    majority = size - minority
+    observed = paired_exact_tests.two_sided_sign_test(minority, majority)
+    assert observed is not None
+    assert observed["discordant_pairs"] == size
+    assert Fraction(*observed["p_two_sided"]) == _reference(minority, majority)
+    assert paired_exact_tests.two_sided_sign_test(majority, minority) == observed
+
+
 def test_bounded_discordant_pairs_keep_large_exact_probabilities() -> None:
     """No overflowing floating-point probability or unbounded big integers."""
     count = paired_exact_tests.MAX_DISCORDANT_PAIRS
