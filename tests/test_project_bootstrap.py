@@ -7384,6 +7384,54 @@ def test_optional_host_tool_paths_treat_native_stat_failures_as_missing(
 
 
 @pytest.mark.parametrize(
+    "platform_id,expected_tool",
+    [
+        ("windowsfake-x86_64", "jig"),
+        ("linuxfake-x86_64", "jig"),
+        (WINDOWS_PLATFORM, "jig.cmd"),
+        (LINUX_PLATFORM, "jig"),
+    ],
+)
+def test_jig_platform_tool_name_uses_exact_os_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    platform_id: str,
+    expected_tool: str,
+) -> None:
+    """An unknown OS prefix cannot impersonate a Windows host."""
+    queried: list[str] = []
+
+    def lookup(name: str) -> None:
+        queried.append(name)
+
+    monkeypatch.setattr(project, "which", lookup)
+    status = project.inspect_jig(tmp_path, platform_id)
+    assert status.state is project.ComponentState.MISSING
+    assert queried == [expected_tool]
+
+
+@pytest.mark.parametrize("tool", ["git", "rustup"])
+def test_optional_host_discovery_rejects_windows_like_platform_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool: str
+) -> None:
+    """Unknown Windows-like prefixes must not select .exe tool variants."""
+    queried: list[str] = []
+
+    def lookup(name: str) -> None:
+        queried.append(name)
+
+    monkeypatch.setattr(project, "which", lookup)
+    if tool == "git":
+        assert project.observe_host_git("windowslike-x86_64") is None
+    else:
+        assert (
+            project.rustup_executable("windowslike-x86_64", home=tmp_path)
+            is None
+        )
+    assert queried == [tool]
+
+
+@pytest.mark.parametrize(
     "receipt", [None, "", "   ", 7, True, "foreign-string"]
 )
 def test_jig_observation_rejects_foreign_path_receipts(

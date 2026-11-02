@@ -281,6 +281,11 @@ def initialize_local_directories(root: Path = ROOT) -> tuple[Path, ...]:
     return directories
 
 
+def _platform_family(platform_id: str, system: str) -> bool:
+    """Require an exact operating-system token before its architecture suffix."""
+    return type(platform_id) is str and platform_id.startswith(f"{system}-")
+
+
 def _host_identity_token(observed: object) -> str:
     """Reject foreign or whitespace-padded host identity observations."""
     if (
@@ -1707,7 +1712,7 @@ def observe_host_git(platform_id: str) -> GitHostObservation | None:
         Complete host Git observation, otherwise None.
 
     """
-    windows = platform_id.startswith(WINDOWS_SYSTEM)
+    windows = _platform_family(platform_id, WINDOWS_SYSTEM)
     executable_name = "git.exe" if windows else "git"
     executable = _optional_host_executable(executable_name)
     if executable is None:
@@ -1734,7 +1739,7 @@ def import_host_git(
     destination = root / ".dependencies" / "git" / required
     alias = destination / "bin" / "git.bin"
     if git_import_complete(destination) and _imported_binary_alias_ready(
-        alias, windows=platform_id.startswith(WINDOWS_SYSTEM)
+        alias, windows=_platform_family(platform_id, WINDOWS_SYSTEM)
     ):
         return alias
     if destination.exists():
@@ -1745,7 +1750,7 @@ def import_host_git(
     )
     if not admitted:
         return None
-    windows = platform_id.startswith(WINDOWS_SYSTEM)
+    windows = _platform_family(platform_id, WINDOWS_SYSTEM)
     return import_git_installation(
         observation.executable,
         observation.exec_path,
@@ -2437,7 +2442,7 @@ def rustup_executable(
         Explicit Rustup path when installed, otherwise None.
 
     """
-    windows = platform_id.startswith(WINDOWS_SYSTEM)
+    windows = _platform_family(platform_id, WINDOWS_SYSTEM)
     executable = "rustup.exe" if windows else "rustup"
     cargo_home = (home or Path.home()).absolute() / ".cargo" / "bin" / executable
     try:
@@ -2473,7 +2478,7 @@ def import_installed_rust_toolchains(
         Completed repository-local toolchain roots in stable order.
 
     """
-    windows = platform_id.startswith(WINDOWS_SYSTEM)
+    windows = _platform_family(platform_id, WINDOWS_SYSTEM)
     requests = (
         (_rust_channel(root), ("cargo", "rustc")),
         (RUST_NIGHTLY_CHANNEL, ("cargo-clippy", "cargo-fmt")),
@@ -2615,7 +2620,7 @@ def _rust_validation_adapter_ready(
     toolchain_root: Path,
     platform_id: str,
 ) -> bool:
-    if not platform_id.startswith(LINUX_SYSTEM):
+    if not _platform_family(platform_id, LINUX_SYSTEM):
         return True
     linker = toolchain_root / "bin" / "cc"
     marker = toolchain_root / RUST_LINUX_ADAPTER_MARKER
@@ -2636,7 +2641,7 @@ def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
     cargo = _imported_cargo(root, channel)
     imported_root = cargo.parent.parent
     imported = _imported_binary_alias_ready(
-        cargo, windows=platform_id.startswith(WINDOWS_SYSTEM)
+        cargo, windows=_platform_family(platform_id, WINDOWS_SYSTEM)
     ) and rust_toolchain_import_complete(imported_root)
     linker_ready = _rust_validation_adapter_ready(
         imported_root,
@@ -2666,7 +2671,7 @@ def inspect_jig(root: Path, platform_id: str) -> ComponentStatus:
 
     """
     del root
-    executable = "jig.cmd" if platform_id.startswith(WINDOWS_SYSTEM) else "jig"
+    executable = "jig.cmd" if _platform_family(platform_id, WINDOWS_SYSTEM) else "jig"
     try:
         resolved = which(executable)
     except (OSError, ValueError, TypeError, RuntimeError):
