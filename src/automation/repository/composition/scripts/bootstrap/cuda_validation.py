@@ -38,6 +38,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 import hashlib
 import io
@@ -163,6 +164,66 @@ def _check_manifest_parents(path: Path, label: str) -> None:
     _require_physical_directories(path.parent, label.removeprefix("CUDA "))
 
 
+def _open_owned_manifest_stream(descriptor: int, label: str) -> BinaryIO:
+    """Admit only the native binary stream owning the opened file descriptor.
+
+    Returns:
+        An authenticated buffered reader over the original descriptor.
+
+    """
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        with suppress(OSError):
+            os.close(descriptor)
+        raise CudaProvisionError(
+            f"cannot read {label}: host stream wrapper failed"
+        ) from error
+    if type(stream) is not io.BufferedReader:
+        try:
+            with stream:
+                pass
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError):
+            pass
+        with suppress(OSError):
+            os.close(descriptor)
+        _fail(f"{label} requires native buffered stream")
+    try:
+        stream_fd = stream.fileno()
+        raw = stream.raw
+        raw_fd = raw.fileno() if type(raw) is io.FileIO else None
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        with suppress(OSError):
+            stream.close()
+        with suppress(OSError):
+            os.close(descriptor)
+        raise CudaProvisionError(
+            f"{label} requires native stream descriptor"
+        ) from error
+    if (
+        type(stream_fd) is not int
+        or stream_fd != descriptor
+        or type(raw_fd) is not int
+        or raw_fd != descriptor
+    ):
+        with suppress(OSError):
+            stream.close()
+        with suppress(OSError):
+            os.close(descriptor)
+        _fail(f"{label} requires matching native stream descriptor")
+    return cast("BinaryIO", stream)
+
+
+def _read_source_bytes(stream: BinaryIO, limit: int) -> bytes:
+    """Read one bounded descriptor-backed CUDA authority snapshot.
+
+    Returns:
+        The bytes read from the admitted native stream.
+
+    """
+    return stream.read(limit + 1)
+
+
 def _read_manifest_source(
     path: Path,
     label: str,
@@ -194,22 +255,11 @@ def _read_manifest_source(
         ) from error
     if type(descriptor) is not int or descriptor < 0:
         _fail(f"{label} must open a native descriptor")
-    try:
-        stream = os.fdopen(descriptor, "rb")
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        # Until stream wrapping succeeds, this reader still owns the descriptor.
-        try:
-            os.close(descriptor)
-        except OSError:
-            pass
-        raise CudaProvisionError(
-            f"cannot read {label}: host stream wrapper failed"
-        ) from error
-    with stream:
+    with _open_owned_manifest_stream(descriptor, label) as stream:
         if _manifest_identity(os.fstat(stream.fileno()), label) != expected:
             _fail(f"{label} changed before read")
         try:
-            payload = stream.read(max_bytes + 1)
+            payload = _read_source_bytes(stream, max_bytes)
         except (OSError, TypeError, ValueError, RuntimeError) as error:
             raise CudaProvisionError(
                 f"cannot read {label}: host read failed ({type(error).__name__})"
