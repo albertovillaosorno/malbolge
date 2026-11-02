@@ -1962,6 +1962,7 @@ def _write_staged_file_at_parent(
         _fail(f"{label} requires native descriptor")
     identity: tuple[int, int] | None = None
     completed = False
+    close_failure: Exception | None = None
     try:
         if parent_descriptor is not None:
             _require_staging_parent_unchanged(path.parent, parent_descriptor)
@@ -1997,8 +1998,12 @@ def _write_staged_file_at_parent(
             _fail(f"CUDA staging content mismatch: {path.name}")
         completed = True
     finally:
-        with suppress(OSError):
+        try:
             os.close(descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            # Failed close invalidates an otherwise verified writable stage.
+            close_failure = error
+            completed = False
         if not completed and identity is not None:
             with suppress(OSError):
                 if parent_descriptor is None:
@@ -2017,6 +2022,8 @@ def _write_staged_file_at_parent(
                         path.unlink()
                     else:
                         os.unlink(path.name, dir_fd=parent_descriptor)
+    if close_failure is not None:
+        raise CudaProvisionError(f"{label} close failed") from close_failure
     if identity is None:
         _fail(f"{label} lacks owned staging identity")
     return identity

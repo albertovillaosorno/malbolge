@@ -3473,6 +3473,59 @@ def test_cuda_staged_file_types_parent_close_fault(
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize(
+    "fault_type", [UnprintableHostOSError, UnprintableHostRuntimeError]
+)
+def test_cuda_staged_file_rejects_writable_descriptor_close_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A staged file is not publishable after its writable close fails."""
+    parent = tmp_path / "owned-stage"
+    parent.mkdir()
+    target = parent / "payload.bin"
+    native_open = os.open
+    native_close = os.close
+    writable_descriptor: int | None = None
+    failure = fault_type("host writer close failure")
+    closed = False
+
+    def capture_writable(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal writable_descriptor
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path).name == target.name and flags & os.O_WRONLY:
+            writable_descriptor = descriptor
+        return descriptor
+
+    def fail_writable_close(descriptor: int) -> None:
+        nonlocal closed
+        native_close(descriptor)
+        if descriptor == writable_descriptor:
+            closed = True
+            raise failure
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", capture_writable)
+        isolated.setattr(os, "close", fail_writable_close)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="staging payload close failed"
+        ) as caught:
+            _ = cuda_validation._write_staged_file_exclusively(  # pyright: ignore[reportPrivateUsage]
+                target, b"trusted-payload", "CUDA staging payload"
+            )
+    assert closed
+    assert caught.value.__cause__ is failure
+    assert not target.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
 def test_cuda_staging_mkdir_does_not_follow_late_parent_swap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
