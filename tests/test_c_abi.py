@@ -1355,3 +1355,98 @@ def test_c_abi_native_host_failure_retains_detail_and_cause(
     ) as caught:
         _ = c_abi.load_document(ABI_PATH)
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("receipt", ["short", "boolean", "overlong", "bad-flush"])
+def test_guest_abi_source_diagnostic_requires_complete_output(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """A missing source diagnostic cannot count as a completed ABI check."""
+    evidence = c_abi_source.AbiDiagnostic(
+        code="MALBOLGE-ABI-001", column=1, line=1,
+        message="unsupported bit field", path=Path("input.c"),
+    )
+    def injected_analysis(*_args: object, **_kwargs: object) -> tuple[c_abi_source.AbiDiagnostic, ...]:
+        return (evidence,)
+
+    monkeypatch.setattr(c_abi_source, "analyze_source", injected_analysis)
+
+    class FailingStream:
+        def write(self, message: str) -> object:
+            if receipt == "short":
+                return len(message) - 1
+            if receipt == "boolean":
+                return True
+            if receipt == "overlong":
+                return len(message) + 1
+            return len(message)
+
+        def flush(self) -> object:
+            return False if receipt == "bad-flush" else None
+
+    monkeypatch.setattr(sys, "stderr", FailingStream())
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="output"):
+        _ = c_abi_source.validate_source(Path("input.c"))
+
+
+def test_guest_abi_source_error_sink_failure_keeps_nonzero_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broken stderr stream cannot mask a rejected canonical ABI."""
+
+    def invalid_projection() -> None:
+        raise c_abi_source.SourceAnalysisError("invalid source")
+
+    class UnavailableStderr:
+        def write(self, _message: str) -> None:
+            raise OSError("stderr unavailable")
+
+        def flush(self) -> None:
+            raise AssertionError("failed write must not be flushed")
+
+    monkeypatch.setattr(c_abi, "canonical_projection", invalid_projection)
+    monkeypatch.setattr(sys, "argv", ["c_abi_source", "input.c"])
+    monkeypatch.setattr(sys, "stderr", UnavailableStderr())
+    assert c_abi_source.main() == 2
+
+
+def test_guest_abi_source_help_requires_complete_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged short help write cannot authorize exit zero."""
+
+    class ShortStdout:
+        def write(self, message: str) -> int:
+            return len(message) - 1
+
+        def flush(self) -> None:
+            raise AssertionError("do not flush an incomplete help message")
+
+    monkeypatch.setattr(sys, "argv", ["c_abi_source", "--help"])
+    monkeypatch.setattr(sys, "stdout", ShortStdout())
+    assert c_abi_source.main() == 2
+
+
+
+def test_guest_abi_source_valid_help_flushes_before_zero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native completed help output retains the normal successful exit."""
+    records: list[str] = []
+
+    class CompleteStdout:
+        def write(self, message: str) -> int:
+            records.append(message)
+            return len(message)
+
+        def flush(self) -> None:
+            records.append("flush")
+
+    monkeypatch.setattr(sys, "argv", ["c_abi_source", "--help"])
+    monkeypatch.setattr(sys, "stdout", CompleteStdout())
+    with pytest.raises(SystemExit) as caught:
+        _ = c_abi_source.main()
+    assert caught.value.code == 0
+    assert records and "usage:" in records[0]
+    assert records[-1] == "flush"

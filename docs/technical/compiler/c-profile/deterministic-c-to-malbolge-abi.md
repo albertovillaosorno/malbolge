@@ -315,6 +315,13 @@ The current ABI-only preflight provides these durable diagnostics:
 | `MALBOLGE-ABI-007` | compiler vector type |
 | `MALBOLGE-ABI-008` | non-default address space |
 
+The ABI source preflight requires exact native text write counts and a
+completed flush for every source diagnostic, help record, and argument error.
+Short, boolean, or overstated writes cannot attest that a reported rejection
+was delivered; a failed stderr diagnostic retains a nonzero CLI status even
+when the error reporter is unavailable. An incomplete `--help` result also
+cannot exit successfully.
+
 This preflight is intentionally narrower than the clang-tidy plugin and libc
 preflight. It owns ABI exclusions only and must not be cited as proof that
 arbitrary C has a complete Malbolge lowering.

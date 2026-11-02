@@ -43,11 +43,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-from typing import TYPE_CHECKING, Never, cast
+from typing import TYPE_CHECKING, Never, cast, override
 
 if TYPE_CHECKING:
     from os import stat_result
-    from typing import BinaryIO
+    from typing import BinaryIO, TextIO
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -168,8 +168,48 @@ def _fail(message: str) -> Never:
     raise SourceAnalysisError(message)
 
 
+def _write_record(stream: TextIO, message: str) -> bool:
+    """Require native full-length text delivery and a successful flush.
+
+    Returns:
+        Whether the entire message was written and flushed.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        LookupError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
+def _require_diagnostic(stream: TextIO, message: str) -> None:
+    if not _write_record(stream, message):
+        _fail("guest ABI source diagnostic output write or flush failed")
+
+
+class _DeliveryParser(argparse.ArgumentParser):
+    """Authenticate help and argument-error output before claiming delivery."""
+
+    @override
+    def _print_message(self, message: str, file: object = None) -> None:
+        if message:
+            stream = sys.stderr if file is None else cast("TextIO", file)
+            _require_diagnostic(stream, message)
+
+
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _DeliveryParser(
         description=(
             "Check explicitly named C files for malbolge-c32-v1 ABI exclusions."
         )
@@ -805,7 +845,7 @@ def validate_source(
     """
     diagnostics = analyze_source(source, clang=clang, projection=projection)
     for diagnostic in diagnostics:
-        _ = sys.stderr.write(f"{diagnostic.render()}\n")
+        _require_diagnostic(sys.stderr, f"{diagnostic.render()}\n")
     return not diagnostics
 
 
@@ -816,8 +856,8 @@ def main() -> int:
         Zero for admitted input, one for ABI rejections, or two for tool errors.
 
     """
-    arguments = _parse_arguments()
     try:
+        arguments = _parse_arguments()
         projection = c_abi.canonical_projection()
         admitted = True
         for source in arguments.files:
@@ -828,7 +868,7 @@ def main() -> int:
             ):
                 admitted = False
     except (c_abi.CAbiValidationError, SourceAnalysisError) as error:
-        _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
+        _ = _write_record(sys.stderr, f"error: {_safe_error_detail(error)}\n")
         return 2
     return 0 if admitted else 1
 
