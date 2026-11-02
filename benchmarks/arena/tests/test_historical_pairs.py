@@ -1323,6 +1323,55 @@ def test_historical_cli_keeps_exact_native_failure_text(
     assert "exact local source rejection" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("phase", ["build", "publish"])
+@pytest.mark.parametrize("hostile_class", [False, True])
+def test_historical_cli_types_unexpected_dependency_failures(
+    phase: str,
+    hostile_class: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Unexpected importer or publisher faults cannot leak or claim success."""
+
+    class HostileArgument:
+        def __str__(self) -> str:
+            raise AssertionError("unexpected failure argument was formatted")
+
+    class HostileRuntimeError(RuntimeError):
+        def __str__(self) -> str:
+            raise AssertionError("unexpected failure subtype was formatted")
+
+    fault = (
+        HostileRuntimeError("foreign fault")
+        if hostile_class
+        else RuntimeError(HostileArgument())
+    )
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    monkeypatch.setattr(sys, "argv", ["historical-pairs", BASE + PREFIX])
+    if phase == "build":
+        monkeypatch.setattr(historical_pairs, "build_report", fail)
+        monkeypatch.setattr(
+            historical_pairs.report_output,
+            "publish",
+            lambda *_args, **_kwargs: pytest.fail("published failed build"),
+        )
+    else:
+        monkeypatch.setattr(
+            historical_pairs, "build_report", lambda *_args, **_kwargs: {}
+        )
+        monkeypatch.setattr(historical_pairs.report_output, "publish", fail)
+    with pytest.raises(SystemExit) as caught:
+        historical_pairs.main()
+    assert caught.value.code == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert captured.err.startswith("arena historical evidence:")
+    assert "RuntimeError" in captured.err
+
+
 @pytest.mark.parametrize("scope", ["manifest", "measurement"])
 def test_historical_extension_rejects_foreign_toml_keys_before_lookup(
     scope: str,

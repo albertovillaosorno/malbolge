@@ -784,6 +784,10 @@ def main() -> int:
             UnicodeEncodeError,
         )
         parser.exit(2, f"arena historical evidence: {detail}\n")
+    except Exception as error:  # ruff: ignore[BLE001]
+        # A substituted importer or publisher may raise an unregistered
+        # ordinary failure. Fail nonzero without formatting foreign hooks.
+        parser.exit(2, f"arena historical evidence: {type(error).__name__}\n")
     return 0
 
 
