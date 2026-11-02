@@ -42,7 +42,6 @@ import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import tarfile
 import tempfile
-import tomllib
 import urllib.request
 import zipfile
 from collections.abc import Iterator
@@ -53,6 +52,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Never, Self, TextIO, cast, final, override
 
 import pytest
+import tomllib
 from scripts.bootstrap import (
     cuda_validation,
     llvm_development_validation,
@@ -344,6 +344,89 @@ def test_bootstrap_source_equivalent_toml_extended_scalars(
         path, "version test"
     )
     assert list(observed) == [spelling.split(" ", 1)[0]]
+
+
+@pytest.mark.parametrize("kind", ["JSON", "TOML"])
+def test_bootstrap_decoder_rejects_self_restoring_forgery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Restoring a changed loader mid-call cannot forge bootstrap authority."""
+    if kind == "JSON":
+        path = tmp_path / "authority.json"
+        _ = path.write_text('{"nested":{"value":"source"}}', encoding="utf-8")
+        native = json.loads
+        forged: dict[str, object] = {"nested": {"value": "foreign"}}
+        with monkeypatch.context() as context:
+
+            def restore_json(_text: str, *, object_pairs_hook: object) -> object:
+                del object_pairs_hook
+                context.setattr(json, "loads", native)
+                return forged
+
+            context.setattr(json, "loads", restore_json)
+            with pytest.raises(project.InitializationError, match="JSON decoder differs"):
+                _ = project._json_document(path, "test authority")  # pyright: ignore[reportPrivateUsage]
+    else:
+        path = tmp_path / "authority.toml"
+        _ = path.write_text('[nested]\nvalue = "source"\n', encoding="utf-8")
+        native = tomllib.loads
+        forged = {"nested": {"value": "foreign"}}
+        with monkeypatch.context() as context:
+
+            def restore_toml(_text: str) -> object:
+                context.setattr(tomllib, "loads", native)
+                return forged
+
+            context.setattr(tomllib, "loads", restore_toml)
+            with pytest.raises(project.InitializationError, match="TOML decoder differs"):
+                _ = project._toml_document(path, "test authority")  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("kind", ["JSON", "TOML"])
+def test_bootstrap_equivalent_decoder_has_no_mutable_nested_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Admitted authority cannot be rewritten by an equivalent decoder."""
+    captured: list[object] = []
+    if kind == "JSON":
+        path = tmp_path / "authority.json"
+        _ = path.write_text('{"nested":{"value":"source"}}', encoding="utf-8")
+        native_json = json.loads
+
+        def delegated_json(text: str, *, object_pairs_hook: object) -> object:
+            result = cast(
+                "object",
+                native_json(
+                    text,
+                    object_pairs_hook=cast(
+                        "Callable[[list[tuple[str, object]]], object]",
+                        object_pairs_hook,
+                    ),
+                ),
+            )
+            captured.append(result)
+            return result
+
+        monkeypatch.setattr(json, "loads", delegated_json)
+        admitted = project._json_document(path, "test authority")  # pyright: ignore[reportPrivateUsage]
+    else:
+        path = tmp_path / "authority.toml"
+        _ = path.write_text('[nested]\nvalue = "source"\n', encoding="utf-8")
+        native_toml = tomllib.loads
+
+        def delegated_toml(text: str) -> object:
+            result = cast("object", native_toml(text))
+            captured.append(result)
+            return result
+
+        monkeypatch.setattr(tomllib, "loads", delegated_toml)
+        admitted = project._toml_document(path, "test authority")  # pyright: ignore[reportPrivateUsage]
+    assert admitted == captured[0]
+    foreign = cast("dict[str, object]", captured[0])
+    nested = cast("dict[str, object]", foreign["nested"])
+    nested["value"] = "foreign"
+    retained = cast("dict[str, object]", admitted["nested"])
+    assert retained["value"] == "source"
 
 
 @pytest.mark.parametrize("kind", ["JSON", "TOML"])

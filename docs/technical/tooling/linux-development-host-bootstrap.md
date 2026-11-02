@@ -38,8 +38,12 @@ Substituting the public JSON/TOML decoders cannot change a pinned manifest
 filename, Git version, or nested native field: the import-bound parsers
 independently reproduce the original values. Source-equivalent adapters remain
 accepted; malformed original text and foreign object keys fail closed before
-untrusted equality hooks run. This is a public decoder-substitution boundary,
-not a claim to defend rewritten Python interpreter internals.
+untrusted equality hooks run. Each decoder is bound at invocation, preventing
+an injected adapter from restoring the module loader inside its call to evade
+source comparison. Equivalent adapters return the original source-owned nested
+tree, not an alias the adapter can mutate after validation. This is a public
+decoder-substitution boundary, not a claim to defend rewritten Python
+interpreter internals.
 Opened descriptors must be native nonnegative integers; manifest reads
 require an exact native buffered binary stream over a native `FileIO` and
 an unchanged file descriptor. Invalid wrappers, mutable buffers, or byte

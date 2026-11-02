@@ -680,16 +680,20 @@ def _same_native_authority(actual: object, source: object) -> bool:
 def _json_document(path: Path, label: str) -> dict[str, object]:
     try:
         text = _read_authority_bytes(path).decode("utf-8")
+        # A substituted provider may restore its public module entry mid-call.
+        decoder = json.loads
         parsed = cast(
-            "object", json.loads(text, object_pairs_hook=_reject_duplicate_pairs)
+            "object", decoder(text, object_pairs_hook=_reject_duplicate_pairs)
         )
-        if json.loads is not _NATIVE_JSON_LOADS:
+        if decoder is not _NATIVE_JSON_LOADS:
             source = cast(
                 "object",
                 _NATIVE_JSON_LOADS(text, object_pairs_hook=_reject_duplicate_pairs),
             )
             if not _same_native_authority(parsed, source):
                 _fail(f"bootstrap JSON decoder differs from source: {label}")
+            # Return native source-owned values, not a mutable adapter alias.
+            parsed = source
     except InitializationError:
         raise
     except (
@@ -709,11 +713,13 @@ def _json_document(path: Path, label: str) -> dict[str, object]:
 def _toml_document(path: Path, label: str) -> dict[str, object]:
     try:
         text = _read_authority_bytes(path).decode("utf-8")
-        parsed = cast("object", tomllib.loads(text))
-        if tomllib.loads is not _NATIVE_TOML_LOADS:
+        decoder = tomllib.loads
+        parsed = cast("object", decoder(text))
+        if decoder is not _NATIVE_TOML_LOADS:
             source = cast("object", _NATIVE_TOML_LOADS(text))
             if not _same_native_authority(parsed, source):
                 _fail(f"bootstrap TOML decoder differs from source: {label}")
+            parsed = source
     except InitializationError:
         raise
     except (
