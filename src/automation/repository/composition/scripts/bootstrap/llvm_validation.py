@@ -1864,6 +1864,7 @@ def _capture(arguments: list[str]) -> str | None:
         or type(completed.stdout) is not str
         or type(completed.stderr) is not str
         or completed.returncode != 0
+        or completed.stderr
     ):
         return None
     if max(len(completed.stdout), len(completed.stderr)) > _HOST_MAX_CAPTURE_CHARS:

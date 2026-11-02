@@ -3311,6 +3311,31 @@ def test_llvm_host_capture_accepts_native_text_receipts(
     )
 
 
+@pytest.mark.parametrize(
+    "diagnostic",
+    ["warning: using alternative compiler", "\x1b[31mfailed\x1b[0m"],
+)
+def test_llvm_host_capture_refuses_success_with_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    diagnostic: str,
+) -> None:
+    """A zero process status does not neutralize a contradictory stderr."""
+    command = ["clang", "--version"]
+
+    def run(args: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+        assert args == command
+        assert kwargs["shell"] is False
+        return sp.CompletedProcess(
+            args, 0, stdout="clang version 22.1.8", stderr=diagnostic
+        )
+
+    monkeypatch.setattr(sp, "run", run)
+    observe = cast(
+        "Callable[[list[str]], str | None]", vars(llvm_validation)["_capture"]
+    )
+    assert observe(command) is None
+
+
 @pytest.mark.parametrize("stream", ("stdout", "stderr"))
 def test_llvm_host_capture_rejects_oversized_native_output(
     monkeypatch: pytest.MonkeyPatch,
