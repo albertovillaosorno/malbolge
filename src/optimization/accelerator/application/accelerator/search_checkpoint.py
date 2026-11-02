@@ -40,12 +40,13 @@ from binascii import Error as BinasciiError
 from dataclasses import dataclass
 from hashlib import sha256
 import json
-from json import dumps as _SOURCE_JSON_DUMPS
 from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
 
 from accelerator.work_ports import CandidateEvidence
+
+_SOURCE_JSON_ENCODER = json.JSONEncoder
 
 if TYPE_CHECKING:
     from accelerator.work_ports import CandidateEvaluationBatch
@@ -192,13 +193,13 @@ def _document(
 def _canonical_json(document: JsonObject) -> str:
     """Corroborate the public JSON writer against its import-bound reference."""
     try:
-        # Capture source-owned bytes before consulting a mutable public writer.
-        source_rendered = _SOURCE_JSON_DUMPS(
-            document,
+        # Even the import-bound json.dumps resolves the public JSONEncoder
+        # class at call time. Bind the class itself before adapters can swap it.
+        source_rendered = _SOURCE_JSON_ENCODER(
             ensure_ascii=True,
             separators=(",", ":"),
             sort_keys=True,
-        )
+        ).encode(document)
         rendered = json.dumps(
             document,
             ensure_ascii=True,

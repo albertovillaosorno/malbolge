@@ -632,6 +632,35 @@ def test_search_checkpoint_rejects_joint_json_decoder_encoder_substitution(
         _ = decode_search_checkpoint(empty_checkpoint, request, batch)
 
 
+@pytest.mark.parametrize("providers", ("encoder-only", "encoder-and-dumps"))
+def test_search_checkpoint_source_encoder_rejects_forged_completed_units(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Mutable JSONEncoder cannot invent canonical checkpoint progress."""
+    request = _request()
+    batch = _batch()
+    source = encode_search_checkpoint(request, batch, _evidence())
+    canonical = source.decode("utf-8").removesuffix("\n")
+    forged = canonical.replace('"completed_units":2', '"completed_units":0', 1)
+    assert forged != canonical
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _document: object) -> str:
+            return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers == "encoder-and-dumps":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: forged)
+        with pytest.raises(
+            SearchCheckpointError, match="JSON serializer disagrees with source"
+        ):
+            _ = encode_search_checkpoint(request, batch, _evidence())
+
+
 def test_search_checkpoint_rejects_substituted_json_serializer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

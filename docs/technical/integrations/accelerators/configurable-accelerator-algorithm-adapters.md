@@ -133,11 +133,12 @@ and actual backend identity separate, falls back from accelerator execution
 failure to CPU reference, and records checkpoint SHA-256 plus resume executor
 identity in JSON. Unsupported algorithms, malformed checkpoints, and request or
 batch drift fail explicitly. The portable evaluated-search checkpoint codec
-now corroborates public JSON serialization against the standard-library writer
-bound at module import for both encoding and restoration. Even a substituted
-public decoder and serializer together cannot invent completed evidence absent
-from canonical checkpoint bytes. This does not protect against compromise of
-the shared underlying standard-library JSON implementation.
+now corroborates public JSON serialization against the import-bound
+`JSONEncoder` class for both encoding and restoration. Binding `json.dumps`
+alone still consults the mutable public encoder class: joint writer/encoder
+substitution or encoder-only forgery cannot invent completed progress in
+canonical checkpoint bytes. Equivalent writer adapters remain supported. This
+does not defend modifications to the underlying Python implementation.
 
 Prepared rotate/crazy execution also supports durable evidence-prefix resume
 under `prepared-evaluated-search-prefix-resume-v1`. The checkpoint binds the
@@ -680,6 +681,7 @@ fails explicitly without changing correctness rules.
   and 1.270x over same-run ordinary routes; every comparison wins 15/15 pairs.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
+
 ## References
 
 ### Host Architecture Baseline

@@ -46,6 +46,11 @@ by-side comparison without recompiling or modifying compiler semantics.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- 2026-11-02 checkpoint JSONEncoder follow-up: two red-first encoder-only
+  and jointly substituted writer/encoder cases fabricated completed units from
+  unrelated canonical source bytes. The codec now checks public renderings
+  against an import-bound `JSONEncoder` class rather than a bound `json.dumps`
+  function that still consults mutable module state.
 - **Completion:** Completed on 2026-09-05 as the bounded configurable-
   adapter milestone. Algorithm and backend identity are independently selected,
   unsupported pairs fail explicitly, configured versus actual execution remains
@@ -498,5 +503,6 @@ prepared, and 1.270x one-shot CUDA-ticket improvements over ordinary routes.
   orchestration, additional algorithm families, and broader representative
   benchmarks remain follow-on work rather than requirements of this bounded
   adapter milestone.
+
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
