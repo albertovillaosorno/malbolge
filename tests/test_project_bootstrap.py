@@ -3283,6 +3283,35 @@ def test_rust_toolchain_import_aliases_windows_compiler(
     assert rustc_alias.read_bytes() == RUST_RUSTC_BYTES
 
 
+@pytest.mark.parametrize("portable", [False, True])
+@pytest.mark.parametrize("alias_bytes", [b"unexpected-cargo", RUST_CARGO_BYTES])
+def test_rust_import_rejects_preexisting_physical_host_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    portable: bool,
+    alias_bytes: bytes,
+) -> None:
+    """Host-provided alias bytes must not become a bootstrap-owned neutral tool."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    _ = (source / "bin/cargo.bin").write_bytes(alias_bytes)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    if portable:
+        monkeypatch.setattr(
+            project, "_supports_pinned_local_state_directories", lambda: False
+        )
+
+    with pytest.raises(project.InitializationError, match="alias.*already exists"):
+        _ = project.import_rust_toolchain(
+            source, destination, tool_ids=("cargo",), windows=False
+        )
+    assert (source / "bin/cargo.bin").read_bytes() == alias_bytes
+    assert (destination / "bin/cargo.bin").read_bytes() == alias_bytes
+    assert not project.rust_toolchain_import_complete(destination)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX symlinks")
 @pytest.mark.parametrize("alias_source", ["bin-parent", "native", "alias"])
 def test_rust_import_never_admits_linked_native_alias_or_parent(
@@ -7488,6 +7517,7 @@ def test_rust_import_alias_rejects_replaced_root_before_alias_open(
         *,
         windows: bool,
         expected_bin_identity: tuple[int, int] | None = None,
+        require_absent: bool = False,
     ) -> tuple[Path, ...]:
         nonlocal swapped
         if not swapped:
@@ -7502,6 +7532,7 @@ def test_rust_import_alias_rejects_replaced_root_before_alias_open(
             tools,
             windows=windows,
             expected_bin_identity=expected_bin_identity,
+            require_absent=require_absent,
         )
 
     with monkeypatch.context() as isolated:

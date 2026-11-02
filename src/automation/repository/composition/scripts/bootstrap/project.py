@@ -2112,6 +2112,7 @@ def _ensure_rust_toolchain_aliases(
     *,
     windows: bool,
     expected_bin_identity: tuple[int, int] | None = None,
+    require_absent: bool = False,
 ) -> tuple[Path, ...]:
     """Materialize neutral executable aliases for imported Rust tools.
 
@@ -2158,6 +2159,9 @@ def _ensure_rust_toolchain_aliases(
                 else:
                     _ = _link_or_copy(str(native), str(alias))
                 alias_status = _rust_import_alias_status(alias, parent_fd)
+            else:
+                if require_absent:
+                    _fail(f"imported Rust alias already exists: {alias}")
             if type(alias_status) is not os.stat_result or not stat.S_ISREG(
                 alias_status.st_mode
             ):
@@ -2206,6 +2210,7 @@ def import_rust_toolchain(
                 tool_ids,
                 windows=windows,
                 expected_bin_identity=(bin_status.st_dev, bin_status.st_ino),
+                require_absent=True,
             )
             _write_import_completion_marker_at_parent(
                 destination / RUST_IMPORT_MARKER,
@@ -2223,7 +2228,7 @@ def import_rust_toolchain(
             symlinks=True,
         )
         aliases = _ensure_rust_toolchain_aliases(
-            destination, tool_ids, windows=windows
+            destination, tool_ids, windows=windows, require_absent=True
         )
         _write_import_completion_marker(
             destination / RUST_IMPORT_MARKER,

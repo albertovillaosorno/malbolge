@@ -201,7 +201,9 @@ in-place host binary changes in size, modification time, or executable mode
 after hardlink/copy. Copy fallbacks also reject source ctime changes; successful
 hardlinks account for their expected source ctime update. Rust neutral
 aliases pin post-link metadata so even changes with restored modification
-times must fail before completion.
+times must fail before completion. A fresh Rust import refuses any
+source-carried neutral alias (even byte-identical) rather than treating it as
+bootstrap-created; completed imports can still backfill missing aliases.
 Git and Rust import-completion markers are created exclusively through a
 no-follow native file descriptor, so an existing regular or linked marker
 cannot be overwritten.
