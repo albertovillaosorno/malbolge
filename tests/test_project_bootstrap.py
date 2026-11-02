@@ -5085,6 +5085,41 @@ def test_completed_git_import_rejects_unowned_alias(
 
 
 @pytest.mark.parametrize("platform_id", [LINUX_PLATFORM, WINDOWS_PLATFORM])
+@pytest.mark.parametrize("mutation", ["missing", "linked"])
+def test_completed_git_import_requires_physical_helper_tree(
+    tmp_path: Path, platform_id: str, mutation: str
+) -> None:
+    """Marker and alias alone cannot certify a missing or redirected Git runtime."""
+    versions = tmp_path / ".jig/settings/versions.toml"
+    versions.parent.mkdir(parents=True)
+    _ = versions.write_text(
+        '[authority.git]\ncurrent = "2.55.0"\n', encoding="utf-8"
+    )
+    destination = tmp_path / ".dependencies/git" / GIT_VERSION
+    alias = destination / "bin/git.bin"
+    alias.parent.mkdir(parents=True)
+    _ = alias.write_bytes(GIT_BYTES)
+    alias.chmod(0o700)
+    _ = (destination / project.GIT_IMPORT_MARKER).write_bytes(GIT_MARKER_BYTES)
+    helper_tree = destination / "libexec/git-core"
+    if mutation == "linked":
+        outside = tmp_path / "outside-git-core"
+        outside.mkdir()
+        helper_tree.parent.mkdir()
+        try:
+            _ = helper_tree.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"symlinks unavailable: {error}")
+    observation = project.GitHostObservation(
+        executable=tmp_path / "unused-git",
+        exec_path=tmp_path,
+        version_line=f"git version {GIT_VERSION}",
+    )
+    with pytest.raises(project.InitializationError, match="incomplete Git import"):
+        _ = project.import_host_git(tmp_path, platform_id, observation)
+
+
+@pytest.mark.parametrize("platform_id", [LINUX_PLATFORM, WINDOWS_PLATFORM])
 def test_completed_git_import_rejects_nonexecutable_posix_alias(
     tmp_path: Path, platform_id: str
 ) -> None:
@@ -5101,6 +5136,7 @@ def test_completed_git_import_rejects_nonexecutable_posix_alias(
     _ = alias.write_bytes(GIT_BYTES)
     alias.chmod(0o600)
     _ = (destination / project.GIT_IMPORT_MARKER).write_bytes(GIT_MARKER_BYTES)
+    (destination / "libexec/git-core").mkdir(parents=True)
     observation = project.GitHostObservation(
         executable=tmp_path / "unused-git",
         exec_path=tmp_path,

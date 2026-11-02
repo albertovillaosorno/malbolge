@@ -1017,6 +1017,17 @@ def _import_completion_marker_matches(marker: Path, expected: bytes) -> bool:
         return False
 
 
+def _git_helper_tree_ready(git_root: Path) -> bool:
+    """Require the completed helper tree to remain physical and in place."""
+    helpers = git_root / "libexec/git-core"
+    try:
+        _reject_authority_parent_redirects(helpers)
+        observed = helpers.lstat()
+    except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
+        return False
+    return type(observed) is os.stat_result and stat.S_ISDIR(observed.st_mode)
+
+
 def git_import_complete(git_root: Path) -> bool:
     """Return whether one imported Git installation reached its final marker.
 
@@ -1738,8 +1749,12 @@ def import_host_git(
     required = _configured_git_version(root)
     destination = root / ".dependencies" / "git" / required
     alias = destination / "bin" / "git.bin"
-    if git_import_complete(destination) and _imported_binary_alias_ready(
-        alias, windows=_platform_family(platform_id, WINDOWS_SYSTEM)
+    if (
+        git_import_complete(destination)
+        and _imported_binary_alias_ready(
+            alias, windows=_platform_family(platform_id, WINDOWS_SYSTEM)
+        )
+        and _git_helper_tree_ready(destination)
     ):
         return alias
     if destination.exists():
