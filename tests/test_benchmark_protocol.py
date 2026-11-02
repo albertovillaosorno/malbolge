@@ -38,6 +38,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Never, Self, cast, final, override
 
 if TYPE_CHECKING:
@@ -1437,3 +1438,119 @@ def test_benchmark_cli_keeps_native_failure_detail(
     monkeypatch.setattr(validator, "validate_repository_examples", fail_examples)
     assert validator.main() == 1
     assert "native benchmark examples unavailable" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("stage", ["success", "error"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "short",
+        "boolean",
+        "foreign-count",
+        "missing-count",
+        "write-error",
+        "missing-flush",
+        "foreign-flush",
+        "flush-error",
+    ],
+)
+def test_benchmark_cli_requires_complete_native_output_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    failure: str,
+) -> None:
+    """CLI status does not trust truncated, foreign, or unflushed records."""
+
+    class ForeignCount(int):
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign benchmark count compared")
+
+    @final
+    class Sink:
+        def __init__(self, mode: str) -> None:
+            self.mode = mode
+            self.messages: list[str] = []
+            self.flushes = 0
+
+        def write(self, message: str) -> object:
+            self.messages.append(message)
+            if self.mode == "write-error":
+                raise OSError("synthetic write failure")
+            if self.mode == "short":
+                return len(message) - 1
+            if self.mode == "boolean":
+                return True
+            if self.mode == "foreign-count":
+                return ForeignCount(len(message))
+            if self.mode == "missing-count":
+                return None
+            return len(message)
+
+        def flush(self) -> object:
+            self.flushes += 1
+            if self.mode == "flush-error":
+                raise OSError("synthetic flush failure")
+            if self.mode == "foreign-flush":
+                return False
+            return None
+
+    sink = Sink(failure)
+    if failure == "missing-flush":
+        setattr(sink, "flush", None)
+    native = Sink("native")
+    monkeypatch.setattr(
+        validator,
+        "sys",
+        SimpleNamespace(
+            stdout=sink if stage == "success" else native,
+            stderr=sink if stage == "error" else native,
+        ),
+    )
+    if stage == "error":
+
+        def invalid_examples() -> Never:
+            raise validator.BenchmarkProtocolError("invalid benchmark fixture")
+
+        monkeypatch.setattr(validator, "validate_repository_examples", invalid_examples)
+    else:
+        monkeypatch.setattr(
+            validator, "validate_repository_examples", lambda: (object(),)
+        )
+    assert validator.main() == 1
+    assert len(sink.messages) == 1
+    if stage == "success":
+        assert sink.messages[0] == "benchmark protocol examples valid: 1\n"
+    else:
+        assert sink.messages[0] == "error: invalid benchmark fixture\n"
+
+
+def test_benchmark_cli_accepts_fully_flushed_native_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Normal CLI summary remains a zero-exit observable record."""
+
+    @final
+    class NativeSink:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+            self.flushed = False
+
+        def write(self, message: str) -> int:
+            self.messages.append(message)
+            return len(message)
+
+        def flush(self) -> None:
+            self.flushed = True
+
+    sink = NativeSink()
+    monkeypatch.setattr(
+        validator, "sys", SimpleNamespace(stdout=sink, stderr=NativeSink())
+    )
+    monkeypatch.setattr(
+        validator, "validate_repository_examples", lambda: (object(), object())
+    )
+    assert validator.main() == 0
+    assert sink.messages == ["benchmark protocol examples valid: 2\n"]
+    assert sink.flushed

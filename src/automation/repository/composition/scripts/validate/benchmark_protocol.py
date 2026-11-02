@@ -41,7 +41,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
-from typing import Never, cast
+from typing import Never, TextIO, cast
 
 import tomllib
 
@@ -773,6 +773,30 @@ def validate_repository_examples() -> tuple[BenchmarkProtocolRecord, ...]:
     return examples
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Accept only a complete native text-write receipt and successful flush.
+
+    Returns:
+        Whether the full record was delivered.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Validate checked-in benchmark protocol fixtures and return status.
 
@@ -782,10 +806,12 @@ def main() -> int:
     """
     try:
         examples = validate_repository_examples()
+        message = f"benchmark protocol examples valid: {len(examples)}\n"
+        if not _write_cli_record(sys.stdout, message):
+            _fail("benchmark protocol CLI output write or flush failed")
     except (BenchmarkProtocolError, OSError) as error:
-        _ = sys.stderr.write(f"error: {_host_error_detail(error)}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {_host_error_detail(error)}\n")
         return 1
-    _ = sys.stdout.write(f"benchmark protocol examples valid: {len(examples)}\n")
     return 0
 
 

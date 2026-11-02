@@ -122,6 +122,10 @@ scan failure is a validation failure, not evidence that an example is absent.
 Every enumerated entry must be an exact native path directly under the examples
 root before its name is inspected. Duplicate benchmark filenames and entries
 outside that root fail discovery before any fixture is parsed.
+The validation CLI reports success only after its complete native summary is
+written and flushed. Short, forged, or failed output receipts result in a
+nonzero status; failed diagnostic delivery never changes a validation failure
+into success.
 
 ## Evidence
 
