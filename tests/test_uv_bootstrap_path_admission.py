@@ -875,6 +875,22 @@ def test_uv_zip_rejects_duplicate_selected_executable() -> None:
         _ = python_validation._zip_member_bytes(output.getvalue(), "uv.exe")
 
 
+@pytest.mark.parametrize("compression", [zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED])
+def test_uv_zip_rejects_short_member_with_forged_declared_length(
+    compression: int,
+) -> None:
+    """A valid CRC is insufficient when ZIP size metadata overstates bytes."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=compression) as archive:
+        archive.writestr("uv.exe", BINARY)
+    encoded = bytearray(output.getvalue())
+    central_directory = encoded.index(b"PK\x01\x02")
+    struct.pack_into("<I", encoded, central_directory + 24, len(BINARY) + 7)
+
+    with pytest.raises(python_validation.ProvisionError, match="size|length"):
+        _ = python_validation._zip_member_bytes(bytes(encoded), "uv.exe")
+
+
 def test_uv_tar_rejects_duplicate_selected_executable() -> None:
     """A tar archive with conflicting selected names is not unambiguous."""
     member_name = "uv-release/uv"

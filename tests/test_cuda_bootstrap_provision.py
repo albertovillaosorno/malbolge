@@ -2413,6 +2413,45 @@ def test_cuda_publication_rejects_false_full_write_with_corrupt_bytes(
     assert not (tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
 
 
+@pytest.mark.parametrize("mutation", ("overwrite", "remove", "extra"))
+def test_cuda_publication_rejects_toolkit_mutation_during_marker_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A late marker callback cannot authorize changed staged toolkit bytes."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    native_write = cuda_validation._write_staged_file_exclusively
+    mutated = False
+
+    def write_and_mutate(path: Path, content: bytes, label: str) -> tuple[int, int]:
+        nonlocal mutated
+        receipt = native_write(path, content, label)
+        if label == "CUDA completion marker":
+            member = path.parent / "lib64/libnvrtc.so.13"
+            if mutation == "overwrite":
+                original = member.stat()
+                _ = member.write_bytes(b"!" * len(NVRTC_BYTES))
+                os.utime(member, ns=(original.st_atime_ns, original.st_mtime_ns))
+            elif mutation == "remove":
+                member.unlink()
+            else:
+                _ = (member.parent / "unlisted.so").write_bytes(b"injected")
+            mutated = True
+        return receipt
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            cuda_validation, "_write_staged_file_exclusively", write_and_mutate
+        )
+        with pytest.raises(cuda_validation.CudaProvisionError, match="toolkit"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert mutated
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+    assert not (tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
+
+
 def _tar_symlink_payload() -> bytes:
     """Build a synthetic archive with a contained library symlink."""
     output = io.BytesIO()
@@ -5058,6 +5097,61 @@ def test_cuda_two_verified_packages_publish_both_member_trees(
     assert (toolkit / "bin/cudart.dll").read_bytes() == b"new runtime"
     assert (toolkit / cuda_validation.CUDA_PROVISION_MARKER).is_file()
     assert len(fetched) == 2
+    assert not (tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
+
+
+@pytest.mark.parametrize("mutation", ("overwrite", "remove", "extra"))
+def test_cuda_second_package_download_cannot_modify_verified_first_package(
+    tmp_path: Path, mutation: str
+) -> None:
+    """A later downloader cannot change prior verified members before overlay."""
+    first_bytes = _payload()
+    second_name = "cuda_cudart"
+    second_path = (
+        f"{second_name}/{LINUX_PLATFORM}/"
+        f"{second_name}-{LINUX_PLATFORM}-1.2.3-archive.tar.xz"
+    )
+    second_bytes = _tar_xz({
+        f"{second_name}-{LINUX_PLATFORM}-1.2.3-archive/bin/cudart.dll": b"runtime"
+    })
+    manifest = _manifest(tmp_path, first_bytes)
+    document = cast("dict[str, object]", json.loads(manifest.read_text()))
+    packages = cast("list[dict[str, object]]", document["packages"])
+    packages.append({
+        "name": second_name,
+        "version": "1.2.3",
+        "relative_path": second_path,
+        "sha256": hashlib.sha256(second_bytes).hexdigest(),
+        "size": len(second_bytes),
+    })
+    _ = manifest.write_text(json.dumps(document))
+    tampered = False
+
+    def download(url: str) -> bytes:
+        nonlocal tampered
+        if url.endswith(PACKAGE_PATH):
+            return first_bytes
+        assert url.endswith(second_path)
+        stage = tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}/toolkit"
+        member = stage / "lib64/libnvrtc.so.13"
+        assert member.read_bytes() == NVRTC_BYTES
+        if mutation == "overwrite":
+            original = member.stat()
+            _ = member.write_bytes(b"!" * len(NVRTC_BYTES))
+            os.utime(member, ns=(original.st_atime_ns, original.st_mtime_ns))
+        elif mutation == "remove":
+            member.unlink()
+        else:
+            _ = (member.parent / "injected.so").write_bytes(b"unverified")
+        tampered = True
+        return second_bytes
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match="toolkit"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path, manifest, LINUX_PLATFORM, downloader=download
+        )
+    assert tampered
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
     assert not (tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
 
 

@@ -2179,6 +2179,9 @@ def provision_cuda_manifest(
     _prepare_staging(staging)
     staging_identity = _owned_staging_identity(staging)
     package_staging = staging / "packages"
+    verified_toolkit: dict[
+        Path, tuple[int, int, int, bytes | str | None]
+    ] | None = None
     try:
         for package in manifest.packages:
             _require_owned_staging(staging, staging_identity)
@@ -2188,14 +2191,35 @@ def provision_cuda_manifest(
                 if downloader is None
                 else downloader(url)
             )
+            # Downloads are untrusted callbacks. An earlier verified package
+            # cannot become the new accepted baseline for a later overlay.
+            if (
+                verified_toolkit is not None
+                and _cuda_overlay_destination_members(staged_toolkit)
+                != verified_toolkit
+            ):
+                _fail("CUDA staged toolkit changed during package download")
             extract_cuda_package(
                 data,
                 package,
                 staged_toolkit,
                 staging=package_staging,
             )
+            observed_toolkit = _cuda_overlay_destination_members(staged_toolkit)
+            if verified_toolkit is not None and any(
+                observed_toolkit.get(member) != receipt
+                for member, receipt in verified_toolkit.items()
+            ):
+                _fail("CUDA staged toolkit prior package changed during overlay")
+            verified_toolkit = observed_toolkit
         _require_owned_staging(staging, staging_identity)
         toolkit_identity = _owned_staging_identity(staged_toolkit)
+        # The verified overlay can still be mutated by a later host callback
+        # while the bootstrap-owned completion marker is being written.
+        # Keep a physical member-and-content receipt across that final gap.
+        toolkit_before_marker = _cuda_overlay_destination_members(staged_toolkit)
+        if toolkit_before_marker != verified_toolkit:
+            _fail("CUDA staged toolkit changed after package verification")
         marker = staged_toolkit / CUDA_PROVISION_MARKER
         _require_new_completion_marker(marker)
         marker_written_identity = _write_staged_file_exclusively(
@@ -2220,6 +2244,12 @@ def provision_cuda_manifest(
             or _completion_marker_identity(marker) != marker_identity
         ):
             _fail("CUDA completion marker changed before publication")
+        toolkit_after_marker = _cuda_overlay_destination_members(staged_toolkit)
+        if (
+            toolkit_after_marker.pop(Path(CUDA_PROVISION_MARKER), None) is None
+            or toolkit_after_marker != toolkit_before_marker
+        ):
+            _fail("CUDA staged toolkit members changed during marker publication")
         _require_toolkit_destination(manifest.toolkit_root)
         _ensure_toolkit_destination_parent(manifest.toolkit_root.parent)
         _require_toolkit_destination(manifest.toolkit_root)

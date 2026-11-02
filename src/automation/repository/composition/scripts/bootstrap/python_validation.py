@@ -508,7 +508,12 @@ def _zip_member_bytes(data: bytes, member: str) -> bytes:
         if info.file_size < 0 or info.file_size > MAX_UV_BINARY_BYTES:
             _fail("uv extracted member exceeds byte limit")
         with archive.open(info) as stream:
-            return _bounded_uv_member_bytes(stream.read(MAX_UV_BINARY_BYTES + 1))
+            content = _bounded_uv_member_bytes(
+                stream.read(MAX_UV_BINARY_BYTES + 1)
+            )
+        if len(content) != info.file_size:
+            _fail("uv zip member length differs from declared size")
+        return content
 
 
 def _tar_member_bytes(data: bytes, member_name: str) -> bytes:
