@@ -131,9 +131,11 @@ to validate the external profile and print its canonical fingerprint. CLI
 argument admission requires an exact native argument list containing only exact
 native string tokens before evaluating the help command or file/fingerprint
 arguments. Caller-defined equality hooks cannot influence command parsing.
+
 A successful fingerprint or help response requires a full native text write and
 completed flush; short, foreign, or failed output receipts return a failed CLI
 status. Failure status persists when diagnostic output cannot be emitted.
+
 The profile JSON must be a stable, bounded regular file and cannot be supplied via
 a redirected file or parent directory; the CLI preserves the input path through
 file admission instead of resolving away aliases.

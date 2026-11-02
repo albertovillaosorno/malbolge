@@ -756,7 +756,7 @@ def test_lifecycle_cli_rejects_short_success_output(
     """An incomplete lifecycle validation summary must not report success."""
 
     class Record:
-        state = validator.EXPERIMENTAL
+        state: str = validator.EXPERIMENTAL
 
     class ShortWriter:
         def write(self, message: str) -> int:
@@ -793,7 +793,7 @@ def test_lifecycle_cli_requires_native_output_receipt(
     flushes: list[bool] = []
 
     class Record:
-        state = validator.EXPERIMENTAL
+        state: str = validator.EXPERIMENTAL
 
     class BrokenWriter:
         def write(self, message: str) -> int:
@@ -812,7 +812,7 @@ def test_lifecycle_cli_requires_native_output_receipt(
             if receipt == "flush-error":
                 raise ValueError("injected lifecycle flush failure")
             if receipt == "flush-receipt":
-                return cast("None", True)
+                return cast("None", cast("object", True))
             return None
 
     monkeypatch.setattr(validator, "validate_repository", lambda: (Record(),))
@@ -839,7 +839,7 @@ def test_lifecycle_cli_diagnostic_failure_retains_failed_status(
             if receipt == "flush-error":
                 raise RuntimeError("injected lifecycle stderr flush failure")
             if receipt == "bad-flush":
-                return cast("None", True)
+                return cast("None", cast("object", True))
             return None
 
     def fail_validate() -> Never:
@@ -857,7 +857,7 @@ def test_lifecycle_cli_native_success_record(
     """Complete native stdout retains the deterministic lifecycle summary."""
 
     class Record:
-        state = validator.EXPERIMENTAL
+        state: str = validator.EXPERIMENTAL
 
     monkeypatch.setattr(validator, "validate_repository", lambda: (Record(),))
     assert validator.main() == 0

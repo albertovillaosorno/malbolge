@@ -222,6 +222,7 @@ def test_benchmark_example_scan_rejects_unbound_enumeration(
 
     @final
     class ForeignEntry:
+        @override
         def __getattribute__(self, _field: str) -> Never:
             raise AssertionError("foreign benchmark entry metadata executed")
 

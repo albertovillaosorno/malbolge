@@ -345,7 +345,7 @@ def test_profile_identity_cli_requires_exact_output_receipts(
             if receipt == "flush-error":
                 raise ValueError("injected output flush failure")
             if receipt == "flush-receipt":
-                return cast("None", True)
+                return cast("None", cast("object", True))
             return None
 
     argv = ["profile_identity", "--help" if invocation == "help" else str(EXAMPLE_PATH)]
@@ -374,7 +374,7 @@ def test_profile_identity_cli_diagnostic_delivery_cannot_flip_failed_status(
             if receipt == "flush-error":
                 raise RuntimeError("unavailable stderr flush")
             if receipt == "bad-flush":
-                return cast("None", True)
+                return cast("None", cast("object", True))
             return None
 
     monkeypatch.setattr(sys, "argv", ["profile_identity"])

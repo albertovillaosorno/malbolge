@@ -1197,6 +1197,7 @@ def test_target_profile_cli_rejects_foreign_arguments_before_hooks(
             raise AssertionError("foreign CLI argument truthiness executed")
 
     class ForeignToken(str):  # ruff: ignore[subclass-builtin]
+        @override
         def __eq__(self, other: object) -> bool:
             del other
             raise AssertionError("foreign CLI token equality executed")
@@ -1204,7 +1205,7 @@ def test_target_profile_cli_rejects_foreign_arguments_before_hooks(
     arguments = ForeignList(["--help"]) if supplied == "list" else [ForeignToken("--help")]
     parser = cast("Callable[[list[str]], Path]", vars(validator)["_profile_argument"])
     with pytest.raises(validator.ProfileValidationError, match="native CLI"):
-        _ = parser(arguments)
+        _ = parser(cast("list[str]", arguments))
 
 
 @pytest.mark.parametrize("command", ("success", "help"))
@@ -1269,7 +1270,7 @@ def test_target_profile_cli_requires_complete_native_output(
             if receipt == "flush-error":
                 raise RuntimeError("injected target flush failure")
             if receipt == "flush-receipt":
-                return cast("None", True)
+                return cast("None", cast("object", True))
             return None
 
     argument = "--help" if command == "help" else str(PROFILE_PATH)
@@ -1297,7 +1298,7 @@ def test_target_profile_cli_diagnostic_fault_preserves_rejection(
             if receipt == "flush-error":
                 raise ValueError("injected target error flush failure")
             if receipt == "bad-flush":
-                return cast("None", True)
+                return cast("None", cast("object", True))
             return None
 
     monkeypatch.setattr(sys, "argv", ["target_profile", "invalid", "extra"])
