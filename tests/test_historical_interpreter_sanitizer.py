@@ -104,6 +104,95 @@ def test_sanitizer_json_provider_cannot_substitute_original_manifest(
             _ = harness.load_evidence()
 
 
+@pytest.mark.parametrize("kind", ("cases", "evidence"))
+@pytest.mark.parametrize("providers", ("decoder-only", "joint", "self-restoring"))
+def test_sanitizer_public_json_decoder_cannot_forge_source_evidence(
+    monkeypatch: pytest.MonkeyPatch, kind: str, providers: str
+) -> None:
+    """Even joint or self-restoring JSON providers cannot revise checked-in bytes."""
+    path = harness.CASES if kind == "cases" else harness.EVIDENCE
+    original_decoder = json.JSONDecoder
+    forged = cast(
+        "dict[str, object]",
+        original_decoder().decode(path.read_text(encoding="utf-8")),
+    )
+    if kind == "cases":
+        cases = cast("list[dict[str, object]]", forged["cases"])
+        cases[0]["input_hex"] = "61"
+    else:
+        forged["source_sha256"] = "0" * 64
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring":
+                patch.setattr(json, "JSONDecoder", original_decoder)
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "joint":
+            patch.setattr(json, "loads", forged_loads)
+        with pytest.raises(
+            harness.SanitizerHarnessError,
+            match="sanitizer JSON decoder provider differs from source",
+        ):
+            if kind == "cases":
+                _ = harness.load_cases()
+            else:
+                _ = harness.load_evidence()
+
+
+def test_sanitizer_forged_public_decoder_cannot_sanitize_invalid_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Invalid original evidence syntax must fail even under a native-looking shim."""
+    invalid = tmp_path / "malformed-reviewed-evidence.json"
+    _ = invalid.write_text('{"schema_version":1,,}', encoding="utf-8")
+    forged = json.loads(harness.EVIDENCE.read_text(encoding="utf-8"))
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(harness, "EVIDENCE", invalid)
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        with pytest.raises(harness.SanitizerHarnessError, match="cannot load"):
+            _ = harness.load_evidence()
+
+
+def test_sanitizer_source_equivalent_public_json_decoder_remains_valid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A delegating public JSONDecoder is not itself invalid evidence."""
+    original_decoder = json.JSONDecoder
+
+    class DelegatingDecoder:
+        def __init__(self, *, object_pairs_hook: object) -> None:
+            self.decoder = original_decoder(
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]",
+                    object_pairs_hook,
+                )
+            )
+
+        def decode(self, source: str) -> object:
+            return self.decoder.decode(source)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", DelegatingDecoder)
+        assert harness.load_evidence()["source_sha256"] == harness.SOURCE_SHA256
+        assert tuple(case.identifier for case in harness.load_cases()) == EXPECTED_CASES
+
+
 def test_sanitizer_json_provider_allows_source_equivalent_delegate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

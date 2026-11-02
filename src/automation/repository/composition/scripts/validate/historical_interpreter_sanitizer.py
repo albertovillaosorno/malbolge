@@ -73,7 +73,7 @@ SOURCE_SHA256 = (
 SCHEMA_VERSION = 1
 RUN_TIMEOUT_SECONDS = 15
 MAX_DOCUMENT_BYTES = 1_048_576
-_NATIVE_JSON_LOADS = json.loads
+_NATIVE_JSON_DECODER = json.JSONDecoder
 MAX_FIXTURE_BYTES = 1_048_576
 MAX_NATIVE_DESCRIPTOR = (1 << 31) - 1
 PARENT_COMPONENT = ".."
@@ -327,17 +327,19 @@ def _load_object(path: Path) -> JsonObject:
             "object",
             decoder(source, object_pairs_hook=_reject_duplicate_pairs),
         )
-        # Original source, not a replaced public decoder, owns case/evidence
-        # admission. Only compare exact native values, never foreign hooks.
-        if decoder is not _NATIVE_JSON_LOADS:
-            original = cast(
-                "object",
-                _NATIVE_JSON_LOADS(source, object_pairs_hook=_reject_duplicate_pairs),
-            )
-            if not _same_native_json(parsed, original):
-                _fail("sanitizer JSON decoder provider differs from source")
-            # Do not retain any nested mutable aliases owned by the adapter.
-            parsed = original
+        # The public JSON loader also delegates to mutable json.JSONDecoder.
+        # Always parse using the class selected before public substitution,
+        # then compare every native value without running foreign hooks.
+        original = cast(
+            "object",
+            _NATIVE_JSON_DECODER(object_pairs_hook=_reject_duplicate_pairs).decode(
+                source
+            ),
+        )
+        if not _same_native_json(parsed, original):
+            _fail("sanitizer JSON decoder provider differs from source")
+        # Do not retain any nested mutable aliases owned by the adapter.
+        parsed = original
     except (
         OSError,
         ValueError,
