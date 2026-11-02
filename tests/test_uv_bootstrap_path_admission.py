@@ -1342,6 +1342,7 @@ def test_binary_authority_rejects_native_stream_on_duplicated_descriptor(
         "NUL", "COM1.exe", "release.", "release ",
         "uv|foreign", "uv:stream", ".. ",
         "uv%2Fother", "uv%5cother", "uv%2e%2e", "uv%252fother",
+        "uv#fragment", "uv;params", "uv@host", "uv\u202eother",
     ],
 )
 def test_uv_manifest_rejects_nonportable_path_segments(

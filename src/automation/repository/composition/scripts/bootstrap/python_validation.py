@@ -42,6 +42,7 @@ import ntpath
 import os
 import platform
 import stat
+import string
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed repository-local argv.
@@ -96,7 +97,9 @@ MAX_JIG_TOOL_BINARY_BYTES: Final = 256 * 1024 * 1024
 UV_BINARY_MODE: Final = 0o755
 JIG_BINARY_MODE: Final = 0o755
 URL_SUFFIX_MARKERS: Final = frozenset(("?", "#"))
-URL_ESCAPE_MARKER: Final = "%"
+URL_UNRESERVED_CHARACTERS: Final = frozenset(
+    string.ascii_letters + string.digits + "-._~"
+)
 BASEDPYRIGHT_TOOL_ID: Final = "basedpyright"
 PYTEST_TOOL_ID: Final = "pytest"
 JIG_FAST_VERSION_TOOL_IDS: Final = frozenset((
@@ -183,9 +186,12 @@ def _required_path_segment(
     has_separator = any(separator in value for separator in PATH_SEPARATORS)
     windows_invalid = bool(windows_path.drive or windows_path.root)
     windows_invalid = windows_invalid or ntpath.isreserved(value)
-    # URL decoding could turn a percent escape into a different path segment.
+    # Release URL segments must not carry delimiters, escapes, or bidi text.
+    safe_url_segment = all(
+        character in URL_UNRESERVED_CHARACTERS for character in value
+    )
     unsafe_path = reserved or has_separator or windows_invalid
-    if unsafe_path or URL_ESCAPE_MARKER in value:
+    if unsafe_path or not safe_url_segment:
         _fail(f"{label}.{key} must be one repository-local path segment")
     return value
 
