@@ -2047,3 +2047,31 @@ def test_host_c_measurement_receipt_accepts_exact_bounded_native_values(
     assert captured == [b"good"]
     assert metrics == {"elapsed_ns": 10, "artifact_bytes": 4, "peak_rss_bytes": 1024}
     assert artifact["sha256"] == sha256(b"good").hexdigest()
+
+
+@pytest.mark.parametrize("mutation", ("executable", "operation", "extra"))
+def test_reference_study_git_rejects_mutated_launch_command(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """In-place subprocess argv mutation cannot forge matching Git evidence."""
+    launched: list[list[str]] = []
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        expected = command.copy()
+        if mutation == "executable":
+            command[0] = "/unexpected/git"
+        elif mutation == "operation":
+            command[1] = "status"
+        else:
+            command.append("--unexpected")
+        launched.append(expected)
+        return reference_study.sp.CompletedProcess(
+            command, 0, stdout="a" * 40 + "\n", stderr=""
+        )
+
+    monkeypatch.setattr(reference_study.sp, "run", forged)
+    with pytest.raises(reference_study.ReferenceStudyError, match="Git completion receipt"):
+        reference_study._commit()  # ruff: ignore[private-member-access]
+    assert len(launched) == 1
+    assert launched[0][1] in ("rev-parse", "cat-file")

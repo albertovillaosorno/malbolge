@@ -2274,3 +2274,31 @@ def test_audit_git_rejects_noncanonical_or_nonempty_stderr_receipt(
         reference_audit.ReferenceAuditError, match="local Git commit object"
     ):
         reference_audit._require_git_commit("0" * 40)
+
+
+@pytest.mark.parametrize("mutation", ("executable", "operation", "extra"))
+def test_reference_audit_git_rejects_mutated_launch_command(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """In-place subprocess argv mutation cannot forge matching Git evidence."""
+    launched: list[list[str]] = []
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        expected = command.copy()
+        if mutation == "executable":
+            command[0] = "/unexpected/git"
+        elif mutation == "operation":
+            command[1] = "status"
+        else:
+            command.append("--unexpected")
+        launched.append(expected)
+        return reference_audit.sp.CompletedProcess(
+            command, 0, stdout=b"commit\n", stderr=b""
+        )
+
+    monkeypatch.setattr(reference_audit.sp, "run", forged)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="local Git commit object"):
+        reference_audit._require_git_commit("a" * 40)  # ruff: ignore[private-member-access]
+    assert len(launched) == 1
+    assert launched[0][1] in ("rev-parse", "cat-file")

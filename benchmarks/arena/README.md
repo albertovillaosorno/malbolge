@@ -937,6 +937,12 @@ as a Git **commit** object in the selected local repository. This is opt-in
 because shallow clones and archived studies might not retain the object.
 An existing object proves neither that the benchmark executed those exact
 sources nor that its host/toolchain or measurements were authenticated.
+
+For both host-C and target-echo source provenance, the Git subprocess launcher
+receives a separate argument list; the expected executable and arguments are
+not borrowed from its mutable invocation. Returned process receipts must match
+the original command before Git output can certify a source revision or object.
+
 The host-C source producer and optional audit use the system-path Git
 executable and strip inherited `GIT_*` repository/object-store overrides
 before consulting the selected checkout.

@@ -755,7 +755,7 @@ def _require_git_commit(commit: str) -> None:
     command = [executable, "cat-file", "-t", commit]
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command,
+            command.copy(),
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             check=False,

@@ -136,7 +136,7 @@ def _commit() -> str:
     command = [executable, "rev-parse", "HEAD"]
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command,
+            command.copy(),
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             env=clean_env,

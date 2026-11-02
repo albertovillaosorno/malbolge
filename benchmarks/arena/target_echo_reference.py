@@ -441,7 +441,7 @@ def _commit() -> str:
     command = [git, "rev-parse", "HEAD"]
     try:
         output = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command,
+            command.copy(),
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             env=clean_env,
