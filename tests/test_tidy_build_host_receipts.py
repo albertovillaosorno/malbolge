@@ -524,3 +524,33 @@ def test_tidy_accepts_native_regular_build_inputs(tmp_path: Path) -> None:
     tidy_build._require_unlinked_build_script(  # pyright: ignore[reportPrivateUsage]
         tmp_path / "not-created.cmd"
     )
+
+
+@pytest.mark.parametrize("capture", [False, True])
+@pytest.mark.parametrize("mutation", ["executable", "argument", "append"])
+def test_tidy_build_rejects_mutated_launch_command(
+    monkeypatch: pytest.MonkeyPatch,
+    capture: bool,
+    mutation: str,
+) -> None:
+    """A subprocess hook cannot rewrite expected argv and its own receipt."""
+    command = ["cmake", "--version"]
+
+    def mutate_run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        if mutation == "executable":
+            args[0] = "/foreign/cmake"
+        elif mutation == "argument":
+            args[1] = "--build"
+        else:
+            args.append("--forged")
+        return sp.CompletedProcess(
+            args,
+            0,
+            stdout="ok" if capture else None,
+            stderr="" if capture else None,
+        )
+
+    monkeypatch.setattr(sp, "run", mutate_run)
+    with pytest.raises(tidy_build.BuildError, match="process receipt"):
+        tidy_build._run(command, capture=capture)  # pyright: ignore[reportPrivateUsage]
+    assert command == ["cmake", "--version"]

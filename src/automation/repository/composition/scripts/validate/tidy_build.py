@@ -144,7 +144,7 @@ def _run(
 ) -> sp.CompletedProcess[str]:
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command,
+            command.copy(),
             cwd=ROOT,
             check=False,
             capture_output=capture,

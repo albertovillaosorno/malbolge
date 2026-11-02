@@ -184,6 +184,9 @@ and plugin-output paths must have physical directory ancestry; symlinks,
 junctions, conflicting native status receipts, and non-directory substitutions
 fail before native commands. Those paths are rechecked between configure and
 build. The preflights do not make concurrent pathname replacement atomic.
+Both Windows and Linux native build subprocess checks retain expected CMake/Ninja
+arguments separately from the launched list. In-place mutation of subprocess
+arguments cannot rewrite the expected command or certify a forged receipt.
 
 On Windows, the generated `build.cmd` and its CMake cache require physical
 unlinked directory ancestry; an existing linked or hardlinked build script is

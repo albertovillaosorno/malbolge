@@ -148,7 +148,7 @@ def _checked_run(command: list[str], label: str) -> None:
     try:
         # jig-ignore-next-line: Ruff suppression name is indivisible.
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command,
+            command.copy(),
             cwd=ROOT,
             check=False,
             capture_output=True,

@@ -355,3 +355,26 @@ def test_linux_build_rejects_malformed_native_stat_modes(
     monkeypatch.setattr(type(target), "lstat", fake_lstat)
     with pytest.raises(tidy_build_linux.LinuxBuildError, match="stat receipt"):
         tidy_build_linux._require_physical_build_directory(target, "build cache")
+
+
+@pytest.mark.parametrize("mutation", ["executable", "argument", "append"])
+def test_linux_build_rejects_mutated_launch_command(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """A subprocess hook cannot rewrite CMake expectations before receipt checks."""
+    command = ["cmake", "--version"]
+
+    def mutate_run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        if mutation == "executable":
+            args[0] = "/foreign/cmake"
+        elif mutation == "argument":
+            args[1] = "--build"
+        else:
+            args.append("--forged")
+        return sp.CompletedProcess(args, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(sp, "run", mutate_run)
+    with pytest.raises(tidy_build_linux.LinuxBuildError, match="process receipt"):
+        tidy_build_linux._checked_run(command, "CMake configure")
+    assert command == ["cmake", "--version"]
