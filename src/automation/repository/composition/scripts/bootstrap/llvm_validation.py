@@ -407,7 +407,11 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
         raise LlvmImportError(
             f"LLVM import marker write failed: {type(error).__name__}"
         ) from error
-    if type(written) is int and written == len(content):
+    if (
+        type(written) is int
+        and written == len(content)
+        and _valid_marker(root, platform_id)
+    ):
         return
     try:
         marker.unlink(missing_ok=True)
@@ -415,7 +419,7 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
         raise LlvmImportError(
             f"LLVM marker write count mismatch; cleanup failed: {type(error).__name__}"
         ) from error
-    _fail("LLVM marker write count mismatch")
+    _fail("LLVM marker write count or content verification mismatch")
 
 
 def _write_linux_aliases(root: Path) -> tuple[Path, ...]:

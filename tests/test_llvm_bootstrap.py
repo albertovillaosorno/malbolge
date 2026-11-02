@@ -235,6 +235,31 @@ def test_llvm_marker_writer_rejects_hardlink_after_open(
     assert outside.read_bytes() == b""
 
 
+@pytest.mark.parametrize("forgery", ["empty", "incorrect"])
+def test_llvm_marker_writer_rejects_false_full_write_acknowledgement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """A complete reported write count cannot publish missing marker bytes."""
+    root = tmp_path / "runtime"
+    root.mkdir()
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    native_write = os.write
+
+    def false_write(fd: int, data: bytes) -> int:
+        if forgery == "incorrect":
+            _ = native_write(fd, b"X" * len(data))
+        return len(data)
+
+    monkeypatch.setattr(os, "write", false_write)
+    with pytest.raises(llvm_validation.LlvmImportError, match="marker"):
+        llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+            root, LINUX_PLATFORM
+        )
+    assert not marker.exists()
+
+
 @pytest.mark.parametrize("fault", (OSError, ValueError, RuntimeError, TypeError))
 def test_llvm_marker_fdopen_failure_closes_owned_descriptor(
     tmp_path: Path,
