@@ -507,8 +507,23 @@ def _write_tar_member(
         return
     destination.parent.mkdir(parents=True, exist_ok=True)
     if member.issym():
-        target = _archive_member_path(member.linkname)
-        destination.symlink_to(target.as_posix())
+        target = _archive_member_path(member.linkname).as_posix()
+        destination.symlink_to(target)
+        try:
+            status = destination.lstat()
+            observed = os.readlink(destination)
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA archive symlink status failed"
+            ) from error
+        if (
+            type(status) is not os.stat_result
+            or not S_ISLNK(status.st_mode)
+            or status.st_nlink != 1
+            or type(observed) is not str
+            or observed != target
+        ):
+            _fail("CUDA archive symlink changed during staging")
         return
     if not (member.isreg() or member.islnk()):
         _fail("CUDA archive contains an unsupported member type")

@@ -1276,6 +1276,74 @@ def test_cuda_publication_rejects_false_full_write_with_corrupt_bytes(
     assert not (tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
 
 
+def _tar_symlink_payload() -> bytes:
+    """Build a synthetic archive with a contained library symlink."""
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:xz") as archive:
+        member = tarfile.TarInfo(f"{ARCHIVE_ROOT}/lib64/libnvrtc.so.13")
+        member.type = tarfile.SYMTYPE
+        member.linkname = "libnvrtc.so.13.3"
+        archive.addfile(member)
+        real = tarfile.TarInfo(f"{ARCHIVE_ROOT}/lib64/libnvrtc.so.13.3")
+        real.size = len(NVRTC_BYTES)
+        archive.addfile(real, io.BytesIO(NVRTC_BYTES))
+    return output.getvalue()
+
+
+def test_cuda_tar_preserves_contained_symlink(tmp_path: Path) -> None:
+    """A legitimate archive symlink stays relative and resolves within the kit."""
+    payload = _tar_symlink_payload()
+    manifest = _manifest(tmp_path, payload)
+    toolkit = cuda_validation.provision_cuda_manifest(
+        tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+    )
+    library = toolkit / "lib64/libnvrtc.so.13"
+    assert library.is_symlink()
+    assert os.readlink(library) == "libnvrtc.so.13.3"
+    assert library.read_bytes() == NVRTC_BYTES
+
+
+@pytest.mark.parametrize("substitution", ["external-link", "regular-file"])
+def test_cuda_tar_rejects_substituted_symlink_after_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    substitution: str,
+) -> None:
+    """A staged archive link must retain its exact admitted physical target."""
+    payload = _tar_symlink_payload()
+    manifest_path = _manifest(tmp_path, payload)
+    outside = tmp_path / "external-binary"
+    _ = outside.write_bytes(b"do not import this external library")
+    native_symlink = Path.symlink_to
+    injected = False
+
+    def substitute_link(
+        path: Path, target: str | Path, target_is_directory: bool = False
+    ) -> None:
+        nonlocal injected
+        if path.name == "libnvrtc.so.13":
+            injected = True
+            if substitution == "external-link":
+                native_symlink(path, outside)
+            else:
+                _ = path.write_bytes(b"not a symlink")
+            return
+        native_symlink(path, target, target_is_directory=target_is_directory)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "symlink_to", substitute_link)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="symlink"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path,
+                manifest_path,
+                LINUX_PLATFORM,
+                downloader=_download_fixture(payload),
+            )
+    assert injected
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+    assert outside.read_bytes() == b"do not import this external library"
+
+
 @pytest.mark.parametrize("marker_kind", ["regular", "symlink", "dangling-symlink"])
 def test_provision_rejects_package_owned_completion_marker(
     tmp_path: Path,
