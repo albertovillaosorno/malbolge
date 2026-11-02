@@ -5889,6 +5889,74 @@ def test_native_toolchain_import_rejects_marker_drift_during_root_close(
     assert marker.read_bytes().startswith(b"X")
 
 
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="POSIX toolchain imports")
+@pytest.mark.parametrize("component", ("git", "rust"))
+@pytest.mark.parametrize("leaf", ("native", "alias"))
+@pytest.mark.parametrize("mutation", ("rewrite", "same-bytes-swap"))
+def test_native_toolchain_import_rejects_tool_mutation_after_root_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    component: str, leaf: str, mutation: str
+) -> None:
+    """The original imported tool and neutral alias must both stay stable."""
+    destination = tmp_path / "installed" / component
+    tool_name = "git" if component == "git" else "cargo"
+    tool = destination / "bin" / (
+        tool_name if leaf == "native" else f"{tool_name}.bin"
+    )
+    marker = destination / (
+        project.GIT_IMPORT_MARKER
+        if component == "git"
+        else project.RUST_IMPORT_MARKER
+    )
+    native_close = project._close_local_state_parent  # pyright: ignore[reportPrivateUsage]
+    changed = False
+
+    def corrupt_after_close(descriptor: int) -> None:
+        nonlocal changed
+        opened = os.fstat(descriptor)
+        target = (
+            not changed
+            and marker.is_file()
+            and (opened.st_dev, opened.st_ino)
+            == (destination.stat().st_dev, destination.stat().st_ino)
+        )
+        native_close(descriptor)
+        if target:
+            previous = tool.stat()
+            if mutation == "rewrite":
+                _ = tool.write_bytes(b"X" * previous.st_size)
+            else:
+                content = tool.read_bytes()
+                _ = tool.rename(tmp_path / "retained-import-tool")
+                _ = tool.write_bytes(content)
+                tool.chmod(stat.S_IMODE(previous.st_mode))
+            os.utime(tool, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+            changed = True
+
+    helpers = tmp_path / "host-git-core"
+    if component == "git":
+        source = tmp_path / "host-git"
+        _ = source.write_bytes(GIT_BYTES)
+        source.chmod(0o700)
+        helpers.mkdir()
+    else:
+        source = _make_rust_import_source(tmp_path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(project, "_close_local_state_parent", corrupt_after_close)
+        with pytest.raises(project.InitializationError, match="tool.*changed"):
+            if component == "git":
+                _ = project.import_git_installation(
+                    source, helpers, destination, windows=False
+                )
+            else:
+                _ = project.import_rust_toolchain(
+                    source, destination, tool_ids=("cargo",), windows=False
+                )
+    assert changed
+    assert not marker.exists()
+
+
 @pytest.mark.skipif(os.name != POSIX_NAME, reason="requires POSIX import root")
 @pytest.mark.parametrize("component", ("git", "rust"))
 def test_native_toolchain_import_rejects_same_marker_root_swap_after_close(

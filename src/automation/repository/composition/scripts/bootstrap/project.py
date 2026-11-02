@@ -1468,6 +1468,61 @@ def _require_import_root_after_close(
         _fail("import root changed after directory close")
 
 
+type ImportToolReceipt = tuple[tuple[int, int], tuple[int, int], int, int, bytes]
+
+
+def _imported_tool_output_receipt(path: Path) -> ImportToolReceipt:
+    """Attest an imported executable under its physical directory handle."""
+    _reject_authority_parent_redirects(path)
+    try:
+        parent = path.parent.lstat()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("imported tool parent missing") from error
+    if type(parent) is not os.stat_result or not stat.S_ISDIR(parent.st_mode):
+        _fail("imported tool parent must be physical")
+    parent_id = parent.st_dev, parent.st_ino
+    parent_fd = _open_local_state_parent(path.parent, expected_identity=parent_id)
+    try:
+        try:
+            observed = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise InitializationError("imported tool status failed") from error
+        if type(observed) is not os.stat_result or not stat.S_ISREG(observed.st_mode):
+            _fail("imported tool must remain physical")
+        digest = _verified_import_file_digest(
+            path.name, observed, source_fd=parent_fd
+        )
+        _require_local_state_parent_identity(path.parent, parent_fd)
+        return (
+            parent_id,
+            (observed.st_dev, observed.st_ino),
+            observed.st_size,
+            stat.S_IMODE(observed.st_mode),
+            digest,
+        )
+    finally:
+        _close_local_state_parent(parent_fd)
+
+
+def _require_imported_tool_outputs_unchanged(
+    receipts: tuple[tuple[Path, ImportToolReceipt], ...],
+    marker: Path,
+    marker_owner: tuple[int, int],
+    expected_root: tuple[int, int],
+) -> None:
+    """Invalidate only the owned marker when late tool bytes have changed."""
+    try:
+        stable = all(
+            _imported_tool_output_receipt(path) == receipt
+            for path, receipt in receipts
+        )
+    except InitializationError:
+        stable = False
+    if not stable:
+        _retire_owned_local_marker(marker, marker_owner, expected_root)
+        _fail("imported tool changed after root close")
+
+
 def _write_import_file_payload(input_fd: int, output_fd: int) -> None:
     """Write all source bytes to the opened destination descriptor."""
     while content := os.read(input_fd, 1_048_576):
@@ -1867,14 +1922,21 @@ def _import_posix_git_installation(
         expected_root = _pinned_import_root_identity(root_fd)
         _copy_posix_git_binary(git, destination, root_fd, windows=windows)
         _copy_posix_git_helpers(exec_path, destination, root_fd)
+        marker = destination / GIT_IMPORT_MARKER
         _write_import_completion_marker_at_parent(
-            destination / GIT_IMPORT_MARKER,
-            "malbolge-git-import/v1\n",
-            root_fd,
+            marker, "malbolge-git-import/v1\n", root_fd
         )
+        marker_owner = _owned_import_file_identity(marker, root_fd)
+        tools = (destination / "bin/git", destination / "bin/git.bin")
+        if windows:
+            tools = (destination / "bin/git.exe", destination / "bin/git.bin")
+        receipts = tuple((tool, _imported_tool_output_receipt(tool)) for tool in tools)
     finally:
         _close_local_state_parent(root_fd)
     _require_import_root_after_close(destination, expected_root)
+    _require_imported_tool_outputs_unchanged(
+        receipts, marker, marker_owner, expected_root
+    )
 
 
 def _import_portable_git_installation(
@@ -2197,7 +2259,7 @@ def _rust_adapter_parent_identity(parent: Path) -> tuple[int, int]:
     return observed.st_dev, observed.st_ino
 
 
-def _rust_adapter_owned_leaf_identity(
+def _owned_import_file_identity(
     leaf: Path, parent_fd: int | None
 ) -> tuple[int, int]:
     """Capture a publisher-owned regular inode before closing its parent."""
@@ -2222,7 +2284,7 @@ def _rust_adapter_outputs_ready(
     """Reattest owned script inodes and bytes after closing both parents."""
     if (
         not _import_completion_marker_matches(marker, RUST_LINUX_ADAPTER_CONTENT)
-        or _rust_adapter_owned_leaf_identity(marker, None) != owned_marker
+        or _owned_import_file_identity(marker, None) != owned_marker
     ):
         return False
     for script, payload, owned in generated:
@@ -2241,7 +2303,7 @@ def _rust_adapter_outputs_ready(
     return True
 
 
-def _retire_owned_rust_adapter_marker(
+def _retire_owned_local_marker(
     marker: Path,
     owned: tuple[int, int],
     root_identity: tuple[int, int] | None,
@@ -2322,7 +2384,7 @@ def _write_rust_toolchain_linker_adapters(
             )
             if bin_fd is None:
                 adapter.chmod(adapter.stat().st_mode | stat.S_IXUSR)
-            generated_identities.append(_rust_adapter_owned_leaf_identity(adapter, bin_fd))
+            generated_identities.append(_owned_import_file_identity(adapter, bin_fd))
             for tool_id in tool_ids:
                 if root_fd is not None:
                     _require_local_state_parent_identity(toolchain_root, root_fd)
@@ -2332,11 +2394,11 @@ def _write_rust_toolchain_linker_adapters(
                     linker_environment,
                     parent_fd=bin_fd,
                 )
-                generated_identities.append(_rust_adapter_owned_leaf_identity(alias, bin_fd))
+                generated_identities.append(_owned_import_file_identity(alias, bin_fd))
             if root_fd is not None:
                 _require_local_state_parent_identity(toolchain_root, root_fd)
             _write_verified_rust_adapter_marker(marker, parent_fd=root_fd)
-            owned_marker = _rust_adapter_owned_leaf_identity(marker, root_fd)
+            owned_marker = _owned_import_file_identity(marker, root_fd)
         finally:
             if bin_fd is not None:
                 _close_local_state_parent(bin_fd)
@@ -2357,7 +2419,7 @@ def _write_rust_toolchain_linker_adapters(
         except InitializationError:
             stable = False
     if not stable:
-        _retire_owned_rust_adapter_marker(marker, owned_marker, root_identity)
+        _retire_owned_local_marker(marker, owned_marker, root_identity)
         _fail("Rust adapter generated outputs changed after parent close")
     return adapter
 
@@ -2641,14 +2703,23 @@ def import_rust_toolchain(
                 expected_bin_identity=(bin_status.st_dev, bin_status.st_ino),
                 require_absent=True,
             )
+            marker = destination / RUST_IMPORT_MARKER
             _write_import_completion_marker_at_parent(
-                destination / RUST_IMPORT_MARKER,
-                "malbolge-rust-toolchain-import/v1\n",
-                root_fd,
+                marker, "malbolge-rust-toolchain-import/v1\n", root_fd
             )
+            marker_owner = _owned_import_file_identity(marker, root_fd)
+            suffix = ".exe" if windows else ""
+            native_tools = tuple(
+                destination / "bin" / f"{tool_id}{suffix}" for tool_id in tool_ids
+            )
+            tools = native_tools + aliases
+            receipts = tuple((tool, _imported_tool_output_receipt(tool)) for tool in tools)
         finally:
             _close_local_state_parent(root_fd)
         _require_import_root_after_close(destination, expected_root)
+        _require_imported_tool_outputs_unchanged(
+            receipts, marker, marker_owner, expected_root
+        )
     else:
         _admit_import_destination(destination, "Rust")
         _ = shutil.copytree(

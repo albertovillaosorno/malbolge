@@ -253,8 +253,11 @@ Git and Rust imports reattest the marker again after their root directory
 closes, and direct marker publication rechecks after closing the parent handle.
 POSIX imports also pin the imported root inode before close and recheck its
 physical path identity afterward; a substituted root with an identical valid
-marker cannot inherit completion. A host close callback cannot rewrite the
-marker yet return import success.
+marker cannot inherit completion. Git and Rust pin the exact bytes and inode
+identities of their imported executable tools and neutral aliases, then hash
+them again after the root closes; post-close rewrites invalidate only the owned
+completion marker. A host close callback cannot rewrite the marker or tools yet
+return import success.
 
 A failed write removes only a marker still matching the writer's owned inode.
 Parent-path preflight cannot eliminate concurrent ancestor replacement races.
