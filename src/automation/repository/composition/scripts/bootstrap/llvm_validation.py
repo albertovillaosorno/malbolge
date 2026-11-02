@@ -859,9 +859,24 @@ def _open_physical_import_parent(root: Path, label: str) -> int:
     return descriptor
 
 
-def _write_import_marker(root: Path, platform_id: str) -> None:
-    """Publish an exclusive marker or reuse only exact physical evidence."""
+def _write_import_marker(
+    root: Path,
+    platform_id: str,
+    *,
+    expected_parent_inode: tuple[int, int] | None = None,
+) -> None:
+    """Publish an exclusive marker inside the original physical stage."""
+    if (
+        expected_parent_inode is not None
+        and _native_directory_inode(root) != expected_parent_inode
+    ):
+        _fail("LLVM import marker parent changed before publication")
     if _existing_import_marker(root, platform_id):
+        if (
+            expected_parent_inode is not None
+            and _native_directory_inode(root) != expected_parent_inode
+        ):
+            _fail("LLVM import marker parent changed during reuse")
         return
     marker = root / LLVM_IMPORT_MARKER
     content = _marker_bytes(platform_id)
@@ -871,6 +886,16 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
         else None
     )
     try:
+        if expected_parent_inode is not None:
+            if parent_descriptor is None:
+                _fail("LLVM import marker requires a pinned physical stage")
+            parent_status = os.fstat(parent_descriptor)
+            if (
+                type(parent_status) is not os.stat_result
+                or (parent_status.st_dev, parent_status.st_ino) != expected_parent_inode
+                or _native_directory_inode(root) != expected_parent_inode
+            ):
+                _fail("LLVM import marker parent changed before exclusive creation")
         flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
         try:
             descriptor = (
@@ -976,6 +1001,8 @@ def _validate_observation(observation: LlvmHostObservation) -> None:
 def _stage_linux_llvm(
     staged: Path,
     observation: LlvmHostObservation,
+    *,
+    expected_staged_inode: tuple[int, int] | None = None,
 ) -> None:
     for tool, source in (
         ("clang", observation.clang),
@@ -992,7 +1019,9 @@ def _stage_linux_llvm(
         staged / "lib" / "clang" / "22",
     )
     _ = _write_linux_aliases(staged)
-    _write_import_marker(staged, LINUX_PLATFORM)
+    _write_import_marker(
+        staged, LINUX_PLATFORM, expected_parent_inode=expected_staged_inode
+    )
 
 
 def _admit_linux_import_staging(root: Path, staging: Path) -> None:
@@ -1319,7 +1348,7 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
         owned_child = _native_directory_inode(staged)
         if owned_child is None:
             _fail("LLVM import staging child must be physical")
-        _stage_linux_llvm(staged, observation)
+        _stage_linux_llvm(staged, observation, expected_staged_inode=owned_child)
         _admit_linux_import_staging(root, staging)
         if (
             _native_directory_inode(staging) != owned_staging

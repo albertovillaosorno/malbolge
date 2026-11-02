@@ -883,9 +883,12 @@ def test_linux_import_rejects_replaced_staging_without_deleting_foreign_tree(
     native_stage = llvm_validation._stage_linux_llvm  # pyright: ignore[reportPrivateUsage]
 
     def swapped_stage(
-        staged: Path, observed: llvm_validation.LlvmHostObservation
+        staged: Path,
+        observed: llvm_validation.LlvmHostObservation,
+        *,
+        expected_staged_inode: tuple[int, int] | None = None,
     ) -> None:
-        native_stage(staged, observed)
+        native_stage(staged, observed, expected_staged_inode=expected_staged_inode)
         replacement = staging if target == "staging" else staged
         replacement.rename(parked)
         foreign.rename(replacement)
@@ -3800,3 +3803,41 @@ def test_llvm_aliases_reject_parent_swapped_between_directory_and_wrapper(
     foreign_root = foreign if replacement == "symlink" else alias_root
     assert (foreign_root / "sentinel").read_bytes() == b"foreign alias directory"
     assert not (foreign_root / "clang.bin").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+def test_linux_import_does_not_write_marker_to_substituted_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """A late stage substitution cannot receive a valid LLVM import marker."""
+    observation = _host_observation(tmp_path)
+    staged = tmp_path / ".temp/llvm-import-linux-x86_64/llvm"
+    parked = tmp_path / "parked-stage-llvm"
+    foreign = tmp_path / "foreign-stage-llvm"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"unrelated foreign bytes")
+    original_marker = llvm_validation._write_import_marker  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def replace_before_marker(root: Path, platform_id: str, **kwargs: object) -> None:
+        nonlocal swapped
+        if root == staged and not swapped:
+            _ = staged.rename(parked)
+            if replacement == "symlink":
+                _ = staged.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(staged)
+            swapped = True
+        original_marker(root, platform_id, **kwargs)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation, "_write_import_marker", replace_before_marker)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert swapped
+    foreign_stage = foreign if replacement == "symlink" else staged
+    assert (foreign_stage / "sentinel").read_bytes() == b"unrelated foreign bytes"
+    assert not (foreign_stage / llvm_validation.LLVM_IMPORT_MARKER).exists()
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
