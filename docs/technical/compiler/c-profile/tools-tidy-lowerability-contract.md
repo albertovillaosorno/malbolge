@@ -47,6 +47,8 @@ Both pinned-Clang preflight and delegated manual validation require exact native
 subprocess receipts: integer exit statuses, invoked argument lists, and native
 UTF-8 stdout/stderr. The pre-Malbolge Clang preflight additionally rejects
 foreign argument-list wrappers, token subclasses, and mismatched commands.
+It retains the expected argument list independently of the launched copy,
+so a mutating process wrapper cannot forge matching command evidence.
 The manual dispatcher's Clang/tidy version query and plugin-registration probe
 require a native `CompletedProcess` with the invoked argument list and exact
 captured text. Expected command arguments remain separate from the launched

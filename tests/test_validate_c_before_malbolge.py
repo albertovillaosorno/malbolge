@@ -39,7 +39,7 @@ from __future__ import annotations
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import cast
+from typing import Callable, cast
 
 import pytest
 
@@ -736,3 +736,44 @@ def test_recursive_doom_relative_path_requires_native_receipt(
             isolated.setattr(Path, "relative_to", forged_relative)
         with pytest.raises(preflight.ValidationInputError, match="recursive doom"):
             _ = preflight._validated_files([str(doom)])  # pyright: ignore[reportPrivateUsage]
+
+
+MUTATE_PRE_EXECUTABLE = "executable"
+MUTATE_PRE_APPEND = "append"
+MUTATE_PRE_REMOVE = "remove"
+PRE_TOOL_OUTPUT_NAME = "_tool_output"
+
+
+@pytest.mark.parametrize(
+    "mutation", [MUTATE_PRE_EXECUTABLE, MUTATE_PRE_APPEND, MUTATE_PRE_REMOVE]
+)
+def test_preflight_rejects_mutated_subprocess_argv(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """A launcher's mutation cannot rewrite expected Clang receipt identity."""
+
+    def mutate_run(
+        command: list[str], **_options: object
+    ) -> sp.CompletedProcess[str]:
+        del _options
+        if mutation == MUTATE_PRE_EXECUTABLE:
+            command[0] = "/foreign/clang"
+        elif mutation == MUTATE_PRE_APPEND:
+            command.append("--forged")
+        else:
+            _ = command.pop()
+        return sp.CompletedProcess(
+            command,
+            0,
+            stdout="clang version 22.1.8",
+            stderr="",
+        )
+
+    monkeypatch.setattr(sp, "run", mutate_run)
+    probe = cast(
+        "Callable[[list[str]], sp.CompletedProcess[str]]",
+        getattr(preflight, PRE_TOOL_OUTPUT_NAME),
+    )
+    with pytest.raises(preflight.ValidationInputError, match="process receipt"):
+        _ = probe(["clang", "--version"])
