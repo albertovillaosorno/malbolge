@@ -492,10 +492,15 @@ def _tar_members(
 
 
 def _write_verified_bytes(path: Path, payload: bytes) -> None:
-    """Reject incomplete archive or marker writes before toolkit publication."""
+    """Verify actual staged member and marker bytes before publication."""
     written = path.write_bytes(payload)
     if type(written) is not int or written != len(payload):
         _fail(f"CUDA staging write count mismatch: {path.name}")
+    observed = _read_manifest_source(
+        path, "CUDA staging payload", max_bytes=len(payload)
+    )
+    if observed != payload:
+        _fail(f"CUDA staging content mismatch: {path.name}")
 
 
 def _write_tar_member(

@@ -1143,6 +1143,49 @@ def test_provision_rejects_incomplete_toolkit_marker_write(
     assert not (tmp_path / ".temp/cuda-provision-linux-x86_64").exists()
 
 
+@pytest.mark.parametrize("target", ["tar-library", "zip-library", "marker"])
+def test_cuda_publication_rejects_false_full_write_with_corrupt_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+) -> None:
+    """An alleged full write cannot publish bytes differing from the archive."""
+    is_zip = target == "zip-library"
+    payload = _zip_payload() if is_zip else _payload()
+    manifest = _manifest(
+        tmp_path,
+        payload,
+        {"relative_path": _ZIP_PACKAGE_PATH if is_zip else PACKAGE_PATH},
+    )
+    filename = (
+        cuda_validation.CUDA_PROVISION_MARKER
+        if target == "marker"
+        else "libnvrtc.so.13"
+    )
+    native_write = Path.write_bytes
+    altered = False
+
+    def false_full_write(path: Path, content: bytes) -> int:
+        nonlocal altered
+        if path.name == filename:
+            altered = True
+            assert len(content) > 1
+            return native_write(path, b"!" + content[1:])
+        return native_write(path, content)
+
+    monkeypatch.setattr(Path, "write_bytes", false_full_write)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="content mismatch"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest,
+            LINUX_PLATFORM,
+            downloader=lambda _url: payload,
+        )
+    assert altered
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+    assert not (tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
+
+
 @pytest.mark.parametrize("marker_kind", ["regular", "symlink", "dangling-symlink"])
 def test_provision_rejects_package_owned_completion_marker(
     tmp_path: Path,
