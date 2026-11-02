@@ -1962,6 +1962,75 @@ def test_rpm_include_tree_rejects_foreign_root_directory_status(
             llvm_development_validation._reject_include_symlinks(include_root)
 
 
+def test_rpm_include_tree_rejects_masked_symlink_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A false link predicate cannot admit physically redirected CPIO content."""
+    include_root = tmp_path / "usr/include"
+    include_root.mkdir(parents=True)
+    outside = tmp_path / "external-header.h"
+    _ = outside.write_bytes(FOREIGN_CONTENT_BYTES)
+    member = include_root / "header.h"
+    try:
+        _ = member.symlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"file aliases unavailable: {error}")
+    native_is_symlink = Path.is_symlink
+
+    def hidden_link(path: Path) -> bool:
+        return False if path == member else native_is_symlink(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_symlink", hidden_link)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="physical member",
+        ):
+            llvm_development_validation._reject_include_symlinks(include_root)
+    assert outside.read_bytes() == FOREIGN_CONTENT_BYTES
+
+
+def test_rpm_include_tree_rejects_foreign_member_lstat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Duck-typed stat metadata cannot certify a CPIO extracted header."""
+    include_root = tmp_path / "usr/include"
+    include_root.mkdir(parents=True)
+    member = include_root / "header.h"
+    _ = member.write_bytes(HEADER_BYTES)
+    native_lstat = Path.lstat
+
+    def forged_lstat(path: Path) -> object:
+        if path == member:
+            return SimpleNamespace(st_mode=0o100600, st_dev=1, st_ino=1)
+        return native_lstat(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", forged_lstat)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="physical member",
+        ):
+            llvm_development_validation._reject_include_symlinks(include_root)
+
+
+def test_rpm_include_tree_rejects_fifo_member(tmp_path: Path) -> None:
+    """An extracted FIFO cannot satisfy a physical header member witness."""
+    mkfifo = getattr(os, "mkfifo", None)
+    if mkfifo is None:
+        pytest.skip("FIFO unsupported")
+    include_root = tmp_path / "usr/include"
+    include_root.mkdir(parents=True)
+    mkfifo(include_root / "header.h")
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="physical member",
+    ):
+        llvm_development_validation._reject_include_symlinks(include_root)
+
+
 def test_rpm_include_tree_accepts_physical_regular_members(tmp_path: Path) -> None:
     """Native CPIO include roots and regular members still pass inspection."""
     include_root = tmp_path / "usr/include"

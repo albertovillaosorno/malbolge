@@ -199,6 +199,17 @@ def _reject_include_symlinks(include_root: Path) -> None:
         junction = _preflight_path_status(candidate, candidate.is_junction, "staging")
         if linked or junction:
             _fail(f"LLVM RPM include tree contains a symlink or junction: {candidate}")
+        try:
+            physical = candidate.lstat()
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                f"LLVM RPM include tree physical member status failed: {candidate}"
+            ) from error
+        if not (
+            _native_regular_status(physical)
+            or _native_directory_status(physical)
+        ):
+            _fail(f"LLVM RPM include tree requires physical member: {candidate}")
 
 
 def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
