@@ -2533,6 +2533,34 @@ def test_rpm_command_accepts_native_binary_receipt(
     assert llvm_development_validation._command_bytes(expected) == b"verified"
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["rpm2cpio", "/proc/self/fd/11"],
+        ["cpio", "-it", "--quiet"],
+        ["cpio", "-idm", "--quiet", "--no-absolute-filenames", "usr/include/*"],
+    ],
+)
+def test_rpm_command_rejects_success_with_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    command: list[str],
+) -> None:
+    """Zero-exit CPIO/RPM warnings cannot certify successful extraction."""
+
+    def diagnostic_run(
+        argv: list[str], **_kwargs: object
+    ) -> sp.CompletedProcess[bytes]:
+        assert argv == command
+        return sp.CompletedProcess(argv, 0, b"reviewed", b"archive warning\n")
+
+    monkeypatch.setattr(llvm_development_validation.sp, "run", diagnostic_run)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="diagnostics",
+    ):
+        _ = llvm_development_validation._command_bytes(command)
+
+
 def test_rpm_command_rejects_native_tool_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

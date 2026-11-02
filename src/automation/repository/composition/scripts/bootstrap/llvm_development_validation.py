@@ -193,6 +193,8 @@ def _command_bytes(
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()
         _fail(f"LLVM RPM tool failed: {arguments[0]}: {detail}")
+    if completed.stderr:
+        _fail(f"LLVM RPM tool emitted diagnostics: {arguments[0]}")
     return completed.stdout
 
 
