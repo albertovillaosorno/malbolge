@@ -1928,7 +1928,7 @@ def _verify_tool(
         _fail(f"missing provisioned tool: {path}")
     output = _run([str(path), "--version"])
     first_line = output.partition("\n")[0]
-    if expected not in first_line:
+    if first_line != expected and not first_line.startswith(f"{expected} "):
         _fail(f"unexpected {executable} version: {first_line!r}")
 
 
