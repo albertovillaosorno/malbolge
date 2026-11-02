@@ -64,6 +64,10 @@ an otherwise matching digest on a bytearray, view, or bytes subclass cannot
 satisfy archive verification. Network and response-read host failures,
 including incomplete HTTP bodies, become typed provisioning errors that
 preserve their original cause without evaluating foreign exception formatters.
+A response context that suppresses a failed bounded read cannot turn
+missing release data into a verified digest. The original read failure
+remains the typed provisioning cause; a substituted context entry is not
+used as the response stream.
 Selected tar.gz and ZIP executable members also require native size
 receipts and bounded 128-MiB reads before installation; tar
 links and oversized extracted executables are rejected without a full read.
@@ -83,6 +87,15 @@ ZIP executable are rejected as ambiguous. Selected ZIP member bytes must
 also match the declared uncompressed length even when the CRC is valid; a
 short read cannot become a complete executable. Selected TAR executable
 bytes must likewise match their declared member size, rejecting short reads.
+ZIP and TAR archive validation must finish before executable bytes are
+returned, even when a substituted archive context exit suppresses a failure.
+Extraction uses the originally opened archive and member stream instead of a
+substituted context-entry return. ZIP executable selection reads the opened
+archive's native parsed member inventory, not replaceable `infolist()` or
+`getinfo()` callbacks; forged inventories cannot conceal duplicate selected
+names or redirect extraction to unrelated entries. TAR scanning requires
+native `TarInfo` and native size metadata before evaluating a member's name,
+so a foreign candidate cannot execute attribute hooks during admission.
 The executable writer independently requires native bounded bytes before it
 creates its exclusive staging file, even with an injected extractor.
 Pinned uv executable provisioning rejects symlinked, junction, non-directory,
@@ -129,6 +142,10 @@ UV manifest and Jig tool-source readers require a native buffered binary
 reader backed by the original native raw file descriptor. A foreign stream
 wrapper or a native reader bound to a substitute descriptor cannot supply
 bootstrap authority bytes.
+Both readers continue using the originally opened stream, not a
+substituted context-entry return. An explicit read-completion receipt
+rejects suppressed stream-read or physical-identity validation faults; a
+context exit cannot turn partially verified source bytes into authority.
 
 Python environment provisioning anchors relative checkout roots before
 constructing interpreter, tool, or launcher paths, and binds the entire layout
@@ -392,6 +409,14 @@ Focused bootstrap tests cover platform IDs, Windows/POSIX Python launchers,
 neutral validation aliases, exact fast-version output, non-version delegation,
 Git distribution-version suffixes, Rustup no-download admission, stable/nightly
 imports, explicit Linux linker adapters, and idempotent local-state creation.
+
+The UV archive and Jig alias negative regressions also cover suppressed
+stream reads, rejected archive metadata, redirected context-entry objects,
+forged ZIP member inventories and lookups, and nonnative TAR member objects.
+Run the focused regressions without network access using
+`PYTHONPATH=src/automation/repository/composition python3.14 -B -m pytest
+-q tests/test_uv_bootstrap_path_admission.py`; the combined Python/bootstrap
+suites additionally exercise initialization and interpreter provisioning.
 
 Repository closure uses the repository-owned Jig runner for `validate` on
 Linux. The `scalability.repository-graph` rule still reports `not-evaluated`
