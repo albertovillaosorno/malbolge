@@ -149,7 +149,7 @@ def _parse_arguments() -> _Arguments:
 
 
 def _checked_clang_output(
-    completed: sp.CompletedProcess[str], context: str
+    completed: sp.CompletedProcess[str], context: str, command: list[str]
 ) -> tuple[str, str]:
     """Reject fabricated success and malformed decoded Clang output receipts.
 
@@ -157,21 +157,33 @@ def _checked_clang_output(
         Canonical version/AST stdout and stderr strings.
 
     """
+    if type(completed) is not sp.CompletedProcess:
+        _fail(f"malformed Clang {context} process receipt")
     if (
-        type(completed) is not sp.CompletedProcess
-        or type(completed.returncode) is not int
+        type(completed.returncode) is not int
         or type(completed.stdout) is not str
         or type(completed.stderr) is not str
     ):
+        _fail(f"malformed Clang {context} process receipt")
+    args = cast("object", completed.args)
+    if type(args) is not list:
+        _fail(f"malformed Clang {context} process receipt")
+    native_args = cast("list[object]", args)
+    if len(native_args) != len(command):
+        _fail(f"malformed Clang {context} process receipt")
+    if any(type(arg) is not str for arg in native_args):
+        _fail(f"malformed Clang {context} process receipt")
+    if native_args != command:
         _fail(f"malformed Clang {context} process receipt")
     return completed.stdout, completed.stderr
 
 
 def _clang_identity(clang: Path) -> str:
+    command = [str(clang), "--version"]
     try:
         # jig-ignore-next-line: indivisible reviewed Ruff rule identifier
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            [str(clang), "--version"],
+            command.copy(),
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -182,7 +194,7 @@ def _clang_identity(clang: Path) -> str:
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         message = f"failed to execute Clang version query {clang}"
         raise LibcSourceError(message) from error
-    stdout, stderr = _checked_clang_output(completed, "version")
+    stdout, stderr = _checked_clang_output(completed, "version", command)
     if completed.returncode != 0:
         _fail(f"Clang version query failed for {clang}")
     return stdout + chr(10) + stderr
@@ -275,10 +287,11 @@ def _parse_ast(text: str, source: Path) -> JsonObject:
 
 def _run_ast(source: Path, config: _AstConfig) -> JsonObject:
     _require_clang(config.clang)
+    command = _ast_command(source, config)
     try:
         # jig-ignore-next-line: indivisible reviewed Ruff rule identifier
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            _ast_command(source, config),
+            command.copy(),
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -289,7 +302,7 @@ def _run_ast(source: Path, config: _AstConfig) -> JsonObject:
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         message = f"failed to execute Clang AST parse {config.clang}"
         raise LibcSourceError(message) from error
-    stdout, stderr = _checked_clang_output(completed, "AST")
+    stdout, stderr = _checked_clang_output(completed, "AST", command)
     if completed.returncode != 0:
         detail = stderr.strip()
         _fail(detail or f"Clang AST parse failed for {source}")

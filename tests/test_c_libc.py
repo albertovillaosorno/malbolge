@@ -706,13 +706,10 @@ def test_libc_clang_ast_empty_receipt_cannot_admit_forbidden_calls(
 ) -> None:
     """A zero-exit process returning {} is not evidence of a clean C source."""
     monkeypatch.setattr(c_libc_source, "_require_clang", lambda _: None)
-    monkeypatch.setattr(
-        sp,
-        "run",
-        lambda *args, **kwargs: sp.CompletedProcess(
-            args=[], returncode=0, stdout="{}", stderr=""
-        ),
-    )
+    def empty_ast(command: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(command, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(sp, "run", empty_ast)
     with pytest.raises(c_libc_source.LibcSourceError, match="AST root"):
         _ = c_libc_source._run_ast(ACCEPTED, _libc_test_ast_config())
 
@@ -1947,3 +1944,109 @@ def test_libc_authority_does_not_format_foreign_utf8_decoder_error(
     ) as error:
         _ = c_libc.load_document(tmp_path / "libc.json")
     assert error.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("stage", ["version", "ast"])
+@pytest.mark.parametrize(
+    "receipt_kind",
+    [
+        "missing",
+        "wrong-command",
+        "extra-argument",
+        "tuple",
+        "string",
+        "foreign-list",
+        "foreign-token",
+        "mutated-call",
+    ],
+)
+def test_libc_clang_command_receipts_bind_exact_native_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    receipt_kind: str,
+) -> None:
+    """Neither Clang identity nor AST may be certified by another command."""
+
+    class ForeignArgs(list[str]):
+        @override
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign Clang command receipt compared")
+
+    class ForeignToken(str):
+        @override
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign Clang token receipt compared")
+
+    def forged_run(
+        args: list[str], **_kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        forged: object = {
+            "missing": args[:-1],
+            "wrong-command": ["foreign-clang", *args[1:]],
+            "extra-argument": [*args, "--foreign"],
+            "tuple": tuple(args),
+            "string": " ".join(args),
+            "foreign-list": ForeignArgs(args),
+            "foreign-token": [ForeignToken(args[0]), *args[1:]],
+            "mutated-call": args,
+        }[receipt_kind]
+        if receipt_kind == "mutated-call":
+            args[0] = "foreign-clang"
+        return sp.CompletedProcess(
+            cast("list[str]", forged),
+            0,
+            stdout=(
+                "clang version 22.1.8"
+                if stage == "version"
+                else '{"kind":"TranslationUnitDecl","id":"0x1","inner":[{}]}'
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(sp, "run", forged_run)
+    if stage == "ast":
+
+        def accepted_clang(_clang: Path) -> None:
+            pass
+
+        monkeypatch.setattr(c_libc_source, "_require_clang", accepted_clang)
+    with pytest.raises(c_libc_source.LibcSourceError, match="process receipt"):
+        _ = _run_libc_test_ast(stage)
+
+
+@pytest.mark.parametrize("stage", ["version", "ast"])
+def test_libc_clang_command_receipts_accept_exact_native_invocation(
+    monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    """The authentic Clang command and its ordinary output remain accepted."""
+
+    def native_run(
+        args: list[str], **_kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(
+            args,
+            0,
+            stdout=(
+                "clang version 22.1.8"
+                if stage == "version"
+                else '{"kind":"TranslationUnitDecl","id":"0x1","inner":[{}]}'
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(sp, "run", native_run)
+    if stage == "ast":
+
+        def accepted_clang(_clang: Path) -> None:
+            pass
+
+        monkeypatch.setattr(c_libc_source, "_require_clang", accepted_clang)
+        assert _run_libc_test_ast(stage) == {
+            "kind": "TranslationUnitDecl",
+            "id": "0x1",
+            "inner": [{}],
+        }
+    else:
+        result = _run_libc_test_ast(stage)
+        assert isinstance(result, str)
+        assert "clang version 22.1.8" in result
