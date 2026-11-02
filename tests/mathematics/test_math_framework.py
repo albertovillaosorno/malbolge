@@ -2431,3 +2431,27 @@ def test_math_successful_latex_exit_requires_physical_pdf(
     with pytest.raises(validator.MathSpecificationError, match="PDF"):
         _compile_math_source(source)
     assert log.read_text(encoding="utf-8") == COMPILED_LOG_TEXT
+
+
+@pytest.mark.parametrize("mutation", ("executable", "append", "remove"))
+def test_math_latex_rejects_inplace_mutated_launch_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """LaTeX wrappers cannot mutate the expected argv with their own receipts."""
+    command = ["pdflatex", "-halt-on-error", "proof.tex"]
+
+    def mutating_run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        if mutation == "executable":
+            args[0] = "/foreign/pdflatex"
+        elif mutation == "append":
+            args.append("-shell-escape")
+        else:
+            _ = args.pop()
+        return sp.CompletedProcess(args, 0, stdout="compiled", stderr="")
+
+    monkeypatch.setattr(sp, "run", mutating_run)
+    with pytest.raises(validator.MathSpecificationError, match="command receipt"):
+        _ = validator._run_latex_process(command, tmp_path)  # pyright: ignore[reportPrivateUsage]
+    assert command == ["pdflatex", "-halt-on-error", "proof.tex"]

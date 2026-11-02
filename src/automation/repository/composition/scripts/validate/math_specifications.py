@@ -782,7 +782,7 @@ def _run_latex_process(command: list[str], directory: Path) -> tuple[int, str]:
     # jig-ignore-next-line: indivisible reviewed identifier
     try:
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command,
+            command.copy(),
             cwd=directory,
             check=False,
             capture_output=True,
