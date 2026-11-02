@@ -3648,3 +3648,57 @@ def test_linux_destination_parent_creation_does_not_write_to_swapped_ancestor(
     foreign_root = foreign if replacement == "symlink" else ancestor
     assert (foreign_root / "sentinel").read_bytes() == b"unrelated ancestor"
     assert not (foreign_root / component).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+@pytest.mark.parametrize("depth", ["root", "nested"])
+def test_llvm_resource_copy_does_not_populate_swapped_destination_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+    depth: str,
+) -> None:
+    """Resource traversal may not create files under a substituted parent."""
+    source = tmp_path / "host-resources"
+    (source / "include").mkdir(parents=True)
+    _ = (source / "include/stdlib.h").write_bytes(b"host resource")
+    root = tmp_path / "stage"
+    parent = root / "lib/clang"
+    parent.mkdir(parents=True)
+    destination = parent / "22"
+    swapped_parent = parent if depth == "root" else destination
+    created = destination if depth == "root" else destination / "include"
+    parked = tmp_path / "parked-resource-parent"
+    foreign = tmp_path / "foreign-resource-parent"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"unrelated resource directory")
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def swap_during_resource_creation(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (Path(path) == created or path == created.name):
+            _ = swapped_parent.rename(parked)
+            if replacement == "symlink":
+                _ = swapped_parent.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(swapped_parent)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_during_resource_creation)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            llvm_validation._copy_resource_tree(  # pyright: ignore[reportPrivateUsage]
+                source, destination
+            )
+    assert swapped
+    foreign_parent = foreign if replacement == "symlink" else swapped_parent
+    assert (foreign_parent / "sentinel").read_bytes() == b"unrelated resource directory"
+    assert not (foreign_parent / created.name).exists()

@@ -535,14 +535,55 @@ def _require_physical_resources(root: Path) -> None:
 
 
 def _copy_resource_tree(source: Path, destination: Path) -> None:
+    """Copy LLVM resources without creating through replaceable parent names."""
     _require_physical_resources(source)
-    _ = shutil.copytree(
-        source,
-        destination,
-        copy_function=_link_or_copy,
-        symlinks=True,
+    ancestor_inode = _native_directory_inode(destination.parent.parent)
+    if ancestor_inode is None:
+        _fail("LLVM resource destination ancestor must be physical")
+    _create_physical_import_directory(
+        destination.parent,
+        label="LLVM resource destination parent",
+        expected_parent_inode=ancestor_inode,
+        exist_ok=True,
     )
-    # Reject links introduced while copytree was traversing the host source.
+    parent_inode = _native_directory_inode(destination.parent)
+    if parent_inode is None:
+        _fail("LLVM resource destination parent must be physical")
+
+    def copy_directory(
+        source_directory: Path,
+        destination_directory: Path,
+        expected_parent_inode: tuple[int, int],
+    ) -> None:
+        _create_physical_import_directory(
+            destination_directory,
+            label="LLVM resource member directory",
+            expected_parent_inode=expected_parent_inode,
+        )
+        owned_inode = _native_directory_inode(destination_directory)
+        if owned_inode is None:
+            _fail("LLVM resource member directory must be physical")
+        try:
+            for member in source_directory.iterdir():
+                target = destination_directory / member.name
+                if _physical_directory(member):
+                    copy_directory(member, target, owned_inode)
+                elif _physical_file(member):
+                    _ = _link_or_copy(
+                        str(member), str(target), expected_parent_inode=owned_inode
+                    )
+                else:
+                    _fail(f"host LLVM resource member must be physical: {member}")
+        except LlvmImportError:
+            raise
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"host LLVM resource traversal failed: {type(error).__name__}"
+            ) from error
+        if _native_directory_inode(destination_directory) != owned_inode:
+            _fail("LLVM resource destination directory changed during copy")
+
+    copy_directory(source, destination, parent_inode)
     _require_physical_resources(destination)
 
 
