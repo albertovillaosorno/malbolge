@@ -186,6 +186,34 @@ def test_llvm_banner_url_is_covered_by_existing_clang_tidy_identity() -> None:
     )
 
 
+@pytest.mark.parametrize("validator_name", ("source", "requirements", "identity"))
+def test_bibliography_public_text_rejects_foreign_splitlines(
+    validator_name: str,
+) -> None:
+    """A str subclass cannot substitute valid record or pinned package text."""
+
+    class ForeignText(str):
+        @override
+        def splitlines(self, keepends: bool = False) -> list[str]:
+            if validator_name == "requirements":
+                return VALIDATION_REQUIREMENTS.read_text(encoding="utf-8").splitlines(
+                    keepends
+                )
+            return _c_record().splitlines(keepends)
+
+    invalid = ForeignText("not a valid source or pin set")
+    failure = (
+        "native source record entry" if validator_name == "identity" else "native text"
+    )
+    with pytest.raises(validator.BibliographyValidationError, match=failure):
+        if validator_name == "source":
+            validator.validate_source_text(invalid)
+        elif validator_name == "requirements":
+            validator.validate_validation_requirements_text(invalid)
+        else:
+            validator.validate_unique_stable_identifiers((("fixture", invalid),))
+
+
 def test_source_record_requires_explicit_uncertainty() -> None:
     """Verified source records still state what remains unresolved."""
     text = _c_record().replace("### Unresolved", "### Limits", 1)
@@ -820,6 +848,45 @@ def test_git_transport_suffix_does_not_split_source_identity() -> None:
         ("https://github.com/id-Software/DOOM",),
     )
     assert count == 1
+
+
+def test_unique_identifiers_rejects_foreign_record_list_before_iteration() -> None:
+    """A tuple subclass cannot suppress duplicate record identities."""
+
+    class ForeignRecords(tuple[tuple[str, str], ...]):
+        @override
+        def __iter__(self) -> Never:
+            raise AssertionError("foreign bibliography records iterator executed")
+
+    records = ForeignRecords((("fixture", _c_record()),))
+    with pytest.raises(
+        validator.BibliographyValidationError, match="native source record tuple"
+    ):
+        validator.validate_unique_stable_identifiers(records)
+
+
+@pytest.mark.parametrize("forgery", ("list-pair", "label-subclass", "short-pair"))
+def test_unique_identifiers_rejects_foreign_pairs_and_labels(forgery: str) -> None:
+    """Each admitted identity record has exactly two native string fields."""
+
+    class ForeignLabel(str):
+        @override
+        def __format__(self, format_spec: str) -> str:
+            del format_spec
+            raise AssertionError("foreign record label formatter executed")
+
+    if forgery == "list-pair":
+        entry: object = ["fixture", _c_record()]
+    elif forgery == "label-subclass":
+        entry = (ForeignLabel("fixture"), _c_record())
+    else:
+        entry = ("fixture",)
+    with pytest.raises(
+        validator.BibliographyValidationError, match="native source record entry"
+    ):
+        validator.validate_unique_stable_identifiers(
+            cast("tuple[tuple[str, str], ...]", (entry,))
+        )
 
 
 def test_duplicate_stable_source_identity_fails_closed() -> None:

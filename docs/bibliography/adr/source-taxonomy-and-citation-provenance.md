@@ -100,7 +100,9 @@ single-occurrence standalone uncertainty headings, source bullets with
 nonempty content, unique stable identities,
 exact validation-package pins, durable external-reference coverage, and the
 required baseline. External URL coverage admits exact native tuples and strings
-before normalization. A source-record marker counts only outside fenced or
+before normalization. Public source-record and dependency-pin validators require
+native text and native record entries before their fields can be inspected.
+A source-record marker counts only outside fenced or
 indented Markdown code and HTML comments; removing inline comments cannot invent
 standalone headings or list entries. Literal examples and comments do not
 establish external-source catalog coverage. `tests/test_bibliography.py`

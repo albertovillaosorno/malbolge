@@ -679,6 +679,8 @@ def _validate_source_entries(text: str, label: str) -> None:
 
 def validate_source_text(text: str, label: str = "source record") -> None:
     """Validate one bibliography source-record body."""
+    if type(text) is not str or type(label) is not str:
+        _fail("bibliography source record requires native text and label")
     visible = _visible_source_text(text)
     _ = _heading_positions(visible, label)
     for heading in NONEMPTY_SECTION_HEADINGS:
@@ -706,8 +708,18 @@ def validate_unique_stable_identifiers(
     records: tuple[tuple[str, str], ...],
 ) -> None:
     """Reject duplicate canonical source identities across records."""
+    if type(records) is not tuple:
+        _fail("bibliography identities require a native source record tuple")
     seen: dict[str, str] = {}
-    for label, text in records:
+    for record in records:
+        if (
+            type(record) is not tuple
+            or len(record) != 2
+            or type(record[0]) is not str
+            or type(record[1]) is not str
+        ):
+            _fail("bibliography identities require a native source record entry")
+        label, text = record
         identifier = _stable_identifier(text, label)
         previous = seen.get(identifier)
         if previous is not None:
@@ -750,6 +762,8 @@ def _validate_baseline() -> None:
 
 def validate_validation_requirements_text(text: str) -> None:
     """Validate the exact pinned Python validation dependency set."""
+    if type(text) is not str:
+        _fail("bibliography dependency pins require native text")
     actual = tuple(line.strip() for line in text.splitlines() if line.strip())
     expected = tuple(
         requirement for requirement, _record in VALIDATION_REQUIREMENT_RECORDS
