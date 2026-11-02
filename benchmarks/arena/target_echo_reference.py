@@ -582,7 +582,7 @@ def _case(
         "version": 1,
         "difficulty": pairs,
         "seed": 0,
-        "workload_sha256": sha256(workload).hexdigest(),
+        "workload_sha256": _checked_sha256(workload, source="workload"),
     }
 
 
@@ -1192,8 +1192,9 @@ def _write_rss_stages(
     ).encode("utf-8")
     stem = f"{row['algorithm']}-pairs-{case['difficulty']}-trial-{row['trial']}"
     path = context.directory / "rss" / f"{stem}.json"
+    digest = _checked_sha256(content, source="RSS sidecar")
     _write_retained_bytes(path, content)
-    return sha256(content).hexdigest()
+    return digest
 
 
 def _write_attempt(
@@ -1248,13 +1249,14 @@ def _write_attempt(
         "metrics": metrics,
     }
     raw = _raw_csv(row)
+    raw_hash = _checked_sha256(raw, source="raw manifest")
     _write_retained_bytes(context.directory / "raw" / f"{stem}.csv", raw)
     receipt_hash = _write_rss_stages(
         observed_context,
         row,
         values=observed_context.rss_stages,
     )
-    receipt = _manifest(row, context, sha256(raw).hexdigest(), rss_hash=receipt_hash)
+    receipt = _manifest(row, context, raw_hash, rss_hash=receipt_hash)
     _write_retained_text(context.directory / "runs" / f"{stem}.toml", receipt)
     return row
 
@@ -1343,13 +1345,15 @@ def _make_document(
     }
 
 
-def _retained_study_sha256(raw: bytes) -> str:
-    """Require a native SHA-256 receipt matching a separate byte digest."""
+def _checked_sha256(raw: bytes, *, source: str) -> str:
+    """Require a native SHA-256 claim matching independent source-byte hashing."""
+    if type(raw) is not bytes:
+        _fail(f"target echo {source} SHA-256 requires native bytes")
     try:
         reported = sha256(raw).hexdigest()
         independent = hashlib.new("sha256", raw).hexdigest()
     except Exception as error:
-        message = "target echo retained study SHA-256 dependency failed"
+        message = f"target echo {source} SHA-256 dependency failed"
         raise TargetEchoStudyError(message) from error
     if (
         type(reported) is not str
@@ -1360,8 +1364,13 @@ def _retained_study_sha256(raw: bytes) -> str:
         or not set(independent) <= analyze.SHA256_ALPHABET
         or reported != independent
     ):
-        _fail("target echo retained study SHA-256 differs from source bytes")
+        _fail(f"target echo {source} SHA-256 differs from source bytes")
     return reported
+
+
+def _retained_study_sha256(raw: bytes) -> str:
+    """Preserve retained study identity under the shared digest check."""
+    return _checked_sha256(raw, source="retained study")
 
 
 def _audit_retained_study(path: Path) -> dict[str, Any]:

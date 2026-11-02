@@ -2287,6 +2287,49 @@ def test_retained_study_hash_provider_cannot_override_audited_byte_identity(
         assert caught.value.__cause__ is fault
 
 
+@pytest.mark.parametrize("site", ["workload", "raw-manifest", "rss-sidecar"])
+@pytest.mark.parametrize("receipt", ["wrong", "foreign", "nontext", "raised"])
+def test_producer_hash_receipts_must_bind_exact_source_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+    receipt: str,
+) -> None:
+    """No producer identity can inherit a substituted hash provider claim."""
+    fault = RuntimeError("producer SHA dependency failed")
+
+    class ForgedHash:
+        def hexdigest(self) -> object:
+            if receipt == "raised":
+                raise fault
+            return {
+                "wrong": "0" * 64,
+                "foreign": _UntrustedHashText("0" * 64),
+                "nontext": 0,
+            }[receipt]
+
+    monkeypatch.setattr(target_echo_reference, "sha256", lambda _raw: ForgedHash())
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="SHA-256"
+    ) as caught:
+        if site == "workload":
+            target_echo_reference._case(1)
+        elif site == "rss-sidecar":
+            _invoke_target_rss(_synthetic_target_context(tmp_path, site=TARGET_RSS))
+        else:
+            _invoke_target_attempt(
+                monkeypatch, _synthetic_target_context(tmp_path, site=TARGET_RAW)
+            )
+    if receipt == "raised":
+        assert caught.value.__cause__ is fault
+    # An unverified digest must not even leave a retained sidecar with a
+    # plausible file name for a later source graph to accidentally discover.
+    if site == "raw-manifest":
+        assert not list((tmp_path / TARGET_RAW).iterdir())
+    if site == "rss-sidecar":
+        assert not list((tmp_path / TARGET_RSS).iterdir())
+
+
 @pytest.mark.parametrize("tamper_after_audit", [False, True])
 def test_publisher_uses_exact_audited_study_bytes(
     tmp_path: Path,
