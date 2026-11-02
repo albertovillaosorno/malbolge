@@ -38,6 +38,7 @@ import argparse
 import io
 import json
 import os
+from math import isfinite
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from dataclasses import dataclass
@@ -324,14 +325,73 @@ def _require_ast_inputs(source: Path, clang: Path) -> None:
         _fail(f"source is not a regular file: {source}")
 
 
+def _unique_ast_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject ambiguous duplicate names in any Clang AST JSON object.
+
+    Returns:
+        One canonical mapping of JSON object fields.
+
+    """
+    result: dict[str, object] = {}
+    for name, value in pairs:
+        if name in result:
+            _fail(f"duplicate Clang AST JSON key: {name}")
+        result[name] = value
+    return result
+
+
+def _reject_nonfinite_ast_constant(value: str) -> Never:
+    _fail(f"nonfinite Clang AST JSON number: {value}")
+
+
+def _finite_ast_float(value: str) -> float:
+    """Reject exponent overflow before a JSON float becomes nonfinite.
+
+    Returns:
+        A finite native JSON floating value.
+
+    """
+    result = float(value)
+    if not isfinite(result):
+        _fail(f"nonfinite Clang AST JSON number: {value}")
+    return result
+
+
 def _parse_ast_output(text: str, source: Path) -> JsonObject:
+    if type(text) is not str:
+        _fail("Clang AST JSON requires exact native text")
     try:
-        parsed = cast("object", json.loads(text))
-    except json.JSONDecodeError as error:
-        _fail(f"invalid Clang AST JSON for {source}: {error}")
-    if not isinstance(parsed, dict):
+        parsed = cast(
+            "object",
+            json.loads(
+                text,
+                object_pairs_hook=_unique_ast_fields,
+                parse_constant=_reject_nonfinite_ast_constant,
+                parse_float=_finite_ast_float,
+            ),
+        )
+    except SourceAnalysisError:
+        raise
+    except (ValueError, RecursionError) as error:
+        message = f"invalid Clang AST JSON for {source}"
+        raise SourceAnalysisError(message) from error
+    if type(parsed) is not dict:
         _fail(f"Clang AST root must be an object for {source}")
-    return cast("JsonObject", parsed)
+    root = cast("JsonObject", parsed)
+    identifier = root.get("id")
+    children = root.get("inner")
+    if (
+        root.get("kind") != "TranslationUnitDecl"
+        or type(identifier) is not str
+        or not identifier
+        or type(children) is not list
+        or not children
+        or any(type(child) is not dict for child in children)
+    ):
+        _fail(
+            f"Clang AST root must describe a nonempty translation unit: {source}"
+        )
+    return root
 
 
 def _run_ast(source: Path, clang: Path, target: str) -> JsonObject:

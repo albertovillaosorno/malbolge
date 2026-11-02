@@ -358,7 +358,8 @@ standard binary input streams, and exact bytes before trusting identity or
 content evidence. Clang version and AST results must be exact Python
 `CompletedProcess` receipts with native integer exits and decoded text; boolean
 or floating-point exits and foreign text subclasses cannot impersonate valid
-Clang evidence. Both version and AST process receipts must also retain the
+Clang evidence. AST JSON must have a nonempty translation-unit root with native
+field shapes, unique object keys, and finite numeric fields. Both version and AST process receipts must also retain the
 exact launched native argv (binary, target, mode, and source) and cannot share
 a mutable command list with an untrusted process wrapper. Unexpected host
 failures retain their original exception causes, while operator diagnostics

@@ -1542,7 +1542,11 @@ def test_guest_abi_source_clang_accepts_authentic_command_receipt(
         return sp.CompletedProcess(
             argv,
             0,
-            stdout="clang version 22.1.8" if stage == "version" else "{}",
+            stdout=(
+                "clang version 22.1.8"
+                if stage == "version"
+                else '{"kind":"TranslationUnitDecl","id":"0x1","inner":[{}]}'
+            ),
             stderr="",
         )
 
@@ -1554,7 +1558,11 @@ def test_guest_abi_source_clang_accepts_authentic_command_receipt(
         monkeypatch.setattr(
             c_abi_source, "_require_ast_inputs", accepted_inputs
         )
-        assert c_abi_source._run_ast(source, source, "target") == {}
+        assert c_abi_source._run_ast(source, source, "target") == {
+            "kind": "TranslationUnitDecl",
+            "id": "0x1",
+            "inner": [{}],
+        }
     else:
         assert "clang version 22.1.8" in c_abi_source._clang_identity(source)
 
@@ -1609,3 +1617,61 @@ def test_guest_abi_source_accepts_native_preflight_file_status(
         c_abi_source, "_clang_identity", lambda _clang: "clang version 22.1.8"
     )
     c_abi_source._require_ast_inputs(source, clang)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "{}",
+        '{"kind":"FunctionDecl","id":"root","inner":[{}]}',
+        '{"kind":"TranslationUnitDecl","inner":[{}]}',
+        '{"kind":"TranslationUnitDecl","id":"","inner":[{}]}',
+        '{"kind":"TranslationUnitDecl","id":true,"inner":[{}]}',
+        '{"kind":"TranslationUnitDecl","id":"root","inner":[]}',
+        '{"kind":"TranslationUnitDecl","id":"root","inner":[null]}',
+        '{"kind":"TranslationUnitDecl","id":"root","inner":"text"}',
+    ],
+)
+def test_guest_abi_source_rejects_empty_or_synthetic_ast_root(
+    text: str,
+) -> None:
+    """A zero-exit Clang subprocess may not pass ABI checks without an AST."""
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="Clang AST"):
+        _ = c_abi_source._parse_ast_output(text, Path("input.c"))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"kind":"TranslationUnitDecl","id":"root","inner":[{}],"id":"other"}',
+        '{"kind":"TranslationUnitDecl","id":"root","inner":[{"x":0,"x":1}]}',
+        '{"kind":"TranslationUnitDecl","id":"root","inner":[{"x":NaN}]}',
+        '{"kind":"TranslationUnitDecl","id":"root","inner":[{"x":Infinity}]}',
+        '{"kind":"TranslationUnitDecl","id":"root","inner":[{"x":1e309}]}',
+    ],
+)
+def test_guest_abi_source_rejects_duplicate_or_nonfinite_ast_json(
+    text: str,
+) -> None:
+    """Ambiguous and nonfinite Clang AST fields cannot authorize ABI checks."""
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="Clang AST"):
+        _ = c_abi_source._parse_ast_output(text, Path("input.c"))
+
+
+def test_guest_abi_source_rejects_deep_or_foreign_ast_payload() -> None:
+    """Non-native source JSON and decoder recursion retain typed failures."""
+    deep = "[" * 2000 + "null" + "]" * 2000
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="Clang AST"):
+        _ = c_abi_source._parse_ast_output(deep, Path("input.c"))
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="Clang AST"):
+        _ = c_abi_source._parse_ast_output(
+            cast("str", cast("object", b"{}")), Path("input.c")
+        )
+
+
+def test_guest_abi_source_accepts_native_translation_unit_ast() -> None:
+    """A minimally well-formed native Clang translation unit remains usable."""
+    source = '{"kind":"TranslationUnitDecl","id":"root","inner":[{}]}'
+    parsed = c_abi_source._parse_ast_output(source, Path("input.c"))
+    assert parsed["kind"] == "TranslationUnitDecl"
+    assert parsed["inner"] == [{}]
