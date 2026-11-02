@@ -96,6 +96,7 @@ MAX_JIG_TOOL_BINARY_BYTES: Final = 256 * 1024 * 1024
 UV_BINARY_MODE: Final = 0o755
 JIG_BINARY_MODE: Final = 0o755
 URL_SUFFIX_MARKERS: Final = frozenset(("?", "#"))
+URL_ESCAPE_MARKER: Final = "%"
 BASEDPYRIGHT_TOOL_ID: Final = "basedpyright"
 PYTEST_TOOL_ID: Final = "pytest"
 JIG_FAST_VERSION_TOOL_IDS: Final = frozenset((
@@ -182,7 +183,9 @@ def _required_path_segment(
     has_separator = any(separator in value for separator in PATH_SEPARATORS)
     windows_invalid = bool(windows_path.drive or windows_path.root)
     windows_invalid = windows_invalid or ntpath.isreserved(value)
-    if reserved or has_separator or windows_invalid:
+    # URL decoding could turn a percent escape into a different path segment.
+    unsafe_path = reserved or has_separator or windows_invalid
+    if unsafe_path or URL_ESCAPE_MARKER in value:
         _fail(f"{label}.{key} must be one repository-local path segment")
     return value
 

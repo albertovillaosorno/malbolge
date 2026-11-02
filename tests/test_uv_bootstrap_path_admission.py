@@ -1341,12 +1341,13 @@ def test_binary_authority_rejects_native_stream_on_duplicated_descriptor(
     [
         "NUL", "COM1.exe", "release.", "release ",
         "uv|foreign", "uv:stream", ".. ",
+        "uv%2Fother", "uv%5cother", "uv%2e%2e", "uv%252fother",
     ],
 )
-def test_uv_manifest_rejects_windows_reserved_path_segments(
+def test_uv_manifest_rejects_nonportable_path_segments(
     tmp_path: Path, field: str, unsafe_segment: str
 ) -> None:
-    """Pinned artifact identities must be portable physical path segments."""
+    """Release identities must be literal portable URL and physical segments."""
     parsed = cast(
         "object", json.loads(python_validation.UV_MANIFEST.read_text())
     )
