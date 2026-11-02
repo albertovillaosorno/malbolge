@@ -1325,3 +1325,64 @@ def test_uv_types_publication_parent_close_fault(
     assert triggered
     assert executable.read_bytes() == BINARY
     assert not stage.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX dirfd support")
+def test_uv_parent_walk_close_failure_does_not_leak_new_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An ancestor close fault must not leak the next opened directory."""
+    parent = tmp_path / "checkout" / ".dependencies" / "uv" / "0.12.20" / "bin"
+    parent.mkdir(parents=True)
+    native_open = os.open
+    native_close = os.close
+    fault = _UnprintableUvCloseError("unprintable ancestor close")
+    opened_children: list[int] = []
+    failed = False
+    previous = parent.parent.stat()
+
+    def track_parent_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if dir_fd is not None:
+            descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        else:
+            descriptor = native_open(path, flags, mode)
+        if dir_fd is not None and os.fspath(path) == parent.name:
+            opened_children.append(descriptor)
+        return descriptor
+
+    def fail_previous_close(descriptor: int) -> None:
+        nonlocal failed
+        status = os.fstat(descriptor)
+        if (
+            opened_children
+            and not failed
+            and (status.st_dev, status.st_ino) == (previous.st_dev, previous.st_ino)
+        ):
+            failed = True
+            native_close(descriptor)
+            raise fault
+        native_close(descriptor)
+
+    monkeypatch.setattr(os, "open", track_parent_open)
+    monkeypatch.setattr(os, "close", fail_previous_close)
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv parent physical descriptor"
+    ) as captured:
+        _ = python_validation._open_uv_physical_parent(parent / "uv")
+    assert captured.value.__cause__ is fault
+    assert failed
+    assert len(opened_children) == 1
+    try:
+        with pytest.raises(OSError):
+            _ = os.fstat(opened_children[0])
+    finally:
+        try:
+            native_close(opened_children[0])
+        except OSError:
+            pass

@@ -667,7 +667,14 @@ def _open_uv_physical_parent(
                 child = os.open(component, flags, dir_fd=descriptor)
             if type(child) is not int or child < 0:
                 _fail("uv parent descriptor requires native handle")
-            os.close(descriptor)
+            try:
+                os.close(descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError):
+                # The next component was opened already; it is not the
+                # descriptor that the failure path normally closes.
+                with suppress(OSError):
+                    os.close(child)
+                raise
             descriptor = child
         opened = os.fstat(descriptor)
         named = parent.lstat()
