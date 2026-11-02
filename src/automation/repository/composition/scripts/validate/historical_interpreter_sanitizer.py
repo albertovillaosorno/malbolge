@@ -74,6 +74,7 @@ SCHEMA_VERSION = 1
 RUN_TIMEOUT_SECONDS = 15
 MAX_DOCUMENT_BYTES = 1_048_576
 _NATIVE_JSON_DECODER = json.JSONDecoder
+_NATIVE_JSON_ENCODER = json.JSONEncoder
 MAX_FIXTURE_BYTES = 1_048_576
 MAX_NATIVE_DESCRIPTOR = (1 << 31) - 1
 PARENT_COMPONENT = ".."
@@ -846,12 +847,32 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _render_evidence_json(document: JsonObject, *, sort_keys: bool) -> str:
+    """Render source-bound normalized evidence, never a forged public JSON view.
+
+    Returns:
+        JSON whose exact text agrees with an import-bound native encoder.
+
+    """
+    try:
+        source_text = _NATIVE_JSON_ENCODER(indent=2, sort_keys=sort_keys).encode(
+            document
+        )
+        observed = json.dumps(document, indent=2, sort_keys=sort_keys)
+    except Exception as error:
+        message = f"sanitizer JSON writer failed: {type(error).__name__}"
+        raise SanitizerHarnessError(message) from error
+    if type(observed) is not str or observed != source_text:
+        _fail("sanitizer JSON writer differs from source")
+    return source_text
+
+
 def _verified_harness() -> JsonObject:
     actual = run_harness()
     expected = load_evidence()
     if actual != expected:
-        actual_text = json.dumps(actual, indent=2, sort_keys=True)
-        expected_text = json.dumps(expected, indent=2, sort_keys=True)
+        actual_text = _render_evidence_json(actual, sort_keys=True)
+        expected_text = _render_evidence_json(expected, sort_keys=True)
         message = (
             f"sanitizer evidence drift\nexpected:\n{expected_text}"
             f"\nactual:\n{actual_text}"
@@ -877,7 +898,7 @@ def main() -> int:
         arguments = _parse_arguments()
         actual = _verified_harness()
         if arguments.print_json:
-            message = json.dumps(actual, indent=2) + "\n"
+            message = _render_evidence_json(actual, sort_keys=False) + "\n"
         else:
             message = "historical interpreter sanitizer evidence valid\n"
         _require_output(sys.stdout, message)

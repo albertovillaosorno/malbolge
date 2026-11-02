@@ -1833,3 +1833,109 @@ def test_sanitizer_launch_failures_are_typed_without_foreign_hooks(
     assert ("ForeignHostOSError" in str(caught.value)) == (
         fault_kind == "foreign-os"
     )
+
+
+@pytest.mark.parametrize("provider", ("writer", "encoder", "joint"))
+def test_sanitizer_cli_rejects_forged_public_json_report(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    provider: str,
+) -> None:
+    """Verified findings cannot be replaced in successful --print-json output."""
+    trusted = {"schema_version": 1, "source_sha256": harness.SOURCE_SHA256}
+    forged = '{"schema_version": 9999, "source_sha256": "forged"}'
+
+    class ForgedEncoder:
+        def __init__(self, **_options: object) -> None:
+            pass
+
+        def encode(self, _document: object) -> str:
+            return forged
+
+    def forged_writer(*_args: object, **_kwargs: object) -> str:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(harness, "_verified_harness", lambda: trusted)
+        patch.setattr(sys, "argv", ["historical-sanitizer", "--print-json"])
+        if provider in ("encoder", "joint"):
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if provider in ("writer", "joint"):
+            patch.setattr(json, "dumps", forged_writer)
+        assert harness.main() == 1
+        output = capsys.readouterr()
+        assert output.out == ""
+        assert "sanitizer JSON writer differs from source" in output.err
+
+
+@pytest.mark.parametrize("provider", ("writer", "encoder", "joint"))
+def test_sanitizer_cli_rejects_forged_json_drift_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    """Mismatch evidence cannot be rewritten by a public serializer."""
+    forged = '{"schema_version": 9999}'
+
+    class ForgedEncoder:
+        def __init__(self, **_options: object) -> None:
+            pass
+
+        def encode(self, _document: object) -> str:
+            return forged
+
+    def forged_writer(*_args: object, **_kwargs: object) -> str:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(harness, "run_harness", lambda: {"schema_version": 1})
+        patch.setattr(harness, "load_evidence", lambda: {"schema_version": 2})
+        if provider in ("encoder", "joint"):
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if provider in ("writer", "joint"):
+            patch.setattr(json, "dumps", forged_writer)
+        with pytest.raises(
+            harness.SanitizerHarnessError,
+            match="sanitizer JSON writer differs from source",
+        ):
+            _ = harness._verified_harness()  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("fault", (RuntimeError, ValueError))
+def test_sanitizer_cli_wraps_public_json_rendering_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault: type[Exception],
+) -> None:
+    """Serializer faults cannot report success or leak host exceptions."""
+    failure = fault("public writer failed")
+
+    def failing_writer(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(harness, "_verified_harness", lambda: {"schema_version": 1})
+        patch.setattr(sys, "argv", ["historical-sanitizer", "--print-json"])
+        patch.setattr(json, "dumps", failing_writer)
+        assert harness.main() == 1
+        output = capsys.readouterr()
+        assert output.out == ""
+        assert "sanitizer JSON writer failed" in output.err
+
+
+def test_sanitizer_cli_accepts_equivalent_public_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Source-equivalent JSON adapters still publish reviewed evidence."""
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    trusted = {"schema_version": 1, "source_sha256": harness.SOURCE_SHA256}
+    with monkeypatch.context() as patch:
+        patch.setattr(harness, "_verified_harness", lambda: trusted)
+        patch.setattr(sys, "argv", ["historical-sanitizer", "--print-json"])
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert harness.main() == 0
+        assert json.loads(capsys.readouterr().out) == trusted

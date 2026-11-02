@@ -103,6 +103,10 @@ not make concurrent pathname replacement atomic.
 The sanitizer CLI accepts success and argparse help only after complete native
 text writes and a successful flush. Malformed, partial, or undelivered output
 never certifies verified evidence; failed stderr diagnostics remain nonzero.
+For `--print-json` and evidence-drift reports, public JSON output is compared
+to the original JSON encoder bound at import before delivery. Replaced writers
+or encoder classes cannot publish forged reviewed findings or diagnostics;
+underlying Python encoder implementation remains a shared trust dependency.
 FIFO and symlink substitutions fail without waiting for external input.
 Case identifiers must be portable ASCII filename stems (at most 128 characters),
 excluding path
