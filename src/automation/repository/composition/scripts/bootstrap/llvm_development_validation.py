@@ -491,9 +491,12 @@ def _direct_regular(path: Path) -> bool:
 
     """
     try:
+        if not _unlinked_component(path):
+            return False
+        physical = path.lstat()
         return (
-            _unlinked_component(path)
-            and _native_regular_status(path.lstat())
+            _native_regular_status(physical)
+            and physical.st_nlink == 1
             and all(
                 _unlinked_component(parent)
                 and _native_directory_status(parent.lstat())

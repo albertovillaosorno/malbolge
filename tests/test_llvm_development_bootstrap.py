@@ -865,6 +865,52 @@ def test_development_marker_rejects_required_header_symlink(
     assert not llvm_development_validation.development_root_matches(identity)
 
 
+def test_development_readiness_rejects_hardlinked_required_header(
+    tmp_path: Path,
+) -> None:
+    """Required headers must not remain writable through an outside path."""
+    identity = _provisioned_identity(tmp_path)
+    header = identity.development_root / "include/clang/AST/AST.h"
+    outside = tmp_path / "outside-header.h"
+    try:
+        os.link(header, outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    assert not llvm_development_validation.development_root_matches(identity)
+    assert outside.read_bytes() == HEADER_BYTES
+
+
+def test_development_provision_rejects_hardlinked_staged_header(
+    tmp_path: Path,
+) -> None:
+    """External aliases cannot be imported as verified staged headers."""
+    identity = _identity(tmp_path)
+    outside = tmp_path / "outside-header.h"
+
+    def linked_extractor(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        _extract_headers(data, asset, destination, staging=staging)
+        try:
+            os.link(destination / "include/clang/AST/AST.h", outside)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"hardlinks unavailable: {error}")
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="missing|physical",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path, identity, downloader=_downloader([]), extractor=linked_extractor
+        )
+    assert outside.read_bytes() == HEADER_BYTES
+    assert not identity.development_root.exists()
+
+
 def test_development_marker_rejects_required_header_parent_alias(
     tmp_path: Path,
 ) -> None:
