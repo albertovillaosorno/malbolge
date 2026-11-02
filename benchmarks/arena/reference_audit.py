@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -218,6 +219,35 @@ def _read_bounded_evidence(relative: str, *, limit: int) -> bytes:
     return raw
 
 
+SHA256_DIGEST_BYTES = 32
+
+
+def _source_fingerprint(raw: bytes) -> bytes:
+    """Admit a native digest corroborated by the stdlib SHA-256 entrypoint.
+
+    Return exactly the bytes of one SHA-256 digest. A substituted first hash
+    provider cannot claim identity via custom equality or a constant digest;
+    ordinary dependency faults remain typed and preserve their cause.
+    """
+    if type(raw) is not bytes:
+        _fail("host-C audit SHA-256 requires exact native source bytes")
+    try:
+        result = sha256(raw).digest()
+        reference = hashlib.sha256(raw).digest()
+    except Exception as error:
+        message = "host-C audit SHA-256 fingerprint dependency failed"
+        raise ReferenceAuditError(message) from error
+    if (
+        type(result) is not bytes
+        or type(reference) is not bytes
+        or len(result) != SHA256_DIGEST_BYTES
+        or len(reference) != SHA256_DIGEST_BYTES
+        or result != reference
+    ):
+        _fail("host-C audit SHA-256 fingerprint receipt differs from source")
+    return result
+
+
 def _read_json(
     relative: str, *, limit: int, fingerprints: dict[str, bytes | None]
 ) -> object:
@@ -234,7 +264,7 @@ def _read_json(
         # Any ordinary JSON dependency fault remains a typed admission failure.
         message = f"host-C retained JSON is not valid: {relative}"
         raise ReferenceAuditError(message) from error
-    fingerprints[relative] = sha256(raw).digest()
+    fingerprints[relative] = _source_fingerprint(raw)
     return parsed
 
 
@@ -243,7 +273,7 @@ def _load_study(relative: str) -> tuple[dict[str, Any], bytes]:
         relative,
         limit=analyze.MAX_INPUT_BYTES,
     )
-    return analyze.parse_document(raw.decode("utf-8")), sha256(raw).digest()
+    return analyze.parse_document(raw.decode("utf-8")), _source_fingerprint(raw)
 
 
 def _check_trials(
@@ -394,7 +424,7 @@ def _recorded_source_commit(
             relative,
             limit=evidence.MAX_MANIFEST_BYTES,
         )
-        fingerprints[relative] = sha256(data).digest()
+        fingerprints[relative] = _source_fingerprint(data)
         manifest = experiment_manifest.parse_manifest(data.decode("utf-8"))
         if manifest.run is None:
             _fail("host-C audit source commit requires a recorded run")
@@ -419,7 +449,7 @@ def _require_unchanged_manifests(fingerprints: dict[str, bytes]) -> None:
     """Reject retained run-manifest drift across a host-C audit pass."""
     for relative, fingerprint in sorted(fingerprints.items()):
         data = _read_bounded_evidence(relative, limit=evidence.MAX_MANIFEST_BYTES)
-        if sha256(data).digest() != fingerprint:
+        if _source_fingerprint(data) != fingerprint:
             _fail("host-C run manifest changed during audit")
 
 
@@ -454,7 +484,7 @@ def _require_unchanged_sidecars(
             # exception or invoke foreign exception diagnostic hooks.
             message = f"host-C retained sidecar changed during audit: {relative}"
             raise ReferenceAuditError(message) from error
-        if sha256(current).digest() != original:
+        if _source_fingerprint(current) != original:
             _fail(f"host-C retained sidecar changed during audit: {relative}")
 
 
@@ -768,7 +798,7 @@ def audit(
         _require_unchanged_manifests(data.manifest_fingerprints)
         _require_unchanged_sidecars(prefix, data.sidecar_fingerprints)
         current = _read_bounded_evidence(relative_study, limit=analyze.MAX_INPUT_BYTES)
-        if sha256(current).digest() != data.study_fingerprint:
+        if _source_fingerprint(current) != data.study_fingerprint:
             _fail("host-C retained study JSON changed during audit")
         # Recheck original native binary claims after any optional rebuild or
         # oracle replay. The preflight may have admitted bytes that are no

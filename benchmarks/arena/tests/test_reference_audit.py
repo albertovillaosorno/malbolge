@@ -1981,6 +1981,91 @@ def test_host_c_audit_rejects_non_native_or_oversized_evidence_reader_receipts(
         assert "bounded bytes" in str(caught.value.__cause__)
 
 
+class _ForgedHostDigest(bytes):
+    """A digest subclass can lie about equality against real source hashes."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        return True
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+
+class _HostDigestFailure(RuntimeError):
+    """A hash dependency fault must not escape the arena audit boundary."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign hash failure was formatted")
+
+
+@pytest.mark.parametrize(
+    "bad_digest",
+    ["nonnative", "foreign-bytes", "wrong-native", "raised"],
+)
+def test_host_c_study_rejects_untrusted_sha256_receipt_before_fingerprint(
+    monkeypatch: pytest.MonkeyPatch,
+    bad_digest: str,
+) -> None:
+    """A forged hash dependency cannot fingerprint source-reported study data."""
+    body = b"{}"
+    fault = _HostDigestFailure("opaque hash dependency fault")
+
+    class MockHash:
+        def digest(self) -> object:
+            if bad_digest == "raised":
+                raise fault
+            return {
+                "nonnative": "0" * 32,
+                "foreign-bytes": _ForgedHostDigest(b"0" * 32),
+                "wrong-native": b"0" * 32,
+            }[bad_digest]
+
+    monkeypatch.setattr(reference_audit, "sha256", lambda _data: MockHash())
+    monkeypatch.setattr(evidence, "read_bounded_regular", lambda *_a, **_kw: body)
+    monkeypatch.setattr(analyze, "parse_document", lambda _text: {})
+    with pytest.raises(reference_audit.ReferenceAuditError, match="SHA-256") as caught:
+        reference_audit._load_study(".temp/arena-host-c-study-hash/study.json")
+    if bad_digest == "raised":
+        assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("recheck", ["manifest", "sidecar"])
+def test_host_c_late_fingerprint_recheck_rejects_foreign_digest_equality(
+    monkeypatch: pytest.MonkeyPatch,
+    recheck: str,
+) -> None:
+    """An incorrect re-read cannot compare equal through foreign digest hooks."""
+    original = b"original"
+    mutated = b"mutated"
+    prefix = ".temp/arena-host-c-study-hash"
+    manifest = f"{prefix}/runs/one.toml"
+    artifact = f"{prefix}/artifacts.json"
+    monkeypatch.setattr(evidence, "read_bounded_regular", lambda *_a, **_kw: mutated)
+
+    class MockHash:
+        def digest(self) -> object:
+            return _ForgedHostDigest(b"0" * 32)
+
+    monkeypatch.setattr(reference_audit, "sha256", lambda _data: MockHash())
+    if recheck == "manifest":
+        callback = lambda: reference_audit._require_unchanged_manifests(
+            {manifest: sha256(original).digest()}
+        )
+    else:
+        callback = lambda: reference_audit._require_unchanged_sidecars(
+            prefix,
+            {
+                artifact: sha256(original).digest(),
+                f"{prefix}/failures.json": None,
+                f"{prefix}/resource-controls.json": None,
+            },
+        )
+    with pytest.raises(reference_audit.ReferenceAuditError):
+        callback()
+
+
 def test_host_c_rebuild_cannot_accept_foreign_binary_equality(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
