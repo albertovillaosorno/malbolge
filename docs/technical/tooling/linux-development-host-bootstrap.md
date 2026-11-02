@@ -67,8 +67,12 @@ and multiply linked executable paths before executing an already-installed
 binary or creating new files. New uv payloads use an exclusively created
 `uv.tmp` descriptor with no-follow admission, exact write count, and descriptor-
 bound executable permissions. The original stage inode, single-link count, and
-byte size must still match before atomic publication; cleanup unlinks only the
-owned stage. Provisioning directory and executable leaf checks also require
+byte size must still match before atomic publication. The writer and final
+publication path each read back the pinned bytes in bounded chunks through a
+verified descriptor for the original private stage. Forged full write counts,
+same-size mutations, changed descriptor metadata, and pre-publication byte
+substitutions are rejected; cleanup unlinks only the owned stage. Provisioning
+directory and executable leaf checks also require
 native boolean redirect observations and native physical stat records; malformed
 host status and filesystem query faults cannot admit installed binaries or
 staging aliases. Newly created stage descriptors likewise require native,

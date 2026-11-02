@@ -666,7 +666,7 @@ def _create_uv_stage(temporary: Path) -> tuple[int, tuple[int, int]]:
     if _admit_uv_provision_path(temporary) is not None:
         _fail(f"uv staging path already exists: {temporary}")
     flags = (
-        os.O_WRONLY
+        os.O_RDWR
         | os.O_CREAT
         | os.O_EXCL
         | getattr(os, "O_NOFOLLOW", 0)
@@ -708,6 +708,69 @@ def _create_uv_stage(temporary: Path) -> tuple[int, tuple[int, int]]:
     return descriptor, (status.st_dev, status.st_ino)
 
 
+def _uv_stage_descriptor_is_owned(
+    status: os.stat_result, identity: tuple[int, int], size: int
+) -> bool:
+    """Require native, stable descriptor metadata for a private uv stage."""
+    return (
+        type(status) is os.stat_result
+        and all(
+            type(field) is int
+            for field in (
+                status.st_mode,
+                status.st_nlink,
+                status.st_dev,
+                status.st_ino,
+                status.st_size,
+                status.st_mtime_ns,
+                status.st_ctime_ns,
+            )
+        )
+        and stat.S_ISREG(status.st_mode)
+        and status.st_nlink == 1
+        and (status.st_dev, status.st_ino) == identity
+        and status.st_size == size
+    )
+
+
+def _verify_uv_stage_descriptor_bytes(
+    temporary: Path,
+    descriptor: int,
+    identity: tuple[int, int],
+    binary: bytes,
+) -> None:
+    """Read back actual bytes from the same admitted physical stage inode."""
+    if not _uv_stage_is_owned(temporary, identity, expected_size=len(binary)):
+        _fail("uv staging changed before byte verification")
+    initial = os.fstat(descriptor)
+    if not _uv_stage_descriptor_is_owned(initial, identity, len(binary)):
+        _fail("uv staging descriptor changed before byte verification")
+    offset = os.lseek(descriptor, 0, os.SEEK_SET)
+    if type(offset) is not int or offset != 0:
+        _fail("uv staging descriptor seek must return native zero")
+    while offset < len(binary):
+        observed = os.read(descriptor, min(1_048_576, len(binary) - offset))
+        if (
+            type(observed) is not bytes
+            or not observed
+            or observed != binary[offset : offset + len(observed)]
+        ):
+            _fail("uv staging bytes differ from pinned executable")
+        offset += len(observed)
+    terminator = os.read(descriptor, 1)
+    if type(terminator) is not bytes or terminator:
+        _fail("uv staging bytes exceed pinned executable")
+    if not _uv_stage_is_owned(temporary, identity, expected_size=len(binary)):
+        _fail("uv staging changed during byte verification")
+    final = os.fstat(descriptor)
+    if (
+        not _uv_stage_descriptor_is_owned(final, identity, len(binary))
+        or (final.st_mtime_ns, final.st_ctime_ns)
+        != (initial.st_mtime_ns, initial.st_ctime_ns)
+    ):
+        _fail("uv staging descriptor changed during byte verification")
+
+
 def _write_uv_stage_descriptor(
     temporary: Path,
     stage: tuple[int, tuple[int, int]],
@@ -726,6 +789,7 @@ def _write_uv_stage_descriptor(
         os.fchmod(descriptor, UV_BINARY_MODE)
     if not _uv_stage_is_owned(temporary, identity, expected_size=len(binary)):
         _fail("uv staging changed during descriptor write")
+    _verify_uv_stage_descriptor_bytes(temporary, descriptor, identity, binary)
 
 
 def _write_verified_uv_binary(
@@ -780,15 +844,36 @@ def _publish_uv_stage(
     executable: Path,
     identity: tuple[int, int],
     *,
-    expected_size: int,
+    binary: bytes,
 ) -> None:
-    """Publish only a private stage into an admitted physical destination."""
+    """Publish only a byte-attested private stage into a physical destination."""
     _ = _admit_uv_provision_path(
         executable.parent, directory=True, required=True
     )
     _require_uv_destination_absent(executable)
-    if not _uv_stage_is_owned(temporary, identity, expected_size=expected_size):
+    if not _uv_stage_is_owned(temporary, identity, expected_size=len(binary)):
         _fail("uv staging changed before publication")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    try:
+        descriptor = os.open(temporary, flags)
+        if type(descriptor) is not int or descriptor < 0:
+            _fail("uv staging read descriptor must be native")
+        try:
+            _verify_uv_stage_descriptor_bytes(
+                temporary, descriptor, identity, binary
+            )
+        finally:
+            os.close(descriptor)
+    except ProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = "uv staging publication verification failed"
+        raise ProvisionError(message) from error
     _ = temporary.replace(executable)
 
 
@@ -809,7 +894,7 @@ def _provision_uv_binary(
     identity = _write_verified_uv_binary(temporary, binary, windows=windows)
     try:
         _publish_uv_stage(
-            temporary, executable, identity, expected_size=len(binary)
+            temporary, executable, identity, binary=binary
         )
     finally:
         if _uv_stage_is_owned(temporary, identity):

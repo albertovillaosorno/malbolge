@@ -457,6 +457,88 @@ def test_uv_staging_rejects_foreign_executable_bytes_before_file_creation(
         )
     assert not stage.exists()
 
+def test_uv_rejects_forged_complete_stage_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reported full write cannot publish different executable bytes."""
+    artifact = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(artifact, root)
+    stage = executable.with_name(f"{executable.name}.tmp")
+    native_write = os.write
+
+    def forged_write(descriptor: int, payload: bytes) -> int:
+        corrupted = b"!" + payload[1:]
+        assert native_write(descriptor, corrupted) == len(corrupted)
+        return len(payload)
+
+    monkeypatch.setattr(os, "write", forged_write)
+    with pytest.raises(
+        python_validation.ProvisionError, match=r"uv staging.*bytes"
+    ):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert not executable.exists()
+    assert not stage.exists()
+
+
+def test_uv_rejects_stage_mutation_during_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A same-size mutation during fchmod cannot reach the published tool."""
+    if not hasattr(os, "fchmod") or not hasattr(os, "pwrite"):
+        pytest.skip("POSIX descriptor mutation unavailable")
+    artifact = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(artifact, root)
+    stage = executable.with_name(f"{executable.name}.tmp")
+    native_fchmod = os.fchmod
+    native_pwrite = os.pwrite
+
+    def mutate_stage(descriptor: int, mode: int) -> None:
+        native_fchmod(descriptor, mode)
+        assert native_pwrite(descriptor, b"!", 0) == 1
+
+    monkeypatch.setattr(os, "fchmod", mutate_stage)
+    with pytest.raises(
+        python_validation.ProvisionError, match=r"uv staging.*bytes"
+    ):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert not executable.exists()
+    assert not stage.exists()
+
+
+def test_uv_rejects_mutation_after_stage_descriptor_closes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A private stage changed before promotion is not the pinned executable."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    stage = executable.with_name(f"{executable.name}.tmp")
+    original_admit = python_validation._require_uv_destination_absent
+
+    def mutate_after_write(target: Path) -> None:
+        original_admit(target)
+        if stage.is_file():
+            with stage.open("r+b") as stream:
+                assert stream.write(b"!") == 1
+
+    monkeypatch.setattr(
+        python_validation, "_require_uv_destination_absent", mutate_after_write
+    )
+    with pytest.raises(
+        python_validation.ProvisionError, match=r"uv staging.*bytes"
+    ):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert not executable.exists()
+    assert not stage.exists()
+
+
 @pytest.mark.parametrize("authority", ["uv-manifest", "jig-binary"])
 def test_binary_authority_rejects_forged_fdopen_content(
     tmp_path: Path,
