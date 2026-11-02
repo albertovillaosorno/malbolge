@@ -285,8 +285,9 @@ for nonblocking setup and the write. A changing or boolean `fileno()` value
 must not switch output to a different descriptor after admission; red-first
 regressions reject these substitutions before any host I/O.
 It requires the native `None` return from input pipe close, rejecting foreign
-success-looking booleans, integers and text receipts. A failed delivery still retains its original typed cause, with a
-bad close receipt reported only as secondary cleanup evidence. Red-first
+success-looking booleans, integers and text receipts. A failed delivery
+still retains its original typed cause, with a bad close receipt reported
+only as secondary cleanup evidence. Red-first
 regressions show previously accepted forged close returns for delivered
 bytes; this checks an adapter receipt, not independent OS-level EOF proof.
 The final subprocess cleanup separately requires exact native boolean stream
@@ -668,8 +669,9 @@ cannot impersonate the configured kernel enforcement or reported RSS. The
 system binaries remain trusted dependencies, not independently attested.
 Child stage usage is reported through Linux `ru_maxrss` in KiB; the maximum
 of successful compile, link and execution stages is converted to exact
-`peak_rss_bytes` and retained in raw CSV and analysis as a third cost objective. This is a measured direct
-process-stage maximum, not a combined process-tree RSS or proof of full study
+`peak_rss_bytes` and retained in raw CSV and analysis as a third cost
+objective. This is a measured direct process-stage maximum, not combined
+process-tree RSS or proof of full study
 memory use. Legacy version-one receipts and two-cost studies remain admitted;
 a three-cost RSS study requires the version-two measurement receipt.
 The offline auditor admits the bounded normal-file receipt with strict field
@@ -949,8 +951,9 @@ failure with the original cause; the accepted report owns numeric copies and
 neither CLI publishes JSON on rejection. This validates correction arithmetic,
 not the underlying marginal p-values or sampling assumptions.
 Holm controls family-wise error under arbitrary test dependence *only when*
-its marginal p-values are valid. It does not establish pair independence, honest verifier
-execution, representative workload selection, or physical timing validity;
+its marginal p-values are valid. It does not establish pair independence,
+honest verifier execution, representative workload selection, or physical
+timing validity;
 no significance or performance promotion decision follows automatically.
 
 This first slice intentionally does not require an executable final `.malbolge`
@@ -1125,6 +1128,13 @@ The original study records remain the result authority.
   previously reached work even when cleanup targeted an unrelated directory;
   the mismatch now rejects without recursive cleanup. This is observational
   path admission, not race-free filesystem ownership.
+  Direct replay, reference rebuild and measurement also wrap the native
+  workspace context so that a substituted `__exit__` cannot suppress failed
+  source/replay work and authorize a digest, a missing artifact, or incomplete
+  measurement. Three red-first paths and a separate cleanup-fault test retain
+  the original rejection, with a secondary note for later context failures.
+  This checks the local failure verdict, not an arbitrary provider's path
+  receipt, physical workspace ownership, or native compiler provenance.
   Host-C reference measurement and independent rebuild now both read the
   generated `oracle-check` executable through bounded regular-file evidence
   admission. The child output-file limit (8 MiB) also caps retained executable
