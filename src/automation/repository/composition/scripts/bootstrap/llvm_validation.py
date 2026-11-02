@@ -531,6 +531,29 @@ def _link_or_copy_in_parent(
     return destination
 
 
+def _import_source_identity(path: Path) -> tuple[int, int, int, int]:
+    """Pin source inode, size, and mtime across link or fallback copy.
+
+    Returns:
+        Native identity components unaffected by adding hardlinks.
+
+    Raises:
+        LlvmImportError: If the host source is not a physical regular file.
+
+    """
+    if not _physical_file(path):
+        _fail("LLVM import source file must be physical")
+    try:
+        status = path.lstat()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = f"LLVM import source status failed: {type(error).__name__}"
+        raise LlvmImportError(message) from error
+    if type(status) is not os.stat_result or not S_ISREG(status.st_mode):
+        _fail("LLVM import source status must be a native regular file")
+    # Link creation changes st_nlink and ctime, not admitted file contents.
+    return status.st_dev, status.st_ino, status.st_size, status.st_mtime_ns
+
+
 def _copy_file(
     source: Path,
     destination: Path,
@@ -538,6 +561,7 @@ def _copy_file(
     expected_parent_inode: tuple[int, int] | None = None,
 ) -> None:
     """Create one import file under the originally admitted physical parent."""
+    source_identity = _import_source_identity(source)
     original_parent_inode = _native_directory_inode(destination.parent)
     if (
         expected_parent_inode is not None
@@ -559,6 +583,8 @@ def _copy_file(
     ):
         _fail("LLVM import destination parent changed during mkdir")
     _ = _link_or_copy(str(source), str(destination), expected_parent_inode=parent_inode)
+    if _import_source_identity(source) != source_identity:
+        _fail("LLVM import source file changed during copying")
 
 
 def _require_physical_resources(root: Path) -> None:
@@ -624,32 +650,11 @@ def _copy_resource_tree(source: Path, destination: Path) -> None:
                         _fail("host LLVM resource child directory must be physical")
                     copy_directory(member, target, child_inode, owned_inode)
                 elif _physical_file(member):
-                    initial = member.lstat()
-                    if type(initial) is not os.stat_result:
-                        _fail("host LLVM resource file status must be native")
-                    # Hardlink creation can change ctime and nlink, but may
-                    # not substitute or modify the admitted header inode.
-                    identity = (
-                        initial.st_dev,
-                        initial.st_ino,
-                        initial.st_size,
-                        initial.st_mtime_ns,
-                    )
+                    identity = _import_source_identity(member)
                     _ = _link_or_copy(
                         str(member), str(target), expected_parent_inode=owned_inode
                     )
-                    current = member.lstat()
-                    if (
-                        not _physical_file(member)
-                        or type(current) is not os.stat_result
-                        or (
-                            current.st_dev,
-                            current.st_ino,
-                            current.st_size,
-                            current.st_mtime_ns,
-                        )
-                        != identity
-                    ):
+                    if _import_source_identity(member) != identity:
                         _fail("host LLVM resource file changed during copying")
                 else:
                     _fail(f"host LLVM resource member must be physical: {member}")

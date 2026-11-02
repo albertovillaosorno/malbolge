@@ -57,6 +57,10 @@ LLVM_BYTES = b"libLLVM"
 CLANG_CPP_BYTES = b"libclang-cpp"
 RESOURCE_BYTES = b"resource-header"
 FORGED_ALIAS_BYTES = b"forged neutral alias"
+FOREIGN_TOOL_BYTES = b"untrusted host tool"
+HOST_CLANG_KIND = "clang"
+DELIVERY_COPY = "copy"
+HOST_POSIX = "posix"
 WINDOWS_MARKER_BYTES = f"llvm={LLVM_VERSION}\nplatform={WINDOWS_PLATFORM}\n".encode()
 WRAPPER_LIBRARY_PATH = "LD_LIBRARY_PATH"
 WRAPPER_CLANG_EXEC = 'exec "$ROOT/bin/clang" "$@"'
@@ -103,6 +107,91 @@ def _host_observation(tmp_path: Path) -> llvm_validation.LlvmHostObservation:
         resource_dir=resource,
         version=LLVM_VERSION,
     )
+
+
+def _replace_import_source_during_link(
+    monkeypatch: pytest.MonkeyPatch,
+    paths: tuple[Path, Path, Path],
+    *,
+    delivery: str,
+) -> Callable[[], bool]:
+    """Simulate a late physical host tool replacement at link admission.
+
+    Returns:
+        A function reporting whether the simulated substitution occurred.
+
+    """
+    source, parked, foreign = paths
+    native_link = os.link
+    swapped = False
+
+    def swap_source(
+        original: str | os.PathLike[str],
+        destination: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal swapped
+        if Path(original) == source and not swapped:
+            _ = source.rename(parked)
+            _ = foreign.rename(source)
+            swapped = True
+        if delivery == DELIVERY_COPY and Path(original) == source:
+            fault = OSError("simulated cross-device tool import")
+            raise fault
+        native_link(
+            original,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    monkeypatch.setattr(os, "link", swap_source)
+    return lambda: swapped
+
+
+@pytest.mark.skipif(
+    os.name != HOST_POSIX, reason="requires physical source replacement"
+)
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        ("clang", "hardlink"),
+        ("clang", "copy"),
+        ("library", "hardlink"),
+        ("library", "copy"),
+    ],
+)
+def test_linux_import_refuses_late_replaced_host_tool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: tuple[str, str],
+) -> None:
+    """A swapped host binary or library cannot authorize a complete import."""
+    kind, delivery = scenario
+    observed = _host_observation(tmp_path)
+    source = observed.clang if kind == HOST_CLANG_KIND else observed.llvm
+    previous = source.read_bytes()
+    parked = tmp_path / "parked-host-tool"
+    foreign = tmp_path / "foreign-host-tool"
+    _ = foreign.write_bytes(FOREIGN_TOOL_BYTES)
+
+    with monkeypatch.context() as isolated:
+        swapped = _replace_import_source_during_link(
+            isolated, (source, parked, foreign), delivery=delivery
+        )
+        with pytest.raises(
+            llvm_validation.LlvmImportError,
+            match="LLVM import source file changed during copying",
+        ):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observed)
+    assert swapped()
+    assert parked.read_bytes() == previous
+    assert source.read_bytes() == FOREIGN_TOOL_BYTES
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
 
 
 def test_linux_import_materializes_local_runtime_and_neutral_aliases(
@@ -1908,6 +1997,35 @@ def _windows_tool_bundle(tmp_path: Path) -> Path:
     ):
         _ = (tools / name).write_bytes(content)
     return root
+
+
+@pytest.mark.skipif(
+    os.name != HOST_POSIX, reason="requires physical source replacement"
+)
+@pytest.mark.parametrize("delivery", ["hardlink", "copy"])
+def test_windows_aliases_refuse_late_replaced_host_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, delivery: str
+) -> None:
+    """A replaced Windows source cannot authorize a neutral PE alias marker."""
+    root = _windows_tool_bundle(tmp_path)
+    source = root / "bin/clang.exe"
+    parked = tmp_path / "parked-host-tool"
+    foreign = tmp_path / "foreign-host-tool"
+    _ = foreign.write_bytes(FOREIGN_TOOL_BYTES)
+
+    with monkeypatch.context() as isolated:
+        swapped = _replace_import_source_during_link(
+            isolated, (source, parked, foreign), delivery=delivery
+        )
+        with pytest.raises(
+            llvm_validation.LlvmImportError,
+            match="LLVM import source file changed during copying",
+        ):
+            _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert swapped()
+    assert parked.read_bytes() == CLANG_BYTES
+    assert source.read_bytes() == FOREIGN_TOOL_BYTES
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
 
 
 @pytest.mark.parametrize("target_kind", ("alias", "directory"))
