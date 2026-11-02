@@ -93,8 +93,8 @@ padded with fabricated source records.
 enforces the closed first-level taxonomy,
 README coverage, one canonical template, exact single-occurrence required
 source-record heading lines and order, real calendar-date provenance,
-single-occurrence standalone uncertainty headings, nonempty sources, unique
-stable identities,
+single-occurrence standalone uncertainty headings, source bullets with
+nonempty content, unique stable identities,
 exact validation-package pins, durable external-reference coverage, and the
 required baseline. `tests/test_bibliography.py` exercises those fail-closed
 boundaries. The validator checks repository evidence shape and coverage; it does

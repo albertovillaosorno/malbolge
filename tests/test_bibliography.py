@@ -204,6 +204,14 @@ def test_source_record_requires_nonempty_sources() -> None:
     _expect_failure(text, "Sources section contains no source entries")
 
 
+def test_source_record_rejects_empty_source_bullet() -> None:
+    """A source marker with no content cannot establish provenance."""
+    text = _c_record().split("## Sources", 1)[0]
+    text += "## Sources\n\n- \nNo source identity is listed.\n"
+    text = text.replace("## Provenance", "## Provenance\n\nReviewed 2026-08-09.", 1)
+    _expect_failure(text, "Sources section contains no source entries")
+
+
 def test_source_record_heading_order_is_stable() -> None:
     """Provenance sections cannot silently move ahead of source identity."""
     text = _c_record().replace("## Subject", "## Temporary", 1)

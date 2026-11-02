@@ -592,7 +592,9 @@ def _validate_dated_uncertainty(text: str, label: str) -> None:
 def _validate_source_entries(text: str, label: str) -> None:
     sources = _section(text, "## Sources")
     source_lines = sources.splitlines()
-    if not sources or not any(line.startswith("- ") for line in source_lines):
+    if not sources or not any(
+        line.startswith("- ") and line[2:].strip() for line in source_lines
+    ):
         _fail(f"{label} Sources section contains no source entries")
     if not _section(text, "## Identity And Version"):
         _fail(f"{label} Identity And Version section is empty")
