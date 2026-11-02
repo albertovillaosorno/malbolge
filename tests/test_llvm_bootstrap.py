@@ -524,6 +524,39 @@ def test_linux_import_rejects_untrusted_staging_before_copy(
     assert not tuple(outside.iterdir())
 
 
+@pytest.mark.parametrize("target", ("staging", "child"))
+def test_linux_import_rejects_replaced_staging_without_deleting_foreign_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+) -> None:
+    """Only the owned stage and child may be published or recursively deleted."""
+    observation = _host_observation(tmp_path)
+    staging = tmp_path / ".temp/llvm-import-linux-x86_64"
+    foreign = tmp_path / "foreign-stage"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"unrelated foreign data")
+    parked = tmp_path / "parked-owned"
+    native_stage = llvm_validation._stage_linux_llvm  # pyright: ignore[reportPrivateUsage]
+
+    def swapped_stage(
+        staged: Path, observed: llvm_validation.LlvmHostObservation
+    ) -> None:
+        native_stage(staged, observed)
+        replacement = staging if target == "staging" else staged
+        replacement.rename(parked)
+        foreign.rename(replacement)
+
+    monkeypatch.setattr(llvm_validation, "_stage_linux_llvm", swapped_stage)
+    with pytest.raises(llvm_validation.LlvmImportError, match="staging"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    original = staging if target == "staging" else staging / "llvm"
+    assert (original / "sentinel").read_bytes() == b"unrelated foreign data"
+    assert parked.exists()
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
 def test_windows_aliases_preserve_existing_executable_bytes(
     tmp_path: Path,
 ) -> None:

@@ -687,6 +687,37 @@ def _admit_linux_import_staging(root: Path, staging: Path) -> None:
         _fail("LLVM import staging directory must be physical")
 
 
+def _native_directory_inode(path: Path) -> tuple[int, int] | None:
+    """Observe a real physical directory, or refuse an untrusted path."""
+    try:
+        if not _physical_directory(path):
+            return None
+        status = path.lstat()
+        if type(status) is not os.stat_result or not S_ISDIR(status.st_mode):
+            return None
+        return status.st_dev, status.st_ino
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return None
+
+
+def _owned_staging_safe_to_clean(
+    staging: Path,
+    staged: Path,
+    owned_staging: tuple[int, int],
+    owned_child: tuple[int, int] | None,
+) -> bool:
+    """Avoid recursively deleting an unowned substitute in the stage tree."""
+    if _native_directory_inode(staging) != owned_staging:
+        return False
+    try:
+        _ = staged.lstat()
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return False
+    return owned_child is not None and _native_directory_inode(staged) == owned_child
+
+
 def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     """Import one exact Linux LLVM runtime into repository-local state.
 
@@ -706,15 +737,35 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
         shutil.rmtree(staging)
     _admit_linux_import_staging(root, staging)
     staged = staging / "llvm"
+    owned_staging: tuple[int, int] | None = None
+    owned_child: tuple[int, int] | None = None
     try:
+        staging.mkdir()
+        owned_staging = _native_directory_inode(staging)
+        if owned_staging is None:
+            _fail("LLVM import staging directory must be physical")
+        staged.mkdir()
+        owned_child = _native_directory_inode(staged)
+        if owned_child is None:
+            _fail("LLVM import staging child must be physical")
         _stage_linux_llvm(staged, observation)
         _admit_linux_import_staging(root, staging)
-        if not _physical_directory(staged):
-            _fail("LLVM import staging source must be a physical directory")
+        if (
+            _native_directory_inode(staging) != owned_staging
+            or _native_directory_inode(staged) != owned_child
+        ):
+            _fail("LLVM import staging identity changed before publication")
         destination.parent.mkdir(parents=True, exist_ok=True)
+        if (
+            _native_directory_inode(staging) != owned_staging
+            or _native_directory_inode(staged) != owned_child
+        ):
+            _fail("LLVM import staging identity changed during publication")
         _ = staged.replace(destination)
     finally:
-        if staging.exists():
+        if owned_staging is not None and _owned_staging_safe_to_clean(
+            staging, staged, owned_staging, owned_child
+        ):
             shutil.rmtree(staging)
     return destination
 
