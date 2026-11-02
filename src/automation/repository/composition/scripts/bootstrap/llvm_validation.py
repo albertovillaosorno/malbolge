@@ -538,38 +538,85 @@ def _verify_linux_alias_bytes(path: Path, descriptor: int, content: bytes) -> No
 
 
 def _write_linux_alias(path: Path, text: str) -> None:
-    """Publish a complete executable wrapper through an exclusive descriptor."""
+    """Publish an executable wrapper against a pinned physical parent."""
     if not _physical_directory(path.parent):
         _fail("LLVM wrapper parent must be a physical directory")
-    content = text.encode("utf-8")
-    flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(path, flags, 0o600)
+        initial_parent = path.parent.lstat()
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise LlvmImportError(
-            f"LLVM wrapper exclusive creation failed: {type(error).__name__}"
+            f"LLVM wrapper parent status failed: {type(error).__name__}"
         ) from error
-    if type(cast("object", descriptor)) is not int or descriptor < 0:
-        _fail("LLVM wrapper descriptor must be a native nonnegative integer")
+    if type(initial_parent) is not os.stat_result or not S_ISDIR(
+        initial_parent.st_mode
+    ):
+        _fail("LLVM wrapper parent status must be native")
+    content = text.encode("utf-8")
+    parent_flags = (
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    )
     try:
+        parent_descriptor = os.open(path.parent, parent_flags)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM wrapper parent open failed: {type(error).__name__}"
+        ) from error
+    if type(cast("object", parent_descriptor)) is not int or parent_descriptor < 0:
+        _fail("LLVM wrapper parent descriptor must be native")
+    try:
+        opened = os.fstat(parent_descriptor)
+        named = path.parent.lstat()
+        if (
+            not _physical_directory(path.parent)
+            or type(opened) is not os.stat_result
+            or type(named) is not os.stat_result
+            or not S_ISDIR(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+            or (opened.st_dev, opened.st_ino)
+            != (initial_parent.st_dev, initial_parent.st_ino)
+        ):
+            _fail("LLVM wrapper parent descriptor does not match the path")
+        flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         try:
-            if not _owned_exclusive_descriptor(path, descriptor):
-                _fail("LLVM wrapper descriptor does not own the physical leaf")
-            written = os.write(descriptor, content)
-            if type(written) is not int or written != len(content):
-                _fail(f"LLVM wrapper write count mismatch: {path.name}")
-            _verify_linux_alias_bytes(path, descriptor, content)
-            # A path chmod would follow an alias swapped in after publication.
-            os.fchmod(descriptor, 0o755)
-            _verify_linux_alias_bytes(path, descriptor, content)
-        finally:
-            os.close(descriptor)
+            descriptor = os.open(path.name, flags, 0o600, dir_fd=parent_descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM wrapper exclusive creation failed: {type(error).__name__}"
+            ) from error
+        if type(cast("object", descriptor)) is not int or descriptor < 0:
+            _fail("LLVM wrapper descriptor must be a native nonnegative integer")
+        try:
+            try:
+                if not _owned_exclusive_descriptor(path, descriptor):
+                    _fail("LLVM wrapper descriptor does not own the physical leaf")
+                written = os.write(descriptor, content)
+                if type(written) is not int or written != len(content):
+                    _fail(f"LLVM wrapper write count mismatch: {path.name}")
+                _verify_linux_alias_bytes(path, descriptor, content)
+                # A path chmod would follow an alias swapped after publication.
+                os.fchmod(descriptor, 0o755)
+                _verify_linux_alias_bytes(path, descriptor, content)
+            finally:
+                os.close(descriptor)
+        except LlvmImportError:
+            raise
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM wrapper write failed: {type(error).__name__}"
+            ) from error
     except LlvmImportError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise LlvmImportError(
-            f"LLVM wrapper write failed: {type(error).__name__}"
+            f"LLVM wrapper parent status failed: {type(error).__name__}"
         ) from error
+    finally:
+        try:
+            os.close(parent_descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM wrapper parent close failed: {type(error).__name__}"
+            ) from error
 
 
 def _existing_import_marker(root: Path, platform_id: str) -> bool:

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from collections.abc import Callable
 from dataclasses import replace
@@ -818,16 +819,20 @@ def test_linux_wrapper_writer_rejects_leaf_inserted_at_exclusive_open(
     inserted = False
 
     def racing_open(
-        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
         nonlocal inserted
-        if Path(path) == wrapper:
+        if Path(path) == wrapper or (path == wrapper.name and dir_fd is not None):
             inserted = True
             try:
                 _ = wrapper.symlink_to(external)
             except (OSError, NotImplementedError) as error:
                 pytest.skip(f"symlinks unavailable: {error}")
-        return native_open(path, flags, mode)
+        return native_open(path, flags, mode, dir_fd=dir_fd)
 
     monkeypatch.setattr(os, "open", racing_open)
     with pytest.raises(llvm_validation.LlvmImportError, match="exclusive"):
@@ -837,6 +842,163 @@ def test_linux_wrapper_writer_rejects_leaf_inserted_at_exclusive_open(
     assert inserted
     assert wrapper.is_symlink()
     assert external.read_bytes() == b"protected wrapper destination"
+
+
+def test_linux_wrapper_writer_does_not_follow_late_parent_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A swapped wrapper parent cannot write a foreign executable."""
+    parent = tmp_path / "owned-wrapper-parent"
+    parent.mkdir()
+    wrapper = parent / "clang.bin"
+    parked = tmp_path / "parked-wrapper-parent"
+    outside = tmp_path / "outside-wrapper-parent"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"preserve foreign data")
+    native_open = os.open
+    swapped = False
+
+    def swap_parent_at_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if not swapped and (
+            Path(path) == wrapper or (path == wrapper.name and dir_fd is not None)
+        ):
+            _ = parent.rename(parked)
+            _ = parent.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", swap_parent_at_open)
+    with pytest.raises(llvm_validation.LlvmImportError, match="wrapper"):
+        llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+            wrapper, "#!/bin/sh\n"
+        )
+    assert swapped
+    assert parent.is_symlink()
+    assert sentinel.read_bytes() == b"preserve foreign data"
+    assert not (outside / wrapper.name).exists()
+
+
+def test_linux_wrapper_rejects_replaced_physical_parent_at_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A different physical directory cannot impersonate the admitted parent."""
+    parent = tmp_path / "owned-wrapper-parent"
+    parent.mkdir()
+    wrapper = parent / "clang.bin"
+    parked = tmp_path / "parked-wrapper-parent"
+    outside = tmp_path / "foreign-wrapper-parent"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"foreign directory must survive")
+    native_open = os.open
+    replaced = False
+
+    def replace_parent_at_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal replaced
+        if Path(path) == parent and not replaced:
+            _ = parent.rename(parked)
+            _ = outside.rename(parent)
+            replaced = True
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", replace_parent_at_open)
+    with pytest.raises(llvm_validation.LlvmImportError, match="parent"):
+        llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+            wrapper, "#!/bin/sh\n"
+        )
+    assert replaced
+    assert (parent / sentinel.name).read_bytes() == b"foreign directory must survive"
+    assert not wrapper.exists()
+
+
+def test_linux_wrapper_rejects_foreign_parent_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A native directory descriptor for another tree cannot create wrappers."""
+    wrapper = tmp_path / "owned" / "clang.bin"
+    wrapper.parent.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    native_open = os.open
+    substituted = False
+
+    def substitute_parent(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal substituted
+        if Path(path) == wrapper.parent:
+            substituted = True
+            return native_open(foreign, flags)
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", substitute_parent)
+    with pytest.raises(llvm_validation.LlvmImportError, match="parent descriptor"):
+        llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+            wrapper, "#!/bin/sh\n"
+        )
+    assert substituted
+    assert not wrapper.exists()
+    assert not tuple(foreign.iterdir())
+
+
+def test_linux_wrapper_parent_close_failure_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An owned directory close failure stays typed with its original cause."""
+    wrapper = tmp_path / "clang.bin"
+    native_open = os.open
+    native_close = os.close
+    opened_parent: set[int] = set()
+    fault = OSError("synthetic wrapper parent close fault")
+
+    def track_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        fd = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == wrapper.parent:
+            opened_parent.add(fd)
+        return fd
+
+    def fail_parent_close(fd: int) -> None:
+        native_close(fd)
+        if fd in opened_parent:
+            opened_parent.remove(fd)
+            raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", track_open)
+        isolated.setattr(os, "close", fail_parent_close)
+        with pytest.raises(
+            llvm_validation.LlvmImportError, match="wrapper parent close failed"
+        ) as caught:
+            llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+                wrapper, "#!/bin/sh\n"
+            )
+    assert caught.value.__cause__ is fault
+    assert not opened_parent
+    assert wrapper.read_bytes() == b"#!/bin/sh\n"
 
 
 def test_linux_wrapper_rejects_foreign_open_descriptor(
@@ -850,11 +1012,15 @@ def test_linux_wrapper_rejects_foreign_open_descriptor(
     native_open = os.open
 
     def wrong_open(
-        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
-        if Path(path) == wrapper:
+        if Path(path) == wrapper or (path == wrapper.name and dir_fd is not None):
             return native_open(outside, os.O_WRONLY)
-        return native_open(path, flags, mode)
+        return native_open(path, flags, mode, dir_fd=dir_fd)
 
     monkeypatch.setattr(os, "open", wrong_open)
     with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
@@ -872,16 +1038,32 @@ def test_linux_wrapper_rejects_nonnative_open_descriptor(
     """Invalid open receipts cannot write or close unrelated descriptors."""
     wrapper = tmp_path / "clang.bin"
 
+    native_open = os.open
+    native_close = os.close
+    parent_descriptors: set[int] = set()
+
     def wrong_open(
-        _path: str | os.PathLike[str], _flags: int, _mode: int = 0o777
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
-        return cast("int", descriptor)
+        if path == wrapper.name and dir_fd is not None:
+            return cast("int", descriptor)
+        opened = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == wrapper.parent:
+            parent_descriptors.add(opened)
+        return opened
 
     def forbid_write(_fd: int, _content: bytes) -> int:
         raise AssertionError("foreign wrapper descriptor was written")
 
-    def forbid_close(_fd: int) -> None:
-        raise AssertionError("foreign wrapper descriptor was closed")
+    def forbid_close(fd: int) -> None:
+        if fd not in parent_descriptors:
+            raise AssertionError("foreign wrapper descriptor was closed")
+        native_close(fd)
+        parent_descriptors.remove(fd)
 
     monkeypatch.setattr(os, "open", wrong_open)
     monkeypatch.setattr(os, "write", forbid_write)
@@ -891,6 +1073,8 @@ def test_linux_wrapper_rejects_nonnative_open_descriptor(
             wrapper, "#!/bin/sh\n"
         )
     assert not wrapper.exists()
+
+    assert not parent_descriptors
 
 
 @pytest.mark.parametrize("status_source", ["descriptor", "path"])
@@ -914,7 +1098,8 @@ def test_linux_wrapper_rejects_foreign_stat_receipt(
             self.st_size = status.st_size
 
     def foreign_fstat(fd: int) -> object:
-        return ForeignStatus(native_fstat(fd))
+        status = native_fstat(fd)
+        return ForeignStatus(status) if S_ISREG(status.st_mode) else status
 
     def foreign_lstat(path: Path) -> object:
         status = native_lstat(path)
@@ -941,10 +1126,14 @@ def test_linux_wrapper_rejects_newly_hardlinked_descriptor(
     native_open = os.open
 
     def linked_open(
-        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
-        fd = native_open(path, flags, mode)
-        if Path(path) == wrapper:
+        fd = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == wrapper or (path == wrapper.name and dir_fd is not None):
             os.link(wrapper, outside)
         return fd
 
