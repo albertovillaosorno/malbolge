@@ -123,6 +123,17 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   regressions show swapped/copied readiness keys and masks previously yielded
   apparent success, while registration/EOF forgeries now fail typed admission.
   This guards producer-side evidence handling, not source authenticity.
+- Child transport cleanup now attempts direct-child kill and reap even if
+  the caller process-group lookup fails or returns foreign metadata. It does
+  not send a group signal without a valid caller group, and preserves lookup
+  and secondary cleanup failures separately. Selector shutdown cannot
+  suppress a stream-limit error or claim success with non-`None` exit receipts;
+  unexpected close faults retain the original capture verdict. The launched
+  `Popen.args` list must also be the original prepared list with byte-for-byte
+  matching native arguments before captured output can be reported under the
+  requested command. Red-first fake-receipt and real-child regressions cover
+  these three boundaries. None independently attests OS execution, detached
+  descendant cleanup, or the authenticity of guest measurements.
 - Before asking a selector to register either child pipe, transport now
   requires native signed C-int stdout/stderr descriptors that are distinct;
   registration and later stream receipts must retain the same identities.
