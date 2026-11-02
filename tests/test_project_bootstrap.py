@@ -269,6 +269,78 @@ def test_uv_manifest_rejects_linked_parent(tmp_path: Path) -> None:
         _ = python_validation.uv_artifact(WINDOWS_PLATFORM, alias / "uv.json")
 
 
+@pytest.mark.parametrize("masked", [False, 0])
+def test_uv_manifest_rejects_masked_symlink_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    masked: object,
+) -> None:
+    """The parent inode, not a falsified host predicate, proves its type."""
+    real = tmp_path / "real"
+    real.mkdir()
+    _ = _copy_uv_manifest(real)
+    alias = tmp_path / "alias"
+    _ = alias.symlink_to(real, target_is_directory=True)
+    native = Path.is_symlink
+
+    def masked_status(path: Path) -> bool:
+        if path == alias:
+            return cast("bool", masked)
+        return native(path)
+
+    monkeypatch.setattr(Path, "is_symlink", masked_status)
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, alias / "uv.json")
+
+
+@pytest.mark.parametrize("predicate", ["is_symlink", "is_junction"])
+def test_uv_manifest_rejects_foreign_leaf_link_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    predicate: str,
+) -> None:
+    """A false-like nonboolean host link result cannot admit the manifest."""
+    manifest = _copy_uv_manifest(tmp_path)
+    original = getattr(Path, predicate)
+
+    def foreign_status(path: Path) -> bool:
+        if path == manifest:
+            return cast("bool", cast("object", 0))
+        return cast("bool", original(path))
+
+    monkeypatch.setattr(Path, predicate, foreign_status)
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
+def test_uv_manifest_rejects_forged_lstat_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fabricated stat lookalike cannot certify pinned source bytes."""
+    manifest = _copy_uv_manifest(tmp_path)
+    native = Path.lstat
+
+    class ForgedStatus:
+        def __init__(self, observed: os.stat_result) -> None:
+            self.st_mode: int = observed.st_mode
+            self.st_dev: int = observed.st_dev
+            self.st_ino: int = observed.st_ino
+            self.st_size: int = observed.st_size
+            self.st_mtime_ns: int = observed.st_mtime_ns
+            self.st_ctime_ns: int = observed.st_ctime_ns
+
+    def forged_status(path: Path) -> os.stat_result:
+        status = native(path)
+        if path == manifest:
+            return cast("os.stat_result", cast("object", ForgedStatus(status)))
+        return status
+
+    monkeypatch.setattr(Path, "lstat", forged_status)
+    with pytest.raises(python_validation.ProvisionError, match="native"):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
 def test_uv_manifest_rejects_oversized_document(tmp_path: Path) -> None:
     """Uv metadata cannot force an unbounded read before validation."""
     manifest = tmp_path / "uv.json"

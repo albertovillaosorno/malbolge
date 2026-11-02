@@ -202,9 +202,25 @@ def _reject_duplicate_pairs(
     return document
 
 
+def _uv_manifest_redirect(path: Path, *, label: str) -> bool:
+    """Require native link-status observations for a manifest path component."""
+    symlink = path.is_symlink()
+    junction = path.is_junction()
+    if type(symlink) is not bool or type(junction) is not bool:
+        _fail(f"uv toolchain manifest {label} redirect status must be native")
+    return symlink or junction
+
+
 def _reject_uv_parent_redirects(path: Path) -> None:
     for parent in path.parents:
-        if parent.is_symlink() or parent.is_junction():
+        redirected = _uv_manifest_redirect(parent, label="parent")
+        status = parent.lstat()
+        if (
+            type(status) is not os.stat_result
+            or type(status.st_mode) is not int
+        ):
+            _fail("uv toolchain manifest parent requires native file status")
+        if redirected or not stat.S_ISDIR(status.st_mode):
             _fail("uv toolchain manifest parent path must not redirect")
 
 
@@ -215,9 +231,21 @@ def _uv_manifest_identity(status: os.stat_result) -> tuple[int, ...]:
         File device/inode, length, and modification metadata.
 
     """
+    if type(status) is not os.stat_result or any(
+        type(field) is not int
+        for field in (
+            status.st_mode,
+            status.st_dev,
+            status.st_ino,
+            status.st_size,
+            status.st_mtime_ns,
+            status.st_ctime_ns,
+        )
+    ):
+        _fail("uv toolchain manifest requires native file status")
     if not stat.S_ISREG(status.st_mode):
         _fail("uv toolchain manifest must be a regular file")
-    if status.st_size > MAX_UV_MANIFEST_BYTES:
+    if status.st_size < 0 or status.st_size > MAX_UV_MANIFEST_BYTES:
         _fail("uv toolchain manifest exceeds byte limit")
     return (
         status.st_dev,
@@ -238,7 +266,7 @@ def _read_uv_manifest_bytes(path: Path) -> bytes:
     _reject_uv_parent_redirects(path)
     admitted = path.lstat()
     expected = _uv_manifest_identity(admitted)
-    if path.is_symlink() or path.is_junction():
+    if _uv_manifest_redirect(path, label="leaf"):
         _fail("uv toolchain manifest path must not redirect")
     flags = (
         os.O_RDONLY

@@ -36,6 +36,10 @@ reports a typed initialization error preserving the host failure as its cause.
 The pinned `uv-toolchain.json`
 uses the same one-MiB physical regular-file admission and stable descriptor
 checks before its URL, version, artifact, and digest fields are interpreted.
+Manifest ancestry is also checked through native physical directory `lstat`
+receipts: a false-like or forged link predicate cannot authorize symlinked
+parent traversal. Leaf and parent redirect predicates must return exact booleans,
+and file identity must come from native regular-file status with native integers.
 Failed uv manifest stream wrapping closes its owned descriptor and surfaces
 a typed bootstrap error with the original host failure as its cause.
 Pinned uv release downloads accept only exact native byte responses; an
