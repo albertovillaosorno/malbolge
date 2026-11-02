@@ -235,6 +235,42 @@ def test_llvm_marker_writer_rejects_hardlink_after_open(
     assert outside.read_bytes() == b""
 
 
+@pytest.mark.parametrize("write_fault", [False, True])
+def test_llvm_marker_writer_preserves_foreign_leaf_after_write_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, write_fault: bool
+) -> None:
+    """Verification failure cannot delete an unrelated marker-path replacement."""
+    root = tmp_path / "runtime"
+    root.mkdir()
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    original = tmp_path / "published-original"
+    foreign = tmp_path / "foreign-replacement"
+    sentinel = b"unrelated marker data must survive"
+    _ = foreign.write_bytes(sentinel)
+    native_write = os.write
+    swapped = False
+
+    def swapping_write(fd: int, data: bytes) -> int:
+        nonlocal swapped
+        count = native_write(fd, data)
+        if data.startswith(b"llvm="):
+            _ = marker.replace(original)
+            _ = foreign.replace(marker)
+            swapped = True
+            if write_fault:
+                raise OSError("writer failed after marker leaf swap")
+        return count
+
+    monkeypatch.setattr(os, "write", swapping_write)
+    with pytest.raises(llvm_validation.LlvmImportError, match="marker"):
+        llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+            root, LINUX_PLATFORM
+        )
+    assert swapped
+    assert original.read_bytes().startswith(b"llvm=22.1.8")
+    assert marker.read_bytes() == sentinel
+
+
 @pytest.mark.parametrize("forgery", ["empty", "incorrect"])
 def test_llvm_marker_writer_rejects_false_full_write_acknowledgement(
     tmp_path: Path,

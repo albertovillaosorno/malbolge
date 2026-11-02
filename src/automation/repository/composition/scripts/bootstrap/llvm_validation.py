@@ -381,6 +381,22 @@ def _existing_import_marker(root: Path, platform_id: str) -> bool:
     return True
 
 
+def _discard_owned_marker(marker: Path, inode: tuple[int, int]) -> None:
+    """Unlink only the same unique marker inode opened by this writer."""
+    try:
+        current = marker.lstat()
+    except FileNotFoundError:
+        return
+    if (
+        type(cast("object", current)) is os.stat_result
+        and S_ISREG(current.st_mode)
+        and current.st_dev == inode[0]
+        and current.st_ino == inode[1]
+        and current.st_nlink == 1
+    ):
+        marker.unlink()
+
+
 def _write_import_marker(root: Path, platform_id: str) -> None:
     """Publish an exclusive marker or reuse only exact physical evidence."""
     if _existing_import_marker(root, platform_id):
@@ -396,20 +412,26 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
         ) from error
     if type(cast("object", descriptor)) is not int or descriptor < 0:
         _fail("LLVM import marker descriptor must be a native integer")
+    owned_inode: tuple[int, int] | None = None
     try:
         try:
             if not _owned_exclusive_descriptor(marker, descriptor):
                 _fail("LLVM import marker descriptor does not own its physical leaf")
+            opened = os.fstat(descriptor)
+            if type(cast("object", opened)) is not os.stat_result:
+                _fail("LLVM import marker descriptor status must be native")
+            owned_inode = (opened.st_dev, opened.st_ino)
             written = os.write(descriptor, content)
         finally:
             os.close(descriptor)
     except LlvmImportError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
-        try:
-            marker.unlink(missing_ok=True)
-        except (OSError, ValueError, TypeError, RuntimeError):
-            pass
+        if owned_inode is not None:
+            try:
+                _discard_owned_marker(marker, owned_inode)
+            except (OSError, ValueError, TypeError, RuntimeError):
+                pass
         raise LlvmImportError(
             f"LLVM import marker write failed: {type(error).__name__}"
         ) from error
@@ -419,12 +441,13 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
         and _valid_marker(root, platform_id)
     ):
         return
-    try:
-        marker.unlink(missing_ok=True)
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        raise LlvmImportError(
-            f"LLVM marker write count mismatch; cleanup failed: {type(error).__name__}"
-        ) from error
+    if owned_inode is not None:
+        try:
+            _discard_owned_marker(marker, owned_inode)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM marker write count mismatch; cleanup failed: {type(error).__name__}"
+            ) from error
     _fail("LLVM marker write count or content verification mismatch")
 
 
