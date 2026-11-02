@@ -479,6 +479,44 @@ def test_development_provision_rechecks_destination_after_extraction(
     assert not identity.development_root.exists()
 
 
+def test_development_child_stage_creation_fault_cleans_owned_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed child mkdir leaves no owned stage or untyped host error."""
+    identity = _identity(tmp_path)
+    staging = tmp_path / ".temp/llvm-development-provision-linux-x86_64"
+    child = staging / "development"
+    native_mkdir = Path.mkdir
+    fault = OSError("cannot create development child")
+
+    def fault_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        if path == child:
+            raise fault
+        return native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "mkdir", fault_mkdir)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="development stage creation failed",
+        ) as observed:
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path,
+                identity,
+                downloader=_downloader([]),
+                extractor=_extract_headers,
+            )
+    assert observed.value.__cause__ is fault
+    assert not staging.exists()
+    assert not identity.development_root.exists()
+
+
 def test_development_cleanup_preserves_foreign_replacement_directory(
     tmp_path: Path,
 ) -> None:

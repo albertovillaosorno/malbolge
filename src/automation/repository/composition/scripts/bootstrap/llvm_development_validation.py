@@ -740,12 +740,17 @@ def provision_development_identity(
     staged_root = staging / "development"
     _prepare_staging(staging)
     staging_identity = _staging_directory_identity(staging)
-    staged_root.mkdir()
     functions = _ProvisionFunctions(
         download=downloader,
         extract=extractor or _extract_rpm_headers,
     )
     try:
+        try:
+            staged_root.mkdir()
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                "LLVM development stage creation failed"
+            ) from error
         _stage_development_assets(
             identity,
             staged_root,
