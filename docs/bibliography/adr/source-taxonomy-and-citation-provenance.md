@@ -99,4 +99,8 @@ boundaries. The validator checks repository evidence shape and coverage; it does
 not independently re-fetch or re-prove external claims. Evidence decoding
 requires native bytes, and invalid UTF-8 retains its native decoder cause.
 Filesystem status failures and operator reports remain typed without running
-foreign exception formatter hooks.
+foreign exception formatter hooks. Recursive catalog and durable-reference scans
+require native immediate-child names, nonduplicate entries, and a complete
+root-bound directory walk before discovered paths may supply evidence.
+The operator CLI returns success only after a complete native text write and
+flush; failed diagnostics cannot turn rejection into a successful exit.

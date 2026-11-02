@@ -351,6 +351,64 @@ def test_filesystem_walk_errors_fail_closed() -> None:
     assert caught.value.__cause__ is None
 
 
+@pytest.mark.parametrize("scanner", ["catalog", "durable"])
+@pytest.mark.parametrize(
+    "forgery",
+    (
+        "outside-root",
+        "traversal-name",
+        "duplicate-name",
+        "foreign-name",
+        "unannounced-child",
+        "missing-child",
+    ),
+)
+def test_bibliography_walk_rejects_unbound_discovery_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scanner: str,
+    forgery: str,
+) -> None:
+    """A host walk cannot splice in foreign, repeated, or unvisited paths."""
+    root = tmp_path / "catalog"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    class ForeignName(str):
+        def __fspath__(self) -> str:
+            raise AssertionError("foreign name conversion hook executed")
+
+    def forged_walk(
+        self: Path, *, on_error: Callable[[OSError], Never] | None = None
+    ) -> Iterator[tuple[Path, list[str], list[str]]]:
+        del on_error
+        assert self == root
+        if forgery == "outside-root":
+            yield outside, [], ["foreign.md"]
+        elif forgery == "traversal-name":
+            yield root, [], ["../outside.md"]
+        elif forgery == "duplicate-name":
+            yield root, [], ["source.md", "source.md"]
+        elif forgery == "foreign-name":
+            yield root, [], [ForeignName("source.md")]
+        elif forgery == "unannounced-child":
+            yield root, [], []
+            yield root / "phantom", [], ["source.md"]
+        else:
+            yield root, ["unvisited"], []
+
+    monkeypatch.setattr(Path, "walk", forged_walk)
+    with pytest.raises(
+        validator.BibliographyValidationError, match="bibliography.*walk"
+    ):
+        if scanner == "catalog":
+            _ = validator._walk_paths(root)  # pyright: ignore[reportPrivateUsage]
+        else:
+            monkeypatch.setattr(validator, "ROOT", root)
+            _ = validator._durable_reference_paths()  # pyright: ignore[reportPrivateUsage]
+
+
 def test_durable_external_reference_requires_canonical_coverage() -> None:
     """A new durable URL cannot bypass the canonical source inventory."""
     with pytest.raises(
@@ -574,6 +632,76 @@ def test_bibliography_cli_never_formats_foreign_errors(
     output = capsys.readouterr()
     assert "ForeignBibliographyCliFault" in output.err
     assert not output.out
+
+
+@pytest.mark.parametrize("receipt", [None, True, False, -1, 0, "full"])
+def test_bibliography_cli_rejects_unproven_stdout_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A short, foreign, or missing write count cannot report success."""
+
+    class ForgedOutput(io.StringIO):
+        @override
+        def write(self, text: str) -> int:
+            _ = super().write(text)
+            return cast("int", receipt)
+
+    report = validator.BibliographyReport(validator.CATEGORIES, 55, 44, 9, 21)
+    monkeypatch.setattr(validator, "validate_repository", lambda: report)
+    monkeypatch.setattr(validator.sys, "stdout", ForgedOutput())
+    errors = io.StringIO()
+    monkeypatch.setattr(validator.sys, "stderr", errors)
+    assert validator.main() == 1
+    assert "output write or flush failed" in errors.getvalue()
+
+
+@pytest.mark.parametrize("completion", [False, 0, "done"])
+def test_bibliography_cli_rejects_unproven_stdout_flush(
+    monkeypatch: pytest.MonkeyPatch,
+    completion: object,
+) -> None:
+    """Only a native successful flush permits a valid CLI verdict."""
+
+    class ForgedOutput(io.StringIO):
+        @override
+        def flush(self) -> None:
+            return cast("None", completion)
+
+    report = validator.BibliographyReport(validator.CATEGORIES, 55, 44, 9, 21)
+    monkeypatch.setattr(validator, "validate_repository", lambda: report)
+    monkeypatch.setattr(validator.sys, "stdout", ForgedOutput())
+    assert validator.main() == 1
+
+
+@pytest.mark.parametrize("stage", ["write", "flush"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, IndexError, OverflowError])
+def test_bibliography_cli_preserves_failure_when_stderr_breaks(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    fault_type: type[Exception],
+) -> None:
+    """A failed diagnostic must not change a rejected bibliography verdict."""
+
+    class FailedErrorOutput(io.StringIO):
+        @override
+        def write(self, text: str) -> int:
+            if stage == "write":
+                raise fault_type("unavailable stderr")
+            return super().write(text)
+
+        @override
+        def flush(self) -> None:
+            if stage == "flush":
+                raise fault_type("unavailable stderr")
+            return super().flush()
+
+    def invalid_repository() -> Never:
+        raise validator.BibliographyValidationError("invalid records")
+
+    monkeypatch.setattr(validator, "validate_repository", invalid_repository)
+    monkeypatch.setattr(validator.sys, "stderr", FailedErrorOutput())
+    assert validator.main() == 1
 
 
 def test_bibliography_rejects_foreign_byte_receipt_before_decode(

@@ -45,8 +45,9 @@ from typing import TYPE_CHECKING, Never
 from urllib.parse import urlsplit, urlunsplit
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from os import stat_result
-    from typing import BinaryIO
+    from typing import BinaryIO, TextIO
 
 from scripts.repository_root import repository_root
 
@@ -436,9 +437,39 @@ def _path_exists(path: Path) -> bool:
     return _path_status(path) is not None
 
 
+def _checked_walk(root: Path) -> Iterator[tuple[Path, list[str], list[str]]]:
+    """Admit only native, nonrepeated entries under their enumerated parent."""
+    pending = {root}
+    for directory, directories, filenames in root.walk(on_error=_raise_walk_error):
+        if type(directory) is not type(root) or directory not in pending:
+            _fail("bibliography walk returned unadmitted directory")
+        pending.remove(directory)
+        if type(directories) is not list or type(filenames) is not list:
+            _fail("bibliography walk requires native entry lists")
+        seen: set[str] = set()
+        for entries in (directories, filenames):
+            for name in entries:
+                if (
+                    type(name) is not str
+                    or not name
+                    or name in (".", "..")
+                    or os.sep in name
+                    or (os.altsep is not None and os.altsep in name)
+                    or "\x00" in name
+                ):
+                    _fail("bibliography walk requires native child names")
+                if name in seen:
+                    _fail("bibliography walk returned duplicate child name")
+                seen.add(name)
+        yield directory, directories, filenames
+        pending.update(directory / name for name in directories)
+    if pending:
+        _fail("bibliography walk omitted admitted child directory")
+
+
 def _walk_paths(root: Path) -> tuple[Path, ...]:
     paths: list[Path] = []
-    for directory, directories, filenames in root.walk(on_error=_raise_walk_error):
+    for directory, directories, filenames in _checked_walk(root):
         paths.extend(directory / name for name in directories)
         paths.extend(directory / name for name in filenames)
     return tuple(paths)
@@ -723,7 +754,7 @@ def _is_durable_reference_path(path: Path) -> bool:
 
 def _durable_reference_paths() -> tuple[Path, ...]:
     paths: list[Path] = []
-    for directory, directories, filenames in ROOT.walk(on_error=_raise_walk_error):
+    for directory, directories, filenames in _checked_walk(ROOT):
         directories[:] = [
             name
             for name in directories
@@ -779,27 +810,47 @@ def validate_repository() -> BibliographyReport:
     )
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Require the exact native output length and completed flush."""
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Validate the bibliography and return process status.
 
     Returns:
-        Zero for valid bibliography state and one for policy failure.
+        Zero only after verified complete CLI output, or one on failure.
 
     """
     try:
         report = validate_repository()
-    except (BibliographyValidationError, OSError) as error:
-        _ = sys.stderr.write(f"error: {_host_error_detail(error)}\n")
-        return 1
-    message = "".join(
-        (
-            f"bibliography valid: {report.record_count} records, ",
-            f"{report.required_baseline_count} baseline records, ",
-            f"{report.required_validation_package_count} validation packages, ",
-            f"{report.covered_external_reference_count} durable references\n",
+        message = "".join(
+            (
+                f"bibliography valid: {report.record_count} records, ",
+                f"{report.required_baseline_count} baseline records, ",
+                f"{report.required_validation_package_count} validation packages, ",
+                f"{report.covered_external_reference_count} durable references\n",
+            )
         )
-    )
-    _ = sys.stdout.write(message)
+        if not _write_cli_record(sys.stdout, message):
+            _fail("bibliography CLI output write or flush failed")
+    except (BibliographyValidationError, OSError) as error:
+        _ = _write_cli_record(sys.stderr, f"error: {_host_error_detail(error)}\n")
+        return 1
     return 0
 
 
