@@ -66,6 +66,7 @@ LLVM_DEVELOPMENT_MARKER: Final = ".malbolge-llvm-development-provision-v1.json"
 LLVM_DEVELOPMENT_MARKER_SCHEMA: Final = 1
 PARENT_SEGMENT: Final = ".."
 RPM_SUFFIX: Final = ".rpm"
+POSIX_OS_NAME: Final = "posix"
 CPIO_INCLUDE_PATTERN: Final = "./usr/include/*"
 MAX_RPM_DOWNLOAD_BYTES: Final = 128 * 1024 * 1024
 RPM_TOOL_TIMEOUT_SECONDS: Final = 120
@@ -164,6 +165,7 @@ def _command_bytes(
     *,
     cwd: Path | None = None,
     stdin: bytes | None = None,
+    pass_fds: tuple[int, ...] = (),
 ) -> bytes:
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
@@ -174,6 +176,7 @@ def _command_bytes(
             capture_output=True,
             shell=False,
             timeout=RPM_TOOL_TIMEOUT_SECONDS,
+            pass_fds=pass_fds,
         )
     except (OSError, ValueError, TypeError, RuntimeError, sp.SubprocessError) as error:
         # A foreign exception subclass may execute arbitrary formatting hooks.
@@ -368,6 +371,34 @@ def _verify_staging_readback(
         _fail(f"LLVM development staging content mismatch: {path.name}")
 
 
+def _extract_cpio_headers(payload: bytes, package_staging: Path) -> None:
+    """Run CPIO in the original physical package directory, not its alias."""
+    command = [
+        "cpio",
+        "-idm",
+        "--quiet",
+        "--no-absolute-filenames",
+        CPIO_INCLUDE_PATTERN,
+    ]
+    if os.name != POSIX_OS_NAME:
+        _ = _command_bytes(command, cwd=package_staging, stdin=payload)
+        return
+    # The POSIX provider is Linux-only. /proc/self/fd remains bound to the
+    # opened directory even if an ancestor is exchanged before child chdir.
+    parent = _open_physical_publication_parent(  # pyright: ignore[reportUnreachable]
+        package_staging / ".cpio-stage", "staging"
+    )
+    try:
+        _ = _command_bytes(
+            command,
+            cwd=Path(f"/proc/self/fd/{parent}"),
+            stdin=payload,
+            pass_fds=(parent,),
+        )
+    finally:
+        _close_physical_parent(parent, "CPIO")
+
+
 def _extract_rpm_headers(
     data: bytes,
     asset: tidy_toolchain.DevelopmentAsset,
@@ -414,17 +445,7 @@ def _extract_rpm_headers(
         require_owned_package()
         _ = _cpio_members(payload)
         require_owned_package()
-        _ = _command_bytes(
-            [
-                "cpio",
-                "-idm",
-                "--quiet",
-                "--no-absolute-filenames",
-                CPIO_INCLUDE_PATTERN,
-            ],
-            cwd=package_staging,
-            stdin=payload,
-        )
+        _extract_cpio_headers(payload, package_staging)
         require_owned_package()
         include_root = package_staging / "usr/include"
         if not _preflight_path_status(include_root, include_root.is_dir, "staging"):

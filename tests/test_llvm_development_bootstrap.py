@@ -63,6 +63,9 @@ STAGE_LINKED_LEAF = "linked-stage"
 STAGE_NONDIRECTORY_PARENT = "nondirectory-parent"
 TARGET_DANGLING_LEAF = "dangling-leaf"
 MARKER_BINARY_MODE = "rb"
+POSIX_OS_NAME = "posix"
+RPM2CPIO_NAME = "rpm2cpio"
+SYMLINK_SUBSTITUTION = "symlink"
 
 
 def _asset() -> tidy_toolchain.DevelopmentAsset:
@@ -312,8 +315,9 @@ def test_rpm_copy_rejects_header_swapped_to_link(
         *,
         cwd: Path | None = None,
         stdin: bytes | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> bytes:
-        del stdin
+        del stdin, pass_fds
         if arguments[0] == "cpio" and cwd is not None:
             header = cwd / "usr/include/clang/AST/AST.h"
             header.parent.mkdir(parents=True)
@@ -365,6 +369,85 @@ def test_rpm_copy_rejects_header_swapped_to_link(
     assert not identity.development_root.exists()
 
 
+def _cpio_stage_swap_process(
+    package: Path,
+    *,
+    foreign: Path,
+    substitution: str,
+    swaps: list[bool],
+) -> Callable[..., sp.CompletedProcess[bytes]]:
+    """Simulate tool startup after a late replacement of its cwd pathname.
+
+    Returns:
+        A process stub that resolves CPIO cwd after substituting the package.
+
+    """
+
+    def synthetic_process(
+        arguments: list[str], **options: object
+    ) -> sp.CompletedProcess[bytes]:
+        if arguments[:2] == ["cpio", "-idm"]:
+            parked = package.parent.parent / "parked-package"
+            _ = package.rename(parked)
+            if substitution == SYMLINK_SUBSTITUTION:
+                _ = package.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(package)
+            swaps.append(True)
+            cwd = options["cwd"]
+            assert isinstance(cwd, Path)
+            header = cwd / "usr/include/clang/AST/AST.h"
+            header.parent.mkdir(parents=True)
+            _ = header.write_bytes(HEADER_BYTES)
+        stdout = {
+            RPM2CPIO_NAME: b"mock CPIO payload",
+            "cpio": b"./usr/include/clang/AST/AST.h\n",
+        }.get(arguments[0], b"")
+        return sp.CompletedProcess(arguments, 0, stdout, b"")
+
+    return synthetic_process
+
+
+@pytest.mark.skipif(
+    os.name != POSIX_OS_NAME, reason="requires POSIX stage descriptor"
+)
+@pytest.mark.parametrize("substitution", ["symlink", "physical"])
+def test_rpm_extraction_uses_owned_cwd_after_late_package_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: str
+) -> None:
+    """A late CPIO cwd swap must not extract into an unrelated directory."""
+    staging = tmp_path / "packages"
+    staging.mkdir()
+    destination = tmp_path / "development"
+    destination.mkdir()
+    package = staging / PACKAGE_NAME.removesuffix(".rpm")
+    parked = tmp_path / "parked-package"
+    foreign = tmp_path / "foreign-package"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(FOREIGN_CONTENT_BYTES)
+    swaps: list[bool] = []
+    fake_process = _cpio_stage_swap_process(
+        package, foreign=foreign, substitution=substitution, swaps=swaps
+    )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_development_validation.sp, "run", fake_process)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staging child identity changed",
+        ):
+            llvm_development_validation._extract_rpm_headers(  # ruff: ignore[private-member-access]
+                PACKAGE_BYTES, _asset(), destination, staging=staging
+            )
+    assert swaps == [True]
+    foreign_root = foreign if substitution == SYMLINK_SUBSTITUTION else package
+    assert (foreign_root / "sentinel").read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not (foreign_root / "usr/include").exists()
+    assert (parked / "usr/include/clang/AST/AST.h").read_bytes() == HEADER_BYTES
+    assert not (destination / "include").exists()
+
+
 @pytest.mark.parametrize("via_provision", [False, True])
 @pytest.mark.parametrize("swap_phase", ["after-copy", "tool-fault"])
 def test_rpm_cleanup_preserves_swapped_foreign_package_directory(
@@ -405,8 +488,9 @@ def test_rpm_cleanup_preserves_swapped_foreign_package_directory(
         *,
         cwd: Path | None = None,
         stdin: bytes | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> bytes:
-        del stdin
+        del stdin, pass_fds
         if arguments[0] == "cpio" and cwd is not None:
             header = cwd / "usr/include/clang/AST/AST.h"
             header.parent.mkdir(parents=True)
