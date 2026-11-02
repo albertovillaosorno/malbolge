@@ -1367,6 +1367,7 @@ def test_cuda_provision_types_directory_creation_host_fault(
     else:
         target = (tmp_path / TOOLKIT_ROOT).parent
     native_mkdir = Path.mkdir
+    native_os_mkdir = os.mkdir
     failure = UnprintableHostOSError("denied directory creation")
     injected = False
 
@@ -1382,8 +1383,21 @@ def test_cuda_provision_types_directory_creation_host_fault(
             raise failure
         native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
 
+    def fail_os_mkdir(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal injected
+        if os.name == "posix" and path == target.name and dir_fd is not None:
+            injected = True
+            raise failure
+        native_os_mkdir(path, mode, dir_fd=dir_fd)
+
     with monkeypatch.context() as isolated:
         isolated.setattr(Path, "mkdir", fail_mkdir)
+        isolated.setattr(os, "mkdir", fail_os_mkdir)
         with pytest.raises(
             cuda_validation.CudaProvisionError, match="creation"
         ) as caught:
@@ -2741,3 +2755,158 @@ def test_cuda_staged_file_types_parent_close_fault(
     assert closed
     assert caught.value.__cause__ is failure
     assert target.read_bytes() == b"trusted-payload"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_staging_mkdir_does_not_follow_late_parent_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A staging-directory race must not create a foreign directory."""
+    parent = tmp_path / "owned-parent"
+    parent.mkdir()
+    stage = parent / "stage-root"
+    parked = tmp_path / "parked-parent"
+    outside = tmp_path / "foreign-parent"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"preserve foreign contents")
+    native_path_mkdir = Path.mkdir
+    native_os_mkdir = os.mkdir
+    swapped = False
+    foreign_created = False
+
+    def race() -> None:
+        nonlocal swapped
+        if not swapped:
+            _ = parent.rename(parked)
+            _ = parent.symlink_to(outside, target_is_directory=True)
+            swapped = True
+
+    def path_mkdir(
+        path: Path, mode: int = 0o777, parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        nonlocal foreign_created
+        if path == stage:
+            race()
+        native_path_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        foreign_created |= (outside / stage.name).exists()
+
+    def os_mkdir(
+        path: str | os.PathLike[str], mode: int = 0o777, *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal foreign_created
+        if path == stage.name and dir_fd is not None:
+            race()
+        native_os_mkdir(path, mode, dir_fd=dir_fd)
+        foreign_created |= (outside / stage.name).exists()
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "mkdir", path_mkdir)
+        isolated.setattr(os, "mkdir", os_mkdir)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="staging"):
+            cuda_validation._prepare_staging(stage)  # pyright: ignore[reportPrivateUsage]
+    assert swapped
+    assert not foreign_created
+    assert sentinel.read_bytes() == b"preserve foreign contents"
+    assert not (outside / stage.name).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_staging_mkdir_rejects_replaced_parent_at_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Creating a stage must verify the original physical parent identity."""
+    parent = tmp_path / "owned-parent"
+    parent.mkdir()
+    stage = parent / "stage-root"
+    parked = tmp_path / "parked-parent"
+    outside = tmp_path / "foreign-parent"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"preserve foreign contents")
+    native_open = os.open
+    swapped = False
+
+    def race_parent_open(
+        path: str | os.PathLike[str], flags: int,
+        mode: int = 0o777, *, dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if Path(path) == parent and not swapped:
+            _ = parent.rename(parked)
+            _ = outside.rename(parent)
+            swapped = True
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", race_parent_open)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="staging"):
+        cuda_validation._prepare_staging(stage)  # pyright: ignore[reportPrivateUsage]
+    assert swapped
+    assert (parent / "sentinel").read_bytes() == b"preserve foreign contents"
+    assert not stage.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_staging_mkdir_rejects_late_physical_parent_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A renamed physical parent must not adopt a different staged directory."""
+    parent = tmp_path / "owned-parent"
+    parent.mkdir()
+    stage = parent / "stage-root"
+    parked = tmp_path / "parked-parent"
+    outside = tmp_path / "foreign-parent"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"preserve foreign contents")
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def replace_at_mkdir(
+        path: str | os.PathLike[str], mode: int = 0o777, *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if path == stage.name and dir_fd is not None and not swapped:
+            _ = parent.rename(parked)
+            _ = outside.rename(parent)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "mkdir", replace_at_mkdir)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="staging"):
+        cuda_validation._prepare_staging(stage)  # pyright: ignore[reportPrivateUsage]
+    assert swapped
+    assert (parent / "sentinel").read_bytes() == b"preserve foreign contents"
+    assert not stage.exists()
+    assert (parked / stage.name).is_dir()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_staging_mkdir_rejects_forged_success_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A false successful mkdir receipt cannot certify missing staging state."""
+    parent = tmp_path / "owned-parent"
+    parent.mkdir()
+    stage = parent / "stage-root"
+    native_mkdir = os.mkdir
+    forged = False
+
+    def false_success(
+        path: str | os.PathLike[str], mode: int = 0o777, *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal forged
+        if path == stage.name and dir_fd is not None:
+            forged = True
+            return
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "mkdir", false_success)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="staging"):
+        cuda_validation._prepare_staging(stage)  # pyright: ignore[reportPrivateUsage]
+    assert forged
+    assert not stage.exists()

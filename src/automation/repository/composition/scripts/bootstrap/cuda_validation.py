@@ -656,14 +656,72 @@ def _require_unoccupied_toolkit_destination(path: Path) -> None:
 
 
 def _prepare_staging(path: Path) -> None:
-    """Create a new stage without adopting or deleting preexisting state."""
+    """Create an exclusive stage without redirectable parent-path writes."""
     _require_physical_directories(path, "staging")
-    try:
-        path.mkdir(parents=True)
-    except (OSError, TypeError, ValueError, RuntimeError) as error:
-        raise CudaProvisionError(
-            "CUDA staging directory creation failed"
-        ) from error
+    if os.name != "posix":
+        try:
+            path.mkdir(parents=True)
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA staging directory creation failed"
+            ) from error
+        _require_physical_directories(path, "staging")
+        return
+
+    missing: list[Path] = []
+    component = path
+    while True:
+        try:
+            status = component.lstat()
+        except FileNotFoundError:
+            missing.append(component)
+            component = component.parent
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError("CUDA staging directory status failed") from error
+        else:
+            if component == path:
+                _fail("CUDA staging directory already occupied")
+            if type(status) is not os.stat_result or not S_ISDIR(status.st_mode):
+                _fail("CUDA staging ancestor requires native directory status")
+            break
+
+    for directory in reversed(missing):
+        _require_physical_directories(directory.parent, "staging")
+        parent_descriptor = _open_staging_parent(directory.parent)
+        if parent_descriptor is None:
+            _fail("CUDA staging creation requires a physical parent descriptor")
+        try:
+            try:
+                os.mkdir(directory.name, dir_fd=parent_descriptor)
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA staging directory creation failed"
+                ) from error
+            _require_staging_parent_unchanged(directory.parent, parent_descriptor)
+            _require_physical_directories(directory, "staging")
+            try:
+                created = os.stat(
+                    directory.name, dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+                named = directory.lstat()
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA staging directory receipt failed"
+                ) from error
+            if (
+                type(created) is not os.stat_result
+                or type(named) is not os.stat_result
+                or not S_ISDIR(created.st_mode)
+                or (created.st_dev, created.st_ino)
+                != (named.st_dev, named.st_ino)
+            ):
+                _fail("CUDA staging directory creation receipt mismatch")
+        finally:
+            try:
+                os.close(parent_descriptor)
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError("CUDA staging parent close failed") from error
     _require_physical_directories(path, "staging")
 
 
