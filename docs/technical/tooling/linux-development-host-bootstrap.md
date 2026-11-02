@@ -225,8 +225,13 @@ Rustup's home-Cargo lookup accepts only an exact native boolean file-status
 result.
 
 POSIX Git and Rust imports pin physical destination directories, and reject
-in-place host binary changes in size, modification time, or executable mode
-after hardlink/copy. Copy fallbacks also reject source ctime changes; successful
+incomplete source-directory scans before declaring a copied import successful.
+A red-first descriptor-relative copy regression rejects a context manager that
+suppresses a mid-iteration error after copying one member; the importer requires
+full scan exhaustion before success, not just one valid copied file. Imports
+also reject in-place host binary changes in size, modification time, or
+executable mode after hardlink/copy. Copy fallbacks also reject source ctime
+changes; successful
 hardlinks account for their expected source ctime update. Rust neutral
 aliases check pinned source and alias bytes after hardlink or copy, in addition
 to post-link metadata. Same-length mutations, even with restored modification
