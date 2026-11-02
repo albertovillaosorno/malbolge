@@ -314,7 +314,7 @@ def _runtime_ready(root: Path, platform_id: str) -> bool:
         # The marker alone cannot authorize symlinks, junctions or special
         # files inserted into the header tree after initial import.
         try:
-            _require_physical_resources(root / "lib/clang/22")
+            _ = _require_physical_resources(root / "lib/clang/22")
         except LlvmImportError:
             return False
         return all(
@@ -640,7 +640,27 @@ def _copy_file(
         _fail("LLVM import source file changed during copying")
 
 
-def _require_physical_resources(root: Path) -> None:
+def _resource_member_receipt(path: Path) -> tuple[int, ...]:
+    """Attest physical member identity without hardlink-sensitive ctime."""
+    status = path.lstat()
+    if type(status) is not os.stat_result:
+        _fail("host LLVM resource member status must be native")
+    if S_ISDIR(status.st_mode):
+        return (1, status.st_dev, status.st_ino, status.st_mtime_ns)
+    if S_ISREG(status.st_mode):
+        return (
+            0,
+            status.st_dev,
+            status.st_ino,
+            status.st_size,
+            status.st_mtime_ns,
+            S_IMODE(status.st_mode),
+        )
+    _fail("host LLVM resource member must be a physical file or directory")
+
+
+def _require_physical_resources(root: Path) -> dict[Path, tuple[int, ...]]:
+    """Attest the full physical header inventory with native scan failures."""
     if not _physical_directory(root):
         _fail("host LLVM resource directory must not redirect")
 
@@ -650,6 +670,7 @@ def _require_physical_resources(root: Path) -> None:
         ) from error
 
     try:
+        inventory = {Path(): _resource_member_receipt(root)}
         # Path.rglob silently suppresses scandir failures. Readiness and
         # preflight must reject a subtree whose members cannot be inspected.
         for directory, folders, files in root.walk(on_error=fail_scan):
@@ -674,6 +695,11 @@ def _require_physical_resources(root: Path) -> None:
                     _physical_file(member) or _physical_directory(member)
                 ):
                     _fail(f"host LLVM resource member must be physical: {member}")
+                relative = member.relative_to(root)
+                if relative in inventory:
+                    _fail("host LLVM resource member enumeration is duplicate")
+                inventory[relative] = _resource_member_receipt(member)
+        return inventory
     except LlvmImportError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -687,7 +713,7 @@ def _copy_resource_tree(source: Path, destination: Path) -> None:
     source_inode = _native_directory_inode(source)
     if source_inode is None:
         _fail("host LLVM resource root must be physical")
-    _require_physical_resources(source)
+    expected_resources = _require_physical_resources(source)
     if _native_directory_inode(source) != source_inode:
         _fail("host LLVM resource root changed during preflight")
     ancestor_inode = _native_directory_inode(destination.parent.parent)
@@ -758,7 +784,14 @@ def _copy_resource_tree(source: Path, destination: Path) -> None:
             _fail("LLVM resource destination directory changed during copy")
 
     copy_directory(source, destination, source_inode, parent_inode)
-    _require_physical_resources(destination)
+    if _require_physical_resources(source) != expected_resources:
+        _fail("host LLVM resource inventory changed during copying")
+    copied_resources = _require_physical_resources(destination)
+    if expected_resources.keys() != copied_resources.keys() or any(
+        expected_resources[name][0] != copied_resources[name][0]
+        for name in expected_resources
+    ):
+        _fail("LLVM resource destination inventory differs from the source")
 
 
 def _linux_wrapper(tool: str) -> str:
@@ -1176,7 +1209,7 @@ def _validate_observation(observation: LlvmHostObservation) -> None:
     )
     if not all(_physical_file(path) for path in files):
         _fail("host LLVM observation has a missing or redirected tool")
-    _require_physical_resources(observation.resource_dir)
+    _ = _require_physical_resources(observation.resource_dir)
 
 
 def _stage_linux_llvm(

@@ -1955,6 +1955,36 @@ def test_linux_import_rejects_fifo_resource_member(tmp_path: Path) -> None:
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
 
 
+@pytest.mark.parametrize("change", ("omit", "remove", "add"))
+def test_linux_import_rejects_incomplete_resource_enumeration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    """Source and destination inventories must match initial preflight."""
+    observation = _host_observation(tmp_path)
+    source = observation.resource_dir
+    original_iterdir = Path.iterdir
+    changed = False
+
+    def changed_enumeration(path: Path):
+        nonlocal changed
+        if path == source and not changed:
+            changed = True
+            if change == "omit":
+                return iter(())
+            if change == "remove":
+                (source / "stddef.h").unlink()
+            else:
+                _ = (source / "late.h").write_bytes(b"unvalidated late member")
+        return original_iterdir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "iterdir", changed_enumeration)
+        with pytest.raises(llvm_validation.LlvmImportError, match="resource"):
+            llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert changed
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
 def test_linux_import_preserves_physical_nested_resource_files(
     tmp_path: Path,
 ) -> None:
