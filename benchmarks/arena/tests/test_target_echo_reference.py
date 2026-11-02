@@ -2048,6 +2048,121 @@ def test_vm_step_receipt_admits_one_canonical_decimal() -> None:
     )
 
 
+@pytest.mark.parametrize("stage", ["emitter", "guest"])
+@pytest.mark.parametrize(
+    "forgery", ["different-command", "foreign-argv", "non-string", "fake-list"],
+)
+def test_target_child_receipts_must_match_launched_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    forgery: str,
+) -> None:
+    """A swapped successful child cannot certify another emitter or VM run."""
+    path = tmp_path / "candidate.malbolge"
+    _ = path.write_bytes(b"!")
+    context = _synthetic_target_context(tmp_path, site="raw")
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_echo_reference, "_read_source_bytes", lambda *_a, **_k: b"!")
+
+    class FalseEqualArgs(list[str]):
+        def __eq__(self, other: object) -> bool:
+            del other
+            pytest.fail("foreign argv equality executed")
+
+    def maybe_forged(command: list[str], selected: str) -> object:
+        if stage != selected:
+            return command
+        if forgery == "different-command":
+            return ["unrelated-executable"]
+        if forgery == "non-string":
+            return [command[0], True]
+        if forgery == "fake-list":
+            return FalseEqualArgs(command)
+        return object()
+
+    def emitter(
+        _context: target_echo_reference._Context, command: list[str]
+    ) -> sp.CompletedProcess[bytes]:
+        return sp.CompletedProcess(
+            cast("Any", maybe_forged(command, "emitter")), 0, b"", b""
+        )
+
+    def runner(*_args: object, **_kwargs: object) -> sp.CompletedProcess[bytes]:
+        command = [str(context.runner), str(path)]
+        return sp.CompletedProcess(
+            cast("Any", maybe_forged(command, "guest")),
+            0,
+            bytes([target_echo_reference.CLASSIC_EOF_BYTE]),
+            b"",
+        )
+
+    monkeypatch.setattr(target_echo_reference, "_emit_attempt", emitter)
+    monkeypatch.setattr(target_echo_reference, "_run_guest", runner)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="child.*command"
+    ):
+        target_echo_reference._classify_attempt(path, context, ["input"], pairs=1)
+
+
+def test_target_emitter_rejects_mutated_invocation_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child transport mutating its argv cannot rewrite the expected command."""
+    path = tmp_path / "candidate.malbolge"
+    _ = path.write_bytes(b"!")
+    context = _synthetic_target_context(tmp_path, site="raw")
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+
+    def emitter(
+        _context: target_echo_reference._Context, command: list[str]
+    ) -> sp.CompletedProcess[bytes]:
+        command[0] = "unrelated-emitter"
+        return sp.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr(target_echo_reference, "_emit_attempt", emitter)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="child.*command"
+    ):
+        target_echo_reference._classify_attempt(path, context, ["input"], pairs=1)
+
+
+def test_target_child_receipts_allow_matching_patterned_vm_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A native VM receipt still admits binary stdin and steps flags."""
+    from dataclasses import replace
+
+    path = tmp_path / "candidate.malbolge"
+    _ = path.write_bytes(b"!")
+    context = replace(
+        _synthetic_target_context(tmp_path, site="raw"),
+        input_mode=target_echo_reference.PATTERNED_MODE,
+        measure_steps=True,
+    )
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(target_echo_reference, "_read_source_bytes", lambda *_a, **_k: b"!")
+
+    def emitter(
+        _context: target_echo_reference._Context, command: list[str]
+    ) -> sp.CompletedProcess[bytes]:
+        return sp.CompletedProcess(command, 0, b"", b"")
+
+    def runner(*_args: object, **_kwargs: object) -> sp.CompletedProcess[bytes]:
+        return sp.CompletedProcess(
+            [str(context.runner), str(path), "--input-stdin", "--report-steps"],
+            0,
+            bytes([*target_echo_reference._input_bytes(1, context.input_mode), 0xA8]),
+            b"malbolge-steps-v1:3\n",
+        )
+
+    monkeypatch.setattr(target_echo_reference, "_emit_attempt", emitter)
+    monkeypatch.setattr(target_echo_reference, "_run_guest", runner)
+    assert target_echo_reference._classify_attempt(
+        path, context, ["input"], pairs=1
+    ) == (analyze.VERIFIED, 1, 3)
+
+
 def test_target_emitter_rejects_hostile_completion_before_stdout_hooks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2119,7 +2234,7 @@ def test_target_guest_rejects_foreign_stdout_before_verifier_equality(
     monkeypatch.setattr(
         target_echo_reference,
         "_emit_attempt",
-        lambda *_args, **_kwargs: sp.CompletedProcess([], 0, b"", b""),
+        lambda _context, command: sp.CompletedProcess(command, 0, b"", b""),
     )
     monkeypatch.setattr(target_echo_reference, "_read_source_bytes", lambda *_a, **_k: b"!")
     monkeypatch.setattr(
@@ -2149,7 +2264,7 @@ def test_emitter_rejects_foreign_source_receipt_before_graphical_check(
     monkeypatch.setattr(
         target_echo_reference,
         "_emit_attempt",
-        lambda *_args, **_kwargs: sp.CompletedProcess([], 0, b"", b""),
+        lambda _context, command: sp.CompletedProcess(command, 0, b"", b""),
     )
     monkeypatch.setattr(
         evidence,

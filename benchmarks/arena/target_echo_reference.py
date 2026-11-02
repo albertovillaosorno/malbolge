@@ -193,9 +193,9 @@ def _read_source_bytes(relative: str, *, limit: int) -> bytes:
 
 
 def _admit_child_result(
-    result: sp.CompletedProcess[bytes],
+    result: sp.CompletedProcess[bytes], *, command: list[str]
 ) -> sp.CompletedProcess[bytes]:
-    """Reject foreign transport results before interpreting child success.
+    """Bind a native child completion to the exact prepared invocation.
 
     Returns:
         Native child exit status and exact binary stdout/stderr receipts.
@@ -208,6 +208,12 @@ def _admit_child_result(
         or type(result.stderr) is not bytes
     ):
         _fail("target echo requires native child result receipts")
+    if (
+        type(result.args) is not list
+        or any(type(argument) is not str for argument in result.args)
+        or result.args != command
+    ):
+        _fail("target echo child result does not match launched command")
     return result
 
 
@@ -611,12 +617,17 @@ def _measure_guest_rss(
     return result
 
 
-def _run_guest(context: _Context, path: Path, pairs: int) -> sp.CompletedProcess[bytes]:
+def _guest_command(context: _Context, path: Path) -> list[str]:
     command = [str(context.runner), str(path)]
     if context.input_mode == PATTERNED_MODE:
         command.append("--input-stdin")
     if context.measure_steps:
         command.append("--report-steps")
+    return command
+
+
+def _run_guest(context: _Context, path: Path, pairs: int) -> sp.CompletedProcess[bytes]:
+    command = _guest_command(context, path)
     if context.measure_child_rss:
         return _measure_guest_rss(context, command, pairs)
     if context.input_mode == EOF_MODE:
@@ -692,7 +703,10 @@ def _classify_attempt(
     ]
     if context.layout_mode == FORWARD_SKIP_LAYOUT and operations[0] == JUMP_OPERATION:
         command.append("--auto-layout")
-    emitted = _admit_child_result(_emit_attempt(context, [*command, *operations]))
+    prepared = [*command, *operations]
+    emitted = _admit_child_result(
+        _emit_attempt(context, prepared.copy()), command=prepared
+    )
     if emitted.returncode != 0 or emitted.stdout or not path.is_file():
         return "tool_failed", None, None
     source = _read_source_bytes(
@@ -707,7 +721,9 @@ def _classify_attempt(
         GRAPHICAL_LOW <= byte <= GRAPHICAL_HIGH for byte in source
     ):
         return analyze.VERIFIER_REJECTED, None, None
-    execution = _admit_child_result(_run_guest(context, path, pairs))
+    execution = _admit_child_result(
+        _run_guest(context, path, pairs), command=_guest_command(context, path)
+    )
     expected = (
         bytes([CLASSIC_EOF_BYTE]) * pairs
         if context.input_mode == EOF_MODE
