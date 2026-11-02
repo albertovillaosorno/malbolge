@@ -90,6 +90,16 @@ def _fail(message: str) -> Never:
     raise LlvmDevelopmentProvisionError(message)
 
 
+def _native_error_name(error: BaseException) -> str:
+    """Read an exception class name without invoking foreign metaclass hooks."""
+    return cast(
+        "str",
+        type.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+            type(error), "__name__"
+        ),
+    )
+
+
 def verify_development_asset(
     data: bytes,
     asset: tidy_toolchain.DevelopmentAsset,
@@ -189,7 +199,7 @@ def _command_bytes(
         detail = (
             str(error)
             if type(error) in (OSError, ValueError, TypeError, RuntimeError)
-            else type(error).__name__
+            else _native_error_name(error)
         )
         raise LlvmDevelopmentProvisionError(
             f"failed to execute LLVM RPM tool {arguments[0]}: {detail}"
@@ -662,7 +672,7 @@ def _download_asset(url: str, *, expected_size_bytes: int) -> bytes:
         detail = (
             str(error)
             if type(error) in (OSError, ValueError, TypeError, RuntimeError)
-            else type(error).__name__
+            else _native_error_name(error)
         )
         raise LlvmDevelopmentProvisionError(
             f"cannot download pinned LLVM development package: {detail}"
@@ -874,7 +884,7 @@ def _preflight_path_status(
         detail = (
             str(error)
             if type(error) in (OSError, ValueError, TypeError, RuntimeError)
-            else type(error).__name__
+            else _native_error_name(error)
         )
         raise LlvmDevelopmentProvisionError(
             f"LLVM development {label} path status failed: {path}: {detail}"

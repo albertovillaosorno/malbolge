@@ -3022,6 +3022,54 @@ def test_rpm_command_does_not_format_foreign_host_failure(
     assert observed.value.__cause__ is fault
 
 
+@pytest.mark.parametrize("boundary", ["tool", "path", "download"])
+def test_llvm_development_host_failure_does_not_read_foreign_class_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+) -> None:
+    """Untrusted host exception metaclasses cannot hijack error reporting."""
+
+    class HostileMeta(type):
+        def __getattribute__(cls, name: str) -> object:
+            if name == "__name__":
+                raise AssertionError("foreign exception metadata was evaluated")
+            return super().__getattribute__(name)
+
+    class ForeignHostError(OSError, metaclass=HostileMeta):
+        def __str__(self) -> str:
+            raise AssertionError("foreign exception text was formatted")
+
+    fault = ForeignHostError("foreign host failure")
+
+    def fail(*_args: object, **_kwargs: object) -> bool:
+        raise fault
+
+    if boundary == "tool":
+        monkeypatch.setattr(llvm_development_validation.sp, "run", fail)
+    elif boundary == "download":
+        monkeypatch.setattr(
+            llvm_development_validation.urllib.request, "urlopen", fail
+        )
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="ForeignHostError",
+    ) as observed:
+        if boundary == "tool":
+            _ = llvm_development_validation._command_bytes(["cpio", "-it"])
+        elif boundary == "path":
+            _ = llvm_development_validation._preflight_path_status(
+                tmp_path, fail, "staging"
+            )
+        else:
+            _ = llvm_development_validation._download_asset(
+                "https://example.invalid/reviewed.rpm",
+                expected_size_bytes=len(PACKAGE_BYTES),
+            )
+    assert observed.value.__cause__ is fault
+
+
 def test_rpm_command_enforces_process_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
