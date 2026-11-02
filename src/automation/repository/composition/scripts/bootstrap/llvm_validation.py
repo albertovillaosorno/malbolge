@@ -99,7 +99,12 @@ def llvm_version_matches(version_text: str) -> bool:
     """
     if type(version_text) is not str:
         return False
-    lines = version_text.splitlines()
+    # Native banners use LF or CRLF line endings; arbitrary control/invisible
+    # characters can otherwise hide content or masquerade as new banner lines.
+    normalized = version_text.replace("\r\n", "\n")
+    if any(not line.isprintable() for line in normalized.split("\n")):
+        return False
+    lines = normalized.splitlines()
     if not lines:
         return False
     # Clang and clang-format have a one-line release followed by optional

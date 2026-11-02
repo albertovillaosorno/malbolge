@@ -4268,6 +4268,24 @@ def test_llvm_host_version_rejects_appended_foreign_banner_text(banner: str) -> 
     assert not llvm_validation.llvm_version_matches(banner)
 
 
+@pytest.mark.parametrize(
+    "banner",
+    [
+        "clang version 22.1.8 (build\x00spoof)",
+        "clang version 22.1.8 (build\x1b[31mspoof)",
+        "clang version 22.1.8 (build\x7fspoof)",
+        "clang version 22.1.8 (build\tspoof)",
+        "clang version 22.1.8 (build\u200bspoof)",
+        "clang version 22.1.8\vTarget: x86_64-pc-linux-gnu",
+    ],
+)
+def test_llvm_host_version_rejects_nonprintable_banner_receipts(
+    banner: str,
+) -> None:
+    """Control and invisible characters cannot forge a native LLVM banner."""
+    assert not llvm_validation.llvm_version_matches(banner)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
 @pytest.mark.parametrize("fault", [OSError, RuntimeError])
 def test_llvm_staging_marker_parent_stat_failure_is_typed(
