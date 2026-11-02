@@ -39,6 +39,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from hashlib import sha256
+import io
 import json
 from pathlib import Path
 import sys
@@ -3398,3 +3399,92 @@ def test_evidence_stream_context_cannot_suppress_read_rejection(
     assert streams and streams[0].exits == 1
     if failure_site == "read-failure":
         assert caught.value.__cause__ is read_fault
+
+
+@pytest.mark.parametrize("variant", ["foreign", "foreign-raw", "native-alias"])
+def test_evidence_fdopen_cannot_replace_native_source_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, variant: str
+) -> None:
+    """A substituted fdopen cannot certify bytes from a different stream."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"original")
+    native_open = evidence.os.open
+    native_fdopen = evidence.os.fdopen
+    raw_descriptors: list[int] = []
+    returned: list[IO[bytes]] = []
+    read_called = False
+
+    class ForeignStream:
+        def __init__(self, fd: int) -> None:
+            self.fd = fd
+            self.closed = False
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.close()
+
+        def fileno(self) -> int:
+            return self.fd
+
+        def read(self, _count: int) -> bytes:
+            nonlocal read_called
+            read_called = True
+            return b"replaced"
+
+        def close(self) -> None:
+            if not self.closed:
+                evidence.os.close(self.fd)
+                self.closed = True
+
+    class ForeignRaw(io.RawIOBase):
+        def __init__(self, fd: int) -> None:
+            super().__init__()
+            self.fd = fd
+
+        def readable(self) -> bool:
+            return True
+
+        def fileno(self) -> int:
+            return self.fd
+
+        def readinto(self, destination: Any) -> int:
+            nonlocal read_called
+            read_called = True
+            destination[:8] = b"replaced"
+            return 8
+
+    def tracked_open(target: Path, flags: int) -> int:
+        fd = native_open(target, flags)
+        raw_descriptors.append(fd)
+        return fd
+
+    def substituted_fdopen(fd: int, mode: str) -> IO[bytes]:
+        if variant == "foreign":
+            return cast("IO[bytes]", ForeignStream(fd))
+        if variant == "foreign-raw":
+            stream = io.BufferedReader(ForeignRaw(fd))
+        else:
+            alternate_fd = native_open(tmp_path / "raw.csv", evidence.os.O_RDONLY)
+            stream = native_fdopen(alternate_fd, mode)
+        assert type(stream) is io.BufferedReader
+        returned.append(stream)
+        return stream
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(evidence.os, "open", tracked_open)
+        scoped.setattr(evidence.os, "fdopen", substituted_fdopen)
+        try:
+            expected = "descriptor" if variant == "native-alias" else "native buffered"
+            with pytest.raises(evidence.EvidenceError, match=expected):
+                _ = evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+        finally:
+            for stream in returned:
+                stream.close()
+            for fd in raw_descriptors:
+                try:
+                    evidence.os.close(fd)
+                except OSError:
+                    pass
+    assert not read_called
+    assert (tmp_path / "raw.csv").read_bytes() == b"original"

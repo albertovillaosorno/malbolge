@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import hashlib
+import io
 from hashlib import sha256
 import os
 from pathlib import Path
@@ -273,7 +274,15 @@ def _open_evidence(path: Path) -> IO[bytes]:
             # admitted path. Require the kernel's native text receipt.
             if type(actual_path) is not str or actual_path != os.fspath(path):
                 _fail(f"evidence opened path changed: {path}")
-        return os.fdopen(descriptor, "rb")
+        stream = os.fdopen(descriptor, "rb")
+        # The original raw descriptor must own the actual native file read.
+        # A foreign stream can report its inode yet fabricate returned bytes;
+        # even a native buffer may wrap a substituted raw source or handle.
+        if type(stream) is not io.BufferedReader or type(stream.raw) is not io.FileIO:
+            _fail(f"evidence stream is not a native buffered file: {path}")
+        if _admit_descriptor(stream.fileno(), source="stream") != descriptor:
+            _fail(f"evidence stream descriptor differs from opened descriptor: {path}")
+        return stream
     except Exception as error:
         # Stream construction/path admission failed before stream ownership.
         # An unsuccessful close must not erase the original admission failure.
