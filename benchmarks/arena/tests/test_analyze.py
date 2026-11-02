@@ -526,6 +526,28 @@ def test_direct_json_allows_equivalent_decoder_wrapper(
     assert analyze.parse_document(json.dumps(document)) == document
 
 
+def test_direct_json_equivalent_decoder_cannot_mutate_admitted_study(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Source verification must not retain a wrapper-owned mutable graph."""
+    native = analyze.json.loads
+    source = json.dumps(_document())
+    returned: list[dict[str, Any]] = []
+
+    def equivalent(*args: Any, **kwargs: Any) -> Any:
+        parsed = native(*args, **kwargs)
+        returned.append(parsed)
+        return parsed
+
+    monkeypatch.setattr(analyze.json, "loads", equivalent)
+    admitted = analyze.parse_document(source)
+    assert returned
+    assert admitted == returned[0]
+    assert admitted is not returned[0]
+    returned[0]["study"]["id"] = "foreign-synthetic-study"
+    assert admitted["study"]["id"] != "foreign-synthetic-study"
+
+
 def test_cli_rejects_substituted_study_without_publishing_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

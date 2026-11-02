@@ -33,7 +33,8 @@ import-time bound standard decoder after schema admission. A substituted
 public decoder cannot change otherwise native reported identities, verifier
 outcomes or costs without a source mismatch. The second parse preserves
 strict duplicate-field/nonfinite rejection; equivalent decoder wrappers remain
-valid. This is local parser-source consistency, not independent authentication
+valid but cannot retain an alias to the admitted source-owned study object.
+This is local parser-source consistency, not independent authentication
 of reported measurements, verifier execution or retained file provenance.
 Version-one input has one `study` and a nonempty `observations` array:
 

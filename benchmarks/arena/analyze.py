@@ -442,7 +442,9 @@ def parse_document(text: str) -> dict[str, Any]:
     source_admitted = admit_document(source)
     if admitted != source_admitted:
         _fail("arena document differs from source JSON")
-    return admitted
+    # An equivalent public adapter may retain and mutate its returned dict.
+    # Admit only independent source-decoder objects after corroboration.
+    return source_admitted
 
 
 def _case_key(row: dict[str, Any]) -> tuple[Any, ...]:
