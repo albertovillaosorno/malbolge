@@ -46,8 +46,8 @@ from dataclasses import field
 from dataclasses import replace
 from enum import StrEnum
 from hashlib import sha256
+import json
 from json import JSONDecodeError
-from json import dumps
 from json import loads
 from re import compile as compile_pattern
 from typing import Final
@@ -111,6 +111,7 @@ TICKET_ADMISSION_TELEMETRY_LINEAGE_PUBLIC_KEY_FINGERPRINT_PREFIX: Final = (
 DEFAULT_MAX_TELEMETRY_LINEAGE_SIGNATURE_BYTES: Final = 16 * 1024
 DEFAULT_MAX_TELEMETRY_LINEAGE_SIGNATURE_ATTESTATION_BYTES: Final = 64 * 1024
 DEFAULT_MAX_TELEMETRY_LINEAGE_PUBLIC_KEY_BYTES: Final = 64 * 1024
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 _IDENTIFIER_PATTERN: Final = compile_pattern(
     r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"
@@ -870,12 +871,27 @@ def _attestation_mapping(
 
 
 def _canonical_json_bytes(mapping: dict[str, object]) -> bytes:
-    return dumps(
-        mapping,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
+    try:
+        # An import-bound dumps function still resolves mutable JSONEncoder.
+        # Capture source-owned canonical bytes before consulting the public
+        # writer, which must agree exactly without rewriting signed claims.
+        source_text = _SOURCE_JSON_ENCODER(
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode(mapping)
+        public_text = json.dumps(
+            mapping,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except Exception as error:
+        message = f"signature JSON serializer failed: {type(error).__name__}"
+        raise TicketAdmissionTelemetryLineageSignatureError(message) from error
+    if type(public_text) is not str or public_text != source_text:
+        _raise_signature("signature JSON serializer disagrees with source")
+    return source_text.encode("utf-8")
 
 
 def _attestation_fingerprint(canonical_bytes: bytes) -> str:

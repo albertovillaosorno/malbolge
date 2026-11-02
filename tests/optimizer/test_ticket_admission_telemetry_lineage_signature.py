@@ -41,6 +41,7 @@ from __future__ import annotations
 from base64 import b64encode
 from dataclasses import replace
 from hashlib import sha256
+import json
 from json import dumps
 from json import loads
 from typing import TYPE_CHECKING
@@ -467,6 +468,163 @@ def test_attestation_fingerprint_hashes_exact_canonical_bytes() -> None:
         )
         == f"{SIGNATURE_PREFIX}{sha256(encoded).hexdigest()}"
     )
+
+
+@pytest.mark.parametrize(
+    "providers", ("encoder-only", "encoder-and-writer", "writer-only")
+)
+def test_signature_attestation_rejects_substituted_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+    providers: str,
+) -> None:
+    """Public JSON providers cannot rewrite signed attestation identities."""
+    attestation = _attestation(_document(), _claim(GENESIS_SEQUENCE_ID))
+    original_bytes = encode_ticket_admission_telemetry_lineage_signature_attestation(
+        attestation
+    )
+    forged_mapping = _mapping(original_bytes)
+    forged_mapping["public_key_id"] = ROTATED_PUBLIC_KEY_ID
+    forged_text = _encoded_mapping(forged_mapping).decode("utf-8")
+    assert forged_text.encode() != original_bytes
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return forged_text
+
+    with monkeypatch.context() as patch:
+        if providers != "writer-only":
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers != "encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: forged_text)
+        with pytest.raises(
+            TicketAdmissionTelemetryLineageSignatureError,
+            match="serializer disagrees with source",
+        ):
+            _ = encode_ticket_admission_telemetry_lineage_signature_attestation(
+                attestation
+            )
+        with pytest.raises(
+            TicketAdmissionTelemetryLineageSignatureError,
+            match="serializer disagrees with source",
+        ):
+            _ = ticket_admission_telemetry_lineage_signature_attestation_fingerprint(
+                attestation
+            )
+
+
+def test_signature_attestation_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent public encoder classes preserve signed canonical bytes."""
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    attestation = _attestation(_document(), _claim(GENESIS_SEQUENCE_ID))
+    original_bytes = encode_ticket_admission_telemetry_lineage_signature_attestation(
+        attestation
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert encode_ticket_admission_telemetry_lineage_signature_attestation(
+            attestation
+        ) == original_bytes
+
+
+def test_signature_attestation_accepts_equivalent_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public writer delegating exact canonical text remains compatible."""
+    native_dumps = json.dumps
+    attestation = _attestation(_document(), _claim(GENESIS_SEQUENCE_ID))
+    original_bytes = encode_ticket_admission_telemetry_lineage_signature_attestation(
+        attestation
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            json,
+            "dumps",
+            lambda *args, **kwargs: native_dumps(*args, **kwargs),
+        )
+        assert encode_ticket_admission_telemetry_lineage_signature_attestation(
+            attestation
+        ) == original_bytes
+
+
+def test_signature_attestation_rejects_mutating_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public writer cannot mutate signer identity before source capture."""
+    native_dumps = json.dumps
+    attestation = _attestation(_document(), _claim(GENESIS_SEQUENCE_ID))
+
+    def mutate(value: dict[str, object], **kwargs: object) -> str:
+        value["public_key_id"] = ROTATED_PUBLIC_KEY_ID
+        return native_dumps(value, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", mutate)
+        with pytest.raises(
+            TicketAdmissionTelemetryLineageSignatureError,
+            match="serializer disagrees with source",
+        ):
+            _ = encode_ticket_admission_telemetry_lineage_signature_attestation(
+                attestation
+            )
+
+
+class _ForeignJsonText(str):
+    """A hostile writer receipt must not supply equality behavior."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign serializer equality invoked")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize("receipt", (None, b"{}", _ForeignJsonText("{}")))
+def test_signature_attestation_rejects_non_native_json_writer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only native exact text can match canonical signer bytes."""
+    attestation = _attestation(_document(), _claim(GENESIS_SEQUENCE_ID))
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", lambda *_args, **_kwargs: receipt)
+        with pytest.raises(
+            TicketAdmissionTelemetryLineageSignatureError,
+            match="serializer disagrees with source",
+        ):
+            _ = encode_ticket_admission_telemetry_lineage_signature_attestation(
+                attestation
+            )
+
+
+def test_signature_attestation_contains_public_json_writer_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """External writer failures stay typed and retain their cause."""
+    failure = RuntimeError("outside writer failure")
+    attestation = _attestation(_document(), _claim(GENESIS_SEQUENCE_ID))
+
+    def failing_writer(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", failing_writer)
+        with pytest.raises(
+            TicketAdmissionTelemetryLineageSignatureError,
+            match="serializer failed: RuntimeError",
+        ) as caught:
+            _ = encode_ticket_admission_telemetry_lineage_signature_attestation(
+                attestation
+            )
+        assert caught.value.__cause__ is failure
 
 
 def test_verifier_receives_exact_bound_material_once() -> None:

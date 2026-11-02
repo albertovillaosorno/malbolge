@@ -632,7 +632,11 @@ attestations bind the exact schema-v1 document fingerprint, algorithm, recorder,
 completed/failed streams, capture sequence, public-key ID, SHA-256 of the exact
 
 caller-owned public-key bytes, and optional HMAC or signature predecessor.
-Signers
+Canonical unsigned signer bytes and attestation fingerprints use an import-bound
+standard-library `JSONEncoder` class, corroborated against the mutable public
+`json.dumps` writer. Encoder-only, writer-only, and joint provider substitution
+cannot change exact signed fields or their canonical fingerprint identity; this
+does not defend modification of the underlying Python implementation. Signers
 return typed `signed`, `unavailable`, or `failed`; verifiers return `verified`,
 `invalid`, `unavailable`, or `failed`. Each explicit operation calls its port
 once
