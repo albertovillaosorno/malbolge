@@ -200,6 +200,10 @@ rechecked against the admitted
 original descriptor. The writable stage stream must be a native buffered writer
 backed by the owned file descriptor. Host write, permission, and stream-close
 faults become typed failures with their original causes before any replacement.
+Publication also continues writing to the original opened stage stream,
+not a substituted context-entry return that could overwrite a foreign file.
+A context exit that suppresses a failed executable-mode update cannot publish
+a nonexecutable alias; the incomplete stage is rejected and discarded.
 Promotion requires a bounded native readback equal to the selected alias bytes
 from that same single-link inode, with a post-descriptor-close physical
 mutation-time recheck that rejects same-size rewrites. Cleanup unlinks only

@@ -1778,6 +1778,92 @@ def test_jig_source_uses_owned_stream_not_substituted_enter(
     assert python_validation._read_jig_binary_source(source) == BINARY
 
 
+def test_jig_alias_writer_uses_owned_stream_not_substituted_enter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stage write cannot be redirected to a foreign context-entry stream."""
+    target = tmp_path / "jig-alias.bin"
+    foreign_path = tmp_path / "protected-external.bin"
+    preserved = b"protected-foreign-binary-unchanged"
+    _ = foreign_path.write_bytes(preserved)
+    native_open = python_validation._open_jig_alias_write_stream
+
+    class RedirectingWriter:
+        def __init__(self, stream: BinaryIO, foreign: BinaryIO) -> None:
+            self.stream = stream
+            self.foreign = foreign
+
+        def __enter__(self) -> BinaryIO:
+            return self.foreign
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def write(self, payload: bytes) -> int:
+            return self.stream.write(payload)
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+    with foreign_path.open("r+b") as foreign:
+        def injected_writer(descriptor: int) -> BinaryIO:
+            return cast(
+                "BinaryIO",
+                cast("object", RedirectingWriter(native_open(descriptor), foreign)),
+            )
+
+        monkeypatch.setattr(
+            python_validation, "_open_jig_alias_write_stream", injected_writer
+        )
+        python_validation._publish_jig_tool_alias(target, BINARY, windows=False)
+    assert target.read_bytes() == BINARY
+    assert foreign_path.read_bytes() == preserved
+
+
+def test_jig_alias_writer_rejects_suppressed_chmod_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write-context exit cannot erase a failed executable-mode update."""
+    target = tmp_path / "jig-alias.bin"
+    native_open = python_validation._open_jig_alias_write_stream
+    native_fchmod = os.fchmod
+    watched: set[int] = set()
+
+    class SuppressingWriter:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream = stream
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            self.stream.close()
+            return True
+
+        def write(self, payload: bytes) -> int:
+            return self.stream.write(payload)
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+    def injected_writer(descriptor: int) -> BinaryIO:
+        watched.add(descriptor)
+        return cast("BinaryIO", cast("object", SuppressingWriter(native_open(descriptor))))
+
+    def deny_chmod(descriptor: int, mode: int) -> None:
+        if descriptor in watched:
+            raise OSError("cannot mark Jig alias executable")
+        native_fchmod(descriptor, mode)
+
+    monkeypatch.setattr(
+        python_validation, "_open_jig_alias_write_stream", injected_writer
+    )
+    monkeypatch.setattr(os, "fchmod", deny_chmod)
+    with pytest.raises(python_validation.ProvisionError, match="suppressed"):
+        python_validation._publish_jig_tool_alias(target, BINARY, windows=False)
+    assert not target.exists()
+
+
 @pytest.mark.parametrize("authority", ["uv-manifest", "jig-binary"])
 def test_binary_authority_rejects_forged_fdopen_content(
     tmp_path: Path,

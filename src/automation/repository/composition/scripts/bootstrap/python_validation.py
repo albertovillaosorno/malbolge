@@ -2079,12 +2079,17 @@ def _publish_owned_jig_alias_stage(
     """Write and promote only the descriptor-bound private staging inode."""
     temporary, descriptor, identity = stage_receipt
     try:
-        with _open_jig_alias_write_stream(descriptor) as stream:
+        stream = _open_jig_alias_write_stream(descriptor)
+        write_completed = False
+        with stream:
             written = stream.write(payload)
             if type(written) is not int or written != len(payload):
                 _fail("Jig alias temporary write count mismatch")
             if not windows:
                 os.fchmod(stream.fileno(), JIG_BINARY_MODE)
+            write_completed = True
+        if not write_completed:
+            _fail("Jig alias staged write was suppressed")
     except ProvisionError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
