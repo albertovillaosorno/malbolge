@@ -530,9 +530,17 @@ def _extract_rpm_headers(
         if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
             _fail(f"LLVM development package has no /usr/include: {asset.name}")
         _reject_include_symlinks(include_root, require_single_link=True)
+        destination_include = destination / "include"
+        _require_physical_directories(destination_include, "staging")
+        if _preflight_path_status(
+            destination_include, destination_include.is_dir, "staging"
+        ):
+            _reject_include_symlinks(
+                destination_include, require_single_link=True
+            )
         _ = shutil.copytree(
             include_root,
-            destination / "include",
+            destination_include,
             dirs_exist_ok=True,
             symlinks=True,
         )

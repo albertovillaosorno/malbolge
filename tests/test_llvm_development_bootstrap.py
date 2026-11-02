@@ -496,6 +496,64 @@ def test_rpm_copy_rejects_externally_hardlinked_source_header(
 
 
 @pytest.mark.skipif(
+    os.name != POSIX_OS_NAME, reason="requires POSIX package extraction"
+)
+def test_rpm_overlay_does_not_overwrite_external_destination_hardlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A prior header alias cannot direct the next overlay write outside."""
+    identity = _identity(tmp_path)
+    outside = tmp_path / "outside-header.h"
+    _ = outside.write_bytes(FOREIGN_CONTENT_BYTES)
+    staged_header = (
+        tmp_path
+        / ".temp"
+        / f"llvm-development-provision-{LINUX_PLATFORM}"
+        / "development/include/clang/AST/AST.h"
+    )
+
+    def synthetic_cpio(
+        arguments: list[str],
+        *,
+        cwd: Path | None = None,
+        stdin: bytes | None = None,
+        pass_fds: tuple[int, ...] = (),
+    ) -> bytes:
+        del stdin, pass_fds
+        if arguments[0] == CPIO_EXECUTABLE and cwd is not None:
+            source = cwd / "usr/include/clang/AST/AST.h"
+            source.parent.mkdir(parents=True)
+            _ = source.write_bytes(HEADER_BYTES)
+            staged_header.parent.mkdir(parents=True)
+            _link_external_header(outside, staged_header)
+        return b""
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_payload",
+            _synthetic_hardlinked_payload,
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            _synthetic_hardlinked_members,
+        )
+        isolated.setattr(
+            llvm_development_validation, "_command_bytes", synthetic_cpio
+        )
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="hardlink",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert outside.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not identity.development_root.exists()
+
+
+@pytest.mark.skipif(
     os.name != POSIX_OS_NAME, reason="requires POSIX RPM descriptor"
 )
 @pytest.mark.parametrize("substitution", ["symlink", "physical"])
