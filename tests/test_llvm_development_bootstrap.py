@@ -185,6 +185,33 @@ def test_rpm_member_validation_rejects_parent_and_absolute_paths() -> None:
 
 
 @pytest.mark.parametrize(
+    "members",
+    [
+        ("usr/include/AST.h", "usr/include/AST.h"),
+        ("usr/include/AST.h", "./usr/include/AST.h"),
+        ("usr/include/AST.h", "usr//include/AST.h"),
+        ("usr/include/clang/", "usr/include/clang"),
+    ],
+)
+def test_rpm_member_validation_rejects_normalized_duplicate_names(
+    members: tuple[str, str],
+) -> None:
+    """One physical destination must not receive two RPM archive entries."""
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="duplicate",
+    ):
+        llvm_development_validation.validate_rpm_members(members)
+
+
+def test_rpm_member_validation_accepts_distinct_cpio_names() -> None:
+    """CPIO may contain separate directory and header entries."""
+    llvm_development_validation.validate_rpm_members(
+        ("./usr/include", "usr/include/clang/AST.h", "usr/include/llvm/Module.h")
+    )
+
+
+@pytest.mark.parametrize(
     "member",
     [
         "usr/include/name\t.h",
@@ -278,6 +305,40 @@ def test_cpio_listing_requires_complete_null_termination(
         match="terminator",
     ):
         _ = llvm_development_validation._cpio_members(b"payload")
+
+
+def test_rpm_duplicate_member_listing_rejects_before_extraction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ambiguous names cannot reach an extractor or published header tree."""
+    identity = _identity(tmp_path)
+    listing = (
+        b"usr/include/clang/AST/AST.h\0"
+        b"./usr/include/clang/AST/AST.h\0"
+    )
+
+    def synthetic_list(argv: list[str], **_kwargs: object) -> bytes:
+        assert argv == ["cpio", "-it", "--quiet", "--null"]
+        return listing
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_payload",
+            _synthetic_hardlinked_payload,
+        )
+        isolated.setattr(
+            llvm_development_validation, "_command_bytes", synthetic_list
+        )
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="duplicate destination",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert not identity.development_root.exists()
 
 
 def test_rpm_control_character_listing_rejects_before_extraction(

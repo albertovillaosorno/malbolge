@@ -135,12 +135,16 @@ def validate_rpm_members(members: tuple[str, ...]) -> None:
     """Reject CPIO member names that can escape repository-local staging."""
     if not members:
         _fail("LLVM RPM payload contains no CPIO members")
+    seen: set[PurePosixPath] = set()
     for member in members:
         if not member:
             _fail("LLVM RPM payload contains an empty CPIO member")
         if not member.isprintable():
             _fail("LLVM RPM CPIO member contains non-printable characters")
-        _ = _safe_member_path(member)
+        normalized = _safe_member_path(member)
+        if normalized in seen:
+            _fail("LLVM RPM CPIO member resolves to a duplicate destination")
+        seen.add(normalized)
 
 
 def _native_rpm_process_receipt(value: object, arguments: list[str]) -> bool:
