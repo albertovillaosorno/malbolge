@@ -1694,6 +1694,47 @@ def test_bootstrap_authority_fdopen_fault_closes_descriptor(
                 os.close(descriptor)
 
 
+def test_bootstrap_authority_rejects_forged_host_stream_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign os.fdopen wrapper cannot forge valid bytes for corrupt input."""
+    manifest = _write_rust_manifest(tmp_path)
+    legitimate = manifest.read_bytes()
+    corrupted = b"#" + legitimate[1:]
+    _ = manifest.write_bytes(corrupted)
+    real_fdopen = os.fdopen
+
+    class ForgedStream:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream: BinaryIO = stream
+
+        def __del__(self) -> None:
+            self.stream.close()
+
+        def __enter__(self) -> Self:
+            _ = self.stream.__enter__()
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, _limit: int) -> bytes:
+            return legitimate
+
+    def forged_fdopen(descriptor: int, mode: str) -> object:
+        # The wrapper owns its own duplicate; the reader closes only its fd.
+        return ForgedStream(cast("BinaryIO", real_fdopen(os.dup(descriptor), mode)))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fdopen", forged_fdopen)
+        with pytest.raises(project.InitializationError, match="native buffered stream"):
+            _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+    assert manifest.read_bytes() == corrupted
+
+
 @pytest.mark.parametrize("form", ["bytearray", "view", "subclass", "none"])
 def test_bootstrap_authority_rejects_nonnative_stream_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, form: str
@@ -1728,11 +1769,11 @@ def test_bootstrap_authority_rejects_nonnative_stream_read(
                 "none": lambda: None,
             }[form]()
 
-    def replaced_fdopen(descriptor: int, mode: str) -> object:
-        return ReplacedRead(real_fdopen(descriptor, mode))
+    def replaced_authority_stream(descriptor: int) -> BinaryIO:
+        return cast("BinaryIO", cast("object", ReplacedRead(real_fdopen(descriptor, "rb"))))
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(os, "fdopen", replaced_fdopen)
+        isolated.setattr(project, "_open_authority_stream", replaced_authority_stream)
         with pytest.raises(project.InitializationError, match="native bytes"):
             _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
 
@@ -1765,11 +1806,11 @@ def test_bootstrap_authority_preserves_stream_read_fault(
         def read(self, _limit: int) -> bytes:
             raise fault
 
-    def failing_fdopen(descriptor: int, mode: str) -> object:
-        return FailingRead(cast("BinaryIO", real_fdopen(descriptor, mode)))
+    def failing_authority_stream(descriptor: int) -> BinaryIO:
+        return cast("BinaryIO", cast("object", FailingRead(cast("BinaryIO", real_fdopen(descriptor, "rb")))))
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(os, "fdopen", failing_fdopen)
+        isolated.setattr(project, "_open_authority_stream", failing_authority_stream)
         with pytest.raises(
             project.InitializationError, match="cannot read bootstrap authority"
         ) as caught:

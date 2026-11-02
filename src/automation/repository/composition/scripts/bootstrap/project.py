@@ -39,6 +39,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
+import io
 import json
 import os
 from pathlib import Path
@@ -337,7 +338,7 @@ def _open_authority_stream(descriptor: int) -> BinaryIO:
 
     """
     try:
-        return cast("BinaryIO", os.fdopen(descriptor, "rb"))
+        opened = os.fdopen(descriptor, "rb")
     except BaseException as error:
         with suppress(OSError):
             os.close(descriptor)
@@ -345,6 +346,11 @@ def _open_authority_stream(descriptor: int) -> BinaryIO:
             message = "cannot open bootstrap authority stream"
             raise InitializationError(message) from error
         raise
+    if type(opened) is not io.BufferedReader:
+        with suppress(OSError):
+            os.close(descriptor)
+        _fail("bootstrap authority requires native buffered stream")
+    return cast("BinaryIO", opened)
 
 
 def _read_authority_bytes(path: Path) -> bytes:
