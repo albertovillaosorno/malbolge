@@ -62,6 +62,16 @@ and a false streaming digest. The tests show local constructor-consistency
 rejection, not independent cryptographic implementations, trusted OS state,
 or protection from jointly compromised hash constructors.
 
+Canonical JSON emission for sidecar pointers, portable checkpoint envelopes,
+checkpoint wire validation, and resume compatibility fingerprints now compares
+the public writer against the import-bound `json.JSONEncoder` class. The
+source-owned canonical spelling is calculated before invoking the public writer
+so a substituted `json.dumps`, `json.JSONEncoder`, or both cannot alter a
+fingerprint or serialized receipt, even when a provider restores itself.
+Foreign writer results and source-inconsistent encodings fail closed; matching
+delegating writers are supported. This boundary does not authenticate shared
+JSON internals or the original encoder implementation.
+
 Direct progress JSON parsing, filesystem reads, and operator inspection now
 reject a substituted `json.loads` result that fabricates valid native-looking
 progress identity fields. The original (at most 1 MiB) source is decoded through

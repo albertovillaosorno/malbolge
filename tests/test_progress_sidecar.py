@@ -1958,6 +1958,140 @@ def test_noncanonical_portable_envelope_never_decodes_state(
             _ = progress.decode_portable_checkpoint(durable, codec, malformed)
 
 
+@pytest.mark.parametrize("entrypoint", ("fingerprint", "sidecar", "checkpoint"))
+@pytest.mark.parametrize(
+    "providers", ("dumps-only", "encoder-only", "joint", "self-restoring")
+)
+def test_progress_canonical_json_writer_cannot_forge_resume_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+    providers: str,
+) -> None:
+    """Public writers cannot replace identity hashes or durable wire bytes."""
+    sidecar = _sidecar(tmp_path)
+    checkpointed = _checkpointed(sidecar, partial=None)
+    native_encoder = json.JSONEncoder
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring":
+                patch.setattr(json, "JSONEncoder", native_encoder)
+
+        def encode(self, _value: object) -> str:
+            return "{}"
+
+    def forged_dumps(_value: object, **_kwargs: object) -> str:
+        return "{}"
+
+    with monkeypatch.context() as patch:
+        if providers in ("encoder-only", "joint", "self-restoring"):
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers in ("dumps-only", "joint"):
+            patch.setattr(json, "dumps", forged_dumps)
+        with pytest.raises(
+            ERROR,
+            match="canonical JSON encoder provider differs from source",
+        ):
+            if entrypoint == "fingerprint":
+                _ = progress.resume_compatibility_fingerprint(_resume_identity())
+            elif entrypoint == "sidecar":
+                _ = progress.encode(sidecar)
+            else:
+                _ = progress.encode_portable_checkpoint(
+                    _resume_identity(),
+                    _checkpoint_position(checkpointed),
+                    "test-codec",
+                    payload=b"state",
+                )
+
+
+@pytest.mark.parametrize("entrypoint", ("fingerprint", "sidecar", "checkpoint"))
+def test_progress_source_equivalent_json_encoder_stays_admissible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A delegating public writer preserves original canonical evidence."""
+    sidecar = _sidecar(tmp_path)
+    checkpointed = _checkpointed(sidecar, partial=None)
+    original = json.JSONEncoder
+    baseline = (
+        progress.resume_compatibility_fingerprint(_resume_identity())
+        if entrypoint == "fingerprint"
+        else progress.encode(sidecar)
+        if entrypoint == "sidecar"
+        else progress.encode_portable_checkpoint(
+            _resume_identity(), _checkpoint_position(checkpointed),
+            "test-codec", payload=b"state",
+        )
+    )
+
+    class DelegatingEncoder(original):
+        """Source-faithful public provider."""
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", DelegatingEncoder)
+        actual = (
+            progress.resume_compatibility_fingerprint(_resume_identity())
+            if entrypoint == "fingerprint"
+            else progress.encode(sidecar)
+            if entrypoint == "sidecar"
+            else progress.encode_portable_checkpoint(
+                _resume_identity(), _checkpoint_position(checkpointed),
+                "test-codec", payload=b"state",
+            )
+        )
+        assert actual == baseline
+
+
+@pytest.mark.parametrize("entrypoint", ("sidecar", "checkpoint"))
+def test_progress_writer_rejects_targeted_wire_forgery_after_valid_fingerprint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A correct resume fingerprint does not authorize unrelated emitted bytes."""
+    sidecar = _sidecar(tmp_path)
+    checkpointed = _checkpointed(sidecar, partial=None)
+    original_dumps = json.dumps
+
+    def targeted_writer(document: object, **kwargs: object) -> str:
+        if type(document) is dict and (
+            "status" if entrypoint == "sidecar" else "payload_base64"
+        ) in document:
+            return "{}"
+        return cast("Callable[..., str]", original_dumps)(document, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", targeted_writer)
+        with pytest.raises(
+            ERROR, match="canonical JSON encoder provider differs from source"
+        ):
+            if entrypoint == "sidecar":
+                _ = progress.encode(sidecar)
+            else:
+                _ = progress.encode_portable_checkpoint(
+                    _resume_identity(),
+                    _checkpoint_position(checkpointed),
+                    "test-codec",
+                    payload=b"state",
+                )
+
+
+def test_progress_writer_foreign_return_is_typed_before_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign text receipt cannot run equality or encoding hooks."""
+
+    class ForeignWriterText:
+        def __eq__(self, _other: object) -> bool:
+            pytest.fail("foreign writer equality hook executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", lambda _value, **_kwargs: ForeignWriterText())
+        with pytest.raises(
+            ERROR, match="canonical JSON encoder provider differs from source"
+        ):
+            _ = progress.resume_compatibility_fingerprint(_resume_identity())
+
+
 def test_resume_fingerprint_rejects_invalid_direct_identity() -> None:
     """Fingerprinting validates resume identity before hashing."""
     identity = progress.ResumeIdentity(

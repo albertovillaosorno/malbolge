@@ -75,6 +75,7 @@ if TYPE_CHECKING:
 
 _NATIVE_PATH_TYPE: Final = type(Path())
 _NATIVE_JSON_DECODER: Final = json.JSONDecoder
+_NATIVE_JSON_ENCODER: Final = json.JSONEncoder
 SCHEMA_ID: Final = "malbolge-progress-v1"
 CHECKPOINT_SCHEMA_ID: Final = "malbolge-checkpoint-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
@@ -767,6 +768,28 @@ def _fail_with_source(message: str, source: Exception) -> Never:
     raise failure from source
 
 
+def _canonical_json_text(document: object) -> str:
+    """Require public canonical JSON to agree with import-bound source encoding."""
+    try:
+        # Encode the original document before invoking the replaceable writer.
+        # That writer cannot mutate an input and silently rewrite its receipt.
+        source = _NATIVE_JSON_ENCODER(
+            ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        ).encode(document)
+        observed = json.dumps(
+            document, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        )
+    except ProgressSidecarError:
+        raise
+    except Exception as error:
+        _fail_with_source(
+            f"invalid canonical JSON writer: {_host_error_detail(error)}", error
+        )
+    if type(source) is not str or type(observed) is not str or source != observed:
+        _fail("canonical JSON encoder provider differs from source")
+    return source
+
+
 def _admit_filesystem_path(text: str, context: str) -> str:
     """Reject strings the host filesystem cannot interpret as pathnames.
 
@@ -907,12 +930,7 @@ def encode_portable_checkpoint(
         state_codec,
         payload=payload,
     )
-    text = json.dumps(
-        document,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    text = _canonical_json_text(document)
     return (text + "\n").encode("utf-8")
 
 
@@ -1036,12 +1054,7 @@ def _validate_checkpoint_wire_spelling(
     checkpoint: bytes,
 ) -> None:
     """Reject noncanonical envelope JSON before interpreting opaque state."""
-    canonical = json.dumps(
-        asdict(envelope),
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    canonical = _canonical_json_text(asdict(envelope))
     if (canonical + "\n").encode("utf-8") != checkpoint:
         _fail("portable checkpoint is not canonical")
 
@@ -1138,12 +1151,7 @@ def resume_compatibility_fingerprint(identity: ResumeIdentity) -> str:
 
     """
     validated = _validate_resume_identity(identity)
-    encoded = json.dumps(
-        asdict(validated),
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("ascii")
+    encoded = _canonical_json_text(asdict(validated)).encode("ascii")
     return COMPATIBILITY_PREFIX + _checked_sha256(encoded).hex()
 
 
@@ -1828,12 +1836,7 @@ def encode(sidecar: ProgressSidecar) -> bytes:
         Sorted compact JSON with one trailing newline.
 
     """
-    text = json.dumps(
-        to_document(sidecar),
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    text = _canonical_json_text(to_document(sidecar))
     return (text + "\n").encode("utf-8")
 
 
