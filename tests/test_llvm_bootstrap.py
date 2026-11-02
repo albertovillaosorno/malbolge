@@ -105,6 +105,7 @@ def test_linux_import_materializes_local_runtime_and_neutral_aliases(
     wrapper = (root / "jig-bin/clang.bin").read_text(encoding="utf-8")
     assert WRAPPER_LIBRARY_PATH in wrapper
     assert WRAPPER_CLANG_EXEC in wrapper
+    assert (root / "jig-bin/clang.bin").stat().st_mode & 0o111
     assert (root / llvm_validation.LLVM_IMPORT_MARKER).is_file()
     assert llvm_validation.import_linux_llvm(tmp_path, observation) == root
 
@@ -272,6 +273,62 @@ def test_windows_aliases_preserve_existing_executable_bytes(
     assert aliases[1].read_bytes() == TIDY_BYTES
     assert aliases[2].read_bytes() == FORMAT_BYTES
     assert llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
+
+
+@pytest.mark.parametrize("alias_kind", ("symlink", "hardlink"))
+def test_linux_wrapper_writer_refuses_linked_leaf(
+    tmp_path: Path, alias_kind: str
+) -> None:
+    """A reserved wrapper leaf must never overwrite an outside linked file."""
+    destination = tmp_path / "clang.bin"
+    external = tmp_path / "outside-wrapper"
+    original = b"external bytes must be preserved"
+    _ = external.write_bytes(original)
+    try:
+        if alias_kind == "symlink":
+            _ = destination.symlink_to(external)
+        else:
+            os.link(external, destination)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"file aliases unavailable: {error}")
+
+    with pytest.raises(llvm_validation.LlvmImportError, match="wrapper"):
+        llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+            destination, "#!/bin/sh\n"
+        )
+    assert external.read_bytes() == original
+
+
+def test_linux_wrapper_writer_rejects_leaf_inserted_at_exclusive_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Even a last-moment symlink cannot redirect executable wrapper bytes."""
+    wrapper = tmp_path / "clang.bin"
+    external = tmp_path / "external-wrapper"
+    _ = external.write_bytes(b"protected wrapper destination")
+    native_open = os.open
+    inserted = False
+
+    def racing_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        nonlocal inserted
+        if Path(path) == wrapper:
+            inserted = True
+            try:
+                _ = wrapper.symlink_to(external)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"symlinks unavailable: {error}")
+        return native_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", racing_open)
+    with pytest.raises(llvm_validation.LlvmImportError, match="exclusive"):
+        llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+            wrapper, "#!/bin/sh\n"
+        )
+    assert inserted
+    assert wrapper.is_symlink()
+    assert external.read_bytes() == b"protected wrapper destination"
 
 
 def test_inspection_requires_completed_neutral_aliases(tmp_path: Path) -> None:
@@ -1065,21 +1122,15 @@ def test_linux_import_rejects_incomplete_wrapper_acknowledgement(
 ) -> None:
     """An incomplete wrapper write must not publish an LLVM toolchain."""
     observation = _host_observation(tmp_path)
-    real_write = Path.write_text
+    real_write = os.write
 
-    def wrong_write(
-        path: Path,
-        data: str,
-        *,
-        encoding: str,
-        newline: str,
-    ) -> int:
-        if path.name == _CLANG_ALIAS:
-            _ = real_write(path, data[:-1], encoding=encoding, newline=newline)
+    def wrong_write(descriptor: int, data: bytes) -> int:
+        if data.startswith(b"#!/bin/sh\n"):
+            _ = real_write(descriptor, data[:-1])
             return _invalid_count(invalid_count, len(data))
-        return real_write(path, data, encoding=encoding, newline=newline)
+        return real_write(descriptor, data)
 
-    monkeypatch.setattr(Path, "write_text", wrong_write)
+    monkeypatch.setattr(os, "write", wrong_write)
     with pytest.raises(llvm_validation.LlvmImportError, match="write count"):
         _ = llvm_validation.import_linux_llvm(tmp_path, observation)
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()

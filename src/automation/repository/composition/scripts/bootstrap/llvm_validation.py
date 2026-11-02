@@ -294,10 +294,32 @@ def _linux_wrapper(tool: str) -> str:
 
 
 def _write_linux_alias(path: Path, text: str) -> None:
-    """Require the complete wrapper before admitting it as an executable."""
-    written = path.write_text(text, encoding="utf-8", newline="\n")
-    if type(written) is not int or written != len(text):
-        _fail(f"LLVM wrapper write count mismatch: {path.name}")
+    """Publish a complete executable wrapper through an exclusive descriptor."""
+    if not _physical_directory(path.parent):
+        _fail("LLVM wrapper parent must be a physical directory")
+    content = text.encode("utf-8")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM wrapper exclusive creation failed: {type(error).__name__}"
+        ) from error
+    try:
+        try:
+            written = os.write(descriptor, content)
+            if type(written) is not int or written != len(content):
+                _fail(f"LLVM wrapper write count mismatch: {path.name}")
+            # A path chmod would follow an alias swapped in after publication.
+            os.fchmod(descriptor, 0o755)
+        finally:
+            os.close(descriptor)
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM wrapper write failed: {type(error).__name__}"
+        ) from error
 
 
 def _existing_import_marker(root: Path, platform_id: str) -> bool:
@@ -360,7 +382,6 @@ def _write_linux_aliases(root: Path) -> tuple[Path, ...]:
     for tool in _TOOL_NAMES:
         alias = alias_root / f"{tool}.bin"
         _write_linux_alias(alias, _linux_wrapper(tool))
-        alias.chmod(0o755)
         aliases.append(alias)
     return tuple(aliases)
 
