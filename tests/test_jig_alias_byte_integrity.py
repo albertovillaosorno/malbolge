@@ -46,6 +46,48 @@ def _alias_target(tmp_path: Path) -> Path:
     return target
 
 
+def test_jig_alias_source_rejects_external_hardlink(
+    tmp_path: Path,
+) -> None:
+    """Physical alias source bytes cannot be shared with outside hardlinks."""
+    external = tmp_path / "outside-tool"
+    _ = external.write_bytes(ALIAS_BYTES)
+    source = tmp_path / "ruff-native"
+    try:
+        os.link(external, source)
+    except OSError as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    with pytest.raises(
+        python_validation.ProvisionError, match="Jig alias source.*single-link"
+    ):
+        _ = python_validation._read_jig_binary_source(source)
+    assert external.read_bytes() == ALIAS_BYTES
+
+
+@pytest.mark.parametrize("payload", [
+    bytearray(ALIAS_BYTES), memoryview(ALIAS_BYTES),
+])
+def test_jig_alias_source_rejects_nonnative_read_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: object
+) -> None:
+    """A substituted binary reader cannot authorize nonnative source bytes."""
+    source = tmp_path / "ruff-native"
+    _ = source.write_bytes(ALIAS_BYTES)
+
+    def fake_open_read(
+        _source: Path, _expected: tuple[int, int, int, int, int]
+    ) -> bytes:
+        return cast("bytes", payload)
+
+    monkeypatch.setattr(
+        python_validation, "_read_open_jig_binary", fake_open_read
+    )
+    with pytest.raises(
+        python_validation.ProvisionError, match="Jig alias source.*native bytes"
+    ):
+        _ = python_validation._read_jig_binary_source(source)
+
+
 def test_jig_alias_rejects_forged_writable_stream(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

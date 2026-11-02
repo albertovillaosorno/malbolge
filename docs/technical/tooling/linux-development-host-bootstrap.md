@@ -104,9 +104,11 @@ native launcher.
 The pytest delegation also binds `PYTHONPYCACHEPREFIX` below `.cache`. Ruff
 remains a byte-identical alias, and Windows retains native binary aliases for
 all three tools. Alias publication now admits only physical tool sources and
-neutral targets with no linked parent/leaf, checks source regular-file metadata
-and a 256-MiB copy limit, and verifies that copied native bytes came from one
-stable descriptor snapshot. A failed source-descriptor stream wrapper
+neutral targets with no linked parent/leaf, checks source single-link regular-
+file metadata and a 256-MiB copy limit, and verifies that exact native bytes
+came from one stable source descriptor snapshot. External source hardlinks,
+non-native read payloads, and changed descriptor links are rejected. A failed
+source-descriptor stream wrapper
 closes that owned descriptor and reports a typed bootstrap error retaining
 the original host cause instead of leaking a handle or raw host exception. Existing alias destinations are replaced
 through private temporary files rather than followed or truncated; preflight rejects

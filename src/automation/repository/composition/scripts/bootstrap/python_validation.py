@@ -1268,6 +1268,8 @@ def _jig_source_identity(source: Path) -> tuple[int, int, int, int, int]:
     status = _check_jig_alias_path(source, directory=False, required=True)
     if status is None:
         _fail(f"missing provisioned tool for Jig alias: {source}")
+    if status.st_nlink != 1:
+        _fail("Jig alias source must be single-link")
     if status.st_size < 0 or status.st_size > MAX_JIG_TOOL_BINARY_BYTES:
         _fail(f"Jig alias source exceeds byte limit: {source}")
     return (
@@ -1352,9 +1354,13 @@ def _read_open_jig_binary(
         observed = os.fstat(stream.fileno())
         if not stat.S_ISREG(observed.st_mode):
             _fail("Jig alias source must be a regular file")
+        if observed.st_nlink != 1:
+            _fail("Jig alias source descriptor must be single-link")
         if _jig_file_identity(observed) != expected:
             _fail("Jig alias source changed before read")
         data = stream.read(MAX_JIG_TOOL_BINARY_BYTES + 1)
+        if type(data) is not bytes:
+            _fail("Jig alias source read requires native bytes")
         if (
             len(data) != expected[2]
             or _jig_file_identity(os.fstat(stream.fileno())) != expected
@@ -1383,6 +1389,8 @@ def _read_jig_binary_source(source: Path) -> bytes:
             f"Jig alias source read failed: {source}: {type(error).__name__}"
         )
         raise ProvisionError(message) from error
+    if type(data) is not bytes:
+        _fail("Jig alias source read must return native bytes")
     if _jig_source_identity(source) != expected:
         _fail("Jig alias source changed during read")
     return data
