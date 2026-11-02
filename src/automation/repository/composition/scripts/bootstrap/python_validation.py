@@ -307,7 +307,9 @@ def _read_uv_manifest_bytes(path: Path) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
-    with _open_owned_binary_stream(descriptor) as stream:
+    stream = _open_owned_binary_stream(descriptor)
+    read_completed = False
+    with stream:
         if _uv_manifest_identity(os.fstat(stream.fileno())) != expected:
             _fail("uv toolchain manifest changed before read")
         content = stream.read(MAX_UV_MANIFEST_BYTES + 1)
@@ -319,6 +321,9 @@ def _read_uv_manifest_bytes(path: Path) -> bytes:
             or _uv_manifest_identity(path.lstat()) != expected
         ):
             _fail("uv toolchain manifest changed during read")
+        read_completed = True
+    if not read_completed:
+        _fail("uv toolchain manifest read was suppressed")
     _reject_uv_parent_redirects(path)
     return content
 
