@@ -1918,6 +1918,165 @@ def test_host_c_retained_json_parser_types_unexpected_faults(
     assert caught.value.__cause__ is fault
 
 
+@pytest.mark.parametrize("leaf", ("artifacts.json", "failures.json", "resource-controls.json"))
+@pytest.mark.parametrize(
+    "source",
+    [
+        b'{"schema_version":1,"failures":{"trial":"failed"}}',
+        b'{"schema_version":1,"failures":{"trial":"failed", "trial":"changed"}}',
+        b'{"schema_version":1,,}',
+    ],
+)
+def test_host_c_retained_json_rejects_forged_native_decoder_tree(
+    source: bytes, monkeypatch: pytest.MonkeyPatch, leaf: str
+) -> None:
+    """Retained source bytes, not substituted parser values, govern audit sidecars."""
+    expected = {"schema_version": 1, "failures": {"trial": "failed"}}
+    forged = {"schema_version": 1, "failures": {"trial": "accepted"}}
+    assert expected != forged
+    monkeypatch.setattr(
+        reference_audit.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: source,
+    )
+    monkeypatch.setattr(reference_audit.json, "loads", lambda *_args, **_kwargs: forged)
+    fingerprints: dict[str, bytes | None] = {}
+    with pytest.raises(reference_audit.ReferenceAuditError, match="source|not valid|duplicate"):
+        _ = reference_audit._read_json(
+            f".temp/arena-host-c-study-test/{leaf}",
+            limit=reference_audit.MAX_FAILURES_BYTES,
+            fingerprints=fingerprints,
+        )
+    assert not fingerprints
+
+
+def test_host_c_retained_json_rejects_foreign_nested_key_before_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign string key equality cannot execute during source corroboration."""
+
+    class ForeignKey(str):  # ruff: ignore[subclass-builtin]
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign retained JSON key equality called")
+
+    source = b'{"schema_version":1,"failures":{"trial":"failed"}}'
+    substituted = {"schema_version": 1, "failures": {ForeignKey("trial"): "failed"}}
+    monkeypatch.setattr(
+        reference_audit.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: source,
+    )
+    monkeypatch.setattr(
+        reference_audit.json, "loads", lambda *_args, **_kwargs: substituted
+    )
+    with pytest.raises(reference_audit.ReferenceAuditError, match="non-native|source"):
+        _ = reference_audit._read_json(
+            ".temp/arena-host-c-study-test/failures.json",
+            limit=reference_audit.MAX_FAILURES_BYTES,
+            fingerprints={},
+        )
+
+
+def test_host_c_retained_json_allows_source_equivalent_decoder_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent JSON providers remain compatible with source byte identity."""
+    source = b'{"schema_version":1,"failures":{"trial":"failed"}}'
+    native = json.loads
+
+    def delegated(source_text: str, **kwargs: Any) -> object:
+        return native(source_text, **kwargs)
+
+    monkeypatch.setattr(
+        reference_audit.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: source,
+    )
+    monkeypatch.setattr(reference_audit.json, "loads", delegated)
+    fingerprints: dict[str, bytes | None] = {}
+    observed = reference_audit._read_json(
+        ".temp/arena-host-c-study-test/failures.json",
+        limit=reference_audit.MAX_FAILURES_BYTES,
+        fingerprints=fingerprints,
+    )
+    assert observed == {"schema_version": 1, "failures": {"trial": "failed"}}
+    assert fingerprints == {
+        ".temp/arena-host-c-study-test/failures.json": sha256(source).digest()
+    }
+
+
+@pytest.mark.parametrize(
+    ("source", "forged"),
+    [
+        (b'{"value":-0.0}', {"value": 0.0}),
+        (b'{"value":1}', {"value": True}),
+    ],
+)
+def test_host_c_retained_json_rejects_scalar_type_or_sign_drift(
+    monkeypatch: pytest.MonkeyPatch, source: bytes, forged: object
+) -> None:
+    """Source-preserving comparisons distinguish boolean, integer and -0.0."""
+    monkeypatch.setattr(
+        reference_audit.evidence, "read_bounded_regular", lambda *_args, **_kwargs: source
+    )
+    monkeypatch.setattr(reference_audit.json, "loads", lambda *_args, **_kwargs: forged)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="differs from source"):
+        _ = reference_audit._read_json(
+            ".temp/arena-host-c-study-test/failures.json",
+            limit=reference_audit.MAX_FAILURES_BYTES,
+            fingerprints={},
+        )
+
+
+def test_host_c_retained_json_checks_saved_parser_even_after_self_restore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A decoder cannot erase evidence of its substitution while executing."""
+    source = b'{"schema_version":1,"failures":{}}'
+    monkeypatch.setattr(
+        reference_audit.evidence, "read_bounded_regular", lambda *_args, **_kwargs: source
+    )
+    native = reference_audit._NATIVE_JSON_LOADS
+
+    def forged(*_args: object, **_kwargs: object) -> object:
+        monkeypatch.setattr(reference_audit.json, "loads", native)
+        return {"schema_version": 1, "failures": {"forged": "accepted"}}
+
+    monkeypatch.setattr(reference_audit.json, "loads", forged)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="differs from source"):
+        _ = reference_audit._read_json(
+            ".temp/arena-host-c-study-test/failures.json",
+            limit=reference_audit.MAX_FAILURES_BYTES,
+            fingerprints={},
+        )
+
+
+def test_host_c_retained_json_does_not_return_foreign_mutable_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent foreign decoder receipts must not own returned audit data."""
+    source = b'{"schema_version":1,"failures":{"trial":"failed"}}'
+    aliased = {"schema_version": 1, "failures": {"trial": "failed"}}
+    monkeypatch.setattr(
+        reference_audit.evidence, "read_bounded_regular", lambda *_args, **_kwargs: source
+    )
+    monkeypatch.setattr(reference_audit.json, "loads", lambda *_args, **_kwargs: aliased)
+    observed = reference_audit._read_json(
+        ".temp/arena-host-c-study-test/failures.json",
+        limit=reference_audit.MAX_FAILURES_BYTES,
+        fingerprints={},
+    )
+    aliased["failures"]["trial"] = "accepted"
+    assert observed == {"schema_version": 1, "failures": {"trial": "failed"}}
+    assert observed is not aliased
+
+
 def test_host_c_audit_native_failure_retains_causal_details(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

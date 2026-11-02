@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import shutil
 import stat
@@ -46,7 +47,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from itertools import starmap
 from pathlib import Path
-from typing import Any, Never
+from typing import Any, Never, cast
 
 from benchmarks.arena import (
     analyze,
@@ -59,6 +60,7 @@ from benchmarks.challenges import generate
 from scripts.validate import experiment_manifest
 
 _ROOT = Path(__file__).resolve().parents[2]
+_NATIVE_JSON_LOADS = json.loads
 MAX_ARTIFACT_INDEX_BYTES = 1024 * 1024
 PART_COUNT = 3
 ROOT_PART = ".temp"
@@ -250,16 +252,63 @@ def _source_fingerprint(raw: bytes) -> bytes:
     return result
 
 
+def _matches_native_json_tree(received: object, original: object) -> bool:
+    """Corroborate JSON decoded values without foreign equality methods.
+
+    Returns:
+        Whether the substituted parser returned the exact original JSON tree.
+
+    """
+    kind = type(original)
+    if type(received) is not kind:
+        return False
+    if kind is dict:
+        received_map = cast("dict[object, object]", received)
+        original_map = cast("dict[object, object]", original)
+        if any(type(key) is not str for key in received_map):
+            _fail("host-C retained JSON decoder returned non-native key")
+        return len(received_map) == len(original_map) and all(
+            key in received_map and _matches_native_json_tree(received_map[key], value)
+            for key, value in original_map.items()
+        )
+    if kind is list:
+        received_items = cast("list[object]", received)
+        original_items = cast("list[object]", original)
+        return len(received_items) == len(original_items) and all(
+            _matches_native_json_tree(left, right)
+            for left, right in zip(received_items, original_items, strict=True)
+        )
+    if kind is float:
+        left = cast("float", received)
+        right = cast("float", original)
+        return left == right and (
+            right != 0.0 or math.copysign(1.0, left) == math.copysign(1.0, right)
+        )
+    return kind in (str, int, bool, type(None)) and received == original
+
+
 def _read_json(
     relative: str, *, limit: int, fingerprints: dict[str, bytes | None]
 ) -> object:
     raw = _read_bounded_evidence(relative, limit=limit)
     try:
-        parsed = json.loads(
-            raw.decode("utf-8"),
+        source_text = raw.decode("utf-8")
+        decoder = json.loads
+        parsed = decoder(
+            source_text,
             object_pairs_hook=_unique_pairs,
             parse_constant=_reject_nonfinite,
         )
+        if decoder is not _NATIVE_JSON_LOADS:
+            original = _NATIVE_JSON_LOADS(
+                source_text,
+                object_pairs_hook=_unique_pairs,
+                parse_constant=_reject_nonfinite,
+            )
+            if not _matches_native_json_tree(parsed, original):
+                _fail(f"host-C retained JSON decoder differs from source: {relative}")
+            # Never return a mutable object still owned by a substituted decoder.
+            parsed = original
     except ReferenceAuditError:
         raise
     except Exception as error:

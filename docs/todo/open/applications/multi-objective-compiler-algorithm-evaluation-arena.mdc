@@ -459,6 +459,14 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   failures; real pilot regressions cover top-level and nested duplicate keys,
   forged nonfinite policy claims, and injected scanner recursion errors.
   This strengthens file interpretation, not measurement provenance.
+  Host-C sidecar parsing now corroborates substituted native-looking JSON
+  return values against the import-bound parser of the actual retained bytes
+  before fingerprinting or audit acceptance. Regression cases cover
+  altered nested values, duplicate keys, malformed source, foreign keys,
+  scalar/sign drift and provider self-restoration. Equivalent providers remain
+  valid; the audit consumes an independently owned source-derived tree so
+  later changes to helper-owned objects cannot rewrite accepted fields.
+  Neither check authenticates historical performance or the Python runtime.
 - The independent host-C audit now enforces the producer's single repetition
   plan across all difficulties: each level must retain the same consecutive
   trial indices, even if both arms remain paired within an uneven level.

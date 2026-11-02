@@ -782,6 +782,15 @@ The artifact, failure, and resource-control JSON sidecars now reject
 ambiguous duplicate names at every depth and nonfinite numeric literals;
 scanner recursion failures also produce a typed audit rejection. These are
 read-admission safeguards, not proof of historical measurements or authorship.
+Retained host-C JSON sidecar decoding additionally checks substituted
+`json.loads` results against an import-bound standard-library interpretation
+of the same bounded source text. Only matching native trees can enter audit
+policy or artifact decisions; foreign key hooks, mismatched scalars, altered
+nested values and a decoder that restores its module attribute during its
+own call are rejected. The auditor retains an independently decoded tree,
+so a mutable return owned by the substituted provider cannot later alter
+accepted audit fields. This checks local source-value consistency, not the
+origin of the sidecars or integrity of Python libraries before import.
 The mode never executes a retained binary; new oracle harnesses run only from
 canonical generator C. Exact reproducibility assumes the same native toolchain,
 linker, libraries and host ABI, and does not reproduce recorded wall times or
