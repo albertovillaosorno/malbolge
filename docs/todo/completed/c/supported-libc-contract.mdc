@@ -81,6 +81,10 @@ routines without hidden host shortcuts.
   source, including routine signature and semantics data. Five red-first direct,
   file, malformed-source, duplicate-key and foreign-key cases reject; an
   equivalent delegating decoder remains accepted without foreign equality hooks.
+- A further 2026-11-02 parser fix captures the libc JSON decoder before
+  invoking it, rejecting self-restoring forged contract receipts, and uses an
+  independently decoded source tree for accepted equivalent wrappers. Three
+  red-first text/file/mutable-alias regressions now pass.
 - A second 2026-11-02 follow-up binds Clang AST JSON admission to original
   stdout under substituted public decoders. Six red-first direct/process,
   malformed/duplicate/nonfinite and nested hostile-key cases now reject; a

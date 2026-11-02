@@ -308,10 +308,13 @@ def loads_document(text: str) -> JsonObject:
             _fail("C libc JSON exceeds byte limit")
     except UnicodeEncodeError as error:
         raise CLibcValidationError("C libc JSON requires strict UTF-8") from error
+    # Capture the provider before invocation: a substituted decoder may
+    # restore the public JSON loader while returning a fabricated native tree.
+    decoder = json.loads
     try:
         parsed = cast(
             "object",
-            json.loads(text, object_pairs_hook=_reject_duplicate_pairs),
+            decoder(text, object_pairs_hook=_reject_duplicate_pairs),
         )
     except CLibcValidationError:
         raise
@@ -321,7 +324,7 @@ def loads_document(text: str) -> JsonObject:
     # A substituted public decoder can yield native, schema-valid values that
     # do not occur in the source. Corroborate against the import-bound native
     # parser, retaining duplicate-key rejection and original syntax failures.
-    if json.loads is not _NATIVE_JSON_LOADS:
+    if decoder is not _NATIVE_JSON_LOADS:
         try:
             source = cast(
                 "object",
@@ -335,6 +338,9 @@ def loads_document(text: str) -> JsonObject:
             raise
         except (ValueError, RecursionError, TypeError, RuntimeError) as error:
             raise CLibcValidationError("invalid C libc JSON") from error
+        # An equivalent adapter still owns its returned mutable objects.
+        # Use the independently parsed source tree for admitted identity.
+        document = _mapping(source, "C libc document")
     return document
 
 

@@ -278,6 +278,71 @@ def test_libc_json_parser_rejects_substituted_native_routine_semantics(
             _ = c_libc.load_document(path)
 
 
+@pytest.mark.parametrize("entrypoint", ["text", "file"])
+def test_libc_json_parser_rejects_self_restoring_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    entrypoint: str,
+) -> None:
+    """A forged loader may not restore json.loads to hide its substitution."""
+    source = LIBC_PATH.read_text(encoding="utf-8")
+    native = json.loads
+    forged = cast("c_libc.JsonObject", native(source))
+    routines = cast("list[c_libc.JsonValue]", forged["available_routines"])
+    first = cast("dict[str, c_libc.JsonValue]", routines[0])
+    first["signature"] = "void forged_libc(void)"
+
+    def restore_and_forge(_text: str, **_kwargs: object) -> object:
+        monkeypatch.setattr(json, "loads", native)
+        return forged
+
+    monkeypatch.setattr(json, "loads", restore_and_forge)
+    with pytest.raises(
+        c_libc.CLibcValidationError, match="JSON decoder provider differs"
+    ):
+        if entrypoint == "text":
+            _ = c_libc.loads_document(source)
+        else:
+            path = tmp_path / "libc.json"
+            _ = path.write_text(source, encoding="utf-8")
+            _ = c_libc.load_document(path)
+
+
+def test_libc_equivalent_json_decoder_does_not_share_mutable_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The caller never retains the substituted decoder's mutable document."""
+    source = LIBC_PATH.read_text(encoding="utf-8")
+    native = json.loads
+    receipts: list[object] = []
+
+    def delegated(text: str, *, object_pairs_hook: object) -> object:
+        parsed = cast(
+            "object",
+            native(
+                text,
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]",
+                    object_pairs_hook,
+                ),
+            ),
+        )
+        receipts.append(parsed)
+        return parsed
+
+    monkeypatch.setattr(json, "loads", delegated)
+    admitted = c_libc.loads_document(source)
+    assert admitted == receipts[0]
+    assert admitted is not receipts[0]
+    foreign = cast("c_libc.JsonObject", receipts[0])
+    foreign_routines = cast("list[c_libc.JsonValue]", foreign["available_routines"])
+    foreign_first = cast("dict[str, c_libc.JsonValue]", foreign_routines[0])
+    foreign_first["signature"] = "void forged_libc(void)"
+    retained_routines = cast("list[c_libc.JsonValue]", admitted["available_routines"])
+    retained_first = cast("dict[str, c_libc.JsonValue]", retained_routines[0])
+    assert retained_first["signature"] != foreign_first["signature"]
+
+
 def test_libc_json_parser_corroborates_syntax_despite_forged_document(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
