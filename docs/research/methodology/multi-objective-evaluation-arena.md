@@ -1093,6 +1093,11 @@ The original study records remain the result authority.
   receipts previously reached child writes and potentially redirected cleanup;
   they now reject without touching the claimed foreign path. These observed
   checks do not prove race-free ownership or an atomic directory snapshot.
+  The host-C study also binds its workspace scanner to the imported native
+  `os.scandir` provider before trusting an empty-directory claim. Two red-first
+  regressions reject both a foreign false-empty iterator with a normal close
+  receipt and a native iterator redirected to an unrelated empty directory.
+  This is a local scanner-identity check, not atomic filesystem attestation.
 - Host-C reference measurement now uses GNU `time` per direct stage to
   report exact `peak_rss_bytes` (maximum observed Linux `ru_maxrss` after
   KiB-to-byte conversion), retained as a third Pareto cost. Invalid, zero,

@@ -468,6 +468,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   redirected scan entry, forged cleanup responses, and retained foreign
   scratch contents. This is local process-dependency admission, not
   proof of race-free ownership, deletion, or historical evidence provenance.
+  Two further red-first host-C study tests reject a false-empty foreign scan
+  iterator and a native scan iterator substituted from an unrelated directory
+  by requiring the original scanner provider identity. Neither is an atomic
+  observation of directory contents or a proof of filesystem provenance.
 - Direct host-C replay, rebuild and measurement now retain failed workspace
   body errors across substituted suppressing context exits: three red-first
   regressions reject a false successful digest, missing rebuild result, and
