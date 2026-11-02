@@ -988,6 +988,11 @@ return an exact native boolean before the `DictReader` is constructed, and
 unexpected dependency errors are converted to typed import failures without
 formatting caller-supplied exceptions. Red-first tests reject nonnative and
 hostile preflight receipts; this does not authenticate the original timing.
+The historical-pairs operator now also converts unexpected ordinary importer
+and JSON-publisher failures to exit status two, without printing a partial
+report or formatting foreign exception hooks. Four red-first CLI regressions
+cover both phases and hostile exception arguments/subtypes. This is local
+operator error containment, not historical producer or timing attestation.
 
 The prefix-decomposition study reports 8,836 versus 8,742 verifier calls,
 with baseline/candidate timing medians of 831,921,051 and 835,180,632 ns.

@@ -711,6 +711,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   preflight only with an exact boolean verdict. Unexpected preflight errors
   become typed import failures without formatting foreign exceptions;
   synthetic red-first regressions demonstrate these boundaries.
+  The standalone historical-pairs CLI now treats unexpected ordinary source
+  and report-publisher faults as nonzero operator failures without partial
+  JSON or foreign exception formatting. Four red-first cases and 147 complete
+  adapter tests pass; source timing remains reported, not authenticated.
 - Both standalone and evidence-aware arena preflight now reject Windows-
   reserved components in reported `experiment_manifest` and `raw_sample`
   paths on every host. Twenty-two red-first cases cover device aliases,
