@@ -42,7 +42,7 @@ from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace, TracebackType
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Self, cast, override
 
 import pytest
 from scripts.bootstrap import llvm_development_validation
@@ -615,6 +615,199 @@ def test_development_provision_rechecks_staging_after_download(
     assert list(external.iterdir()) == [sentinel]
     assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
     assert owned_parent.is_dir()
+    assert not identity.development_root.exists()
+
+
+def test_development_publication_rejects_late_destination_parent_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The final move cannot publish into a redirected parent after preflight."""
+    if os.name != "posix":
+        pytest.skip("POSIX directory publication boundary")
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    outside, sentinel = _external_sentinel(tmp_path)
+    destination_parent = identity.development_root.parent
+    parked = destination_parent.with_name("parked-development-parent")
+    native_validate = llvm_development_validation._reject_include_symlinks
+    checks = 0
+
+    def swap_after_final_check(
+        include_root: Path, *, require_single_link: bool = False
+    ) -> None:
+        nonlocal checks
+        native_validate(include_root, require_single_link=require_single_link)
+        if require_single_link:
+            checks += 1
+        if checks == 2:
+            destination_parent.rename(parked)
+            try:
+                _ = destination_parent.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"directory links unavailable: {error}")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation,
+            "_reject_include_symlinks",
+            swap_after_final_check,
+        )
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="destination|parent",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                root, identity, downloader=_downloader([]), extractor=_extract_headers
+            )
+    assert checks == 2
+    assert list(outside.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not (outside / identity.development_root.name).exists()
+
+
+def test_development_publication_uses_pinned_parent_during_final_move(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late parent alias cannot redirect a descriptor-relative final move."""
+    if os.name != "posix":
+        pytest.skip("POSIX directory publication boundary")
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    outside, sentinel = _external_sentinel(tmp_path)
+    destination_parent = identity.development_root.parent
+    parked = destination_parent.with_name("parked-development-parent")
+    native_rename = os.rename
+    attacked = False
+
+    def swap_at_rename(
+        source: str | os.PathLike[str],
+        target: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal attacked
+        if (
+            source == "development"
+            and target == identity.development_root.name
+            and src_dir_fd is not None
+            and dst_dir_fd is not None
+        ):
+            native_rename(destination_parent, parked)
+            _ = destination_parent.symlink_to(outside, target_is_directory=True)
+            attacked = True
+        native_rename(
+            source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "rename", swap_at_rename)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="destination|parent",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                root, identity, downloader=_downloader([]), extractor=_extract_headers
+            )
+    assert attacked
+    assert list(outside.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert (parked / identity.development_root.name).is_dir()
+
+
+def test_development_publication_rejects_foreign_destination_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign fd cannot authorize publication even if it is a directory."""
+    if os.name != "posix":
+        pytest.skip("POSIX directory publication boundary")
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    outside, sentinel = _external_sentinel(tmp_path)
+    native_open = os.open
+    wrong_fds: list[int] = []
+
+    def substitute_parent_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if (
+            path == identity.development_root.parent.name
+            and dir_fd is not None
+        ):
+            descriptor = native_open(outside, flags)
+            wrong_fds.append(descriptor)
+            return descriptor
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", substitute_parent_open)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="destination parent descriptor does not match",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                root, identity, downloader=_downloader([]), extractor=_extract_headers
+            )
+    assert len(wrong_fds) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(wrong_fds[0])
+    assert list(outside.iterdir()) == [sentinel]
+    assert not identity.development_root.exists()
+
+
+def test_development_publication_types_unprintable_rename_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hostile host rename failure cannot execute error formatting hooks."""
+    if os.name != "posix":
+        pytest.skip("POSIX directory publication boundary")
+    identity = _identity(tmp_path)
+    native_rename = os.rename
+
+    class ForeignOSError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("host rename error must not be formatted")
+
+    fault = ForeignOSError("synthetic publication failure")
+
+    def broken_rename(
+        source: str | os.PathLike[str],
+        target: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        if source == "development" and src_dir_fd is not None:
+            raise fault
+        native_rename(
+            source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "rename", broken_rename)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="destination publication failed",
+        ) as caught:
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path,
+                identity,
+                downloader=_downloader([]),
+                extractor=_extract_headers,
+            )
+    assert caught.value.__cause__ is fault
     assert not identity.development_root.exists()
 
 

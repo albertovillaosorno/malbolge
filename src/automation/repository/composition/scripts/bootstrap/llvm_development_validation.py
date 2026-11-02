@@ -752,6 +752,129 @@ def _assert_owned_staged_child(
         )
 
 
+def _open_physical_publication_parent(path: Path, label: str) -> int:
+    """Pin every POSIX parent component and attest the final native inode.
+
+    Returns:
+        An owned descriptor that the caller must close after publication.
+
+    """
+    parent = path.parent.absolute()
+    _require_physical_directories(parent, label)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor: int | None = None
+    admitted = False
+    try:
+        descriptor = os.open(parent.anchor, flags)
+        if type(descriptor) is not int or descriptor < 0:
+            _fail(f"LLVM development {label} parent returned invalid descriptor")
+        for component in parent.parts[1:]:
+            child = os.open(component, flags, dir_fd=descriptor)
+            if type(child) is not int or child < 0:
+                _fail(f"LLVM development {label} parent returned invalid descriptor")
+            os.close(descriptor)
+            descriptor = child
+        opened = os.fstat(descriptor)
+        physical = parent.lstat()
+        if (
+            not _native_directory_status(opened)
+            or not _native_directory_status(physical)
+            or type(opened.st_dev) is not int
+            or type(opened.st_ino) is not int
+            or type(physical.st_dev) is not int
+            or type(physical.st_ino) is not int
+            or (opened.st_dev, opened.st_ino)
+            != (physical.st_dev, physical.st_ino)
+        ):
+            _fail(f"LLVM development {label} parent descriptor does not match")
+        _require_physical_directories(parent, label)
+        admitted = True
+        return descriptor
+    except LlvmDevelopmentProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            f"LLVM development {label} physical parent descriptor failed"
+        ) from error
+    finally:
+        if not admitted and type(descriptor) is int and descriptor >= 0:
+            with suppress(OSError):
+                os.close(descriptor)
+
+
+def _publish_development_root(
+    staged_root: Path,
+    destination: Path,
+    child_identity: tuple[int, int],
+) -> None:
+    """Move only the owned stage through pinned physical POSIX directories."""
+    if os.name != "posix":
+        try:
+            _ = staged_root.replace(destination)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                "LLVM development destination publication failed"
+            ) from error
+        return
+    source_parent = _open_physical_publication_parent(staged_root, "staging")
+    try:
+        target_parent = _open_physical_publication_parent(destination, "destination")
+        try:
+            _assert_owned_staged_child(staged_root, child_identity)
+            _require_development_destination(destination)
+            source_status = os.stat(
+                staged_root.name, dir_fd=source_parent, follow_symlinks=False
+            )
+            if (
+                not _native_directory_status(source_status)
+                or (source_status.st_dev, source_status.st_ino) != child_identity
+            ):
+                _fail("LLVM development staging source descriptor changed")
+            try:
+                _ = os.stat(
+                    destination.name, dir_fd=target_parent, follow_symlinks=False
+                )
+            except FileNotFoundError:
+                pass
+            else:
+                _fail("LLVM development destination became occupied before publication")
+            os.rename(
+                staged_root.name,
+                destination.name,
+                src_dir_fd=source_parent,
+                dst_dir_fd=target_parent,
+            )
+            published = os.stat(
+                destination.name, dir_fd=target_parent, follow_symlinks=False
+            )
+            if (
+                not _native_directory_status(published)
+                or (published.st_dev, published.st_ino) != child_identity
+            ):
+                _fail("LLVM development destination publication identity changed")
+            _require_development_destination(destination)
+            named = destination.lstat()
+            if (
+                not _native_directory_status(named)
+                or (named.st_dev, named.st_ino) != child_identity
+            ):
+                _fail("LLVM development destination publication path changed")
+        except LlvmDevelopmentProvisionError:
+            raise
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                "LLVM development destination publication failed"
+            ) from error
+        finally:
+            os.close(target_parent)
+    finally:
+        os.close(source_parent)
+
+
 def _stage_development_assets(
     identity: tidy_toolchain.ToolchainIdentity,
     staged_root: Path,
@@ -863,7 +986,9 @@ def provision_development_identity(
         _assert_owned_staged_child(staged_root, child_identity)
         _require_physical_directories(staged_root, "staging")
         _reject_include_symlinks(staged_root / "include", require_single_link=True)
-        _ = staged_root.replace(identity.development_root)
+        _publish_development_root(
+            staged_root, identity.development_root, child_identity
+        )
     except _StagingOwnershipChanged:
         # The package stage can contain an attacker-replaced child. Leave the
         # staging tree intact rather than deleting that foreign directory.
