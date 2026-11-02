@@ -46,7 +46,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import urllib.error
 import urllib.request
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from stat import S_ISDIR, S_ISREG
 from typing import TYPE_CHECKING, Final, Never, cast
@@ -1249,6 +1249,8 @@ def provision_development_identity(
     requested_destination = Path(os.path.abspath(identity.development_root))
     if not requested_destination.is_relative_to(selected_root):
         _fail("LLVM development destination is outside the selected checkout root")
+    # Keep the selected destination stable if a provision callback changes cwd.
+    identity = replace(identity, development_root=requested_destination)
     if development_root_matches(identity):
         return identity.development_root
     _require_development_destination(identity.development_root)

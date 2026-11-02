@@ -1430,18 +1430,25 @@ def _redirect_development_destination(
 
 
 @pytest.mark.parametrize("change_phase", ["download", "extract"])
+@pytest.mark.parametrize("relative_identity", [False, True])
 def test_development_provision_relative_root_survives_cwd_changes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     change_phase: str,
+    relative_identity: bool,
 ) -> None:
     """A callback cannot redirect repository staging by changing host cwd."""
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    identity = _identity(checkout)
     monkeypatch.chdir(tmp_path)
+    identity = _identity(Path("checkout") if relative_identity else checkout)
+    expected = (
+        checkout / identity.development_root.relative_to(Path("checkout"))
+        if relative_identity
+        else identity.development_root
+    )
 
     def download(_url: str) -> bytes:
         if change_phase == "download":
@@ -1462,7 +1469,7 @@ def test_development_provision_relative_root_survives_cwd_changes(
     result = llvm_development_validation.provision_development_identity(
         Path("checkout"), identity, downloader=download, extractor=extract
     )
-    assert result == identity.development_root
+    assert result == expected
     assert (result / "include/clang/AST/AST.h").read_bytes() == HEADER_BYTES
     assert not (elsewhere / "checkout").exists()
     assert not (checkout / ".temp/llvm-development-provision-linux-x86_64").exists()
