@@ -2106,6 +2106,39 @@ def test_measured_rss_scandir_context_cannot_suppress_directory_rejection(
     assert closed == ["closed"]
 
 
+@pytest.mark.parametrize("forgery", ["false-empty", "redirected-native"])
+def test_measured_rss_rejects_substituted_empty_scanner_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """Neither forged nor redirected OS scan can certify occupied RSS output."""
+    folder = _rss_fixture_directory(tmp_path, monkeypatch)
+    decoy = tmp_path / "empty-decoy"
+    decoy.mkdir()
+    closed = False
+    native_scandir = target_process.os.scandir
+
+    class FalseEmptyScan:
+        def __iter__(self) -> FalseEmptyScan:
+            return self
+
+        def __next__(self) -> object:
+            raise StopIteration
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    def forged_scan(_folder: Path) -> object:
+        return native_scandir(decoy) if forgery == "redirected-native" else FalseEmptyScan()
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(target_process.os, "scandir", forged_scan)
+        with pytest.raises(target_process.TargetProcessError, match="RSS directory"):
+            target_process._admit_rss_directory_receipt(folder, tmp_path / ".temp")
+    if forgery == "false-empty":
+        assert closed
+
+
 @pytest.mark.parametrize(
     "kind",
     [

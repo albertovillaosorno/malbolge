@@ -836,6 +836,11 @@ def _rss_workspace() -> Path:
     return workspace
 
 
+# The workspace scanner provider must be the imported native scanner, not an
+# adapter returning a false-empty iterator or a native scan of another path.
+_SYSTEM_SCANDIR = os.scandir
+
+
 def _admit_rss_directory_receipt(receipt: object, workspace: Path) -> Path:
     """Admit a fresh physical RSS directory before process launch or cleanup.
 
@@ -862,6 +867,8 @@ def _admit_rss_directory_receipt(receipt: object, workspace: Path) -> Path:
         # Inspect the returned iterator directly and close it ourselves.
         entries = os.scandir(folder)
         try:
+            if os.scandir is not _SYSTEM_SCANDIR:
+                _fail("bounded target RSS directory returned foreign scan provider")
             occupied = next(entries, None) is not None
         finally:
             if entries.close() is not None:
