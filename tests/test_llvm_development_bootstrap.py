@@ -40,6 +40,7 @@ import shutil
 import subprocess as sp
 from contextlib import suppress
 from dataclasses import replace
+from fnmatch import fnmatchcase
 from pathlib import Path
 from types import SimpleNamespace, TracebackType
 from typing import TYPE_CHECKING, Self, cast, override
@@ -153,6 +154,24 @@ def test_package_verification_rejects_size_and_sha_drift() -> None:
             PACKAGE_BYTES,
             forged,
         )
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        "usr/include/clang/AST/AST.h",
+        "usr/include/llvm/IR/Module.h",
+        "usr/include/llvm-c/Core.h",
+    ],
+)
+def test_cpio_filter_matches_normalized_includes(member: str) -> None:
+    """GNU CPIO lists newc member names without an initial dot segment."""
+    assert fnmatchcase(
+        member, llvm_development_validation.CPIO_INCLUDE_PATTERN
+    )
+    assert not fnmatchcase(
+        "usr/lib/libLLVM.so", llvm_development_validation.CPIO_INCLUDE_PATTERN
+    )
 
 
 def test_rpm_member_validation_rejects_parent_and_absolute_paths() -> None:

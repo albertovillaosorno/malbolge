@@ -67,7 +67,7 @@ LLVM_DEVELOPMENT_MARKER_SCHEMA: Final = 1
 PARENT_SEGMENT: Final = ".."
 RPM_SUFFIX: Final = ".rpm"
 POSIX_OS_NAME: Final = "posix"
-CPIO_INCLUDE_PATTERN: Final = "./usr/include/*"
+CPIO_INCLUDE_PATTERN: Final = "usr/include/*"
 MAX_RPM_DOWNLOAD_BYTES: Final = 128 * 1024 * 1024
 RPM_TOOL_TIMEOUT_SECONDS: Final = 120
 
