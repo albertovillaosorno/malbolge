@@ -2349,7 +2349,7 @@ def rustup_toolchain_root(
         raw = runner(rustup, channel)
     except (OSError, ValueError, TypeError, RuntimeError):
         return None
-    if type(raw) is not str or not raw:
+    if type(raw) is not str or not raw or not raw.isprintable():
         return None
     cargo = Path(raw)
     if (
@@ -2649,14 +2649,15 @@ def inspect_jig(root: Path, platform_id: str) -> ComponentStatus:
         resolved = which(executable)
     except (OSError, ValueError, TypeError, RuntimeError):
         resolved = None
-    if type(resolved) is str and resolved.strip():
+    if type(resolved) is str and resolved.isprintable():
         path = Path(resolved)
-        return ComponentStatus(
-            detail="standalone Jig launcher is present on PATH",
-            name="jig",
-            path=path,
-            state=ComponentState.READY,
-        )
+        if path.is_absolute():
+            return ComponentStatus(
+                detail="standalone Jig launcher is present on PATH",
+                name="jig",
+                path=path,
+                state=ComponentState.READY,
+            )
     return ComponentStatus(
         detail="standalone Jig launcher is unavailable on PATH",
         name="jig",

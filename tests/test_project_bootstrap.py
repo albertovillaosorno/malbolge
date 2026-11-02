@@ -4034,6 +4034,22 @@ def test_rustup_toolchain_root_rejects_noncanonical_cargo_path(
     )
 
 
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="host path control receipt")
+@pytest.mark.parametrize("control", ["\n", "\t", "\r"])
+def test_rustup_toolchain_root_rejects_hidden_ancestor_controls(
+    tmp_path: Path, control: str
+) -> None:
+    """A printed Rustup Cargo path cannot conceal an altered ancestor."""
+    cargo = tmp_path / f"host{control}toolchain" / "bin" / "cargo"
+    cargo.parent.mkdir(parents=True)
+    _ = cargo.write_bytes(RUST_CARGO_BYTES)
+    assert project.rustup_toolchain_root(
+        tmp_path / "rustup",
+        RUST_CHANNEL,
+        runner=lambda _rustup, _channel: str(cargo),
+    ) is None
+
+
 def test_rustup_toolchain_root_accepts_native_windows_cargo_name(
     tmp_path: Path,
 ) -> None:
@@ -7247,6 +7263,17 @@ def test_jig_observation_rejects_foreign_path_receipts(
         project.inspect_jig(tmp_path, LINUX_PLATFORM).state
         is project.ComponentState.MISSING
     )
+
+
+@pytest.mark.parametrize("path_text", ["bin/jig", "../jig", "/tmp/jig\n", "/tmp/jig\t"])
+def test_jig_observation_rejects_unstable_launcher_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path_text: str
+) -> None:
+    """Jig readiness must not trust relative or nonprintable PATH outputs."""
+    monkeypatch.setattr(project, "which", lambda _name: path_text)
+    status = project.inspect_jig(tmp_path, LINUX_PLATFORM)
+    assert status.state is project.ComponentState.MISSING
+    assert status.path is None
 
 
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
