@@ -356,6 +356,66 @@ def test_mirror_directory_discovery_host_faults_are_typed(
         _ = validator._directory_ids(documents)  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize(
+    "kind",
+    (
+        "noncanonical",
+        "duplicate",
+        "foreign-collection",
+        "foreign-pair",
+        "foreign-id",
+        "foreign-directory",
+    ),
+)
+def test_mirror_shared_discovery_requires_canonical_unique_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A shared layout response cannot silently rewrite a research identity."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    documents = tmp_path / "docs/research/algorithms"
+    monkeypatch.setattr(validator, "DOCUMENT_ROOT", documents)
+    document = documents / "candidate"
+    correct = tmp_path / "src/research/algorithms/domain/algorithms/candidate"
+    alternate = tmp_path / "src/research/algorithms/domain/unrelated/candidate"
+    tests = tmp_path / "tests/function/algorithms/domain/candidate"
+    for directory in (document, correct, alternate, tests):
+        directory.mkdir(parents=True)
+    for filename in ("README.md", "research.md"):
+        _ = (document / filename).write_text("fixture", encoding="utf-8")
+    for executable in (correct, alternate):
+        for filename in ("README.md", "experiment.toml", "lifecycle.toml"):
+            _ = (executable / filename).write_text("fixture", encoding="utf-8")
+
+    class ForeignId(str):  # ruff: ignore[subclass-builtin]
+        @override
+        def __hash__(self) -> Never:
+            raise AssertionError("foreign research identifier hashing executed")
+
+    class ForeignDirectory(type(correct)):
+        @override
+        def __eq__(self, other: object) -> Never:
+            del other
+            raise AssertionError("foreign research directory equality executed")
+
+    records: object = {
+        "noncanonical": (("candidate", alternate),),
+        "duplicate": (("candidate", correct), ("candidate", correct)),
+        "foreign-collection": [("candidate", correct)],
+        "foreign-pair": (["candidate", correct],),
+        "foreign-id": ((ForeignId("candidate"), correct),),
+        "foreign-directory": (("candidate", ForeignDirectory(correct)),),
+    }[kind]
+
+    def forged_discovery(_root: Path) -> tuple[tuple[str, Path], ...]:
+        return cast("tuple[tuple[str, Path], ...]", records)
+
+    monkeypatch.setattr(validator, "research_algorithm_directories", forged_discovery)
+    with pytest.raises(validator.ResearchMirrorError, match="discovery"):
+        _ = validator.validate_repository(_always_ignored)
+
+
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
 def test_mirror_shared_layout_failure_is_typed(
     monkeypatch: pytest.MonkeyPatch,

@@ -41,7 +41,9 @@ exact integer file-mode fields, and boolean junction receipts for each path
 component and discovered algorithm ID; foreign modes and truthiness hooks
 cannot certify mirror identity. Directory scans admit only native immediate
 children of the inspected root, not foreign or unrelated paths from an
-untrusted directory iterator.
+untrusted directory iterator. Shared discovery receipts must be native tuples
+of distinct IDs and canonical executable paths; duplicated or redirected ID
+projections cannot satisfy the mirror contract.
 
 Every direct research ID under either mirror root must exist on both sides.
 The special composition state-graph experiment and domain algorithm

@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Never, cast
 
 from scripts.repository_root import repository_root
 from scripts.research_layout import (
+    STATE_GRAPH_ID,
     research_algorithm_directories,
     research_algorithm_test_directory,
     research_id_alias_key,
@@ -211,7 +212,26 @@ def executable_research_ids(executable_ids: frozenset[str]) -> frozenset[str]:
 
 def _entries() -> tuple[MirrorEntry, ...]:
     try:
-        executable_by_id = dict(research_algorithm_directories(ROOT))
+        discovered = research_algorithm_directories(ROOT)
+        if type(discovered) is not tuple:
+            _fail("research mirror discovery requires native layout receipt")
+        executable_by_id: dict[str, Path] = {}
+        for pair in discovered:
+            if type(pair) is not tuple or len(pair) != 2:
+                _fail("research mirror discovery requires native ID/path pair")
+            research_id, directory = pair
+            if type(research_id) is not str or type(directory) is not type(ROOT):
+                _fail("research mirror discovery requires native ID/path members")
+            expected = (
+                ROOT / "src/research/algorithms/composition/state-graph"
+                if research_id == STATE_GRAPH_ID
+                else ROOT / "src/research/algorithms/domain/algorithms" / research_id
+            )
+            if directory != expected:
+                _fail(f"research mirror discovery has noncanonical path: {research_id}")
+            if research_id in executable_by_id:
+                _fail(f"research mirror discovery has duplicate ID: {research_id}")
+            executable_by_id[research_id] = directory
     except ResearchMirrorError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
