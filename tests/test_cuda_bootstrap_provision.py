@@ -640,6 +640,31 @@ def test_cuda_provision_rejects_redirected_destination_before_download(
         assert (root / TOOLKIT_ROOT).is_symlink()
 
 
+def test_cuda_provision_preserves_preexisting_physical_stage(
+    tmp_path: Path,
+) -> None:
+    """A physical staging tree from another owner cannot be erased on entry."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    staging = tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}"
+    staging.mkdir(parents=True)
+    sentinel = staging / "foreign-data"
+    _ = sentinel.write_bytes(b"preserve unowned staging")
+    downloads: list[str] = []
+
+    def download(url: str) -> bytes:
+        downloads.append(url)
+        return payload
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match="staging"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path, manifest, LINUX_PLATFORM, downloader=download
+        )
+    assert not downloads
+    assert sentinel.read_bytes() == b"preserve unowned staging"
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
 def test_cuda_cleanup_preserves_foreign_staging_replacement(
     tmp_path: Path,
 ) -> None:

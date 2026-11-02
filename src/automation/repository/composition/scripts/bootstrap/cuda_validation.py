@@ -652,9 +652,7 @@ def _require_unoccupied_toolkit_destination(path: Path) -> None:
 
 
 def _prepare_staging(path: Path) -> None:
-    _require_physical_directories(path, "staging")
-    if path.exists():
-        shutil.rmtree(path)
+    """Create a new stage without adopting or deleting preexisting state."""
     _require_physical_directories(path, "staging")
     try:
         path.mkdir(parents=True)
