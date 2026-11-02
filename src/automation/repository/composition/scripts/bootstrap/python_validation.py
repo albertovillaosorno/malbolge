@@ -54,6 +54,7 @@ import tempfile
 from typing import BinaryIO
 from typing import Final
 from typing import Never
+from typing import Protocol
 from typing import cast
 import urllib.error
 import urllib.request
@@ -1947,6 +1948,29 @@ def initialize() -> ValidationEnvironmentLayout:
     return LAYOUT
 
 
+class _NativeExceptionArgsDescriptor(Protocol):
+    """View CPython's base exception arguments without subclass dispatch."""
+
+    def __get__(
+        self, instance: BaseException, owner: type[BaseException]
+    ) -> object: ...
+
+
+def _native_exception_detail(error: BaseException) -> str:
+    """Read a single native string error without invoking host hooks."""
+    descriptor = cast(
+        "_NativeExceptionArgsDescriptor", cast("object", BaseException.args)
+    )
+    native_args = descriptor.__get__(error, BaseException)
+    if (
+        type(native_args) is tuple
+        and len(native_args) == 1
+        and type(native_args[0]) is str
+    ):
+        return cast("str", native_args[0])
+    return type(error).__name__
+
+
 def main() -> int:
     """Provision and verify the exact repository-local Python tool set.
 
@@ -1957,7 +1981,7 @@ def main() -> int:
     try:
         layout = initialize()
     except (OSError, ProvisionError, subprocess.SubprocessError) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        _ = sys.stderr.write(f"error: {_native_exception_detail(error)}\n")
         return 1
     _ = sys.stdout.write(
         f"python validation environment ready: {layout.environment}\n"
