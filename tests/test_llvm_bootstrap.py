@@ -6568,6 +6568,66 @@ def test_linux_import_cleanup_preserves_nested_directory_swapped_after_open(
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory handles")
+@pytest.mark.parametrize(
+    "forgery",
+    [
+        "suppressed-member",
+        "redirected-entry",
+        "bad-close",
+        "close-fault",
+        "body-close-fault",
+    ],
+)
+def test_linux_staging_cleanup_scandir_cannot_suppress_invalid_members(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """A substituted scanner context cannot certify a rejected cleanup read."""
+    folder = tmp_path / "llvm-staging-scandir"
+    folder.mkdir()
+    closed: list[str] = []
+
+    @final
+    class ForgedScan:
+        def __enter__(self) -> object:
+            return (
+                []
+                if forgery in ("redirected-entry", "bad-close", "close-fault")
+                else self
+            )
+
+        def __exit__(self, *_args: object) -> bool:
+            return True
+
+        def __iter__(self) -> ForgedScan:
+            return self
+
+        def __next__(self) -> object:
+            if forgery in ("bad-close", "close-fault"):
+                raise StopIteration
+            return object()
+
+        def close(self) -> object:
+            closed.append("closed")
+            if forgery in ("close-fault", "body-close-fault"):
+                raise OSError("untrusted scan cleanup failure")
+            return True if forgery == "bad-close" else None
+
+    descriptor = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with monkeypatch.context() as isolated:
+            isolated.setattr(llvm_validation.os, "scandir", lambda _fd: ForgedScan())
+            with pytest.raises(
+                llvm_validation.LlvmImportError, match="cleanup"
+            ) as caught:
+                llvm_validation._remove_pinned_import_contents(descriptor)
+    finally:
+        os.close(descriptor)
+    assert closed == ["closed"]
+    if forgery == "body-close-fault":
+        assert any("scan close also failed" in note for note in caught.value.__notes__)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory handles")
 @pytest.mark.parametrize("kind", ("file", "directory"))
 def test_linux_cleanup_rejects_foreign_scandir_members(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str

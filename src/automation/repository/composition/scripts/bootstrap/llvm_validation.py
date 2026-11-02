@@ -1707,7 +1707,10 @@ def _owned_staging_safe_to_clean(
 def _remove_pinned_import_contents(parent_fd: int) -> None:
     """Delete staged members only under physically pinned directory handles."""
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    with os.scandir(parent_fd) as members:
+    # Do not trust replaceable scanner context hooks: an __exit__ returning
+    # True can suppress an invalid staged-member rejection mid-cleanup.
+    members = os.scandir(parent_fd)
+    try:
         for member in members:
             if type(member) is not os.DirEntry:
                 _fail("LLVM staging cleanup member receipt must be native")
@@ -1770,6 +1773,31 @@ def _remove_pinned_import_contents(parent_fd: int) -> None:
                 _fail(
                     "LLVM staging cleanup member must be a physical file or directory"
                 )
+
+    except BaseException as primary:
+        try:
+            receipt = members.close()
+        except Exception as cleanup:  # noqa: BLE001
+            # The substituted scanner may fail with any ordinary host error;
+            # preserve the original member rejection without formatting it.
+            BaseException.add_note(
+                primary,
+                "LLVM staging cleanup scan close also failed: "
+                + type(cleanup).__name__,
+            )
+        else:
+            if receipt is not None:
+                BaseException.add_note(
+                    primary, "LLVM staging cleanup scan close receipt invalid"
+                )
+        raise
+    else:
+        try:
+            receipt = members.close()
+        except Exception as error:
+            raise LlvmImportError("LLVM staging cleanup scan close failed") from error
+        if receipt is not None:
+            _fail("LLVM staging cleanup scan close receipt must be native")
 
 
 def _cleanup_owned_linux_staging(
