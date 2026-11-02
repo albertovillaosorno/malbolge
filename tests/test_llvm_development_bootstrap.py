@@ -822,6 +822,19 @@ def test_development_marker_rejects_linked_leaf(tmp_path: Path) -> None:
         )
 
 
+def test_development_marker_rejects_hardlinked_leaf(tmp_path: Path) -> None:
+    """An externally reachable marker inode cannot attest local ownership."""
+    identity = _provisioned_identity(tmp_path)
+    marker = identity.development_root / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    outside = tmp_path / "outside-marker"
+    try:
+        os.link(marker, outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    assert not llvm_development_validation.development_root_matches(identity)
+    assert outside.read_bytes() == marker.read_bytes()
+
+
 def test_development_marker_rejects_development_root_alias(
     tmp_path: Path,
 ) -> None:

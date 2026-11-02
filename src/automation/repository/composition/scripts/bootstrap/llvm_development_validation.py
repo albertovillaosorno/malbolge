@@ -508,12 +508,13 @@ def _marker_identity(status: os.stat_result) -> tuple[int, ...]:
     """Capture the exact marker inode and mutation-sensitive metadata.
 
     Returns:
-        Device, inode, size, and modification metadata.
+        Device, inode, link count, size, and modification metadata.
 
     """
     return (
         status.st_dev,
         status.st_ino,
+        status.st_nlink,
         status.st_size,
         status.st_mtime_ns,
         status.st_ctime_ns,
@@ -553,7 +554,7 @@ def _marker_descriptor_matches(
         if type(observed_fd) is not int or observed_fd != descriptor:
             return False
         before_stat = os.fstat(observed_fd)
-        if not _native_regular_status(before_stat):
+        if not _native_regular_status(before_stat) or before_stat.st_nlink != 1:
             return False
         before = _marker_identity(before_stat)
         contents = stream.read(len(expected) + 1)
@@ -563,7 +564,7 @@ def _marker_descriptor_matches(
         if type(observed_fd) is not int or observed_fd != descriptor:
             return False
         after_stat = os.fstat(observed_fd)
-        if not _native_regular_status(after_stat):
+        if not _native_regular_status(after_stat) or after_stat.st_nlink != 1:
             return False
         after = _marker_identity(after_stat)
     return before == identity and after == identity and contents == expected
@@ -580,7 +581,7 @@ def _exact_marker_matches(marker: Path, expected: bytes) -> bool:
         return False
     try:
         initial = marker.lstat()
-        if not _native_regular_status(initial):
+        if not _native_regular_status(initial) or initial.st_nlink != 1:
             return False
         admitted = _marker_identity(initial)
         if (
