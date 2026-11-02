@@ -1779,16 +1779,55 @@ def _download_cuda_package(
                 timeout=120,
             ),
         )
-        with response:
-            data = response.read(max_bytes + 1)
-    except (OSError, http.client.HTTPException, TypeError, ValueError, RuntimeError) as error:
+    except (
+        OSError,
+        http.client.HTTPException,
+        TypeError,
+        ValueError,
+        RuntimeError,
+    ) as error:
         raise CudaProvisionError(
             f"cannot download pinned CUDA package: {_native_error_name(error)}"
         ) from error
-    if type(data) is not bytes:
-        _fail("CUDA network response must contain native bytes")
-    if len(data) > max_bytes:
-        _fail("CUDA network response exceeds pinned byte limit")
+    # A substituted response __exit__ can swallow a read failure and leave
+    # data unbound. Close explicitly, preserving the primary read rejection.
+    try:
+        try:
+            data = response.read(max_bytes + 1)
+        except (
+            OSError,
+            http.client.HTTPException,
+            TypeError,
+            ValueError,
+            RuntimeError,
+        ) as error:
+            raise CudaProvisionError(
+                f"cannot download pinned CUDA package: {_native_error_name(error)}"
+            ) from error
+        if type(data) is not bytes:
+            _fail("CUDA network response must contain native bytes")
+        if len(data) > max_bytes:
+            _fail("CUDA network response exceeds pinned byte limit")
+    except BaseException as primary:
+        try:
+            receipt = cast("object", response.close())
+        except Exception as error:  # noqa: BLE001
+            BaseException.add_note(
+                primary,
+                "CUDA network response close also failed: " + type(error).__name__,
+            )
+        else:
+            if receipt is not None:
+                BaseException.add_note(
+                    primary, "CUDA network response close receipt invalid"
+                )
+        raise
+    try:
+        receipt = cast("object", response.close())
+    except Exception as error:
+        raise CudaProvisionError("CUDA network response close failed") from error
+    if receipt is not None:
+        _fail("CUDA network response close receipt must be native")
     return data
 
 

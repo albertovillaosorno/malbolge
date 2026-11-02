@@ -446,6 +446,9 @@ class _NetworkResponse:
         return self
 
     def __exit__(self, *_args: object) -> None:
+        self.close()
+
+    def close(self) -> None:
         self.closed = True
 
     def read(self, _limit: int) -> bytes:
@@ -675,6 +678,9 @@ def test_cuda_tracked_windows_nvrtc_download_admits_pinned_size(
             return self
 
         def __exit__(self, *_args: object) -> None:
+            self.close()
+
+        def close(self) -> None:
             pass
 
         def read(self, limit: int) -> bytes:
@@ -3624,6 +3630,9 @@ def test_cuda_network_download_bounded_to_pinned_package_size(
             return self
 
         def __exit__(self, *_args: object) -> None:
+            self.close()
+
+        def close(self) -> None:
             nonlocal response_closed
             response_closed = True
 
@@ -6681,4 +6690,67 @@ def test_cuda_archive_member_context_cannot_suppress_rejection(
     if forgery == "close-fault":
         assert caught.value.__cause__ is close_error
     elif forgery == "body-close-fault":
+        assert any("close also failed" in note for note in caught.value.__notes__)
+
+
+@pytest.mark.parametrize(
+    "forgery",
+    ("read-fault", "close-fault", "close-receipt", "body-close-fault", "bad-body"),
+)
+def test_cuda_download_response_context_cannot_suppress_failure(
+    monkeypatch: pytest.MonkeyPatch, forgery: str,
+) -> None:
+    """The response exit hook cannot suppress failures or skip a close receipt."""
+    url = cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH
+    read_error = OSError("download stream read failed")
+    close_error = OSError("download stream close failed")
+    closes: list[str] = []
+    exits: list[str] = []
+
+    class ForgedResponse:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            exits.append("exit")
+            return True
+
+        def read(self, limit: int) -> bytes:
+            assert limit == 65
+            if forgery in ("read-fault", "body-close-fault"):
+                raise read_error
+            if forgery == "bad-body":
+                return cast("bytes", bytearray(b"payload"))
+            return b"payload"
+
+        def close(self) -> object:
+            closes.append("close")
+            if forgery in ("close-fault", "body-close-fault"):
+                raise close_error
+            return False if forgery == "close-receipt" else None
+
+    def open_url(_request: object, *, timeout: int) -> ForgedResponse:
+        assert timeout == 120
+        return ForgedResponse()
+
+    expected = (
+        "OSError"
+        if forgery in ("read-fault", "body-close-fault")
+        else "native bytes"
+        if forgery == "bad-body"
+        else "close"
+    )
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation.urllib.request, "urlopen", open_url)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match=expected
+        ) as caught:
+            _ = cuda_validation._download_cuda_package(url, max_bytes=64)
+    assert closes == ["close"]
+    assert exits == []
+    if forgery in ("read-fault", "body-close-fault"):
+        assert caught.value.__cause__ is read_error
+    elif forgery == "close-fault":
+        assert caught.value.__cause__ is close_error
+    if forgery == "body-close-fault":
         assert any("close also failed" in note for note in caught.value.__notes__)
