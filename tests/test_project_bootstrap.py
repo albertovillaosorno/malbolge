@@ -5260,6 +5260,63 @@ def test_portable_import_copy_fallback_keeps_physical_source_bytes(
     assert stat.S_IMODE(destination.stat().st_mode) == 0o700
 
 
+@pytest.mark.parametrize("attack", ["foreign-handle", "name-swap"])
+def test_portable_import_fallback_rejects_foreign_named_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, attack: str
+) -> None:
+    """A copied file must still be the named owned destination at return."""
+    source = tmp_path / "host-git"
+    _ = source.write_bytes(GIT_BYTES)
+    destination = tmp_path / "git.bin"
+    outside = tmp_path / "foreign-file"
+    _ = outside.write_bytes(b"?" * len(GIT_BYTES))
+    parked = tmp_path / "parked-output"
+    native_open = Path.open
+    native_write = project._write_import_file_payload
+    injected = False
+
+    def reject_hardlinks(_source: str, _destination: str) -> None:
+        raise OSError("hardlinks prohibited")
+
+    def redirect_output(
+        path: Path, mode: str = "r", *args: object, **kwargs: object
+    ) -> BinaryIO:
+        nonlocal injected
+        if path == destination and mode == "xb" and attack == "foreign-handle":
+            injected = True
+            return native_open(outside, "r+b")
+        return native_open(path, mode, *args, **kwargs)
+
+    def replace_after_write(input_fd: int, output_fd: int) -> None:
+        nonlocal injected
+        native_write(input_fd, output_fd)
+        if attack == "name-swap":
+            injected = True
+            _ = destination.rename(parked)
+            _ = destination.write_bytes(b"?" * len(GIT_BYTES))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", reject_hardlinks)
+        isolated.setattr(Path, "open", redirect_output)
+        isolated.setattr(
+            project, "_write_import_file_payload", replace_after_write
+        )
+        with pytest.raises(
+            project.InitializationError, match="copy fallback output"
+        ):
+            _ = project._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+                str(source), str(destination)
+            )
+    assert injected
+    assert source.read_bytes() == GIT_BYTES
+    if attack == "foreign-handle":
+        assert not destination.exists()
+        assert outside.read_bytes() == b"?" * len(GIT_BYTES)
+    else:
+        assert destination.read_bytes() == b"?" * len(GIT_BYTES)
+        assert parked.read_bytes() == GIT_BYTES
+
+
 def test_git_import_preserves_runtime_tree_and_neutral_alias(
     tmp_path: Path,
 ) -> None:

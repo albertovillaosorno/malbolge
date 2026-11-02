@@ -862,6 +862,26 @@ def _link_or_copy(source: str, destination: str) -> str:
                 ):
                     _fail("import copy source changed before transfer")
                 with Path(destination).open("xb") as output_stream:
+                    try:
+                        named_before = Path(destination).lstat()
+                        opened_before = os.fstat(output_stream.fileno())
+                    except (
+                        OSError, ValueError, TypeError, RuntimeError
+                    ) as error:
+                        raise InitializationError(
+                            "import copy fallback output preflight failed"
+                        ) from error
+                    if (
+                        type(named_before) is not os.stat_result
+                        or type(opened_before) is not os.stat_result
+                        or not stat.S_ISREG(named_before.st_mode)
+                        or not stat.S_ISREG(opened_before.st_mode)
+                        or named_before.st_size != 0
+                        or opened_before.st_size != 0
+                        or (named_before.st_dev, named_before.st_ino)
+                        != (opened_before.st_dev, opened_before.st_ino)
+                    ):
+                        _fail("import copy fallback output descriptor mismatch")
                     _write_import_file_payload(
                         input_stream.fileno(), output_stream.fileno()
                     )
@@ -885,6 +905,23 @@ def _link_or_copy(source: str, destination: str) -> str:
                         != stat.S_IMODE(original.st_mode)
                     ):
                         _fail("import copy source changed during transfer")
+                try:
+                    named_output = Path(destination).lstat()
+                except (OSError, ValueError, TypeError, RuntimeError) as error:
+                    raise InitializationError(
+                        "import copy fallback output receipt failed"
+                    ) from error
+                if (
+                    type(named_output) is not os.stat_result
+                    or not stat.S_ISREG(named_output.st_mode)
+                    or (named_output.st_dev, named_output.st_ino)
+                    != (finished.st_dev, finished.st_ino)
+                    or named_output.st_size != finished.st_size
+                    or named_output.st_mtime_ns != finished.st_mtime_ns
+                    or stat.S_IMODE(named_output.st_mode)
+                    != stat.S_IMODE(finished.st_mode)
+                ):
+                    _fail("import copy fallback output changed after write")
         except FileExistsError as error:
             raise InitializationError(
                 f"import target already exists: {destination}"
