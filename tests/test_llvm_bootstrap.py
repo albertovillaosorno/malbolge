@@ -1747,6 +1747,33 @@ def test_windows_aliases_reject_linked_existing_alias(tmp_path: Path) -> None:
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
 
 
+
+@pytest.mark.parametrize("borrowed", ("alias", "source"))
+def test_windows_aliases_reject_external_hardlink_before_marker(
+    tmp_path: Path, borrowed: str
+) -> None:
+    """Matching PE bytes cannot authorize borrowed aliases before setup."""
+    root = _windows_tool_bundle(tmp_path)
+    source = root / "bin/clang.exe"
+    alias = root / "jig-bin/clang.bin"
+    alias.parent.mkdir()
+    outside = tmp_path / "external-windows-clang"
+    if borrowed == "alias":
+        _ = outside.write_bytes(CLANG_BYTES)
+        link_source, link_destination = outside, alias
+    else:
+        _ = alias.write_bytes(CLANG_BYTES)
+        link_source, link_destination = source, outside
+    try:
+        os.link(link_source, link_destination)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    with pytest.raises(llvm_validation.LlvmImportError, match="alias"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+    assert outside.read_bytes() == CLANG_BYTES
+
+
 def test_windows_aliases_reject_linked_source_tool(tmp_path: Path) -> None:
     """A pinned Windows executable cannot be borrowed from an alias path."""
     root = _windows_tool_bundle(tmp_path)

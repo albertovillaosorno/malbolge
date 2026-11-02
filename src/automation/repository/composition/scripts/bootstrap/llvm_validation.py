@@ -35,7 +35,6 @@
 
 from __future__ import annotations
 
-import filecmp
 import os
 import re
 import shutil
@@ -932,14 +931,8 @@ def _windows_alias_ready(source: Path, alias: Path) -> bool:
 
 
 def _require_matching_windows_alias(source: Path, alias: Path) -> None:
-    if not _physical_file(alias):
-        _fail(f"Windows LLVM alias must not redirect: {alias}")
-    try:
-        matching = filecmp.cmp(source, alias, shallow=False)
-    except OSError as error:
-        _fail(f"Windows LLVM alias cannot be read: {error}")
-    if not matching:
-        _fail(f"Windows LLVM alias mismatch: {alias}")
+    if not _windows_alias_ready(source, alias):
+        _fail(f"Windows LLVM alias mismatch or borrowed physical identity: {alias}")
 
 
 def _admit_windows_alias(source: Path, alias: Path) -> bool:
@@ -1007,6 +1000,8 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
     for (source, alias), present in zip(pairs, existing, strict=True):
         if not present:
             _copy_file(source, alias)
+    if not all(_windows_alias_ready(source, alias) for source, alias in pairs):
+        _fail("Windows LLVM alias evidence changed before marker publication")
     _write_import_marker(root, WINDOWS_PLATFORM)
     return tuple(alias for _, alias in pairs)
 
