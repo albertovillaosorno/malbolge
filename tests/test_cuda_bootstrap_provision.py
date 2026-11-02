@@ -1735,6 +1735,39 @@ def _zip_payload() -> bytes:
 
 
 
+@pytest.mark.parametrize(
+    ("create_system", "external_attr", "name_suffix"),
+    [
+        (3, (0o120777 << 16), "libnvrtc.so"),
+        (3, (0o010644 << 16), "libnvrtc.so"),
+        (3, (0o040755 << 16), "libnvrtc.so"),
+        (3, (0o100644 << 16), "subdir/"),
+        (0, 0x10, "libnvrtc.so"),
+        (0, 0x08, "libnvrtc.so"),
+    ],
+)
+def test_cuda_zip_rejects_special_or_conflicting_member_types(
+    tmp_path: Path, create_system: int, external_attr: int, name_suffix: str
+) -> None:
+    """Metadata-signaled links, devices or fake directories fail before writes."""
+    payload_stream = io.BytesIO()
+    entry = zipfile.ZipInfo(f"{ARCHIVE_ROOT}/lib64/{name_suffix}")
+    entry.create_system = create_system
+    entry.external_attr = external_attr
+    with zipfile.ZipFile(payload_stream, mode="w") as archive:
+        archive.writestr(entry, b"" if name_suffix.endswith("/") else b"unsafe member")
+    payload = payload_stream.getvalue()
+    manifest = _manifest(tmp_path, payload, {"relative_path": _ZIP_PACKAGE_PATH})
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    with pytest.raises(cuda_validation.CudaProvisionError, match="ZIP member type"):
+        cuda_validation.extract_cuda_package(
+            payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+        )
+    assert not (tmp_path / "toolkit/lib64").exists()
+
+
 @pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
 @pytest.mark.parametrize(
     "member_name", ["NUL.txt", "aux", "library:alternate.dll", "folder./module"]

@@ -53,7 +53,7 @@ import zipfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from stat import S_ISDIR, S_ISLNK, S_ISREG
+from stat import S_IFDIR, S_IFMT, S_IFREG, S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING, Final, Never, cast
 
 if TYPE_CHECKING:
@@ -683,12 +683,31 @@ def _safe_tar_extract(data: bytes, staging: Path) -> Path:
         ) from error
 
 
+def _admit_zip_member_type(info: zipfile.ZipInfo) -> None:
+    """Reject ZIP members whose archive metadata signals unsupported file types."""
+    is_directory = info.is_dir()
+    if info.create_system == 3:
+        kind = S_IFMT(info.external_attr >> 16)
+        if kind not in (0, S_IFDIR, S_IFREG):
+            _fail("CUDA ZIP member type is unsupported")
+        if (kind == S_IFDIR and not is_directory) or (
+            kind == S_IFREG and is_directory
+        ):
+            _fail("CUDA ZIP member type contradicts its pathname")
+    if info.external_attr & 0x10 and not is_directory:
+        _fail("CUDA ZIP member type contradicts its DOS directory attribute")
+    if info.external_attr & 0x08:
+        _fail("CUDA ZIP member type must not be a DOS volume label")
+
+
 def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
     infos = tuple(archive.infolist())
     _validate_cuda_archive_expansion(
         tuple(info.file_size if not info.is_dir() else 0 for info in infos)
     )
     root_name = _common_archive_root(tuple(info.filename for info in infos))
+    for info in infos:
+        _admit_zip_member_type(info)
     for info in infos:
         relative = _archive_member_path(info.filename)
         destination = staging.joinpath(*relative.parts)
