@@ -204,6 +204,8 @@ aliases pin post-link metadata so even changes with restored modification
 times must fail before completion. A fresh Rust import refuses any
 source-carried neutral alias (even byte-identical) rather than treating it as
 bootstrap-created; completed imports can still backfill missing aliases.
+Portable hardlink failures copy only into an exclusively created destination;
+late alias collisions never overwrite another file through a redirected leaf.
 Git and Rust import-completion markers are created exclusively through a
 no-follow native file descriptor, so an existing regular or linked marker
 cannot be overwritten.

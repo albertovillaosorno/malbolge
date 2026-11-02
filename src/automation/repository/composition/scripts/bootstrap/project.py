@@ -806,10 +806,38 @@ def inspect_cuda(root: Path, platform_id: str) -> ComponentStatus:
 
 
 def _link_or_copy(source: str, destination: str) -> str:
+    """Import a host file without overwriting an unexpected destination."""
     try:
         os.link(source, destination)
+    except FileExistsError as error:
+        raise InitializationError(
+            f"import target already exists: {destination}"
+        ) from error
     except OSError:
-        _ = shutil.copy2(source, destination)
+        try:
+            with Path(source).open("rb") as input_stream:
+                original = os.fstat(input_stream.fileno())
+                if type(original) is not os.stat_result or not stat.S_ISREG(
+                    original.st_mode
+                ):
+                    _fail("import copy source must be a regular file")
+                with Path(destination).open("xb") as output_stream:
+                    _write_import_file_payload(
+                        input_stream.fileno(), output_stream.fileno()
+                    )
+                    os.fchmod(output_stream.fileno(), stat.S_IMODE(original.st_mode))
+                    finished = os.fstat(output_stream.fileno())
+                    if (
+                        type(finished) is not os.stat_result
+                        or finished.st_size != original.st_size
+                    ):
+                        _fail("import copy fallback content length mismatch")
+        except FileExistsError as error:
+            raise InitializationError(
+                f"import target already exists: {destination}"
+            ) from error
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise InitializationError("import copy fallback failed") from error
     return destination
 
 

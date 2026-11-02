@@ -3283,6 +3283,91 @@ def test_rust_toolchain_import_aliases_windows_compiler(
     assert rustc_alias.read_bytes() == RUST_RUSTC_BYTES
 
 
+@pytest.mark.parametrize("injection", ["symlink", "hardlink"])
+@pytest.mark.parametrize("link_error", ["exists", "unavailable"])
+def test_portable_rust_import_rejects_late_alias_leaf_collision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    injection: str, link_error: str
+) -> None:
+    """A copy fallback cannot write through an alias created during hardlink."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    alias = destination / "bin/cargo.bin"
+    external = tmp_path / "unrelated-binary"
+    sentinel = b"external binary must not change"
+    _ = external.write_bytes(sentinel)
+    original_link = os.link
+    collision = False
+
+    def inject_at_alias_link(
+        from_path: str | os.PathLike[str],
+        to_path: str | os.PathLike[str],
+    ) -> None:
+        nonlocal collision
+        if Path(to_path) == alias and not collision:
+            if injection == "symlink":
+                _ = alias.symlink_to(external)
+            else:
+                original_link(external, alias)
+            collision = True
+            if link_error == "exists":
+                raise FileExistsError("late neutral alias collision")
+            raise OSError("cross-device link fallback with late collision")
+        original_link(from_path, to_path)
+
+    monkeypatch.setattr(
+        project, "_supports_pinned_local_state_directories", lambda: False
+    )
+    monkeypatch.setattr(os, "link", inject_at_alias_link)
+    with pytest.raises(project.InitializationError, match="already exists"):
+        _ = project.import_rust_toolchain(
+            source, destination, tool_ids=("cargo",), windows=False
+        )
+    assert collision
+    assert external.read_bytes() == sentinel
+    assert not project.rust_toolchain_import_complete(destination)
+
+
+
+def test_portable_rust_import_copy_fallback_preserves_executable_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hardlink-free portable imports retain executable bytes and permissions."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    native = source / "bin/cargo"
+    _ = native.write_bytes(RUST_CARGO_BYTES)
+    native.chmod(0o700)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    original_link = os.link
+    fallback = False
+
+    def unsupported_alias_link(
+        input_path: str | os.PathLike[str],
+        output_path: str | os.PathLike[str],
+    ) -> None:
+        nonlocal fallback
+        if Path(output_path) == destination / "bin/cargo.bin":
+            fallback = True
+            raise OSError("hardlinks unavailable")
+        original_link(input_path, output_path)
+
+    monkeypatch.setattr(
+        project, "_supports_pinned_local_state_directories", lambda: False
+    )
+    monkeypatch.setattr(os, "link", unsupported_alias_link)
+    aliases = project.import_rust_toolchain(
+        source, destination, tool_ids=("cargo",), windows=False
+    )
+    assert fallback
+    assert aliases == (destination / "bin/cargo.bin",)
+    assert aliases[0].read_bytes() == RUST_CARGO_BYTES
+    assert stat.S_IMODE(aliases[0].stat().st_mode) == 0o700
+    assert project.rust_toolchain_import_complete(destination)
+
+
 @pytest.mark.parametrize("portable", [False, True])
 @pytest.mark.parametrize("alias_bytes", [b"unexpected-cargo", RUST_CARGO_BYTES])
 def test_rust_import_rejects_preexisting_physical_host_alias(
