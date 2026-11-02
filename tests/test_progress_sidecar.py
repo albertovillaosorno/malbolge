@@ -520,6 +520,37 @@ class SwappingReadStream:
 
 
 @dataclass(slots=True)
+class StagedCloseByteMutator:
+    """Rewrite a staged file when the validating reader descriptor closes."""
+
+    destination: Path
+    original_close: Callable[[int], None]
+    staged_descriptors: set[int]
+    rewrites: int = 0
+
+    def __call__(self, descriptor: int) -> None:
+        """Corrupt bytes during reader close without changing size or mtime."""
+        self.original_close(descriptor)
+        if descriptor not in self.staged_descriptors:
+            return
+        self.staged_descriptors.remove(descriptor)
+        stages = tuple(
+            self.destination.parent.glob(f".{self.destination.name}.*.tmp")
+        )
+        assert len(stages) == 1
+        stage = stages[0]
+        before = stage.stat()
+        content = stage.read_bytes()
+        _ = stage.write_bytes(b"X" + content[1:])
+        os.utime(stage, ns=(before.st_atime_ns, before.st_mtime_ns))
+        after = stage.stat()
+        assert after.st_ino == before.st_ino
+        assert after.st_size == before.st_size
+        assert after.st_mtime_ns == before.st_mtime_ns
+        self.rewrites += 1
+
+
+@dataclass(slots=True)
 class CloseChangingReadStream:
     """Read the original inode, then change its pathname when closing."""
 
@@ -9132,6 +9163,49 @@ def test_progress_staging_hardlink_after_reader_close_rejected(
         with pytest.raises(ERROR, match=r"temporary.*link"):
             _ = writer(destination, b"expected-checkpoint", platform=os.name)
     assert alias.exists()
+    assert not destination.exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+@pytest.mark.parametrize("kind", [TEMP_MUTABLE, TEMP_IMMUTABLE])
+def test_staged_close_mutation_rejects_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A reader-close byte rewrite cannot publish the unverified stage."""
+    sidecar = _sidecar(tmp_path)
+    destination = (
+        Path(sidecar.progress_path)
+        if kind == TEMP_MUTABLE
+        else tmp_path / "checkpoint.bin"
+    )
+    original_open = cast(
+        "Callable[[Path], int]", vars(progress)["_open_staged_reader"]
+    )
+    staged_descriptors: set[int] = set()
+    mutator = StagedCloseByteMutator(destination, os.close, staged_descriptors)
+
+    def tracked_open(path: Path) -> int:
+        descriptor = original_open(path)
+        staged_descriptors.add(descriptor)
+        return descriptor
+
+    def publish() -> Path:
+        if kind == TEMP_MUTABLE:
+            return progress.write_atomic(sidecar)
+        writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
+        return writer(destination, b"checkpoint", platform=os.name)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_open_staged_reader", tracked_open)
+        context.setattr(os, "close", mutator)
+        with pytest.raises(ERROR, match="progress temporary") as captured:
+            _ = publish()
+    assert not isinstance(
+        captured.value, progress.ProgressSidecarCommittedError
+    )
+    assert mutator.rewrites == 1
     assert not destination.exists()
     assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
 

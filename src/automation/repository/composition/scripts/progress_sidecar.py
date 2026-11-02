@@ -2595,8 +2595,13 @@ def _verify_staged_content(
     identity: tuple[int, int],
     *,
     payload: bytes,
-) -> None:
-    """Bind staged bytes and stable file identity to the original payload."""
+) -> os.stat_result:
+    """Bind staged bytes and identity; return the pre-close metadata receipt.
+
+    Returns:
+        Admitted inode metadata after the content digest verification.
+
+    """
     _verify_opened_read_identity(temporary, descriptor, "progress temporary")
     initial = os.fstat(descriptor)
     _admit_temporary_inode(initial, identity, len(payload))
@@ -2614,6 +2619,7 @@ def _verify_staged_content(
         _fail("progress temporary contents changed during verification")
     if staged_digest != sha256(payload).digest():
         _fail("progress temporary content does not match staged bytes")
+    return final
 
 
 def _close_staged_reader(descriptor: int) -> None:
@@ -2687,7 +2693,7 @@ def _verify_written_temporary(
     descriptor = _open_staged_reader(temporary)
     try:
         try:
-            _verify_staged_content(
+            verified = _verify_staged_content(
                 temporary, descriptor, identity, payload=payload
             )
         except ProgressSidecarError:
@@ -2698,7 +2704,10 @@ def _verify_written_temporary(
             )
     finally:
         _close_staged_reader(descriptor)
+    # A close callback can rewrite a verified same-inode stage without
+    # changing its size or mtime; reject before linking or replacing it.
     _admit_temporary_path(temporary, identity, len(payload))
+    _verify_closed_read_path(temporary, "progress temporary", verified)
 
 
 def _confirm_mutable_postpublication_identity(

@@ -103,6 +103,11 @@ reader-descriptor close. A false success receipt prevents both pointer and
 immutable checkpoint publication, while a preceding staged-read failure stays
 primary and records the false closure as a secondary note. This supplements
 existing exception-path cleanup admission without changing committed bytes.
+The accepted digest's final descriptor receipt is rechecked against the
+physical staged pathname after reader close, including inode identity, length,
+and nanosecond modification/change times. A same-length write in the close
+callback therefore rejects before either mutable replacement or immutable
+link publication, rather than leaving a corrupted committed artifact.
 
 Unadmitted raw descriptor cleanup during pointer reads, writer-lock opens,
 staging inode admission, and payload stream ownership transfer now checks
