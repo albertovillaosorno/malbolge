@@ -599,6 +599,28 @@ def test_lifecycle_parent_link_is_rejected_during_discovery(
         _ = validator.validate_repository_lifecycle(manifest)
 
 
+@pytest.mark.parametrize("tamper", ["syntax", "schema", "algorithm-id"])
+def test_lifecycle_parser_rejects_native_forged_toml_provider(
+    monkeypatch: pytest.MonkeyPatch, tamper: str
+) -> None:
+    """A substituted decoder cannot fabricate lifecycle identity or state."""
+    source = _base(validator.EXPERIMENTAL)
+    native = validator.tomllib.loads(source)
+    if tamper == "syntax":
+        source = "this is not lifecycle TOML"
+    elif tamper == "schema":
+        source = source.replace("schema_version = 1", "schema_version = 2")
+    else:
+        native["algorithm"]["id"] = "not-the-source-algorithm"
+    with monkeypatch.context() as context:
+        context.setattr(validator.tomllib, "loads", lambda _text: native)
+        with pytest.raises(validator.AlgorithmLifecycleError, match="TOML.*provider"):
+            validator.parse_lifecycle(source)
+    assert validator.parse_lifecycle(_base(validator.EXPERIMENTAL)).identifier == (
+        "template"
+    )
+
+
 @pytest.mark.parametrize(
     "fault_type",
     [validator.tomllib.TOMLDecodeError, ValueError, TypeError, RuntimeError],

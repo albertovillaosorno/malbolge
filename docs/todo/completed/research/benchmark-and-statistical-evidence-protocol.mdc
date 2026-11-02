@@ -74,3 +74,7 @@ identify uncertainty and may never substitute for semantic verification.
   linked run supplies exact commit, workload SHA-256, toolchain, and outcome.
 - The checked-in protocol fixtures are validation evidence only and make no
   Malbolge performance claim.
+- Three red-first native-shaped substituted TOML provider regressions now reject
+  forged benchmark syntax, version, or study identity before admission. The
+  combined benchmark/lifecycle suite passes 301 cases. This is local parser
+  consistency, not independent measurement authentication.

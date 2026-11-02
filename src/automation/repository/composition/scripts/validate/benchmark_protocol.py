@@ -45,6 +45,9 @@ from typing import Never, TextIO, cast
 
 import tomllib
 
+# The standard-library decoder selected at import is part of source admission.
+_NATIVE_TOML_LOADS = tomllib.loads
+
 from scripts.repository_root import repository_root
 from scripts.validate import experiment_manifest
 
@@ -308,6 +311,10 @@ def _parse_document(text: str) -> dict[str, object]:
         _fail(f"unsupported benchmark protocol schema: {version}")
     for table_name in REQUIRED_TABLES:
         _ = _table(document, table_name)
+    # Native-looking tables do not prove the decoder read the source text.
+    # Keep earlier malformed receipt diagnostics before rejecting a swap.
+    if tomllib.loads is not _NATIVE_TOML_LOADS:
+        _fail("benchmark protocol TOML decoder provider changed")
     return document
 
 

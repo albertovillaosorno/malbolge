@@ -1272,6 +1272,28 @@ def _expect_validation_failure(path: Path, message: str) -> None:
     raise AssertionError(failure)
 
 
+@pytest.mark.parametrize("tamper", ["syntax", "schema", "study-id"])
+def test_benchmark_parser_rejects_native_forged_toml_provider(
+    monkeypatch: pytest.MonkeyPatch, tamper: str
+) -> None:
+    """A replaced TOML decoder cannot invent a benchmark source identity."""
+    source = _text(DETERMINISTIC)
+    native = validator.tomllib.loads(source)
+    if tamper == "syntax":
+        source = "this is not benchmark TOML"
+    elif tamper == "schema":
+        source = source.replace("schema_version = 1", "schema_version = 2")
+    else:
+        native["study"]["id"] = "not-the-source-study"
+    with monkeypatch.context() as context:
+        context.setattr(validator.tomllib, "loads", lambda _text: native)
+        with pytest.raises(validator.BenchmarkProtocolError, match="TOML.*provider"):
+            validator.parse_protocol(source)
+    assert validator.parse_protocol(_text(DETERMINISTIC)).identifier == (
+        "deterministic-protocol-fixture"
+    )
+
+
 @pytest.mark.parametrize(
     "fault_type",
     [validator.tomllib.TOMLDecodeError, ValueError, TypeError, RuntimeError],

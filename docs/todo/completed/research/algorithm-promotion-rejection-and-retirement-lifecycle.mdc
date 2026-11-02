@@ -72,3 +72,7 @@ reproducibility, complexity, portability, and measured benefit gate promotion.
   exercise promotion, rejection, retirement, and fail-closed experimental cases.
 - No current algorithm is promoted by policy fiat; observed lifecycle state and
   interpretation remain separate.
+- Three red-first substituted TOML decoder cases now refuse a native-looking
+  lifecycle record when source syntax, version, or algorithm ID disagrees. The
+  benchmark/lifecycle combined test set passes 301 cases. This pins the local
+  decoder provider; it does not attest promotion evidence or source provenance.

@@ -50,7 +50,11 @@ Benchmark evidence protocol v1 is validated by
 Protocol files and their linked experiment manifests reject invalid UTF-8
 through the stable benchmark-protocol error boundary before TOML admission.
 TOML parser capacity errors, such as oversized decimal integer tokens, also
-produce typed benchmark-protocol failures.
+produce typed benchmark-protocol failures. Admission now also rejects a
+runtime swap of the imported TOML decoder even when the substitute returns
+native-shaped benchmark tables. Three red-first regressions show invalid source
+syntax, unsupported schema and altered study IDs could otherwise be masked.
+This checks the chosen parser provider, not historical measurement provenance.
 
 The validator admits only physical regular evidence files whose parent
 components are unlinked directories, before reading and again after. It pins

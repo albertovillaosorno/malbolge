@@ -46,6 +46,9 @@ from typing import TYPE_CHECKING, Never, cast
 
 import tomllib
 
+# The standard-library decoder selected at import is part of source admission.
+_NATIVE_TOML_LOADS = tomllib.loads
+
 from scripts.repository_root import repository_root
 from scripts.research_layout import research_algorithm_directories
 
@@ -260,6 +263,10 @@ def _parse_document(text: str) -> dict[str, object]:
     version = document.get("schema_version")
     if type(version) is not int or version != SCHEMA_VERSION:
         _fail(f"unsupported algorithm lifecycle schema: {version}")
+    # Refuse a replaced decoder even if it forged valid native metadata.
+    # Existing malformed mapping/provider diagnostics stay authoritative.
+    if tomllib.loads is not _NATIVE_TOML_LOADS:
+        _fail("algorithm lifecycle TOML decoder provider changed")
     return document
 
 
