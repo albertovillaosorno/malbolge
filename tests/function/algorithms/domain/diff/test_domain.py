@@ -34,17 +34,17 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+import importlib.machinery
 import importlib.util
 import os
-from pathlib import Path
 import sys
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import replace
+from pathlib import Path
+from types import ModuleType
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.domain import DomainContractError
-from algorithms.diff.domain import load_diff_domain
 import pytest
+from algorithms.diff.domain import DomainContractError, load_diff_domain
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -109,9 +109,7 @@ class _ForeignDomainModulePath(type(Path())):
 
 def test_domain_loader_rejects_foreign_path_subclass_before_methods() -> None:
     """Reject module overrides before module status or import registration."""
-    with pytest.raises(
-        DomainContractError, match="must use exact pathlib Path"
-    ):
+    with pytest.raises(DomainContractError, match="must use exact pathlib Path"):
         _ = load_diff_domain(_ForeignDomainModulePath("unsafe-domain.py"))
 
 
@@ -161,9 +159,7 @@ def test_domain_import_preparation_errors_are_typed(
     with pytest.raises(DomainContractError, match="import preparation failed"):
         _ = load_diff_domain(module)
     registered = frozenset(sys.modules) - before
-    assert not any(
-        name.startswith("_malbolge_diff_domain_") for name in registered
-    )
+    assert not any(name.startswith("_malbolge_diff_domain_") for name in registered)
 
 
 def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
@@ -181,9 +177,7 @@ def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
         callable(domain.validate_authoring_oracle),
         "oracle validator is not callable",
     )
-    _expect(
-        callable(domain.build_identity_tree), "identity builder is not callable"
-    )
+    _expect(callable(domain.build_identity_tree), "identity builder is not callable")
     _expect(
         callable(domain.map_compatible_file),
         "mapped-file adapter is not callable",
@@ -243,9 +237,7 @@ def test_rejected_domain_module_is_not_left_registered(tmp_path: Path) -> None:
         _ = load_diff_domain(module)
 
     registered = frozenset(sys.modules) - before
-    assert not any(
-        name.startswith("_malbolge_diff_domain_") for name in registered
-    )
+    assert not any(name.startswith("_malbolge_diff_domain_") for name in registered)
 
 
 def test_domain_hook_lookup_exception_uses_contract_error(
@@ -257,17 +249,14 @@ def test_domain_hook_lookup_exception_uses_contract_error(
         "def build_behavior_programs():\n    return None\n\n", ""
     )
     getter = (
-        "def __getattr__(name):\n"
-        "    raise RuntimeError('consumer lookup failed')\n"
+        "def __getattr__(name):\n    raise RuntimeError('consumer lookup failed')\n"
     )
     _write(module, missing + getter)
     before = frozenset(sys.modules)
     with pytest.raises(DomainContractError, match="hook lookup failed"):
         _ = load_diff_domain(module)
     registered = frozenset(sys.modules) - before
-    assert not any(
-        name.startswith("_malbolge_diff_domain_") for name in registered
-    )
+    assert not any(name.startswith("_malbolge_diff_domain_") for name in registered)
 
 
 def test_rejected_domain_reload_preserves_previous_registration(
@@ -279,9 +268,7 @@ def test_rejected_domain_reload_preserves_previous_registration(
     before = frozenset(sys.modules)
     _ = load_diff_domain(module)
     names = frozenset(sys.modules) - before
-    loaded = tuple(
-        name for name in names if name.startswith("_malbolge_diff_domain_")
-    )
+    loaded = tuple(name for name in names if name.startswith("_malbolge_diff_domain_"))
     assert len(loaded) == 1
     name = loaded[0]
     accepted_module = sys.modules[name]
@@ -445,9 +432,7 @@ def test_domain_module_metadata_failures_are_typed(
 
     monkeypatch.setattr(Path, "lstat", blocked_lstat)
     monkeypatch.setattr(Path, "resolve", blocked_resolve)
-    with pytest.raises(
-        DomainContractError, match=r"status failed|resolution failed"
-    ):
+    with pytest.raises(DomainContractError, match=r"status failed|resolution failed"):
         _ = load_diff_domain(module)
 
 
@@ -499,3 +484,28 @@ def test_domain_file_resolution_error_fails_closed(
     monkeypatch.setattr(Path, "resolve", fail_resolve)
     with pytest.raises(DomainContractError, match="resolution failed"):
         _ = load_diff_domain(module)
+
+
+@pytest.mark.parametrize("receipt", [False, 1, "executed"])
+def test_domain_loader_rejects_foreign_exec_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A loader may not attest a policy module with a forged completion."""
+    module = tmp_path / "native_receipt.py"
+    _write(module, _COMPLETE)
+    previous_names = frozenset(sys.modules)
+    native_exec = importlib.machinery.SourceFileLoader.exec_module
+
+    def forged_exec(
+        loader: importlib.machinery.SourceFileLoader, selected: ModuleType
+    ) -> object:
+        native_exec(loader, selected)
+        return receipt
+
+    monkeypatch.setattr(
+        importlib.machinery.SourceFileLoader, "exec_module", forged_exec
+    )
+    with pytest.raises(DomainContractError, match="non-native completion"):
+        _ = load_diff_domain(module)
+    added = frozenset(sys.modules) - previous_names
+    assert not any(name.startswith("_malbolge_diff_domain_") for name in added)

@@ -34,16 +34,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import importlib.util
 import os
-from pathlib import Path
-from stat import S_ISLNK
-from stat import S_ISREG
 import sys
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass
+from pathlib import Path
+from stat import S_ISLNK, S_ISREG
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -51,8 +49,10 @@ if TYPE_CHECKING:
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior_programs import BehaviorPrograms
-    from algorithms.diff.compatible import CompatibleAuthoringPlan
-    from algorithms.diff.compatible import CompatibleCorrectionBinding
+    from algorithms.diff.compatible import (
+        CompatibleAuthoringPlan,
+        CompatibleCorrectionBinding,
+    )
     from algorithms.diff.mapped import MappedView
     from algorithms.diff.probe_exec import ProbeRunContext
     from algorithms.diff.provenance import SourcePinEvidence
@@ -198,11 +198,17 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
     previous = sys.modules.get(name)
     sys.modules[name] = module
     try:
-        loader.exec_module(module)
+        completion = cast("object", loader.exec_module(module))
     except Exception as error:
         _restore_domain_registration(name, module, previous)
         message = f"diff domain module execution failed: {resolved}: {error}"
         raise DomainContractError(message) from error
+    if completion is not None:
+        _restore_domain_registration(name, module, previous)
+        message = (
+            f"diff domain module execution reported non-native completion: {resolved}"
+        )
+        raise DomainContractError(message)
     return module, previous
 
 
