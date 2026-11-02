@@ -270,6 +270,115 @@ def test_manifest_rejects_duplicate_json_key(tmp_path: Path) -> None:
         _ = tidy_toolchain.load_identity(manifest, root=tmp_path)
 
 
+@pytest.mark.parametrize("entrypoint", ["document", "identity"])
+def test_toolchain_manifest_decoder_corroborates_original_plugin_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    entrypoint: str,
+) -> None:
+    """An injected JSON loader cannot replace the reviewed plugin identity."""
+    source = _canonical_document()
+    original_windows = cast(
+        "dict[str, object]",
+        cast("dict[str, object]", source["platforms"])[WINDOWS_PLATFORM],
+    )
+    assert original_windows["plugin_library"] == "bin/malbolge-tidy.dll"
+    manifest = _write_manifest(tmp_path, source)
+    forged = _canonical_document()
+    platforms = cast("dict[str, object]", forged["platforms"])
+    windows = cast("dict[str, object]", platforms[WINDOWS_PLATFORM])
+    windows["plugin_library"] = "bin/foreign-toolchain.dll"
+
+    def forged_loads(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return forged
+
+    monkeypatch.setattr(json, "loads", forged_loads)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError,
+        match="JSON decoder provider differs from source",
+    ):
+        if entrypoint == "document":
+            _ = tidy_toolchain._document(manifest)  # pyright: ignore[reportPrivateUsage]
+        else:
+            _ = tidy_toolchain.load_identity(manifest, root=tmp_path)
+
+
+def test_toolchain_manifest_decoder_accepts_equivalent_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An equivalent native adapter remains compatible with source identity."""
+    manifest = _write_manifest(tmp_path, _canonical_document())
+    original_loads = json.loads
+
+    def delegated(text: str, *, object_pairs_hook: object) -> object:
+        return original_loads(
+            text,
+            object_pairs_hook=cast(
+                "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+            ),
+        )
+
+    monkeypatch.setattr(json, "loads", delegated)
+    identity = tidy_toolchain.load_identity(manifest, root=tmp_path)
+    assert identity.plugin_library.name == "malbolge-tidy.dll"
+
+
+def test_toolchain_manifest_decoder_rejects_lied_about_invalid_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A forged native document cannot override original JSON syntax errors."""
+    forged = _canonical_document()
+    source = tmp_path / "invalid.json"
+    _ = source.write_text('{"schema_version": 2,,}', encoding="utf-8")
+
+    def fabricated(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return forged
+
+    monkeypatch.setattr(json, "loads", fabricated)
+    with pytest.raises(tidy_toolchain.ToolchainError, match="cannot read") as caught:
+        _ = tidy_toolchain.load_identity(source, root=tmp_path)
+    assert type(caught.value.__cause__) is json.JSONDecodeError
+
+
+def test_toolchain_manifest_decoder_refuses_foreign_keys_without_equality(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A foreign nested key must not run equality during source comparison."""
+
+    class ForeignKey(str):
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign LLVM toolchain key equality executed")
+
+    native = _canonical_document()
+    forged = _canonical_document()
+    platforms = cast("dict[str, object]", forged["platforms"])
+    windows = cast("dict[str, object]", platforms[WINDOWS_PLATFORM])
+    library = windows.pop("plugin_library")
+    windows[ForeignKey("plugin_library")] = library
+    manifest = _write_manifest(tmp_path, native)
+
+    def fabricated(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return forged
+
+    monkeypatch.setattr(json, "loads", fabricated)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="JSON decoder provider differs"
+    ):
+        _ = tidy_toolchain.load_identity(manifest, root=tmp_path)
+
+
 def test_manifest_rejects_escaping_runtime_root(tmp_path: Path) -> None:
     """Native roots cannot redirect validation outside the repository."""
     document = _canonical_document()

@@ -68,6 +68,12 @@ existing clang-tidy baseline.
   Ruff, basedpyright, Clippy, clang-format, and the native build were clean.
 - Completion evidence on 2026-08-08: exhaustive `jig validate --root .`
   completed with `status: clean` and zero diagnostics before retirement.
+- Subsequent trust-boundary hardening: the LLVM toolchain manifest validator
+  independently corroborates changed JSON loader providers with original
+  source bytes. Two red-first plugin-library substitution entrypoints now
+  reject, alongside syntax-forgery and foreign-key controls; source-equivalent
+  adapters remain usable. The full standalone tidy-toolchain suite passed
+  185 tests with one Windows-only skip.
 - Remaining full language/runtime/determinism/resource lowerability proof stays
   owned by the later `tools-tidy-lowerability-contract` TODO rather than this
   lane-7 plugin bootstrap.

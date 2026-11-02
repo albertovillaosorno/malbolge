@@ -109,9 +109,15 @@ Version probes have a 15-second execution bound; timeouts preserve their
 original host exception as the typed error cause without invoking foreign
 exception formatters. Source stream ownership transfers
 only to a native binary buffer wrapper; a foreign `fdopen` result is rejected
-without reading its fields or leaking the opened descriptor. Manifest decoding,
-source inspection, and archive hashing preserve the original host or UTF-8
-failure as the typed error cause. Native error text is retained; foreign
+without reading its fields or leaking the opened descriptor. When the public
+JSON loader is substituted, manifest parsing independently re-reads the exact
+source text through the original import-bound decoder and compares all native
+keys, values, and containers before using any plugin identity. Altered library
+paths and source-syntax forgeries fail closed, foreign key equality hooks are
+never invoked, and source-equivalent delegating loaders remain supported. This
+corroborates decoder substitution, not arbitrary mutation of Python internals.
+Manifest decoding, source inspection, and archive hashing preserve the original
+host or UTF-8 failure as the typed error cause. Native error text is retained; foreign
 exception formatters are never consulted. The toolchain CLI similarly prints
 exact local `ToolchainError` messages but only the exception class name for
 untrusted subclasses, avoiding their custom formatting hooks. CLI readiness

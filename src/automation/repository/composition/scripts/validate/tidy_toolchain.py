@@ -74,6 +74,7 @@ MANIFEST: Final = (
 )
 SCHEMA_VERSION: Final = 2
 MAX_MANIFEST_BYTES: Final = 1024 * 1024
+_NATIVE_JSON_LOADS: Final = json.loads
 ARCHIVE_HASH_CHUNK_BYTES: Final = 1024 * 1024
 LLVM_VERSION: Final = "22.1.8"
 RELEASE_TAG: Final = f"llvmorg-{LLVM_VERSION}"
@@ -413,17 +414,51 @@ def _read_manifest_bytes(path: Path) -> bytes:
     return raw
 
 
+def _same_native_json(actual: object, expected: object) -> bool:
+    """Compare complete decoded JSON trees without foreign equality hooks."""
+    kind = type(expected)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        observed = cast("dict[object, object]", actual)
+        source = cast("dict[object, object]", expected)
+        # Require native keys before lookup to avoid colliding foreign __eq__.
+        if any(type(key) is not str for key in observed):
+            return False
+        return len(observed) == len(source) and all(
+            key in observed and _same_native_json(observed[key], value)
+            for key, value in source.items()
+        )
+    if kind is list:
+        observed = cast("list[object]", actual)
+        source = cast("list[object]", expected)
+        return len(observed) == len(source) and all(
+            _same_native_json(left, right)
+            for left, right in zip(observed, source, strict=True)
+        )
+    return kind in (bool, int, float, str, type(None)) and actual == expected
+
+
 def _document(path: Path) -> dict[str, object]:
     label = "clang-tidy toolchain manifest"
     try:
         raw = _read_manifest_bytes(path)
+        source_text = raw.decode("utf-8")
         parsed = cast(
             "object",
-            json.loads(
-                raw.decode("utf-8"),
-                object_pairs_hook=_reject_duplicate_pairs,
-            ),
+            json.loads(source_text, object_pairs_hook=_reject_duplicate_pairs),
         )
+        # A replaced JSON provider may return native-looking identities that
+        # do not exist in the checked, unmodified manifest bytes.
+        if json.loads is not _NATIVE_JSON_LOADS:
+            original = cast(
+                "object",
+                _NATIVE_JSON_LOADS(
+                    source_text, object_pairs_hook=_reject_duplicate_pairs
+                ),
+            )
+            if not _same_native_json(parsed, original):
+                _fail("clang-tidy toolchain JSON decoder provider differs from source")
     except ToolchainError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
