@@ -863,7 +863,9 @@ def main() -> int:
             ),
         )
         report_output.publish(report, sys.stdout)
-    except (ReferenceAuditError, report_output.ReportOutputError) as error:
+    except Exception as error:
+        # Unexpected ordinary audit or publication dependency failures are
+        # rejected too, without invoking untrusted exception format hooks.
         parser.exit(2, f"host-C reference audit: {_safe_error_detail(error)}\n")
     return 0
 

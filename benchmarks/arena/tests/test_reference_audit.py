@@ -1787,6 +1787,50 @@ def test_host_c_audit_cli_rejects_foreign_formatter_without_traceback(
     assert "ForeignHostAuditCliFault" in output.err
 
 
+class _UnexpectedAuditCliFault(RuntimeError):
+    """An ordinary dependency exception with an unsafe formatter."""
+
+    def __str__(self) -> str:
+        raise AssertionError("unexpected audit CLI dependency was formatted")
+
+
+@pytest.mark.parametrize("phase", ["audit", "publication"])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, KeyError, _UnexpectedAuditCliFault]
+)
+def test_host_c_audit_cli_types_unexpected_dependency_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    phase: str,
+    fault_type: type[Exception],
+) -> None:
+    """Unexpected audit and output faults must terminate as status two."""
+    fault = fault_type("injected dependency fault")
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    if phase == "audit":
+        monkeypatch.setattr(reference_audit, "audit", fail)
+    else:
+        monkeypatch.setattr(reference_audit, "audit", lambda *_a, **_kw: {"ok": True})
+        monkeypatch.setattr(reference_audit.report_output, "publish", fail)
+    monkeypatch.setattr(
+        reference_audit.sys,
+        "argv",
+        ["reference-audit", ".temp/arena-host-c-study-foreign/study.json"],
+    )
+    with pytest.raises(SystemExit) as caught:
+        reference_audit.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert (
+        "injected dependency fault" if fault_type is OSError else fault_type.__name__
+    ) in output.err
+    assert "Traceback" not in output.err
+
+
 @pytest.mark.parametrize(
     "fault_type",
     [reference_audit.ReferenceAuditError, report_output.ReportOutputError],
