@@ -68,6 +68,10 @@ instruction.
   source-span/identity preservation, round-trips representative extreme 32-bit
   patterns through the ternary scalar, rejects malformed/identity-drifted
   projections, and rejects a richer admitted typed-IR shape.
+- The ten crash-generation boundaries now inject mutable-pointer rename
+  failures through the POSIX `os.replace` descriptor-relative publisher and
+  retain `Path.replace` for Windows. Regression replay covers both pre- and
+  post-replace crashes without weakening the checkpoint-atomicity assertion.
 - The same lowering boundary now admits typed-IR successful `u8` `ByteInput` and
   `ByteOutput` effects. A valid byte-I/O fixture is admitted, canonicalized,
   restored exactly, projected, and lowered in source order; fabricated

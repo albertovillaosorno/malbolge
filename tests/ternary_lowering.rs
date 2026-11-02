@@ -317,7 +317,8 @@ original_write_immutable = progress._write_immutable
 original_publish = progress._publish_immutable_payload
 original_confirm = progress._confirm_publication_durability
 original_fsync = os.fsync
-original_replace = Path.replace
+original_path_replace = Path.replace
+original_os_replace = os.replace
 publication_count = 0
 regular_sync_count = 0
 
@@ -370,10 +371,13 @@ def confirm_then_crash(published_path, *, context, platform=os.name):
 def crash_before_sidecar(_sidecar):
     os._exit(exit_code)
 
-def replace_then_crash(source, destination):
+def replace_then_crash(source, destination, *args, **kwargs):
     if boundary == "before-sidecar-replace":
         os._exit(exit_code)
-    result = original_replace(source, destination)
+    if os.name == "nt":
+        result = original_path_replace(source, destination)
+    else:
+        result = original_os_replace(source, destination, *args, **kwargs)
     if boundary == "after-sidecar-replace":
         os._exit(exit_code)
     return result
@@ -385,7 +389,11 @@ os.fsync = fsync_then_crash
 if boundary == "before-sidecar":
     progress.write_atomic = crash_before_sidecar
 elif boundary in {"before-sidecar-replace", "after-sidecar-replace"}:
-    Path.replace = replace_then_crash
+    if os.name == "nt":
+        Path.replace = replace_then_crash
+    else:
+        # POSIX mutable pointers rename through pinned directory descriptors.
+        os.replace = replace_then_crash
 progress.write_checkpoint_generation(second, second_checkpoint)
 raise SystemExit(93)
 "#;
