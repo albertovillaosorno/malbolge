@@ -104,11 +104,12 @@ reader backed by the original native raw file descriptor. A foreign stream
 wrapper or a native reader bound to a substitute descriptor cannot supply
 bootstrap authority bytes.
 
-Python environment provisioning checks the venv and selected interpreter
-through native physical path receipts before invoking `uv pip sync` or creating
-the environment. Redirected parents/interpreters, non-directory environments,
-and externally hardlinked interpreters fail closed; these preflight checks do
-not make later concurrent ancestor swaps atomic.
+Python environment provisioning binds its entire tool layout to the selected
+checkout and checks the venv and interpreter through native physical path
+receipts before invoking `uv pip sync` or creating the environment. Redirected
+parents/interpreters, non-directory environments, and externally hardlinked
+interpreters fail closed; these preflight checks do not make later concurrent
+ancestor swaps atomic.
 
 Python keeps native platform launchers and publishes neutral Jig aliases below
 `.dependencies`. On POSIX, BasedPyright and pytest aliases answer only the exact

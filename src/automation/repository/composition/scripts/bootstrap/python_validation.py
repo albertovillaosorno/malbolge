@@ -1956,6 +1956,10 @@ def _provision(
     *,
     root: Path = ROOT,
 ) -> None:
+    if type(layout) is not ValidationEnvironmentLayout or layout != validation_layout(
+        root
+    ):
+        _fail("Python provisioning layout must match the selected checkout")
     # uv pip sync can modify the selected Python interpreter and environment.
     # Refuse redirected ancestors, foreign leaves, and externally linked inodes
     # before executing the provisioner or creating a virtual environment.

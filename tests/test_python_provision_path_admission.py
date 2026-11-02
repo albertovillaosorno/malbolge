@@ -29,6 +29,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Never
 
@@ -178,3 +179,30 @@ def test_python_provision_accepts_missing_venv_before_creation(
     assert created == [layout.environment]
     assert len(commands) == 1
     assert commands[0][1:3] == ["pip", "sync"]
+
+
+@pytest.mark.parametrize(
+    "mutation", ["other_checkout", "other_authority", "other_launcher"]
+)
+def test_python_provision_rejects_layout_from_other_checkout_or_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """The selected uv checkout must bind the entire interpreter/tool layout."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    other = tmp_path / "foreign-checkout"
+    other.mkdir()
+    layout = python_validation.validation_layout(root)
+    if mutation == "other_checkout":
+        layout = python_validation.validation_layout(other)
+    elif mutation == "other_authority":
+        layout = replace(layout, expected_tools=(("pytest", "pytest fake"),))
+    else:
+        layout = replace(layout, python_launcher=other / "out-of-checkout")
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python.write_bytes(PAYLOAD)
+    commands = _prepare_provision_stub(monkeypatch, root)
+    with pytest.raises(python_validation.ProvisionError, match="selected checkout"):
+        python_validation._provision(layout, root=root)
+    assert commands == []
+    assert layout.python.read_bytes() == PAYLOAD
