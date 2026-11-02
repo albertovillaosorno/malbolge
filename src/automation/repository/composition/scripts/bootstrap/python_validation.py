@@ -513,7 +513,9 @@ def _bounded_uv_member_bytes(content: bytes) -> bytes:
 
 def _zip_member_bytes(data: bytes, member: str) -> bytes:
     archive_completed = False
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+    archive = zipfile.ZipFile(io.BytesIO(data))
+    # Keep using the opened object, not a substituted __enter__ return.
+    with archive:
         inventory = archive.infolist()
         if len(inventory) > MAX_UV_ARCHIVE_MEMBERS:
             _fail("uv archive exceeds member limit")
@@ -537,7 +539,8 @@ def _zip_member_bytes(data: bytes, member: str) -> bytes:
         if info.file_size < 0 or info.file_size > MAX_UV_BINARY_BYTES:
             _fail("uv extracted member exceeds byte limit")
         member_read = False
-        with archive.open(info) as stream:
+        stream = archive.open(info)
+        with stream:
             content = _bounded_uv_member_bytes(
                 stream.read(MAX_UV_BINARY_BYTES + 1)
             )
@@ -554,7 +557,10 @@ def _zip_member_bytes(data: bytes, member: str) -> bytes:
 
 def _tar_member_bytes(data: bytes, member_name: str) -> bytes:
     archive_completed = False
-    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+    archive = tarfile.open(  # noqa: SIM115 - close the pinned object below.
+        fileobj=io.BytesIO(data), mode="r:gz"
+    )
+    with archive:
         selected: tarfile.TarInfo | None = None
         for index in range(MAX_UV_ARCHIVE_MEMBERS + 1):
             candidate = archive.next()

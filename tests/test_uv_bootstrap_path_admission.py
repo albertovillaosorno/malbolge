@@ -994,6 +994,62 @@ def test_uv_member_does_not_accept_suppressed_read_failure(
         _ = extract(output.getvalue(), name)
 
 
+@pytest.mark.parametrize("archive_kind", ["zip", "tar"])
+def test_uv_archive_uses_constructed_archive_not_substituted_enter(
+    monkeypatch: pytest.MonkeyPatch,
+    archive_kind: str,
+) -> None:
+    """A substituted context entry cannot swap verified archive contents."""
+    name = "uv.exe" if archive_kind == "zip" else "uv-release/uv"
+
+    def encode(payload: bytes) -> bytes:
+        result = io.BytesIO()
+        if archive_kind == "zip":
+            with zipfile.ZipFile(result, "w") as archive:
+                archive.writestr(name, payload)
+        else:
+            with tarfile.open(fileobj=result, mode="w:gz") as archive:
+                info = tarfile.TarInfo(name)
+                info.size = len(payload)
+                archive.addfile(info, io.BytesIO(payload))
+        return result.getvalue()
+
+    checked = encode(BINARY)
+    substituted = encode(b"foreign-unverified")
+    if archive_kind == "zip":
+        foreign_archive = zipfile.ZipFile(io.BytesIO(substituted))
+        monkeypatch.setattr(
+            zipfile.ZipFile, "__enter__", lambda *_args: foreign_archive
+        )
+        extract = python_validation._zip_member_bytes
+    else:
+        foreign_archive = tarfile.open(  # noqa: SIM115 - closed in finally.
+            fileobj=io.BytesIO(substituted), mode="r:gz"
+        )
+        monkeypatch.setattr(
+            tarfile.TarFile, "__enter__", lambda *_args: foreign_archive
+        )
+        extract = python_validation._tar_member_bytes
+    try:
+        assert extract(checked, name) == BINARY
+    finally:
+        foreign_archive.close()
+
+
+def test_uv_zip_member_uses_opened_stream_not_substituted_enter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged ZIP member context cannot replace the selected executable."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("uv.exe", BINARY)
+    foreign = b"foreign" + b"!" * (len(BINARY) - len(b"foreign"))
+    monkeypatch.setattr(
+        zipfile.ZipExtFile, "__enter__", lambda *_args: io.BytesIO(foreign)
+    )
+    assert python_validation._zip_member_bytes(output.getvalue(), "uv.exe") == BINARY
+
+
 def test_uv_zip_rejects_duplicate_selected_executable() -> None:
     """Ambiguous duplicate ZIP names cannot select executable contents."""
     output = io.BytesIO()
