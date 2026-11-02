@@ -553,6 +553,49 @@ def test_rpm_overlay_does_not_overwrite_external_destination_hardlink(
     assert not identity.development_root.exists()
 
 
+@pytest.mark.parametrize("failure", [OSError, shutil.Error, RuntimeError])
+def test_rpm_overlay_copy_host_fault_is_typed_and_not_published(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[Exception],
+) -> None:
+    """A failed header overlay copy cannot leak a raw host exception."""
+    identity = _identity(tmp_path)
+    fault = failure("overlay copy failed")
+
+    def failing_copytree(
+        _source: Path, _destination: Path, **_kwargs: object
+    ) -> None:
+        raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_payload",
+            _synthetic_hardlinked_payload,
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            _synthetic_hardlinked_members,
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_command_bytes",
+            _synthetic_hardlinked_cpio(tmp_path / "unused", during_copy=True),
+        )
+        isolated.setattr(shutil, "copytree", failing_copytree)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="LLVM RPM header overlay copy failed",
+        ) as observed:
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert observed.value.__cause__ is fault
+    assert not identity.development_root.exists()
+
+
 @pytest.mark.skipif(
     os.name != POSIX_OS_NAME, reason="requires POSIX RPM descriptor"
 )

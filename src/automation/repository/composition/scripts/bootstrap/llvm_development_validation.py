@@ -480,6 +480,20 @@ def _extract_cpio_headers(payload: bytes, package_staging: Path) -> None:
         _close_physical_parent(parent, "CPIO")
 
 
+def _copy_rpm_include_tree(include_root: Path, destination_include: Path) -> None:
+    """Translate host overlay copy faults into typed provision failures."""
+    try:
+        _ = shutil.copytree(
+            include_root,
+            destination_include,
+            dirs_exist_ok=True,
+            symlinks=True,
+        )
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = "LLVM RPM header overlay copy failed"
+        raise LlvmDevelopmentProvisionError(detail) from error
+
+
 def _extract_rpm_headers(
     data: bytes,
     asset: tidy_toolchain.DevelopmentAsset,
@@ -540,12 +554,7 @@ def _extract_rpm_headers(
             _reject_include_symlinks(
                 destination_include, require_single_link=True
             )
-        _ = shutil.copytree(
-            include_root,
-            destination_include,
-            dirs_exist_ok=True,
-            symlinks=True,
-        )
+        _copy_rpm_include_tree(include_root, destination_include)
         _reject_include_symlinks(include_root, require_single_link=True)
     finally:
         require_owned_package()
