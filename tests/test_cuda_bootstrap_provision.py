@@ -1087,6 +1087,42 @@ def test_cuda_never_publishes_same_content_marker_inode_swap(
     assert not (tmp_path / TOOLKIT_ROOT).exists()
 
 
+def test_cuda_rejects_oversized_completion_marker_before_download(
+    tmp_path: Path,
+) -> None:
+    """Known impossible marker size must fail before network or staging."""
+    manifest_path = _manifest(tmp_path, _payload())
+    document = cast("dict[str, object]", json.loads(manifest_path.read_text()))
+    original = cast("list[dict[str, object]]", document["packages"])[0]
+    packages: list[dict[str, object]] = []
+    for index in range(200):
+        name = f"cuda_package_{index:03d}"
+        packages.append({
+            **original,
+            "name": name,
+            "relative_path": f"{name}/{LINUX_PLATFORM}/{name}-archive.tar.xz",
+        })
+    document["packages"] = packages
+    _ = manifest_path.write_text(json.dumps(document))
+    manifest = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest_path, LINUX_PLATFORM
+    )
+    assert len(cuda_validation._marker_bytes(manifest)) > cuda_validation._MAX_MARKER_BYTES
+    contacted: list[str] = []
+
+    def download(url: str) -> bytes:
+        contacted.append(url)
+        return _payload()
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match="marker exceeds byte limit"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path, manifest_path, LINUX_PLATFORM, downloader=download
+        )
+    assert not contacted
+    assert not (tmp_path / ".temp/cuda-provision-linux-x86_64").exists()
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
 def test_provision_is_idempotent_after_exact_marker(tmp_path: Path) -> None:
     """A completed exact toolkit never redownloads admitted package bytes."""
     payload = _payload()

@@ -1654,6 +1654,11 @@ def provision_cuda_manifest(
 
     """
     manifest = load_cuda_provision_manifest(root, manifest_path, platform_id)
+    # The final marker shape is fully determined by the admitted manifest.
+    # Reject impossible publication before staging or expensive package reads.
+    marker_content = _marker_bytes(manifest)
+    if len(marker_content) > _MAX_MARKER_BYTES:
+        _fail("CUDA completion marker exceeds byte limit")
     if _completed_toolkit_matches(manifest):
         return manifest.toolkit_root
     if manifest.toolkit_root.exists():
@@ -1682,9 +1687,6 @@ def provision_cuda_manifest(
         _require_owned_staging(staging, staging_identity)
         toolkit_identity = _owned_staging_identity(staged_toolkit)
         marker = staged_toolkit / CUDA_PROVISION_MARKER
-        marker_content = _marker_bytes(manifest)
-        if len(marker_content) > _MAX_MARKER_BYTES:
-            _fail("CUDA completion marker exceeds byte limit")
         _require_new_completion_marker(marker)
         marker_written_identity = _write_staged_file_exclusively(
             marker, marker_content, "CUDA completion marker"
