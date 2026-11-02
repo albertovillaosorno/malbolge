@@ -37,8 +37,8 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-from collections.abc import Callable
-from contextlib import suppress
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import replace
 from io import BufferedRandom, BufferedReader, BytesIO
 from pathlib import Path
@@ -279,6 +279,111 @@ def test_linux_import_refuses_late_staged_content_mutation_before_publish(
     if mutation == "host":
         assert host.read_bytes() == amended
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "overwrite-tool",
+        "overwrite-header-restored-time",
+        "remove-header",
+        "add-header",
+        "overwrite-marker",
+        "replace-marker",
+    ),
+)
+def test_linux_import_rejects_drift_after_staging_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A cleanup callback cannot leave a corrupted import certified as ready."""
+    observed = _host_observation(tmp_path)
+    destination = tmp_path / llvm_validation.LLVM_ROOT
+    marker = destination / llvm_validation.LLVM_IMPORT_MARKER
+    native_cleanup = llvm_validation._cleanup_owned_linux_staging  # pyright: ignore[reportPrivateUsage]
+    altered = False
+
+    def mutate_after_cleanup(
+        staging: Path,
+        staged: Path,
+        owned_staging: tuple[int, int],
+        owned_child: tuple[int, int] | None,
+    ) -> None:
+        nonlocal altered
+        native_cleanup(staging, staged, owned_staging, owned_child)
+        assert destination.is_dir()
+        altered = True
+        if mutation.startswith("overwrite-"):
+            target = (
+                destination / "bin/clang"
+                if mutation == "overwrite-tool"
+                else destination / "lib/clang/22/stddef.h"
+                if mutation == "overwrite-header-restored-time"
+                else marker
+            )
+            original = target.read_bytes()
+            before = target.stat()
+            _ = target.write_bytes(b"!" + original[1:])
+            if mutation == "overwrite-header-restored-time":
+                os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        elif mutation == "remove-header":
+            (destination / "lib/clang/22/stddef.h").unlink()
+        elif mutation == "add-header":
+            _ = (destination / "lib/clang/22/injected.h").write_bytes(b"foreign")
+        else:
+            marker.rename(destination / "parked-original-marker")
+            _ = marker.write_bytes(b"foreign marker")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_cleanup_owned_linux_staging", mutate_after_cleanup
+        )
+        with pytest.raises(llvm_validation.LlvmImportError, match="published|drift"):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observed)
+    assert altered
+    if mutation == "replace-marker":
+        assert marker.read_bytes() == b"foreign marker"
+    else:
+        assert not marker.exists()
+    assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
+@pytest.mark.parametrize("member", ("tool", "header"))
+def test_linux_import_rejects_digest_stream_postclose_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, member: str
+) -> None:
+    """A digest stream's close callback cannot change accepted published bytes."""
+    observed = _host_observation(tmp_path)
+    destination = tmp_path / llvm_validation.LLVM_ROOT
+    target = (
+        destination / "bin/clang"
+        if member == "tool"
+        else destination / "lib/clang/22/stddef.h"
+    )
+    marker = destination / llvm_validation.LLVM_IMPORT_MARKER
+    native_open = llvm_validation._open_pinned_import_source  # pyright: ignore[reportPrivateUsage]
+    changed = False
+
+    @contextmanager
+    def mutate_after_close(source: Path) -> Iterator[BufferedReader]:
+        nonlocal changed
+        with native_open(source) as stream:
+            yield stream
+        if source == target and not changed:
+            changed = True
+            original = target.read_bytes()
+            before = target.stat()
+            _ = target.write_bytes(b"!" + original[1:])
+            os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_open_pinned_import_source", mutate_after_close
+        )
+        with pytest.raises(llvm_validation.LlvmImportError, match="source|published"):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observed)
+    assert changed
+    assert not marker.exists()
+    assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
 
 
 def test_linux_import_materializes_local_runtime_and_neutral_aliases(

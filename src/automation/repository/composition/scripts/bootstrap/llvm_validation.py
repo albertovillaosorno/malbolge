@@ -671,6 +671,12 @@ def _import_source_identity(path: Path) -> tuple[int, int, int, int, bytes]:
                 or _marker_identity(path.lstat()) != _marker_identity(status)
             ):
                 _fail("LLVM import source changed during digest read")
+        # Closing a file descriptor may invoke a host callback. An unchanged
+        # digest sampled before that close cannot certify a later rewrite.
+        if not _physical_file(path) or _marker_identity(
+            path.lstat()
+        ) != _marker_identity(status):
+            _fail("LLVM import source changed after digest stream close")
         return (
             status.st_dev,
             status.st_ino,
@@ -1946,6 +1952,93 @@ def _publish_linux_import(
             ) from error
 
 
+def _revoke_owned_linux_import_marker(
+    destination: Path,
+    expected_directory: tuple[int, int],
+    expected_marker: tuple[int, int],
+) -> None:
+    """Revoke our published marker without unlinking a substituted file."""
+    if _native_directory_inode(destination) != expected_directory:
+        return
+    descriptor = _open_physical_import_parent(
+        destination, "LLVM published marker revocation"
+    )
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            type(opened) is not os.stat_result
+            or (opened.st_dev, opened.st_ino) != expected_directory
+            or _native_directory_inode(destination) != expected_directory
+        ):
+            _fail("LLVM published marker parent changed before revocation")
+        name = LLVM_IMPORT_MARKER
+        try:
+            current = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if (
+            type(current) is not os.stat_result
+            or not S_ISREG(current.st_mode)
+            or current.st_nlink != 1
+            or (current.st_dev, current.st_ino) != expected_marker
+        ):
+            return
+        result = os.unlink(name, dir_fd=descriptor)
+        if result is not None:
+            _fail("LLVM published marker revocation returned nonnative receipt")
+        try:
+            remaining = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if (
+            type(remaining) is os.stat_result
+            and (remaining.st_dev, remaining.st_ino) == expected_marker
+        ):
+            _fail("LLVM published marker revocation did not remove owned file")
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM published marker revocation failed: {type(error).__name__}"
+        ) from error
+    finally:
+        try:
+            os.close(descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM published marker revocation close failed: {type(error).__name__}"
+            ) from error
+
+
+def _reattest_published_linux_import(
+    destination: Path,
+    expected_directory: tuple[int, int],
+    expected_receipt: _LinuxStagingReceipt,
+) -> None:
+    """Check all published member bytes after final cleanup callbacks."""
+    marker_receipts = tuple(
+        receipt
+        for relative, receipt in expected_receipt.members
+        if relative == Path(LLVM_IMPORT_MARKER)
+    )
+    if len(marker_receipts) != 1 or marker_receipts[0][0] != 0:
+        _fail("LLVM published marker was not included in staging receipt")
+    marker = marker_receipts[0]
+    try:
+        if (
+            _native_directory_inode(destination) != expected_directory
+            or _linux_staging_receipt(destination) != expected_receipt
+        ):
+            _fail("LLVM published contents drifted after staging cleanup")
+    except LlvmImportError as error:
+        _revoke_owned_linux_import_marker(
+            destination, expected_directory, (marker[1], marker[2])
+        )
+        raise LlvmImportError(
+            "LLVM published contents drifted after staging cleanup"
+        ) from error
+
+
 def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     """Import one exact Linux LLVM runtime into repository-local state.
 
@@ -1987,6 +2080,7 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     staged = staging / "llvm"
     owned_staging: tuple[int, int] | None = None
     owned_child: tuple[int, int] | None = None
+    published_receipt: _LinuxStagingReceipt | None = None
     try:
         _create_physical_import_directory(
             staging, label="LLVM import staging exclusive creation"
@@ -2014,11 +2108,20 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
         _publish_linux_import(
             root, staged, destination, expected_stage_receipt=staged_receipt
         )
+        published_receipt = staged_receipt
     finally:
-        if owned_staging is not None and _owned_staging_safe_to_clean(
-            staging, staged, owned_staging, owned_child
-        ):
-            _cleanup_owned_linux_staging(staging, staged, owned_staging, owned_child)
+        try:
+            if owned_staging is not None and _owned_staging_safe_to_clean(
+                staging, staged, owned_staging, owned_child
+            ):
+                _cleanup_owned_linux_staging(
+                    staging, staged, owned_staging, owned_child
+                )
+        finally:
+            if published_receipt is not None and owned_child is not None:
+                _reattest_published_linux_import(
+                    destination, owned_child, published_receipt
+                )
     return destination
 
 
