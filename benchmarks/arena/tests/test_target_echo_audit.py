@@ -1540,6 +1540,140 @@ def test_forward_jump_and_walk_accept_every_possible_input_byte(
             assert result.stderr == expected_stderr
 
 
+class _FalseReplayBytes(bytes):  # ruff: ignore[subclass-builtin]
+    """Pretend that unrelated binary output matches the expected oracle."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        return True
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+
+@pytest.mark.parametrize(
+    ("field", "forged"),
+    [
+        ("status", False),
+        ("status", 0.0),
+        ("stdout", _FalseReplayBytes(b"not the guest payload")),
+        ("stderr", _FalseReplayBytes(b"not the step receipt")),
+        ("args", object()),
+    ],
+    ids=[
+        "boolean-status",
+        "float-status",
+        "false-stdout",
+        "false-stderr",
+        "foreign-args",
+    ],
+)
+def test_direct_forward_replay_rejects_forged_completed_process(
+    field: str, forged: object
+) -> None:
+    """A foreign VM receipt cannot manufacture verified output or steps."""
+    payload = b"\x00\xff"
+    steps = 9
+    values: dict[str, object] = {
+        "args": ["runner", "program.malbolge"],
+        "status": 0,
+        "stdout": payload + bytes([producer.CLASSIC_EOF_BYTE]),
+        "stderr": audit.STEPS_REPORT_PREFIX + b"9\n",
+    }
+    values[field] = forged
+    receipt = sp.CompletedProcess(
+        cast("Any", values["args"]),
+        cast("Any", values["status"]),
+        cast("Any", values["stdout"]),
+        cast("Any", values["stderr"]),
+    )
+    with pytest.raises(audit.TargetEchoAuditError, match="replay.*receipt"):
+        audit._check_forward_replay_result(
+            cast("sp.CompletedProcess[bytes]", receipt), payload, steps
+        )
+
+
+def test_direct_forward_replay_preserves_native_completed_process() -> None:
+    """An ordinary exact subprocess result still verifies the fixed oracle."""
+    payload = b"\x00\xff"
+    receipt = sp.CompletedProcess(
+        ["runner", "program.malbolge"],
+        0,
+        payload + bytes([producer.CLASSIC_EOF_BYTE]),
+        audit.STEPS_REPORT_PREFIX + b"9\n",
+    )
+    audit._check_forward_replay_result(receipt, payload, 9)
+
+
+@pytest.mark.parametrize(
+    ("field", "forged"),
+    [
+        ("status", False),
+        ("stdout", _FalseReplayBytes(b"not the guest payload")),
+        ("stderr", _FalseReplayBytes(b"not the step receipt")),
+    ],
+    ids=["boolean-status", "false-stdout", "false-stderr"],
+)
+def test_retained_vm_replay_rejects_forged_completed_process(
+    field: str, forged: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The general replay must admit native runner results before comparison."""
+    expected = b"oracle bytes"
+    metrics = {audit.RUNTIME_STEPS: 9}
+    values: dict[str, object] = {
+        "status": 0,
+        "stdout": expected,
+        "stderr": audit.STEPS_REPORT_PREFIX + b"9\n",
+    }
+    values[field] = forged
+    receipt = sp.CompletedProcess(
+        ["runner", "program.malbolge"],
+        cast("Any", values["status"]),
+        cast("Any", values["stdout"]),
+        cast("Any", values["stderr"]),
+    )
+    monkeypatch.setattr(
+        audit, "_replay_execution", lambda *_args, **_kwargs: (receipt, expected)
+    )
+    monkeypatch.setattr(
+        audit, "_native_regular_bytes", lambda *_args, **_kwargs: b"source"
+    )
+    monkeypatch.setattr(audit, "_source_sha256", lambda _raw: "expected digest")
+    with pytest.raises(audit.TargetEchoAuditError, match="replay.*receipt"):
+        audit._replay_one(
+            {"metrics": metrics},
+            "candidate.malbolge",
+            "expected digest",
+            replay_tool=(Path("runner"), False),
+        )
+
+
+def test_retained_vm_replay_rejects_forged_expected_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An untrusted expected-output comparison cannot certify a replay."""
+    receipt = sp.CompletedProcess(
+        ["runner", "program.malbolge"], 0, b"native oracle", b""
+    )
+    monkeypatch.setattr(
+        audit,
+        "_replay_execution",
+        lambda *_args, **_kwargs: (receipt, _FalseReplayBytes(b"false oracle")),
+    )
+    monkeypatch.setattr(
+        audit, "_native_regular_bytes", lambda *_args, **_kwargs: b"source"
+    )
+    monkeypatch.setattr(audit, "_source_sha256", lambda _raw: "expected digest")
+    with pytest.raises(audit.TargetEchoAuditError, match="expected output receipt"):
+        audit._replay_one(
+            {"metrics": {}},
+            "candidate.malbolge",
+            "expected digest",
+            replay_tool=(Path("runner"), False),
+        )
+
+
 def test_forward_jump_paired_costs_retain_runtime_work_advantage(
     forward_skip: tuple[Path, dict[str, Any], str],
 ) -> None:

@@ -1112,9 +1112,24 @@ def _replay_execution(
     )
 
 
+def _admit_vm_replay_receipt(result: object) -> sp.CompletedProcess[bytes]:
+    """Require native child results before trusting status or byte equality."""
+    if (
+        type(result) is not sp.CompletedProcess
+        or type(result.args) is not list
+        or any(type(argument) is not str for argument in result.args)
+        or type(result.returncode) is not int
+        or type(result.stdout) is not bytes
+        or type(result.stderr) is not bytes
+    ):
+        _fail("target VM replay returned nonnative completed process receipt")
+    return result
+
+
 def _check_forward_replay_result(
     result: sp.CompletedProcess[bytes], payload: bytes, steps: int
 ) -> None:
+    _admit_vm_replay_receipt(result)
     if result.returncode != 0:
         message = "target replay executable failed"
         raise TargetReplayToolError(message)
@@ -1269,6 +1284,9 @@ def _replay_one(
         if limited
         else _replay_execution(row, runner, _ROOT / relative)
     )
+    _admit_vm_replay_receipt(execution)
+    if type(expected) is not bytes:
+        _fail("target VM replay returned nonnative expected output receipt")
     if execution.returncode != 0 or execution.stdout != expected:
         _fail(f"target audit VM replay rejected retained source: {relative}")
     if measured_steps is not None:
