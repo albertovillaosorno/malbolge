@@ -167,6 +167,16 @@ def _unlinked_path(path: Path) -> bool:
     return True
 
 
+def _anchor_import_root(root: Path) -> Path:
+    """Pin relative caller paths without resolving symlinked checkout parents."""
+    try:
+        return root if root.is_absolute() else Path.cwd() / root
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM import root anchoring failed: {type(error).__name__}"
+        ) from error
+
+
 def _physical_file(path: Path) -> bool:
     try:
         if not _unlinked_path(path):
@@ -1650,6 +1660,7 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
         Repository-local LLVM root after atomic import or exact reuse.
 
     """
+    root = _anchor_import_root(root)
     _validate_observation(observation)
     destination = root / LLVM_ROOT
     if _runtime_ready(destination, LINUX_PLATFORM):
@@ -1805,6 +1816,7 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
         Neutral aliases containing the exact existing Windows PE bytes.
 
     """
+    root = _anchor_import_root(root)
     alias_root = _windows_alias_directory(root)
     root_inode = _native_directory_inode(root)
     if root_inode is None:
@@ -1851,6 +1863,7 @@ def inspect_llvm(root: Path, platform_id: str) -> LlvmReadiness:
         Readiness plus the canonical neutral Clang alias path.
 
     """
+    root = _anchor_import_root(root)
     llvm_root = root / LLVM_ROOT
     alias_root = llvm_root / "jig-bin"
     clang = alias_root / "clang.bin"

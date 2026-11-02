@@ -1635,6 +1635,67 @@ def test_llvm_physical_predicates_reject_foreign_ancestor_stat(
         )
 
 
+def test_relative_linux_import_does_not_follow_changing_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host callback cannot redirect a relative checkout's LLVM publication."""
+    checkout = tmp_path / "checkout"
+    foreign = tmp_path / "foreign"
+    checkout.mkdir()
+    (foreign / "checkout").mkdir(parents=True)
+    observation = _host_observation(tmp_path)
+    native_validate = llvm_validation._validate_observation  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.chdir(tmp_path)
+
+    def change_cwd_after_validation(
+        source: llvm_validation.LlvmHostObservation,
+    ) -> None:
+        native_validate(source)
+        os.chdir(foreign)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_validate_observation", change_cwd_after_validation
+        )
+        try:
+            imported = llvm_validation.import_linux_llvm(Path("checkout"), observation)
+        finally:
+            os.chdir(tmp_path)
+
+    assert imported == checkout / llvm_validation.LLVM_ROOT
+    assert llvm_validation.inspect_llvm(checkout, LINUX_PLATFORM).ready
+    assert not (foreign / "checkout/.dependencies").exists()
+
+
+def test_relative_llvm_inspection_pins_reported_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A readiness callback cannot change the reported checkout identity."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    observation = _host_observation(tmp_path)
+    root = llvm_validation.import_linux_llvm(checkout, observation)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    native_ready = llvm_validation._runtime_ready  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.chdir(tmp_path)
+
+    def change_cwd_after_readiness(location: Path, platform_id: str) -> bool:
+        ready = native_ready(location, platform_id)
+        os.chdir(foreign)
+        return ready
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation, "_runtime_ready", change_cwd_after_readiness)
+        try:
+            inspected = llvm_validation.inspect_llvm(Path("checkout"), LINUX_PLATFORM)
+        finally:
+            os.chdir(tmp_path)
+
+    assert inspected.ready
+    assert inspected.path == root / "jig-bin/clang.bin"
+
+
 def test_inspection_requires_completed_neutral_aliases(tmp_path: Path) -> None:
     """Readiness never accepts a partial imported LLVM tree."""
     observation = _host_observation(tmp_path)
@@ -2164,6 +2225,47 @@ def test_llvm_inspection_rejects_fifo_marker_without_blocking(
     marker.unlink()
     mkfifo(marker)
     assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
+def test_relative_windows_alias_publication_pins_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host callback cannot redirect Windows aliases into another checkout."""
+    checkout = tmp_path / "checkout"
+    foreign = tmp_path / "foreign"
+    checkout.mkdir()
+    (foreign / "checkout").mkdir(parents=True)
+    root = _windows_tool_bundle(checkout)
+    native_admit = llvm_validation._admit_windows_alias  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.chdir(tmp_path)
+    changed = False
+
+    def change_cwd_after_admission(source: Path, alias: Path) -> bool:
+        nonlocal changed
+        result = native_admit(source, alias)
+        if not changed:
+            changed = True
+            os.chdir(foreign)
+        return result
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_admit_windows_alias", change_cwd_after_admission
+        )
+        try:
+            aliases = llvm_validation.write_windows_llvm_aliases(
+                Path("checkout") / llvm_validation.LLVM_ROOT
+            )
+        finally:
+            os.chdir(tmp_path)
+
+    assert changed
+    assert aliases == tuple(
+        root / "jig-bin" / f"{tool}.bin"
+        for tool in ("clang", "clang-tidy", "clang-format")
+    )
+    assert llvm_validation.inspect_llvm(checkout, WINDOWS_PLATFORM).ready
+    assert not (foreign / "checkout/.dependencies").exists()
 
 
 def _windows_tool_bundle(tmp_path: Path) -> Path:
