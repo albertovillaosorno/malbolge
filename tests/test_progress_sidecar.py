@@ -6071,6 +6071,39 @@ def test_immutable_link_forged_without_publication_is_not_committed(
     assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
 
 
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM,
+    reason="Native POSIX hard-link receipt boundary",
+)
+def test_forged_link_receipt_stops_generation_pointer_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A linked-but-untrusted checkpoint cannot authorize its JSON pointer."""
+    checkpoint = b"untrusted-link-checkpoint"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    destination = Path(sidecar.checkpoint_path or "")
+    actual_link = os.link
+
+    def forged_link(source: Path, target: Path) -> bool:
+        actual_link(source, target)
+        return True
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "link", forged_link)
+        with pytest.raises(
+            progress.ProgressSidecarDurabilityError,
+            match=r"link.*receipt",
+        ) as captured:
+            _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    assert captured.value.published_path == destination
+    assert destination.read_bytes() == checkpoint
+    assert not Path(sidecar.progress_path).exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
 @pytest.mark.parametrize("existing", [False, True], ids=["missing", "matching"])
 def test_immutable_publication_rejects_foreign_collision_exception(
     tmp_path: Path,

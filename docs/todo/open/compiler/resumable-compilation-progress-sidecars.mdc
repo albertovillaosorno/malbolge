@@ -781,8 +781,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   publication regressions require a native `None` hard-link receipt: forged
   success after an actual link reports uncertain durability with the exact
   committed member path, while a missing or foreign destination never claims
-  commitment or overwrites foreign bytes. The reference reader and publisher
-  preserve existing bounded-check semantics, with no guarantee against
+  commitment or overwrites foreign bytes. A separate public generation
+  fixture confirms that forged link completion blocks the sidecar pointer.
+  The reference reader and publisher preserve bounded-check semantics, with
+  no guarantee against
   mutations after their final physical-path observation.
 
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
