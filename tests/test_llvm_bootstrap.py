@@ -241,6 +241,46 @@ def test_linux_import_rejects_hardlinked_source_rewritten_with_restored_mtime(
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
 
 
+@pytest.mark.parametrize("member", ["clang", "resource"])
+@pytest.mark.parametrize("mutation", ["host", "stage"])
+def test_linux_import_refuses_late_staged_content_mutation_before_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, member: str, mutation: str
+) -> None:
+    """Marker creation cannot certify late changes to an earlier file."""
+    observed = _host_observation(tmp_path)
+    host = observed.clang if member == "clang" else observed.resource_dir / "stddef.h"
+    local = Path("bin/clang") if member == "clang" else Path("lib/clang/22/stddef.h")
+    previous = host.read_bytes()
+    amended = b"y" * len(previous)
+    admitted = host.stat()
+    marker_writer = llvm_validation._write_import_marker  # pyright: ignore[reportPrivateUsage]
+    mutated: list[Path] = []
+
+    def corrupt_during_marker(
+        stage: Path,
+        platform_id: str,
+        *,
+        expected_parent_inode: tuple[int, int] | None = None,
+    ) -> None:
+        target = host if mutation == "host" else stage / local
+        _ = target.write_bytes(amended)
+        if mutation == "host":
+            os.utime(target, ns=(admitted.st_atime_ns, admitted.st_mtime_ns))
+        mutated.append(target)
+        marker_writer(stage, platform_id, expected_parent_inode=expected_parent_inode)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation, "_write_import_marker", corrupt_during_marker)
+        with pytest.raises(
+            llvm_validation.LlvmImportError, match="source|resource|staged"
+        ):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observed)
+    assert len(mutated) == 1
+    if mutation == "host":
+        assert host.read_bytes() == amended
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
 def test_linux_import_materializes_local_runtime_and_neutral_aliases(
     tmp_path: Path,
 ) -> None:

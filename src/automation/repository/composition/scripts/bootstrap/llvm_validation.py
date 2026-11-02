@@ -1371,16 +1371,25 @@ def _stage_linux_llvm(
     *,
     expected_staged_inode: tuple[int, int] | None = None,
 ) -> None:
-    for tool, source in (
-        ("clang", observation.clang),
-        ("clang-tidy", observation.clang_tidy),
-        ("clang-format", observation.clang_format),
-    ):
-        _copy_file(source, staged / "bin" / tool)
-    for soname, source in zip(
-        _LLVM_LIBRARY_NAMES, (observation.llvm, observation.clang_cpp), strict=True
-    ):
-        _copy_file(source, staged / "lib" / soname)
+    tool_sources = (
+        (Path("bin/clang"), observation.clang),
+        (Path("bin/clang-tidy"), observation.clang_tidy),
+        (Path("bin/clang-format"), observation.clang_format),
+        (Path("lib/libLLVM.so.22.1"), observation.llvm),
+        (Path("lib/libclang-cpp.so.22.1"), observation.clang_cpp),
+    )
+    source_resource_members = _require_physical_resources(observation.resource_dir)
+    sources = dict(tool_sources)
+    for relative, receipt in source_resource_members.items():
+        if receipt[0] == 0:
+            sources[Path("lib/clang/22") / relative] = (
+                observation.resource_dir / relative
+            )
+    source_identities = {
+        member: _import_source_identity(source) for member, source in sources.items()
+    }
+    for member, source in tool_sources:
+        _copy_file(source, staged / member)
     _copy_resource_tree(
         observation.resource_dir,
         staged / "lib" / "clang" / "22",
@@ -1389,6 +1398,24 @@ def _stage_linux_llvm(
     _write_import_marker(
         staged, LINUX_PLATFORM, expected_parent_inode=expected_staged_inode
     )
+    # A marker callback can still change an earlier hardlinked source or
+    # independently copied stage member. Recheck the original source bytes,
+    # the published member bytes, and the complete resource inventories.
+    if _require_physical_resources(observation.resource_dir) != source_resource_members:
+        _fail("LLVM source resource inventory changed before publication")
+    staged_resources = _require_physical_resources(staged / "lib/clang/22")
+    if source_resource_members.keys() != staged_resources.keys() or any(
+        source_resource_members[member][0] != staged_resources[member][0]
+        for member in source_resource_members
+    ):
+        _fail("LLVM staged resource inventory changed before publication")
+    for member, source in sources.items():
+        expected = source_identities[member]
+        if (
+            _import_source_identity(source) != expected
+            or _import_source_identity(staged / member)[-1] != expected[-1]
+        ):
+            _fail("LLVM staged source or destination changed before publication")
 
 
 def _admit_linux_import_staging(root: Path, staging: Path) -> None:
