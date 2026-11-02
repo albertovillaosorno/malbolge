@@ -40,7 +40,7 @@ import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import BinaryIO, cast
+from typing import BinaryIO, TextIO, cast
 
 import pytest
 
@@ -1258,6 +1258,86 @@ def test_c_abi_cli_never_formats_foreign_errors(
     output = capsys.readouterr()
     assert not output.out
     assert "ForeignAbiCliFault" in output.err
+
+
+@pytest.mark.parametrize(
+    "case", ("partial", "foreign-count", "write-fault", "flush-fault", "foreign-flush")
+)
+def test_c_abi_cli_requires_delivered_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    """A valid ABI projection cannot certify success with a partial receipt."""
+
+    class FakeOutput:
+        def write(self, message: str) -> object:
+            if case == "partial":
+                return len(message) - 1
+            if case == "foreign-count":
+                return True
+            if case == "write-fault":
+                raise OSError("output unavailable")
+            return len(message)
+
+        def flush(self) -> object:
+            if case == "flush-fault":
+                raise OSError("flush unavailable")
+            if case == "foreign-flush":
+                return False
+            return None
+
+    projection = c_abi.canonical_projection()
+    monkeypatch.setattr(c_abi, "canonical_projection", lambda: projection)
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", FakeOutput())))
+    assert c_abi.main() == 1
+
+
+def test_c_abi_cli_requires_successful_flush(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful summary requires one full write and a flush."""
+
+    class CapturingOutput:
+        messages: list[str]
+        flushes: int
+
+        def __init__(self) -> None:
+            self.messages = []
+            self.flushes = 0
+
+        def write(self, message: str) -> int:
+            self.messages.append(message)
+            return len(message)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    projection = c_abi.canonical_projection()
+    output = CapturingOutput()
+    monkeypatch.setattr(c_abi, "canonical_projection", lambda: projection)
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", output)))
+    assert c_abi.main() == 0
+    expected = f"{projection.abi_id} target={projection.target_profile} "
+    expected += f"clang={projection.clang_target}\n"
+    assert output.messages == [expected]
+    assert output.flushes == 1
+
+
+def test_c_abi_cli_failed_stderr_retains_failed_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed diagnostic stream cannot convert rejection into success."""
+
+    class FailedStderr:
+        def write(self, _message: str) -> None:
+            raise OSError("output unavailable")
+
+    def rejected_projection() -> None:
+        raise c_abi.CAbiValidationError("invalid ABI")
+
+    monkeypatch.setattr(c_abi, "canonical_projection", rejected_projection)
+    monkeypatch.setattr(sys, "stderr", cast("TextIO", cast("object", FailedStderr())))
+    assert c_abi.main() == 1
 
 
 def test_c_abi_native_host_failure_retains_detail_and_cause(

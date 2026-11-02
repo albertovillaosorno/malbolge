@@ -41,7 +41,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-from typing import Never, cast
+from typing import Never, TextIO, cast
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -773,24 +773,44 @@ def canonical_projection() -> CAbiProjection:
     return projection
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Return whether exact native CLI text write and flush both completed."""
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Validate the tracked ABI authority and target-profile binding.
 
     Returns:
-        Zero when both authorities agree, otherwise one.
+        Zero when both authorities agree and CLI output was delivered.
 
     """
     try:
         projection = canonical_projection()
+        message = f"{projection.abi_id} target={projection.target_profile} "
+        message += f"clang={projection.clang_target}\n"
+        if not _write_cli_record(sys.stdout, message):
+            _fail("C ABI CLI output write or flush failed")
     except (
         CAbiValidationError,
         target_profile.ProfileValidationError,
     ) as error:
-        _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {_safe_error_detail(error)}\n")
         return 1
-    message = f"{projection.abi_id} target={projection.target_profile} "
-    message += f"clang={projection.clang_target}\n"
-    _ = sys.stdout.write(message)
     return 0
 
 

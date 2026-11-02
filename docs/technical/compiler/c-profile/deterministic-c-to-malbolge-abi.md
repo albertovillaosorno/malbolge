@@ -329,6 +329,10 @@ shapes. A failed stream wrapper releases its descriptor. Forged or nonnative
 read evidence fails closed instead of invoking foreign formatting or decoding
 hooks. These checks supplement the bounded no-follow read and pre/post file
 identity comparison; they do not replace canonical ABI schema validation.
+The standalone ABI CLI reports success only after a complete native text-write
+count and successful flush. Short writes, nonnative receipts and failed output
+delivery fail closed; failed diagnostic delivery cannot convert a rejected ABI
+into a successful command exit.
 
 The independent ABI source preflight reads a stable regular-file snapshot with
 no-follow descriptor admission. Before using source-offset diagnostics, it
