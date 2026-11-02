@@ -40,7 +40,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, Self, cast, final, override
 
 import pytest
 
@@ -48,6 +48,7 @@ from scripts.validate import historical_interpreter_sanitizer as harness
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import BinaryIO
 
 CASE_AUTHORITY = "CASES"
 HISTORICAL_SOURCE_NAME = "main.c"
@@ -237,6 +238,102 @@ def test_sanitizer_source_wrapper_failure_closes_owned_descriptor(
         for descriptor in opened:
             try:
                 os.close(descriptor)
+            except OSError:
+                pass
+
+
+def test_sanitizer_rejects_same_length_forged_stream_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign fdopen reader must not supply invented sanitizer evidence."""
+    path = tmp_path / "sanitizer.json"
+    forged = b'{"schema_version":1}'
+    _ = path.write_bytes(b"!" * len(forged))
+    original_fdopen = os.fdopen
+    original_close = os.close
+    opened: list[int] = []
+    calls: list[str] = []
+
+    @final
+    class ForgedReader:
+        def __init__(self, descriptor: int, _mode: str) -> None:
+            self.descriptor = descriptor
+            opened.append(descriptor)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            try:
+                original_close(self.descriptor)
+            except OSError:
+                pass
+
+        def fileno(self) -> int:
+            calls.append("fileno")
+            return self.descriptor
+
+        def read(self, _size: int) -> bytes:
+            calls.append("read")
+            return forged
+
+    def forged_fdopen(descriptor: int, mode: str) -> object:
+        if mode == "rb":
+            return ForgedReader(descriptor, mode)
+        return original_fdopen(descriptor, mode)
+
+    monkeypatch.setattr(os, "fdopen", forged_fdopen)
+    try:
+        with pytest.raises(harness.SanitizerHarnessError, match="native stream"):
+            _ = harness._read_regular(  # pyright: ignore[reportPrivateUsage]
+                path, limit=harness.MAX_DOCUMENT_BYTES
+            )
+        assert not calls
+        assert len(opened) == 1
+        with pytest.raises(OSError):
+            _ = os.fstat(opened[0])
+    finally:
+        for descriptor in opened:
+            try:
+                original_close(descriptor)
+            except OSError:
+                pass
+
+
+def test_sanitizer_rejects_native_reader_on_other_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native reader over a duplicate does not own the opened descriptor."""
+    path = tmp_path / "sanitizer.json"
+    _ = path.write_bytes(b"{}")
+    original_fdopen = os.fdopen
+    original_close = os.close
+    borrowed: list[BinaryIO] = []
+    opened: list[int] = []
+
+    def swapped_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        opened.append(descriptor)
+        stream = cast("BinaryIO", original_fdopen(os.dup(descriptor), mode))
+        borrowed.append(stream)
+        return stream
+
+    monkeypatch.setattr(os, "fdopen", swapped_fdopen)
+    try:
+        with pytest.raises(harness.SanitizerHarnessError, match="native stream"):
+            _ = harness._read_regular(  # pyright: ignore[reportPrivateUsage]
+                path, limit=harness.MAX_DOCUMENT_BYTES
+            )
+        assert len(opened) == 1
+        with pytest.raises(OSError):
+            _ = os.fstat(opened[0])
+    finally:
+        for stream in reversed(borrowed):
+            stream.close()
+        for descriptor in opened:
+            try:
+                original_close(descriptor)
             except OSError:
                 pass
 

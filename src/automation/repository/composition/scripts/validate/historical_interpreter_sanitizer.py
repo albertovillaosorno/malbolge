@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -232,6 +233,28 @@ def _read_regular(path: Path, *, limit: int) -> bytes:
         raise SanitizerHarnessError(
             "cannot read sanitizer input: host stream wrapper failed"
         ) from error
+    # A foreign fdopen wrapper could supply invented content while reporting
+    # the original file descriptor. Admit only native wrappers bound to our fd.
+    if type(stream) is not io.BufferedReader:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        _fail("sanitizer input requires native stream receipt")
+    raw_stream = stream.raw
+    if (
+        type(raw_stream) is not io.FileIO
+        or type(raw_stream.name) is not int
+        or raw_stream.name != descriptor
+        or raw_stream.fileno() != descriptor
+        or stream.fileno() != descriptor
+    ):
+        # A substituted reader may own another fd. Close only our descriptor.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        _fail("sanitizer input requires native stream receipt")
     with stream:
         if _regular_identity(os.fstat(stream.fileno()), limit) != expected:
             _fail("sanitizer input changed before read")

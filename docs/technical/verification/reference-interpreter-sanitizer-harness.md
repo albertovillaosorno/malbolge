@@ -48,6 +48,11 @@ with a one-MiB input bound and opened-inode identity checked before and after
 reads. In-root source fixtures and the pinned historical source obey the same
 regular-file and stable-snapshot rules, each with a one-MiB limit; fixture
 locations cannot traverse outside the repository or follow linked directories.
+
+The file reader requires exact native buffered and raw file wrappers, both bound
+to the opened descriptor. An untrusted wrapper cannot substitute equal-length
+JSON or source bytes while preserving the original file's status receipt.
+
 If stream creation fails for a manifest, evidence, or source descriptor, the
 reader closes its raw descriptor and raises a typed sanitizer error retaining
 the underlying host failure as its cause.
