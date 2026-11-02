@@ -1467,6 +1467,57 @@ class _UnprintableUvCloseError(OSError):
         raise AssertionError("untrusted close failure was formatted")
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX stage descriptors")
+def test_uv_rejects_writable_stage_close_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed stage descriptor close must not publish trusted uv bytes."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    stage = executable.with_name(f"{executable.name}.tmp")
+    native_close = os.close
+    original_write = python_validation._write_uv_stage_descriptor
+    fault = _UnprintableUvCloseError("unprintable stage descriptor close")
+    written_descriptor: int | None = None
+    triggered = False
+
+    def track_write(
+        temporary: Path,
+        receipt: tuple[int, tuple[int, int]],
+        payload: bytes,
+        *,
+        windows: bool,
+    ) -> None:
+        nonlocal written_descriptor
+        written_descriptor = receipt[0]
+        original_write(temporary, receipt, payload, windows=windows)
+
+    def fail_written_close(descriptor: int) -> None:
+        nonlocal triggered
+        if descriptor == written_descriptor and not triggered:
+            triggered = True
+            native_close(descriptor)
+            raise fault
+        native_close(descriptor)
+
+    monkeypatch.setattr(python_validation, "_write_uv_stage_descriptor", track_write)
+    monkeypatch.setattr(os, "close", fail_written_close)
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv staging descriptor close"
+    ) as raised:
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert raised.value.__cause__ is fault
+    assert triggered and written_descriptor is not None
+    with pytest.raises(OSError):
+        _ = os.fstat(written_descriptor)
+    assert not stage.exists()
+    assert not executable.exists()
+
+
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX dirfd support")
 def test_uv_types_provision_parent_close_fault(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

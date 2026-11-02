@@ -1044,11 +1044,15 @@ def _write_verified_uv_binary(
         complete = True
         return identity
     finally:
-        with suppress(OSError):
+        try:
             os.close(descriptor)
-        if not complete and _uv_stage_is_owned(temporary, identity):
-            with suppress(OSError):
-                temporary.unlink()
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            complete = False
+            raise ProvisionError("uv staging descriptor close failed") from error
+        finally:
+            if not complete and _uv_stage_is_owned(temporary, identity):
+                with suppress(OSError):
+                    temporary.unlink()
 
 
 def _require_uv_destination_absent(executable: Path) -> None:

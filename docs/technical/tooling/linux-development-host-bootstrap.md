@@ -100,7 +100,9 @@ remain typed with the original host error as cause. A staging parent close
 failure also closes its just-opened stage descriptor and removes only an
 identity-verified private empty stage rather than leaking a half-install.
 A failed close while walking pinned POSIX parent components also closes the
-next component's already-opened descriptor.
+next component's already-opened descriptor. Failure to close the private uv
+writable stage descriptor is a typed error and discards its owned stage rather
+than publishing a supposedly complete executable.
 Stage ownership rechecks likewise reject foreign stat proxies.
 Existing staging paths are not truncated, and executables that appear during
 provisioning are not overwritten. Both existing and newly installed executables
