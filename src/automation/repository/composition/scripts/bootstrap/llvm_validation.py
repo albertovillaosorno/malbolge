@@ -95,12 +95,16 @@ def llvm_version_matches(version_text: str) -> bool:
 
 def _unlinked_path(path: Path) -> bool:
     try:
-        return not any(
-            part.is_symlink() or part.is_junction()
-            for part in (path, *path.parents)
-        )
-    except OSError, ValueError, TypeError, RuntimeError:
+        for part in (path, *path.parents):
+            linked = part.is_symlink()
+            junction = part.is_junction()
+            if type(linked) is not bool or type(junction) is not bool:
+                return False
+            if linked or junction:
+                return False
+    except (OSError, ValueError, TypeError, RuntimeError):
         return False
+    return True
 
 
 def _physical_file(path: Path) -> bool:
@@ -214,9 +218,16 @@ def _copy_file(source: Path, destination: Path) -> None:
 def _require_physical_resources(root: Path) -> None:
     if not _physical_directory(root):
         _fail("host LLVM resource directory must not redirect")
-    for member in root.rglob("*"):
-        if member.is_symlink() or member.is_junction():
-            _fail(f"host LLVM resource member must not redirect: {member}")
+    try:
+        for member in root.rglob("*"):
+            if not (_physical_file(member) or _physical_directory(member)):
+                _fail(f"host LLVM resource member must be physical: {member}")
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"host LLVM resource traversal failed: {type(error).__name__}"
+        ) from error
 
 
 def _copy_resource_tree(source: Path, destination: Path) -> None:

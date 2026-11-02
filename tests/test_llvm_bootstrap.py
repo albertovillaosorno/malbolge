@@ -248,6 +248,106 @@ def test_llvm_inspection_host_status_faults_are_not_ready(
     assert readiness.detail.endswith("aliases are absent")
 
 
+@pytest.mark.parametrize("operation", ("is_symlink", "is_junction"))
+@pytest.mark.parametrize("foreign", (None, 0, ""))
+@pytest.mark.parametrize("target_kind", ("marker", "alias", "resource"))
+def test_llvm_inspection_rejects_foreign_link_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    foreign: object,
+    target_kind: str,
+) -> None:
+    """Falsy nonboolean link results cannot attest an imported LLVM file."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    target = {
+        "marker": root / llvm_validation.LLVM_IMPORT_MARKER,
+        "alias": root / "jig-bin/clang.bin",
+        "resource": root / "lib/clang/22",
+    }[target_kind]
+    original = Path.is_symlink if operation == "is_symlink" else Path.is_junction
+
+    def fake_link_status(path: Path) -> object:
+        return foreign if path == target else original(path)
+
+    monkeypatch.setattr(Path, operation, fake_link_status)
+    assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
+@pytest.mark.parametrize("operation", ("is_symlink", "is_junction"))
+@pytest.mark.parametrize("foreign", (None, 0, ""))
+def test_linux_import_rejects_foreign_resource_member_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    foreign: object,
+) -> None:
+    """Resource members require genuine native link decisions before copying."""
+    observation = _host_observation(tmp_path)
+    member = observation.resource_dir / "stddef.h"
+    original = Path.is_symlink if operation == "is_symlink" else Path.is_junction
+
+    def fake_link_status(path: Path) -> object:
+        return foreign if path == member else original(path)
+
+    monkeypatch.setattr(Path, operation, fake_link_status)
+    with pytest.raises(llvm_validation.LlvmImportError, match="resource"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
+def test_linux_import_rejects_fifo_resource_member(tmp_path: Path) -> None:
+    """A host resource pipe must not be hardlinked into a published LLVM tree."""
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO unsupported")
+    observation = _host_observation(tmp_path)
+    os.mkfifo(observation.resource_dir / "foreign-fifo")
+    with pytest.raises(llvm_validation.LlvmImportError, match="resource"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
+def test_linux_import_preserves_physical_nested_resource_files(
+    tmp_path: Path,
+) -> None:
+    """Resource admission retains ordinary directories and header files."""
+    observation = _host_observation(tmp_path)
+    nested = observation.resource_dir / "include" / "bits"
+    nested.mkdir(parents=True)
+    _ = (nested / "stdint.h").write_bytes(b"nested-header")
+    root = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert (root / "lib/clang/22/include/bits/stdint.h").read_bytes() == b"nested-header"
+
+
+class _ResourceTraversalError(OSError):
+    """A host traversal failure with a hostile exception formatter."""
+
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("foreign resource failure formatter was invoked")
+
+
+def test_linux_import_types_resource_traversal_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host filesystem traversal faults become typed, cause-preserving errors."""
+    observation = _host_observation(tmp_path)
+    error = _ResourceTraversalError("untrusted")
+    original = Path.rglob
+
+    def broken_resource_traversal(path: Path, pattern: str):
+        if path == observation.resource_dir:
+            raise error
+        return original(path, pattern)
+
+    monkeypatch.setattr(Path, "rglob", broken_resource_traversal)
+    with pytest.raises(llvm_validation.LlvmImportError, match="resource traversal") as raised:
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert raised.value.__cause__ is error
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
 def test_wrong_host_version_is_not_admitted() -> None:
     """A different host Clang release cannot satisfy the pinned toolchain."""
     assert llvm_validation.llvm_version_matches("clang version 22.1.8") is True
