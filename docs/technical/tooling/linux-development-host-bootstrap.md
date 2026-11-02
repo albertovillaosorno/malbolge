@@ -47,6 +47,11 @@ descriptor checks before its URL, version, artifact, and digest fields are
 interpreted. Externally hardlinked manifest files are not trusted.
 Manifest descriptor reads also require exact immutable native `bytes` before
 size or JSON decoding, so mutable stream proxies cannot supply trusted records.
+Bootstrap authority reads now retain in-body rejections across substituted
+context exits. Two red-first cases reject an interrupted read and a failed
+post-read file-identity check even if the stream context suppresses either
+exception. This protects the local completion verdict, not a substituted
+stream provider or arbitrary concurrent filesystem mutation.
 Manifest ancestry is also checked through native physical directory `lstat`
 receipts: a false-like or forged link predicate cannot authorize symlinked
 parent traversal. Leaf and parent redirect predicates require exact booleans;
@@ -249,6 +254,11 @@ copy fallbacks also verify the destination content rather than trusting a
 complete byte count or matching file size. The source digest read uses a
 nonfollowing regular-file descriptor and rechecks mutation-sensitive source
 identity after its close, rejecting changes made by close callbacks.
+The portable fallback also requires both source and destination stream bodies
+to complete verification. Three red-first cases reject suppressed transfer
+faults in either or both stream contexts; a partial file may still remain at
+the rejected destination. These guards do not provide atomic rollback,
+source provenance attestation, or crash durability.
 Git and Rust import-completion markers are created exclusively through a
 no-follow native file descriptor, so an existing regular or linked marker
 cannot be overwritten.
