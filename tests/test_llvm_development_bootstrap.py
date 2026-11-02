@@ -2213,6 +2213,67 @@ def test_staging_writer_rejects_non_native_open_descriptor(
     assert not path.exists()
 
 
+def test_staging_writer_rejects_shared_inode_before_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An alias introduced at open cannot receive even rejected stage bytes."""
+    target = tmp_path / "private.rpm"
+    outside = tmp_path / "external.rpm"
+    native_open = os.open
+    linked = False
+
+    def linked_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        nonlocal linked
+        descriptor = native_open(path, flags, mode)
+        if path == target:
+            try:
+                os.link(target, outside)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"hardlinks unavailable: {error}")
+            linked = True
+        return descriptor
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", linked_open)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="descriptor mismatch",
+        ):
+            llvm_development_validation._write_verified_staging_bytes(
+                target, PACKAGE_BYTES
+            )
+    assert linked
+    assert outside.read_bytes() == b""
+
+
+def test_staging_writer_rejects_nonempty_new_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A host-open mutation cannot supply a prefilled staging descriptor."""
+    target = tmp_path / "private.rpm"
+    native_open = os.open
+
+    def prefilled_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = native_open(path, flags, mode)
+        if path == target:
+            _ = os.write(descriptor, FOREIGN_CONTENT_BYTES)
+            _ = os.lseek(descriptor, 0, os.SEEK_SET)
+        return descriptor
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", prefilled_open)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="descriptor mismatch",
+        ):
+            llvm_development_validation._write_verified_staging_bytes(
+                target, PACKAGE_BYTES
+            )
+    assert target.read_bytes() == FOREIGN_CONTENT_BYTES
+
+
 def test_staging_writer_rejects_forged_regular_fd_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

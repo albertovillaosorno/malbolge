@@ -259,6 +259,10 @@ def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
             if (
                 not _native_regular_status(opened)
                 or not _native_regular_status(physical)
+                or opened.st_nlink != 1
+                or physical.st_nlink != 1
+                or opened.st_size != 0
+                or physical.st_size != 0
                 or (opened.st_dev, opened.st_ino)
                 != (physical.st_dev, physical.st_ino)
             ):
