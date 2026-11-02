@@ -180,6 +180,8 @@ faults become typed failures with their original causes before any replacement.
 Promotion requires a bounded native readback equal to the selected alias bytes
 from that same single-link inode. Cleanup unlinks only the original owned
 inode, leaving foreign symlink or hardlink replacements untouched on rejection.
+The published alias is read back again after final stage cleanup, so cleanup
+callbacks cannot replace, remove, or rewrite the admitted bytes before return.
 Jig tool-source and alias ancestry checks require native physical `lstat`
 receipts and reject masked redirects, foreign stat proxies, and untyped host
 inspection faults. Temporary descriptor and pathname status receipts must

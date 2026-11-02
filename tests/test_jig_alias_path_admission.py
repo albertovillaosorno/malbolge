@@ -563,3 +563,58 @@ def test_jig_alias_rejects_stage_exchanged_after_byte_verification(
     stages = list(alias_root.glob(".ruff.bin.*"))
     assert len(stages) == 1
     assert stages[0].read_bytes() == rogue
+
+
+@pytest.mark.parametrize("windows", [False, True])
+@pytest.mark.parametrize("mutation", ["overwrite", "name-swap", "remove"])
+def test_jig_alias_rejects_published_mutation_during_final_stage_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    windows: bool,
+    mutation: str,
+) -> None:
+    """A final cleanup callback cannot approve a changed published Jig tool."""
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+    _ = target.write_bytes(b"prior-alias")
+    parked = tmp_path / "original-published-alias"
+    native_owned = python_validation._jig_alias_stage_is_owned  # pyright: ignore[reportPrivateUsage]
+    mutated = False
+
+    def mutate_after_verification(
+        temporary: Path,
+        identity: tuple[int, int],
+        *,
+        expected_size: int | None = None,
+    ) -> bool:
+        nonlocal mutated
+        owned = native_owned(temporary, identity, expected_size=expected_size)
+        if not mutated and not temporary.exists() and target.exists():
+            mutated = True
+            if mutation == "overwrite":
+                before = target.stat()
+                _ = target.write_bytes(b"!" + BINARY[1:])
+                os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+            elif mutation == "name-swap":
+                _ = target.rename(parked)
+                _ = target.write_bytes(b"!" * len(BINARY))
+            else:
+                target.unlink()
+        return owned
+
+    monkeypatch.setattr(
+        python_validation, "_jig_alias_stage_is_owned", mutate_after_verification
+    )
+    with pytest.raises(python_validation.ProvisionError, match="Jig alias"):
+        python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+            target, BINARY, windows=windows
+        )
+    assert mutated
+    assert not list(alias_root.glob(".ruff.bin.*"))
+    if mutation == "name-swap":
+        assert parked.read_bytes() == BINARY
+    elif mutation == "overwrite":
+        assert target.read_bytes() != BINARY
+    else:
+        assert not target.exists()

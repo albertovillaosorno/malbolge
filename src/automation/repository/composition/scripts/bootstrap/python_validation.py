@@ -2061,6 +2061,10 @@ def _publish_jig_tool_alias(
     finally:
         if _jig_alias_stage_is_owned(temporary, identity):
             temporary.unlink(missing_ok=True)
+    # The final owned-stage cleanup may run filesystem callbacks after the
+    # previous readback. Admit the published name again before returning.
+    _ = _check_jig_alias_path(target, directory=False, required=True)
+    _verify_jig_alias_stage_bytes(target, identity, payload)
 
 
 def _jig_alias_source_and_target(
