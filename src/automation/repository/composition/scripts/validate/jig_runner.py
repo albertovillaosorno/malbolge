@@ -190,6 +190,9 @@ def run_jig(command: str, *, root: Path = ROOT) -> int:
         JigRunnerError: Jig or a required pinned tool is unavailable.
 
     """
+    if type(command) is not str:
+        message = "unsupported Jig command: command must be an exact string"
+        raise JigRunnerError(message)
     if command not in COMMANDS:
         message = f"unsupported Jig command: {command}"
         raise JigRunnerError(message)

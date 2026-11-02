@@ -129,6 +129,11 @@ receipts or foreign error formatting cannot falsely report a successful check.
 Prefer a dedicated directory containing only the intended external tool if
 additional user-local commands should not be visible to Jig.
 
+Direct runner calls require one exact native command string (`check`,
+`doctor`, or `validate`) before any equality comparison or tool discovery.
+Foreign command objects cannot execute comparison or formatting hooks while
+being rejected.
+
 The same entrypoint supports `doctor` and `validate` and fails if either pinned
 ChkTeX or LaTeXmk launcher is missing. The runner preflights its configured
 launchers as physical executable regular files with no symlink/junction in the

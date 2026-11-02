@@ -38,7 +38,7 @@ import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import cast
+from typing import cast, override
 
 import pytest
 
@@ -399,6 +399,45 @@ def test_runner_rejects_unsupported_and_missing_jig(
     monkeypatch.setattr("scripts.validate.jig_runner.shutil.which", missing)
     with pytest.raises(jig_runner.JigRunnerError, match="unavailable"):
         _ = jig_runner.run_jig("check", root=tmp_path)
+
+
+@pytest.mark.parametrize("command", ["foreign-string", "foreign-object"])
+def test_runner_rejects_foreign_command_before_comparison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+) -> None:
+    """A foreign command cannot execute equality or formatter hooks."""
+
+    class ForeignCommand(str):
+        @override
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign command equality executed")
+
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign command formatting executed")
+
+    class ForeignObject:
+        @override
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign object equality executed")
+
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign object formatting executed")
+
+    def discovery(_name: str) -> None:
+        pytest.fail("invalid command reached Jig executable discovery")
+
+    monkeypatch.setattr(jig_runner.shutil, "which", discovery)
+    untrusted = (
+        ForeignCommand("check")
+        if command == "foreign-string"
+        else cast("str", cast("object", ForeignObject()))
+    )
+    with pytest.raises(jig_runner.JigRunnerError, match="unsupported Jig command"):
+        _ = jig_runner.run_jig(untrusted, root=tmp_path)
 
 
 def test_main_reports_missing_dependency(
