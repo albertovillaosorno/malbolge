@@ -1889,20 +1889,21 @@ def _ldd_library(executable: Path, soname: str) -> Path | None:
     if output is None:
         return None
     prefix = f"{soname} => "
-    for line in output.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith(prefix):
-            continue
-        path_text = stripped.removeprefix(prefix).split(" (", 1)[0]
-        try:
-            path = Path(path_text)
-            if not path.is_absolute():
-                return None
-            resolved = path.resolve(strict=True)
-            return resolved if _physical_file(resolved) else None
-        except (OSError, ValueError, TypeError, RuntimeError):
+    stripped_lines = (line.strip() for line in output.splitlines())
+    matches = [line for line in stripped_lines if line.startswith(prefix)]
+    # Multiple records for a single soname are ambiguous, even if the first
+    # receipt resolves to a physical library.
+    if len(matches) != 1:
+        return None
+    path_text = matches[0].removeprefix(prefix).split(" (", 1)[0]
+    try:
+        path = Path(path_text)
+        if not path.is_absolute():
             return None
-    return None
+        resolved = path.resolve(strict=True)
+        return resolved if _physical_file(resolved) else None
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return None
 
 
 def _linux_tool_paths() -> tuple[Path, Path, Path] | None:

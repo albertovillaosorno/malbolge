@@ -3089,6 +3089,37 @@ def test_llvm_ldd_accepts_physical_library(
     )
 
 
+@pytest.mark.parametrize("second_line", ["same", "other", "missing"])
+def test_llvm_ldd_rejects_ambiguous_duplicate_soname(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    second_line: str,
+) -> None:
+    """Conflicting or repeated loader receipts cannot select a trusted inode."""
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+    other = tmp_path / "elsewhere.so"
+    _ = other.write_bytes(b"foreign library")
+    suffixes = {
+        "same": f"{library} (0x5678)",
+        "other": f"{other} (0x5678)",
+        "missing": "not found",
+    }
+    soname = "libLLVM.so.22.1"
+    first = f"{soname} => {library} (0x1234)"
+    second = f"{soname} => {suffixes[second_line]}"
+    output = f"{first}\n{second}"
+
+    def repeated_capture(arguments: list[str]) -> str:
+        assert arguments == ["ldd", str(tmp_path / "clang")]
+        return output
+
+    monkeypatch.setattr(llvm_validation, "_capture", repeated_capture)
+    entrypoint = vars(llvm_validation)["_ldd_library"]
+    resolve = cast("Callable[[Path, str], Path | None]", entrypoint)
+    assert resolve(tmp_path / "clang", soname) is None
+
+
 @pytest.mark.parametrize("kind", ("masked-missing", "resolve-error"))
 def test_llvm_host_resource_discovery_rejects_foreign_directory_status(
     tmp_path: Path,
