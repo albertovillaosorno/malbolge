@@ -143,6 +143,105 @@ def _downloader(calls: list[str]) -> Callable[[str], bytes]:
     return download
 
 
+def test_development_provision_rejects_unlisted_staged_symlink(
+    tmp_path: Path,
+) -> None:
+    """An extra symlink cannot enter the committed development include tree."""
+    identity = _identity(tmp_path)
+    outside = tmp_path / "external-header.h"
+    _ = outside.write_bytes(FOREIGN_CONTENT_BYTES)
+
+    def linked_extractor(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        _extract_headers(data, asset, destination, staging=staging)
+        try:
+            _ = (destination / "include/extra.h").symlink_to(outside)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"file aliases unavailable: {error}")
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="symlink|physical member",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path,
+            identity,
+            downloader=_downloader([]),
+            extractor=linked_extractor,
+        )
+    assert outside.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not identity.development_root.exists()
+
+
+def test_rpm_copy_rejects_header_swapped_to_link(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Copy-time link swaps must not import an untrusted external header."""
+    identity = _identity(tmp_path)
+    outside = tmp_path / "external-header.h"
+    _ = outside.write_bytes(FOREIGN_CONTENT_BYTES)
+    native_copytree = shutil.copytree
+    swapped = False
+
+    def synthetic_cpio(
+        arguments: list[str],
+        *,
+        cwd: Path | None = None,
+        stdin: bytes | None = None,
+    ) -> bytes:
+        del stdin
+        if arguments[0] == "cpio" and cwd is not None:
+            header = cwd / "usr/include/clang/AST/AST.h"
+            header.parent.mkdir(parents=True)
+            _ = header.write_bytes(HEADER_BYTES)
+        return b""
+
+    def swapped_copytree(
+        src: Path,
+        dst: Path,
+        *args: object,
+        **kwargs: object,
+    ) -> Path:
+        nonlocal swapped
+        if not swapped and isinstance(src, Path) and src.name == "include":
+            header = src / "clang/AST/AST.h"
+            header.unlink()
+            try:
+                _ = header.symlink_to(outside)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"file aliases unavailable: {error}")
+            swapped = True
+        return native_copytree(src, dst, *args, **kwargs)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation, "_cpio_payload", lambda _rpm: b"cpio"
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            lambda _data: ("./usr/include/clang/AST/AST.h",),
+        )
+        isolated.setattr(llvm_development_validation, "_command_bytes", synthetic_cpio)
+        isolated.setattr(llvm_development_validation.shutil, "copytree", swapped_copytree)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="missing|symlink|physical member",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert swapped
+    assert outside.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not identity.development_root.exists()
+
+
 def test_provision_is_marker_bound_and_idempotent(tmp_path: Path) -> None:
     """An exact completed development root never redownloads package bytes."""
     identity = _identity(tmp_path)

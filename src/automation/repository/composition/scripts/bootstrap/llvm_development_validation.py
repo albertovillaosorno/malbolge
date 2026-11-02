@@ -343,6 +343,7 @@ def _extract_rpm_headers(
         include_root,
         destination / "include",
         dirs_exist_ok=True,
+        symlinks=True,
     )
     shutil.rmtree(package_staging)
 
@@ -689,6 +690,7 @@ def _stage_development_assets(
     if missing:
         joined = ", ".join(path.as_posix() for path in missing)
         _fail(f"LLVM development publication is missing: {joined}")
+    _reject_include_symlinks(staged_root / "include")
 
 
 def provision_development_identity(
