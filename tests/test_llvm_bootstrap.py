@@ -4361,3 +4361,71 @@ def test_linux_import_cleanup_preserves_nested_directory_swapped_after_open(
     assert swapped
     outside = bin_dir if replacement == "physical" else foreign
     assert (outside / "preserve").read_bytes() == b"foreign-after-open"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory handles")
+@pytest.mark.parametrize("kind", ("file", "directory"))
+def test_linux_cleanup_rejects_foreign_scandir_members(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Foreign directory entries cannot escape cleanup through traversal names."""
+    observation = _host_observation(tmp_path)
+    child = tmp_path / ".temp/llvm-import-linux-x86_64/llvm"
+    outside = tmp_path / "foreign-scandir-target"
+    if kind == "directory":
+        outside.mkdir()
+        sentinel = outside / "preserve"
+        _ = sentinel.write_bytes(b"not owned by LLVM")
+    else:
+        sentinel = outside
+        _ = sentinel.write_bytes(b"not owned by LLVM")
+    native_scandir = os.scandir
+    native_stage = llvm_validation._stage_linux_llvm  # pyright: ignore[reportPrivateUsage]
+    injected = False
+
+    @final
+    class ForgedEntry:
+        name = "../../../foreign-scandir-target"
+
+        def stat(self, *, follow_symlinks: bool = True) -> os.stat_result:
+            return outside.lstat()
+
+    @final
+    class ForgedScan:
+        def __enter__(self) -> list[ForgedEntry]:
+            return [ForgedEntry()]
+
+        def __exit__(
+            self,
+            exc_type: object,
+            exc_value: object,
+            traceback: object,
+        ) -> None:
+            return None
+
+    def fail_after_stage(
+        staged: Path,
+        observed: llvm_validation.LlvmHostObservation,
+        *,
+        expected_staged_inode: tuple[int, int] | None = None,
+    ) -> None:
+        native_stage(staged, observed, expected_staged_inode=expected_staged_inode)
+        raise llvm_validation.LlvmImportError("expected staging failure")
+
+    def foreign_scandir(path: str | os.PathLike[str] | int) -> object:
+        nonlocal injected
+        if type(path) is int and not injected and child.is_dir():
+            opened = os.fstat(path)
+            named = child.lstat()
+            if (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino):
+                injected = True
+                return ForgedScan()
+        return native_scandir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation, "_stage_linux_llvm", fail_after_stage)
+        isolated.setattr(os, "scandir", foreign_scandir)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert injected
+    assert sentinel.read_bytes() == b"not owned by LLVM"

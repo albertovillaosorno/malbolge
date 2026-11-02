@@ -1193,6 +1193,17 @@ def _remove_pinned_import_contents(parent_fd: int) -> None:
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     with os.scandir(parent_fd) as members:
         for member in members:
+            if type(member) is not os.DirEntry:
+                _fail("LLVM staging cleanup member receipt must be native")
+            name = member.name
+            if (
+                type(name) is not str
+                or name in ("", ".", "..")
+                or os.path.basename(name) != name
+                or "/" in name
+                or "\\" in name
+            ):
+                _fail("LLVM staging cleanup member name must be a single leaf")
             admitted = member.stat(follow_symlinks=False)
             if type(admitted) is not os.stat_result:
                 _fail("LLVM staging cleanup member status must be native")
