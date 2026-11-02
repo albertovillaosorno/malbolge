@@ -195,8 +195,10 @@ def _cpio_members(payload: bytes) -> tuple[str, ...]:
     return members
 
 
-def _reject_include_symlinks(include_root: Path) -> None:
-    """Reject redirected CPIO include roots and nonnative member link status."""
+def _reject_include_symlinks(
+    include_root: Path, *, require_single_link: bool = False
+) -> None:
+    """Reject redirected includes and externally writable staged files."""
     _require_physical_directories(include_root, "staging")
     if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
         _fail(f"LLVM RPM include root is not a directory: {include_root}")
@@ -216,6 +218,12 @@ def _reject_include_symlinks(include_root: Path) -> None:
             or _native_directory_status(physical)
         ):
             _fail(f"LLVM RPM include tree requires physical member: {candidate}")
+        if (
+            require_single_link
+            and _native_regular_status(physical)
+            and physical.st_nlink != 1
+        ):
+            _fail(f"LLVM staged header has an external hardlink: {candidate}")
 
 
 def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
@@ -763,7 +771,7 @@ def _stage_development_assets(
     if missing:
         joined = ", ".join(path.as_posix() for path in missing)
         _fail(f"LLVM development publication is missing: {joined}")
-    _reject_include_symlinks(staged_root / "include")
+    _reject_include_symlinks(staged_root / "include", require_single_link=True)
 
 
 def provision_development_identity(
@@ -834,6 +842,7 @@ def provision_development_identity(
             _fail("LLVM development destination became occupied before publication")
         _assert_owned_staged_child(staged_root, child_identity)
         _require_physical_directories(staged_root, "staging")
+        _reject_include_symlinks(staged_root / "include", require_single_link=True)
         _ = staged_root.replace(identity.development_root)
     except _StagingOwnershipChanged:
         # The package stage can contain an attacker-replaced child. Leave the

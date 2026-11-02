@@ -178,6 +178,74 @@ def test_development_provision_rejects_unlisted_staged_symlink(
     assert not identity.development_root.exists()
 
 
+def test_development_provision_rejects_unlisted_staged_hardlink(
+    tmp_path: Path,
+) -> None:
+    """An extra staged header may not share an external writable inode."""
+    identity = _identity(tmp_path)
+    outside = tmp_path / "outside-extra-header.h"
+    _ = outside.write_bytes(FOREIGN_CONTENT_BYTES)
+
+    def hardlinked_extractor(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        _extract_headers(data, asset, destination, staging=staging)
+        try:
+            os.link(outside, destination / "include/extra.h")
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"hardlinks unavailable: {error}")
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="hardlink|physical member",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path, identity, downloader=_downloader([]), extractor=hardlinked_extractor
+        )
+    assert outside.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not identity.development_root.exists()
+
+
+def test_development_rejects_header_hardlinked_after_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late external header alias must not cross the publication boundary."""
+    identity = _identity(tmp_path)
+    outside = tmp_path / "external-staged-header.h"
+    marker = llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    native_writer = llvm_development_validation._write_verified_staging_bytes
+    linked = False
+
+    def link_after_marker(path: Path, content: bytes) -> None:
+        nonlocal linked
+        native_writer(path, content)
+        if path.name == marker:
+            try:
+                os.link(path.parent / "include/clang/AST/AST.h", outside)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"hardlinks unavailable: {error}")
+            linked = True
+
+    monkeypatch.setattr(
+        llvm_development_validation, "_write_verified_staging_bytes", link_after_marker
+    )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="hardlink",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path, identity, downloader=_downloader([]), extractor=_extract_headers
+        )
+    assert linked
+    assert outside.read_bytes() == HEADER_BYTES
+    assert not identity.development_root.exists()
+
+
 def test_rpm_copy_rejects_header_swapped_to_link(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
