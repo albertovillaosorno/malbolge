@@ -790,7 +790,8 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
                 or (published.st_dev, published.st_ino) != owned
             ):
                 _fail("import marker changed during publication")
-            _reject_authority_parent_redirects(marker)
+            if _read_authority_bytes(marker) != payload:
+                _fail("import marker content mismatch")
             complete = True
         except InitializationError:
             raise

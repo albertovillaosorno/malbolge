@@ -3357,6 +3357,31 @@ def test_import_completion_rejects_linked_parent(
     assert not check(alias)
 
 
+@pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)
+def test_import_marker_writer_rejects_complete_count_with_wrong_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: tuple[str, bytes, Callable[[Path], bool]],
+) -> None:
+    """A forged full byte count cannot publish a corrupt import marker."""
+    name, expected, check = scenario
+    marker = tmp_path / name
+    native_write = os.write
+
+    def corrupt_write(descriptor: int, data: bytes) -> int:
+        assert data == expected
+        return native_write(descriptor, b"x" * len(data))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "write", corrupt_write)
+        with pytest.raises(project.InitializationError, match="marker content"):
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, expected.decode("ascii")
+            )
+    assert not marker.exists()
+    assert not check(tmp_path)
+
+
 @pytest.mark.parametrize("alias_kind", ["symlink", "hardlink"])
 @pytest.mark.parametrize("marker_name", [project.GIT_IMPORT_MARKER, project.RUST_IMPORT_MARKER])
 def test_import_marker_writer_never_overwrites_linked_foreign_file(
