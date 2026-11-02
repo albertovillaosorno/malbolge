@@ -274,3 +274,34 @@ def test_jig_alias_temporary_rejects_foreign_status_receipt(
     finally:
         os.close(descriptor)
         temporary.unlink()
+
+
+def test_jig_alias_rejects_bytes_changed_during_atomic_replace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The published alias must still equal its pinned staged payload."""
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+    _ = target.write_bytes(b"previous-jig-alias")
+    native_replace = Path.replace
+    mutated = False
+
+    def corrupt_after_replace(stage: Path, destination: Path) -> Path:
+        nonlocal mutated
+        replaced = native_replace(stage, destination)
+        if destination == target:
+            with target.open("r+b") as stream:
+                assert stream.write(b"!") == 1
+            mutated = True
+        return replaced
+
+    monkeypatch.setattr(Path, "replace", corrupt_after_replace)
+    with pytest.raises(
+        python_validation.ProvisionError, match="Jig alias.*bytes"
+    ):
+        python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+            target, BINARY, windows=True
+        )
+    assert mutated
+    assert target.read_bytes() != BINARY

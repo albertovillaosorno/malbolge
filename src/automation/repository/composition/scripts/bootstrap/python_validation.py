@@ -1782,6 +1782,8 @@ def _publish_owned_jig_alias_stage(
         _fail("Jig alias temporary changed before publication")
     _verify_jig_alias_stage_bytes(temporary, identity, payload)
     _ = temporary.replace(target)
+    _ = _check_jig_alias_path(target, directory=False, required=True)
+    _verify_jig_alias_stage_bytes(target, identity, payload)
 
 
 def _publish_jig_tool_alias(
