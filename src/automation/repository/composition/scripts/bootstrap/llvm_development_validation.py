@@ -319,28 +319,36 @@ def _reject_include_symlinks(
     _require_physical_directories(include_root, "staging")
     if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
         _fail(f"LLVM RPM include root is not a directory: {include_root}")
-    for candidate in include_root.rglob("*"):
-        linked = _preflight_path_status(candidate, candidate.is_symlink, "staging")
-        junction = _preflight_path_status(candidate, candidate.is_junction, "staging")
-        if linked or junction:
-            _fail(f"LLVM RPM include tree contains a symlink or junction: {candidate}")
-        try:
-            physical = candidate.lstat()
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            raise LlvmDevelopmentProvisionError(
-                f"LLVM RPM include tree physical member status failed: {candidate}"
-            ) from error
-        if not (
-            _native_regular_status(physical)
-            or _native_directory_status(physical)
-        ):
-            _fail(f"LLVM RPM include tree requires physical member: {candidate}")
-        if (
-            require_single_link
-            and _native_regular_status(physical)
-            and physical.st_nlink != 1
-        ):
-            _fail(f"LLVM staged header has an external hardlink: {candidate}")
+    def fail_scan(error: OSError) -> Never:
+        raise LlvmDevelopmentProvisionError(
+            "LLVM RPM include tree scan failed"
+        ) from error
+
+    for directory, folders, files in include_root.walk(on_error=fail_scan):
+        _require_physical_directories(directory, "staging")
+        for name in (*folders, *files):
+            candidate = directory / name
+            linked = _preflight_path_status(candidate, candidate.is_symlink, "staging")
+            junction = _preflight_path_status(candidate, candidate.is_junction, "staging")
+            if linked or junction:
+                _fail(f"LLVM RPM include tree contains a symlink or junction: {candidate}")
+            try:
+                physical = candidate.lstat()
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmDevelopmentProvisionError(
+                    f"LLVM RPM include tree physical member status failed: {candidate}"
+                ) from error
+            if not (
+                _native_regular_status(physical)
+                or _native_directory_status(physical)
+            ):
+                _fail(f"LLVM RPM include tree requires physical member: {candidate}")
+            if (
+                require_single_link
+                and _native_regular_status(physical)
+                and physical.st_nlink != 1
+            ):
+                _fail(f"LLVM staged header has an external hardlink: {candidate}")
 
 
 def _open_staging_file(path: Path, flags: int) -> int:

@@ -2321,6 +2321,34 @@ def test_development_provision_rejects_swapped_staged_root(
     assert not identity.development_root.exists()
 
 
+def test_development_readiness_rejects_suppressed_directory_scan_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreadable header subtree cannot silently disappear from reuse checks."""
+    identity = _provisioned_identity(tmp_path)
+    inaccessible = identity.development_root / "include/clang"
+    native_scandir = os.scandir
+    fault = PermissionError("synthetic unreadable LLVM header directory")
+
+    def fail_scandir(path: object) -> object:
+        if isinstance(path, (str, bytes, os.PathLike)) and Path(path) == inaccessible:
+            raise fault
+        return native_scandir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "scandir", fail_scandir)
+        assert not llvm_development_validation.development_root_matches(identity)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="scan",
+        ) as observed:
+            llvm_development_validation._reject_include_symlinks(
+                identity.development_root, require_single_link=True
+            )
+    assert observed.value.__cause__ is fault
+
+
 @pytest.mark.parametrize("location", ["include", "root"])
 @pytest.mark.parametrize("member_kind", ["symlink", "hardlink", "fifo"])
 def test_development_readiness_rejects_unlisted_nonphysical_members(
