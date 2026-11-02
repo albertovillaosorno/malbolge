@@ -38,6 +38,7 @@ import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from collections.abc import Callable
+from io import BufferedRandom, BufferedReader
 from pathlib import Path
 from typing import Self, cast, final, override
 
@@ -1324,6 +1325,69 @@ def test_windows_alias_copy_rejects_symlink_inserted_before_fallback(
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
 
 
+def test_windows_alias_fallback_rejects_corrupted_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cross-device copy must prove exact bytes before marker publication."""
+    root = _windows_tool_bundle(tmp_path)
+    alias = root / "jig-bin/clang.bin"
+    native_copy = shutil.copyfileobj
+
+    def no_hardlinks(_source: str, _destination: str) -> None:
+        raise OSError("cross-device import")
+
+    def forged_copy(
+        source: BufferedReader, target: BufferedRandom, length: int = 0
+    ) -> None:
+        if Path(cast("str", target.name)) == alias:
+            _ = target.write(b"x" * len(CLANG_BYTES))
+        else:
+            native_copy(source, target, length)
+
+    monkeypatch.setattr(os, "link", no_hardlinks)
+    monkeypatch.setattr(shutil, "copyfileobj", forged_copy)
+    with pytest.raises(llvm_validation.LlvmImportError, match="copy"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+
+
+def test_windows_alias_fallback_rejects_leaf_swapped_during_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A swapped alias may not receive source metadata or authorize imports."""
+    root = _windows_tool_bundle(tmp_path)
+    alias = root / "jig-bin/clang.bin"
+    parked = tmp_path / "parked-alias"
+    outside = tmp_path / "outside-alias"
+    _ = outside.write_bytes(b"external metadata sentinel")
+    outside.chmod(0o600)
+    original_mode = outside.stat().st_mode
+    native_copy = shutil.copyfileobj
+
+    def no_hardlinks(_source: str, _destination: str) -> None:
+        raise OSError("cross-device import")
+
+    def swapped_copy(
+        source: BufferedReader, target: BufferedRandom, length: int = 0
+    ) -> None:
+        native_copy(source, target, length)
+        if Path(cast("str", target.name)) == alias:
+            alias.rename(parked)
+            _ = alias.symlink_to(outside)
+
+    monkeypatch.setattr(os, "link", no_hardlinks)
+    monkeypatch.setattr(shutil, "copyfileobj", swapped_copy)
+    with pytest.raises(llvm_validation.LlvmImportError, match="copy"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert parked.read_bytes() == CLANG_BYTES
+    assert alias.is_symlink()
+    assert outside.read_bytes() == b"external metadata sentinel"
+    assert outside.stat().st_mode == original_mode
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+
+
 def test_windows_alias_cross_device_fallback_preserves_tool_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1340,6 +1404,56 @@ def test_windows_alias_cross_device_fallback_preserves_tool_bytes(
     assert aliases[1].read_bytes() == TIDY_BYTES
     assert aliases[2].read_bytes() == FORMAT_BYTES
     assert llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
+
+
+def test_windows_alias_fallback_rejects_new_hardlink_after_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An alias linked during fallback copy cannot authorize neutral tools."""
+    root = _windows_tool_bundle(tmp_path)
+    alias = root / "jig-bin/clang.bin"
+    outside = tmp_path / "linked-alias"
+    native_link = os.link
+    native_copy = shutil.copyfileobj
+
+    def no_hardlinks(_source: str, _destination: str) -> None:
+        raise OSError("cross-device import")
+
+    def linked_copy(
+        source: BufferedReader, target: BufferedRandom, length: int = 0
+    ) -> None:
+        if Path(cast("str", target.name)) == alias:
+            native_link(alias, outside)
+        native_copy(source, target, length)
+
+    monkeypatch.setattr(os, "link", no_hardlinks)
+    monkeypatch.setattr(shutil, "copyfileobj", linked_copy)
+    with pytest.raises(llvm_validation.LlvmImportError, match="copy"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert outside.read_bytes() == CLANG_BYTES
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+
+
+def test_linux_import_cross_device_fallback_keeps_runtime_executable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verified fallback copies must retain Linux tool bytes and execute bits."""
+    observation = _host_observation(tmp_path)
+    for tool in (observation.clang, observation.clang_tidy, observation.clang_format):
+        tool.chmod(0o755)
+
+    def no_hardlinks(_source: str, _destination: str) -> None:
+        raise OSError("cross-device import")
+
+    monkeypatch.setattr(os, "link", no_hardlinks)
+    root = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert (root / "bin/clang").read_bytes() == CLANG_BYTES
+    assert (root / "bin/clang").stat().st_mode & 0o111
+    assert (root / "lib/libLLVM.so.22.1").read_bytes() == LLVM_BYTES
+    assert (root / "lib/clang/22/stddef.h").read_bytes() == RESOURCE_BYTES
+    assert llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
 
 
 def test_windows_aliases_reject_existing_drift(tmp_path: Path) -> None:

@@ -43,7 +43,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from dataclasses import dataclass
 from io import BufferedReader
 from pathlib import Path
-from stat import S_ISDIR, S_ISLNK, S_ISREG
+from stat import S_IMODE, S_ISDIR, S_ISLNK, S_ISREG
 from typing import Final, Never, cast
 
 LLVM_VERSION: Final = "22.1.8"
@@ -255,24 +255,105 @@ def _runtime_ready(root: Path, platform_id: str) -> bool:
     )
 
 
+def _matches_open_import_file(
+    path: Path, descriptor: int, size: int, *, single_link: bool = False
+) -> bool:
+    """Attest a physical named file against an open descriptor and exact size."""
+    try:
+        opened = os.fstat(descriptor)
+        named = path.lstat()
+        return (
+            _physical_file(path)
+            and type(opened) is os.stat_result
+            and type(named) is os.stat_result
+            and S_ISREG(opened.st_mode)
+            and opened.st_size == size
+            and (not single_link or opened.st_nlink == 1)
+            and _marker_identity(opened) == _marker_identity(named)
+        )
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return False
+
+
 def _link_or_copy(source: str, destination: str) -> str:
     """Import a new file without overwriting a raced destination link."""
-    if not _physical_directory(Path(destination).parent):
+    source_path = Path(source)
+    destination_path = Path(destination)
+    if not _physical_directory(destination_path.parent):
         _fail("LLVM import destination parent must be physical")
     try:
         os.link(source, destination)
     except OSError:
-        created = False
+        owned_inode: tuple[int, int] | None = None
         try:
-            with Path(destination).open("xb") as target:
-                created = True
-                with Path(source).open("rb") as original:
+            with destination_path.open("x+b") as target:
+                target_fd = target.fileno()
+                if type(target_fd) is not int or not _owned_exclusive_descriptor(
+                    destination_path, target_fd
+                ):
+                    _fail("LLVM import fallback copy destination is not owned")
+                target_stat = os.fstat(target_fd)
+                if type(target_stat) is not os.stat_result:
+                    _fail("LLVM import fallback copy destination status is not native")
+                owned_inode = (target_stat.st_dev, target_stat.st_ino)
+                with source_path.open("rb") as original:
+                    source_fd = original.fileno()
+                    source_stat = os.fstat(source_fd)
+                    if (
+                        type(source_fd) is not int
+                        or type(source_stat) is not os.stat_result
+                        or not _matches_open_import_file(
+                            source_path, source_fd, source_stat.st_size
+                        )
+                    ):
+                        _fail("LLVM import fallback copy source is not physical")
+                    admitted_source = _marker_identity(source_stat)
                     shutil.copyfileobj(original, target)
-            shutil.copystat(source, destination)
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            if created:
+                    target.flush()
+                    _ = original.seek(0)
+                    _ = target.seek(0)
+                    while True:
+                        source_chunk = original.read(65536)
+                        if type(source_chunk) is not bytes:
+                            _fail(
+                                "LLVM import fallback copy source bytes are not native"
+                            )
+                        if not source_chunk:
+                            break
+                        target_chunk = target.read(len(source_chunk))
+                        if (
+                            type(target_chunk) is not bytes
+                            or target_chunk != source_chunk
+                        ):
+                            _fail("LLVM import fallback copy bytes differ from source")
+                    if target.read(1) != b"":
+                        _fail("LLVM import fallback copy has trailing bytes")
+                    if (
+                        _marker_identity(os.fstat(source_fd)) != admitted_source
+                        or not _matches_open_import_file(
+                            source_path, source_fd, source_stat.st_size
+                        )
+                        or not _matches_open_import_file(
+                            destination_path,
+                            target_fd,
+                            source_stat.st_size,
+                            single_link=True,
+                        )
+                    ):
+                        _fail("LLVM import fallback copy identity changed")
+                    # Never apply metadata through a replaceable destination path.
+                    os.fchmod(target_fd, S_IMODE(source_stat.st_mode))
+                    if not _matches_open_import_file(
+                        destination_path,
+                        target_fd,
+                        source_stat.st_size,
+                        single_link=True,
+                    ):
+                        _fail("LLVM import fallback copy identity changed after chmod")
+        except (LlvmImportError, OSError, ValueError, TypeError, RuntimeError) as error:
+            if owned_inode is not None:
                 try:
-                    Path(destination).unlink(missing_ok=True)
+                    _discard_owned_file(destination_path, owned_inode)
                 except (OSError, ValueError, TypeError, RuntimeError):
                     pass
             raise LlvmImportError(
@@ -432,8 +513,8 @@ def _existing_import_marker(root: Path, platform_id: str) -> bool:
     return True
 
 
-def _discard_owned_marker(marker: Path, inode: tuple[int, int]) -> None:
-    """Unlink only the same unique marker inode opened by this writer."""
+def _discard_owned_file(marker: Path, inode: tuple[int, int]) -> None:
+    """Unlink only the same unique file inode opened by this writer."""
     try:
         current = marker.lstat()
     except FileNotFoundError:
@@ -480,7 +561,7 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         if owned_inode is not None:
             try:
-                _discard_owned_marker(marker, owned_inode)
+                _discard_owned_file(marker, owned_inode)
             except (OSError, ValueError, TypeError, RuntimeError):
                 pass
         raise LlvmImportError(
@@ -494,7 +575,7 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
         return
     if owned_inode is not None:
         try:
-            _discard_owned_marker(marker, owned_inode)
+            _discard_owned_file(marker, owned_inode)
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             raise LlvmImportError(
                 f"LLVM marker write count mismatch; cleanup failed: {type(error).__name__}"
