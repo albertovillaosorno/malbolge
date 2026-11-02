@@ -1032,10 +1032,10 @@ def write_launchers(
 ) -> None:
     """Publish physical Python and pytest launchers without following links."""
     scripts = layout.scripts
-    _check_jig_alias_path(scripts, directory=True, required=True)
+    _ = _check_jig_alias_path(scripts, directory=True, required=True)
     launchers = (layout.python_launcher, layout.pytest_launcher)
     for target in launchers:
-        _check_jig_alias_path(target, directory=False, required=False)
+        _ = _check_jig_alias_path(target, directory=False, required=False)
     texts = (
         _windows_launcher_text(pytest=False)
         if windows
@@ -1062,11 +1062,49 @@ def _expected_jig_tool_version_line(
     return matches[0]
 
 
+def _jig_alias_physical_status(
+    path: Path, *, required: bool
+) -> os.stat_result | None:
+    """Require native, nonredirected host status for a Jig alias component."""
+    try:
+        symlink = path.is_symlink()
+        junction = path.is_junction()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise ProvisionError("cannot inspect Jig alias link status") from error
+    if type(symlink) is not bool or type(junction) is not bool:
+        _fail(f"Jig alias link status must be native: {path}")
+    try:
+        observed = path.lstat()
+    except FileNotFoundError:
+        if required:
+            _fail(f"missing provisioned tool for Jig alias: {path}")
+        return None
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise ProvisionError("cannot inspect Jig alias file status") from error
+    if type(observed) is not os.stat_result or any(
+        type(field) is not int
+        for field in (
+            observed.st_mode,
+            observed.st_nlink,
+            observed.st_dev,
+            observed.st_ino,
+            observed.st_size,
+            observed.st_mtime_ns,
+            observed.st_ctime_ns,
+        )
+    ):
+        _fail(f"Jig alias file status must be native: {path}")
+    if symlink or junction or stat.S_ISLNK(observed.st_mode):
+        _fail(f"Jig alias path must not redirect: {path}")
+    return observed
+
+
 def _check_jig_alias_parents(path: Path) -> None:
-    """Reject a redirected ancestor before reading or publishing aliases."""
+    """Reject a redirected or non-directory ancestor of a Jig alias."""
     for parent in reversed(path.parents):
-        if parent.is_symlink() or parent.is_junction():
-            _fail(f"Jig alias path must not redirect: {parent}")
+        observed = _jig_alias_physical_status(parent, required=False)
+        if observed is not None and not stat.S_ISDIR(observed.st_mode):
+            _fail(f"Jig alias parent must be a directory: {parent}")
 
 
 def _check_jig_alias_path(
@@ -1074,20 +1112,15 @@ def _check_jig_alias_path(
     *,
     directory: bool,
     required: bool,
-) -> None:
-    """Reject redirects and nonphysical artifacts along a Jig tool path."""
+) -> os.stat_result | None:
+    """Admit native physical Jig alias ancestry and leaf status."""
     _check_jig_alias_parents(path)
-    if path.is_symlink() or path.is_junction():
-        _fail(f"Jig alias path must not redirect: {path}")
-    try:
-        observed = path.lstat()
-    except FileNotFoundError:
-        if required:
-            _fail(f"missing provisioned tool for Jig alias: {path}")
-        return
-    expected_type = stat.S_ISDIR if directory else stat.S_ISREG
-    if not expected_type(observed.st_mode):
-        _fail(f"Jig alias path must be a physical regular artifact: {path}")
+    observed = _jig_alias_physical_status(path, required=required)
+    if observed is not None:
+        expected_type = stat.S_ISDIR if directory else stat.S_ISREG
+        if not expected_type(observed.st_mode):
+            _fail(f"Jig alias path must be a physical regular artifact: {path}")
+    return observed
 
 
 def _jig_source_identity(source: Path) -> tuple[int, int, int, int, int]:
@@ -1097,9 +1130,10 @@ def _jig_source_identity(source: Path) -> tuple[int, int, int, int, int]:
         Device, inode, size and modification/change times.
 
     """
-    _check_jig_alias_path(source, directory=False, required=True)
-    status = source.lstat()
-    if status.st_size > MAX_JIG_TOOL_BINARY_BYTES:
+    status = _check_jig_alias_path(source, directory=False, required=True)
+    if status is None:
+        _fail(f"missing provisioned tool for Jig alias: {source}")
+    if status.st_size < 0 or status.st_size > MAX_JIG_TOOL_BINARY_BYTES:
         _fail(f"Jig alias source exceeds byte limit: {source}")
     return (
         status.st_dev,
@@ -1317,8 +1351,8 @@ def _publish_owned_jig_alias_stage(
             _fail("Jig alias temporary write count mismatch")
         if not windows:
             os.fchmod(stream.fileno(), JIG_BINARY_MODE)
-    _check_jig_alias_path(target.parent, directory=True, required=True)
-    _check_jig_alias_path(target, directory=False, required=False)
+    _ = _check_jig_alias_path(target.parent, directory=True, required=True)
+    _ = _check_jig_alias_path(target, directory=False, required=False)
     if not _jig_alias_stage_is_owned(
         temporary, identity, expected_size=len(payload)
     ):
@@ -1334,8 +1368,8 @@ def _publish_jig_tool_alias(
 ) -> None:
     """Atomically replace an admitted alias instead of following its leaf."""
     alias_root = target.parent
-    _check_jig_alias_path(alias_root, directory=True, required=True)
-    _check_jig_alias_path(target, directory=False, required=False)
+    _ = _check_jig_alias_path(alias_root, directory=True, required=True)
+    _ = _check_jig_alias_path(target, directory=False, required=False)
     prefix = f".{target.name}."
     descriptor, temporary_name = tempfile.mkstemp(prefix=prefix, dir=alias_root)
     try:
@@ -1414,15 +1448,15 @@ def write_jig_tool_aliases(
     """
     tool_ids = ("basedpyright", "pytest", "ruff")
     alias_root = layout.environment / "jig-bin"
-    _check_jig_alias_path(alias_root, directory=True, required=False)
+    _ = _check_jig_alias_path(alias_root, directory=True, required=False)
     for tool_id in tool_ids:
         source, target = _jig_alias_source_and_target(
             layout, tool_id, windows=windows
         )
         _ = _jig_source_identity(source)
-        _check_jig_alias_path(target, directory=False, required=False)
+        _ = _check_jig_alias_path(target, directory=False, required=False)
     alias_root.mkdir(parents=True, exist_ok=True)
-    _check_jig_alias_path(alias_root, directory=True, required=True)
+    _ = _check_jig_alias_path(alias_root, directory=True, required=True)
     aliases: list[tuple[str, Path]] = []
     for tool_id in tool_ids:
         target = _write_jig_tool_alias(layout, tool_id, windows=windows)
