@@ -32,6 +32,14 @@ state. Authority parent directories also require physical native `lstat`
 receipts; a masked symlink predicate or foreign directory status cannot admit
 redirected manifest ancestry. Opened file identity and timestamps require
 native physical status receipts and are checked before/after each read.
+The checkout initializer also binds its tracked CUDA JSON index/manifest
+and Git/Rust TOML version authorities to the original source snapshots.
+Substituting the public JSON/TOML decoders cannot change a pinned manifest
+filename, Git version, or nested native field: the import-bound parsers
+independently reproduce the original values. Source-equivalent adapters remain
+accepted; malformed original text and foreign object keys fail closed before
+untrusted equality hooks run. This is a public decoder-substitution boundary,
+not a claim to defend rewritten Python interpreter internals.
 Opened descriptors must be native nonnegative integers; manifest reads
 require an exact native buffered binary stream over a native `FileIO` and
 an unchanged file descriptor. Invalid wrappers, mutable buffers, or byte

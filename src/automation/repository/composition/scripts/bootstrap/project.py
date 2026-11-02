@@ -52,7 +52,9 @@ import sys
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from enum import StrEnum
+from math import copysign, isnan
 from pathlib import Path, PureWindowsPath
 from shutil import which
 from typing import BinaryIO, Final, Never, Protocol, cast
@@ -68,6 +70,8 @@ from scripts.bootstrap import (
 from scripts.repository_root import repository_root
 
 ROOT: Final = repository_root(Path(__file__))
+_NATIVE_JSON_LOADS: Final = json.loads
+_NATIVE_TOML_LOADS: Final = tomllib.loads
 REQUIRED_ROOT_FILES: Final = (
     "Cargo.toml",
     "LICENSE",
@@ -629,21 +633,74 @@ def _read_authority_bytes(path: Path) -> bytes:
     return content
 
 
+def _same_native_authority(actual: object, source: object) -> bool:
+    """Compare original JSON/TOML authority values without foreign hooks.
+
+    Returns:
+        True if all source-derived values are exact native equivalents.
+
+    """
+    kind = type(source)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        received = cast("dict[object, object]", actual)
+        original = cast("dict[object, object]", source)
+        # Check every key before lookup: a str subclass can override equality.
+        if any(type(key) is not str for key in received):
+            _fail("bootstrap decoder returned non-native authority key")
+        return len(received) == len(original) and all(
+            key in received and _same_native_authority(received[key], value)
+            for key, value in original.items()
+        )
+    if kind is list:
+        received_items = cast("list[object]", actual)
+        original_items = cast("list[object]", source)
+        return len(received_items) == len(original_items) and all(
+            _same_native_authority(received_value, source_value)
+            for received_value, source_value in zip(
+                received_items, original_items, strict=True
+            )
+        )
+    if kind is float:
+        source_number = cast("float", source)
+        actual_number = cast("float", actual)
+        if isnan(source_number):
+            return isnan(actual_number)
+        return source_number == actual_number and (
+            source_number != 0.0
+            or copysign(1.0, source_number) == copysign(1.0, actual_number)
+        )
+    return (
+        kind in (str, int, bool, type(None), date, time, datetime)
+        and actual == source
+    )
+
+
 def _json_document(path: Path, label: str) -> dict[str, object]:
     try:
+        text = _read_authority_bytes(path).decode("utf-8")
         parsed = cast(
-            "object",
-            json.loads(
-                _read_authority_bytes(path).decode("utf-8"),
-                object_pairs_hook=_reject_duplicate_pairs,
-            ),
+            "object", json.loads(text, object_pairs_hook=_reject_duplicate_pairs)
         )
+        if json.loads is not _NATIVE_JSON_LOADS:
+            source = cast(
+                "object",
+                _NATIVE_JSON_LOADS(text, object_pairs_hook=_reject_duplicate_pairs),
+            )
+            if not _same_native_authority(parsed, source):
+                _fail(f"bootstrap JSON decoder differs from source: {label}")
+    except InitializationError:
+        raise
     except (
-        json.JSONDecodeError,
+        AttributeError,
+        LookupError,
         OSError,
-        ValueError,
-        UnicodeDecodeError,
+        OverflowError,
         RecursionError,
+        RuntimeError,
+        TypeError,
+        ValueError,
     ) as error:
         raise InitializationError(f"cannot read {label}") from error
     return _mapping(parsed, label)
@@ -651,14 +708,23 @@ def _json_document(path: Path, label: str) -> dict[str, object]:
 
 def _toml_document(path: Path, label: str) -> dict[str, object]:
     try:
-        parsed = cast(
-            "object", tomllib.loads(_read_authority_bytes(path).decode("utf-8"))
-        )
+        text = _read_authority_bytes(path).decode("utf-8")
+        parsed = cast("object", tomllib.loads(text))
+        if tomllib.loads is not _NATIVE_TOML_LOADS:
+            source = cast("object", _NATIVE_TOML_LOADS(text))
+            if not _same_native_authority(parsed, source):
+                _fail(f"bootstrap TOML decoder differs from source: {label}")
+    except InitializationError:
+        raise
     except (
+        AttributeError,
+        LookupError,
         OSError,
-        ValueError,
-        UnicodeDecodeError,
+        OverflowError,
         RecursionError,
+        RuntimeError,
+        TypeError,
+        ValueError,
         tomllib.TOMLDecodeError,
     ) as error:
         raise InitializationError(f"cannot read {label}") from error

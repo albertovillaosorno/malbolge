@@ -42,11 +42,13 @@ import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import tarfile
 import tempfile
+import tomllib
 import urllib.request
 import zipfile
 from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Never, Self, TextIO, cast, final, override
 
@@ -195,6 +197,198 @@ def _write_cuda_manifest_index(root: Path) -> Path:
         newline="\n",
     )
     return index
+
+
+def test_bootstrap_cuda_index_rejects_substituted_manifest_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Public JSON decoding cannot select a manifest absent from source."""
+    index_root = (tmp_path / project.CUDA_TOOLCHAIN_MANIFEST).parent
+    index_root.mkdir(parents=True)
+    index = _write_cuda_manifest_index(tmp_path)
+    forged = cast(
+        "dict[str, object]", json.loads(index.read_text(encoding="utf-8"))
+    )
+    platforms = cast("dict[str, object]", forged["platforms"])
+    windows = cast("dict[str, object]", platforms[WINDOWS_PLATFORM])
+    windows["manifest"] = "foreign-toolchain.json"
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    monkeypatch.setattr(json, "loads", forged_loads)
+    with pytest.raises(
+        project.InitializationError, match="JSON decoder differs"
+    ):
+        _ = project.cuda_toolchain_manifest_path(tmp_path, WINDOWS_PLATFORM)
+
+
+def test_bootstrap_git_version_rejects_substituted_toml_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Forged TOML values cannot select a different Git version."""
+    version_dir = tmp_path / ".jig/settings"
+    version_dir.mkdir(parents=True)
+    _ = (version_dir / "versions.toml").write_text(
+        '[authority.git]\ncurrent = "2.55.0"\n', encoding="utf-8"
+    )
+    forged: dict[str, object] = {"authority": {"git": {"current": "0.0.0"}}}
+
+    def forged_loads(_text: str) -> object:
+        return forged
+
+    monkeypatch.setattr(tomllib, "loads", forged_loads)
+    with pytest.raises(
+        project.InitializationError, match="TOML decoder differs"
+    ):
+        _ = project._configured_git_version(  # pyright: ignore[reportPrivateUsage]
+            tmp_path
+        )
+
+
+def test_bootstrap_cuda_index_preserves_source_parse_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A native-looking decoder result cannot hide malformed source JSON."""
+    root = (tmp_path / project.CUDA_TOOLCHAIN_MANIFEST).parent
+    root.mkdir(parents=True)
+    index = root / CUDA_MANIFEST_INDEX
+    _ = index.write_text('{"schema_version":1,,}', encoding="utf-8")
+
+    def fabricated(_text: str, **_kwargs: object) -> object:
+        return {"schema_version": 1, "platforms": {}}
+
+    monkeypatch.setattr(json, "loads", fabricated)
+    with pytest.raises(project.InitializationError, match="cannot read"):
+        _ = project.cuda_toolchain_manifest_path(tmp_path, WINDOWS_PLATFORM)
+
+
+def test_bootstrap_cuda_index_rejects_foreign_nested_keys_before_comparison(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Foreign str equality is never evaluated while binding source values."""
+
+    class ForeignKey(str):
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign bootstrap key equality called")
+
+    index_root = (tmp_path / project.CUDA_TOOLCHAIN_MANIFEST).parent
+    index_root.mkdir(parents=True)
+    index = _write_cuda_manifest_index(tmp_path)
+    forged = cast(
+        "dict[str, object]", json.loads(index.read_text(encoding="utf-8"))
+    )
+    platforms = cast("dict[str, object]", forged["platforms"])
+    windows = cast("dict[str, object]", platforms[WINDOWS_PLATFORM])
+    value = windows.pop("manifest")
+    windows[ForeignKey("manifest")] = value
+
+    def fabricated(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    monkeypatch.setattr(json, "loads", fabricated)
+    with pytest.raises(
+        project.InitializationError, match="non-native authority key"
+    ):
+        _ = project.cuda_toolchain_manifest_path(tmp_path, WINDOWS_PLATFORM)
+
+
+def test_bootstrap_toml_rejects_malformed_source_with_forged_decoder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Forged TOML cannot hide an invalid original version authority."""
+    version_dir = tmp_path / ".jig/settings"
+    version_dir.mkdir(parents=True)
+    _ = (version_dir / "versions.toml").write_text(
+        '[authority.git]\ncurrent = ,\n', encoding="utf-8"
+    )
+
+    def fabricated(_text: str) -> object:
+        return {"authority": {"git": {"current": "2.55.0"}}}
+
+    monkeypatch.setattr(tomllib, "loads", fabricated)
+    with pytest.raises(project.InitializationError, match="cannot read"):
+        _ = project._configured_git_version(  # pyright: ignore[reportPrivateUsage]
+            tmp_path
+        )
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "date = 2026-11-02",
+        "utc = 2026-11-02T15:00:00Z",
+        "scale = nan",
+        "scale = -0.0",
+    ],
+)
+def test_bootstrap_source_equivalent_toml_extended_scalars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spelling: str
+) -> None:
+    """Native TOML date/time and float values survive source comparison."""
+    path = tmp_path / "extension.toml"
+    _ = path.write_text(spelling + "\n", encoding="utf-8")
+    native = tomllib.loads
+
+    def delegated(text: str) -> object:
+        return cast("object", native(text))
+
+    monkeypatch.setattr(tomllib, "loads", delegated)
+    observed = project._toml_document(  # pyright: ignore[reportPrivateUsage]
+        path, "version test"
+    )
+    assert list(observed) == [spelling.split(" ", 1)[0]]
+
+
+@pytest.mark.parametrize("kind", ["JSON", "TOML"])
+def test_bootstrap_source_equivalent_decoder_wrapper_is_compatible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Bootstrap allows host wrappers that return the same decoded tree."""
+    if kind == "JSON":
+        index_root = (tmp_path / project.CUDA_TOOLCHAIN_MANIFEST).parent
+        index_root.mkdir(parents=True)
+        index = _write_cuda_manifest_index(tmp_path)
+        native_json = json.loads
+
+        def delegated_json(text: str, *, object_pairs_hook: object) -> object:
+            return cast(
+                "object",
+                native_json(
+                    text,
+                    object_pairs_hook=cast(
+                        "Callable[[list[tuple[str, object]]], object]",
+                        object_pairs_hook,
+                    ),
+                ),
+            )
+
+        monkeypatch.setattr(json, "loads", delegated_json)
+        assert project.cuda_toolchain_manifest_path(tmp_path, WINDOWS_PLATFORM) == (
+            index.parent / "toolchain.json"
+        )
+    else:
+        version_dir = tmp_path / ".jig/settings"
+        version_dir.mkdir(parents=True)
+        _ = (version_dir / "versions.toml").write_text(
+            '[authority.git]\ncurrent = "2.55.0"\n', encoding="utf-8"
+        )
+        native_toml = tomllib.loads
+
+        def delegated_toml(text: str) -> object:
+            return cast("object", native_toml(text))
+
+        monkeypatch.setattr(tomllib, "loads", delegated_toml)
+        observed = project._configured_git_version(  # pyright: ignore[reportPrivateUsage]
+            tmp_path
+        )
+        assert observed == GIT_VERSION
 
 
 def _write_platform_cuda_manifest(
@@ -2061,10 +2255,10 @@ def test_bootstrap_authority_rejects_masked_linked_parent(
     """A linked directory is not native authority despite a masked predicate."""
     if authority == "rust":
         source = _write_rust_manifest(tmp_path)
-        inspect = lambda: project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+        inspect = partial(project.inspect_rust, tmp_path, WINDOWS_PLATFORM)
     else:
         source = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
-        inspect = lambda: project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+        inspect = partial(project.inspect_cuda, tmp_path, LINUX_PLATFORM)
     parent = source.parent
     relocated = tmp_path / "real-authority-directory"
     _ = parent.replace(relocated)
@@ -2091,10 +2285,10 @@ def test_bootstrap_authority_rejects_foreign_parent_lstat(
     """Foreign parent metadata cannot certify physical authority ancestry."""
     if authority == "rust":
         source = _write_rust_manifest(tmp_path)
-        inspect = lambda: project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+        inspect = partial(project.inspect_rust, tmp_path, WINDOWS_PLATFORM)
     else:
         source = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
-        inspect = lambda: project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+        inspect = partial(project.inspect_cuda, tmp_path, LINUX_PLATFORM)
     parent = source.parent
     native = Path.lstat
 

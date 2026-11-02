@@ -28,6 +28,11 @@ run Jig without inheriting Windows executable paths or ambient PATH authority.
 
 **Current implementation.**
 
+- 2026-11-02 follow-up: project bootstrap binds its CUDA index/manifest JSON
+  and version TOML decoders to original source values. Two red-first forged
+  manifest/Git-version cases now reject, with malformed-source, hostile nested
+  key, and equivalent-decoder compatibility regressions.
+
 - Python 3.14.6 provisions native POSIX launchers plus neutral Jig aliases under
   `.dependencies/python/3.14.6/jig-bin/` while preserving Windows `Scripts/`
   launchers. POSIX BasedPyright and pytest aliases answer only the exact
