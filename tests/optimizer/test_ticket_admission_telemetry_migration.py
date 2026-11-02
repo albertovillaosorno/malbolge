@@ -733,6 +733,44 @@ def test_versioned_v2_rejects_joint_json_provider_substitution(
         _ = decode_ticket_admission_telemetry_document_versioned(empty)
 
 
+@pytest.mark.parametrize("providers", ("encoder-only", "encoder-and-dumps"))
+def test_versioned_migration_rejects_public_encoder_forgery(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """An import-bound json.dumps must not inherit public JSONEncoder forgery."""
+    document = _v2(_document(populated=True))
+    canonical = encode_ticket_admission_telemetry_document_versioned(document)
+    assert canonical != b"{}\n"
+
+    native_encoder = json.JSONEncoder
+    native_dumps = json.dumps
+
+    class ForgedEncoder:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+        def encode(self, value: object) -> str:
+            if isinstance(value, dict) and value.get("document_id") == DOCUMENT_V2_ID:
+                return "{}"
+            encoder = cast("Callable[..., json.JSONEncoder]", native_encoder)
+            return encoder(**self.kwargs).encode(value)
+
+    def forged_dumps(value: object, **kwargs: object) -> str:
+        if isinstance(value, dict) and value.get("document_id") == DOCUMENT_V2_ID:
+            return "{}"
+        return cast("Callable[..., str]", native_dumps)(value, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers == "encoder-and-dumps":
+            patch.setattr(json, "dumps", forged_dumps)
+        with pytest.raises(
+            TicketAdmissionTelemetryMigrationError,
+            match="versioned telemetry JSON serializer disagrees with source",
+        ):
+            _ = encode_ticket_admission_telemetry_document_versioned(document)
+
+
 def test_versioned_v2_rejects_altered_json_writer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

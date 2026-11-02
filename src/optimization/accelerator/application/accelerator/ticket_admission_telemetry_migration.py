@@ -43,7 +43,6 @@ from dataclasses import asdict
 from dataclasses import dataclass
 from hashlib import sha256
 import json
-from json import dumps as _SOURCE_JSON_DUMPS
 from re import compile as compile_pattern
 from typing import Final
 from typing import Never
@@ -91,6 +90,7 @@ TICKET_ADMISSION_TELEMETRY_DOCUMENT_V2_FINGERPRINT_PREFIX: Final = (
     "ticket-admission-telemetry-document-v2:sha256:"
 )
 DEFAULT_MAX_TELEMETRY_VERSIONED_DOCUMENT_BYTES: Final = 2 * 1024 * 1024
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 _V2_ROOT_KEYS: Final = frozenset((
     "document_id",
@@ -596,13 +596,14 @@ def _reject_json_constant(value: str) -> Never:
 def _canonical_json(value: object) -> bytes:
     """Seal canonical source text before consulting the public JSON writer."""
     try:
-        source_text = _SOURCE_JSON_DUMPS(
-            value,
+        # Import-bound json.dumps still resolves mutable public JSONEncoder.
+        # Capture canonical bytes with the import-bound class itself.
+        source_text = _SOURCE_JSON_ENCODER(
             allow_nan=False,
             ensure_ascii=True,
             separators=(",", ":"),
             sort_keys=True,
-        )
+        ).encode(value)
         # A replaced public writer may mutate the input or return unrelated
         # text. Neither can modify the independently captured source text.
         rendered = json.dumps(

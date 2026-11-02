@@ -633,7 +633,11 @@ timed.
   observations
   per FIFO. Upgrade and downgrade are caller-invoked; schema-v1 bytes remain
 
-  unchanged. Schema-v2 adds no telemetry semantics. There is no automatic
+  unchanged. Schema-v2 adds no telemetry semantics. A 2026-11-02 red-first
+  schema-v2 writer follow-up rejects both encoder-only and jointly substituted
+  `json.JSONEncoder`/`json.dumps` forgeries. Its canonical source bytes now
+  come from the import-bound encoder class, not the loader's mutable class
+  lookup. There is no automatic
   migration,
   file loading, snapshot reinterpretation, merge, recommendation, lineage
   inference,
@@ -1641,6 +1645,7 @@ timed.
   search, ROCm VM execution, event-instrumentation controls, additional
   admission
   profiles, other workloads, and broader hardware remain open.
+
 - Prerequisite completion evidence: `batch-vm-execution`,
   `compiler-algorithm-experimentation-platform`.
 - **Completion:** Completed on 2026-08-06 after the hardware-neutral primitive,
