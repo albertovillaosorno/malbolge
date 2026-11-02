@@ -35,8 +35,9 @@
 from __future__ import annotations
 
 import os
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from pathlib import Path
-from typing import cast
+from typing import cast, override
 
 import pytest
 from scripts.bootstrap import llvm_validation
@@ -654,3 +655,128 @@ def test_windows_aliases_reject_incomplete_marker_acknowledgement(
         _ = llvm_validation.write_windows_llvm_aliases(root)
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
     assert not llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
+
+
+@pytest.mark.parametrize(
+    "kind",
+    (
+        "wrong-command",
+        "tuple-argv",
+        "boolean-status",
+        "foreign-process",
+        "bytes-stdout",
+        "missing-stdout",
+        "bytes-stderr",
+        "missing-stderr",
+    ),
+)
+def test_llvm_host_capture_rejects_foreign_process_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Version and ldd probes must not accept fabricated subprocess evidence."""
+    command = ["clang", "--version"]
+
+    class ForeignCompletion(sp.CompletedProcess[str]):
+        pass
+
+    def fake_run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        command_args: object = args
+        status: object = 0
+        stdout: object = "clang version 22.1.8"
+        stderr: object = ""
+        constructor = sp.CompletedProcess
+        if kind == "wrong-command":
+            command_args = ["other-clang", "--version"]
+        elif kind == "tuple-argv":
+            command_args = tuple(args)
+        elif kind == "boolean-status":
+            status = False
+        elif kind == "foreign-process":
+            constructor = ForeignCompletion
+        elif kind == "bytes-stdout":
+            stdout = b"clang version 22.1.8"
+        elif kind == "missing-stdout":
+            stdout = None
+        elif kind == "bytes-stderr":
+            stderr = b""
+        else:
+            stderr = None
+        return constructor(
+            cast("list[str]", command_args),
+            cast("int", status),
+            stdout=cast("str", stdout),
+            stderr=cast("str", stderr),
+        )
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    assert llvm_validation._capture(command) is None  # pyright: ignore[reportPrivateUsage]
+    assert command == ["clang", "--version"]
+
+
+@pytest.mark.parametrize("mutation", ("executable", "flag", "append"))
+def test_llvm_host_capture_rejects_mutated_launch_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """Mutable launcher argv cannot rewrite the pinned command expectation."""
+    command = ["clang", "--version"]
+
+    def fake_run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        if mutation == "executable":
+            args[0] = "/foreign/clang"
+        elif mutation == "flag":
+            args[1] = "--help"
+        else:
+            args.append("--unexpected")
+        return sp.CompletedProcess(args, 0, stdout="clang version 22.1.8", stderr="")
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    assert llvm_validation._capture(command) is None  # pyright: ignore[reportPrivateUsage]
+    assert command == ["clang", "--version"]
+
+
+@pytest.mark.parametrize("fault", ("os", "foreign-os", "value", "type", "runtime"))
+def test_llvm_host_capture_treats_host_launch_faults_as_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    """An unavailable host LLVM probe cannot execute foreign format hooks."""
+
+    class ForeignOSError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign LLVM exception formatter invoked")
+
+    errors: dict[str, Exception] = {
+        "os": OSError("missing executable"),
+        "foreign-os": ForeignOSError("untrusted"),
+        "value": ValueError("bad argv"),
+        "type": TypeError("bad runner"),
+        "runtime": RuntimeError("bad subprocess"),
+    }
+
+    def fake_run(_args: list[str], **_kwargs: object) -> None:
+        raise errors[fault]
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    assert llvm_validation._capture(["clang", "--version"]) is None  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("status", (0, 1))
+def test_llvm_host_capture_accepts_native_text_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    status: int,
+) -> None:
+    """Successful version probes return authentic text; failing probes do not."""
+    command = ["clang", "--version"]
+
+    def fake_run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(
+            args, status, stdout="clang version 22.1.8\n", stderr=""
+        )
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    assert llvm_validation._capture(command) == (  # pyright: ignore[reportPrivateUsage]
+        "clang version 22.1.8" if status == 0 else None
+    )

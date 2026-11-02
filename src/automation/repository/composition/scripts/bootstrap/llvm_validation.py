@@ -42,7 +42,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
-from typing import Final, Never
+from typing import Final, Never, cast
 
 LLVM_VERSION: Final = "22.1.8"
 LLVM_ROOT: Final = Path(".dependencies/llvm") / LLVM_VERSION
@@ -459,14 +459,32 @@ def inspect_llvm(root: Path, platform_id: str) -> LlvmReadiness:
 
 
 def _capture(arguments: list[str]) -> str | None:
-    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        arguments,
-        check=False,
-        capture_output=True,
-        shell=False,
-        text=True,
-    )
-    if completed.returncode != 0:
+    """Observe a native host tool only through its exact process receipt."""
+    try:
+        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            arguments.copy(),
+            check=False,
+            capture_output=True,
+            shell=False,
+            text=True,
+        )
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return None
+    if type(completed) is not sp.CompletedProcess:
+        return None
+    receipt_args = cast("object", completed.args)
+    if type(receipt_args) is not list:
+        return None
+    argv = cast("list[object]", receipt_args)
+    if (
+        len(argv) != len(arguments)
+        or any(type(argument) is not str for argument in argv)
+        or argv != arguments
+        or type(completed.returncode) is not int
+        or type(completed.stdout) is not str
+        or type(completed.stderr) is not str
+        or completed.returncode != 0
+    ):
         return None
     output = completed.stdout.strip()
     return output or None
