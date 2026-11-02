@@ -798,11 +798,82 @@ def _completion_marker_identity(path: Path) -> tuple[int, ...]:
     return identity
 
 
+def _require_staging_parent_unchanged(
+    path: Path, descriptor: int
+) -> tuple[int, int]:
+    """Recheck the pinned directory and return its native inode identity."""
+    _require_physical_directories(path, "staging")
+    try:
+        opened = os.fstat(descriptor)
+        named = path.lstat()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise CudaProvisionError("CUDA staging parent status failed") from error
+    if (
+        type(opened) is not os.stat_result
+        or type(named) is not os.stat_result
+        or not S_ISDIR(opened.st_mode)
+        or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+    ):
+        _fail("CUDA staging parent descriptor mismatch")
+    return opened.st_dev, opened.st_ino
+
+
+def _open_staging_parent(path: Path) -> int | None:
+    """Pin the admitted staging directory for descriptor-relative writes."""
+    if os.name != "posix":
+        return None
+    try:
+        before = path.lstat()
+        if type(before) is not os.stat_result or not S_ISDIR(before.st_mode):
+            _fail("CUDA staging parent requires native directory status")
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+    except CudaProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise CudaProvisionError("CUDA staging parent open failed") from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("CUDA staging parent requires native descriptor")
+    accepted = False
+    try:
+        if (before.st_dev, before.st_ino) != _require_staging_parent_unchanged(
+            path, descriptor
+        ):
+            _fail("CUDA staging parent changed during open")
+        accepted = True
+    except CudaProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise CudaProvisionError("CUDA staging parent status failed") from error
+    finally:
+        if not accepted:
+            try:
+                os.close(descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise CudaProvisionError("CUDA staging parent close failed") from error
+    return descriptor
+
+
 def _write_staged_file_exclusively(
     path: Path, payload: bytes, label: str
 ) -> tuple[int, int]:
     """Create an owned staged file and return its native inode identity."""
     _require_physical_directories(path.parent, "staging")
+    parent_descriptor = _open_staging_parent(path.parent)
+    try:
+        return _write_staged_file_at_parent(path, payload, label, parent_descriptor)
+    finally:
+        if parent_descriptor is not None:
+            try:
+                os.close(parent_descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise CudaProvisionError("CUDA staging parent close failed") from error
+
+
+def _write_staged_file_at_parent(
+    path: Path, payload: bytes, label: str, parent_descriptor: int | None
+) -> tuple[int, int]:
+    """Write through the pinned staging parent, if supported by the host."""
     flags = (
         os.O_WRONLY
         | os.O_CREAT
@@ -811,7 +882,10 @@ def _write_staged_file_exclusively(
         | getattr(os, "O_BINARY", 0)
     )
     try:
-        descriptor = os.open(path, flags, 0o600)
+        if parent_descriptor is None:
+            descriptor = os.open(path, flags, 0o600)
+        else:
+            descriptor = os.open(path.name, flags, 0o600, dir_fd=parent_descriptor)
     except (OSError, TypeError, ValueError, RuntimeError) as error:
         raise CudaProvisionError(f"cannot create exclusive {label}") from error
     if type(descriptor) is not int or descriptor < 0:
@@ -819,6 +893,8 @@ def _write_staged_file_exclusively(
     identity: tuple[int, int] | None = None
     completed = False
     try:
+        if parent_descriptor is not None:
+            _require_staging_parent_unchanged(path.parent, parent_descriptor)
         admitted = path.lstat()
         receipt = os.fstat(descriptor)
         if (
@@ -845,6 +921,8 @@ def _write_staged_file_exclusively(
             or after_fd.st_size != len(payload)
         ):
             _fail(f"{label} changed during write")
+        if parent_descriptor is not None:
+            _require_staging_parent_unchanged(path.parent, parent_descriptor)
         if _read_manifest_source(path, label, max_bytes=len(payload)) != payload:
             _fail(f"CUDA staging content mismatch: {path.name}")
         completed = True
@@ -853,14 +931,22 @@ def _write_staged_file_exclusively(
             os.close(descriptor)
         if not completed and identity is not None:
             with suppress(OSError):
-                observed = path.lstat()
+                if parent_descriptor is None:
+                    observed = path.lstat()
+                else:
+                    observed = os.stat(
+                        path.name, dir_fd=parent_descriptor, follow_symlinks=False
+                    )
                 if (
                     type(observed) is os.stat_result
                     and S_ISREG(observed.st_mode)
                     and (observed.st_dev, observed.st_ino) == identity
                     and observed.st_nlink == 1
                 ):
-                    path.unlink()
+                    if parent_descriptor is None:
+                        path.unlink()
+                    else:
+                        os.unlink(path.name, dir_fd=parent_descriptor)
     if identity is None:
         _fail(f"{label} lacks owned staging identity")
     return identity

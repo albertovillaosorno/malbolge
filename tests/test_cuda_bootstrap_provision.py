@@ -2568,3 +2568,176 @@ def test_cuda_network_download_bounded_to_pinned_package_size(
             assert (result / "lib64/libnvrtc.so.13").read_bytes() == NVRTC_BYTES
     assert observed_limits == [len(payload) + 1]
     assert response_closed
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_staged_file_does_not_follow_late_parent_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late parent redirection must never create a foreign staged file."""
+    parent = tmp_path / "owned-stage"
+    parent.mkdir()
+    target = parent / "payload.bin"
+    parked = tmp_path / "parked-stage"
+    outside = tmp_path / "foreign-stage"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"preserve foreign contents")
+    native_open = os.open
+    swapped = False
+    foreign_created = False
+
+    def swap_parent_at_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped, foreign_created
+        if not swapped and (
+            Path(path) == target or (path == target.name and dir_fd is not None)
+        ):
+            _ = parent.rename(parked)
+            _ = parent.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        result = native_open(path, flags, mode, dir_fd=dir_fd)
+        foreign_created |= (outside / target.name).exists()
+        return result
+
+    monkeypatch.setattr(os, "open", swap_parent_at_open)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="staging"):
+        _ = cuda_validation._write_staged_file_exclusively(  # pyright: ignore[reportPrivateUsage]
+            target, b"trusted-payload", "CUDA staging payload"
+        )
+    assert swapped
+    assert not foreign_created
+    assert sentinel.read_bytes() == b"preserve foreign contents"
+    assert not (outside / target.name).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_staged_file_rejects_replaced_physical_parent_at_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced physical parent cannot impersonate the checked stage."""
+    parent = tmp_path / "owned-stage"
+    parent.mkdir()
+    target = parent / "payload.bin"
+    parked = tmp_path / "parked-stage"
+    outside = tmp_path / "foreign-stage"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"preserve foreign contents")
+    native_open = os.open
+    swapped = False
+
+    def replace_parent_at_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if not swapped and Path(path) == parent:
+            _ = parent.rename(parked)
+            _ = outside.rename(parent)
+            swapped = True
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", replace_parent_at_open)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="staging"):
+        _ = cuda_validation._write_staged_file_exclusively(  # pyright: ignore[reportPrivateUsage]
+            target, b"trusted-payload", "CUDA staging payload"
+        )
+    assert swapped
+    assert (parent / "sentinel").read_bytes() == b"preserve foreign contents"
+    assert not target.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_staged_file_rejects_foreign_parent_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An open receipt from another directory must not authorize any write."""
+    parent = tmp_path / "owned-stage"
+    parent.mkdir()
+    target = parent / "payload.bin"
+    outside = tmp_path / "foreign-stage"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"preserve foreign contents")
+    native_open = os.open
+    forged = False
+
+    def open_foreign_parent(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal forged
+        if Path(path) == parent:
+            forged = True
+            return native_open(outside, flags, mode)
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", open_foreign_parent)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="descriptor"):
+        _ = cuda_validation._write_staged_file_exclusively(  # pyright: ignore[reportPrivateUsage]
+            target, b"trusted-payload", "CUDA staging payload"
+        )
+    assert forged
+    assert sentinel.read_bytes() == b"preserve foreign contents"
+    assert not (outside / target.name).exists()
+    assert not target.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_staged_file_types_parent_close_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host close exception cannot escape the staging error contract."""
+    parent = tmp_path / "owned-stage"
+    parent.mkdir()
+    target = parent / "payload.bin"
+    native_open = os.open
+    native_close = os.close
+    parent_descriptor: int | None = None
+    failure = UnprintableHostOSError("denied close")
+    closed = False
+
+    def capture_parent(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal parent_descriptor
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == parent:
+            parent_descriptor = descriptor
+        return descriptor
+
+    def fail_parent_close(descriptor: int) -> None:
+        nonlocal closed
+        native_close(descriptor)
+        if descriptor == parent_descriptor:
+            closed = True
+            raise failure
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", capture_parent)
+        isolated.setattr(os, "close", fail_parent_close)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="staging parent close"
+        ) as caught:
+            _ = cuda_validation._write_staged_file_exclusively(  # pyright: ignore[reportPrivateUsage]
+                target, b"trusted-payload", "CUDA staging payload"
+            )
+    assert closed
+    assert caught.value.__cause__ is failure
+    assert target.read_bytes() == b"trusted-payload"
