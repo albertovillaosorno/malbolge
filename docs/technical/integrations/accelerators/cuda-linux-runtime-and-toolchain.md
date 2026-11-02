@@ -59,6 +59,8 @@ source and destination parent identities are rechecked after the rename.
 Missing toolkit destination ancestors are likewise created relative to pinned
 physical directory descriptors, with post-creation inode receipts; late
 symlink or physical parent swaps cannot redirect even the new directory.
+The same pinned creation path governs staged CUDA package-overlay roots, so
+package extraction cannot create them through a late-swapped parent.
 The HTTP downloader also requires native response bytes and raises typed CUDA
 provision errors for network-open and body-read host faults, preserving the
 original cause without invoking foreign exception formatting.

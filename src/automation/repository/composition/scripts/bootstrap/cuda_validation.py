@@ -760,7 +760,7 @@ def extract_cuda_package(
     else:
         extracted = _safe_tar_extract(data, package_staging)
     _require_toolkit_destination(destination)
-    destination.mkdir(parents=True, exist_ok=True)
+    _ensure_toolkit_destination_parent(destination)
     _require_toolkit_destination(destination)
     _ = shutil.copytree(
         extracted, destination, dirs_exist_ok=True, symlinks=True

@@ -3317,3 +3317,56 @@ def test_cuda_destination_parent_rejects_forged_mkdir_success(
             )
     assert forged
     assert not (root / TOOLKIT_ROOT).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("swap_kind", ["symlink", "physical"])
+def test_cuda_extract_destination_mkdir_rejects_late_parent_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, swap_kind: str
+) -> None:
+    """Archive overlays must not create toolkit roots in substituted parents."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    parent = root / "owned-overlay-parent"
+    parent.mkdir()
+    destination = parent / "toolkit"
+    package_data = _payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        root, _manifest(root, package_data), LINUX_PLATFORM
+    ).packages[0]
+    outside = tmp_path / "foreign-overlay-parent"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"foreign content")
+    parked = root / "parked-overlay-parent"
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def race_destination_mkdir(
+        path: str | os.PathLike[str], mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (
+            (Path(path) == destination and dir_fd is None)
+            or (path == destination.name and dir_fd is not None)
+        ):
+            _ = parent.rename(parked)
+            if swap_kind == "symlink":
+                _ = parent.symlink_to(outside, target_is_directory=True)
+            else:
+                _ = outside.rename(parent)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", race_destination_mkdir)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="destination"):
+            cuda_validation.extract_cuda_package(
+                package_data, package, destination, staging=root / "package-stage"
+            )
+    assert swapped
+    foreign_parent = outside if swap_kind == "symlink" else parent
+    assert (foreign_parent / "sentinel").read_bytes() == b"foreign content"
+    assert not (foreign_parent / "toolkit").exists()
+    assert not (root / "toolkit").exists()
