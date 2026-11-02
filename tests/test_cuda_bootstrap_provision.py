@@ -38,6 +38,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import sys
 import tarfile
 import zipfile
@@ -3766,3 +3767,109 @@ def test_cuda_tar_symlink_creation_rejects_swapped_archive_parent(
     replacement = foreign if swap_kind == "symlink" else parent
     assert (replacement / "sentinel").read_bytes() == b"foreign data"
     assert not (replacement / "libnvrtc.so.13").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("cleanup_kind", ["package", "provision"])
+@pytest.mark.parametrize("swap_kind", ["physical", "symlink"])
+def test_cuda_cleanup_does_not_delete_replaced_staging_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_kind: str,
+    swap_kind: str,
+) -> None:
+    """Post-validation cleanup cannot recursively remove an exchanged foreign tree."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    payload = _payload()
+    manifest = _manifest(root, payload)
+    package = cuda_validation.load_cuda_provision_manifest(
+        root, manifest, LINUX_PLATFORM
+    ).packages[0]
+    if cleanup_kind == "package":
+        stage = root / "stage" / PACKAGE_NAME
+    else:
+        stage = root / ".temp" / f"cuda-provision-{LINUX_PLATFORM}"
+    parked = root / "parked-stage"
+    foreign = tmp_path / "foreign-stage"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"foreign content survives")
+    native_open = os.open
+    swapped = False
+
+    def swap_at_cleanup_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        ready = (
+            (root / "toolkit/lib64/libnvrtc.so.13").exists()
+            if cleanup_kind == "package"
+            else (root / TOOLKIT_ROOT).exists()
+        )
+        if not swapped and ready and Path(path) == stage and dir_fd is None:
+            swapped = True
+            _ = stage.rename(parked)
+            if swap_kind == "symlink":
+                _ = stage.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(stage)
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", swap_at_cleanup_open)
+        with pytest.raises(cuda_validation.CudaProvisionError):
+            if cleanup_kind == "package":
+                cuda_validation.extract_cuda_package(
+                    payload, package, root / "toolkit", staging=root / "stage"
+                )
+            else:
+                cuda_validation.provision_cuda_manifest(
+                    root, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+                )
+    assert swapped
+    replacement = stage if swap_kind == "physical" else foreign
+    assert (replacement / "sentinel").read_bytes() == b"foreign content survives"
+
+
+@pytest.mark.parametrize("cleanup_kind", ["package", "provision"])
+def test_cuda_cleanup_rejects_false_success_without_removing_owned_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cleanup_kind: str
+) -> None:
+    """A host cleanup that reports success must actually remove its owned stage."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    payload = _payload()
+    manifest = _manifest(root, payload)
+    package = cuda_validation.load_cuda_provision_manifest(
+        root, manifest, LINUX_PLATFORM
+    ).packages[0]
+    stage = (
+        root / "stage" / PACKAGE_NAME
+        if cleanup_kind == "package"
+        else root / ".temp" / f"cuda-provision-{LINUX_PLATFORM}"
+    )
+    native_rmtree = shutil.rmtree
+    suppressed = False
+
+    def false_success(path: str | os.PathLike[str], *args: object, **kwargs: object) -> None:
+        nonlocal suppressed
+        if Path(path) == stage:
+            suppressed = True
+            return
+        native_rmtree(path, *args, **kwargs)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(shutil, "rmtree", false_success)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="cleanup did not remove"):
+            if cleanup_kind == "package":
+                cuda_validation.extract_cuda_package(
+                    payload, package, root / "toolkit", staging=root / "stage"
+                )
+            else:
+                cuda_validation.provision_cuda_manifest(
+                    root, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+                )
+    assert suppressed
+    assert stage.is_dir()

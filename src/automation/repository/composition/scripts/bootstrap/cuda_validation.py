@@ -779,6 +779,22 @@ def _require_owned_staging(path: Path, identity: tuple[int, int]) -> None:
         _fail("CUDA staging directory changed during provisioning")
 
 
+def _cleanup_owned_staging(path: Path, identity: tuple[int, int]) -> None:
+    """Reject an exchanged root and type failures from safe recursive cleanup."""
+    _require_owned_staging(path, identity)
+    try:
+        shutil.rmtree(path)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise CudaProvisionError("CUDA owned staging cleanup failed") from error
+    try:
+        _ = path.lstat()
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise CudaProvisionError("CUDA owned staging cleanup receipt failed") from error
+    _fail("CUDA owned staging cleanup did not remove the named directory")
+
+
 def _read_cuda_overlay_file(
     parent_descriptor: int,
     name: str,
@@ -1065,6 +1081,7 @@ def extract_cuda_package(
     _require_toolkit_destination(destination)
     package_staging = staging / package.name
     _prepare_staging(package_staging)
+    package_staging_identity = _owned_staging_identity(package_staging)
     if package.relative_path.endswith(".zip"):
         extracted = _safe_zip_extract(data, package_staging)
     else:
@@ -1074,7 +1091,7 @@ def extract_cuda_package(
     _ensure_toolkit_destination_parent(destination)
     _require_toolkit_destination(destination)
     _copy_cuda_overlay(extracted, destination, extracted_identity)
-    shutil.rmtree(package_staging)
+    _cleanup_owned_staging(package_staging, package_staging_identity)
 
 
 def _download_cuda_package(
@@ -1621,6 +1638,5 @@ def provision_cuda_manifest(
         _require_toolkit_destination(manifest.toolkit_root)
         _publish_cuda_toolkit(staged_toolkit, manifest.toolkit_root)
     finally:
-        _require_owned_staging(staging, staging_identity)
-        shutil.rmtree(staging)
+        _cleanup_owned_staging(staging, staging_identity)
     return manifest.toolkit_root
