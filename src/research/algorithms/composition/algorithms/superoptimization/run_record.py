@@ -34,17 +34,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date
-from datetime import datetime
-from datetime import time
-from datetime import timezone
 import json
+from dataclasses import dataclass
+from datetime import date, datetime, time, timezone
+from typing import Final, Never, Protocol, cast
+
 import tomllib
 from tomllib import loads as _SOURCE_TOML_LOADS
-from typing import Never
-from typing import Protocol
-from typing import cast
 
 _NANOSECONDS_PER_SECOND = 1_000_000_000
 _PLAN_KIND = "plan"
@@ -54,6 +50,7 @@ _RUN_TABLE_MARKER = "\n[run]"
 _EXPECTED_COMPARISON_ID = "finite-verifier-gated-dual-bound-comparison-v1"
 RUN_RECORD_FORMAT_ID = "superoptimization-run-record-v1"
 MEASUREMENT_RUN_RECORD_FORMAT_ID = "superoptimization-measurement-run-record-v1"
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 class RunRecordError(ValueError):
@@ -156,7 +153,7 @@ def _parse_plan(text: str) -> dict[str, object]:
         provider_plan = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:
         _fail(f"invalid superoptimization plan TOML: {error}")
-    except Exception as error:  # noqa: BLE001 - external parser stays typed
+    except Exception as error:
         message = f"superoptimization plan TOML decoder failed: {type(error).__name__}"
         raise RunRecordError(message) from error
     if not _native_toml_equal(provider_plan, source_plan):
@@ -317,7 +314,17 @@ def _require_measurement_identity(
 def _quoted(value: object, label: str) -> str:
     if type(value) is not str or not value:
         _fail(f"{label} must be a non-empty exact string")
-    return json.dumps(value, ensure_ascii=True)
+    try:
+        # Preserve provenance text independently of a mutable public writer
+        # and the cached default encoder, including extension identities.
+        source_text = _SOURCE_JSON_ENCODER(ensure_ascii=True).encode(value)
+        rendered = json.dumps(value, ensure_ascii=True)
+    except Exception as error:
+        message = f"run record JSON string encoder failed: {type(error).__name__}"
+        raise RunRecordError(message) from error
+    if type(rendered) is not str or rendered != source_text:
+        _fail("run record JSON writer disagrees with source")
+    return source_text
 
 
 def _run_lines(provenance: RunProvenance) -> list[str]:

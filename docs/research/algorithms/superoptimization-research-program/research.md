@@ -89,7 +89,11 @@ the source-bound standard-library parse of the original plan text, comparing
 exact native nested values before any budget, seed, challenge, or repetition
 identity can be admitted. A substituted public decoder cannot rewrite the
 preregistered plan under unchanged source text; the underlying TOML parser
-remains a shared trust dependency. The renderer delegates core
+remains a shared trust dependency. The renderer also checks every JSON-quoted
+run, schedule, and measurement identity against an import-bound native JSON
+encoder. Mutable public writers or cached default encoders cannot alter the
+emitted TOML provenance silently; the Python encoder itself remains trusted. The
+renderer delegates core
 commit/outcome/path validation to the repository's
 experiment-manifest authority. It does not write evidence or discover
 

@@ -34,20 +34,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import replace
 import importlib.util
-from pathlib import Path
+import json
 import sys
+from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, cast
+
 import tomllib
-from typing import Protocol
-from typing import TYPE_CHECKING
-from typing import cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 import pytest
+
 from scripts.validate import experiment_manifest as manifest_validator
 
 _ROOT = Path(__file__).resolve().parents[5]
@@ -473,3 +473,104 @@ def test_run_record_contains_public_toml_provider_failure(
             _PLAN.read_text(encoding="utf-8"), _provenance(), _result()
         )
     assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize("provider", ("writer", "encoder", "joint"))
+@pytest.mark.parametrize("mode", ("run", "measurement"))
+def test_run_record_rejects_forged_json_quoted_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    mode: str,
+) -> None:
+    """Public JSON providers cannot forge TOML run or schedule identities."""
+    forged = '"forged-identity"'
+
+    def forged_writer(*_args: object, **_kwargs: object) -> str:
+        return forged
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return forged
+
+    with monkeypatch.context() as patch:
+        if provider in ("encoder", "joint"):
+            patch.setattr(json, "_default_encoder", ForgedEncoder())
+        if provider in ("writer", "joint"):
+            patch.setattr(json, "dumps", forged_writer)
+        with pytest.raises(
+            _RUN_RECORD_MODULE.RunRecordError,
+            match="run record JSON writer disagrees with source",
+        ):
+            if mode == "run":
+                _ = _render()
+            else:
+                _ = _RUN_RECORD_MODULE.render_measurement_run_manifest(
+                    _PLAN.read_text(encoding="utf-8"), _provenance(), _series()
+                )
+
+
+@pytest.mark.parametrize("provider", ("writer", "encoder"))
+def test_run_record_contains_json_quote_provider_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    """JSON writer and encoder failures remain typed and causal."""
+    failure = RuntimeError("public JSON failed")
+
+    class FailingEncoder:
+        def encode(self, _value: object) -> str:
+            raise failure
+
+    def failing_writer(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    with monkeypatch.context() as patch:
+        if provider == "encoder":
+            patch.setattr(json, "_default_encoder", FailingEncoder())
+        else:
+            patch.setattr(json, "dumps", failing_writer)
+        with pytest.raises(
+            _RUN_RECORD_MODULE.RunRecordError,
+            match="run record JSON string encoder failed",
+        ) as captured:
+            _ = _render()
+        assert captured.value.__cause__ is failure
+
+
+def test_run_record_rejects_non_string_json_writer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign public writer result cannot escape via TOML formatting."""
+    def foreign_writer(*_args: object, **_kwargs: object) -> object:
+        return object()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", foreign_writer)
+        with pytest.raises(
+            _RUN_RECORD_MODULE.RunRecordError,
+            match="run record JSON writer disagrees with source",
+        ):
+            _ = _render()
+
+
+def test_run_record_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Source-equivalent encoder classes keep both run formats stable."""
+    baseline = _render()
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        patch.setattr(json, "_default_encoder", EquivalentEncoder())
+        assert _render() == baseline
+        rendered = _RUN_RECORD_MODULE.render_measurement_run_manifest(
+            _PLAN.read_text(encoding="utf-8"), _provenance(), _series()
+        )
+        assert tomllib.loads(rendered)["run"]["commit"] == _COMMIT
