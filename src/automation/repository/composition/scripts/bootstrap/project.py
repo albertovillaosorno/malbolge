@@ -602,21 +602,29 @@ def _read_authority_bytes(path: Path) -> bytes:
         raise InitializationError("cannot open bootstrap authority") from error
     if type(descriptor) is not int or descriptor < 0:
         _fail("bootstrap authority requires native descriptor")
+    primary: Exception | None = None
     with _open_authority_stream(descriptor) as stream:
-        if _authority_identity(os.fstat(stream.fileno())) != expected:
-            _fail("bootstrap authority changed before read")
         try:
-            content = stream.read(MAX_AUTHORITY_BYTES + 1)
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            raise InitializationError("cannot read bootstrap authority") from error
-        if type(content) is not bytes:
-            _fail("bootstrap authority stream must return native bytes")
-        if (
-            len(content) != admitted.st_size
-            or _authority_identity(os.fstat(stream.fileno())) != expected
-            or _authority_identity(path.lstat()) != expected
-        ):
-            _fail("bootstrap authority changed during read")
+            if _authority_identity(os.fstat(stream.fileno())) != expected:
+                _fail("bootstrap authority changed before read")
+            try:
+                content = stream.read(MAX_AUTHORITY_BYTES + 1)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise InitializationError("cannot read bootstrap authority") from error
+            if type(content) is not bytes:
+                _fail("bootstrap authority stream must return native bytes")
+            if (
+                len(content) != admitted.st_size
+                or _authority_identity(os.fstat(stream.fileno())) != expected
+                or _authority_identity(path.lstat()) != expected
+            ):
+                _fail("bootstrap authority changed during read")
+        except Exception as error:
+            # A foreign context exit must not suppress a rejected read.
+            primary = error
+            raise
+    if primary is not None:
+        raise primary
     _reject_authority_parent_redirects(path)
     return content
 
@@ -934,6 +942,7 @@ def _link_or_copy(source: str, destination: str) -> str:
         ) from error
     except OSError:
         try:
+            source_complete = False
             with Path(source).open("rb") as input_stream:
                 original = os.fstat(input_stream.fileno())
                 if (
@@ -946,6 +955,7 @@ def _link_or_copy(source: str, destination: str) -> str:
                     or original.st_ctime_ns != admitted.st_ctime_ns
                 ):
                     _fail("import copy source changed before transfer")
+                transfer_complete = False
                 with Path(destination).open("xb") as output_stream:
                     try:
                         named_before = Path(destination).lstat()
@@ -990,6 +1000,9 @@ def _link_or_copy(source: str, destination: str) -> str:
                         != stat.S_IMODE(original.st_mode)
                     ):
                         _fail("import copy source changed during transfer")
+                    transfer_complete = True
+                if not transfer_complete:
+                    _fail("import copy fallback transfer was interrupted")
                 try:
                     named_output = Path(destination).lstat()
                 except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -1013,6 +1026,9 @@ def _link_or_copy(source: str, destination: str) -> str:
                     or _verified_import_file_digest(source, admitted) != pinned_digest
                 ):
                     _fail("import copy fallback content changed after write")
+                source_complete = True
+            if not source_complete:
+                _fail("import copy fallback source verification was interrupted")
         except FileExistsError as error:
             raise InitializationError(
                 f"import target already exists: {destination}"

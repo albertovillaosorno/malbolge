@@ -9108,3 +9108,104 @@ def test_import_tree_copy_rejects_suppressed_source_iterator_failure(
         os.close(source_fd)
     assert injected
     assert (destination / "first.txt").read_bytes() == b"source-data"
+
+
+@pytest.mark.parametrize("failure", ("read", "post-read-identity"))
+def test_bootstrap_authority_rejects_suppressed_stream_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """A context exit cannot hide a failed authority read or inode recheck."""
+    authority = tmp_path / "authority.json"
+    original = b'{"version":1}'
+    _ = authority.write_bytes(original)
+    native_open = project._open_authority_stream  # pyright: ignore[reportPrivateUsage]
+    observed = False
+
+    class SuppressingStream:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream = stream
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            self.stream.close()
+            return True
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, size: int) -> bytes:
+            nonlocal observed
+            observed = True
+            if failure == "read":
+                raise OSError("injected authority read failure")
+            result = self.stream.read(size)
+            _ = authority.write_bytes(b"X" * len(result))
+            return result
+
+    def inject_stream(descriptor: int) -> BinaryIO:
+        return cast("BinaryIO", cast("object", SuppressingStream(native_open(descriptor))))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(project, "_open_authority_stream", inject_stream)
+        with pytest.raises(project.InitializationError):
+            _ = project._read_authority_bytes(  # pyright: ignore[reportPrivateUsage]
+                authority
+            )
+    assert observed
+
+
+@pytest.mark.parametrize("suppress", ("source", "destination", "both"))
+def test_portable_import_copy_rejects_suppressed_transfer_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suppress: str
+) -> None:
+    """A copy fallback cannot return success after a swallowed write fault."""
+    source = tmp_path / "host-git"
+    _ = source.write_bytes(GIT_BYTES)
+    target = tmp_path / "git.bin"
+    native_open = Path.open
+    interrupted = False
+
+    class SuppressingStream:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream = stream
+
+        def __enter__(self) -> BinaryIO:
+            return self.stream
+
+        def __exit__(self, *_args: object) -> bool:
+            self.stream.close()
+            return True
+
+    def wrapped_open(
+        path: Path, mode: str = "r", *args: object, **kwargs: object
+    ) -> BinaryIO:
+        stream = cast("BinaryIO", native_open(path, mode, *args, **kwargs))  # pyright: ignore[reportCallIssue, reportArgumentType]
+        if (
+            (path == source and mode == "rb" and suppress in ("source", "both"))
+            or (path == target and mode == "xb" and suppress in ("destination", "both"))
+        ):
+            return cast("BinaryIO", cast("object", SuppressingStream(stream)))
+        return stream
+
+    def deny_link(*_args: object, **_kwargs: object) -> None:
+        raise OSError("hardlinks unavailable")
+
+    def fail_after_partial_write(_input_fd: int, output_fd: int) -> None:
+        nonlocal interrupted
+        _ = os.write(output_fd, b"partial")
+        interrupted = True
+        raise project.InitializationError("injected transfer interruption")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", deny_link)
+        isolated.setattr(Path, "open", wrapped_open)
+        isolated.setattr(project, "_write_import_file_payload", fail_after_partial_write)
+        with pytest.raises(project.InitializationError):
+            _ = project._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+                str(source), str(target)
+            )
+    assert interrupted
+    assert source.read_bytes() == GIT_BYTES
+    assert target.read_bytes() == b"partial"
