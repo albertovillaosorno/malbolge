@@ -2254,6 +2254,39 @@ def test_development_provision_rejects_swapped_staged_root(
     assert not identity.development_root.exists()
 
 
+@pytest.mark.parametrize("location", ["include", "root"])
+@pytest.mark.parametrize("member_kind", ["symlink", "hardlink", "fifo"])
+def test_development_readiness_rejects_unlisted_nonphysical_members(
+    tmp_path: Path,
+    member_kind: str,
+    location: str,
+) -> None:
+    """A trusted marker cannot hide new linked or special package members."""
+    identity = _provisioned_identity(tmp_path)
+    outside = tmp_path / "external-header"
+    _ = outside.write_bytes(FOREIGN_CONTENT_BYTES)
+    parent = (
+        identity.development_root / "include"
+        if location == "include"
+        else identity.development_root
+    )
+    member = parent / "unexpected-header.h"
+    try:
+        if member_kind == "symlink":
+            _ = member.symlink_to(outside)
+        elif member_kind == "hardlink":
+            os.link(outside, member)
+        else:
+            if not hasattr(os, "mkfifo"):
+                pytest.skip("FIFO creation unavailable")
+            os.mkfifo(member)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"filesystem member unavailable: {error}")
+
+    assert not llvm_development_validation.development_root_matches(identity)
+    assert outside.read_bytes() == FOREIGN_CONTENT_BYTES
+
+
 def test_development_marker_rejects_linked_leaf(tmp_path: Path) -> None:
     """An exact marker reached via symlink cannot authorize a package root."""
     identity = _provisioned_identity(tmp_path)

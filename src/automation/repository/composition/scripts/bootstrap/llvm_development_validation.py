@@ -865,16 +865,22 @@ def development_root_matches(
     """Check whether local development state matches exact tracked identity.
 
     Returns:
-        True only for the exact marker plus every required development file.
+        True only for the exact marker, required files, and physical member tree.
 
     """
     marker = identity.development_root / LLVM_DEVELOPMENT_MARKER
     if not _exact_marker_matches(marker, _marker_bytes(identity)):
         return False
-    return all(
+    if not all(
         _direct_regular(identity.development_root / relative)
         for relative in identity.required_development_files
-    )
+    ):
+        return False
+    try:
+        _reject_include_symlinks(identity.development_root, require_single_link=True)
+    except (LlvmDevelopmentProvisionError, OSError, ValueError, TypeError, RuntimeError):
+        return False
+    return True
 
 
 def _preflight_path_status(
