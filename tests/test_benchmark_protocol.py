@@ -1138,6 +1138,23 @@ def test_benchmark_evidence_paths_reject_escaped_nul(field: str, value: str) -> 
     _expect_failure(text, "must not contain NUL")
 
 
+@pytest.mark.parametrize("root_alias", (".", "./"))
+@pytest.mark.parametrize(
+    ("field", "filename"),
+    (
+        ("experiment_manifest", "deterministic.experiment.toml"),
+        ("path", "deterministic-raw.csv"),
+    ),
+)
+def test_benchmark_evidence_paths_cannot_name_repository_root(
+    root_alias: str, field: str, filename: str
+) -> None:
+    """A root-directory placeholder cannot claim a retained evidence file."""
+    original = f'{field} = "benchmarks/research/protocol/examples/{filename}"'
+    source = _text(DETERMINISTIC).replace(original, f'{field} = "{root_alias}"')
+    _expect_failure(source, "must name a path below repository root")
+
+
 def test_protocol_rejects_windows_drive_relative_path() -> None:
     """Drive-relative Windows syntax is not repository-relative authority."""
     text = _text(DETERMINISTIC).replace(

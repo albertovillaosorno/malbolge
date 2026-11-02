@@ -1022,6 +1022,26 @@ def test_manifest_paths_reject_toml_escaped_nul(field: str, value: str) -> None:
     _expect_failure(text, "must not contain NUL")
 
 
+@pytest.mark.parametrize("root_alias", (".", "./"))
+@pytest.mark.parametrize(
+    ("field", "original"),
+    (
+        ("implementation", "algorithms/example/"),
+        ("configuration", "algorithms/example/experiment.toml"),
+        ("output", "algorithms/example/out/"),
+        ("raw_output", "algorithms/example/out/raw.json"),
+    ),
+)
+def test_manifest_artifact_paths_cannot_name_repository_root(
+    root_alias: str, field: str, original: str
+) -> None:
+    """A repository directory cannot stand in for a retained artifact path."""
+    source = _run_manifest().replace(
+        f'{field} = "{original}"', f'{field} = "{root_alias}"'
+    )
+    _expect_failure(source, "must name a path below repository root")
+
+
 def test_manifest_rejects_windows_drive_relative_path() -> None:
     """Drive-relative Windows syntax cannot redirect retained run output."""
     _expect_failure(

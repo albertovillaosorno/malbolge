@@ -115,7 +115,8 @@ additionally requires a lowercase 40-hex Git commit, lowercase SHA-256 workload
 hash, host identity, accelerator identity, toolchain identity, a closed outcome,
 and the repository-relative raw-output path. Repository-relative paths reject
 absolute, Windows drive/root, parent-traversal, and TOML-escaped NUL forms
-before filesystem consumers receive them, independent of host.
+before filesystem consumers receive them, independent of host. A bare `.` or
+`./` also fails: the repository directory is not a path to an artifact.
 
 Backslash path
 separators are also rejected: evidence names use portable forward slashes so

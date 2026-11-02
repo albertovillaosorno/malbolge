@@ -109,9 +109,10 @@ Every comparison additionally fixes:
 - one or more named objectives plus the time/quality tradeoff policy;
 - host, accelerator, and positive memory budget; and
 - a retained repository-relative raw-sample file; drive-relative, rooted
-  Windows, absolute, and parent-traversal path forms are rejected independent of
-  the validator host. Windows-reserved components, NTFS alternate streams,
-  and trailing dots or spaces are also rejected. Backslash separators are
+  Windows, absolute, parent-traversal, and bare repository-root (`.` or `./`)
+  path forms are rejected independent of the validator host. Windows-reserved
+  components, NTFS alternate streams, and trailing dots or spaces are also
+  rejected. Backslash separators are
   host-dependent: all evidence paths use portable forward slashes on Linux and
   Windows.
 
