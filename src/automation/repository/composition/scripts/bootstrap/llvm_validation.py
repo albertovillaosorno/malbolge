@@ -180,9 +180,19 @@ def _stable_marker_descriptor(
         except (OSError, ValueError, TypeError, RuntimeError):
             pass
         raise
-    with stream:
-        if type(cast("object", stream)) is not BufferedReader:
+    if type(cast("object", stream)) is not BufferedReader:
+        try:
+            # Foreign stream wrappers may own the original descriptor.
+            with stream:
+                return False
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError):
+            # A non-context object never acquired descriptor ownership.
+            try:
+                os.close(descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError):
+                pass
             return False
+    with stream:
         stream_fd = stream.fileno()
         if type(cast("object", stream_fd)) is not int or stream_fd != descriptor:
             # fdopen returned a different native stream: its context owns that

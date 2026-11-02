@@ -350,6 +350,31 @@ def test_llvm_marker_reader_rejects_nonnative_open_descriptor(
         assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
 
 
+def test_llvm_marker_reader_closes_fd_on_foreign_plain_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An injected non-context stream cannot leak the opened marker handle."""
+    _ = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    opened: list[int] = []
+
+    def plain_fdopen(descriptor: int, _mode: str) -> object:
+        opened.append(descriptor)
+        return object()
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fdopen", plain_fdopen)
+        assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+    assert len(opened) == 1
+    try:
+        with pytest.raises(OSError):
+            _ = os.fstat(opened[0])
+    finally:
+        try:
+            os.close(opened[0])
+        except OSError:
+            pass
+
+
 def test_llvm_marker_reader_rejects_different_native_stream(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
