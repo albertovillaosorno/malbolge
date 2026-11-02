@@ -123,6 +123,71 @@ def test_sanitizer_json_provider_allows_source_equivalent_delegate(
     assert tuple(case.identifier for case in harness.load_cases()) == EXPECTED_CASES
 
 
+@pytest.mark.parametrize("kind", ["cases", "evidence"])
+def test_sanitizer_json_provider_rejects_self_restoring_forgery(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A decoder that restores the module entry mid-call cannot forge evidence."""
+    source_path = harness.CASES if kind == "cases" else harness.EVIDENCE
+    original_loads = json.loads
+    forged = cast(
+        "dict[str, object]", original_loads(source_path.read_text(encoding="utf-8"))
+    )
+    if kind == "cases":
+        cases = cast("list[dict[str, object]]", forged["cases"])
+        cases[0]["input_hex"] = "61"
+    else:
+        forged["source_sha256"] = "0" * 64
+
+    with monkeypatch.context() as context:
+
+        def restore_and_forge(_text: str, *, object_pairs_hook: object) -> object:
+            del object_pairs_hook
+            context.setattr(json, "loads", original_loads)
+            return forged
+
+        context.setattr(json, "loads", restore_and_forge)
+        with pytest.raises(
+            harness.SanitizerHarnessError,
+            match="sanitizer JSON decoder provider differs from source",
+        ):
+            if kind == "cases":
+                _ = harness.load_cases()
+            else:
+                _ = harness.load_evidence()
+
+
+def test_sanitizer_equivalent_decoder_cannot_mutate_retained_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nested evidence must not be a mutable alias owned by an adapter."""
+    original_loads = json.loads
+    decoder_trees: list[object] = []
+
+    def delegated(text: str, *, object_pairs_hook: object) -> object:
+        decoded = cast(
+            "object",
+            original_loads(
+                text,
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+                ),
+            ),
+        )
+        decoder_trees.append(decoded)
+        return decoded
+
+    monkeypatch.setattr(json, "loads", delegated)
+    admitted = harness.load_evidence()
+    assert admitted == decoder_trees[0]
+    assert admitted is not decoder_trees[0]
+    retained_cases = cast("list[dict[str, object]]", admitted["cases"])
+    decoder_document = cast("dict[str, object]", decoder_trees[0])
+    foreign_cases = cast("list[dict[str, object]]", decoder_document["cases"])
+    foreign_cases[0]["status"] = "foreign-clean"
+    assert retained_cases[0]["status"] == "clean"
+
+
 def test_sanitizer_json_provider_rejects_forged_invalid_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

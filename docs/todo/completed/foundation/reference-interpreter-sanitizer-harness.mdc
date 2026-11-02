@@ -65,3 +65,8 @@ or undefined C behavior without editing Ben's source.
   Red-first substitutions, invalid-source and hostile-key tests now pass, as
   does source-equivalent delegation. The focused sanitizer suite passed
   201 tests with one Windows-only skip.
+- Three follow-up red-first regressions reject self-restoring forged JSON
+  loaders for both case and evidence documents and prevent equivalent adapters
+  from mutating nested reviewed evidence after validation. The harness now
+  returns independently parsed source-owned trees; 204 tests pass with one
+  Windows-only skip on Linux.

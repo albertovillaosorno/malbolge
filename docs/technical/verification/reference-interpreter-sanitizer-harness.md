@@ -48,9 +48,13 @@ parse the admitted source through the original import-bound decoder and compare
 all exact native keys, values, and containers before accepting the document.
 This rejects source-forged case input bytes, altered evidence hashes, and masked
 syntax errors without running foreign key equality hooks; source-equivalent
-adapters remain supported. This protects loader substitution, not arbitrary
-mutation of Python internals. Manifest and reviewed-result JSON are admitted
-only as direct, non-redirected regular files,
+adapters remain supported. The loader captures the JSON provider before
+invocation, so self-restoring substituted decoders still require source
+corroboration. For equivalent adapters, it returns the independently decoded
+source-owned tree, not nested mutable aliases retained by the adapter. This
+protects loader substitution, not arbitrary mutation of Python internals.
+Manifest and reviewed-result JSON are admitted only as direct,
+non-redirected regular files,
 with a one-MiB input bound and opened-inode identity checked before and after
 reads. In-root source fixtures and the pinned historical source obey the same
 regular-file and stable-snapshot rules, each with a one-MiB limit; fixture

@@ -320,19 +320,24 @@ def _same_native_json(actual: object, expected: object) -> bool:
 def _load_object(path: Path) -> JsonObject:
     try:
         source = _read_regular(path, limit=MAX_DOCUMENT_BYTES).decode("utf-8")
+        # Capture before invocation: an injected provider may restore the
+        # module loader during its call to conceal forged case/evidence data.
+        decoder = json.loads
         parsed = cast(
             "object",
-            json.loads(source, object_pairs_hook=_reject_duplicate_pairs),
+            decoder(source, object_pairs_hook=_reject_duplicate_pairs),
         )
         # Original source, not a replaced public decoder, owns case/evidence
         # admission. Only compare exact native values, never foreign hooks.
-        if json.loads is not _NATIVE_JSON_LOADS:
+        if decoder is not _NATIVE_JSON_LOADS:
             original = cast(
                 "object",
                 _NATIVE_JSON_LOADS(source, object_pairs_hook=_reject_duplicate_pairs),
             )
             if not _same_native_json(parsed, original):
                 _fail("sanitizer JSON decoder provider differs from source")
+            # Do not retain any nested mutable aliases owned by the adapter.
+            parsed = original
     except (
         OSError,
         ValueError,
