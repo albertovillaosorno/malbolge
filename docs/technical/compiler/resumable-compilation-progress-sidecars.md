@@ -72,6 +72,14 @@ rejection. These entrypoints share the host JSON implementation: this is a
 local-consistency check, not independent source authentication or defense
 against simultaneous tampering with both decoders.
 
+Portable checkpoint document parsing now applies the same two-decoder native
+value corroboration before returning an envelope, rather than relying only on
+the public decode path's later canonical JSON check. A substituted JSON loader
+cannot fabricate its stage or hide malformed/duplicate source input from the
+direct parser. Equivalent source-faithful adapters remain admissible. This
+protects the parser's local source/receipt boundary; it does not authenticate
+host decoders that have both been compromised.
+
 Both progress JSON entrypoints and portable checkpoint JSON decoding also retain
 the typed `ProgressSidecarError` boundary when a decoder dependency raises an
 unexpected ordinary exception such as `TypeError`, `AttributeError`,

@@ -1821,6 +1821,66 @@ def test_portable_checkpoint_rejects_malformed_or_noncanonical_state(
         )
 
 
+@pytest.mark.parametrize("source_kind", ["forged", "malformed", "duplicate"])
+def test_checkpoint_parser_binds_substituted_json_to_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+) -> None:
+    """A native-looking decoder result must not replace checkpoint JSON bytes."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        "test-codec",
+        payload=b"state",
+    )
+    native_loads = json.loads
+    forged = cast("dict[str, object]", native_loads(checkpoint))
+    if source_kind == "forged":
+        forged["stage"] = "faked-stage"
+        source = checkpoint
+        diagnostic = "checkpoint JSON decoder providers disagree"
+    elif source_kind == "malformed":
+        source = b"{]"
+        diagnostic = "invalid checkpoint JSON"
+    else:
+        source = b'{"schema":"one","schema":"two"}'
+        diagnostic = "duplicate progress JSON key"
+
+    monkeypatch.setattr(json, "loads", lambda _text, **_kwargs: forged)
+    decoder = cast(
+        "Callable[[bytes], object]",
+        vars(progress)["_decode_portable_checkpoint_document"],
+    )
+    with pytest.raises(ERROR, match=diagnostic):
+        _ = decoder(source)
+
+
+def test_checkpoint_parser_allows_equivalent_json_delegator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Original JSON semantics through a wrapper remain valid."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    checkpoint = progress.encode_portable_checkpoint(
+        _resume_identity(), _checkpoint_position(checkpointed), "test-codec",
+        payload=b"state",
+    )
+    original = cast("Callable[..., object]", json.loads)
+
+    def delegating(text: str, **kwargs: object) -> object:
+        return original(text, **kwargs)
+
+    monkeypatch.setattr(json, "loads", delegating)
+    decoder = cast(
+        "Callable[[bytes], object]",
+        vars(progress)["_decode_portable_checkpoint_document"],
+    )
+    envelope = cast("progress.PortableCheckpoint", decoder(checkpoint))
+    assert envelope.stage == checkpointed.stage
+
+
 def test_decode_portable_checkpoint_rejects_correlated_forged_digest_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

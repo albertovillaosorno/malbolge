@@ -964,9 +964,29 @@ def _decode_portable_checkpoint_document(
         _fail(f"invalid checkpoint JSON: {_host_error_detail(error)}")
     except Exception as error:
         _fail_with_source(f"invalid checkpoint JSON: {_host_error_detail(error)}", error)
-    return _portable_checkpoint_from_document(
+    envelope = _portable_checkpoint_from_document(
         _mapping(parsed, "portable checkpoint"),
     )
+    # Keep the direct document parser source-bound too, not just the public
+    # decode path's later canonical-wire check. A substituted convenience
+    # decoder cannot conceal malformed bytes or change native identity fields.
+    try:
+        independent = cast(
+            "object",
+            json.JSONDecoder(object_pairs_hook=_reject_duplicate_pairs).decode(text),
+        )
+    except ProgressSidecarError:
+        raise
+    except (ValueError, RecursionError) as error:
+        _fail(f"invalid checkpoint JSON: {_host_error_detail(error)}")
+    except Exception as error:  # noqa: BLE001 - contain hostile decoder faults
+        _fail_with_source(f"invalid checkpoint JSON: {_host_error_detail(error)}", error)
+    reference = _portable_checkpoint_from_document(
+        _mapping(independent, "portable checkpoint"),
+    )
+    if envelope != reference:
+        _fail("checkpoint JSON decoder providers disagree")
+    return envelope
 
 
 def _validate_checkpoint_identity(
