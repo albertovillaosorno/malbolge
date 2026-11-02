@@ -3912,3 +3912,123 @@ def test_llvm_staging_marker_parent_stat_failure_is_typed(
     for descriptor in tracked:
         with pytest.raises(OSError):
             native_fstat(descriptor)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX parent swapping")
+@pytest.mark.parametrize("replacement", ("symlink", "physical"))
+@pytest.mark.parametrize("target", ("root", "alias"))
+def test_windows_aliases_never_create_under_swapped_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str, target: str
+) -> None:
+    """A late root or alias-directory swap must not populate foreign trees."""
+    root = _windows_tool_bundle(tmp_path)
+    alias_root = root / "jig-bin"
+    if target == "alias":
+        alias_root.mkdir()
+    selected = root if target == "root" else alias_root
+    parked = tmp_path / f"parked-windows-{target}"
+    foreign = tmp_path / f"foreign-windows-{target}"
+    foreign.mkdir()
+    original_mkdir = os.mkdir
+    swapped = False
+
+    def swap_during_mkdir(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (
+            Path(path) == alias_root or (path == "jig-bin" and dir_fd is not None)
+        ):
+            selected.rename(parked)
+            if replacement == "symlink":
+                selected.symlink_to(foreign, target_is_directory=True)
+            else:
+                foreign.rename(selected)
+            swapped = True
+        original_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_during_mkdir)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert swapped
+    outside = selected if replacement == "physical" else foreign
+    assert not (outside / "clang.bin").exists()
+    assert not (outside / "clang-tidy.bin").exists()
+    assert not (outside / "clang-format.bin").exists()
+    if target == "root":
+        assert not (outside / "jig-bin").exists()
+    assert not (outside / llvm_validation.LLVM_IMPORT_MARKER).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX parent swapping")
+@pytest.mark.parametrize("replacement", ("physical", "symlink"))
+def test_windows_aliases_reject_root_swapped_before_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """Alias completion cannot mark a different physical bundle root ready."""
+    root = _windows_tool_bundle(tmp_path)
+    parked = tmp_path / "parked-windows-marker-root"
+    foreign = tmp_path / "foreign-windows-marker-root"
+    foreign.mkdir()
+    original_check = llvm_validation._existing_import_marker  # pyright: ignore[reportPrivateUsage]
+    calls = 0
+
+    def swap_after_marker_check(path: Path, platform_id: str) -> bool:
+        nonlocal calls
+        result = original_check(path, platform_id)
+        calls += 1
+        if calls == 2:
+            root.rename(parked)
+            if replacement == "physical":
+                foreign.rename(root)
+            else:
+                root.symlink_to(foreign, target_is_directory=True)
+        return result
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_existing_import_marker", swap_after_marker_check
+        )
+        with pytest.raises(llvm_validation.LlvmImportError):
+            _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert calls == 2
+    outside = root if replacement == "physical" else foreign
+    assert not (outside / llvm_validation.LLVM_IMPORT_MARKER).exists()
+    assert (parked / "jig-bin/clang.bin").read_bytes() == CLANG_BYTES
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory pinning")
+def test_windows_aliases_reject_unowned_directory_inserted_during_mkdir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A newly inserted alias directory is not owned by the importer."""
+    root = _windows_tool_bundle(tmp_path)
+    alias_root = root / "jig-bin"
+    native_mkdir = os.mkdir
+    inserted = False
+
+    def insert_before_mkdir(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal inserted
+        if not inserted and (
+            Path(path) == alias_root or (path == "jig-bin" and dir_fd is not None)
+        ):
+            native_mkdir(alias_root)
+            inserted = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", insert_before_mkdir)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert inserted
+    assert list(alias_root.iterdir()) == []
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()

@@ -531,9 +531,19 @@ def _link_or_copy_in_parent(
     return destination
 
 
-def _copy_file(source: Path, destination: Path) -> None:
+def _copy_file(
+    source: Path,
+    destination: Path,
+    *,
+    expected_parent_inode: tuple[int, int] | None = None,
+) -> None:
     """Create one import file under the originally admitted physical parent."""
     original_parent_inode = _native_directory_inode(destination.parent)
+    if (
+        expected_parent_inode is not None
+        and original_parent_inode != expected_parent_inode
+    ):
+        _fail("LLVM import file parent changed before creation")
     ancestor_inode = _native_directory_inode(destination.parent.parent)
     if ancestor_inode is None:
         _fail("LLVM import file parent ancestor must be physical")
@@ -913,22 +923,28 @@ def _write_import_marker(
     try:
         if expected_parent_inode is not None:
             if parent_descriptor is None:
-                _fail("LLVM import marker requires a pinned physical stage")
-            try:
-                parent_status = os.fstat(parent_descriptor)
-                if (
-                    type(parent_status) is not os.stat_result
-                    or (parent_status.st_dev, parent_status.st_ino)
-                    != expected_parent_inode
-                    or _native_directory_inode(root) != expected_parent_inode
-                ):
-                    _fail("LLVM import marker parent changed before exclusive creation")
-            except LlvmImportError:
-                raise
-            except (OSError, ValueError, TypeError, RuntimeError) as error:
-                raise LlvmImportError(
-                    f"LLVM import marker parent status failed: {type(error).__name__}"
-                ) from error
+                # Non-POSIX hosts cannot pin the directory by fd, but must
+                # still reject a changed parent before pathname publication.
+                if _native_directory_inode(root) != expected_parent_inode:
+                    _fail("LLVM import marker parent changed before creation")
+            else:
+                try:
+                    parent_status = os.fstat(parent_descriptor)
+                    if (
+                        type(parent_status) is not os.stat_result
+                        or (parent_status.st_dev, parent_status.st_ino)
+                        != expected_parent_inode
+                        or _native_directory_inode(root) != expected_parent_inode
+                    ):
+                        _fail(
+                            "LLVM import marker parent changed before exclusive creation"
+                        )
+                except LlvmImportError:
+                    raise
+                except (OSError, ValueError, TypeError, RuntimeError) as error:
+                    raise LlvmImportError(
+                        f"LLVM import marker parent status failed: {type(error).__name__}"
+                    ) from error
         flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
         try:
             descriptor = (
@@ -1504,6 +1520,10 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
 
     """
     alias_root = _windows_alias_directory(root)
+    root_inode = _native_directory_inode(root)
+    if root_inode is None:
+        _fail("Windows LLVM bundle root must be physical")
+    existing_alias_inode = _native_directory_inode(alias_root)
     pairs = tuple(
         (
             root / "bin" / f"{tool}.exe",
@@ -1514,15 +1534,27 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
     # Check existing markers and aliases before publishing any new aliases.
     _ = _existing_import_marker(root, WINDOWS_PLATFORM)
     existing = tuple(_admit_windows_alias(source, alias) for source, alias in pairs)
-    alias_root.mkdir(parents=True, exist_ok=True)
-    if not _physical_directory(alias_root):
-        _fail("Windows LLVM alias directory must not redirect")
+    _create_physical_import_directory(
+        alias_root,
+        label="Windows LLVM alias directory",
+        expected_parent_inode=root_inode,
+        exist_ok=existing_alias_inode is not None,
+    )
+    alias_inode = _native_directory_inode(alias_root)
+    if alias_inode is None or (
+        existing_alias_inode is not None and alias_inode != existing_alias_inode
+    ):
+        _fail("Windows LLVM alias directory changed during creation")
     for (source, alias), present in zip(pairs, existing, strict=True):
+        if _native_directory_inode(root) != root_inode:
+            _fail("Windows LLVM bundle root changed during alias publication")
         if not present:
-            _copy_file(source, alias)
+            _copy_file(source, alias, expected_parent_inode=alias_inode)
     if not all(_windows_alias_ready(source, alias) for source, alias in pairs):
         _fail("Windows LLVM alias evidence changed before marker publication")
-    _write_import_marker(root, WINDOWS_PLATFORM)
+    if _native_directory_inode(root) != root_inode:
+        _fail("Windows LLVM bundle root changed before marker publication")
+    _write_import_marker(root, WINDOWS_PLATFORM, expected_parent_inode=root_inode)
     return tuple(alias for _, alias in pairs)
 
 
