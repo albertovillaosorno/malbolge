@@ -5635,6 +5635,69 @@ def test_native_toolchain_import_rejects_marker_drift_during_root_close(
     assert marker.read_bytes().startswith(b"X")
 
 
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="requires POSIX import root")
+@pytest.mark.parametrize("component", ("git", "rust"))
+def test_native_toolchain_import_rejects_same_marker_root_swap_after_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, component: str
+) -> None:
+    """A substituted root with identical marker bytes cannot inherit readiness."""
+    destination = tmp_path / "installed" / component
+    parked = tmp_path / "retained-original-import"
+    foreign = tmp_path / "substituted-import"
+    foreign.mkdir()
+    marker_name, marker_bytes = (
+        (project.GIT_IMPORT_MARKER, GIT_MARKER_BYTES)
+        if component == "git"
+        else (project.RUST_IMPORT_MARKER, RUST_MARKER_BYTES)
+    )
+    _ = (foreign / marker_name).write_bytes(marker_bytes)
+    _ = (foreign / "sentinel").write_bytes(FOREIGN_ROOT_BYTES)
+    native_close = project._close_local_state_parent  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def swap_after_root_close(descriptor: int) -> None:
+        nonlocal swapped
+        opened = os.fstat(descriptor)
+        is_root = (
+            not swapped
+            and (destination / marker_name).is_file()
+            and (opened.st_dev, opened.st_ino)
+            == (destination.stat().st_dev, destination.stat().st_ino)
+        )
+        native_close(descriptor)
+        if is_root:
+            destination.rename(parked)
+            foreign.rename(destination)
+            swapped = True
+
+    if component == "git":
+        source = tmp_path / "host-git"
+        _ = source.write_bytes(GIT_BYTES)
+        source.chmod(0o700)
+        helpers = tmp_path / "host-git-core"
+        helpers.mkdir()
+    else:
+        source = _make_rust_import_source(tmp_path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            project, "_close_local_state_parent", swap_after_root_close
+        )
+        with pytest.raises(project.InitializationError, match="root.*changed"):
+            if component == "git":
+                _ = project.import_git_installation(
+                    source, helpers, destination, windows=False
+                )
+            else:
+                _ = project.import_rust_toolchain(
+                    source, destination, tool_ids=("cargo",), windows=False
+                )
+    assert swapped
+    assert (destination / "sentinel").read_bytes() == FOREIGN_ROOT_BYTES
+    assert (destination / marker_name).read_bytes() == marker_bytes
+    assert (parked / marker_name).read_bytes() == marker_bytes
+
+
 def test_git_import_preserves_runtime_tree_and_neutral_alias(
     tmp_path: Path,
 ) -> None:

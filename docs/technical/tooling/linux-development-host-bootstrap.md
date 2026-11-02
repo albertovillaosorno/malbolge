@@ -228,8 +228,9 @@ POSIX Git and Rust imports pin physical destination directories, and reject
 in-place host binary changes in size, modification time, or executable mode
 after hardlink/copy. Copy fallbacks also reject source ctime changes; successful
 hardlinks account for their expected source ctime update. Rust neutral
-aliases pin post-link metadata so even changes with restored modification
-times must fail before completion. A fresh Rust import refuses any
+aliases check pinned source and alias bytes after hardlink or copy, in addition
+to post-link metadata. Same-length mutations, even with restored modification
+times, must fail before completion. A fresh Rust import refuses any
 source-carried neutral alias (even byte-identical) rather than treating it as
 bootstrap-created; completed imports can still backfill missing aliases.
 Portable hardlink failures copy only into an exclusively created destination;
@@ -250,7 +251,10 @@ The writer verifies a singly linked physical marker inode and exact byte count
 before reporting success; a changed leaf or short write fails closed.
 Git and Rust imports reattest the marker again after their root directory
 closes, and direct marker publication rechecks after closing the parent handle.
-A host close callback cannot rewrite the marker yet return import success.
+POSIX imports also pin the imported root inode before close and recheck its
+physical path identity afterward; a substituted root with an identical valid
+marker cannot inherit completion. A host close callback cannot rewrite the
+marker yet return import success.
 
 A failed write removes only a marker still matching the writer's owned inode.
 Parent-path preflight cannot eliminate concurrent ancestor replacement races.

@@ -1440,6 +1440,34 @@ def _create_posix_import_root(destination: Path, component: str) -> int:
         _close_local_state_parent(parent_fd)
 
 
+def _pinned_import_root_identity(descriptor: int) -> tuple[int, int]:
+    """Retain the physical import root identity across its final close."""
+    try:
+        opened = os.fstat(descriptor)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("import root descriptor status failed") from error
+    if type(opened) is not os.stat_result or not stat.S_ISDIR(opened.st_mode):
+        _fail("import root descriptor must be a native directory")
+    return opened.st_dev, opened.st_ino
+
+
+def _require_import_root_after_close(
+    destination: Path, expected: tuple[int, int]
+) -> None:
+    """A replacement root cannot inherit the published completion marker."""
+    try:
+        _reject_authority_parent_redirects(destination)
+        current = destination.lstat()
+    except (InitializationError, OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("import root changed after directory close") from error
+    if (
+        type(current) is not os.stat_result
+        or not stat.S_ISDIR(current.st_mode)
+        or (current.st_dev, current.st_ino) != expected
+    ):
+        _fail("import root changed after directory close")
+
+
 def _write_import_file_payload(input_fd: int, output_fd: int) -> None:
     """Write all source bytes to the opened destination descriptor."""
     while content := os.read(input_fd, 1_048_576):
@@ -1836,6 +1864,7 @@ def _import_posix_git_installation(
     """Use one pinned POSIX destination root for the full Git import."""
     root_fd = _create_posix_import_root(destination, "Git")
     try:
+        expected_root = _pinned_import_root_identity(root_fd)
         _copy_posix_git_binary(git, destination, root_fd, windows=windows)
         _copy_posix_git_helpers(exec_path, destination, root_fd)
         _write_import_completion_marker_at_parent(
@@ -1845,6 +1874,7 @@ def _import_posix_git_installation(
         )
     finally:
         _close_local_state_parent(root_fd)
+    _require_import_root_after_close(destination, expected_root)
 
 
 def _import_portable_git_installation(
@@ -2487,6 +2517,7 @@ def import_rust_toolchain(
     if _supports_pinned_local_state_directories():
         root_fd = _create_posix_import_root(destination, "Rust")
         try:
+            expected_root = _pinned_import_root_identity(root_fd)
             _copy_import_tree_at_parent(source, destination, root_fd)
             try:
                 bin_status = os.stat(
@@ -2514,6 +2545,7 @@ def import_rust_toolchain(
             )
         finally:
             _close_local_state_parent(root_fd)
+        _require_import_root_after_close(destination, expected_root)
     else:
         _admit_import_destination(destination, "Rust")
         _ = shutil.copytree(
