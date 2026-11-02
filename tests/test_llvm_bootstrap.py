@@ -1131,6 +1131,59 @@ def test_linux_import_does_not_overwrite_late_occupied_destination(
     assert not tuple(destination.iterdir())
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    ("overwrite-tool", "overwrite-header-restored-time", "remove-header", "add-header"),
+)
+def test_linux_import_rejects_staged_content_change_during_destination_setup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """Stage bytes and membership must survive destination parent callbacks."""
+    observation = _host_observation(tmp_path)
+    staged = tmp_path / ".temp/llvm-import-linux-x86_64/llvm"
+    destination = tmp_path / llvm_validation.LLVM_ROOT
+    native_ensure = llvm_validation._ensure_physical_import_parent  # pyright: ignore[reportPrivateUsage]
+    mutated = False
+
+    def mutate_after_parent_creation(root: Path) -> Path:
+        nonlocal mutated
+        parent = native_ensure(root)
+        if not mutated:
+            mutated = True
+            if mutation in ("overwrite-tool", "overwrite-header-restored-time"):
+                target = (
+                    staged / "bin/clang"
+                    if mutation == "overwrite-tool"
+                    else staged / "lib/clang/22/stddef.h"
+                )
+                admitted = target.stat()
+                content = target.read_bytes()
+                _ = target.write_bytes(b"!" + content[1:])
+                if mutation == "overwrite-header-restored-time":
+                    os.utime(
+                        target,
+                        ns=(admitted.st_atime_ns, admitted.st_mtime_ns),
+                    )
+            elif mutation == "remove-header":
+                (staged / "lib/clang/22/stddef.h").unlink()
+            else:
+                _ = (staged / "lib/clang/22/unadmitted.h").write_bytes(b"foreign")
+        return parent
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation,
+            "_ensure_physical_import_parent",
+            mutate_after_parent_creation,
+        )
+        with pytest.raises(llvm_validation.LlvmImportError, match="staged|stage"):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert mutated
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize("target", ("staging", "child"))
 def test_linux_import_rejects_replaced_staging_without_deleting_foreign_tree(
     tmp_path: Path,

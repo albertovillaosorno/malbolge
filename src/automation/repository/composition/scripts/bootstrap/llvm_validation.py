@@ -88,6 +88,14 @@ class LlvmReadiness:
     detail: str
 
 
+@dataclass(frozen=True, slots=True)
+class _LinuxStagingReceipt:
+    """Immutable member and content evidence captured before publication."""
+
+    members: tuple[tuple[Path, tuple[int, ...]], ...]
+    files: tuple[tuple[Path, tuple[int, int, int, int, bytes]], ...]
+
+
 def _fail(message: str) -> Never:
     raise LlvmImportError(message)
 
@@ -1464,6 +1472,21 @@ def _stage_linux_llvm(
             _fail("LLVM staged source or destination changed before publication")
 
 
+def _linux_staging_receipt(staged: Path) -> _LinuxStagingReceipt:
+    """Pin complete stage membership and byte digests across destination setup."""
+    members = _require_physical_resources(staged)
+    files = tuple(
+        sorted(
+            (relative, _import_source_identity(staged / relative))
+            for relative, status in members.items()
+            if status[0] == 0
+        )
+    )
+    if _require_physical_resources(staged) != members:
+        _fail("LLVM staged member inventory changed while taking byte receipt")
+    return _LinuxStagingReceipt(tuple(sorted(members.items())), files)
+
+
 def _admit_linux_import_staging(root: Path, staging: Path) -> None:
     """Fail closed before cleanup or writes through redirected staging paths."""
     root_inode = _native_directory_inode(root)
@@ -1824,8 +1847,14 @@ def _rename_linux_import_no_replace(
         raise OSError(error_number, "LLVM import no-replace directory rename failed")
 
 
-def _publish_linux_import(root: Path, staged: Path, destination: Path) -> None:
-    """Pin the physical destination directory across the final rename."""
+def _publish_linux_import(
+    root: Path,
+    staged: Path,
+    destination: Path,
+    *,
+    expected_stage_receipt: _LinuxStagingReceipt | None = None,
+) -> None:
+    """Pin destination and reattest production staging before final rename."""
     parent = _ensure_physical_import_parent(root)
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
@@ -1874,6 +1903,11 @@ def _publish_linux_import(root: Path, staged: Path, destination: Path) -> None:
                 or (source_status.st_dev, source_status.st_ino) != staged_inode
             ):
                 _fail("LLVM import staging source changed before rename")
+            if (
+                expected_stage_receipt is not None
+                and _linux_staging_receipt(staged) != expected_stage_receipt
+            ):
+                _fail("LLVM staged contents changed before publication")
             published = _rename_linux_import_no_replace(
                 staged,
                 destination.name,
@@ -1971,7 +2005,10 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
             or _native_directory_inode(staged) != owned_child
         ):
             _fail("LLVM import staging identity changed before publication")
-        _publish_linux_import(root, staged, destination)
+        staged_receipt = _linux_staging_receipt(staged)
+        _publish_linux_import(
+            root, staged, destination, expected_stage_receipt=staged_receipt
+        )
     finally:
         if owned_staging is not None and _owned_staging_safe_to_clean(
             staging, staged, owned_staging, owned_child
