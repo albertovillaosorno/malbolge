@@ -56,7 +56,6 @@ _TOOL_NAMES: Final = ("clang", "clang-tidy", "clang-format")
 _LLVM_LIBRARY_NAMES: Final = ("libLLVM.so.22.1", "libclang-cpp.so.22.1")
 _HOST_CAPTURE_TIMEOUT_SECONDS: Final = 15
 _HOST_MAX_CAPTURE_CHARS: Final = 16_384
-_LINUX_AT_FDCWD: Final = -100
 _LINUX_RENAME_NOREPLACE: Final = 1
 
 
@@ -1014,13 +1013,18 @@ def _ensure_physical_import_parent(root: Path) -> Path:
 
 
 def _rename_linux_import_no_replace(
-    source: Path, destination: str, *, dst_dir_fd: int
+    source: Path, destination: str, *, src_dir_fd: int, dst_dir_fd: int
 ) -> None:
     """Atomically move a Linux import without replacing an occupied leaf.
 
     Linux renameat2 with RENAME_NOREPLACE is required: os.replace can erase a
     concurrently inserted empty directory after our last absence check.
     """
+    opened_source_parent = os.fstat(src_dir_fd)
+    if type(opened_source_parent) is not os.stat_result or _native_directory_inode(
+        source.parent
+    ) != (opened_source_parent.st_dev, opened_source_parent.st_ino):
+        _fail("LLVM import staging source parent changed before rename")
     try:
         libc = ctypes.CDLL(None, use_errno=True)
         renameat2 = libc.renameat2
@@ -1039,8 +1043,8 @@ def _rename_linux_import_no_replace(
     result = cast(
         "object",
         renameat2(
-            _LINUX_AT_FDCWD,
-            os.fsencode(source),
+            src_dir_fd,
+            os.fsencode(source.name),
             dst_dir_fd,
             os.fsencode(destination),
             _LINUX_RENAME_NOREPLACE,
@@ -1092,9 +1096,32 @@ def _publish_linux_import(root: Path, staged: Path, destination: Path) -> None:
         staged_inode = _native_directory_inode(staged)
         if staged_inode is None:
             _fail("LLVM import staging source must be physical")
-        published = _rename_linux_import_no_replace(
-            staged, destination.name, dst_dir_fd=descriptor
+        source_parent_fd = _open_physical_import_parent(
+            staged.parent, "LLVM import staging source"
         )
+        try:
+            source_status = os.stat(
+                staged.name, dir_fd=source_parent_fd, follow_symlinks=False
+            )
+            if (
+                type(source_status) is not os.stat_result
+                or not S_ISDIR(source_status.st_mode)
+                or (source_status.st_dev, source_status.st_ino) != staged_inode
+            ):
+                _fail("LLVM import staging source changed before rename")
+            published = _rename_linux_import_no_replace(
+                staged,
+                destination.name,
+                src_dir_fd=source_parent_fd,
+                dst_dir_fd=descriptor,
+            )
+        finally:
+            try:
+                os.close(source_parent_fd)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmImportError(
+                    f"LLVM import staging source parent close failed: {type(error).__name__}"
+                ) from error
         if _native_directory_inode(parent) != (opened.st_dev, opened.st_ino):
             _fail("LLVM import destination parent changed during publication")
         if (
