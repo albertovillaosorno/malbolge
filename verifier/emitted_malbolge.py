@@ -56,6 +56,7 @@ else:
     import emitted_malbolge_prefix as prefix_transfer
     import emitted_malbolge_worklist as worklist_transfer
 
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
@@ -2949,7 +2950,20 @@ def render_report(report: StaticImageReport) -> str:
 
     """
     document = asdict(report)
-    return json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    try:
+        # Binding json.dumps at import still consults the mutable public
+        # JSONEncoder. Seal exact report bytes with the source encoder first.
+        source_text = _SOURCE_JSON_ENCODER(
+            sort_keys=True, separators=(",", ":")
+        ).encode(document)
+        observed = json.dumps(document, sort_keys=True, separators=(",", ":"))
+    except Exception as error:
+        message = f"static analyzer JSON serializer failed: {type(error).__name__}"
+        raise ValueError(message) from error
+    if type(observed) is not str or observed != source_text:
+        message = "static analyzer JSON serializer disagrees with source"
+        raise ValueError(message)
+    return source_text + "\n"
 
 
 def _continuations_accepted(

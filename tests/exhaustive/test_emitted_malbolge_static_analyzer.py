@@ -5128,6 +5128,111 @@ def test_report_rendering_is_canonical_and_replayable() -> None:
     assert encryption_lineage[0]["origin_kind"] == _ORIGIN_LOADED_SOURCE
 
 
+@pytest.mark.parametrize(
+    "providers",
+    ("encoder-only", "writer-only", "encoder-and-writer"),
+)
+def test_report_rendering_rejects_forged_json_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    providers: str,
+) -> None:
+    """A substituted JSON provider cannot forge a static admission verdict."""
+    report = _ANALYZER_MODULE.analyze_source(_FIXTURE.read_bytes())
+    canonical = _ANALYZER_MODULE.render_report(report)
+    forged = json.loads(canonical)
+    forged["admitted_initial_image"] = not report.admitted_initial_image
+    forged_text = json.dumps(forged, sort_keys=True, separators=(",", ":"))
+    assert forged_text + "\n" != canonical
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _document: object) -> str:
+            return forged_text
+
+    with monkeypatch.context() as patch:
+        if providers != "writer-only":
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers != "encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: forged_text)
+        with pytest.raises(ValueError, match="serializer disagrees with source"):
+            _ = _ANALYZER_MODULE.render_report(report)
+
+
+def test_report_rendering_rejects_mutating_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutating an intermediate report cannot rewrite the verifier verdict."""
+    report = _ANALYZER_MODULE.analyze_source(_FIXTURE.read_bytes())
+    native_dumps = json.dumps
+
+    def altered_writer(document: dict[str, object], **kwargs: object) -> str:
+        document["admitted_initial_image"] = not report.admitted_initial_image
+        return native_dumps(document, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", altered_writer)
+        with pytest.raises(ValueError, match="serializer disagrees with source"):
+            _ = _ANALYZER_MODULE.render_report(report)
+
+
+class _ForeignReportText(str):
+    """A foreign string subclass may supply hostile comparison hooks."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign JSON comparison invoked")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize("receipt", (None, b"{}", _ForeignReportText("{}")))
+def test_report_rendering_rejects_foreign_json_writer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only exact native JSON text may be published as verifier evidence."""
+    report = _ANALYZER_MODULE.analyze_source(_FIXTURE.read_bytes())
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", lambda *_args, **_kwargs: receipt)
+        with pytest.raises(ValueError, match="serializer disagrees with source"):
+            _ = _ANALYZER_MODULE.render_report(report)
+
+
+def test_report_rendering_preserves_json_writer_failure_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider failure remains typed without publishing a forged verdict."""
+    report = _ANALYZER_MODULE.analyze_source(_FIXTURE.read_bytes())
+    failure = RuntimeError("external JSON failure")
+
+    def broken_writer(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", broken_writer)
+        with pytest.raises(ValueError, match="serializer failed") as caught:
+            _ = _ANALYZER_MODULE.render_report(report)
+        assert caught.value.__cause__ is failure
+
+
+def test_report_rendering_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source-equivalent public encoder preserves exact canonical bytes."""
+    native_encoder = json.JSONEncoder
+    report = _ANALYZER_MODULE.analyze_source(_FIXTURE.read_bytes())
+    original = _ANALYZER_MODULE.render_report(report)
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert _ANALYZER_MODULE.render_report(report) == original
+
+
 def test_cli_prints_same_report_as_library() -> None:
     """The command-line surface emits the exact canonical report bytes."""
     completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]

@@ -29,8 +29,13 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 59,049-word capacity, and position-dependent 94-cell decode table. Reports are
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
-cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v88` retains exact `entry_transition` through
+cells with original byte offsets, stable findings, and analysis limits. The
+report renderer seals these findings with an import-bound standard-library
+`JSONEncoder` class before accepting exact matching text from the mutable public
+JSON writer; substitution, mutation, or invalid receipts cannot fabricate a
+published admission verdict. This does not defend compromise of underlying
+Python JSON internals. Schema `malbolge-static-image/v88` retains exact
+`entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
