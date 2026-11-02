@@ -64,7 +64,7 @@ DIAGNOSTIC_FORBIDDEN = "MALBOLGE-LIBC-002"
 AST_DECL_REF = "DeclRefExpr"
 AST_FUNCTION_DECL = "FunctionDecl"
 AST_COMPOUND_STMT = "CompoundStmt"
-_NATIVE_AST_JSON_LOADS = json.loads
+_NATIVE_AST_JSON_DECODER = json.JSONDecoder
 
 
 type JsonScalar = bool | int | float | str | None
@@ -325,20 +325,15 @@ def _same_native_ast(received: object, original: object) -> bool:
     return kind in (str, int, bool, float, type(None)) and received == original
 
 
-def _corroborate_ast_json(
-    text: str, receipt: object, source: Path, *, decoder: object
-) -> object:
-    """Corroborate Clang stdout and return a source-owned AST tree."""
-    if decoder is _NATIVE_AST_JSON_LOADS:
-        return receipt
+def _corroborate_ast_json(text: str, receipt: object, source: Path) -> object:
+    """Corroborate Clang stdout against the import-bound JSON decoder class."""
     try:
         expected = cast(
             "object",
-            _NATIVE_AST_JSON_LOADS(
-                text,
+            _NATIVE_AST_JSON_DECODER(
                 object_pairs_hook=_unique_ast_fields,
                 parse_constant=_reject_nonfinite_ast_constant,
-            ),
+            ).decode(text),
         )
         if not _same_native_ast(receipt, expected):
             _fail(f"Clang AST JSON decoder differs from source: {source}")
@@ -393,7 +388,7 @@ def _parse_ast(text: str, source: Path) -> JsonObject:
         _fail(f"Clang AST root must be an object for {source}")
     root = cast(
         "JsonObject",
-        _corroborate_ast_json(text, cast("object", parsed), source, decoder=decoder),
+        _corroborate_ast_json(text, cast("object", parsed), source),
     )
     identifier = root.get("id")
     children = root.get("inner")

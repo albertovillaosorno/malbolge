@@ -988,6 +988,113 @@ def test_libc_ast_decoder_rejects_self_restoring_forgery(
             )
 
 
+@pytest.mark.parametrize("entrypoint", ("direct", "process"))
+@pytest.mark.parametrize("providers", ("decoder-only", "joint", "self-restoring"))
+def test_libc_ast_public_json_decoder_cannot_erase_clang_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+    providers: str,
+) -> None:
+    """Even joint or self-restoring public decoders cannot forge a clean AST."""
+    source = (
+        '{"kind":"TranslationUnitDecl","id":"0x1","inner":'
+        '[{"kind":"CallExpr","id":"0x2"}]}'
+    )
+    forged: dict[str, object] = {
+        "kind": "TranslationUnitDecl",
+        "id": "0x1",
+        "inner": [{}],
+    }
+    native_decoder = json.JSONDecoder
+    config = _libc_test_ast_config() if entrypoint == "process" else None
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring":
+                patch.setattr(json, "JSONDecoder", native_decoder)
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "joint":
+            patch.setattr(json, "loads", forged_loads)
+        if entrypoint == "process":
+            patch.setattr(c_libc_source, "_require_clang", lambda _p: None)
+
+            def native_run(
+                command: list[str], **_kwargs: object
+            ) -> sp.CompletedProcess[str]:
+                return sp.CompletedProcess(command, 0, stdout=source, stderr="")
+
+            patch.setattr(sp, "run", native_run)
+        with pytest.raises(c_libc_source.LibcSourceError, match="JSON decoder differs"):
+            if entrypoint == "direct":
+                _ = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+                    source, ACCEPTED
+                )
+            else:
+                _ = c_libc_source._run_ast(  # pyright: ignore[reportPrivateUsage]
+                    ACCEPTED, config
+                )
+
+
+def test_libc_ast_public_decoder_cannot_mask_invalid_clang_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The original source syntax remains authoritative after public tampering."""
+    original = '{"kind":"TranslationUnitDecl",,}'
+    forged = {"kind": "TranslationUnitDecl", "id": "0x1", "inner": [{}]}
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        with pytest.raises(
+            c_libc_source.LibcSourceError, match="invalid Clang AST JSON"
+        ):
+            _ = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+                original, ACCEPTED
+            )
+
+
+def test_libc_ast_source_equivalent_public_json_decoder_is_admitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source-preserving decoder class can still parse a real AST."""
+    original = '{"kind":"TranslationUnitDecl","id":"0x1","inner":[{}]}'
+    native_decoder = json.JSONDecoder
+
+    class DelegatingDecoder:
+        def __init__(self, *, object_pairs_hook: object, parse_constant: object) -> None:
+            self.decoder = native_decoder(
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]",
+                    object_pairs_hook,
+                ),
+                parse_constant=cast("Callable[[str], object]", parse_constant),
+            )
+
+        def decode(self, text: str) -> object:
+            return self.decoder.decode(text)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", DelegatingDecoder)
+        result = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+            original, ACCEPTED
+        )
+        assert result["inner"] == [{}]
+
+
 def test_libc_ast_decoder_equivalent_adapter_cannot_mutate_returned_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1150,8 +1257,15 @@ def test_libc_clang_ast_unexpected_decoder_faults_stay_typed(
                 ),
             )
 
+        class FailingDecoder:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def decode(self, _text: str) -> object:
+                raise failure
+
         monkeypatch.setattr(json, "loads", delegated)
-        monkeypatch.setattr(c_libc_source, "_NATIVE_AST_JSON_LOADS", failing)
+        monkeypatch.setattr(c_libc_source, "_NATIVE_AST_JSON_DECODER", FailingDecoder)
     with pytest.raises(
         c_libc_source.LibcSourceError, match="invalid Clang AST JSON"
     ) as caught:

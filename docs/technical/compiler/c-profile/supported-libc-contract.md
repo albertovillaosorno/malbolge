@@ -48,12 +48,14 @@ receipt for another binary, target, source, or mode cannot admit a guest C
 unit, even when a process wrapper mutates its borrowed argument list. CLI
 diagnostics exclude foreign exception formatters.
 
-Clang AST evidence from process stdout uses the same source-binding rule when
-its public JSON decoder is replaced: the original import-bound loader must
-independently reproduce the entire native AST tree from the stdout text.
-Nested key admission runs before lookup, so custom equality cannot erase
-references. Equivalent wrappers are supported; duplicate keys, nonfinite
-numbers, and malformed syntax still fail with the source parser's diagnostics.
+Clang AST evidence from process stdout always uses an independently decoded
+source tree from the JSON decoder class bound at import: binding `json.loads`
+alone does not protect against changes to its public `json.JSONDecoder` class.
+The public parse must match the complete native AST tree, even under decoder-only,
+joint or self-restoring provider substitutions. Nested key admission runs before
+lookup, so custom equality cannot erase references. Equivalent wrappers are
+supported; duplicate keys, nonfinite numbers, and malformed syntax still fail
+with the source parser's diagnostics.
 Ordinary decoder dependency faults in either primary or independent parsing
 are rethrown as typed `LibcSourceError` with the original cause retained;
 foreign exception subclasses never supply formatter text to the diagnostic.
