@@ -48,7 +48,7 @@ import tarfile
 import urllib.request
 import zipfile
 from typing import TYPE_CHECKING
-from typing import BinaryIO
+from typing import BinaryIO, TextIO
 from typing import Never, Self, cast, final, override
 
 import pytest
@@ -1438,6 +1438,116 @@ def test_bootstrap_cli_does_not_format_foreign_host_exception(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "error: physical host filesystem failure\n"
+
+
+@pytest.mark.parametrize("receipt", [0, False, None, -1, 1_000_000])
+def test_bootstrap_cli_requires_complete_native_stdout_receipt(
+    monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Truncated or forged report writes must never exit as successful."""
+    body = "bootstrap ready\n"
+    writes: list[str] = []
+    errors: list[str] = []
+
+    class Output:
+        def write(self, data: str) -> int:
+            writes.append(data)
+            return cast("int", receipt)
+
+        def flush(self) -> None:
+            pass
+
+    class ErrorOutput:
+        def write(self, data: str) -> int:
+            errors.append(data)
+            return len(data)
+
+    def initialize(**_kwargs: object) -> project.ProjectInitializationReport:
+        return cast("project.ProjectInitializationReport", object())
+
+    def render(_report: project.ProjectInitializationReport) -> str:
+        return body
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(project, "initialize_project", initialize)
+        isolated.setattr(project, "render_report", render)
+        isolated.setattr(project.sys, "stdout", cast("TextIO", cast("object", Output())))
+        isolated.setattr(project.sys, "stderr", cast("TextIO", cast("object", ErrorOutput())))
+        status = project.main(["--skip-python"])
+    assert status == 1
+    assert writes == [body]
+    assert errors == ["error: incomplete bootstrap report output\n"]
+
+
+@pytest.mark.parametrize("fault_site", ["write", "flush"])
+def test_bootstrap_cli_fails_on_report_delivery_host_fault(
+    monkeypatch: pytest.MonkeyPatch, fault_site: str
+) -> None:
+    """A hostile report delivery fault must return nonzero without formatting."""
+
+    class ForeignHostOSError(OSError):
+        @override
+        def __str__(self) -> Never:
+            raise AssertionError("host output fault formatter invoked")
+
+    fault = ForeignHostOSError("host report output failed")
+    errors: list[str] = []
+
+    class Output:
+        def write(self, data: str) -> int:
+            if fault_site == "write":
+                raise fault
+            return len(data)
+
+        def flush(self) -> None:
+            if fault_site == "flush":
+                raise fault
+
+    class ErrorOutput:
+        def write(self, data: str) -> int:
+            errors.append(data)
+            return len(data)
+
+    def initialize(**_kwargs: object) -> project.ProjectInitializationReport:
+        return cast("project.ProjectInitializationReport", object())
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(project, "initialize_project", initialize)
+        isolated.setattr(project, "render_report", lambda _report: "ready\n")
+        isolated.setattr(project.sys, "stdout", cast("TextIO", cast("object", Output())))
+        isolated.setattr(project.sys, "stderr", cast("TextIO", cast("object", ErrorOutput())))
+        status = project.main(["--skip-python"])
+    assert status == 1
+    assert errors == ["error: cannot write bootstrap report\n"]
+
+
+def test_bootstrap_cli_flushes_complete_native_stdout_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A complete native report write is flushed and returns success."""
+    body = "complete bootstrap report\n"
+    writes: list[str] = []
+    flushes: list[bool] = []
+
+    class Output:
+        def write(self, data: str) -> int:
+            writes.append(data)
+            return len(data)
+
+        def flush(self) -> None:
+            flushes.append(True)
+
+    def initialize(**_kwargs: object) -> project.ProjectInitializationReport:
+        return cast("project.ProjectInitializationReport", object())
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(project, "initialize_project", initialize)
+        isolated.setattr(project, "render_report", lambda _report: body)
+        isolated.setattr(project.sys, "stdout", cast("TextIO", cast("object", Output())))
+        status = project.main(["--skip-python"])
+    assert status == 0
+    assert writes == [body]
+    assert flushes == [True]
 
 
 def test_llvm_development_inspection_reports_exact_marker_state(

@@ -1887,7 +1887,19 @@ def main(argv: list[str] | None = None) -> int:
     ) as error:
         _ = sys.stderr.write(f"error: {_native_exception_detail(error)}\n")
         return 1
-    _ = sys.stdout.write(render_report(report))
+    report_text = render_report(report)
+    try:
+        written = sys.stdout.write(report_text)
+        if type(written) is not int or written != len(report_text):
+            error_text = "error: incomplete bootstrap report output\n"
+        else:
+            sys.stdout.flush()
+            error_text = None
+    except (OSError, ValueError, TypeError, RuntimeError):
+        error_text = "error: cannot write bootstrap report\n"
+    if error_text is not None:
+        _ = sys.stderr.write(error_text)
+        return 1
     return 0
 
 
