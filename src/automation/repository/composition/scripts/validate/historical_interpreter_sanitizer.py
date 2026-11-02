@@ -439,14 +439,26 @@ def _run(
     *,
     cwd: Path,
 ) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        command,
-        cwd=cwd,
-        check=False,
-        shell=False,
-        capture_output=True,
-        timeout=RUN_TIMEOUT_SECONDS,
-    )
+    try:
+        return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            command,
+            cwd=cwd,
+            check=False,
+            shell=False,
+            capture_output=True,
+            timeout=RUN_TIMEOUT_SECONDS,
+        )
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        subprocess.TimeoutExpired,
+    ) as error:
+        detail = _native_host_error_detail(error)
+        raise SanitizerHarnessError(
+            f"sanitizer compiler process launch failed: {detail}"
+        ) from error
 
 
 def _native_process_receipt(
@@ -584,17 +596,29 @@ def _execute_case(
     )
     environment["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=0"
     command = (str(executable), str(source))
-    # jig-ignore-next-line: reviewed local subprocess boundary uses argv only
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        command,
-        cwd=work,
-        check=False,
-        shell=False,
-        input=case.input_bytes,
-        capture_output=True,
-        timeout=RUN_TIMEOUT_SECONDS,
-        env=environment,
-    )
+    try:
+        # jig-ignore-next-line: reviewed local subprocess boundary uses argv only
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            command,
+            cwd=work,
+            check=False,
+            shell=False,
+            input=case.input_bytes,
+            capture_output=True,
+            timeout=RUN_TIMEOUT_SECONDS,
+            env=environment,
+        )
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        subprocess.TimeoutExpired,
+    ) as error:
+        detail = _native_host_error_detail(error)
+        raise SanitizerHarnessError(
+            f"sanitizer case {identifier} process launch failed: {detail}"
+        ) from error
     completed = _native_process_receipt(completed, command)
     findings = _findings(completed.stderr)
     if findings:

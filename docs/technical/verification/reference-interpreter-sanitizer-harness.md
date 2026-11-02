@@ -67,8 +67,11 @@ integer exit code and native byte stdout/stderr streams. Substituted commands,
 foreign command containers or elements, boolean or floating-point statuses,
 and malformed output streams never certify a clean sanitizer run. Foreign host
 exception formatters are not invoked when the sanitizer command reports failure
-or when the historical source cannot be read; source read errors retain their
-original host exception as the typed failure cause.
+or when the historical source cannot be read. Compiler, build and guest-case
+launch errors (including timeouts) are normalized into typed harness failures
+with the original host exception preserved as the cause, without executing
+foreign exception string hooks. Source read errors retain their original host
+exception as the typed failure cause.
 The pinned source hash is verified before a byte-exact copy is staged in the
 private temporary build directory; Clang compiles that verified snapshot, never
 reopening the original pathname after verification. The original `main.c`

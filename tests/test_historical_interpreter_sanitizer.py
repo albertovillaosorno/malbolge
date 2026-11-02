@@ -1521,3 +1521,52 @@ def test_sanitizer_cli_accepts_complete_native_output(
         assert harness.main() == 0
     assert len(sink.records) == 1
     assert sink.flushed
+
+
+@pytest.mark.parametrize("stage", ("compiler", "case"))
+@pytest.mark.parametrize(
+    "fault_kind", ("os", "foreign-os", "value", "type", "runtime", "timeout")
+)
+def test_sanitizer_launch_failures_are_typed_without_foreign_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    fault_kind: str,
+) -> None:
+    """Host process launch errors retain causes without invoking foreign formatting."""
+
+    class ForeignHostOSError(PermissionError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign sanitizer launch formatter executed")
+
+    faults: dict[str, Exception] = {
+        "os": OSError("launch failed"),
+        "foreign-os": ForeignHostOSError("launch failed"),
+        "value": ValueError("invalid process"),
+        "type": TypeError("invalid arguments"),
+        "runtime": RuntimeError("host error"),
+        "timeout": subprocess.TimeoutExpired(("clang", "--version"), 15),
+    }
+    fault = faults[fault_kind]
+
+    def raise_host_error(_command: object, **_kwargs: object) -> Never:
+        raise fault
+
+    monkeypatch.setattr(subprocess, "run", raise_host_error)
+    with pytest.raises(
+        harness.SanitizerHarnessError, match="process launch failed"
+    ) as caught:
+        if stage == "compiler":
+            _ = harness._run(("clang", "--version"), cwd=tmp_path)  # pyright: ignore[reportPrivateUsage]
+        else:
+            case = harness.SanitizerCase(
+                identifier="launch-fault", source_bytes=b"D", input_bytes=b""
+            )
+            _ = harness._execute_case(  # pyright: ignore[reportPrivateUsage]
+                tmp_path / "sanitizer.exe", tmp_path, case
+            )
+    assert caught.value.__cause__ is fault
+    assert ("ForeignHostOSError" in str(caught.value)) == (
+        fault_kind == "foreign-os"
+    )
