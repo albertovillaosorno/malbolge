@@ -89,6 +89,63 @@ BAD_PROFILE_PROVENANCE = 'implementation = "forged/fake_compiler.py"'
 REAL_PROFILE_PROVENANCE = 'implementation = "benchmarks/arena/target_echo_reference.py"'
 
 
+class _ForeignTargetFingerprint(str):
+    def __len__(self) -> int:
+        raise AssertionError("foreign target digest length hook executed")
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [None, False, 1, "a" * 63, "G" * 64, "F" * 64,
+     _ForeignTargetFingerprint("a" * 64), "a" * 64],
+)
+def test_target_source_rejects_invalid_or_forged_hash_receipt(
+    monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Source hashes must be native, canonical, and bound to actual bytes."""
+    monkeypatch.setattr(audit, "_native_regular_bytes", lambda *_args, **_kw: b"source")
+    monkeypatch.setattr(audit, "_admit_source_bytes", lambda *_args, **_kw: None)
+
+    class HashReceipt:
+        def hexdigest(self) -> object:
+            return receipt
+
+    monkeypatch.setattr(audit, "sha256", lambda *_: HashReceipt())
+    row = {"algorithm": "direct", "case": {"difficulty": 1}, "trial": 0}
+    with pytest.raises(audit.TargetEchoAuditError, match="SHA-256"):
+        audit._check_source(row, ".temp/arena-target-echo-test", "eof")
+
+
+@pytest.mark.parametrize("stage", ["construct", "digest"])
+def test_target_source_hash_fault_is_typed_without_foreign_formatting(
+    monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    """A failed hash dependency cannot leak its hostile exception formatter."""
+    monkeypatch.setattr(audit, "_native_regular_bytes", lambda *_args, **_kw: b"source")
+    monkeypatch.setattr(audit, "_admit_source_bytes", lambda *_args, **_kw: None)
+
+    class HashFault(RuntimeError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign target hash fault formatter executed")
+
+    failure = HashFault("unsafe")
+
+    class HashReceipt:
+        def hexdigest(self) -> str:
+            raise failure
+
+    def hashed(*_args: object) -> HashReceipt:
+        if stage == "construct":
+            raise failure
+        return HashReceipt()
+
+    monkeypatch.setattr(audit, "sha256", hashed)
+    row = {"algorithm": "direct", "case": {"difficulty": 1}, "trial": 0}
+    with pytest.raises(audit.TargetEchoAuditError, match="hash") as caught:
+        audit._check_source(row, ".temp/arena-target-echo-test", "eof")
+    assert caught.value.__cause__ is failure
+
+
 @pytest.mark.parametrize(
     "foreign", [None, "{}", bytearray(b"{}"), memoryview(b"{}"), object()]
 )

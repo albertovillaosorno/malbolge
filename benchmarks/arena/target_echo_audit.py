@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -156,6 +157,31 @@ def _fail(message: str) -> Never:
     raise TargetEchoAuditError(message)
 
 
+
+def _source_sha256(data: bytes) -> str:
+    """Bind every reported source fingerprint to exact native source bytes.
+
+    The separately accessed standard SHA-256 entrypoint detects plausible but
+    unrelated receipts returned by a substituted imported hash function.
+    """
+    if type(data) is not bytes:
+        _fail("target audit source hash requires native bytes")
+    try:
+        digest = sha256(data).hexdigest()
+        independent = hashlib.new("sha256", data).hexdigest()
+    except Exception as error:
+        message = "target audit source hash computation failed"
+        raise TargetEchoAuditError(message) from error
+    if any(
+        type(value) is not str
+        or len(value) != DIGEST_HEX_LENGTH
+        or not set(value) <= analyze.SHA256_ALPHABET
+        for value in (digest, independent)
+    ) or digest != independent:
+        _fail("target audit source returned invalid SHA-256 fingerprint")
+    return digest
+
+
 def _native_regular_bytes(root: Path, relative: str, *, limit: int) -> bytes:
     """Admit exact bounded file bytes before auditing dependent evidence.
 
@@ -249,7 +275,7 @@ def _document(relative: str) -> tuple[dict[str, Any], str]:
         relative,
         limit=MAX_STUDY_BYTES,
     )
-    return analyze.parse_document(data.decode("utf-8")), sha256(data).hexdigest()
+    return analyze.parse_document(data.decode("utf-8")), _source_sha256(data)
 
 
 def _mode(document: dict[str, Any]) -> str:
@@ -432,7 +458,7 @@ def _expected_case(
         "version": 1,
         "difficulty": pairs,
         "seed": 0,
-        "workload_sha256": sha256(identity).hexdigest(),
+        "workload_sha256": _source_sha256(identity),
     }
 
 
@@ -865,7 +891,7 @@ def _check_source(
         limit=producer.MAX_TARGET_BYTES,
     )
     _admit_source_bytes(source, row, mode, forward=forward)
-    return relative, sha256(source).hexdigest()
+    return relative, _source_sha256(source)
 
 
 def _candidate_files(prefix: str, names: set[str]) -> None:
@@ -1232,7 +1258,7 @@ def _replay_one(
         relative,
         limit=producer.MAX_TARGET_BYTES,
     )
-    if sha256(current).hexdigest() != digest:
+    if _source_sha256(current) != digest:
         _fail("target audit retained source changed during VM replay")
 
 
@@ -1459,7 +1485,7 @@ def _check_rss_receipts(document: dict[str, Any], prefix: str) -> None:
             continue
         relative = f"{prefix}/{RSS_RECEIPT_DIR}/{_row_stem(row)}.json"
         data = _native_regular_bytes(_ROOT, relative, limit=RSS_REPORT_LIMIT)
-        if sha256(data).hexdigest() != digest:
+        if _source_sha256(data) != digest:
             _fail("v6 RSS receipt digest differs from linked run manifest")
         _validate_rss_stage_bytes(data, row, raw=raw)
 
@@ -1494,7 +1520,7 @@ def _snapshot_linked_inputs(
     )
     for relative, limit in sorted(linked):
         data = _native_regular_bytes(_ROOT, relative, limit=limit)
-        snapshots[relative] = (sha256(data).hexdigest(), limit)
+        snapshots[relative] = (_source_sha256(data), limit)
     return snapshots
 
 
@@ -1504,7 +1530,7 @@ def _recheck_linked_inputs(
     """Reject inspected study and linked-byte changes before publishing."""
     for relative, (original, limit) in snapshots.items():
         current = _native_regular_bytes(_ROOT, relative, limit=limit)
-        if sha256(current).hexdigest() != original:
+        if _source_sha256(current) != original:
             _fail(f"target audit linked input changed before report: {relative}")
 
 
@@ -1569,7 +1595,7 @@ def _recheck_sources(source_hashes: dict[str, str]) -> None:
             relative,
             limit=producer.MAX_TARGET_BYTES,
         )
-        if sha256(current).hexdigest() != recorded:
+        if _source_sha256(current) != recorded:
             _fail("target audit retained source changed before report")
 
 
