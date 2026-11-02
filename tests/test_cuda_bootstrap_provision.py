@@ -323,6 +323,122 @@ def test_cuda_download_types_network_host_failures(
     assert response.closed == (phase == "read")
 
 
+class _HostileCudaErrorMeta(type):
+    """Host-supplied exception class that intercepts metadata access."""
+
+    @override
+    def __getattribute__(cls, name: str) -> object:
+        if name == "__name__":
+            raise AssertionError("foreign exception metaclass was evaluated")
+        return super().__getattribute__(name)
+
+
+class _HostileCudaHostError(OSError, metaclass=_HostileCudaErrorMeta):
+    """A host failure whose error class must be reported without hooks."""
+
+
+@pytest.mark.parametrize("phase", ("open", "read"))
+def test_cuda_download_does_not_read_foreign_exception_metaclass(
+    monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Host network errors cannot execute their class metadata hooks."""
+    failure = _HostileCudaHostError("injected network error")
+    response = _NetworkResponse(failure)
+
+    def open_url(_request: object, *, timeout: int) -> _NetworkResponse:
+        assert timeout == 120
+        if phase == "open":
+            raise failure
+        return response
+
+    monkeypatch.setattr(cuda_validation.urllib.request, "urlopen", open_url)
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match="_HostileCudaHostError"
+    ) as caught:
+        _ = cuda_validation._download_cuda_package(
+            cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH
+        )
+    assert caught.value.__cause__ is failure
+    assert response.closed == (phase == "read")
+
+
+@pytest.mark.parametrize("archive_kind", ("tar", "zip"))
+def test_cuda_archive_fault_does_not_read_foreign_exception_metaclass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, archive_kind: str
+) -> None:
+    """Archive host faults cannot execute custom exception class formatting."""
+    failure = _HostileCudaHostError("injected archive error")
+
+    def reject_open(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    with monkeypatch.context() as isolated:
+        if archive_kind == "tar":
+            isolated.setattr(cuda_validation.tarfile, "open", reject_open)
+            extract = cuda_validation._safe_tar_extract
+        else:
+            isolated.setattr(cuda_validation.zipfile, "ZipFile", reject_open)
+            extract = cuda_validation._safe_zip_extract
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="_HostileCudaHostError"
+        ) as caught:
+            _ = extract(b"invalid archive", tmp_path)
+    assert caught.value.__cause__ is failure
+
+
+def test_cuda_manifest_fault_does_not_read_foreign_exception_metaclass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Manifest JSON read failures bypass foreign exception class hooks."""
+    manifest = _manifest(tmp_path, _payload())
+    failure = _HostileCudaHostError("injected JSON error")
+
+    def reject_parse(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation.json, "loads", reject_parse)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="_HostileCudaHostError"
+        ) as caught:
+            _ = cuda_validation.load_cuda_provision_manifest(
+                tmp_path, manifest, LINUX_PLATFORM
+            )
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize("phase", ("status", "junction"))
+def test_cuda_directory_fault_does_not_read_foreign_exception_metaclass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Source directory inspection must type host faults without hooks."""
+    failure = _HostileCudaHostError("injected directory error")
+    original_lstat = Path.lstat
+    original_junction = Path.is_junction
+
+    def reject_status(path: Path) -> os.stat_result:
+        if path == tmp_path:
+            raise failure
+        return original_lstat(path)
+
+    def reject_junction(path: Path) -> bool:
+        if path == tmp_path:
+            raise failure
+        return original_junction(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            Path,
+            "lstat" if phase == "status" else "is_junction",
+            reject_status if phase == "status" else reject_junction,
+        )
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="_HostileCudaHostError"
+        ) as caught:
+            cuda_validation._require_physical_directories(tmp_path, "staging")
+    assert caught.value.__cause__ is failure
+
+
 @pytest.mark.parametrize("foreign", [None, "not bytes", bytearray(b"data"), memoryview(b"data")])
 def test_cuda_download_rejects_foreign_network_body(
     monkeypatch: pytest.MonkeyPatch,

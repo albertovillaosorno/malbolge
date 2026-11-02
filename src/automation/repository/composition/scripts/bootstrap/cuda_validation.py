@@ -120,6 +120,21 @@ def _fail(message: str) -> Never:
     raise CudaProvisionError(message)
 
 
+def _native_error_name(error: BaseException) -> str:
+    """Read an exception class name without invoking foreign metaclass hooks.
+
+    Returns:
+        The native exception class name.
+
+    """
+    return cast(
+        "str",
+        type.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+            type(error), "__name__"
+        ),
+    )
+
+
 def _reject_duplicate_pairs(
     pairs: list[tuple[str, object]],
 ) -> dict[str, object]:
@@ -241,7 +256,7 @@ def _source_path_status(path: Path, label: str) -> os.stat_result:
         return path.lstat()
     except (OSError, TypeError, ValueError, RuntimeError) as error:
         raise CudaProvisionError(
-            f"cannot read {label}: host status failed ({type(error).__name__})"
+            f"cannot read {label}: host status failed ({_native_error_name(error)})"
         ) from error
 
 
@@ -251,7 +266,7 @@ def _source_descriptor_status(stream: BinaryIO, label: str) -> os.stat_result:
         return os.fstat(stream.fileno())
     except (OSError, TypeError, ValueError, RuntimeError) as error:
         raise CudaProvisionError(
-            f"cannot read {label}: host status failed ({type(error).__name__})"
+            f"cannot read {label}: host status failed ({_native_error_name(error)})"
         ) from error
 
 
@@ -282,7 +297,7 @@ def _read_manifest_source(
         descriptor = os.open(path, flags)
     except (OSError, TypeError, ValueError, RuntimeError) as error:
         raise CudaProvisionError(
-            f"cannot read {label}: host open failed ({type(error).__name__})"
+            f"cannot read {label}: host open failed ({_native_error_name(error)})"
         ) from error
     if type(descriptor) is not int or descriptor < 0:
         _fail(f"{label} must open a native descriptor")
@@ -296,7 +311,7 @@ def _read_manifest_source(
             payload = _read_source_bytes(stream, max_bytes)
         except (OSError, TypeError, ValueError, RuntimeError) as error:
             raise CudaProvisionError(
-                f"cannot read {label}: host read failed ({type(error).__name__})"
+                f"cannot read {label}: host read failed ({_native_error_name(error)})"
             ) from error
         if type(payload) is not bytes:
             _fail(f"{label} must return native bytes")
@@ -327,7 +342,7 @@ def _read_document(path: Path, label: str) -> tuple[dict[str, object], bytes]:
         raise
     except (UnicodeDecodeError, json.JSONDecodeError, OSError, TypeError, ValueError, RuntimeError) as error:
         raise CudaProvisionError(
-            f"cannot read {label}: {type(error).__name__}"
+            f"cannot read {label}: {_native_error_name(error)}"
         ) from error
     return _mapping(parsed, label), payload
 
@@ -737,7 +752,7 @@ def _safe_tar_extract(data: bytes, staging: Path) -> Path:
         RuntimeError,
     ) as error:
         raise CudaProvisionError(
-            f"cannot extract CUDA tar archive: {type(error).__name__}"
+            f"cannot extract CUDA tar archive: {_native_error_name(error)}"
         ) from error
 
 
@@ -806,7 +821,7 @@ def _safe_zip_extract(data: bytes, staging: Path) -> Path:
         RuntimeError,
     ) as error:
         raise CudaProvisionError(
-            f"cannot extract CUDA zip archive: {type(error).__name__}"
+            f"cannot extract CUDA zip archive: {_native_error_name(error)}"
         ) from error
 
 
@@ -819,7 +834,7 @@ def _require_physical_directories(path: Path, label: str) -> None:
             continue
         except (OSError, TypeError, ValueError, RuntimeError) as error:
             raise CudaProvisionError(
-                f"CUDA {label} path status failed: {type(error).__name__}"
+                f"CUDA {label} path status failed: {_native_error_name(error)}"
             ) from error
         if type(status) is not os.stat_result:
             _fail(f"CUDA {label} path requires native status: {component}")
@@ -827,7 +842,7 @@ def _require_physical_directories(path: Path, label: str) -> None:
             junction = component.is_junction()
         except (OSError, TypeError, ValueError, RuntimeError) as error:
             raise CudaProvisionError(
-                f"CUDA {label} junction status failed: {type(error).__name__}"
+                f"CUDA {label} junction status failed: {_native_error_name(error)}"
             ) from error
         if type(junction) is not bool:
             _fail(f"CUDA {label} path requires native junction status: {component}")
@@ -1055,14 +1070,14 @@ def _copy_cuda_overlay(
         except CudaProvisionError:
             raise
         except (OSError, TypeError, ValueError, RuntimeError) as error:
-            detail = f"CUDA staged overlay preflight failed: {type(error).__name__}"
+            detail = f"CUDA staged overlay preflight failed: {_native_error_name(error)}"
             raise CudaProvisionError(detail) from error
         try:
             _ = shutil.copytree(
                 source, destination, dirs_exist_ok=True, symlinks=True,
             )
         except (OSError, TypeError, ValueError, RuntimeError) as error:
-            detail = f"CUDA staged overlay copy failed: {type(error).__name__}"
+            detail = f"CUDA staged overlay copy failed: {_native_error_name(error)}"
             raise CudaProvisionError(detail) from error
         _require_owned_staging(source, source_identity)
         _require_physical_directories(destination, "staged overlay destination")
@@ -1336,7 +1351,7 @@ def _download_cuda_package(
             data = response.read(max_bytes + 1)
     except (OSError, TypeError, ValueError, RuntimeError) as error:
         raise CudaProvisionError(
-            f"cannot download pinned CUDA package: {type(error).__name__}"
+            f"cannot download pinned CUDA package: {_native_error_name(error)}"
         ) from error
     if type(data) is not bytes:
         _fail("CUDA network response must contain native bytes")
@@ -1706,7 +1721,7 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
         descriptor = os.open(parent, flags)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise CudaProvisionError(
-            f"CUDA toolkit destination parent open failed: {type(error).__name__}"
+            f"CUDA toolkit destination parent open failed: {_native_error_name(error)}"
         ) from error
     if type(descriptor) is not int or descriptor < 0:
         _fail("CUDA toolkit destination parent requires native descriptor")
@@ -1778,7 +1793,7 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise CudaProvisionError(
-            f"CUDA toolkit destination publication failed: {type(error).__name__}"
+            f"CUDA toolkit destination publication failed: {_native_error_name(error)}"
         ) from error
     finally:
         try:
