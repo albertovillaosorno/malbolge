@@ -743,6 +743,64 @@ def test_bibliography_walk_rejects_unbound_discovery_receipts(
             _ = validator._durable_reference_paths()  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize("side", ("references", "sources"))
+def test_external_coverage_rejects_foreign_url_containers_before_iteration(
+    side: str,
+) -> None:
+    """A custom iterator cannot manufacture source coverage or obligations."""
+
+    class ForeignUrls(tuple[str, ...]):
+        @override
+        def __iter__(self) -> Never:
+            raise AssertionError("untrusted URL iterator executed")
+
+    foreign = ForeignUrls(("https://example.com/foreign",))
+    references = foreign if side == "references" else ("https://example.com/real",)
+    sources = foreign if side == "sources" else ("https://example.com/real",)
+    with pytest.raises(validator.BibliographyValidationError, match="native URL tuple"):
+        _ = validator.validate_external_reference_coverage(references, sources)
+
+
+@pytest.mark.parametrize("side", ("references", "sources"))
+def test_external_coverage_rejects_foreign_url_members_before_normalization(
+    side: str,
+) -> None:
+    """A URL subclass cannot forge a covered identity via string methods."""
+
+    class ForeignUrl(str):
+        @override
+        def rstrip(self, chars: str | None = None) -> str:
+            del chars
+            raise AssertionError("foreign URL normalization hook executed")
+
+    foreign = ForeignUrl("https://example.com/foreign")
+    references = (foreign,) if side == "references" else ("https://example.com/real",)
+    sources = (foreign,) if side == "sources" else ("https://example.com/real",)
+    with pytest.raises(validator.BibliographyValidationError, match="non-native URL"):
+        _ = validator.validate_external_reference_coverage(references, sources)
+
+
+@pytest.mark.parametrize("side", ("references", "sources"))
+@pytest.mark.parametrize("foreign", (True, None, 0, [], "https://valid.example"))
+def test_external_coverage_rejects_non_native_url_receipts(
+    side: str, foreign: object
+) -> None:
+    """Coverage must have exact tuple and string receipts from each side."""
+    if type(foreign) is str:
+        references = foreign if side == "references" else ()
+        sources = foreign if side == "sources" else ()
+        expected = "native URL tuple"
+    else:
+        references = (foreign,) if side == "references" else ()
+        sources = (foreign,) if side == "sources" else ()
+        expected = "non-native URL"
+    with pytest.raises(validator.BibliographyValidationError, match=expected):
+        _ = validator.validate_external_reference_coverage(
+            cast("tuple[str, ...]", references),
+            cast("tuple[str, ...]", sources),
+        )
+
+
 def test_durable_external_reference_requires_canonical_coverage() -> None:
     """A new durable URL cannot bypass the canonical source inventory."""
     with pytest.raises(

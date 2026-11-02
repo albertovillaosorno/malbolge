@@ -830,6 +830,11 @@ def validate_external_reference_coverage(
         Count of distinct covered external references.
 
     """
+    for label, urls in (("references", references), ("source URLs", source_urls)):
+        if type(urls) is not tuple:
+            _fail(f"bibliography {label} require a native URL tuple")
+        if any(type(url) is not str for url in urls):
+            _fail(f"bibliography {label} contain a non-native URL")
     normalized_sources = frozenset(_normalized_url(url) for url in source_urls)
     self_owned = frozenset(_normalized_url(url) for url in SELF_OWNED_URLS)
     normalized_references = (
