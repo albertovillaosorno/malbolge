@@ -3143,3 +3143,135 @@ def test_python_bootstrap_converts_launch_failures_to_typed_errors(
         _ = python_validation._run(["uv", "--version"])  # pyright: ignore[reportPrivateUsage]
     assert caught.value.__cause__ is error
     assert ("ForeignOSError" in str(caught.value)) == (kind == "foreign-os")
+
+
+@pytest.mark.parametrize(
+    "probe", ("git-version", "git-exec", "rustup-list", "rustup-which")
+)
+@pytest.mark.parametrize(
+    "mutation",
+    ("wrong-argv", "mutated-argv", "false-status", "binary-output", "foreign-receipt"),
+)
+def test_optional_host_probes_reject_forged_process_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    mutation: str,
+) -> None:
+    """Git and rustup discovery cannot trust forged native process results."""
+
+    class ForeignCompletion(sp.CompletedProcess[str]):
+        pass
+
+    version_output = {
+        "git-version": "git version 2.55.0\n",
+        "git-exec": f"{tmp_path}\n",
+        "rustup-list": "1.98.1-x86_64-unknown-linux-gnu (default)\n",
+        "rustup-which": f"{tmp_path / 'bin/cargo'}\n",
+    }[probe]
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        if mutation == "mutated-argv":
+            args[0] = "foreign-tool"
+        argv = ["foreign-tool", *args[1:]] if mutation == "wrong-argv" else args
+        status = cast("int", False) if mutation == "false-status" else 0
+        stdout = (
+            cast("str", cast("object", version_output.encode("utf-8")))
+            if mutation == "binary-output"
+            else version_output
+        )
+        if mutation == "foreign-receipt":
+            return ForeignCompletion(argv, status, stdout, "")
+        return sp.CompletedProcess(argv, status, stdout, "")
+
+    monkeypatch.setattr(sp, "run", run)
+    if probe == "git-version":
+        observed: object = project._run_git_version(Path("git"))  # pyright: ignore[reportPrivateUsage]
+    elif probe == "git-exec":
+        observed = project._run_git_exec_path(Path("git"))  # pyright: ignore[reportPrivateUsage]
+    elif probe == "rustup-list":
+        observed = project._run_rustup_list(Path("rustup"))  # pyright: ignore[reportPrivateUsage]
+    else:
+        observed = project._run_rustup_which(Path("rustup"), RUST_CHANNEL)  # pyright: ignore[reportPrivateUsage]
+    assert observed == (() if probe == "rustup-list" else None)
+
+
+@pytest.mark.parametrize(
+    "probe", ("git-version", "git-exec", "rustup-list", "rustup-which")
+)
+def test_optional_host_probes_admit_native_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+) -> None:
+    """Real success receipts retain host Git and rustup query output."""
+    tool_root = tmp_path / "toolchain"
+    tool_root.mkdir()
+    results: dict[str, tuple[str, object]] = {
+        "git-version": ("git version 2.55.0\n", "git version 2.55.0"),
+        "git-exec": (f"{tmp_path}\n", tmp_path),
+        "rustup-list": (
+            "1.98.1 (default)\nnightly-2026-07-14\n",
+            ("1.98.1", "nightly-2026-07-14"),
+        ),
+        "rustup-which": (f"{tool_root / 'bin/cargo'}\n", str(tool_root / "bin/cargo")),
+    }
+
+    def run(args: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+        assert kwargs["timeout"] == 15
+        return sp.CompletedProcess(args, 0, results[probe][0], "")
+
+    monkeypatch.setattr(sp, "run", run)
+    if probe == "git-version":
+        observed: object = project._run_git_version(Path("git"))  # pyright: ignore[reportPrivateUsage]
+    elif probe == "git-exec":
+        observed = project._run_git_exec_path(Path("git"))  # pyright: ignore[reportPrivateUsage]
+    elif probe == "rustup-list":
+        observed = project._run_rustup_list(Path("rustup"))  # pyright: ignore[reportPrivateUsage]
+    else:
+        observed = project._run_rustup_which(Path("rustup"), RUST_CHANNEL)  # pyright: ignore[reportPrivateUsage]
+    assert observed == results[probe][1]
+
+
+@pytest.mark.parametrize(
+    "probe", ("git-version", "git-exec", "rustup-list", "rustup-which")
+)
+@pytest.mark.parametrize(
+    "fault", ("os", "foreign-os", "value", "type", "runtime", "timeout")
+)
+def test_optional_host_probes_fail_closed_on_host_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    fault: str,
+) -> None:
+    """Missing or unresponsive optional tooling cannot crash checkout probes."""
+
+    class ForeignHostOSError(PermissionError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign optional-host formatter invoked")
+
+    faults: dict[str, Exception] = {
+        "os": OSError("missing executable"),
+        "foreign-os": ForeignHostOSError("missing executable"),
+        "value": ValueError("bad query"),
+        "type": TypeError("bad runner"),
+        "runtime": RuntimeError("runner crashed"),
+        "timeout": sp.TimeoutExpired(["git"], 15),
+    }
+    observed_fault = faults[fault]
+
+    def failed_run(_args: list[str], **kwargs: object) -> None:
+        assert kwargs["timeout"] == 15
+        raise observed_fault
+
+    monkeypatch.setattr(sp, "run", failed_run)
+    if probe == "git-version":
+        observed: object = project._run_git_version(Path("git"))  # pyright: ignore[reportPrivateUsage]
+    elif probe == "git-exec":
+        observed = project._run_git_exec_path(Path("git"))  # pyright: ignore[reportPrivateUsage]
+    elif probe == "rustup-list":
+        observed = project._run_rustup_list(Path("rustup"))  # pyright: ignore[reportPrivateUsage]
+    else:
+        observed = project._run_rustup_which(Path("rustup"), RUST_CHANNEL)  # pyright: ignore[reportPrivateUsage]
+    assert observed == (() if probe == "rustup-list" else None)

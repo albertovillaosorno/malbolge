@@ -577,34 +577,52 @@ type GitVersionRunner = Callable[[Path], str | None]
 type GitExecPathRunner = Callable[[Path], Path | None]
 
 
-def _run_git_version(git: Path) -> str | None:
-    # jig-ignore-next-line: reviewed subprocess suppression is indivisible
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        [str(git), "--version"],
-        check=False,
-        capture_output=True,
-        shell=False,
-        text=True,
-    )
-    if completed.returncode != 0:
+def _optional_host_command_output(command: list[str]) -> str | None:
+    """Admit bounded native process evidence from an optional Git/Rustup host probe.
+
+    Returns:
+        Captured nonempty native output only for the exact successful argv.
+
+    """
+    try:
+        # jig-ignore-next-line: reviewed subprocess suppression is indivisible
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            command.copy(),
+            check=False,
+            capture_output=True,
+            shell=False,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, ValueError, TypeError, RuntimeError, subprocess.TimeoutExpired):
         return None
-    output = completed.stdout.strip()
-    return output or None
+    if type(completed) is not subprocess.CompletedProcess:
+        return None
+    native = cast("subprocess.CompletedProcess[object]", completed)
+    received = cast("object", native.args)
+    if type(received) is not list:
+        return None
+    arguments = cast("list[object]", received)
+    if (
+        len(arguments) != len(command)
+        or any(type(argument) is not str for argument in arguments)
+        or arguments != command
+        or type(native.returncode) is not int
+        or native.returncode != 0
+        or type(native.stdout) is not str
+        or type(native.stderr) is not str
+    ):
+        return None
+    return native.stdout.strip() or None
+
+
+def _run_git_version(git: Path) -> str | None:
+    return _optional_host_command_output([str(git), "--version"])
 
 
 def _run_git_exec_path(git: Path) -> Path | None:
-    # jig-ignore-next-line: reviewed subprocess suppression is indivisible
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        [str(git), "--exec-path"],
-        check=False,
-        capture_output=True,
-        shell=False,
-        text=True,
-    )
-    if completed.returncode != 0:
-        return None
-    output = completed.stdout.strip()
-    if not output:
+    output = _optional_host_command_output([str(git), "--exec-path"])
+    if output is None:
         return None
     path = Path(output)
     return path if path.is_dir() else None
@@ -992,19 +1010,12 @@ type RustupListRunner = Callable[[Path], tuple[str, ...]]
 
 
 def _run_rustup_list(rustup: Path) -> tuple[str, ...]:
-    # jig-ignore-next-line: reviewed subprocess suppression is indivisible
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        [str(rustup), "toolchain", "list"],
-        check=False,
-        capture_output=True,
-        shell=False,
-        text=True,
-    )
-    if completed.returncode != 0:
+    output = _optional_host_command_output([str(rustup), "toolchain", "list"])
+    if output is None:
         return ()
     return tuple(
         line.split(maxsplit=1)[0]
-        for line in completed.stdout.splitlines()
+        for line in output.splitlines()
         if line.strip()
     )
 
@@ -1024,18 +1035,9 @@ def rustup_channel_is_installed(
 
 
 def _run_rustup_which(rustup: Path, channel: str) -> str | None:
-    # jig-ignore-next-line: reviewed subprocess suppression is indivisible
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        [str(rustup), "which", "--toolchain", channel, "cargo"],
-        check=False,
-        capture_output=True,
-        shell=False,
-        text=True,
-    )
-    if completed.returncode != 0:
-        return None
-    output = completed.stdout.strip()
-    return output or None
+    return _optional_host_command_output([
+        str(rustup), "which", "--toolchain", channel, "cargo"
+    ])
 
 
 def rustup_toolchain_root(

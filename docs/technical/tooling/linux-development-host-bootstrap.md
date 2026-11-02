@@ -83,7 +83,13 @@ alone does not guarantee atomicity against arbitrary concurrent ancestor swaps.
 
 Matching Git and already-installed Rustup channels are imported below
 repository-local versioned roots. Missing Rustup channels are observations only;
-bootstrap does not download them.
+bootstrap does not download them. Optional host Git version/helper-path queries
+and Rustup list/which queries each have a 15-second bound. Only an exact native
+process result with the original executable/argument list, integer successful
+exit and native captured text is accepted. The command passed to the launcher
+is an independent copy, so a mutating wrapper cannot forge matching evidence.
+Nonzero, forged, malformed, unavailable and timed-out host observations remain
+missing rather than authorizing an import or crashing bootstrap.
 
 Jig `doctor` checks the configured repository-local ChkTeX launcher, but
 Jig `check` independently attests the first eligible **external** `chktex`
