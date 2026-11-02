@@ -197,7 +197,10 @@ def _native_exception_detail(error: BaseException) -> str:
         and type(native_args[0]) is str
     ):
         return cast("str", native_args[0])
-    return type(error).__name__
+    name = type.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+        type(error), "__name__"
+    )
+    return cast("str", name)
 
 
 def _mapping(value: object, label: str) -> dict[str, object]:
@@ -899,7 +902,12 @@ def _optional_host_command_output(command: list[str]) -> str | None:
         return None
     if max(len(native.stdout), len(native.stderr)) > MAX_AUTHORITY_BYTES:
         return None
-    return native.stdout.strip() or None
+    output = native.stdout
+    if output.endswith("\r\n"):
+        output = output[:-2]
+    elif output.endswith("\n"):
+        output = output[:-1]
+    return output or None
 
 
 def _run_git_version(git: Path) -> str | None:
@@ -2821,6 +2829,8 @@ def initialize_project(
         Complete checkout initialization report.
 
     """
+    # Pin the selected checkout before any provisioner can change process cwd.
+    root = root.absolute()
     validate_repository(root)
     directories = initialize_local_directories(root)
     layout = (

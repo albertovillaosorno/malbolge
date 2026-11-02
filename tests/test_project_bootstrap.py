@@ -1429,6 +1429,30 @@ def test_native_exception_detail_ignores_foreign_attribute_hooks() -> None:
     )
 
 
+@pytest.mark.parametrize("native_args", [(), ({"not": "text"},)])
+def test_native_exception_detail_bypasses_hostile_metaclass_name_hook(
+    native_args: tuple[object, ...],
+) -> None:
+    """Fallback class names must not dispatch foreign metaclass getters."""
+
+    class HostileErrorMeta(type):
+        def __getattribute__(cls, name: str) -> object:
+            if name == "__name__":
+                raise AssertionError("foreign metaclass name getter was invoked")
+            return super().__getattribute__(name)
+
+    class HostFailure(OSError, metaclass=HostileErrorMeta):
+        @override
+        def __str__(self) -> Never:
+            raise AssertionError("foreign host error formatter was invoked")
+
+    fault = HostFailure(*native_args)
+    assert (
+        project._native_exception_detail(fault)  # pyright: ignore[reportPrivateUsage]
+        == "HostFailure"
+    )
+
+
 def test_initialize_project_provisions_python_at_requested_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1447,6 +1471,37 @@ def test_initialize_project_provisions_python_at_requested_root(
     with pytest.raises(project.InitializationError, match="captured requested Python root"):
         _ = project.initialize_project(tmp_path)
     assert observed == [tmp_path]
+
+
+def test_initialize_project_pins_relative_root_across_callbacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A downloader changing cwd cannot redirect subsequent checkout work."""
+    selected = tmp_path / "selected"
+    other = tmp_path / "other"
+    selected.mkdir()
+    other.mkdir()
+    monkeypatch.chdir(tmp_path)
+    observed: list[Path] = []
+
+    def admit_repository(root: Path) -> None:
+        observed.append(root)
+
+    def change_directory(root: Path) -> tuple[Path, ...]:
+        observed.append(root)
+        monkeypatch.chdir(other)
+        return ()
+
+    def capture_layout(root: Path) -> Never:
+        observed.append(root)
+        raise project.InitializationError("captured canonical checkout root")
+
+    monkeypatch.setattr(project, "validate_repository", admit_repository)
+    monkeypatch.setattr(project, "initialize_local_directories", change_directory)
+    monkeypatch.setattr(python_validation, "validation_layout", capture_layout)
+    with pytest.raises(project.InitializationError, match="captured canonical"):
+        _ = project.initialize_project(Path("selected"), provision_python=False)
+    assert observed == [selected, selected, selected]
 
 
 def test_python_initializer_routes_layout_to_requested_root(
@@ -1513,6 +1568,32 @@ def test_bootstrap_cli_does_not_format_foreign_host_exception(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "error: physical host filesystem failure\n"
+
+
+def test_bootstrap_cli_ignores_hostile_exception_metaclass(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Opaque host faults produce a native class-name diagnostic."""
+
+    class HostileErrorMeta(type):
+        def __getattribute__(cls, name: str) -> object:
+            if name == "__name__":
+                raise AssertionError("foreign metaclass name getter was invoked")
+            return super().__getattribute__(name)
+
+    class HostFailure(OSError, metaclass=HostileErrorMeta):
+        pass
+
+    fault = HostFailure({"opaque": True})
+
+    def failing_initialize(**_kwargs: object) -> Never:
+        raise fault
+
+    monkeypatch.setattr(project, "initialize_project", failing_initialize)
+    assert project.main(["--skip-python"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "error: HostFailure\n"
 
 
 @pytest.mark.parametrize("receipt", [0, False, None, -1, 1_000_000])
@@ -6793,6 +6874,50 @@ def test_optional_host_probe_rejects_oversized_native_output(
     assert (
         project._optional_host_command_output(command) is None  # pyright: ignore[reportPrivateUsage]
     )
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        " git version 2.55.0\n",
+        "git version 2.55.0 \n",
+        "git version 2.55.0\n\n",
+        "git version 2.55.0\r",
+        "git version 2.55.0\n\t",
+    ],
+)
+def test_host_git_probe_rejects_normalized_noncanonical_version_receipt(
+    monkeypatch: pytest.MonkeyPatch, output: str
+) -> None:
+    """Whitespace stripping cannot manufacture a matching pinned banner."""
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 0, stdout=output, stderr="")
+
+    monkeypatch.setattr(sp, "run", run)
+    observed = project._run_git_version(  # pyright: ignore[reportPrivateUsage]
+        Path("git")
+    )
+    assert observed is None or not project.git_version_line_matches(
+        GIT_VERSION, observed
+    )
+
+
+@pytest.mark.parametrize("terminator", ["", "\n", "\r\n"])
+def test_host_git_probe_accepts_canonical_version_line_end(
+    monkeypatch: pytest.MonkeyPatch, terminator: str
+) -> None:
+    """The Git banner accepts only native single-line terminations."""
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(
+            args, 0, stdout=f"git version {GIT_VERSION}{terminator}", stderr=""
+        )
+
+    monkeypatch.setattr(sp, "run", run)
+    assert project._run_git_version(  # pyright: ignore[reportPrivateUsage]
+        Path("git")
+    ) == f"git version {GIT_VERSION}"
 
 
 @pytest.mark.parametrize(
