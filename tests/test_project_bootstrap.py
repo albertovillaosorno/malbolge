@@ -2335,6 +2335,84 @@ def test_rustup_resolver_never_queries_uninstalled_channel(
     assert queried == [RUST_CHANNEL]
 
 
+@pytest.mark.parametrize("receipt", [None, False, 1, [RUST_CHANNEL], "foreign-tuple", "foreign-item"])
+def test_rustup_installed_channels_reject_foreign_inventory(
+    receipt: object,
+) -> None:
+    """Non-native Rustup list receipts cannot authorize a channel query."""
+
+    class ForeignTuple(tuple[str, ...]):
+        pass
+
+    class ForeignStr(str):
+        @override
+        def __eq__(self, _other: object) -> Never:
+            raise AssertionError("foreign Rustup channel hook executed")
+
+    if receipt == "foreign-tuple":
+        inventory: object = ForeignTuple((RUST_CHANNEL,))
+    elif receipt == "foreign-item":
+        inventory = (ForeignStr(RUST_CHANNEL + "-forged"),)
+    else:
+        inventory = receipt
+    assert not project.rustup_channel_is_installed(
+        RUST_CHANNEL, cast("tuple[str, ...]", inventory)
+    )
+
+
+@pytest.mark.parametrize("receipt", [None, False, 1, [RUST_CHANNEL], "foreign-tuple", "foreign-item"])
+def test_rustup_resolver_does_not_probe_foreign_installed_channels(
+    tmp_path: Path, receipt: object
+) -> None:
+    """A forged installed-channel collection never reaches rustup `which`."""
+
+    class ForeignTuple(tuple[str, ...]):
+        pass
+
+    class ForeignStr(str):
+        @override
+        def __eq__(self, _other: object) -> Never:
+            raise AssertionError("foreign Rustup channel hook executed")
+
+    if receipt == "foreign-tuple":
+        inventory: object = ForeignTuple((RUST_CHANNEL,))
+    elif receipt == "foreign-item":
+        inventory = (ForeignStr(RUST_CHANNEL + "-forged"),)
+    else:
+        inventory = receipt
+
+    def unavailable_which(_rustup: Path, _channel: str) -> Never:
+        raise AssertionError("forged Rustup inventory queried channel")
+
+    resolver = project.rustup_toolchain_resolver(
+        tmp_path / "rustup",
+        list_runner=lambda _path: cast("tuple[str, ...]", inventory),
+        which_runner=unavailable_which,
+    )
+    assert resolver(RUST_CHANNEL) is None
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_rustup_resolver_tolerates_host_list_fault(
+    tmp_path: Path, fault_type: type[Exception]
+) -> None:
+    """Optional inventory failures are missing, not fatal bootstrap errors."""
+    fault = fault_type("host rustup inventory failed")
+
+    def unavailable_list(_rustup: Path) -> Never:
+        raise fault
+
+    def forbidden_which(_rustup: Path, _channel: str) -> Never:
+        raise AssertionError("list failure queried Rustup channel")
+
+    resolver = project.rustup_toolchain_resolver(
+        tmp_path / "rustup",
+        list_runner=unavailable_list,
+        which_runner=forbidden_which,
+    )
+    assert resolver(RUST_CHANNEL) is None
+
+
 def test_rustup_installed_channel_match_accepts_native_host_suffix() -> None:
     """Pinned channels match installed host-qualified Rustup identities."""
     installed = (

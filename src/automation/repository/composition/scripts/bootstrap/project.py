@@ -1127,6 +1127,12 @@ def rustup_channel_is_installed(
         True when the exact channel or one host-qualified form is installed.
 
     """
+    if (
+        type(channel) is not str
+        or type(installed) is not tuple
+        or not all(type(item) is str for item in installed)
+    ):
+        return False
     prefix = f"{channel}-"
     return any(item == channel or item.startswith(prefix) for item in installed)
 
@@ -1177,7 +1183,10 @@ def rustup_toolchain_resolver(
         Stable resolver over one local installed-toolchain snapshot.
 
     """
-    installed = list_runner(rustup)
+    try:
+        installed = list_runner(rustup)
+    except (OSError, ValueError, TypeError, RuntimeError):
+        installed = ()
 
     def resolve(channel: str) -> Path | None:
         if not rustup_channel_is_installed(channel, installed):

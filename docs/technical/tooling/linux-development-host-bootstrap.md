@@ -124,7 +124,9 @@ file/directory status; malformed statuses and host filesystem query failures
 remain missing instead of authorizing a native tool import. Optional PATH
 lookups for Git and Rustup likewise require exact native nonempty path strings;
 invalid resolver receipts and host lookup faults report missing rather than
-executing a fabricated path. Rustup's home-Cargo lookup accepts only an exact
+executing a fabricated path. Installed Rustup channel inventories must contain
+only native tuple/string receipts, and failed list probes authorize no channels.
+Rustup's home-Cargo lookup accepts only an exact
 native boolean file-status result. Git and Rust import-completion markers are
 created exclusively through a no-follow native
 file descriptor, so an existing regular or linked marker cannot be overwritten.
