@@ -639,3 +639,100 @@ def test_preflight_help_delivers_complete_native_record(
     assert caught.value.code == 0
     assert outputs and "usage:" in outputs[0]
     assert outputs[-1] == "flush"
+
+
+@pytest.mark.parametrize(
+    "forged_entry", ["outside", "parent-escape", "linked-intermediate"]
+)
+def test_recursive_doom_refuses_unbound_discovery_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forged_entry: str,
+) -> None:
+    """A directory iterator cannot approve sources outside its admitted root."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    native_source = doom / "unit.c"
+    _ = native_source.write_bytes(b"int unit;\n")
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    outside_source = outside_dir / "foreign.c"
+    _ = outside_source.write_bytes(b"int foreign;\n")
+    if forged_entry == "outside":
+        forged = outside_source
+    elif forged_entry == "parent-escape":
+        forged = doom / ".." / "outside" / "foreign.c"
+    else:
+        (doom / "shortcut").symlink_to(outside_dir, target_is_directory=True)
+        forged = doom / "shortcut" / "foreign.c"
+
+    native_rglob = Path.rglob
+
+    def injected_rglob(path: Path, pattern: str) -> object:
+        if path == doom:
+            assert pattern == "*"
+            return iter((native_source, forged))
+        return native_rglob(path, pattern)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "rglob", injected_rglob)
+        with pytest.raises(preflight.ValidationInputError, match="recursive doom"):
+            _ = preflight._validated_files([str(doom)])  # pyright: ignore[reportPrivateUsage]
+
+
+def test_recursive_doom_rejects_duplicate_iterator_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An untrusted repeated walker receipt is not a second physical source."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    source = doom / "unit.c"
+    _ = source.write_bytes(b"int unit;\n")
+    native_rglob = Path.rglob
+
+    def repeated(path: Path, pattern: str) -> object:
+        if path == doom:
+            assert pattern == "*"
+            return iter((source, source))
+        return native_rglob(path, pattern)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "rglob", repeated)
+        with pytest.raises(preflight.ValidationInputError, match="duplicate"):
+            _ = preflight._validated_files([str(doom)])  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("receipt", ["foreign", "host-error", "false-membership"])
+def test_recursive_doom_relative_path_requires_native_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """A forged relative-path result cannot bypass root provenance checks."""
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    source = doom / "unit.c"
+    _ = source.write_bytes(b"int unit;\n")
+    native_relative = Path.relative_to
+    native_membership = Path.is_relative_to
+
+    def forged_relative(path: Path, other: Path, *args: object, **kwargs: object) -> object:
+        if path == source and other == doom:
+            if receipt == "host-error":
+                raise RuntimeError("unexpected relative path host failure")
+            return object()
+        return native_relative(path, other, *args, **kwargs)
+
+    def forged_membership(path: Path, other: Path) -> object:
+        if path == source and other == doom:
+            return "true"
+        return native_membership(path, other)
+
+    with monkeypatch.context() as isolated:
+        if receipt == "false-membership":
+            isolated.setattr(Path, "is_relative_to", forged_membership)
+        else:
+            isolated.setattr(Path, "relative_to", forged_relative)
+        with pytest.raises(preflight.ValidationInputError, match="recursive doom"):
+            _ = preflight._validated_files([str(doom)])  # pyright: ignore[reportPrivateUsage]

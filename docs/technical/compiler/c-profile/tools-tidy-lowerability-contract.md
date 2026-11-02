@@ -70,6 +70,14 @@ tree or silently skipping linked subdirectories. Path existence, directory,
 regular-file, and redirect checks must return exact booleans before determining
 source selection. Resolved source paths retain their native pathlib flavor;
 foreign status or resolution objects cannot authorize sources or pinned tools.
+Each recursive entry must be a strict native descendant of the selected `doom`
+root without `..` components, and its intermediate directories must also be
+free of redirects. Resolved C sources must remain inside the resolved root;
+a foreign directory iterator cannot certify outside C units by returning them
+as if they were found under the selected directory. Repeated directory iterator
+entries are rejected rather than silently collapsed into one source. Native
+relative-path membership and resolution receipts must be exact, and host
+relative-path failures map to typed preflight rejection.
 The delegated manual C dispatcher enforces these same native path receipts for
 explicit sources, `doom` roots, and recursively discovered entries. Foreign
 recursive-entry objects are rejected before querying any path methods.

@@ -221,6 +221,24 @@ def _verified_resolve(path: Path) -> Path:
     return resolved
 
 
+def _verified_relative(path: Path, root: Path) -> Path:
+    """Admit an exact native relative path or fail with a typed input error.
+
+    Returns:
+        The native relative path within the selected recursive root.
+
+    """
+    try:
+        relative = path.relative_to(root)
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        raise ValidationInputError(
+            "invalid recursive doom entry relative-path receipt"
+        ) from error
+    if type(relative) is not type(path):
+        _fail("invalid recursive doom entry relative-path receipt")
+    return relative
+
+
 def _reject_redirect(path: Path, label: str) -> None:
     if _native_status(path.is_symlink(), f"{label} redirect"):
         _fail(f"{label} must not redirect: {path}")
@@ -232,16 +250,38 @@ def _expand_directory(path: Path) -> tuple[Path, ...]:
     if path.name.casefold() != DOOM_DIRECTORY:
         _fail(f"only an explicitly named doom directory is recursive: {path}")
     _reject_redirect(path, "recursive doom directory")
+    physical_root = _verified_resolve(path)
     sources: list[Path] = []
+    seen: set[Path] = set()
     for candidate in path.rglob("*"):
         if type(candidate) is not type(path):
             _fail("invalid recursive doom entry path receipt")
+        if candidate in seen:
+            _fail("duplicate recursive doom iterator entry")
+        seen.add(candidate)
+        if not _native_status(candidate.is_relative_to(path), "recursive doom entry root"):
+            _fail("recursive doom entry escapes selected root")
+        relative = _verified_relative(candidate, path)
+        if not relative.parts or ".." in relative.parts:
+            _fail("recursive doom entry escapes selected root")
+        # The native walker normally emits every ancestor before a leaf, but
+        # only this particular entry is admissible as evidence for its parents.
+        for ancestor in candidate.parents:
+            if ancestor == path:
+                break
+            _reject_redirect(ancestor, "recursive doom ancestor")
         _reject_redirect(candidate, "recursive doom entry")
         if (
             _native_status(candidate.is_file(), "recursive C source")
             and candidate.suffix.casefold() == C_SUFFIX
         ):
-            sources.append(_verified_resolve(candidate))
+            physical_source = _verified_resolve(candidate)
+            if not _native_status(
+                physical_source.is_relative_to(physical_root),
+                "recursive doom resolved root",
+            ):
+                _fail("recursive doom source escapes selected root")
+            sources.append(physical_source)
     files = tuple(sorted(sources))
     if not files:
         _fail(f"doom directory contains no C translation units: {path}")
