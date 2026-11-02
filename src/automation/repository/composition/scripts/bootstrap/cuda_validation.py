@@ -476,6 +476,10 @@ def load_cuda_provision_manifest(
         Validated platform package identities and repository-local toolkit root.
 
     """
+    # Preserve the selected physical spelling and its original cwd anchor,
+    # without resolving away symlinks before manifest path admission.
+    root = root.absolute()
+    manifest_path = manifest_path.absolute()
     document, payload = _read_document(manifest_path, "CUDA provision manifest")
     schema = document.get("schema_version")
     if type(schema) is not int or schema != CUDA_TOOLCHAIN_SCHEMA_VERSION:
@@ -1936,6 +1940,10 @@ def provision_cuda_manifest(
         Repository-local toolkit root after exact publication or reuse.
 
     """
+    # Network and extraction callbacks may change the process working
+    # directory. Never reuse a cwd-relative root for staging or cleanup.
+    root = root.absolute()
+    manifest_path = manifest_path.absolute()
     manifest = load_cuda_provision_manifest(root, manifest_path, platform_id)
     # The final marker shape is fully determined by the admitted manifest.
     # Reject impossible publication before staging or expensive package reads.

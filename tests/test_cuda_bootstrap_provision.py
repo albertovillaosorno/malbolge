@@ -134,6 +134,59 @@ def _download_fixture(payload: bytes) -> Callable[[str], bytes]:
     return download
 
 
+def test_cuda_relative_root_manifest_identity_is_cwd_invariant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Loaded manifest identity cannot move after the caller changes cwd."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    manifest_path = _manifest(root, _payload())
+    with monkeypatch.context() as isolated:
+        isolated.chdir(tmp_path)
+        manifest = cuda_validation.load_cuda_provision_manifest(
+            Path("repository"), Path("repository") / manifest_path.name,
+            LINUX_PLATFORM,
+        )
+        isolated.chdir(other)
+        assert manifest.toolkit_root == root / TOOLKIT_ROOT
+        assert manifest.manifest_path == manifest_path
+
+
+def test_cuda_relative_root_provisions_under_original_cwd_after_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Downloader cwd mutation cannot change the selected CUDA destination."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    payload = _payload()
+    manifest_path = _manifest(root, payload)
+    calls = 0
+
+    with monkeypatch.context() as isolated:
+        isolated.chdir(tmp_path)
+
+        def download(url: str) -> bytes:
+            nonlocal calls
+            calls += 1
+            assert url == cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH
+            isolated.chdir(other)
+            return payload
+
+        toolkit = cuda_validation.provision_cuda_manifest(
+            Path("repository"), Path("repository") / manifest_path.name,
+            LINUX_PLATFORM, downloader=download,
+        )
+    assert calls == 1
+    assert toolkit == root / TOOLKIT_ROOT
+    assert (toolkit / "lib64/libnvrtc.so.13").read_bytes() == NVRTC_BYTES
+    assert not (root / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
+    assert not (other / "repository").exists()
+
+
 def test_manifest_parses_exact_linux_nvrtc_package(tmp_path: Path) -> None:
     """One Linux manifest binds exact package URL, size, hash, and toolkit."""
     payload = _payload()
