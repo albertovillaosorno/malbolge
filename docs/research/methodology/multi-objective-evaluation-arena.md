@@ -1327,6 +1327,10 @@ The original study records remain the result authority.
 - `benchmarks/arena/median_intervals.py` computes exact 95%-or-higher
   symmetric-rank intervals using binomial coverage, with independent reference
   tests for small/large samples, ties, negative costs and sample bounds.
+  Test-only `cc8ce1d75` additionally checks 256, 1024, and 4096 samples
+  against independent `math.comb` tails: the selected rank covers at least
+  95% exactly, while its next inward rank fails that threshold. This is
+  arithmetic evidence only; it cannot establish iid sampling.
   Malformed, noninteger cost inputs yield no inferential interval instead of
   numeric endpoints or leaked sorting errors.
   The analyzer supplies a defensive copy of each original trial-cost sample to

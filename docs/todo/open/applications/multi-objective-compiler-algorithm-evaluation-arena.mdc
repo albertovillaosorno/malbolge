@@ -622,6 +622,9 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   leave the default Pareto ranking unchanged and refuse insufficient or
   over-budget sample counts; independence and physical measurements remain
   unverified. Independent binomial-reference and CLI regressions are retained.
+  `cc8ce1d75` adds three exact `math.comb` rank-boundary cases for 256, 1024,
+  and 4096 samples, checking accepted coverage and the rejected next rank;
+  the final nine-module postcommit integration passed 1897 tests.
   Direct success-rate annotation now also checks that the exact success
   fraction and all five nonnegative outcome counts reconcile with attempts
   and verified totals for every point before attaching any intervals. Nine
