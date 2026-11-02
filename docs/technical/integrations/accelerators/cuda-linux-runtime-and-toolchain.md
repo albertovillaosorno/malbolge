@@ -88,8 +88,11 @@ CUDA provision failures with the original cause retained.
 Source file opens must likewise yield a native nonnegative integer descriptor;
 foreign or boolean handles cannot be wrapped or closed as though host-owned.
 CUDA HTTP reads are bounded by the tracked per-package byte size plus one
-byte, with a 128 MiB absolute fetch ceiling; oversized bodies fail before
-hashing or extraction. Explicit injected downloaders retain their URL API.
+byte, with a 512 MiB absolute fetch ceiling; oversized bodies fail before
+hashing or extraction. The tracked Linux NVRTC package is under 128 MiB,
+while the tracked Windows NVRTC archive is 312,126,196 bytes and requires
+the larger shared ceiling. Each archive still requires its exact manifest
+SHA-256 and size. Explicit injected downloaders retain their URL API.
 Normal bootstrap remains offline with respect to CUDA and reports a missing
 toolkit instead of installing one implicitly. The current Linux package
 surface is the NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed
