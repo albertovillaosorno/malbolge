@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING
 from typing import cast
 
 from algorithms.diff.admission import AdmissionPolicyError
+from algorithms.diff.admission import IdentityTree
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.source_binding import SourceBindingError
@@ -53,7 +54,6 @@ from algorithms.diff.source_binding import validate_threshold_binding
 import pytest
 
 if TYPE_CHECKING:
-    from algorithms.diff.admission import IdentityTree
     from algorithms.diff.source_binding import BoundShare
 
 _SECRET = hashlib.sha256(b"synthetic high-entropy payload key").digest()
@@ -568,6 +568,30 @@ def test_recovery_rejects_windows_drive_prefixed_share_paths() -> None:
             _ = validate_threshold_binding(malformed)
         with pytest.raises(SourceBindingError, match="drive"):
             _ = recover_secret(malformed, cast("IdentityTree", object()))
+
+
+@pytest.mark.parametrize(
+    "reserved_path",
+    ["NUL", "src/CON.txt", "src/COM1", "src/name:stream", "src/end.", "src/end "],
+)
+def test_recovery_rejects_windows_reserved_share_paths(
+    reserved_path: str,
+) -> None:
+    """Distributable shares must use file names portable to Windows hosts."""
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    malformed = replace(
+        binding,
+        shares=(
+            replace(binding.shares[0], source_path=reserved_path),
+            *binding.shares[1:],
+        ),
+    )
+    with pytest.raises(SourceBindingError, match="reserved"):
+        _ = validate_threshold_binding(malformed)
+    with pytest.raises(SourceBindingError, match="reserved"):
+        _ = recover_secret(malformed, cast("IdentityTree", object()))
 
 
 def test_recovery_rejects_malformed_share_metadata() -> None:

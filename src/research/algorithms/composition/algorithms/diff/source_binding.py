@@ -50,6 +50,7 @@ from fractions import Fraction
 import hashlib
 import hmac
 import math
+import ntpath
 from pathlib import PurePosixPath
 from pathlib import PureWindowsPath
 from typing import TYPE_CHECKING
@@ -629,6 +630,9 @@ def _validate_share_path(value: object) -> None:
         message = "source-binding share path must be UTF-8 encodable"
         raise SourceBindingError(message) from error
     _require_no_windows_drive(value)
+    if ntpath.isreserved(value):
+        message = "source-binding share path uses a Windows reserved name"
+        raise SourceBindingError(message)
     path = PurePosixPath(value)
     unsafe = _BACKSLASH in value or value == _DOT or path.is_absolute()
     noncanonical = _PARENT in path.parts or path.as_posix() != value

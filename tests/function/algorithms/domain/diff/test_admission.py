@@ -417,7 +417,19 @@ def test_identity_records_reject_foreign_runtime_types() -> None:
 
 
 @pytest.mark.parametrize(
-    "unsafe_path", ["src/\x00.c", "src/\ud800.c", "C:/drive.c", "C:relative.c"]
+    "unsafe_path",
+    [
+        "src/\x00.c",
+        "src/\ud800.c",
+        "C:/drive.c",
+        "C:relative.c",
+        "NUL",
+        "safe/CON.txt",
+        "safe/COM1",
+        "safe/name:stream",
+        "safe/trailing.",
+        "safe/trailing ",
+    ],
 )
 def test_identity_paths_reject_nonportable_names(unsafe_path: str) -> None:
     """Malformed path metadata must fail before source binding and encoding."""
