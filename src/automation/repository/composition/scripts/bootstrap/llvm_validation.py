@@ -1999,13 +1999,18 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
         if owned_child is None:
             _fail("LLVM import staging child must be physical")
         _stage_linux_llvm(staged, observation, expected_staged_inode=owned_child)
+        if (
+            _native_directory_inode(staging) != owned_staging
+            or _native_directory_inode(staged) != owned_child
+        ):
+            _fail("LLVM import staging identity changed before receipt")
+        staged_receipt = _linux_staging_receipt(staged)
         _admit_linux_import_staging(root, staging)
         if (
             _native_directory_inode(staging) != owned_staging
             or _native_directory_inode(staged) != owned_child
         ):
             _fail("LLVM import staging identity changed before publication")
-        staged_receipt = _linux_staging_receipt(staged)
         _publish_linux_import(
             root, staged, destination, expected_stage_receipt=staged_receipt
         )

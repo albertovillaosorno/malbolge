@@ -1184,6 +1184,44 @@ def test_linux_import_rejects_staged_content_change_during_destination_setup(
     assert not destination.exists()
 
 
+@pytest.mark.parametrize("mutation", ("overwrite-tool", "remove-header", "add-header"))
+def test_linux_import_rejects_content_change_during_staging_recheck(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """A late stage-admission callback cannot establish a new content baseline."""
+    observation = _host_observation(tmp_path)
+    staged = tmp_path / ".temp/llvm-import-linux-x86_64/llvm"
+    destination = tmp_path / llvm_validation.LLVM_ROOT
+    native_admit = llvm_validation._admit_linux_import_staging  # pyright: ignore[reportPrivateUsage]
+    mutated = False
+
+    def mutate_after_stage(root: Path, staging: Path) -> None:
+        nonlocal mutated
+        native_admit(root, staging)
+        if mutated or not (staged / llvm_validation.LLVM_IMPORT_MARKER).exists():
+            return
+        mutated = True
+        if mutation == "overwrite-tool":
+            target = staged / "bin/clang"
+            content = target.read_bytes()
+            _ = target.write_bytes(b"!" + content[1:])
+        elif mutation == "remove-header":
+            (staged / "lib/clang/22/stddef.h").unlink()
+        else:
+            _ = (staged / "lib/clang/22/unadmitted.h").write_bytes(b"foreign")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_admit_linux_import_staging", mutate_after_stage
+        )
+        with pytest.raises(llvm_validation.LlvmImportError, match="staged|stage"):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert mutated
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize("target", ("staging", "child"))
 def test_linux_import_rejects_replaced_staging_without_deleting_foreign_tree(
     tmp_path: Path,
