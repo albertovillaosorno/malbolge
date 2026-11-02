@@ -1675,3 +1675,26 @@ def test_guest_abi_source_accepts_native_translation_unit_ast() -> None:
     parsed = c_abi_source._parse_ast_output(source, Path("input.c"))
     assert parsed["kind"] == "TranslationUnitDecl"
     assert parsed["inner"] == [{}]
+
+
+def test_guest_abi_source_ast_traversal_overflow_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An adversarial Clang AST cannot leak recursion failures as success."""
+    source = tmp_path / "deep.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    node: dict[str, object] = {"kind": "TranslationUnitDecl", "id": "root"}
+    for _ in range(900):
+        node = {"kind": "RecordDecl", "inner": [node]}
+
+    def forged_ast(
+        _source: Path, _clang: Path, _target: str
+    ) -> c_abi_source.JsonObject:
+        return cast("c_abi_source.JsonObject", node)
+
+    monkeypatch.setattr(c_abi_source, "_run_ast", forged_ast)
+    with pytest.raises(
+        c_abi_source.SourceAnalysisError, match="AST nesting"
+    ):
+        _ = c_abi_source.analyze_source(source)

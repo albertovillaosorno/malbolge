@@ -900,12 +900,16 @@ def analyze_source(
         _fail(f"guest C source changed during AST analysis: {resolved}")
     diagnostics: list[AbiDiagnostic] = []
     context = _AnalysisContext(source=resolved, source_bytes=source_bytes)
-    _walk_ast(
-        ast,
-        context,
-        inherited=None,
-        diagnostics=diagnostics,
-    )
+    try:
+        _walk_ast(
+            ast,
+            context,
+            inherited=None,
+            diagnostics=diagnostics,
+        )
+    except RecursionError as error:
+        message = "guest ABI source AST nesting exceeds traversal limit"
+        raise SourceAnalysisError(message) from error
     return _deduplicate(diagnostics)
 
 
