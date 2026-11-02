@@ -1170,6 +1170,81 @@ def test_development_preflight_does_not_format_foreign_host_error(
     assert observed.value.__cause__ is fault
 
 
+@pytest.mark.parametrize("label", ["staging", "destination"])
+def test_development_preflight_rejects_masked_linked_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, label: str
+) -> None:
+    """False native link replies cannot certify a physically linked ancestor."""
+    external = tmp_path / "outside"
+    external.mkdir()
+    linked = tmp_path / "linked"
+    try:
+        _ = linked.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+    native_link = Path.is_symlink
+
+    def masked_link(path: Path) -> bool:
+        return False if path == linked else native_link(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_symlink", masked_link)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="physical directory",
+        ):
+            llvm_development_validation._require_physical_directories(
+                linked, label
+            )
+    assert linked.is_symlink()
+
+
+def test_development_preflight_rejects_foreign_directory_lstat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A duck-typed lstat cannot certify staging directory ownership."""
+    target = tmp_path / "staging"
+    target.mkdir()
+    native_lstat = Path.lstat
+
+    def forged_lstat(path: Path) -> object:
+        if path == target:
+            return SimpleNamespace(st_mode=0o40700, st_dev=1, st_ino=1)
+        return native_lstat(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", forged_lstat)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="physical directory",
+        ):
+            llvm_development_validation._require_physical_directories(
+                target, "staging"
+            )
+
+
+def test_development_preflight_rejects_false_missing_real_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged nonexistent answer cannot bypass physical directory proof."""
+    target = tmp_path / "staging"
+    target.mkdir()
+    native_exists = Path.exists
+
+    def hidden_directory(path: Path) -> bool:
+        return False if path == target else native_exists(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "exists", hidden_directory)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="physical directory",
+        ):
+            llvm_development_validation._require_physical_directories(
+                target, "staging"
+            )
+
+
 @pytest.mark.parametrize("alias_kind", ["symlink", "hardlink"])
 def test_development_marker_staging_rejects_foreign_file_alias(
     tmp_path: Path,

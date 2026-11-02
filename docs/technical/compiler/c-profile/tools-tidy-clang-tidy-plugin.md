@@ -111,8 +111,11 @@ required headers, and their physical ancestors. False-like foreign statuses or
 duck-typed stat objects cannot certify a reusable development root.
 Before staging writes or destination publication, directory and leaf preflights
 also require native boolean symlink, junction, existence, and directory status.
-Malformed status results fail closed; host status exceptions retain their
-original causes as typed provisioning errors without foreign formatter calls.
+Each existing directory and ancestor additionally requires a native physical
+`lstat` directory receipt. Masked links, forged absent-directory decisions, or
+foreign stat objects cannot authorize writes. Malformed status results fail
+closed; host status exceptions retain their original causes as typed provisioning
+errors without foreign formatter calls.
 RPM extraction invokes `rpm2cpio` and CPIO only with separate expected and
 launched command arguments. A successful tool receipt must be a native
 `CompletedProcess` with the exact argument vector, integer exit status, and

@@ -45,7 +45,7 @@ import urllib.request
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from stat import S_ISREG
+from stat import S_ISDIR, S_ISREG
 from typing import TYPE_CHECKING, Final, Never, cast
 
 from scripts.validate import tidy_toolchain
@@ -526,17 +526,38 @@ def _preflight_path_status(
     return observed
 
 
+def _native_directory_status(value: object) -> bool:
+    """Require a native physical directory lstat, never a path predicate alone."""
+    if type(value) is not os.stat_result:
+        return False
+    mode = value.st_mode
+    return type(mode) is int and 0 <= mode <= 0xFFFF_FFFF and S_ISDIR(mode)
+
+
 def _require_physical_directories(path: Path, label: str) -> None:
-    """Admit only real directory ancestry before filesystem mutations."""
+    """Admit only native physical directory ancestry before mutations."""
     for component in (path, *path.parents):
         linked = _preflight_path_status(component, component.is_symlink, label)
         junction = _preflight_path_status(component, component.is_junction, label)
         if linked or junction:
             _fail(f"LLVM development {label} path must not redirect: {component}")
-        if _preflight_path_status(component, component.exists, label) and not (
-            _preflight_path_status(component, component.is_dir, label)
-        ):
+        exists = _preflight_path_status(component, component.exists, label)
+        if exists and not _preflight_path_status(component, component.is_dir, label):
             _fail(f"LLVM {label} path must be a directory: {component}")
+        try:
+            physical = component.lstat()
+        except FileNotFoundError as error:
+            if type(error) is FileNotFoundError and not exists:
+                continue
+            raise LlvmDevelopmentProvisionError(
+                f"LLVM development {label} physical directory status failed: {component}"
+            ) from error
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                f"LLVM development {label} physical directory status failed: {component}"
+            ) from error
+        if not exists or not _native_directory_status(physical):
+            _fail(f"LLVM development {label} requires physical directory: {component}")
 
 
 def _require_development_destination(path: Path) -> None:
