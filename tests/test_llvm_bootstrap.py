@@ -1008,6 +1008,26 @@ def test_inspection_requires_completed_neutral_aliases(tmp_path: Path) -> None:
     assert ready.path == root / "jig-bin/clang.bin"
 
 
+@pytest.mark.parametrize("mutation", ("bytes", "mode", "hardlink"))
+def test_llvm_inspection_rejects_modified_linux_wrapper(
+    tmp_path: Path, mutation: str
+) -> None:
+    """A published marker does not authorize drifted executable launchers."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    wrapper = root / "jig-bin/clang.bin"
+    assert llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+    if mutation == "bytes":
+        _ = wrapper.write_bytes(b"x" * wrapper.stat().st_size)
+    elif mutation == "mode":
+        wrapper.chmod(0o600)
+    else:
+        try:
+            os.link(wrapper, tmp_path / "borrowed-wrapper")
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"hardlinks unavailable: {error}")
+    assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
 @pytest.mark.parametrize(
     "failure",
     [

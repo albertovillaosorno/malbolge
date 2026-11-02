@@ -248,11 +248,14 @@ def _runtime_ready(root: Path, platform_id: str) -> bool:
         return False
     if not _valid_marker(root, platform_id):
         return False
-    aliases = tuple(root / "jig-bin" / f"{tool}.bin" for tool in _TOOL_NAMES)
-    physical_files = (*aliases, *_runtime_files(root, platform_id))
-    return all(_physical_file(path) for path in physical_files) and (
-        platform_id != LINUX_PLATFORM or _physical_directory(root / "lib/clang/22")
-    )
+    if not all(_physical_file(path) for path in _runtime_files(root, platform_id)):
+        return False
+    if platform_id == LINUX_PLATFORM:
+        return _physical_directory(root / "lib/clang/22") and all(
+            _valid_linux_wrapper(root / "jig-bin" / f"{tool}.bin", tool)
+            for tool in _TOOL_NAMES
+        )
+    return all(_physical_file(root / "jig-bin" / f"{tool}.bin") for tool in _TOOL_NAMES)
 
 
 def _matches_open_import_file(
@@ -430,6 +433,33 @@ def _linux_wrapper(tool: str) -> str:
             "",
         )
     )
+
+
+def _valid_linux_wrapper(path: Path, tool: str) -> bool:
+    """Require the exact executable wrapper bytes on one stable local inode."""
+    if not _physical_file(path):
+        return False
+    expected = _linux_wrapper(tool).encode("utf-8")
+    try:
+        admitted = path.lstat()
+        identity = _marker_identity(admitted)
+        if (
+            type(admitted) is not os.stat_result
+            or admitted.st_nlink != 1
+            or S_IMODE(admitted.st_mode) != 0o755
+            or admitted.st_size != len(expected)
+            or not _stable_marker_descriptor(path, identity, expected)
+            or not _physical_file(path)
+        ):
+            return False
+        current = path.lstat()
+        return (
+            type(current) is os.stat_result
+            and S_IMODE(current.st_mode) == 0o755
+            and _marker_identity(current) == identity
+        )
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return False
 
 
 def _owned_exclusive_descriptor(path: Path, descriptor: int) -> bool:
