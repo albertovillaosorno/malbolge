@@ -37,10 +37,10 @@ from __future__ import annotations
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from pathlib import Path
-from typing import TYPE_CHECKING, IO, Self, cast, final, override
+from typing import IO, TYPE_CHECKING, Self, cast, final, override
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 import pytest
 
@@ -144,7 +144,7 @@ def test_math_tex_source_host_faults_are_typed(
 
         class BadReadStream:
             def __init__(self, descriptor: int) -> None:
-                self._stream = original_fdopen(descriptor, "rb")
+                self._stream = original_fdopen(os.dup(descriptor), "rb")
 
             def __enter__(self) -> Self:
                 return self
@@ -1366,7 +1366,7 @@ def test_math_log_cleanup_only_failure_is_typed(
 def test_math_tex_read_rejects_foreign_byte_receipts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload_kind: str
 ) -> None:
-    """A source stream must return real bytes before length/decoder hooks."""
+    """Foreign reader byte hooks never run before native stream admission."""
     source = _snapshot_fixture(tmp_path, monkeypatch)
     original_fdopen = os.fdopen
 
@@ -1376,7 +1376,7 @@ def test_math_tex_read_rejects_foreign_byte_receipts(
 
     class ForeignStream:
         def __init__(self, descriptor: int) -> None:
-            self.stream = original_fdopen(descriptor, "rb")
+            self.stream = original_fdopen(os.dup(descriptor), "rb")
 
         def __enter__(self) -> Self:
             return self
@@ -1398,7 +1398,7 @@ def test_math_tex_read_rejects_foreign_byte_receipts(
     monkeypatch.setattr(
         os, "fdopen", lambda descriptor, _mode: ForeignStream(descriptor)
     )
-    with pytest.raises(validator.MathSpecificationError, match="byte receipt"):
+    with pytest.raises(validator.MathSpecificationError, match="native stream"):
         _ = validator._read_tex(source)
 
 
@@ -2038,8 +2038,15 @@ class _ForgedMathStream:
         return self
 
     def __exit__(self, *_args: object) -> None:
+        self.close()
+
+    def close(self) -> None:
         if self.duplicate_descriptor is not None:
-            os.close(self.duplicate_descriptor)
+            try:
+                os.close(self.duplicate_descriptor)
+            except OSError:
+                pass
+            self.duplicate_descriptor = None
         self.wrapped.close()
 
     def fileno(self) -> object:
@@ -2048,8 +2055,21 @@ class _ForgedMathStream:
         return self.receipt
 
 
+@pytest.fixture
+def borrowed_math_streams() -> Iterator[list[_ForgedMathStream]]:
+    """Close every borrowed test handle after an early reader rejection."""
+    handles: list[_ForgedMathStream] = []
+    yield handles
+    for handle in reversed(handles):
+        handle.close()
+
+
 def _forge_math_fdopen(
-    monkeypatch: pytest.MonkeyPatch, *, receipt: object, duplicate: bool
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    receipt: object,
+    duplicate: bool,
+    borrowed: list[_ForgedMathStream],
 ) -> None:
     native_fdopen = os.fdopen
 
@@ -2058,49 +2078,143 @@ def _forge_math_fdopen(
     ) -> _ForgedMathStream:
         del kwargs
         stream = (
-            native_fdopen(descriptor, "rb")
+            native_fdopen(os.dup(descriptor), "rb")
             if mode == MATH_BINARY_READ_MODE
             else native_fdopen(descriptor, "w", encoding="utf-8", newline="\n")
         )
         other = os.dup(descriptor) if duplicate else None
-        return _ForgedMathStream(stream, receipt, other)
+        wrapper = _ForgedMathStream(stream, receipt, other)
+        borrowed.append(wrapper)
+        return wrapper
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
 
 
+def test_math_source_rejects_forged_same_length_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged buffered stream cannot replace on-disk TeX bytes."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    native = source.read_bytes()
+    substitute = b"x" * len(native)
+    native_fdopen = os.fdopen
+    opened: list[int] = []
+    hooks: list[str] = []
+
+    @final
+    class FakeStream:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor = descriptor
+            opened.append(descriptor)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            os.close(self.descriptor)
+
+        def fileno(self) -> int:
+            hooks.append("fileno")
+            return self.descriptor
+
+        def read(self, _size: int) -> bytes:
+            hooks.append("read")
+            return substitute
+
+    def fake_fdopen(descriptor: int, mode: str) -> object:
+        if mode == "rb":
+            return FakeStream(descriptor)
+        return native_fdopen(descriptor, mode)
+
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    with pytest.raises(validator.MathSpecificationError, match="native stream"):
+        _ = _read_math_snapshot(source)
+    assert not hooks
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
+def test_math_source_rejects_native_stream_of_different_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An exact buffered reader of a duplicate still does not own our fd."""
+    source = _snapshot_fixture(tmp_path, monkeypatch)
+    native_fdopen = os.fdopen
+    native_close = os.close
+    opened: list[int] = []
+    borrowed: list[IO[bytes]] = []
+
+    def fake_fdopen(descriptor: int, mode: str) -> IO[bytes]:
+        opened.append(descriptor)
+        stream = cast("IO[bytes]", native_fdopen(os.dup(descriptor), mode))
+        borrowed.append(stream)
+        return stream
+
+    monkeypatch.setattr(os, "fdopen", fake_fdopen)
+    try:
+        with pytest.raises(validator.MathSpecificationError, match="native stream"):
+            _ = _read_math_snapshot(source)
+        assert len(opened) == 1
+        with pytest.raises(OSError):
+            _ = os.fstat(opened[0])
+    finally:
+        for stream in reversed(borrowed):
+            stream.close()
+        for descriptor in opened:
+            try:
+                native_close(descriptor)
+            except OSError:
+                pass
+
+
 @pytest.mark.parametrize("receipt", [True, -1, object()])
 def test_math_source_stream_rejects_foreign_descriptor_receipt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+    borrowed_math_streams: list[_ForgedMathStream],
 ) -> None:
     """A fake stream cannot request host fstat on an unowned descriptor."""
     source = _snapshot_fixture(tmp_path, monkeypatch)
-    _forge_math_fdopen(monkeypatch, receipt=receipt, duplicate=False)
+    _forge_math_fdopen(
+        monkeypatch, receipt=receipt, duplicate=False, borrowed=borrowed_math_streams
+    )
     with pytest.raises(
-        validator.MathSpecificationError, match="native descriptor"
+        validator.MathSpecificationError, match="native stream"
     ):
         _ = _read_math_snapshot(source)
 
 
 def test_math_source_stream_rejects_swapped_descriptor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    borrowed_math_streams: list[_ForgedMathStream],
 ) -> None:
     """A second fd for the same source still does not own the open stream."""
     source = _snapshot_fixture(tmp_path, monkeypatch)
-    _forge_math_fdopen(monkeypatch, receipt=0, duplicate=True)
+    _forge_math_fdopen(
+        monkeypatch, receipt=0, duplicate=True, borrowed=borrowed_math_streams
+    )
     with pytest.raises(
-        validator.MathSpecificationError, match="stream descriptor"
+        validator.MathSpecificationError, match="native stream"
     ):
         _ = _read_math_snapshot(source)
 
 
 @pytest.mark.parametrize("receipt", [True, -1, object()])
 def test_math_log_stream_rejects_foreign_descriptor_receipt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+    borrowed_math_streams: list[_ForgedMathStream],
 ) -> None:
     """A fake log stream must not write after an unowned fileno receipt."""
     _, log = _math_log_fixture(tmp_path, monkeypatch)
     _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
-    _forge_math_fdopen(monkeypatch, receipt=receipt, duplicate=False)
+    _forge_math_fdopen(
+        monkeypatch, receipt=receipt, duplicate=False, borrowed=borrowed_math_streams
+    )
     with pytest.raises(
         validator.MathSpecificationError, match="native descriptor"
     ):
@@ -2109,12 +2223,16 @@ def test_math_log_stream_rejects_foreign_descriptor_receipt(
 
 
 def test_math_log_stream_rejects_swapped_descriptor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    borrowed_math_streams: list[_ForgedMathStream],
 ) -> None:
     """An unrelated log fileno cannot authorize a successful publication."""
     _, log = _math_log_fixture(tmp_path, monkeypatch)
     _ = log.write_text(OUTSIDE_LOG_TEXT, encoding="utf-8")
-    _forge_math_fdopen(monkeypatch, receipt=0, duplicate=True)
+    _forge_math_fdopen(
+        monkeypatch, receipt=0, duplicate=True, borrowed=borrowed_math_streams
+    )
     with pytest.raises(
         validator.MathSpecificationError, match="stream descriptor"
     ):

@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import re
 import shutil
@@ -296,6 +297,28 @@ def _read_open_tex_bytes(
         except OSError:
             pass
         raise
+    # Fileno equality alone cannot certify bytes from an fdopen replacement.
+    # The native buffered reader and raw FileIO must own the opened descriptor.
+    if type(stream) is not io.BufferedReader:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        _fail("mathematics source requires native stream receipt")
+    raw_stream = stream.raw
+    if (
+        type(raw_stream) is not io.FileIO
+        or type(raw_stream.name) is not int
+        or raw_stream.name != descriptor
+        or raw_stream.fileno() != descriptor
+        or stream.fileno() != descriptor
+    ):
+        # A substituted native stream may own another descriptor: close ours.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        _fail("mathematics source requires native stream receipt")
     with stream:
         stream_descriptor = _owned_stream_descriptor(
             stream.fileno(), descriptor, "mathematics source"

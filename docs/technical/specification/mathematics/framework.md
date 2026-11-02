@@ -75,8 +75,11 @@ Source and temporary build-log file descriptors must be native nonnegative
 integers before stream ownership transfers; an invalid temporary receipt is
 never closed as though it owns a real descriptor. After stream wrapping, the
 stream must report that exact owned descriptor as a native integer before any
-source read or log write. This excludes substituted, duplicated, or nonnative
-stream descriptor receipts; it does not make filesystem replacement atomic.
+source read or log write. The source reader additionally requires an exact
+native buffered reader and raw FileIO bound to that descriptor, preventing
+foreign wrappers from substituting equal-length bytes. Native stream receipts
+are checked before reading any TeX content. These checks do not make filesystem
+replacement atomic.
 After flushing, the log writer reads the staged regular descriptor and checks
 that its physical UTF-8 bytes exactly match the submitted log before an atomic
 replacement; a stream claiming a full write without writing those bytes cannot
