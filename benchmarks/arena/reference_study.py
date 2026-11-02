@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import platform
@@ -311,7 +312,7 @@ def _generate_bundle(
         "version": 1,
         "difficulty": nodes,
         "seed": seed,
-        "workload_sha256": sha256(generated.source).hexdigest(),
+        "workload_sha256": _checked_sha256(generated.source),
     }
     fingerprint = json.loads(generated.manifest)["identity"][
         "target_profile_fingerprint"
@@ -348,7 +349,7 @@ def _successful(
         },
         {
             "path": f"{root.relative_to(_ROOT).as_posix()}/{path}",
-            "sha256": sha256(measured.executable).hexdigest(),
+            "sha256": _checked_sha256(measured.executable),
         },
     )
 
@@ -437,7 +438,7 @@ def _write_attempt(
         environment.failures[row["experiment_manifest"]] = diagnostic
     raw = _raw_csv(row)
     _write_retained_bytes(_ROOT / row["raw_sample"], raw)
-    metadata = _ManifestMeta(environment, fingerprint, sha256(raw).hexdigest())
+    metadata = _ManifestMeta(environment, fingerprint, _checked_sha256(raw))
     _write_retained_text(
         _ROOT / row["experiment_manifest"], _manifest(row, metadata)
     )
@@ -556,6 +557,32 @@ def _native_error_detail(error: Exception) -> str | None:
     return None
 
 
+def _checked_sha256(raw: bytes) -> str:
+    """Verify source, executable, and raw hashes against native byte inputs.
+
+    The source hash provider alone cannot attest identity via an equal-looking
+    string or a forged constant result. This verifies its native completion
+    against a separate stdlib entrypoint, not the provenance of the bytes.
+    """
+    if type(raw) is not bytes:
+        _fail("host-C reference SHA-256 requires exact native binary bytes")
+    try:
+        reported = sha256(raw).hexdigest()
+        reference = hashlib.sha256(raw).hexdigest()
+    except Exception as error:
+        message = "host-C reference SHA-256 dependency failed"
+        raise ReferenceStudyError(message) from error
+    if (
+        type(reported) is not str
+        or type(reference) is not str
+        or len(reported) != analyze.SHA256_HEX_LENGTH
+        or len(reference) != analyze.SHA256_HEX_LENGTH
+        or reported != reference
+    ):
+        _fail("host-C reference SHA-256 receipt differs from source bytes")
+    return reported
+
+
 def _checked_artifact(
     row: dict[str, Any],
     entry: dict[str, str],
@@ -576,7 +603,7 @@ def _checked_artifact(
         raise ReferenceStudyError(message) from error
     if type(actual) is not bytes or len(actual) > MAX_ARTIFACT_BYTES:
         _fail("host-C retained artifact requires exact bounded bytes")
-    if sha256(actual).hexdigest() != entry["sha256"]:
+    if _checked_sha256(actual) != entry["sha256"]:
         _fail("host-C retained executable differs from its SHA-256 claim")
     if len(actual) != row["metrics"]["artifact_bytes"]:
         _fail("host-C retained executable size differs from study metric")

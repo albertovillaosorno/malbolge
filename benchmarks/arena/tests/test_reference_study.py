@@ -2054,6 +2054,131 @@ def test_retained_artifact_rejects_foreign_or_oversized_evidence_receipt(
         reference_study._checked_artifact(row, entry)
 
 
+class _ForeignHashText(str):  # ruff: ignore[subclass-builtin]
+    """A foreign hash result can forge any comparison against a stored digest."""
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    ["recorded", "foreign", "nontext", "wrong-length", "raised"],
+)
+def test_retained_artifact_never_trusts_unverified_hash_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """A substituted hashing provider cannot certify altered retained bytes."""
+    original = b"original native executable"
+    altered = b"tampered native executable"
+    claimed_digest = sha256(original).hexdigest()
+    manifest = ".temp/probe/runs/candidate.toml"
+    document = {
+        "observations": [
+            {
+                "experiment_manifest": manifest,
+                "outcome": analyze.VERIFIED,
+                "metrics": {"artifact_bytes": len(altered)},
+            }
+        ],
+    }
+    artifacts = {
+        manifest: {
+            "path": ".temp/probe/candidates/candidate",
+            "sha256": claimed_digest,
+        },
+    }
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: altered
+    )
+    fault = _UnexpectedHostFault("hashing dependency failed")
+
+    class ForgedHash:
+        def hexdigest(self) -> object:
+            if receipt == "raised":
+                raise fault
+            return {
+                "recorded": claimed_digest,
+                "foreign": _ForeignHashText(claimed_digest),
+                "nontext": 12,
+                "wrong-length": "0",
+            }[receipt]
+
+    monkeypatch.setattr(reference_study, "sha256", lambda _raw: ForgedHash())
+    with pytest.raises(reference_study.ReferenceStudyError, match="SHA-256") as caught:
+        _ = reference_study.check_retained_artifacts(document, artifacts)
+    if receipt == "raised":
+        assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("stage", ["bundle", "binary", "raw"])
+def test_producer_hash_receipts_cannot_mislabel_generated_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Do not retain fake source, executable or raw-file digests as evidence."""
+    monkeypatch.setattr(reference_study, "_ROOT", tmp_path)
+    monkeypatch.setattr(reference_study, "sha256", lambda _raw: _FixedHash())
+    monkeypatch.setattr(reference_study, "_write_retained_bytes", lambda *_args: None)
+    monkeypatch.setattr(reference_study, "_write_retained_text", lambda *_args: None)
+    root = tmp_path / "study"
+    root.mkdir()
+    with pytest.raises(reference_study.ReferenceStudyError, match="SHA-256"):
+        if stage == "bundle":
+            _ = reference_study._generate_bundle(root, FAMILY, 4, seed=7)
+        elif stage == "binary":
+            monkeypatch.setattr(
+                host_c_oracle,
+                "measure_reference",
+                lambda *_args: host_c_oracle.ReferenceMeasurement(10, b"compiled", 1024),
+            )
+            _ = reference_study._successful(
+                root,
+                cast("generate.ChallengeIdentity", object()),
+                "candidate",
+                mode="-O0",
+            )
+        else:
+            monkeypatch.setattr(reference_study, "_raw_csv", lambda _row: b"raw")
+            monkeypatch.setattr(reference_study, "_manifest", lambda *_args: "run")
+            monkeypatch.setattr(
+                reference_study,
+                "_measure",
+                lambda *_args, **_kwargs: (
+                    {
+                        "experiment_manifest": "study/runs/attempt.toml",
+                        "raw_sample": "study/raw/attempt.csv",
+                    },
+                    {},
+                    None,
+                ),
+            )
+            environment = reference_study._Env(
+                root,
+                reference_study.StudyPlan(FAMILY, (4,), 7, 1),
+                "0" * 40,
+                "host",
+                "toolchain",
+                "study",
+            )
+            _ = reference_study._write_attempt(
+                environment,
+                ({"family": FAMILY, "difficulty": 4}, "0" * 64),
+                trial=0,
+                arm=(reference_study.BASELINE, "-O0"),
+            )
+
+
+class _FixedHash:
+    """Attacker-controlled hex output always claims the all-zero source."""
+
+    def hexdigest(self) -> str:
+        return "0" * analyze.SHA256_HEX_LENGTH
+
+
 def test_retained_artifact_native_bounded_reader_receipt_remains_admissible(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
