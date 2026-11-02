@@ -3944,3 +3944,90 @@ def test_cuda_nonlinux_posix_publication_preserves_exact_staged_tree(
         )
     assert (target / "owned.bin").read_bytes() == b"trusted"
     assert not staged.exists()
+
+
+@pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
+def test_cuda_rejects_oversized_declared_archive_member_before_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    archive_format: str,
+) -> None:
+    """An archive member cannot demand unbounded decompression or allocation."""
+    is_zip = archive_format == _ZIP_FORMAT
+    payload = _zip_payload() if is_zip else _payload()
+    manifest = _manifest(
+        tmp_path, payload,
+        {"relative_path": _ZIP_PACKAGE_PATH if is_zip else PACKAGE_PATH},
+    )
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    if is_zip:
+        original = zipfile.ZipFile.infolist
+
+        def oversized_zip(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+            members = original(archive)
+            members[0].file_size = 1024 * 1024 * 1024
+            return members
+
+        monkeypatch.setattr(zipfile.ZipFile, "infolist", oversized_zip)
+    else:
+        original_tar = tarfile.TarFile.getmembers
+
+        def oversized_tar(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
+            members = original_tar(archive)
+            members[0].size = 1024 * 1024 * 1024
+            return members
+
+        monkeypatch.setattr(tarfile.TarFile, "getmembers", oversized_tar)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="member byte limit"):
+        cuda_validation.extract_cuda_package(
+            payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+        )
+    assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()
+
+
+@pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
+def test_cuda_rejects_excessive_combined_archive_expansion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, archive_format: str
+) -> None:
+    """Many individually bounded entries cannot exhaust staging storage."""
+    is_zip = archive_format == _ZIP_FORMAT
+    payload = _zip_payload() if is_zip else _payload()
+    manifest = _manifest(
+        tmp_path, payload,
+        {"relative_path": _ZIP_PACKAGE_PATH if is_zip else PACKAGE_PATH},
+    )
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    oversized_size = 128 * 1024 * 1024
+    if is_zip:
+        original_zip = zipfile.ZipFile.infolist
+
+        def many_zip(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+            members = original_zip(archive)
+            for i in range(9):
+                extra = zipfile.ZipInfo(f"{ARCHIVE_ROOT}/lib64/fake{i}.so")
+                extra.file_size = oversized_size
+                members.append(extra)
+            return members
+
+        monkeypatch.setattr(zipfile.ZipFile, "infolist", many_zip)
+    else:
+        original_tar = tarfile.TarFile.getmembers
+
+        def many_tar(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
+            members = original_tar(archive)
+            for i in range(9):
+                extra = tarfile.TarInfo(f"{ARCHIVE_ROOT}/lib64/fake{i}.so")
+                extra.size = oversized_size
+                members.append(extra)
+            return members
+
+        monkeypatch.setattr(tarfile.TarFile, "getmembers", many_tar)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="expanded byte limit"):
+        cuda_validation.extract_cuda_package(
+            payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+        )
+    assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()

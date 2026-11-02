@@ -57,7 +57,7 @@ from typing import TYPE_CHECKING, Final, Never, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import BinaryIO
+    from typing import IO, BinaryIO
 
 NVIDIA_CUDA_REDIST_BASE: Final = (
     "https://developer.download.nvidia.com/compute/cuda/redist/"
@@ -68,6 +68,8 @@ CUDA_TOOLCHAIN_SCHEMA_VERSION: Final = 1
 _MAX_MANIFEST_BYTES: Final = 1024 * 1024
 _MAX_MARKER_BYTES: Final = 16 * 1024
 _MAX_CUDA_DOWNLOAD_BYTES: Final = 128 * 1024 * 1024
+_MAX_CUDA_EXTRACTED_BYTES: Final = 1024 * 1024 * 1024
+_MAX_CUDA_ARCHIVE_MEMBERS: Final = 100_000
 SHA256_HEX_LENGTH: Final = 64
 LOWER_HEX_DIGITS: Final = frozenset("0123456789abcdef")
 PARENT_SEGMENT: Final = ".."
@@ -501,6 +503,49 @@ def _common_archive_root(names: tuple[str, ...]) -> str:
     return roots.pop()
 
 
+def _validate_cuda_archive_expansion(sizes: tuple[int, ...]) -> None:
+    """Bound archive-member count and expanded bytes before any file extraction."""
+    if len(sizes) > _MAX_CUDA_ARCHIVE_MEMBERS:
+        _fail("CUDA archive member count exceeds limit")
+    total = 0
+    for size in sizes:
+        if type(size) is not int or size < 0 or size > _MAX_CUDA_DOWNLOAD_BYTES:
+            _fail("CUDA archive member byte limit exceeded")
+        total += size
+        if total > _MAX_CUDA_EXTRACTED_BYTES:
+            _fail("CUDA archive expanded byte limit exceeded")
+
+
+def _read_bounded_archive_member(stream: IO[bytes], size: int) -> bytes:
+    """Reject a decoded member larger than its declared, bounded byte count."""
+    try:
+        data = stream.read(size + 1)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise CudaProvisionError("CUDA archive member read failed") from error
+    if type(data) is not bytes or len(data) != size:
+        _fail("CUDA archive member length mismatch")
+    return data
+
+
+def _tar_payload_size(archive: tarfile.TarFile, member: tarfile.TarInfo) -> int:
+    """Resolve hard-link chains to the real contained file's declared size."""
+    current = member
+    seen: set[str] = set()
+    while current.islnk():
+        if current.name in seen:
+            _fail("CUDA archive contains a cyclic hard link")
+        seen.add(current.name)
+        try:
+            current = archive.getmember(current.linkname)
+        except KeyError as error:
+            raise CudaProvisionError("CUDA archive hard link target missing") from error
+    if current.isreg():
+        return current.size
+    if member.islnk():
+        _fail("CUDA archive hard link does not target a regular member")
+    return 0
+
+
 def _tar_members(
     archive: tarfile.TarFile,
 ) -> tuple[str, tuple[tarfile.TarInfo, ...]]:
@@ -515,6 +560,9 @@ def _tar_members(
             target = _archive_member_path(member.linkname)
             if target.parts[0] != root_name:
                 _fail("CUDA archive hard link outside package root")
+    _validate_cuda_archive_expansion(
+        tuple(_tar_payload_size(archive, member) for member in members)
+    )
     return root_name, members
 
 
@@ -594,7 +642,10 @@ def _write_tar_member(
     if source is None:
         _fail(f"CUDA archive member is not readable: {member.name}")
     with source:
-        _write_verified_bytes(destination, source.read())
+        _write_verified_bytes(
+            destination,
+            _read_bounded_archive_member(source, _tar_payload_size(archive, member)),
+        )
 
 
 def _extract_tar_archive(archive: tarfile.TarFile, staging: Path) -> Path:
@@ -621,6 +672,9 @@ def _safe_tar_extract(data: bytes, staging: Path) -> Path:
 
 def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
     infos = tuple(archive.infolist())
+    _validate_cuda_archive_expansion(
+        tuple(info.file_size if not info.is_dir() else 0 for info in infos)
+    )
     root_name = _common_archive_root(tuple(info.filename for info in infos))
     for info in infos:
         relative = _archive_member_path(info.filename)
@@ -629,7 +683,10 @@ def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
             _ensure_toolkit_destination_parent(destination)
             continue
         _ensure_toolkit_destination_parent(destination.parent)
-        _write_verified_bytes(destination, archive.read(info))
+        with archive.open(info) as source:
+            _write_verified_bytes(
+                destination, _read_bounded_archive_member(source, info.file_size)
+            )
     extracted = staging / root_name
     if not extracted.is_dir():
         _fail("CUDA archive package root is not a directory")
