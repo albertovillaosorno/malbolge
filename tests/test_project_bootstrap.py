@@ -44,7 +44,7 @@ import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import tempfile
 from typing import TYPE_CHECKING
-from typing import cast
+from typing import cast, override
 
 import pytest
 from scripts.bootstrap import llvm_development_validation
@@ -3027,3 +3027,119 @@ def test_python_jig_launcher_publish_replaces_regular_files(
             target.stat().st_mode & stat.S_IXUSR
             for target in (layout.python_launcher, layout.pytest_launcher)
         )
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    (
+        "wrong-argv",
+        "tuple-argv",
+        "foreign-argv",
+        "foreign-token",
+        "boolean-exit",
+        "binary-stdout",
+        "foreign-stderr",
+        "foreign-completion",
+        "mutated-argv",
+    ),
+)
+def test_python_bootstrap_rejects_foreign_command_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """A forged or mutated uv version probe must not certify a bootstrap."""
+
+    class ForeignArg(str):
+        @override
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign command equality hook executed")
+
+    class ForeignArgv(list[str]):
+        @override
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign argv equality hook executed")
+
+    class ForeignCompletion(sp.CompletedProcess[str]):
+        pass
+
+    command = ["uv", "--version"]
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        if receipt == "mutated-argv":
+            args[0] = "foreign-uv"
+        received: object = {
+            "wrong-argv": ["foreign-uv", "--version"],
+            "tuple-argv": tuple(args),
+            "foreign-argv": ForeignArgv(args),
+            "foreign-token": [ForeignArg(args[0]), *args[1:]],
+        }.get(receipt, args)
+        exit_code = cast("int", False) if receipt == "boolean-exit" else 0
+        stdout = (
+            cast("str", cast("object", b"uv 0.12.20"))
+            if receipt == "binary-stdout"
+            else "uv 0.12.20\n"
+        )
+        stderr = (
+            cast("str", cast("object", True)) if receipt == "foreign-stderr" else ""
+        )
+        if receipt == "foreign-completion":
+            return ForeignCompletion(
+                cast("list[str]", received), exit_code, stdout, stderr
+            )
+        return sp.CompletedProcess(
+            cast("list[str]", received), exit_code, stdout, stderr
+        )
+
+    monkeypatch.setattr(sp, "run", run)
+    with pytest.raises(python_validation.ProvisionError, match="process receipt"):
+        _ = python_validation._run(command)  # pyright: ignore[reportPrivateUsage]
+    assert command == ["uv", "--version"]
+
+
+def test_python_bootstrap_accepts_native_command_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native exact uv response retains its expected version output."""
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 0, stdout="uv 0.12.20\n", stderr="")
+
+    monkeypatch.setattr(sp, "run", run)
+    actual = python_validation._run(["uv", "--version"])  # pyright: ignore[reportPrivateUsage]
+    assert actual == "uv 0.12.20"
+
+
+@pytest.mark.parametrize(
+    "kind", ("os", "foreign-os", "value", "type", "runtime", "nonzero")
+)
+def test_python_bootstrap_converts_launch_failures_to_typed_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Bootstrap process host failures retain causes without foreign hooks."""
+
+    class ForeignOSError(PermissionError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign bootstrap exception formatter executed")
+
+    errors: dict[str, Exception] = {
+        "os": OSError("launch failed"),
+        "foreign-os": ForeignOSError("injected"),
+        "value": ValueError("invalid arguments"),
+        "type": TypeError("invalid launcher"),
+        "runtime": RuntimeError("runner error"),
+        "nonzero": sp.CalledProcessError(7, ["uv", "--version"]),
+    }
+    error = errors[kind]
+
+    def fail(_args: list[str], **_kwargs: object) -> None:
+        raise error
+
+    monkeypatch.setattr(sp, "run", fail)
+    with pytest.raises(
+        python_validation.ProvisionError, match="bootstrap command"
+    ) as caught:
+        _ = python_validation._run(["uv", "--version"])  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is error
+    assert ("ForeignOSError" in str(caught.value)) == (kind == "foreign-os")

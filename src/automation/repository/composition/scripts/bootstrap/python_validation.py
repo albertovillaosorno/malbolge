@@ -763,15 +763,51 @@ def _check_host_python() -> None:
 
 
 def _run(command: list[str]) -> str:
-    # jig-ignore-next-line: indivisible reviewed identifier
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed repository-local argv.
-        command,
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        shell=False,
-        text=True,
-    )
+    """Return exact native output from one authenticated bootstrap command."""
+    try:
+        # jig-ignore-next-line: indivisible reviewed identifier
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed repository-local argv.
+            command.copy(),
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            shell=False,
+            text=True,
+        )
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as error:
+        native_types = {
+            OSError,
+            FileNotFoundError,
+            PermissionError,
+            ValueError,
+            TypeError,
+            RuntimeError,
+        }
+        detail = str(error) if type(error) in native_types else type(error).__name__
+        if (
+            type(error) is subprocess.CalledProcessError
+            and type(error.returncode) is int
+        ):
+            detail = f"exit status {error.returncode}"
+        raise ProvisionError(f"Python bootstrap command failed: {detail}") from error
+    if (
+        type(completed) is not subprocess.CompletedProcess
+        or type(completed.args) is not list
+        or len(completed.args) != len(command)
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != command
+        or type(completed.returncode) is not int
+        or completed.returncode != 0
+        or type(completed.stdout) is not str
+        or type(completed.stderr) is not str
+    ):
+        _fail("invalid Python bootstrap process receipt")
     return completed.stdout.strip()
 
 
