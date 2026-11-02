@@ -29,6 +29,7 @@
 from __future__ import annotations
 
 import os
+import venv
 from dataclasses import replace
 from pathlib import Path
 from typing import Never
@@ -37,6 +38,11 @@ import pytest
 from scripts.bootstrap import python_validation
 
 PAYLOAD = b"external-native-python"
+
+
+def _local_uv(root: Path) -> Path:
+    """Return one deterministic checkout-local fake uv executable."""
+    return root / "uv"
 
 
 def _prepare_provision_stub(
@@ -110,7 +116,7 @@ def test_python_provision_anchors_uv_and_pip_after_cwd_change(
     monkeypatch.setattr(python_validation, "_run", collect)
     monkeypatch.setattr(python_validation, "write_launchers", no_launchers)
     monkeypatch.setattr(python_validation, "write_jig_tool_aliases", no_aliases)
-    python_validation._provision(layout, root=Path("checkout"))
+    python_validation._provision(layout, root=Path("checkout"))  # pyright: ignore[reportPrivateUsage]
     assert invoked_roots == [checkout]
     assert len(commands) == 2
     assert all(command[0] == str(checkout / "uv") for command in commands)
@@ -193,7 +199,7 @@ def test_python_provision_rechecks_interpreter_after_uv_callback(
     monkeypatch.setattr(python_validation, "ensure_uv", mutate_during_uv)
     monkeypatch.setattr(python_validation, "_run", reject_pip)
     with pytest.raises(python_validation.ProvisionError, match="interpreter|redirect"):
-        python_validation._provision(layout, root=root)
+        python_validation._provision(layout, root=root)  # pyright: ignore[reportPrivateUsage]
     assert pip_commands == []
     assert external_python.read_bytes() == PAYLOAD
 
@@ -225,10 +231,10 @@ def test_python_provision_rechecks_interpreter_between_pip_commands(
             _ = layout.python.write_bytes(PAYLOAD)
         return ""
 
-    monkeypatch.setattr(python_validation, "ensure_uv", lambda _root: root / "uv")
+    monkeypatch.setattr(python_validation, "ensure_uv", _local_uv)
     monkeypatch.setattr(python_validation, "_run", sync_then_substitute)
     with pytest.raises(python_validation.ProvisionError, match="interpreter|redirect"):
-        python_validation._provision(layout, root=root)
+        python_validation._provision(layout, root=root)  # pyright: ignore[reportPrivateUsage]
     assert len(pip_commands) == 1
     assert pip_commands[0][1:3] == ["pip", "sync"]
     assert outside.read_bytes() == PAYLOAD
@@ -259,11 +265,11 @@ def test_python_provision_rejects_builder_introduced_link_before_pip(
         reached_pip = True
         raise AssertionError("redirected builder Python reached pip")
 
-    monkeypatch.setattr(python_validation, "ensure_uv", lambda _root: root / "uv")
-    monkeypatch.setattr(python_validation.venv, "EnvBuilder", LinkedBuilder)
+    monkeypatch.setattr(python_validation, "ensure_uv", _local_uv)
+    monkeypatch.setattr(venv, "EnvBuilder", LinkedBuilder)
     monkeypatch.setattr(python_validation, "_run", forbidden_pip)
     with pytest.raises(python_validation.ProvisionError, match="redirect"):
-        python_validation._provision(layout, root=root)
+        python_validation._provision(layout, root=root)  # pyright: ignore[reportPrivateUsage]
     assert not reached_pip
     assert foreign.read_bytes() == PAYLOAD
 
@@ -299,11 +305,11 @@ def test_python_provision_rechecks_after_pip_uninstall_before_launchers(
         launched = True
         raise AssertionError("uninstall mutation reached launcher publication")
 
-    monkeypatch.setattr(python_validation, "ensure_uv", lambda _root: root / "uv")
+    monkeypatch.setattr(python_validation, "ensure_uv", _local_uv)
     monkeypatch.setattr(python_validation, "_run", change_after_uninstall)
     monkeypatch.setattr(python_validation, "write_launchers", forbidden_launchers)
     with pytest.raises(python_validation.ProvisionError, match="redirect"):
-        python_validation._provision(layout, root=root)
+        python_validation._provision(layout, root=root)  # pyright: ignore[reportPrivateUsage]
     assert [command[1:3] for command in commands] == [
         ["pip", "sync"], ["pip", "uninstall"]
     ]
@@ -338,9 +344,9 @@ def test_python_provision_rejects_late_installed_interpreter_before_builder(
             raise AssertionError("venv builder reached late interpreter")
 
     monkeypatch.setattr(python_validation, "ensure_uv", late_link)
-    monkeypatch.setattr(python_validation.venv, "EnvBuilder", ForbiddenBuilder)
+    monkeypatch.setattr(venv, "EnvBuilder", ForbiddenBuilder)
     with pytest.raises(python_validation.ProvisionError, match="interpreter|redirect"):
-        python_validation._provision(layout, root=root)
+        python_validation._provision(layout, root=root)  # pyright: ignore[reportPrivateUsage]
     assert not builder_created
     assert foreign.read_bytes() == PAYLOAD
 
@@ -463,7 +469,7 @@ def test_python_provision_accepts_missing_venv_before_creation(
             created.append(environment)
             environment.mkdir(parents=True)
 
-    monkeypatch.setattr(python_validation.venv, "EnvBuilder", FakeBuilder)
+    monkeypatch.setattr(venv, "EnvBuilder", FakeBuilder)
     with pytest.raises(AssertionError, match="uv pip reached unadmitted"):
         python_validation._provision(layout, root=root)
     assert created == [layout.environment]
