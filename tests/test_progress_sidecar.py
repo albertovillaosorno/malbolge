@@ -520,6 +520,33 @@ class SwappingReadStream:
 
 
 @dataclass(slots=True)
+class CloseChangingReadStream:
+    """Read the original inode, then change its pathname when closing."""
+
+    descriptor: int
+    destination: Path
+    replacement: Path
+    replace_path: bool
+
+    def read(self, size: int = -1) -> bytes:
+        """Return the bytes seen by the pinned reader descriptor.
+
+        Returns:
+            Exact raw bytes from the original inode.
+
+        """
+        return os.read(self.descriptor, size)
+
+    def close(self) -> None:
+        """Close first, then replace or unlink the formerly admitted path."""
+        os.close(self.descriptor)
+        if self.replace_path:
+            _ = self.replacement.replace(self.destination)
+        else:
+            self.destination.unlink()
+
+
+@dataclass(slots=True)
 class ShortChunkReadStream:
     """Read an actual regular descriptor in small chunks or inject early EOF."""
 
@@ -3523,6 +3550,118 @@ def test_checkpoint_read_rejects_in_place_modified_inode(
         "checkpoint payload",
         monkeypatch=monkeypatch,
     )
+
+
+@pytest.mark.parametrize(
+    "member", [POINTER_READER_MEMBER, CHECKPOINT_READER_MEMBER]
+)
+def test_durable_reader_rejects_close_callback_rewriting_same_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+) -> None:
+    """A close callback cannot certify stale data after rewriting the inode."""
+    checkpoint = b"durable-close-rewrite"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    destination = Path(
+        sidecar.progress_path
+        if member == POINTER_READER_MEMBER
+        else sidecar.checkpoint_path or ""
+    )
+    opened: list[int] = []
+    rewritten: list[bool] = []
+
+    @final
+    class RewriteOnClose:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor = descriptor
+
+        def read(self, size: int = -1) -> bytes:
+            return os.read(self.descriptor, size)
+
+        def close(self) -> None:
+            os.close(self.descriptor)
+            before = destination.stat()
+            source = destination.read_bytes()
+            _ = destination.write_bytes(b"X" * len(source))
+            os.utime(
+                destination,
+                ns=(before.st_atime_ns, before.st_mtime_ns),
+            )
+            after = destination.stat()
+            assert after.st_ino == before.st_ino
+            assert after.st_size == before.st_size
+            assert after.st_mtime_ns == before.st_mtime_ns
+            rewritten.append(True)
+
+    def reader(descriptor: int, mode: str, *, closefd: bool) -> RewriteOnClose:
+        assert (mode, closefd) == ("rb", True)
+        opened.append(descriptor)
+        return RewriteOnClose(descriptor)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", reader)
+        with pytest.raises(ERROR, match="contents changed after stream close"):
+            _ = _read_selected_progress_member(sidecar, member)
+    assert rewritten == [True]
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
+
+
+@pytest.mark.parametrize(
+    "member", [POINTER_READER_MEMBER, CHECKPOINT_READER_MEMBER]
+)
+@pytest.mark.parametrize(
+    "case",
+    [
+        (True, "contents changed after stream close"),
+        (False, "path unavailable after stream close"),
+    ],
+    ids=["replace", "unlink"],
+)
+def test_durable_reader_rejects_close_callback_path_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    member: str,
+    *,
+    case: tuple[bool, str],
+) -> None:
+    """A close callback cannot certify a replaced or detached read path."""
+    checkpoint = b"durable-close-identity"
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = progress.write_checkpoint_generation(sidecar, checkpoint)
+    destination = Path(
+        sidecar.progress_path
+        if member == POINTER_READER_MEMBER
+        else sidecar.checkpoint_path or ""
+    )
+    replacement = tmp_path / "read-close-replacement"
+    _ = replacement.write_bytes(destination.read_bytes())
+    replace_path, expected = case
+    opened: list[int] = []
+
+    def reader(
+        descriptor: int, mode: str, *, closefd: bool
+    ) -> CloseChangingReadStream:
+        assert (mode, closefd) == ("rb", True)
+        opened.append(descriptor)
+        return CloseChangingReadStream(
+            descriptor, destination, replacement, replace_path
+        )
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "FileIO", reader)
+        with pytest.raises(ERROR, match=expected):
+            _ = _read_selected_progress_member(sidecar, member)
+    assert len(opened) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        _ = os.fstat(opened[0])
 
 
 def test_progress_read_closes_descriptor_after_type_rejection(

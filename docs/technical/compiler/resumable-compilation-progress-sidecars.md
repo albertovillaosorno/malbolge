@@ -262,8 +262,13 @@ compact byte buffer instead of retaining a separate Python list entry per read.
 The total validated opaque state is still returned in RAM; this is a per-read
 allocation bound, not a total-memory cap or streaming checkpoint codec.
 
-These are bounded admission checks, not a promise of immunity to subsequent
-filesystem mutation after the stream closes. The immutable checkpoint and
+After raw-stream close, readers reattest the named regular inode's identity,
+length, and nanosecond modification/change times against the pre-read receipt.
+This rejects an in-place rewrite triggered by `FileIO.close()` even when the
+file retains its length and original modification time. A change reported only
+after close fails closed for progress pointers and checkpoint payloads alike.
+These are bounded admission checks, not a promise of immunity to filesystem
+mutation after the final post-close observation. The immutable checkpoint and
 partial-generation readers additionally require a regular single-hard-link
 inode at the canonical generation pathname before and after the bounded raw
 read, with the same device/inode identity. Foreign aliases present at entry or

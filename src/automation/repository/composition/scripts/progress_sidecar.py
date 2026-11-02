@@ -1973,6 +1973,36 @@ def _require_complete_read(payload: bytes, expected: int, context: str) -> None:
         _fail(f"{context} invalid raw stream read length")
 
 
+def _verify_closed_read_path(
+    path: Path, context: str, initial: os.stat_result
+) -> None:
+    """Reattest the named inode after its raw stream closes."""
+    _reject_path_redirect(path, context)
+    try:
+        observed = _admit_native_stat(path.stat(follow_symlinks=False), context)
+    except OSError as error:
+        detail = _host_error_detail(error)
+        _fail_with_source(
+            f"{context} path unavailable after stream close: {detail}", error
+        )
+    expected = (
+        initial.st_dev,
+        initial.st_ino,
+        initial.st_size,
+        initial.st_mtime_ns,
+        initial.st_ctime_ns,
+    )
+    current = (
+        observed.st_dev,
+        observed.st_ino,
+        observed.st_size,
+        observed.st_mtime_ns,
+        observed.st_ctime_ns,
+    )
+    if not stat.S_ISREG(observed.st_mode) or current != expected:
+        _fail(f"{context} contents changed after stream close")
+
+
 def _read_stream_preserving_primary(
     stream: FileIO,
     *,
@@ -2004,7 +2034,6 @@ def _read_stream_preserving_primary(
             or initial.st_ctime_ns != final.st_ctime_ns
         ):
             _fail(f"{context} contents changed during file read")
-        return payload
     finally:
         primary_error = sys.exception()
         try:
@@ -2018,6 +2047,9 @@ def _read_stream_preserving_primary(
                 )
             else:
                 raise
+    # Close callbacks may rewrite a file after the last descriptor inspection.
+    _verify_closed_read_path(path, context, initial)
+    return payload
 
 
 def read(path: Path) -> ProgressSidecar:
