@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cache
 import json
+from json import JSONDecoder as _SOURCE_JSON_DECODER
 import os
 from pathlib import Path
 from stat import S_ISREG
@@ -480,15 +481,80 @@ def resolve_cuda_ticket_admission_profile(
 
 
 def _json_document(text: str) -> dict[str, object]:
+    """Accept only profile objects corroborated against exact source text.
+
+    Returns:
+        A source-owned parsed JSON object, independent of a public decoder.
+
+    """
     try:
-        parsed = cast(
+        # Bind the actual JSONDecoder class at import time, not json.loads:
+        # json.loads resolves the mutable public json.JSONDecoder class.
+        source_document = cast(
+            "object",
+            _SOURCE_JSON_DECODER(
+                object_pairs_hook=_reject_duplicate_pairs
+            ).decode(text),
+        )
+        provider_document = cast(
             "object",
             json.loads(text, object_pairs_hook=_reject_duplicate_pairs),
         )
-    except json.JSONDecodeError as error:
+    except TicketAdmissionError:
+        raise
+    except (json.JSONDecodeError, RecursionError) as error:
         message = f"invalid CUDA ticket admission profile JSON: {error}"
         raise TicketAdmissionError(message) from error
-    return _expect_mapping(parsed, "profile document")
+    except Exception as error:  # noqa: BLE001 - provider errors stay typed
+        message = (
+            "invalid CUDA ticket admission profile JSON decoder: "
+            + type(error).__name__
+        )
+        raise TicketAdmissionError(message) from error
+    if not _native_json_equal(provider_document, source_document):
+        message = "CUDA ticket admission profile parser disagrees with source JSON"
+        raise TicketAdmissionError(message)
+    return _expect_mapping(source_document, "profile document")
+
+
+def _native_json_equal(provider: object, source: object) -> bool:
+    """Check exact native JSON trees without executing foreign container hooks.
+
+    Returns:
+        Whether nested provider values are identical to the source parse.
+
+    """
+    pending: list[tuple[object, object]] = [(provider, source)]
+    while pending:
+        found, expected = pending.pop()
+        if type(found) is not type(expected):
+            return False
+        if type(expected) is dict:
+            found_map = cast("dict[object, object]", found)
+            source_map = cast("dict[str, object]", expected)
+            if len(found_map) != len(source_map):
+                return False
+            if any(type(key) is not str for key in found_map):
+                return False
+            for key, value in source_map.items():
+                if key not in found_map:
+                    return False
+                pending.append((found_map[key], value))
+        elif type(expected) is list:
+            found_list = cast("list[object]", found)
+            source_list = cast("list[object]", expected)
+            if len(found_list) != len(source_list):
+                return False
+            pending.extend(zip(found_list, source_list, strict=True))
+        elif type(expected) is float:
+            if cast("float", found).hex() != cast("float", expected).hex():
+                return False
+        elif type(expected) in {str, int, bool, type(None)}:
+            if found != expected:
+                return False
+        else:
+            return False
+    return True
 
 
 def _reject_duplicate_pairs(

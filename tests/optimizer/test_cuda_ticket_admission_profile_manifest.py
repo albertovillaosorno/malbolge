@@ -792,3 +792,112 @@ def test_retained_source_tree_does_not_invoke_foreign_timezone() -> None:
     expected = datetime(2026, 7, 29, tzinfo=timezone.utc)
     injected = datetime(2026, 7, 29, tzinfo=_ForeignTimezone())
     assert not generator._source_equivalent(injected, expected)
+
+
+def test_profile_loader_rejects_forged_public_json_decoder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unmodified tracked bytes cannot select invented route measurements."""
+    original_decoder = json.JSONDecoder
+    original_payload = Path(MANIFEST).read_bytes()
+    source = tmp_path / "product-profile.json"
+    _ = source.write_bytes(original_payload)
+
+    class ForgedDecoder(original_decoder):
+        def decode(self, text: str, **kwargs: object) -> object:
+            parsed = super().decode(text, **kwargs)
+            if isinstance(parsed, dict) and "profiles" in parsed:
+                profiles = cast("list[object]", parsed["profiles"])
+                profile = cast("dict[str, object]", profiles[0])
+                routes = cast("list[object]", profile["routes"])
+                first = cast("dict[str, object]", routes[0])
+                first["candidate_median_ns"] = 1
+            return parsed
+
+    monkeypatch.setattr(json, "JSONDecoder", ForgedDecoder)
+    with pytest.raises(TicketAdmissionError, match="parser.*source"):
+        _ = load_cuda_ticket_admission_profiles(source)
+    assert source.read_bytes() == original_payload
+
+
+def test_profile_loader_rejects_forged_public_json_loads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Direct parser replacement cannot alter capability-bound product routes."""
+    original_loads = json.loads
+    source = tmp_path / "product-profile.json"
+    _ = source.write_bytes(Path(MANIFEST).read_bytes())
+
+    def altered_decoder(text: str, **kwargs: object) -> object:
+        parsed = original_loads(text, **kwargs)
+        if isinstance(parsed, dict) and "profiles" in parsed:
+            profiles = cast("list[object]", parsed["profiles"])
+            profile = cast("dict[str, object]", profiles[0])
+            profile["device_arch"] = "sm_90"
+        return parsed
+
+    monkeypatch.setattr(json, "loads", altered_decoder)
+    with pytest.raises(TicketAdmissionError, match="parser.*source"):
+        _ = load_cuda_ticket_admission_profiles(source)
+
+
+class _ForeignJsonRoutes(list[object]):
+    """A parser result may contain a list subclass with executable hooks."""
+
+    def __iter__(self) -> object:
+        raise AssertionError("foreign JSON route traversal invoked")
+
+
+def test_profile_loader_rejects_foreign_nested_json_routes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only exact native JSON containers can reach route validation."""
+    source = tmp_path / "product-profile.json"
+    _ = source.write_bytes(Path(MANIFEST).read_bytes())
+    original_loads = json.loads
+
+    def foreign_decoder(text: str, **kwargs: object) -> object:
+        parsed = original_loads(text, **kwargs)
+        if isinstance(parsed, dict) and "profiles" in parsed:
+            profiles = cast("list[object]", parsed["profiles"])
+            profile = cast("dict[str, object]", profiles[0])
+            profile["routes"] = _ForeignJsonRoutes(
+                cast("list[object]", profile["routes"])
+            )
+        return parsed
+
+    monkeypatch.setattr(json, "loads", foreign_decoder)
+    with pytest.raises(TicketAdmissionError, match="parser.*source"):
+        _ = load_cuda_ticket_admission_profiles(source)
+
+
+def test_profile_loader_rejects_invalid_source_with_forged_decoder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A decoder cannot admit malformed stored product-profile JSON."""
+    source = tmp_path / "product-profile.json"
+    _ = source.write_text("{not valid JSON", encoding="utf-8")
+    genuine = json.loads(Path(MANIFEST).read_text(encoding="utf-8"))
+    monkeypatch.setattr(json, "loads", lambda *_args, **_kwargs: genuine)
+    with pytest.raises(TicketAdmissionError, match="invalid.*JSON"):
+        _ = load_cuda_ticket_admission_profiles(source)
+
+
+def test_profile_loader_accepts_equivalent_public_json_decoder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Independent equivalent decoders retain the exact tracked route state."""
+    source = tmp_path / "product-profile.json"
+    _ = source.write_bytes(Path(MANIFEST).read_bytes())
+    original_loads = json.loads
+    monkeypatch.setattr(
+        json, "loads", lambda *args, **kwargs: original_loads(*args, **kwargs)
+    )
+    profile = load_cuda_ticket_admission_profiles(source)[0]
+    assert profile.profile_id == PROFILE_ID
+    assert profile.candidates[0].candidate_median_ns == 1879400

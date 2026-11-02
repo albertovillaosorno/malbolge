@@ -1341,6 +1341,12 @@ capability/runtime mismatch; distinct runtime variants may coexist for one
 capability/workload. Runtime loading reads only the tracked product manifest and
 never opens benchmark evidence. It requires bounded, unchanged, nonredirected
 regular JSON and rejects source replacement or mutation during admission.
+The product loader also compares its public JSON decoder tree against an
+import-bound standard-library JSONDecoder parse of the exact admitted manifest
+bytes. Runtime profile routes and device identities are sourced only from the
+independent native tree, and substituted decoder classes or functions cannot
+rewrite the measured product profile. This does not protect against compromise
+of the underlying JSON implementation.
 `resolve_cuda_ticket_admission_profile` selects at most one exact
 workload/capability/runtime record; invalid or ambiguous requests
 fail closed, while retained wrappers delegate through the stable workload
