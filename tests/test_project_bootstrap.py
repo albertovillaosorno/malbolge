@@ -3272,6 +3272,229 @@ def test_rust_toolchain_import_aliases_windows_compiler(
     assert rustc_alias.read_bytes() == RUST_RUSTC_BYTES
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX symlinks")
+@pytest.mark.parametrize("alias_source", ["bin-parent", "native", "alias"])
+def test_rust_import_never_admits_linked_native_alias_or_parent(
+    tmp_path: Path, alias_source: str
+) -> None:
+    """Copied toolchain links must not create or approve foreign Cargo aliases."""
+    source = tmp_path / "host-rust"
+    source.mkdir()
+    foreign = tmp_path / "foreign-bin"
+    foreign.mkdir()
+    cargo = foreign / "cargo"
+    _ = cargo.write_bytes(RUST_CARGO_BYTES)
+    _ = cargo.chmod(0o700)
+    original = b"foreign executable must survive"
+    foreign_alias = foreign / "cargo.bin"
+    _ = foreign_alias.write_bytes(original)
+    _ = foreign_alias.chmod(0o700)
+    if alias_source == "bin-parent":
+        (source / "bin").symlink_to(foreign, target_is_directory=True)
+    else:
+        source_bin = source / "bin"
+        source_bin.mkdir()
+        if alias_source == "native":
+            (source_bin / "cargo").symlink_to(cargo)
+        else:
+            _ = (source_bin / "cargo").write_bytes(RUST_CARGO_BYTES)
+            (source_bin / "cargo.bin").symlink_to(foreign_alias)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    with pytest.raises(project.InitializationError):
+        _ = project.import_rust_toolchain(
+            source, destination, tool_ids=("cargo",), windows=False
+        )
+    assert foreign_alias.read_bytes() == original
+    assert not project.rust_toolchain_import_complete(destination)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_rust_import_alias_creation_rejects_exchanged_bin_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late physical replacement cannot receive a neutral Cargo alias."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    bin_dir = destination / "bin"
+    parked = tmp_path / "parked-bin"
+    foreign = tmp_path / "foreign-bin"
+    foreign.mkdir()
+    _ = (foreign / "cargo").write_bytes(RUST_CARGO_BYTES)
+    original_link = os.link
+    swapped = False
+
+    def exchange_before_link(
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (dst == "cargo.bin" or Path(dst) == bin_dir / "cargo.bin"):
+            bin_dir.rename(parked)
+            foreign.rename(bin_dir)
+            swapped = True
+        original_link(
+            src,
+            dst,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", exchange_before_link)
+        with pytest.raises(project.InitializationError):
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert swapped
+    assert not (bin_dir / "cargo.bin").exists()
+    assert not project.rust_toolchain_import_complete(destination)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_rust_import_alias_copy_fallback_keeps_original_tool_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hardlink-restricted filesystems still import a safe executable alias."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    _ = (source / "bin/cargo").chmod(0o700)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    native_link = os.link
+    fallback_used = False
+
+    def deny_descriptor_link(
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal fallback_used
+        if dst == "cargo.bin" and src_dir_fd is not None:
+            fallback_used = True
+            raise OSError("hardlink refused")
+        native_link(
+            src,
+            dst,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", deny_descriptor_link)
+        aliases = project.import_rust_toolchain(
+            source, destination, tool_ids=("cargo",), windows=False
+        )
+    assert fallback_used
+    alias = aliases[0]
+    assert alias.read_bytes() == RUST_CARGO_BYTES
+    assert alias.stat().st_mode & stat.S_IXUSR
+    assert alias.stat().st_ino != (destination / "bin/cargo").stat().st_ino
+    assert project.rust_toolchain_import_complete(destination)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_rust_import_rejects_native_leaf_replaced_before_hardlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late symlink cannot be promoted to a trusted Cargo alias."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    external = tmp_path / "foreign-executable"
+    _ = external.write_bytes(b"not a Rust tool")
+    native_link = os.link
+    swapped = False
+
+    def replace_native_before_link(
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal swapped
+        if dst == "cargo.bin" and src_dir_fd is not None and not swapped:
+            native = destination / "bin/cargo"
+            native.unlink()
+            native.symlink_to(external)
+            swapped = True
+        native_link(
+            src,
+            dst,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", replace_native_before_link)
+        with pytest.raises(project.InitializationError):
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert swapped
+    assert (destination / "bin/cargo.bin").is_symlink()
+    assert external.read_bytes() == b"not a Rust tool"
+    assert not project.rust_toolchain_import_complete(destination)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_rust_import_rejects_alias_replaced_after_hardlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An injected regular alias must not gain an import-completion marker."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    native_link = os.link
+    replaced = False
+
+    def replace_linked_alias(
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal replaced
+        native_link(
+            src,
+            dst,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+        if dst == "cargo.bin" and dst_dir_fd is not None and not replaced:
+            alias = destination / "bin/cargo.bin"
+            alias.unlink()
+            _ = alias.write_bytes(b"foreign executable")
+            replaced = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", replace_linked_alias)
+        with pytest.raises(project.InitializationError):
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert replaced
+    assert not project.rust_toolchain_import_complete(destination)
+
+
 def test_rustup_resolver_never_queries_uninstalled_channel(
     tmp_path: Path,
 ) -> None:

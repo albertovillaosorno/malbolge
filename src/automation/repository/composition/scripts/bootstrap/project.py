@@ -1519,6 +1519,117 @@ def write_rust_linker_adapters(
     )
 
 
+def _rust_import_alias_status(path: Path, parent_fd: int | None) -> os.stat_result:
+    if parent_fd is None:
+        return path.lstat()
+    return os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+
+
+def _create_rust_import_alias_at_parent(
+    native: Path, alias: Path, parent_fd: int, native_status: os.stat_result
+) -> None:
+    """Create a neutral alias inside the original physical imported bin directory."""
+    _require_local_state_parent_identity(native.parent, parent_fd)
+    expected = native_status.st_dev, native_status.st_ino
+    created: tuple[int, int] | None = None
+    complete = False
+    try:
+        try:
+            os.link(
+                native.name,
+                alias.name,
+                src_dir_fd=parent_fd,
+                dst_dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+        except FileExistsError as error:
+            raise InitializationError(
+                "imported Rust alias appeared during creation"
+            ) from error
+        except OSError:
+            source_fd = os.open(
+                native.name,
+                os.O_RDONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0),
+                dir_fd=parent_fd,
+            )
+            try:
+                opened = os.fstat(source_fd)
+                if (
+                    type(opened) is not os.stat_result
+                    or not stat.S_ISREG(opened.st_mode)
+                    or (opened.st_dev, opened.st_ino) != expected
+                ):
+                    _fail("imported Rust native tool changed during alias creation")
+                flags = (
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+                )
+                target_fd = os.open(alias.name, flags, 0o600, dir_fd=parent_fd)
+                try:
+                    status = os.fstat(target_fd)
+                    created = status.st_dev, status.st_ino
+                    while content := os.read(source_fd, 1_048_576):
+                        remaining = memoryview(content)
+                        while remaining:
+                            written = os.write(target_fd, remaining)
+                            if type(written) is not int or written <= 0:
+                                _fail("imported Rust alias short or invalid byte count")
+                            remaining = remaining[written:]
+                    os.fchmod(target_fd, opened.st_mode & 0o777)
+                    finished = os.fstat(target_fd)
+                    if (
+                        type(finished) is not os.stat_result
+                        or finished.st_size != opened.st_size
+                    ):
+                        _fail("imported Rust alias content length mismatch")
+                finally:
+                    os.close(target_fd)
+                after_source = os.fstat(source_fd)
+                if (
+                    type(after_source) is not os.stat_result
+                    or (after_source.st_dev, after_source.st_ino) != expected
+                    or after_source.st_size != opened.st_size
+                ):
+                    _fail("imported Rust native tool changed during alias creation")
+            finally:
+                os.close(source_fd)
+        if created is None:
+            linked = _rust_import_alias_status(alias, parent_fd)
+            if (
+                type(linked) is not os.stat_result
+                or not stat.S_ISREG(linked.st_mode)
+                or (linked.st_dev, linked.st_ino) != expected
+            ):
+                _fail("imported Rust alias changed after hardlink creation")
+            created = linked.st_dev, linked.st_ino
+        _require_local_state_parent_identity(native.parent, parent_fd)
+        observed = _rust_import_alias_status(alias, parent_fd)
+        current = _rust_import_alias_status(native, parent_fd)
+        if (
+            type(observed) is not os.stat_result
+            or not stat.S_ISREG(observed.st_mode)
+            or (observed.st_dev, observed.st_ino) != created
+            or type(current) is not os.stat_result
+            or not stat.S_ISREG(current.st_mode)
+            or (current.st_dev, current.st_ino) != expected
+        ):
+            _fail("imported Rust alias changed during creation")
+        complete = True
+    except InitializationError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("imported Rust alias creation failed") from error
+    finally:
+        if not complete and created is not None:
+            try:
+                observed = _rust_import_alias_status(alias, parent_fd)
+                if (observed.st_dev, observed.st_ino) == created:
+                    os.unlink(alias.name, dir_fd=parent_fd)
+            except (OSError, ValueError, TypeError, RuntimeError):
+                pass
+
+
 def _ensure_rust_toolchain_aliases(
     toolchain_root: Path,
     tool_ids: tuple[str, ...],
@@ -1532,16 +1643,50 @@ def _ensure_rust_toolchain_aliases(
 
     """
     suffix = ".exe" if windows else ""
+    parent = toolchain_root / "bin"
+    expected = _rust_adapter_parent_identity(parent) if os.name == "posix" else None
+    parent_fd = (
+        _open_local_state_parent(parent, expected_identity=expected)
+        if expected is not None
+        else None
+    )
     aliases: list[Path] = []
-    for tool_id in tool_ids:
-        native = toolchain_root / "bin" / f"{tool_id}{suffix}"
-        if not native.is_file():
-            _fail(f"imported Rust tool is missing: {native}")
-        alias = toolchain_root / "bin" / f"{tool_id}.bin"
-        if not alias.is_file():
-            _ = _link_or_copy(str(native), str(alias))
-        aliases.append(alias)
-    return tuple(aliases)
+    try:
+        for tool_id in tool_ids:
+            native = parent / f"{tool_id}{suffix}"
+            alias = parent / f"{tool_id}.bin"
+            _reject_authority_parent_redirects(native)
+            if parent_fd is not None:
+                _require_local_state_parent_identity(parent, parent_fd)
+            try:
+                native_status = _rust_import_alias_status(native, parent_fd)
+            except FileNotFoundError:
+                _fail(f"imported Rust tool is missing: {native}")
+            if type(native_status) is not os.stat_result or not stat.S_ISREG(
+                native_status.st_mode
+            ):
+                _fail(f"imported Rust tool must be physical: {native}")
+            try:
+                alias_status = _rust_import_alias_status(alias, parent_fd)
+            except FileNotFoundError:
+                if parent_fd is not None:
+                    _create_rust_import_alias_at_parent(
+                        native, alias, parent_fd, native_status
+                    )
+                else:
+                    _ = _link_or_copy(str(native), str(alias))
+                alias_status = _rust_import_alias_status(alias, parent_fd)
+            if type(alias_status) is not os.stat_result or not stat.S_ISREG(
+                alias_status.st_mode
+            ):
+                _fail(f"imported Rust alias must be physical: {alias}")
+            if parent_fd is not None:
+                _require_local_state_parent_identity(parent, parent_fd)
+            aliases.append(alias)
+        return tuple(aliases)
+    finally:
+        if parent_fd is not None:
+            _close_local_state_parent(parent_fd)
 
 
 def import_rust_toolchain(
