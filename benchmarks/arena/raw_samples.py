@@ -34,14 +34,12 @@
 
 from __future__ import annotations
 
-from collections import Counter
 import csv
+import hashlib
+from collections import Counter
 from hashlib import sha256
 from io import StringIO
-from typing import Any
-from typing import Final
-from typing import Never
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Final, Never
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -291,6 +289,33 @@ def _admit_observation_containers(
         seen_trials.add(trial_key)
 
 
+def _checked_sha256(raw: bytes) -> str:
+    """Bind raw source bytes to an independently corroborated native digest.
+
+    The caller-selected hash provider cannot certify a different source by
+    returning a plausible constant or a foreign equality-controlled string.
+    This checks hash output integrity, not authenticity of the source itself.
+    """
+    if type(raw) is not bytes:
+        _fail("arena raw CSV SHA-256 requires exact bytes")
+    try:
+        reported = sha256(raw).hexdigest()
+        independent = hashlib.sha256(raw).hexdigest()
+    except Exception as error:
+        message = "arena raw CSV SHA-256 dependency failed"
+        raise RawSampleError(message) from error
+    if (
+        type(reported) is not str
+        or type(independent) is not str
+        or len(reported) != analyze.SHA256_HEX_LENGTH
+        or len(independent) != analyze.SHA256_HEX_LENGTH
+        or not set(reported) <= analyze.SHA256_ALPHABET
+        or reported != independent
+    ):
+        _fail("arena raw CSV SHA-256 receipt differs from source bytes")
+    return reported
+
+
 def check_rows(
     raw: bytes,
     observations: list[dict[str, Any]],
@@ -325,4 +350,4 @@ def check_rows(
         raise RawSampleError(message) from error
     if Counter(actual_rows) != expected:
         _fail(f"{label}: raw CSV trial/metric rows differ from arena report")
-    return sha256(raw).hexdigest()
+    return _checked_sha256(raw)

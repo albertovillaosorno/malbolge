@@ -145,6 +145,55 @@ def test_exact_raw_matches_with_durable_content_digests(tmp_path: Path) -> None:
     assert NO_AUTHENTICATION in preflight["scope"]
 
 
+class _ForeignRawHashText(str):  # ruff: ignore[subclass-builtin]
+    """A custom hash string can forge comparisons against its native source."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        return True
+
+
+class _UnsafeRawHashError(Exception):
+    """Foreign hashing exceptions cannot control evidence error rendering."""
+
+    def __str__(self) -> str:
+        raise AssertionError("raw hashing dependency diagnostic hook invoked")
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    ["forged", "foreign-text", "nontext", "short", "uppercase", "raised"],
+)
+def test_exact_raw_rows_reject_unverified_hash_provider_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """A matching CSV cannot publish a forged or untyped content fingerprint."""
+    observation = sample_study(tmp_path)["observations"][0]
+    raw = _render([observation])
+    expected = sha256(raw).hexdigest()
+    fault = _UnsafeRawHashError("opaque raw hashing failure")
+
+    class ForgedHash:
+        def hexdigest(self) -> object:
+            if receipt == "raised":
+                raise fault
+            return {
+                "forged": "0" * 64,
+                "foreign-text": _ForeignRawHashText(expected),
+                "nontext": 0,
+                "short": "1",
+                "uppercase": expected.upper(),
+            }[receipt]
+
+    monkeypatch.setattr(raw_samples, "sha256", lambda _data: ForgedHash())
+    with pytest.raises(raw_samples.RawSampleError, match="SHA-256") as caught:
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+    if receipt == "raised":
+        assert caught.value.__cause__ is fault
+
+
 def test_raw_admission_never_hashes_different_bytes_than_decoded_csv(
     tmp_path: Path,
 ) -> None:
