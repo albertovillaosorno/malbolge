@@ -1256,6 +1256,17 @@ The original study records remain the result authority.
   groups passed 785 and 477 tests with zero arena type errors. These tests
   establish local byte-to-receipt agreement, not OS, generator, or historic
   measurement authenticity against an entirely substituted hashing backend.
+- Retained `arena-raw-v1/v2` CSV fingerprints and the independent host-C
+  post-run auditor now likewise check a bound `sha256` result against
+  `hashlib.new("sha256", source_bytes)`, not mutable `hashlib.sha256` aliases.
+  Red-first tests demonstrated that replacing both former providers admitted
+  one false source fingerprint; fixes `82141dba1` and `7163af004` reject it
+  while retaining a native positive audit digest. The raw CSV suite passed
+  127 post-commit tests, and 85 selected host-C auditor hash/Git tests passed.
+  A separate raw/challenge/host-C cross-module run passed 937 tests. The full
+  253-case host-C audit and repository-wide Jig gates remain unverified due to
+  bounded timeouts. This is local byte/receipt consistency, not authenticated
+  hashing, independent OS provenance, or physical measurement verification.
 - One end-to-end synthetic admission test composes strict per-trial run
   identity, exact resource declarations, v2 energy CSV, matched reported
   accelerator identity, and deterministic challenge regeneration. Independent

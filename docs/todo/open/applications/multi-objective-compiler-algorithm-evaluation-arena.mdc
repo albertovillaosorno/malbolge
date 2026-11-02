@@ -565,6 +565,15 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   module suites passed 84, 333, and 393 tests, with postcommit 785/477
   integration checks and arena BasedPyright zero errors. This is local source
   fingerprint consistency, not generator, OS or historical measurement proof.
+- Retained arena raw CSV hashes (`82141dba1`) and the independent host-C
+  auditor's byte fingerprints (`7163af004`) now corroborate their bound SHA-256
+  outputs through `hashlib.new`, not independently mutable aliases of the same
+  provider. Each had one red-first jointly forged-provider regression; both
+  now reject the false source digest. The raw CSV suite passed 127 postcommit
+  tests, the host-C auditor passed 85 selected hash/Git tests, and the
+  raw/challenge/reference/oracle integration passed 937 cases. Full 253-case
+  audit and Jig validation were not completed under bounded timeouts. These
+  checks do not certify actual execution or an entirely replaced hash backend.
 - The target-echo producer re-reads retained study JSON only after the
   separate read-only source audit, and now requires its own SHA-256 result
   to be exact native lowercase text corroborated by a second standard hash
