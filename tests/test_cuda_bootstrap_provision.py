@@ -1598,6 +1598,56 @@ def _zip_payload() -> bytes:
     return stream.getvalue()
 
 
+
+@pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
+def test_cuda_archive_host_fault_does_not_render_foreign_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    archive_format: str,
+) -> None:
+    """Tar and ZIP extraction failures keep typed causes, not host messages."""
+    is_zip = archive_format == _ZIP_FORMAT
+    payload = _zip_payload() if is_zip else _payload()
+    manifest = _manifest(
+        tmp_path,
+        payload,
+        {"relative_path": _ZIP_PACKAGE_PATH if is_zip else PACKAGE_PATH},
+    )
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    native_mkdir = Path.mkdir
+    failure = UnprintableHostOSError("host extraction failure")
+    injected = False
+
+    def fault_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        nonlocal injected
+        if path.name == "lib64":
+            injected = True
+            raise failure
+        native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "mkdir", fault_mkdir)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="cannot extract CUDA"
+        ) as caught:
+            cuda_validation.extract_cuda_package(
+                payload,
+                package,
+                tmp_path / "toolkit",
+                staging=tmp_path / "staging",
+            )
+    assert injected
+    assert caught.value.__cause__ is failure
+    assert not (tmp_path / "toolkit").exists()
+
+
 def _inject_short_write(
     monkeypatch: pytest.MonkeyPatch,
     invalid_count: str,

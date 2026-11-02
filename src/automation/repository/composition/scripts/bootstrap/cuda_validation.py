@@ -578,7 +578,9 @@ def _safe_tar_extract(data: bytes, staging: Path) -> Path:
     except KeyError as error:
         raise CudaProvisionError("cannot resolve CUDA tar archive hard link") from error
     except (OSError, tarfile.TarError) as error:
-        _fail(f"cannot extract CUDA tar archive: {error}")
+        raise CudaProvisionError(
+            f"cannot extract CUDA tar archive: {type(error).__name__}"
+        ) from error
 
 
 def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
@@ -603,7 +605,9 @@ def _safe_zip_extract(data: bytes, staging: Path) -> Path:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             return _extract_zip_archive(archive, staging)
     except (OSError, zipfile.BadZipFile) as error:
-        _fail(f"cannot extract CUDA zip archive: {error}")
+        raise CudaProvisionError(
+            f"cannot extract CUDA zip archive: {type(error).__name__}"
+        ) from error
 
 
 def _require_physical_directories(path: Path, label: str) -> None:
