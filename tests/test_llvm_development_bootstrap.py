@@ -2133,6 +2133,10 @@ def test_rpm_command_rejects_mutated_subprocess_argv(
         "text_stdout",
         "text_stderr",
         "bytearray_stdout",
+        "argv_list_subclass",
+        "status_subclass",
+        "bytes_stdout_subclass",
+        "bytes_stderr_subclass",
     ],
 )
 def test_rpm_command_rejects_non_native_process_receipts(
@@ -2157,6 +2161,18 @@ def test_rpm_command_rejects_non_native_process_receipts(
             returned_argv = tuple(argv)
         elif malformed == "wrong_argv":
             returned_argv = ["cpio", "-idm", "--quiet"]
+        elif malformed == "argv_list_subclass":
+
+            class ForeignList(list[str]):
+                pass
+
+            returned_argv = ForeignList(argv)
+        elif malformed == "status_subclass":
+
+            class ForeignInt(int):
+                pass
+
+            status = ForeignInt(0)
         elif malformed == "foreign_arg":
 
             class ForeignString(str):
@@ -2169,6 +2185,18 @@ def test_rpm_command_rejects_non_native_process_receipts(
             stderr = ""
         elif malformed == "bytearray_stdout":
             stdout = bytearray(b"verified")
+        elif malformed == "bytes_stdout_subclass":
+
+            class ForeignBytes(bytes):
+                pass
+
+            stdout = ForeignBytes(b"verified")
+        elif malformed == "bytes_stderr_subclass":
+
+            class ForeignBytes(bytes):
+                pass
+
+            stderr = ForeignBytes(b"")
         return sp.CompletedProcess(returned_argv, cast("int", status), stdout, stderr)
 
     monkeypatch.setattr(llvm_development_validation.sp, "run", forged_run)

@@ -140,6 +140,25 @@ def validate_rpm_members(members: tuple[str, ...]) -> None:
         _ = _safe_member_path(member)
 
 
+def _native_rpm_process_receipt(value: object, arguments: list[str]) -> bool:
+    """Admit only exact native process and argument receipts."""
+    if type(value) is not sp.CompletedProcess:
+        return False
+    completed = cast("sp.CompletedProcess[object]", value)
+    command = cast("object", completed.args)
+    if type(command) is not list:
+        return False
+    received = cast("list[object]", command)
+    return (
+        len(received) == len(arguments)
+        and all(type(argument) is str for argument in received)
+        and received == arguments
+        and type(completed.returncode) is int
+        and type(completed.stdout) is bytes
+        and type(completed.stderr) is bytes
+    )
+
+
 def _command_bytes(
     arguments: list[str],
     *,
@@ -166,16 +185,7 @@ def _command_bytes(
         raise LlvmDevelopmentProvisionError(
             f"failed to execute LLVM RPM tool {arguments[0]}: {detail}"
         ) from error
-    if (
-        type(completed) is not sp.CompletedProcess
-        or type(completed.args) is not list
-        or len(completed.args) != len(arguments)
-        or any(type(argument) is not str for argument in completed.args)
-        or completed.args != arguments
-        or type(completed.returncode) is not int
-        or type(completed.stdout) is not bytes
-        or type(completed.stderr) is not bytes
-    ):
+    if not _native_rpm_process_receipt(completed, arguments):
         _fail(f"invalid LLVM RPM tool process receipt: {arguments[0]}")
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()
@@ -237,7 +247,9 @@ def _open_staging_file(path: Path, flags: int) -> int:
     """
     if os.name != "posix":
         return os.open(path, flags, 0o600)
-    parent_descriptor = _open_physical_publication_parent(path, "staging")
+    parent_descriptor = _open_physical_publication_parent(  # pyright: ignore[reportUnreachable]
+        path, "staging"
+    )
     descriptor: int | None = None
     try:
         descriptor = os.open(path.name, flags, 0o600, dir_fd=parent_descriptor)
@@ -374,7 +386,7 @@ def _extract_rpm_headers(
                 "LLVM development package stage creation failed"
             ) from error
     else:
-        parent_descriptor = _open_physical_publication_parent(
+        parent_descriptor = _open_physical_publication_parent(  # pyright: ignore[reportUnreachable]
             package_staging, "staging", create=True
         )
         try:
@@ -757,7 +769,7 @@ def _prepare_staging(staging: Path) -> None:
                 "LLVM development staging creation failed"
             ) from error
     else:
-        parent_descriptor = _open_physical_publication_parent(
+        parent_descriptor = _open_physical_publication_parent(  # pyright: ignore[reportUnreachable]
             staging, "staging", create=True
         )
         try:
@@ -949,7 +961,9 @@ def _publish_development_root(
                 "LLVM development destination publication failed"
             ) from error
         return
-    source_parent = _open_physical_publication_parent(staged_root, "staging")
+    source_parent = _open_physical_publication_parent(  # pyright: ignore[reportUnreachable]
+        staged_root, "staging"
+    )
     try:
         target_parent = _open_physical_publication_parent(destination, "destination")
         try:
