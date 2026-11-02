@@ -3192,3 +3192,128 @@ def test_cuda_publication_types_staging_source_parent_close_fault(
     assert caught.value.__cause__ is failure
     assert (destination / "trusted.bin").read_bytes() == b"trusted toolkit"
     assert not staged.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("swap_kind", ["symlink", "physical"])
+def test_cuda_destination_parent_mkdir_does_not_follow_late_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, swap_kind: str
+) -> None:
+    """Final parent creation cannot make a child in a substituted directory."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    dependencies = root / ".dependencies"
+    dependencies.mkdir()
+    payload = _payload()
+    manifest = _manifest(root, payload)
+    parked = root / "parked-dependencies"
+    outside = tmp_path / "foreign-directory"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    _ = sentinel.write_bytes(b"foreign contents")
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def race_parent_creation(
+        path: str | os.PathLike[str], mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (
+            (Path(path) == dependencies / "cuda" and dir_fd is None)
+            or (path == "cuda" and dir_fd is not None)
+        ):
+            _ = dependencies.rename(parked)
+            if swap_kind == "symlink":
+                _ = dependencies.symlink_to(outside, target_is_directory=True)
+            else:
+                _ = outside.rename(dependencies)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", race_parent_creation)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="destination"):
+            cuda_validation.provision_cuda_manifest(
+                root, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert swapped
+    foreign_parent = outside if swap_kind == "symlink" else dependencies
+    assert (foreign_parent / "sentinel.txt").read_bytes() == b"foreign contents"
+    assert not (foreign_parent / "cuda").exists()
+    assert not (outside / "13.3.1").exists()
+    assert not (root / TOOLKIT_ROOT).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_destination_parent_rejects_replaced_physical_directory_at_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign physical parent cannot replace the admitted checkout parent."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    dependencies = root / ".dependencies"
+    dependencies.mkdir()
+    payload = _payload()
+    manifest = _manifest(root, payload)
+    parked = root / "parked-dependencies"
+    outside = tmp_path / "foreign-directory"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    _ = sentinel.write_bytes(b"foreign contents")
+    native_open = os.open
+    swapped = False
+
+    def swap_before_parent_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if not swapped and Path(path) == dependencies:
+            _ = dependencies.rename(parked)
+            _ = outside.rename(dependencies)
+            swapped = True
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", swap_before_parent_open)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="destination"):
+            cuda_validation.provision_cuda_manifest(
+                root, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert swapped
+    assert (dependencies / "sentinel.txt").read_bytes() == b"foreign contents"
+    assert not (dependencies / "cuda").exists()
+    assert not (root / TOOLKIT_ROOT).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_destination_parent_rejects_forged_mkdir_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A false successful mkdir cannot supply a toolkit parent receipt."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    payload = _payload()
+    manifest = _manifest(root, payload)
+    native_mkdir = os.mkdir
+    forged = False
+
+    def report_false_success(
+        path: str | os.PathLike[str], mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> None:
+        nonlocal forged
+        if path == "cuda" and dir_fd is not None:
+            forged = True
+            return
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", report_false_success)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="destination"):
+            cuda_validation.provision_cuda_manifest(
+                root, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert forged
+    assert not (root / TOOLKIT_ROOT).exists()

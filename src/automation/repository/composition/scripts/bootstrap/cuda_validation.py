@@ -914,6 +914,96 @@ def _open_staging_parent(path: Path) -> int | None:
     return descriptor
 
 
+def _ensure_toolkit_destination_parent(path: Path) -> None:
+    """Create absent toolkit ancestors through pinned physical parent handles."""
+    _require_toolkit_destination(path)
+    if os.name != "posix":
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA toolkit destination parent creation failed"
+            ) from error
+        _require_toolkit_destination(path)
+        return
+
+    missing: list[Path] = []
+    component = path
+    while True:
+        try:
+            status = component.lstat()
+        except FileNotFoundError:
+            missing.append(component)
+            component = component.parent
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA toolkit destination parent status failed"
+            ) from error
+        else:
+            if type(status) is not os.stat_result or not S_ISDIR(status.st_mode):
+                _fail("CUDA toolkit destination parent requires native directory")
+            anchored_identity = (status.st_dev, status.st_ino)
+            break
+
+    for directory in reversed(missing):
+        parent = directory.parent
+        _require_toolkit_destination(parent)
+        try:
+            descriptor = _open_staging_parent(parent)
+        except CudaProvisionError as error:
+            raise CudaProvisionError(
+                "CUDA toolkit destination parent open failed"
+            ) from error
+        if descriptor is None:
+            _fail("CUDA toolkit destination parent requires native descriptor")
+        try:
+            try:
+                admitted = _require_staging_parent_unchanged(parent, descriptor)
+            except CudaProvisionError as error:
+                raise CudaProvisionError(
+                    "CUDA toolkit destination parent changed before creation"
+                ) from error
+            if admitted != anchored_identity:
+                _fail("CUDA toolkit destination parent changed before creation")
+            try:
+                os.mkdir(directory.name, dir_fd=descriptor)
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA toolkit destination parent creation failed"
+                ) from error
+            try:
+                _require_staging_parent_unchanged(parent, descriptor)
+                _require_toolkit_destination(directory)
+                created = os.stat(
+                    directory.name, dir_fd=descriptor, follow_symlinks=False
+                )
+                named = directory.lstat()
+            except CudaProvisionError as error:
+                raise CudaProvisionError(
+                    "CUDA toolkit destination parent changed during creation"
+                ) from error
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA toolkit destination parent receipt failed"
+                ) from error
+            if (
+                type(created) is not os.stat_result
+                or type(named) is not os.stat_result
+                or not S_ISDIR(created.st_mode)
+                or (created.st_dev, created.st_ino) != (named.st_dev, named.st_ino)
+            ):
+                _fail("CUDA toolkit destination parent creation receipt mismatch")
+            anchored_identity = (created.st_dev, created.st_ino)
+        finally:
+            try:
+                os.close(descriptor)
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA toolkit destination parent close failed"
+                ) from error
+    _require_toolkit_destination(path)
+
+
 def _write_staged_file_exclusively(
     path: Path, payload: bytes, label: str
 ) -> tuple[int, int]:
@@ -1218,12 +1308,7 @@ def provision_cuda_manifest(
         ):
             _fail("CUDA completion marker changed before publication")
         _require_toolkit_destination(manifest.toolkit_root)
-        try:
-            manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
-        except (OSError, TypeError, ValueError, RuntimeError) as error:
-            raise CudaProvisionError(
-                "CUDA toolkit destination parent creation failed"
-            ) from error
+        _ensure_toolkit_destination_parent(manifest.toolkit_root.parent)
         _require_toolkit_destination(manifest.toolkit_root)
         _publish_cuda_toolkit(staged_toolkit, manifest.toolkit_root)
     finally:
