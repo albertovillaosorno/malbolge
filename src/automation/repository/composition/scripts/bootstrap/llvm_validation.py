@@ -508,7 +508,22 @@ def _link_or_copy(
                 raise LlvmImportError(
                     f"LLVM import destination parent status failed: {error_type}"
                 ) from error
-        return _link_or_copy_in_parent(source_path, destination_path, parent_descriptor)
+        result = _link_or_copy_in_parent(
+            source_path, destination_path, parent_descriptor
+        )
+        try:
+            named = destination_path.lstat()
+            if type(named) is not os.stat_result or not _physical_file(
+                destination_path
+            ):
+                _fail("LLVM import destination must be physical before parent close")
+            published_identity = _marker_identity(named)
+        except LlvmImportError:
+            raise
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM import destination preclose check failed: {type(error).__name__}"
+            ) from error
     finally:
         if parent_descriptor is not None:
             try:
@@ -518,6 +533,19 @@ def _link_or_copy(
                 raise LlvmImportError(
                     f"LLVM import destination parent close failed: {error_type}"
                 ) from error
+    try:
+        if (
+            not _physical_file(destination_path)
+            or _marker_identity(destination_path.lstat()) != published_identity
+        ):
+            _fail("LLVM import destination changed after parent close")
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM import destination postclose check failed: {type(error).__name__}"
+        ) from error
+    return result
 
 
 def _link_or_copy_in_parent(
@@ -722,6 +750,14 @@ def _copy_file(
     _ = _link_or_copy(str(source), str(destination), expected_parent_inode=parent_inode)
     if _import_source_identity(source) != source_identity:
         _fail("LLVM import source file changed during copying")
+    # A cross-device fallback may change only the copied output after its
+    # descriptor or parent closes; source attestation alone is insufficient.
+    copied_identity = _import_source_identity(destination)
+    if (
+        copied_identity[2] != source_identity[2]
+        or copied_identity[-1] != source_identity[-1]
+    ):
+        _fail("LLVM import destination bytes changed during copying")
 
 
 def _resource_member_receipt(path: Path) -> tuple[int, ...]:

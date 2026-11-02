@@ -3535,6 +3535,119 @@ def test_llvm_import_fallback_copy_does_not_write_to_swapped_parent(
     assert not (foreign_tree / destination.name).exists()
 
 
+@pytest.mark.skipif(os.name != HOST_POSIX, reason="requires directory descriptor")
+@pytest.mark.parametrize("mutation", ("overwrite", "replace"))
+def test_llvm_copy_file_rejects_destination_mutation_on_parent_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """Copied bytes cannot be certified before an untrusted parent close."""
+    source = tmp_path / "source"
+    content = b"trusted host library"
+    _ = source.write_bytes(content)
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    destination = parent / "copied"
+    parked = parent / "parked-copy"
+    native_open = os.open
+    native_close = os.close
+    parent_fds: set[int] = set()
+    changed = False
+
+    def no_hardlinks(*_args: object, **_kwargs: object) -> None:
+        raise OSError("simulated cross-device")
+
+    def track_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        fd = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == parent:
+            parent_fds.add(fd)
+        return fd
+
+    def mutate_close(fd: int) -> None:
+        nonlocal changed
+        native_close(fd)
+        if fd in parent_fds:
+            parent_fds.remove(fd)
+            if not changed:
+                changed = True
+                if mutation == "overwrite":
+                    before = destination.stat()
+                    _ = destination.write_bytes(b"!" + content[1:])
+                    os.utime(destination, ns=(before.st_atime_ns, before.st_mtime_ns))
+                else:
+                    destination.rename(parked)
+                    _ = destination.write_bytes(b"foreign destination")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", no_hardlinks)
+        isolated.setattr(os, "open", track_open)
+        isolated.setattr(os, "close", mutate_close)
+        with pytest.raises(llvm_validation.LlvmImportError, match="destination|copy"):
+            llvm_validation._copy_file(  # pyright: ignore[reportPrivateUsage]
+                source, destination
+            )
+    assert changed
+    assert not parent_fds
+    assert source.read_bytes() == content
+    if mutation == "replace":
+        assert parked.read_bytes() == content
+        assert destination.read_bytes() == b"foreign destination"
+
+
+@pytest.mark.parametrize("mutation", ("overwrite", "replace"))
+def test_llvm_copy_file_rejects_output_stream_close_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """Closing the output stream cannot redefine the copied byte evidence."""
+    source = tmp_path / "host-source"
+    content = b"trusted copied payload"
+    _ = source.write_bytes(content)
+    parent = tmp_path / "stage"
+    parent.mkdir()
+    destination = parent / "copied"
+    parked = parent / "parked-copy"
+    native_target = llvm_validation._exclusive_import_target  # pyright: ignore[reportPrivateUsage]
+    changed = False
+
+    def no_hardlinks(*_args: object, **_kwargs: object) -> None:
+        raise OSError("simulated cross-device")
+
+    @contextmanager
+    def alter_after_close(
+        path: Path, descriptor: int | None
+    ) -> Iterator[BufferedRandom]:
+        nonlocal changed
+        with native_target(path, descriptor) as stream:
+            yield stream
+        if path == destination:
+            changed = True
+            if mutation == "overwrite":
+                previous = destination.stat()
+                _ = destination.write_bytes(b"!" + content[1:])
+                os.utime(destination, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+            else:
+                destination.rename(parked)
+                _ = destination.write_bytes(b"foreign copied payload")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", no_hardlinks)
+        isolated.setattr(llvm_validation, "_exclusive_import_target", alter_after_close)
+        with pytest.raises(llvm_validation.LlvmImportError, match="destination"):
+            llvm_validation._copy_file(  # pyright: ignore[reportPrivateUsage]
+                source, destination
+            )
+    assert changed
+    assert source.read_bytes() == content
+    if mutation == "replace":
+        assert parked.read_bytes() == content
+        assert destination.read_bytes() == b"foreign copied payload"
+
+
 def test_llvm_import_fallback_reads_native_source_not_foreign_path_stream(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
