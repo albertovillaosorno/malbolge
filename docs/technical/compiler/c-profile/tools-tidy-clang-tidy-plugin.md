@@ -102,8 +102,8 @@ completion marker and physical regular required headers under the tracked
 repository-local development root. Marker content is compared to the exact
 expected identity using a bounded, nonblocking descriptor read with inode,
 size, and timestamp checks before and after. The opened marker descriptor,
-stream file number, `fstat` results, and immutable read bytes must all be
-native and exact; foreign receipts cannot prove readiness. A symlinked root,
+buffered binary stream, stream file number, `fstat` results, and immutable read
+bytes must all be native and exact; foreign receipts cannot prove readiness. A symlinked root,
 redirected include ancestor, altered marker, or incomplete extraction is not
 admitted as ready; an existing incomplete root must be repaired rather than
 silently using ambient headers or repeating a network download.

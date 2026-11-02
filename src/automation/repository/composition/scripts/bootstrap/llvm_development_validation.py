@@ -36,6 +36,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -469,6 +470,8 @@ def _marker_descriptor_matches(
             os.close(descriptor)
         raise
     with stream:
+        if type(stream) is not io.BufferedReader:
+            return False
         observed_fd = stream.fileno()
         if type(observed_fd) is not int or observed_fd != descriptor:
             return False

@@ -573,6 +573,50 @@ def test_development_marker_rejects_same_byte_inode_replacement(
     assert not llvm_development_validation.development_root_matches(identity)
 
 
+def test_development_marker_rejects_forged_native_bytes_from_foreign_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An injected stream must not forge readiness for altered disk bytes."""
+    identity = _provisioned_identity(tmp_path)
+    marker = identity.development_root / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    expected = marker.read_bytes()
+    altered = bytes([expected[0] ^ 1]) + expected[1:]
+    _ = marker.write_bytes(altered)
+    assert not llvm_development_validation.development_root_matches(identity)
+    native_fdopen = os.fdopen
+
+    class ForgedRead:
+        def __init__(self, native: object) -> None:
+            self.native: BinaryIO = cast("BinaryIO", native)
+
+        def __enter__(self) -> Self:
+            _ = self.native.__enter__()
+            return self
+
+        def __exit__(
+            self,
+            kind: type[BaseException] | None,
+            error: BaseException | None,
+            trace: TracebackType | None,
+        ) -> object:
+            return self.native.__exit__(kind, error, trace)
+
+        def fileno(self) -> int:
+            return self.native.fileno()
+
+        def read(self, amount: int) -> bytes:
+            _ = self.native.read(amount)
+            return expected
+
+    def forged_fdopen(descriptor: int, mode: str) -> object:
+        return ForgedRead(native_fdopen(descriptor, mode))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fdopen", forged_fdopen)
+        assert not llvm_development_validation.development_root_matches(identity)
+    assert marker.read_bytes() == altered
+
+
 @pytest.mark.parametrize("foreign", ["bytearray", "view", "subclass"])
 def test_development_marker_rejects_foreign_stream_read_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, foreign: str
