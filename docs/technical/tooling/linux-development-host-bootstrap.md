@@ -56,7 +56,10 @@ byte size must still match before atomic publication; cleanup unlinks only the
 owned stage. Provisioning directory and executable leaf checks also require
 native boolean redirect observations and native physical stat records; malformed
 host status and filesystem query faults cannot admit installed binaries or
-staging aliases. Stage ownership rechecks likewise reject foreign stat proxies.
+staging aliases. Newly created stage descriptors likewise require native,
+empty, singly linked regular-file `fstat` receipts before writing. Untrusted
+staging descriptor status closes the opened descriptor instead of publishing.
+Stage ownership rechecks likewise reject foreign stat proxies.
 Existing staging paths are not truncated, and executables that appear during
 provisioning are not overwritten. These checks do not make
 arbitrary concurrent ancestor directory swaps atomic.

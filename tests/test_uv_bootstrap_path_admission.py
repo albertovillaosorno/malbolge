@@ -395,3 +395,41 @@ def test_uv_types_provision_directory_status_fault(
     with pytest.raises(python_validation.ProvisionError, match="inspect") as raised:
         _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
     assert raised.value.__cause__ is failure
+
+
+@pytest.mark.parametrize("status_kind", ["proxy", "foreign-device", "foreign-mode"])
+def test_uv_rejects_nonphysical_new_stage_descriptor_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status_kind: str,
+) -> None:
+    """Forged fstat evidence cannot admit a newly opened uv stage."""
+    stage = tmp_path / "uv.tmp"
+    original = os.fstat
+    observed_fds: list[int] = []
+
+    def forged_status(descriptor: int) -> os.stat_result:
+        observed = original(descriptor)
+        observed_fds.append(descriptor)
+        if status_kind == "proxy":
+            return cast("os.stat_result", cast("object", _ForeignUvStatus(observed)))
+        if status_kind == "foreign-device":
+            proxy = _ForeignUvStatus(observed)
+            proxy.st_dev = cast("int", cast("object", False))
+            return cast("os.stat_result", cast("object", proxy))
+        native_fields = list(observed)
+        native_fields[0] = 0o020000  # Character device, not a regular file.
+        return os.stat_result(native_fields)
+
+    monkeypatch.setattr(os, "fstat", forged_status)
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="staging descriptor",
+    ):
+        _ = python_validation._write_verified_uv_binary(
+            stage, BINARY, windows=True
+        )
+    assert observed_fds
+    assert stage.read_bytes() == b""
+    with pytest.raises(OSError, match=r"Bad file descriptor|Invalid handle"):
+        _ = original(observed_fds[-1])

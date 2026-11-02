@@ -631,6 +631,8 @@ def _create_uv_stage(temporary: Path) -> tuple[int, tuple[int, int]]:
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = "uv staging descriptor creation failed"
         raise ProvisionError(message) from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("uv staging descriptor must be native")
     try:
         status = os.fstat(descriptor)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -638,6 +640,25 @@ def _create_uv_stage(temporary: Path) -> tuple[int, tuple[int, int]]:
             os.close(descriptor)
         message = "uv staging descriptor inspection failed"
         raise ProvisionError(message) from error
+    if (
+        type(status) is not os.stat_result
+        or any(
+            type(field) is not int
+            for field in (
+                status.st_mode,
+                status.st_nlink,
+                status.st_dev,
+                status.st_ino,
+                status.st_size,
+            )
+        )
+        or not stat.S_ISREG(status.st_mode)
+        or status.st_nlink != 1
+        or status.st_size != 0
+    ):
+        with suppress(OSError):
+            os.close(descriptor)
+        _fail("uv staging descriptor requires native empty regular file status")
     return descriptor, (status.st_dev, status.st_ino)
 
 
