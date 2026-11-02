@@ -55,6 +55,7 @@ from scripts.research_layout import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import TextIO
 
 ROOT = repository_root(Path(__file__))
 DOCUMENT_ROOT = ROOT / "docs" / "research" / "algorithms"
@@ -382,6 +383,30 @@ def validate_repository(
     return tuple(entry.research_id for entry in entries)
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Require the exact native count and a completed text flush.
+
+    Returns:
+        Whether a complete CLI record was written and flushed.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Validate the repository research mirror and return process status.
 
@@ -391,15 +416,17 @@ def main() -> int:
     """
     try:
         research_ids = validate_repository()
+        message = f"research mirror valid: {len(research_ids)} ids\n"
+        if not _write_cli_record(sys.stdout, message):
+            _fail("research mirror CLI output write or flush failed")
     except (OSError, ResearchMirrorError) as error:
         detail = (
             str(error)
             if type(error) is ResearchMirrorError
             else _host_error_detail(error)
         )
-        _ = sys.stderr.write(f"error: {detail}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {detail}\n")
         return 1
-    _ = sys.stdout.write(f"research mirror valid: {len(research_ids)} ids\n")
     return 0
 
 

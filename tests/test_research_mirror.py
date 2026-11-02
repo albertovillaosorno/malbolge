@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import] - Git-only fixture.
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Never, cast, override
@@ -619,6 +620,77 @@ def test_mirror_git_probe_timeout_is_typed(
     monkeypatch.setattr(sp, "run", timed_out)
     with pytest.raises(validator.ResearchMirrorError, match="Git ignore probe failed"):
         _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ("missing", "false", "short", "long", "foreign", "write", "flush", "flush-receipt"),
+)
+def test_mirror_cli_rejects_incomplete_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    kind: str,
+) -> None:
+    """A failed or forged stdout record cannot certify a valid mirror."""
+    monkeypatch.setattr(validator, "validate_repository", lambda: ("candidate",))
+    calls: list[str] = []
+
+    class ForeignCount(int):
+        @override
+        def __eq__(self, other: object) -> Never:
+            del other
+            raise AssertionError("foreign output count comparison executed")
+
+    class Output:
+        def write(self, message: str) -> int:
+            calls.append("write")
+            if kind == "write":
+                raise OSError("injected mirror stdout write failure")
+            receipts: dict[str, object] = {
+                "missing": None,
+                "false": False,
+                "short": len(message) - 1,
+                "long": len(message) + 1,
+                "foreign": ForeignCount(len(message)),
+            }
+            return cast("int", receipts.get(kind, len(message)))
+
+        def flush(self) -> None:
+            calls.append("flush")
+            if kind == "flush":
+                raise RuntimeError("injected mirror stdout flush failure")
+            if kind == "flush-receipt":
+                return cast("None", cast("object", 1))
+
+    monkeypatch.setattr(sys, "stdout", Output())
+    assert validator.main() == 1
+    assert calls == (["write", "flush"] if kind.startswith("flush") else ["write"])
+    assert "CLI output write or flush failed" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("kind", ("write", "flush", "receipt"))
+def test_mirror_cli_diagnostic_failure_preserves_nonzero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A broken diagnostic stream cannot conceal a failed mirror policy."""
+
+    def fail_validation() -> tuple[str, ...]:
+        raise validator.ResearchMirrorError("injected mirror policy failure")
+
+    class BrokenStderr:
+        def write(self, _message: str) -> int:
+            if kind == "write":
+                raise OSError("injected mirror stderr write failure")
+            return 0 if kind == "receipt" else len(_message)
+
+        def flush(self) -> None:
+            if kind == "flush":
+                raise RuntimeError("injected mirror stderr flush failure")
+
+    monkeypatch.setattr(validator, "validate_repository", fail_validation)
+    monkeypatch.setattr(sys, "stderr", BrokenStderr())
+    assert validator.main() == 1
 
 
 def test_mirror_cli_does_not_format_foreign_os_errors(

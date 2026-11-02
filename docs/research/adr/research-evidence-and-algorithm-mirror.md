@@ -80,7 +80,10 @@ cannot establish output policy.
 Injected output-ignore predicates must also
 return an exact native Boolean for each research ID: a truthy integer, string,
 or foreign truthiness hook cannot certify that local artifacts are isolated.
-CLI diagnostics preserve the validator's errors without invoking arbitrary
+CLI records require exact native text-write counts and a completed flush;
+failed or forged stdout delivery cannot claim a valid mirror. Failed stderr
+delivery never converts an invalid mirror into a successful process exit.
+Diagnostic formatting preserves validator errors without invoking arbitrary
 host-exception formatting hooks.
 
 Optional `math/algorithms/<id>.tex` remains a
