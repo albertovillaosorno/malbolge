@@ -306,6 +306,8 @@ def _require_ast_inputs(source: Path, clang: Path) -> None:
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = f"Clang status failed for {clang}: {_safe_error_detail(error)}"
         raise SourceAnalysisError(message) from error
+    if type(clang_is_file) is not bool:
+        _fail("Clang file check requires native status receipt")
     if not clang_is_file:
         _fail(f"pinned Clang not found: {clang}")
     expected = f"clang version {PINNED_LLVM_VERSION}"
@@ -316,6 +318,8 @@ def _require_ast_inputs(source: Path, clang: Path) -> None:
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = f"source status failed for {source}: {_safe_error_detail(error)}"
         raise SourceAnalysisError(message) from error
+    if type(source_is_file) is not bool:
+        _fail("guest source file check requires native status receipt")
     if not source_is_file:
         _fail(f"source is not a regular file: {source}")
 

@@ -350,7 +350,9 @@ error, including a same-byte replacement with a different inode. This
 preflight proves consistency of the observed source evidence; it does not
 assert that Clang provides complete guest-C lowering. Failed source stream
 wrapping closes the raw descriptor; unexpected host type failures while reading
-or resolving explicit paths remain typed source-analysis errors. The preflight
+or resolving explicit paths remain typed source-analysis errors. Both pinned
+Clang and explicit guest-source file checks require exact native booleans,
+never a foreign truthiness hook. The preflight
 admits only native file-status receipts, nonnegative integer descriptors,
 standard binary input streams, and exact bytes before trusting identity or
 content evidence. Clang version and AST results must be exact Python

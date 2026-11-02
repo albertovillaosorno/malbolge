@@ -1557,3 +1557,55 @@ def test_guest_abi_source_clang_accepts_authentic_command_receipt(
         assert c_abi_source._run_ast(source, source, "target") == {}
     else:
         assert "clang version 22.1.8" in c_abi_source._clang_identity(source)
+
+
+@pytest.mark.parametrize("target", ["clang", "source"])
+@pytest.mark.parametrize("status_receipt", [None, 0, 1, "yes", object()])
+def test_guest_abi_source_rejects_foreign_preflight_status_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    status_receipt: object,
+) -> None:
+    """Foreign status values cannot establish a pinned Clang or source file."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    clang = tmp_path / "clang"
+    _ = clang.write_text("mock clang", encoding="utf-8")
+    original_is_file = Path.is_file
+    selected = clang if target == "clang" else source
+
+    class ForeignTruth:
+        def __bool__(self) -> bool:
+            raise AssertionError("foreign file status truth hook executed")
+
+    forged: object = (
+        ForeignTruth() if type(status_receipt) is object else status_receipt
+    )
+
+    def forged_is_file(path: Path) -> bool:
+        if path == selected:
+            return cast("bool", forged)
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", forged_is_file)
+    monkeypatch.setattr(
+        c_abi_source, "_clang_identity", lambda _clang: "clang version 22.1.8"
+    )
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="native status"):
+        c_abi_source._require_ast_inputs(source, clang)
+
+
+def test_guest_abi_source_accepts_native_preflight_file_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordinary native file status booleans permit preflight to proceed."""
+    source = tmp_path / "input.c"
+    _ = source.write_text("int value;\n", encoding="utf-8")
+    clang = tmp_path / "clang"
+    _ = clang.write_text("mock clang", encoding="utf-8")
+    monkeypatch.setattr(
+        c_abi_source, "_clang_identity", lambda _clang: "clang version 22.1.8"
+    )
+    c_abi_source._require_ast_inputs(source, clang)
