@@ -42,7 +42,7 @@ import re
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BufferedRandom, BufferedReader
 from pathlib import Path
 from stat import S_IMODE, S_ISDIR, S_ISLNK, S_ISREG
@@ -167,13 +167,13 @@ def _unlinked_path(path: Path) -> bool:
     return True
 
 
-def _anchor_import_root(root: Path) -> Path:
-    """Pin relative caller paths without resolving symlinked checkout parents."""
+def _anchor_llvm_path(path: Path) -> Path:
+    """Pin relative paths without resolving symlinked ancestor names."""
     try:
-        return root if root.is_absolute() else Path.cwd() / root
+        return path if path.is_absolute() else Path.cwd() / path
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise LlvmImportError(
-            f"LLVM import root anchoring failed: {type(error).__name__}"
+            f"LLVM import path anchoring failed: {type(error).__name__}"
         ) from error
 
 
@@ -1660,7 +1660,18 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
         Repository-local LLVM root after atomic import or exact reuse.
 
     """
-    root = _anchor_import_root(root)
+    root = _anchor_llvm_path(root)
+    # An admitted host observation may also have been supplied relative to
+    # the caller's cwd. Pin its files before filesystem/probe callbacks run.
+    observation = replace(
+        observation,
+        clang=_anchor_llvm_path(observation.clang),
+        clang_tidy=_anchor_llvm_path(observation.clang_tidy),
+        clang_format=_anchor_llvm_path(observation.clang_format),
+        clang_cpp=_anchor_llvm_path(observation.clang_cpp),
+        llvm=_anchor_llvm_path(observation.llvm),
+        resource_dir=_anchor_llvm_path(observation.resource_dir),
+    )
     _validate_observation(observation)
     destination = root / LLVM_ROOT
     if _runtime_ready(destination, LINUX_PLATFORM):
@@ -1816,7 +1827,7 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
         Neutral aliases containing the exact existing Windows PE bytes.
 
     """
-    root = _anchor_import_root(root)
+    root = _anchor_llvm_path(root)
     alias_root = _windows_alias_directory(root)
     root_inode = _native_directory_inode(root)
     if root_inode is None:
@@ -1863,7 +1874,7 @@ def inspect_llvm(root: Path, platform_id: str) -> LlvmReadiness:
         Readiness plus the canonical neutral Clang alias path.
 
     """
-    root = _anchor_import_root(root)
+    root = _anchor_llvm_path(root)
     llvm_root = root / LLVM_ROOT
     alias_root = llvm_root / "jig-bin"
     clang = alias_root / "clang.bin"

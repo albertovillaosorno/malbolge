@@ -1667,6 +1667,49 @@ def test_relative_linux_import_does_not_follow_changing_cwd(
     assert not (foreign / "checkout/.dependencies").exists()
 
 
+def test_relative_linux_host_observation_pins_sources_before_callbacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A checked relative host source cannot change after checkout admission."""
+    observation = _host_observation(tmp_path)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    shutil.copytree(tmp_path / "host", foreign / "host")
+    _ = (foreign / "host/bin/clang").write_bytes(b"substituted clang")
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    relative = replace(
+        observation,
+        clang=observation.clang.relative_to(tmp_path),
+        clang_tidy=observation.clang_tidy.relative_to(tmp_path),
+        clang_format=observation.clang_format.relative_to(tmp_path),
+        clang_cpp=observation.clang_cpp.relative_to(tmp_path),
+        llvm=observation.llvm.relative_to(tmp_path),
+        resource_dir=observation.resource_dir.relative_to(tmp_path),
+    )
+    native_validate = llvm_validation._validate_observation  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.chdir(tmp_path)
+
+    def change_cwd_after_host_preflight(
+        source: llvm_validation.LlvmHostObservation,
+    ) -> None:
+        native_validate(source)
+        os.chdir(foreign)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_validate_observation", change_cwd_after_host_preflight
+        )
+        try:
+            imported = llvm_validation.import_linux_llvm(checkout, relative)
+        finally:
+            os.chdir(tmp_path)
+
+    assert (imported / "bin/clang").read_bytes() == CLANG_BYTES
+    assert llvm_validation.inspect_llvm(checkout, LINUX_PLATFORM).ready
+    assert (foreign / "host/bin/clang").read_bytes() == b"substituted clang"
+
+
 def test_relative_llvm_inspection_pins_reported_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
