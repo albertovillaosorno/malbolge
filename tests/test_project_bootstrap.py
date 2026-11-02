@@ -45,7 +45,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import tempfile
 import urllib.request
 from typing import TYPE_CHECKING
-from typing import Never, Self, cast, override
+from typing import Never, Self, cast, final, override
 
 import pytest
 from scripts.bootstrap import llvm_development_validation
@@ -347,6 +347,49 @@ def test_uv_manifest_rejects_oversized_document(tmp_path: Path) -> None:
     with manifest.open("wb") as stream:
         _ = stream.truncate(python_validation.MAX_UV_MANIFEST_BYTES + 1)
     with pytest.raises(python_validation.ProvisionError, match="byte limit"):
+        _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
+
+
+@pytest.mark.parametrize(
+    "receipt_kind",
+    ["bytearray", "bytes-subclass", "null"],
+)
+def test_uv_manifest_rejects_nonnative_read_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_kind: str,
+) -> None:
+    """A matching-size stream proxy cannot replace native manifest bytes."""
+    manifest = _copy_uv_manifest(tmp_path)
+    native = python_validation._open_owned_binary_stream
+
+    @final
+    class ProxyStream:
+        def __init__(self, descriptor: int) -> None:
+            self.stream = native(descriptor)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, size: int) -> object:
+            content = self.stream.read(size)
+            if receipt_kind == "bytearray":
+                return bytearray(content)
+            if receipt_kind == "bytes-subclass":
+                return _UvArchiveBytesSubclass(content)
+            return None
+
+    def fake_open(descriptor: int) -> ProxyStream:
+        return ProxyStream(descriptor)
+
+    monkeypatch.setattr(python_validation, "_open_owned_binary_stream", fake_open)
+    with pytest.raises(python_validation.ProvisionError, match="native bytes"):
         _ = python_validation.uv_artifact(WINDOWS_PLATFORM, manifest)
 
 

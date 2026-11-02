@@ -279,6 +279,8 @@ def _read_uv_manifest_bytes(path: Path) -> bytes:
         if _uv_manifest_identity(os.fstat(stream.fileno())) != expected:
             _fail("uv toolchain manifest changed before read")
         content = stream.read(MAX_UV_MANIFEST_BYTES + 1)
+        if type(content) is not bytes:
+            _fail("uv toolchain manifest stream must return native bytes")
         if (
             len(content) != admitted.st_size
             or _uv_manifest_identity(os.fstat(stream.fileno())) != expected

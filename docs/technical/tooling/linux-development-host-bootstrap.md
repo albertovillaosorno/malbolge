@@ -36,6 +36,8 @@ reports a typed initialization error preserving the host failure as its cause.
 The pinned `uv-toolchain.json`
 uses the same one-MiB physical regular-file admission and stable descriptor
 checks before its URL, version, artifact, and digest fields are interpreted.
+Manifest descriptor reads also require exact immutable native `bytes` before
+size or JSON decoding, so mutable stream proxies cannot supply trusted records.
 Manifest ancestry is also checked through native physical directory `lstat`
 receipts: a false-like or forged link predicate cannot authorize symlinked
 parent traversal. Leaf and parent redirect predicates require exact booleans;
