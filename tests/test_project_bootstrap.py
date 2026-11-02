@@ -3713,6 +3713,45 @@ def test_import_marker_writer_never_overwrites_linked_foreign_file(
     assert foreign.read_bytes() == original
 
 
+@pytest.mark.parametrize(
+    "marker_name", [project.GIT_IMPORT_MARKER, project.RUST_IMPORT_MARKER]
+)
+def test_import_marker_writer_rejects_nonempty_created_descriptor_before_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, marker_name: str
+) -> None:
+    """A forged O_EXCL open must not write or remove an existing marker."""
+    marker = tmp_path / marker_name
+    original = b"existing nonempty marker must remain untouched" * 2
+    _ = marker.write_bytes(original)
+    native_open = os.open
+    native_write = os.write
+    injected = False
+    attempted_write = False
+
+    def forged_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        nonlocal injected
+        if path == marker:
+            injected = True
+            return native_open(path, os.O_WRONLY)
+        return native_open(path, flags, mode)
+
+    def tracked_write(descriptor: int, content: bytes) -> int:
+        nonlocal attempted_write
+        attempted_write = True
+        return native_write(descriptor, content)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", forged_open)
+        isolated.setattr(os, "write", tracked_write)
+        with pytest.raises(project.InitializationError, match="marker descriptor"):
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, "malbolge-git-import/v1\n"
+            )
+    assert injected
+    assert not attempted_write
+    assert marker.read_bytes() == original
+
+
 def test_import_marker_writer_rejects_leaf_swap_during_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

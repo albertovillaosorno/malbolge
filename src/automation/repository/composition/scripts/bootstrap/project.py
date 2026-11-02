@@ -795,6 +795,8 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
                 or not stat.S_ISREG(opened.st_mode)
                 or not stat.S_ISREG(physical.st_mode)
                 or opened.st_nlink != 1
+                or opened.st_size != 0
+                or physical.st_size != 0
                 or (opened.st_dev, opened.st_ino)
                 != (physical.st_dev, physical.st_ino)
             ):
