@@ -3165,6 +3165,31 @@ def test_rust_inspection_requires_executable_linux_adapter(
     )
 
 
+@pytest.mark.parametrize("receipt", [True, 1])
+def test_rust_inspection_rejects_forged_linker_execute_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """An unexecutable adapter cannot be approved by forged access checks."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    linker = toolchain / "bin/cc"
+    if receipt is True:
+        linker.chmod(0o600)
+    native_access = os.access
+
+    def forged_access(path: str | os.PathLike[str], mode: int) -> bool:
+        if Path(path) == linker and mode == os.X_OK:
+            return cast("bool", receipt)
+        return native_access(path, mode)
+
+    monkeypatch.setattr(os, "access", forged_access)
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
 def test_rust_inspection_rejects_nonadapter_linker_script(
     tmp_path: Path,
 ) -> None:

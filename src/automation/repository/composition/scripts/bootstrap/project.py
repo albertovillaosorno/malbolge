@@ -1438,13 +1438,16 @@ def _linux_adapter_script_ready(linker: Path) -> bool:
             or _authority_identity(current) != identity
         ):
             return False
+        executable = os.access(linker, os.X_OK)
     except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
         return False
     return (
         content.startswith(b"#!/bin/sh\nexec ")
         and content.endswith(b' "$@"\n')
         and content.count(b"\n") == RUST_LINUX_ADAPTER_LINE_COUNT
-        and os.access(linker, os.X_OK)
+        and bool(current.st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+        and type(executable) is bool
+        and executable
     )
 
 
