@@ -302,31 +302,44 @@ def _read_manifest_source(
         ) from error
     if type(descriptor) is not int or descriptor < 0:
         _fail(f"{label} must open a native descriptor")
-    with _open_owned_manifest_stream(descriptor, label) as stream:
-        if (
-            _manifest_identity(_source_descriptor_status(stream, label), label)
-            != expected
-        ):
-            _fail(f"{label} changed before read")
-        try:
-            payload = _read_source_bytes(stream, max_bytes)
-        except (OSError, TypeError, ValueError, RuntimeError) as error:
-            raise CudaProvisionError(
-                f"cannot read {label}: host read failed ({_native_error_name(error)})"
-            ) from error
-        if type(payload) is not bytes:
-            _fail(f"{label} must return native bytes")
-        if len(payload) != admitted.st_size:
-            _fail(f"{label} changed during read or exceeds byte limit")
-        if (
-            _manifest_identity(_source_descriptor_status(stream, label), label)
-            != expected
-            or _manifest_identity(_source_path_status(path, label), label)
-            != expected
-        ):
-            _fail(f"{label} changed during read")
-        _check_manifest_parents(path, label)
-        return payload
+    try:
+        with _open_owned_manifest_stream(descriptor, label) as stream:
+            if (
+                _manifest_identity(_source_descriptor_status(stream, label), label)
+                != expected
+            ):
+                _fail(f"{label} changed before read")
+            try:
+                payload = _read_source_bytes(stream, max_bytes)
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    f"cannot read {label}: host read failed ({_native_error_name(error)})"
+                ) from error
+            if type(payload) is not bytes:
+                _fail(f"{label} must return native bytes")
+            if len(payload) != admitted.st_size:
+                _fail(f"{label} changed during read or exceeds byte limit")
+            if (
+                _manifest_identity(_source_descriptor_status(stream, label), label)
+                != expected
+                or _manifest_identity(_source_path_status(path, label), label)
+                != expected
+            ):
+                _fail(f"{label} changed during read")
+            _check_manifest_parents(path, label)
+    except CudaProvisionError:
+        raise
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            f"cannot read {label}: source stream close failed"
+        ) from error
+    # Context-manager exit closes the native stream and can invoke host
+    # callbacks after the final descriptor/path receipt above. A late source
+    # rewrite or same-byte inode replacement cannot certify stale bytes.
+    if _manifest_identity(_source_path_status(path, label), label) != expected:
+        _fail(f"{label} changed after source stream close")
+    _check_manifest_parents(path, label)
+    return payload
 
 
 def _read_document(path: Path, label: str) -> tuple[dict[str, object], bytes]:

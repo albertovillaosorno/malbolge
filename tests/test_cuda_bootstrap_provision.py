@@ -47,6 +47,7 @@ import sys
 import tarfile
 import zipfile
 import zlib
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Self, cast, override
 
@@ -56,6 +57,7 @@ from scripts.bootstrap import cuda_validation, project
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from typing import BinaryIO
 
 LINUX_PLATFORM = "linux-x86_64"
 FILE_REDIRECT = "file"
@@ -135,6 +137,74 @@ def _download_fixture(payload: bytes) -> Callable[[str], bytes]:
         return payload
 
     return download
+
+
+@pytest.mark.parametrize("change", ("overwrite", "replace"))
+def test_cuda_authority_rejects_mutation_after_owned_stream_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    """A stream-close callback cannot authorize a stale source snapshot."""
+    source = tmp_path / "authority.json"
+    original_bytes = b"trusted manifest bytes"
+    _ = source.write_bytes(original_bytes)
+    native_open = cuda_validation._open_owned_manifest_stream  # pyright: ignore[reportPrivateUsage]
+    changed = False
+
+    @contextmanager
+    def mutate_after_close(descriptor: int, label: str) -> Iterator[BinaryIO]:
+        nonlocal changed
+        with native_open(descriptor, label) as stream:
+            yield stream
+        if change == "overwrite":
+            before = source.stat()
+            _ = source.write_bytes(b"!" + original_bytes[1:])
+            os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+        else:
+            parked = tmp_path / "parked-authority"
+            _ = source.rename(parked)
+            _ = source.write_bytes(original_bytes)
+        changed = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            cuda_validation, "_open_owned_manifest_stream", mutate_after_close
+        )
+        with pytest.raises(cuda_validation.CudaProvisionError, match="changed"):
+            _ = cuda_validation._read_manifest_source(  # pyright: ignore[reportPrivateUsage]
+                source, "CUDA provision manifest"
+            )
+    assert changed
+
+
+@pytest.mark.parametrize("fault", (OSError, RuntimeError))
+def test_cuda_authority_stream_close_fault_remains_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: type[Exception]
+) -> None:
+    """A host close fault cannot escape the CUDA provision error boundary."""
+    source = tmp_path / "authority.json"
+    _ = source.write_bytes(b"trusted contents")
+    native_open = cuda_validation._open_owned_manifest_stream  # pyright: ignore[reportPrivateUsage]
+    failure = fault("foreign stream-close failure")
+    closed = False
+
+    @contextmanager
+    def fail_after_close(descriptor: int, label: str) -> Iterator[BinaryIO]:
+        nonlocal closed
+        with native_open(descriptor, label) as stream:
+            yield stream
+        closed = True
+        raise failure
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_open_owned_manifest_stream", fail_after_close)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="source stream close"
+        ) as caught:
+            _ = cuda_validation._read_manifest_source(  # pyright: ignore[reportPrivateUsage]
+                source, "CUDA provision manifest"
+            )
+    assert closed
+    assert caught.value.__cause__ is failure
 
 
 def test_cuda_relative_root_manifest_identity_is_cwd_invariant(
