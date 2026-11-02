@@ -530,9 +530,9 @@ def _write_tar_member(
 ) -> None:
     destination = staging.joinpath(*_archive_member_path(member.name).parts)
     if member.isdir():
-        destination.mkdir(parents=True, exist_ok=True)
+        _ensure_toolkit_destination_parent(destination)
         return
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_toolkit_destination_parent(destination.parent)
     if member.issym():
         target = _archive_member_path(member.linkname).as_posix()
         destination.symlink_to(target)
@@ -590,9 +590,9 @@ def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
         relative = _archive_member_path(info.filename)
         destination = staging.joinpath(*relative.parts)
         if info.is_dir():
-            destination.mkdir(parents=True, exist_ok=True)
+            _ensure_toolkit_destination_parent(destination)
             continue
-        destination.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_toolkit_destination_parent(destination.parent)
         _write_verified_bytes(destination, archive.read(info))
     extracted = staging / root_name
     if not extracted.is_dir():

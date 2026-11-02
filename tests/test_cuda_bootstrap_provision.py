@@ -1626,6 +1626,7 @@ def test_cuda_archive_host_fault_does_not_render_foreign_error(
         tmp_path, manifest, LINUX_PLATFORM
     ).packages[0]
     native_mkdir = Path.mkdir
+    native_os_mkdir = os.mkdir
     failure = UnprintableHostOSError("host extraction failure")
     injected = False
 
@@ -1636,15 +1637,26 @@ def test_cuda_archive_host_fault_does_not_render_foreign_error(
         exist_ok: bool = False,
     ) -> None:
         nonlocal injected
-        if path.name == "lib64":
+        if os.name != "posix" and path.name == "lib64":
             injected = True
             raise failure
         native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
 
+    def fault_os_mkdir(
+        path: str | os.PathLike[str], mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> None:
+        nonlocal injected
+        if os.name == "posix" and path == "lib64" and dir_fd is not None:
+            injected = True
+            raise failure
+        native_os_mkdir(path, mode, dir_fd=dir_fd)
+
     with monkeypatch.context() as isolated:
         isolated.setattr(Path, "mkdir", fault_mkdir)
+        isolated.setattr(os, "mkdir", fault_os_mkdir)
         with pytest.raises(
-            cuda_validation.CudaProvisionError, match="cannot extract CUDA"
+            cuda_validation.CudaProvisionError, match="destination parent creation"
         ) as caught:
             cuda_validation.extract_cuda_package(
                 payload,
@@ -3369,4 +3381,64 @@ def test_cuda_extract_destination_mkdir_rejects_late_parent_swap(
     foreign_parent = outside if swap_kind == "symlink" else parent
     assert (foreign_parent / "sentinel").read_bytes() == b"foreign content"
     assert not (foreign_parent / "toolkit").exists()
+    assert not (root / "toolkit").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
+@pytest.mark.parametrize("swap_kind", ["symlink", "physical"])
+def test_cuda_archive_member_mkdir_does_not_follow_late_parent_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    archive_format: str,
+    swap_kind: str,
+) -> None:
+    """A staged archive member directory cannot escape through parent substitution."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    payload = _payload() if archive_format == _TAR_FORMAT else _zip_payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        root,
+        _manifest(
+            root, payload,
+            {"relative_path": PACKAGE_PATH if archive_format == _TAR_FORMAT else _ZIP_PACKAGE_PATH},
+        ),
+        LINUX_PLATFORM,
+    ).packages[0]
+    archive_parent = root / "staging" / PACKAGE_NAME / ARCHIVE_ROOT
+    target = archive_parent / "lib64"
+    parked = root / "parked-archive-root"
+    outside = tmp_path / "foreign-archive-root"
+    outside.mkdir()
+    _ = (outside / "sentinel").write_bytes(b"foreign data")
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def swap_before_member_mkdir(
+        path: str | os.PathLike[str], mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and archive_parent.is_dir() and (
+            (Path(path) == target and dir_fd is None)
+            or (path == target.name and dir_fd is not None)
+        ):
+            _ = archive_parent.rename(parked)
+            if swap_kind == "symlink":
+                _ = archive_parent.symlink_to(outside, target_is_directory=True)
+            else:
+                _ = outside.rename(archive_parent)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_before_member_mkdir)
+        with pytest.raises(cuda_validation.CudaProvisionError):
+            cuda_validation.extract_cuda_package(
+                payload, package, root / "toolkit", staging=root / "staging"
+            )
+    assert swapped
+    foreign_parent = outside if swap_kind == "symlink" else archive_parent
+    assert (foreign_parent / "sentinel").read_bytes() == b"foreign data"
+    assert not (foreign_parent / "lib64").exists()
     assert not (root / "toolkit").exists()
