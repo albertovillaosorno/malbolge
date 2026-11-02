@@ -93,8 +93,10 @@ Every comparison additionally fixes:
 - host, accelerator, and positive memory budget; and
 - a retained repository-relative raw-sample file; drive-relative, rooted
   Windows, absolute, and parent-traversal path forms are rejected independent of
-  the validator host. Backslash separators are rejected as host-dependent:
-  all evidence paths use portable forward slashes on Linux and Windows.
+  the validator host. Windows-reserved components, NTFS alternate streams,
+  and trailing dots or spaces are also rejected. Backslash separators are
+  host-dependent: all evidence paths use portable forward slashes on Linux and
+  Windows.
 
 Deterministic studies declare zero stochastic trials, zero failures, and no seed
 list. Stochastic studies declare a positive trial count, one unique non-negative

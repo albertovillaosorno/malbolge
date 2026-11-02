@@ -1021,6 +1021,34 @@ def test_protocol_rejects_windows_drive_relative_path() -> None:
 
 
 @pytest.mark.parametrize(
+    "reserved",
+    (
+        "benchmarks/research/protocol/examples/raw.csv:metadata",
+        "benchmarks/research/protocol/examples/NUL.txt",
+        "benchmarks/NUL/protocol/examples/raw.csv",
+        "benchmarks/research/protocol/examples/results.",
+        "benchmarks/research/protocol/examples/results ",
+    ),
+)
+@pytest.mark.parametrize(
+    ("field", "filename"),
+    (
+        ("experiment_manifest", "deterministic.experiment.toml"),
+        ("path", "deterministic-raw.csv"),
+    ),
+)
+def test_protocol_rejects_windows_reserved_evidence_paths(
+    reserved: str,
+    field: str,
+    filename: str,
+) -> None:
+    """Neither linked run nor raw evidence can alias Windows device paths."""
+    source = f'{field} = "benchmarks/research/protocol/examples/{filename}"'
+    text = _text(DETERMINISTIC).replace(source, f'{field} = "{reserved}"')
+    _expect_failure(text, "Windows-reserved")
+
+
+@pytest.mark.parametrize(
     ("field", "filename"),
     (
         ("experiment_manifest", "deterministic.experiment.toml"),
