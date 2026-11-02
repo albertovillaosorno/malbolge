@@ -931,7 +931,7 @@ def import_host_git(
     required = _configured_git_version(root)
     destination = root / ".dependencies" / "git" / required
     alias = destination / "bin" / "git.bin"
-    if git_import_complete(destination) and alias.is_file():
+    if git_import_complete(destination) and _imported_binary_alias_ready(alias):
         return alias
     if destination.exists():
         _fail(f"incomplete Git import already exists: {destination}")
@@ -1399,16 +1399,16 @@ def _imported_cargo(root: Path, channel: str) -> Path:
     return root / ".dependencies" / "rust" / channel / "bin" / "cargo.bin"
 
 
-def _rust_cargo_alias_ready(cargo: Path) -> bool:
-    """Require a physical native Cargo alias inside the imported Rust tree.
+def _imported_binary_alias_ready(alias: Path) -> bool:
+    """Require a physical Git/Rust alias under nonredirected import parents.
 
     Returns:
         False for missing, linked, nonregular, or unauthenticated paths.
 
     """
     try:
-        _reject_authority_parent_redirects(cargo)
-        physical = cargo.lstat()
+        _reject_authority_parent_redirects(alias)
+        physical = alias.lstat()
     except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
         return False
     return type(physical) is os.stat_result and stat.S_ISREG(physical.st_mode)
@@ -1472,7 +1472,7 @@ def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
     channel = _rust_channel(root)
     cargo = _imported_cargo(root, channel)
     imported_root = cargo.parent.parent
-    imported = _rust_cargo_alias_ready(cargo) and rust_toolchain_import_complete(
+    imported = _imported_binary_alias_ready(cargo) and rust_toolchain_import_complete(
         imported_root
     )
     linker_ready = _rust_validation_adapter_ready(

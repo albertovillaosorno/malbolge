@@ -3313,6 +3313,56 @@ def test_host_git_import_requires_matching_version_and_exec_path(
     assert project.git_import_complete(expected.parent.parent)
 
 
+@pytest.mark.parametrize("mutation", ["alias-link", "bin-link", "forged-is-file"])
+def test_completed_git_import_rejects_unowned_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """Valid marker bytes cannot authorize a redirected or nonexistent Git."""
+    versions = tmp_path / ".jig/settings/versions.toml"
+    versions.parent.mkdir(parents=True)
+    _ = versions.write_text(
+        '[authority.git]\ncurrent = "2.55.0"\n', encoding="utf-8"
+    )
+    destination = tmp_path / ".dependencies/git" / GIT_VERSION
+    destination.mkdir(parents=True)
+    _ = (destination / project.GIT_IMPORT_MARKER).write_bytes(GIT_MARKER_BYTES)
+    external = tmp_path / "external-git"
+    _ = external.write_bytes(GIT_BYTES)
+    alias = destination / "bin/git.bin"
+    if mutation == "bin-link":
+        foreign_bin = tmp_path / "foreign-bin"
+        foreign_bin.mkdir()
+        _ = (foreign_bin / "git.bin").write_bytes(GIT_BYTES)
+        try:
+            alias.parent.symlink_to(foreign_bin, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"symlinks unavailable: {error}")
+    else:
+        alias.parent.mkdir()
+        if mutation == "alias-link":
+            try:
+                alias.symlink_to(external)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"symlinks unavailable: {error}")
+        else:
+            native_is_file = Path.is_file
+
+            def forged_is_file(path: Path) -> bool:
+                return True if path == alias else native_is_file(path)
+
+            monkeypatch.setattr(Path, "is_file", forged_is_file)
+    observation = project.GitHostObservation(
+        executable=external,
+        exec_path=tmp_path,
+        version_line="git version 2.55.0",
+    )
+    with pytest.raises(project.InitializationError, match="incomplete Git import"):
+        _ = project.import_host_git(tmp_path, LINUX_PLATFORM, observation)
+    assert external.read_bytes() == GIT_BYTES
+
+
 def test_git_import_preserves_runtime_tree_and_neutral_alias(
     tmp_path: Path,
 ) -> None:
