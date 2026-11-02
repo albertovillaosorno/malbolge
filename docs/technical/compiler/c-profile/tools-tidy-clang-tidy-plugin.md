@@ -167,8 +167,8 @@ authorize copying package headers outside the staging trust boundary. Pinned RPM
 reads are bounded to the declared package size plus one byte, with a 128 MiB
 absolute ceiling. Oversized responses fail before hashing or extraction, and
 admission requires an exact native byte response before size and SHA-256
-verification. Network and response-read faults become typed provisioning
-errors that retain native causes, without invoking foreign host exception
+verification. Network, HTTP framing, and response-read faults become typed
+provisioning errors with retained native causes and no foreign host exception
 formatters. All package byte-verification entrypoints also require exact native
 `bytes` before checking the pinned size and SHA-256, including when a custom
 downloader is injected; bytearrays and byte subclasses cannot authorize RPM

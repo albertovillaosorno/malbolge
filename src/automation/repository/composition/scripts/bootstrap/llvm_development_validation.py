@@ -38,6 +38,7 @@ from __future__ import annotations
 import ctypes
 import errno
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -903,7 +904,14 @@ def _download_asset(url: str, *, expected_size_bytes: int) -> bytes:
         )
         with response:
             data = response.read(expected_size_bytes + 1)
-    except (OSError, ValueError, TypeError, RuntimeError, urllib.error.URLError) as error:
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        urllib.error.URLError,
+        http.client.HTTPException,
+    ) as error:
         detail = (
             str(error)
             if type(error) in (OSError, ValueError, TypeError, RuntimeError)

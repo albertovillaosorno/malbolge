@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import io
 import os
 import shutil
@@ -4842,6 +4843,43 @@ def test_llvm_development_download_preserves_native_host_error(
         match="cannot download pinned LLVM development package",
     ) as observed:
         llvm_development_validation._download_asset(
+            "https://example.invalid/pinned.rpm",
+            expected_size_bytes=len(PACKAGE_BYTES),
+        )
+    assert observed.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("phase", ["open", "read"])
+def test_llvm_development_download_normalizes_truncated_http_response(
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """HTTP framing failures retain their cause inside the typed RPM boundary."""
+    fault = http.client.IncompleteRead(b"partial", len(PACKAGE_BYTES))
+
+    class Response:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, _kind: object, _error: object, _trace: object) -> bool:
+            return False
+
+        def read(self, _limit: int) -> bytes:
+            raise fault
+
+    def open_response(*_args: object, **_kwargs: object) -> Response:
+        if phase == "open":
+            raise fault
+        return Response()
+
+    monkeypatch.setattr(
+        llvm_development_validation.urllib.request, "urlopen", open_response
+    )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="IncompleteRead",
+    ) as observed:
+        _ = llvm_development_validation._download_asset(
             "https://example.invalid/pinned.rpm",
             expected_size_bytes=len(PACKAGE_BYTES),
         )
