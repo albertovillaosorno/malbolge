@@ -1114,12 +1114,18 @@ def provision_development_identity(
             staged_root / LLVM_DEVELOPMENT_MARKER, _marker_bytes(identity)
         )
         _require_development_destination(identity.development_root)
-        try:
-            identity.development_root.parent.mkdir(parents=True, exist_ok=True)
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            raise LlvmDevelopmentProvisionError(
-                "LLVM development destination parent creation failed"
-            ) from error
+        if os.name != "posix":
+            try:
+                identity.development_root.parent.mkdir(parents=True, exist_ok=True)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmDevelopmentProvisionError(
+                    "LLVM development destination parent creation failed"
+                ) from error
+        else:
+            parent_descriptor = _open_physical_publication_parent(  # pyright: ignore[reportUnreachable]
+                identity.development_root, "destination", create=True
+            )
+            _close_physical_parent(parent_descriptor, "destination")
         _require_development_destination(identity.development_root)
         try:
             _ = identity.development_root.lstat()

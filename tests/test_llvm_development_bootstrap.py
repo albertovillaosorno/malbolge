@@ -977,7 +977,10 @@ def test_development_publication_rejects_foreign_destination_descriptor(
         isolated.setattr(os, "open", substitute_parent_open)
         with pytest.raises(
             llvm_development_validation.LlvmDevelopmentProvisionError,
-            match="destination parent descriptor does not match",
+            match=(
+                "destination (parent descriptor does not match"
+                "|physical parent descriptor failed)"
+            ),
         ):
             _ = llvm_development_validation.provision_development_identity(
                 root, identity, downloader=_downloader([]), extractor=_extract_headers
@@ -1169,6 +1172,7 @@ def test_development_host_directory_creation_faults_are_typed(
         if dir_fd is not None and (
             (location == "staging" and path == stage.name)
             or (location == "package" and path == PACKAGE_NAME.removesuffix(".rpm"))
+            or (location == "destination" and path == fault_path.name)
         ):
             raise fault
         native_os_mkdir(path, mode, dir_fd=dir_fd)
@@ -1179,7 +1183,7 @@ def test_development_host_directory_creation_faults_are_typed(
             isolated.setattr(os, "mkdir", faulty_native_mkdir)
         with pytest.raises(
             llvm_development_validation.LlvmDevelopmentProvisionError,
-            match="creation failed",
+            match="creation failed|physical parent descriptor failed",
         ) as observed:
             _ = llvm_development_validation.provision_development_identity(
                 tmp_path,
@@ -3740,4 +3744,57 @@ def test_development_child_stage_mkdir_stays_on_owned_parent(
     }
     assert not downloads
     assert (owned / "development").is_dir()
+    assert not identity.development_root.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires pinned POSIX mkdir")
+@pytest.mark.parametrize("replacement", ["symlink", "physical"])
+def test_development_destination_parent_mkdir_stays_on_owned_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """A raced ancestor cannot receive a new development destination parent."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    dependencies = root / ".dependencies"
+    dependencies.mkdir()
+    identity = _identity(root)
+    foreign, sentinel = _external_sentinel(tmp_path)
+    owned = tmp_path / "parked-dependencies"
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def swap_before_parent_mkdir(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (
+            path == identity.development_root.parent
+            or (path == "llvm-dev" and dir_fd is not None)
+        ):
+            _ = dependencies.rename(owned)
+            if replacement == "symlink":
+                _ = dependencies.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(dependencies)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_before_parent_mkdir)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="destination",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                root, identity, downloader=_downloader([]), extractor=_extract_headers
+            )
+    assert swapped
+    foreign_root = foreign if replacement == "symlink" else dependencies
+    assert set(foreign_root.iterdir()) == {
+        sentinel if replacement == "symlink" else dependencies / sentinel.name
+    }
+    assert (owned / "llvm-dev").is_dir()
     assert not identity.development_root.exists()
