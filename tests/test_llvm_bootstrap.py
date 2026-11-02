@@ -36,12 +36,12 @@ from __future__ import annotations
 
 import os
 import shutil
-from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from collections.abc import Callable
 from dataclasses import replace
 from io import BufferedRandom, BufferedReader
 from pathlib import Path
+from stat import S_ISREG
 from typing import Self, cast, final, override
 
 import pytest

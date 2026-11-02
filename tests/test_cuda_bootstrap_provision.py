@@ -2910,3 +2910,49 @@ def test_cuda_staging_mkdir_rejects_forged_success_receipt(
         cuda_validation._prepare_staging(stage)  # pyright: ignore[reportPrivateUsage]
     assert forged
     assert not stage.exists()
+
+
+@pytest.mark.parametrize(
+    "fault", [UnprintableHostOSError, UnprintableHostRuntimeError, ValueError, TypeError]
+)
+def test_cuda_manifest_json_reader_does_not_render_host_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Manifest JSON parser host exceptions must remain typed and unrendered."""
+    source = _manifest(tmp_path, _payload())
+    failure = fault("foreign JSON reader failure")
+
+    def fail_parse(_body: str, *, object_pairs_hook: object) -> object:
+        assert object_pairs_hook is not None
+        raise failure
+
+    monkeypatch.setattr(cuda_validation.json, "loads", fail_parse)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="cannot read") as caught:
+        _ = cuda_validation.load_cuda_provision_manifest(tmp_path, source, LINUX_PLATFORM)
+    assert caught.value.__cause__ is failure
+
+
+def test_cuda_marker_inspection_does_not_render_host_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hostile OSError message cannot escape marker inspection."""
+    parent = tmp_path / "owned-stage"
+    parent.mkdir()
+    marker = parent / cuda_validation.CUDA_PROVISION_MARKER
+    failure = UnprintableHostOSError("foreign marker status failure")
+    native_lstat = Path.lstat
+
+    def fail_marker(path: Path) -> os.stat_result:
+        if path == marker:
+            raise failure
+        return native_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_marker)
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match="cannot inspect CUDA completion marker"
+    ) as caught:
+        cuda_validation._require_new_completion_marker(marker)  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is failure

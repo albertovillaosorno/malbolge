@@ -305,8 +305,8 @@ def _read_manifest_source(
 
 
 def _read_document(path: Path, label: str) -> tuple[dict[str, object], bytes]:
+    payload = _read_manifest_source(path, label)
     try:
-        payload = _read_manifest_source(path, label)
         parsed = cast(
             "object",
             json.loads(
@@ -314,8 +314,12 @@ def _read_document(path: Path, label: str) -> tuple[dict[str, object], bytes]:
                 object_pairs_hook=_reject_duplicate_pairs,
             ),
         )
-    except (UnicodeDecodeError, json.JSONDecodeError, OSError) as error:
-        _fail(f"cannot read {label}: {error}")
+    except CudaProvisionError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError, OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            f"cannot read {label}: {type(error).__name__}"
+        ) from error
     return _mapping(parsed, label), payload
 
 
@@ -839,8 +843,10 @@ def _require_new_completion_marker(path: Path) -> None:
         _ = path.lstat()
     except FileNotFoundError:
         return
-    except OSError as error:
-        _fail(f"cannot inspect CUDA completion marker: {error}")
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            "cannot inspect CUDA completion marker"
+        ) from error
     _fail(f"CUDA completion marker already supplied by a package: {path}")
 
 
