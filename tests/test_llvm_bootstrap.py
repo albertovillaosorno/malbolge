@@ -110,6 +110,131 @@ def test_linux_import_materializes_local_runtime_and_neutral_aliases(
     assert llvm_validation.import_linux_llvm(tmp_path, observation) == root
 
 
+def test_llvm_marker_writer_rejects_substituted_open_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged marker open result cannot write bytes into another inode."""
+    root = tmp_path / "runtime"
+    root.mkdir()
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    outside = tmp_path / "outside-marker"
+    original = b"external marker sentinel"
+    _ = outside.write_bytes(original)
+    native_open = os.open
+
+    def foreign_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        if Path(path) == marker:
+            return native_open(outside, os.O_WRONLY)
+        return native_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", foreign_open)
+    with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
+        llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+            root, LINUX_PLATFORM
+        )
+    assert outside.read_bytes() == original
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("invalid_descriptor", [None, True, -1])
+def test_llvm_marker_writer_rejects_noninteger_open_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_descriptor: object,
+) -> None:
+    """Invalid marker open receipts must not be written or closed."""
+    root = tmp_path / "runtime"
+    root.mkdir()
+
+    def foreign_open(
+        _path: str | os.PathLike[str], _flags: int, _mode: int = 0o777
+    ) -> int:
+        return cast("int", invalid_descriptor)
+
+    def unexpected_write(_fd: int, _content: bytes) -> int:
+        raise AssertionError("foreign marker descriptor was written")
+
+    def unexpected_close(_fd: int) -> None:
+        raise AssertionError("foreign marker descriptor was closed")
+
+    monkeypatch.setattr(os, "open", foreign_open)
+    monkeypatch.setattr(os, "write", unexpected_write)
+    monkeypatch.setattr(os, "close", unexpected_close)
+    with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
+        llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+            root, LINUX_PLATFORM
+        )
+
+
+@pytest.mark.parametrize("status_source", ["descriptor", "path"])
+def test_llvm_marker_writer_rejects_foreign_stat_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status_source: str,
+) -> None:
+    """Marker publication requires native status for the new empty inode."""
+    root = tmp_path / "runtime"
+    root.mkdir()
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    native_fstat = os.fstat
+    native_lstat = Path.lstat
+
+    @final
+    class ForeignStatus:
+        def __init__(self, status: os.stat_result) -> None:
+            self.st_mode = status.st_mode
+            self.st_dev = status.st_dev
+            self.st_ino = status.st_ino
+            self.st_nlink = status.st_nlink
+            self.st_size = status.st_size
+
+    def false_fstat(descriptor: int) -> object:
+        return ForeignStatus(native_fstat(descriptor))
+
+    def false_lstat(path: Path) -> object:
+        status = native_lstat(path)
+        return ForeignStatus(status) if path == marker else status
+
+    with monkeypatch.context() as isolated:
+        if status_source == "descriptor":
+            isolated.setattr(os, "fstat", false_fstat)
+        else:
+            isolated.setattr(Path, "lstat", false_lstat)
+        with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
+            llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+                root, LINUX_PLATFORM
+            )
+    assert marker.read_bytes() == b""
+
+
+def test_llvm_marker_writer_rejects_hardlink_after_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Marker bytes cannot reach a second link installed before the write."""
+    root = tmp_path / "runtime"
+    root.mkdir()
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    outside = tmp_path / "outside-new-marker"
+    native_open = os.open
+
+    def linked_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        fd = native_open(path, flags, mode)
+        if Path(path) == marker:
+            os.link(marker, outside)
+        return fd
+
+    monkeypatch.setattr(os, "open", linked_open)
+    with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
+        llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+            root, LINUX_PLATFORM
+        )
+    assert outside.read_bytes() == b""
+
+
 @pytest.mark.parametrize("fault", (OSError, ValueError, RuntimeError, TypeError))
 def test_llvm_marker_fdopen_failure_closes_owned_descriptor(
     tmp_path: Path,

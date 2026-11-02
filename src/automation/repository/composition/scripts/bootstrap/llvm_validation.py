@@ -293,8 +293,8 @@ def _linux_wrapper(tool: str) -> str:
     )
 
 
-def _owned_wrapper_descriptor(path: Path, descriptor: int) -> bool:
-    """Require a new regular inode at the leaf opened for wrapper creation."""
+def _owned_exclusive_descriptor(path: Path, descriptor: int) -> bool:
+    """Attest a newly created empty regular inode at an exact leaf."""
     try:
         opened = os.fstat(descriptor)
         named = path.lstat()
@@ -328,7 +328,7 @@ def _write_linux_alias(path: Path, text: str) -> None:
         _fail("LLVM wrapper descriptor must be a native nonnegative integer")
     try:
         try:
-            if not _owned_wrapper_descriptor(path, descriptor):
+            if not _owned_exclusive_descriptor(path, descriptor):
                 _fail("LLVM wrapper descriptor does not own the physical leaf")
             written = os.write(descriptor, content)
             if type(written) is not int or written != len(content):
@@ -374,11 +374,17 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
         raise LlvmImportError(
             f"LLVM import marker exclusive creation failed: {type(error).__name__}"
         ) from error
+    if type(cast("object", descriptor)) is not int or descriptor < 0:
+        _fail("LLVM import marker descriptor must be a native integer")
     try:
         try:
+            if not _owned_exclusive_descriptor(marker, descriptor):
+                _fail("LLVM import marker descriptor does not own its physical leaf")
             written = os.write(descriptor, content)
         finally:
             os.close(descriptor)
+    except LlvmImportError:
+        raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         try:
             marker.unlink(missing_ok=True)
