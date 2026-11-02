@@ -3458,6 +3458,67 @@ def test_import_completion_rejects_hardlinked_marker(
 
 
 @pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)
+def test_import_completion_rejects_hardlink_created_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: tuple[str, bytes, Callable[[Path], bool]],
+) -> None:
+    """A marker linked after the first lstat cannot become ready."""
+    name, expected, check = scenario
+    marker = tmp_path / name
+    _ = marker.write_bytes(expected)
+    outside = tmp_path / "external-marker"
+    native_read = project._read_authority_bytes  # pyright: ignore[reportPrivateUsage]
+    linked = False
+
+    def link_before_read(path: Path) -> bytes:
+        nonlocal linked
+        if path == marker and not linked:
+            linked = True
+            os.link(marker, outside)
+        return native_read(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(project, "_read_authority_bytes", link_before_read)
+        assert not check(tmp_path)
+    assert linked
+    assert outside.read_bytes() == expected
+
+
+@pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)
+def test_import_completion_rejects_same_bytes_swap_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: tuple[str, bytes, Callable[[Path], bool]],
+) -> None:
+    """A different marker inode with matching content cannot become ready."""
+    name, expected, check = scenario
+    marker = tmp_path / name
+    _ = marker.write_bytes(expected)
+    relocated = tmp_path / "moved-marker"
+    new_marker = tmp_path / "replacement-marker"
+    _ = new_marker.write_bytes(expected)
+    native_read = project._read_authority_bytes  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def swap_after_read(path: Path) -> bytes:
+        nonlocal swapped
+        content = native_read(path)
+        if path == marker and not swapped:
+            swapped = True
+            _ = marker.replace(relocated)
+            _ = new_marker.replace(marker)
+        return content
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(project, "_read_authority_bytes", swap_after_read)
+        assert not check(tmp_path)
+    assert swapped
+    assert relocated.read_bytes() == expected
+    assert marker.read_bytes() == expected
+
+
+@pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)
 def test_import_completion_rejects_fifo_marker(
     tmp_path: Path,
     scenario: tuple[str, bytes, Callable[[Path], bool]],

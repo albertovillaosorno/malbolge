@@ -735,7 +735,15 @@ def _import_completion_marker_matches(marker: Path, expected: bytes) -> bool:
             or observed.st_size != len(expected)
         ):
             return False
-        return _read_authority_bytes(marker) == expected
+        identity = _authority_identity(observed)
+        matches = _read_authority_bytes(marker) == expected
+        current = marker.lstat()
+        return (
+            matches
+            and type(current) is os.stat_result
+            and current.st_nlink == 1
+            and _authority_identity(current) == identity
+        )
     except OSError, ValueError, RuntimeError:
         return False
 
