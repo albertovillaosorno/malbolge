@@ -1670,6 +1670,15 @@ def test_llvm_host_version_rejects_embedded_or_qualified_release(
         "Ubuntu clang version 22.1.8 (https://llvm.org/)",
         "clang-format version 22.1.8\nTarget: x86_64-pc-linux-gnu",
         "LLVM (http://llvm.org/):\n  LLVM version 22.1.8\n  Optimized build.",
+        "LLVM (http://llvm.org/):\n  LLVM version 22.1.8\n  Debug build.",
+        "clang version 22.1.8 (https://github.com/llvm/llvm-project 85ac560)",
+        (
+            "clang version 22.1.8 (https://github.com/llvm/llvm-project 85ac560)\n"
+            "Target: x86_64-unknown-linux-gnu\nThread model: posix\n"
+            "InstalledDir: /opt/LLVM-22.1.8-Linux-X64/bin"
+        ),
+        "Debian clang version 22.1.8 (22.1.8-1)",
+        "Apple clang version 22.1.8 (clang-1600.0.26.3)",
     ),
 )
 def test_llvm_host_version_preserves_exact_native_banner(banner: str) -> None:
@@ -3841,3 +3850,22 @@ def test_linux_import_does_not_write_marker_to_substituted_stage(
     assert (foreign_stage / "sentinel").read_bytes() == b"unrelated foreign bytes"
     assert not (foreign_stage / llvm_validation.LLVM_IMPORT_MARKER).exists()
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
+@pytest.mark.parametrize(
+    "banner",
+    (
+        "clang version 22.1.8 forged diagnostic",
+        "clang-format version 22.1.8\tunexpected suffix",
+        "Ubuntu clang version 22.1.8 (https://llvm.org/) forged suffix",
+        "clang version 22.1.8\nclang version 21.1.0",
+        "clang version 22.1.8\nmalicious unrecognized line",
+        "clang version 22.1.8\nTarget: x86_64-pc-linux-gnu\nerror: forged",
+        "LLVM (http://llvm.org/):\n  LLVM version 22.1.8 arbitrary suffix",
+        "LLVM (http://llvm.org/):\n  LLVM version 22.1.8\nclang version 21.1.0",
+        "LLVM (http://llvm.org/):\n  LLVM version 22.1.8\n  Optimized build.\nInjected",
+    ),
+)
+def test_llvm_host_version_rejects_appended_foreign_banner_text(banner: str) -> None:
+    """A pinned release cannot mask arbitrary appended version report content."""
+    assert not llvm_validation.llvm_version_matches(banner)

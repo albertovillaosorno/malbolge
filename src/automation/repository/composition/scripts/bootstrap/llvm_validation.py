@@ -97,22 +97,47 @@ def llvm_version_matches(version_text: str) -> bool:
         Whether the primary version banner identifies the pinned release.
 
     """
+    if type(version_text) is not str:
+        return False
     lines = version_text.splitlines()
     if not lines:
         return False
-    # Clang/clang-format identify their own release on the first line.  A
-    # diagnostic elsewhere in stdout cannot attest the installed executable.
-    suffix = re.escape(LLVM_VERSION) + r"(?=$|[ \t(])"
-    if re.match(
-        r"^(?:(?:Ubuntu|Debian|Apple) )?clang(?:-format)? version " + suffix,
-        lines[0],
-    ):
+    # Clang and clang-format have a one-line release followed by optional
+    # ordered target/runtime metadata. The version alone cannot authorize
+    # unrecognized diagnostics appended to an otherwise valid first line.
+    version = re.escape(LLVM_VERSION)
+    release_banner = (
+        r"(?:(?:Ubuntu|Debian|Apple) )?clang(?:-format)? version "
+        + version
+        + r"(?: \([^()\r\n]{1,256}\))?"
+    )
+    if re.fullmatch(release_banner, lines[0]) is not None:
+        allowed = (
+            ("Target: ", r"[A-Za-z0-9_.+-]{1,128}"),
+            ("Thread model: ", r"[A-Za-z0-9_.+-]{1,64}"),
+            ("InstalledDir: ", r"[^\x00-\x1f\x7f]{1,512}"),
+        )
+        last_index = -1
+        for line in lines[1:]:
+            index = next(
+                (
+                    i
+                    for i, (prefix, expression) in enumerate(allowed)
+                    if line.startswith(prefix)
+                    and re.fullmatch(prefix + expression, line) is not None
+                ),
+                -1,
+            )
+            if index <= last_index:
+                return False
+            last_index = index
         return True
-    # clang-tidy uses LLVM's two-line banner rather than "clang-tidy version".
+    # clang-tidy prints the LLVM banner and at most its native build mode.
     return (
         lines[0] == "LLVM (http://llvm.org/):"
-        and len(lines) > 1
-        and re.match(r"^  LLVM version " + suffix, lines[1]) is not None
+        and len(lines) in (2, 3)
+        and lines[1] == f"  LLVM version {LLVM_VERSION}"
+        and (len(lines) == 2 or lines[2] in ("  Optimized build.", "  Debug build."))
     )
 
 
