@@ -531,6 +531,13 @@ def _validate_templates() -> None:
         _fail("canonical bibliography source template is missing")
     if _path_exists(BIBLIOGRAPHY_ROOT / "template.md"):
         _fail("duplicate root bibliography template is forbidden")
+    allowed_templates = (
+        CANONICAL_TEMPLATE,
+        BIBLIOGRAPHY_ROOT / ADR_DIR / "template.md",
+    )
+    for path in _walk_paths(BIBLIOGRAPHY_ROOT):
+        if path.name == "template.md" and path not in allowed_templates:
+            _fail(f"duplicate bibliography template is forbidden: {_relative(path)}")
 
 
 def _validate_topology() -> None:

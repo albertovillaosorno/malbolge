@@ -75,7 +75,8 @@ repository policy merely because they are cited.
   explicit unresolved/uncertainty boundary.
 - `src/automation/repository/composition/scripts/validate/bibliography.py`
   enforces the closed taxonomy, README and
-  template topology, record heading order, dated provenance, unresolved
+  canonical source and ADR template topology (including shadow rejection), record
+  heading order, dated provenance, unresolved
   evidence, nonempty source lists, and baseline coverage.
 - `tests/test_bibliography.py` covers successful repository validation and
   fail-closed uncertainty, placeholder, date, source-list, and heading-order

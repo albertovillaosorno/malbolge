@@ -91,7 +91,8 @@ padded with fabricated source records.
 
 `src/automation/repository/composition/scripts/validate/bibliography.py`
 enforces the closed first-level taxonomy,
-README coverage, one canonical template, exact single-occurrence required
+README coverage, one canonical source-record template and a distinct ADR
+writing template without other shadow copies, exact single-occurrence required
 source-record heading lines and order, populated mandatory section bodies,
 real calendar-date provenance limited
 to status, provenance, or sources sections,

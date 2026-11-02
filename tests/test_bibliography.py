@@ -129,6 +129,48 @@ def test_repository_bibliography_taxonomy_and_baseline_are_valid() -> None:
     assert report.categories == validator.CATEGORIES
 
 
+@pytest.mark.parametrize(
+    "shadow_path",
+    ("languages/template.md", "platforms-and-runtimes/compiler/template.md"),
+)
+def test_bibliography_rejects_nested_shadow_template(
+    shadow_path: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A nested template is not an alternative to the sole canonical file."""
+    root = tmp_path / "bibliography"
+    canonical = root / "provenance-and-methodology" / "template.md"
+    shadow = root / shadow_path
+    canonical.parent.mkdir(parents=True)
+    shadow.parent.mkdir(parents=True)
+    _ = canonical.write_text("canonical", encoding="utf-8")
+    _ = shadow.write_text("unreviewed second template", encoding="utf-8")
+    monkeypatch.setattr(validator, "BIBLIOGRAPHY_ROOT", root)
+    monkeypatch.setattr(validator, "CANONICAL_TEMPLATE", canonical)
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match="duplicate bibliography template",
+    ):
+        validator._validate_templates()  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("with_adr_template", (False, True))
+def test_bibliography_accepts_canonical_and_adr_templates(
+    with_adr_template: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The source template and independent ADR template coexist without shadows."""
+    root = tmp_path / "bibliography"
+    canonical = root / "provenance-and-methodology" / "template.md"
+    canonical.parent.mkdir(parents=True)
+    _ = canonical.write_text("canonical", encoding="utf-8")
+    if with_adr_template:
+        adr = root / "adr" / "template.md"
+        adr.parent.mkdir()
+        _ = adr.write_text("ADR decision template", encoding="utf-8")
+    monkeypatch.setattr(validator, "BIBLIOGRAPHY_ROOT", root)
+    monkeypatch.setattr(validator, "CANONICAL_TEMPLATE", canonical)
+    validator._validate_templates()  # pyright: ignore[reportPrivateUsage]
+
+
 def test_llvm_banner_url_is_covered_by_existing_clang_tidy_identity() -> None:
     """The pinned LLVM version-banner literal needs its source identity record."""
     version_matcher = ROOT / (
