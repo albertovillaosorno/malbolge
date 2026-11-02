@@ -5415,6 +5415,62 @@ def test_portable_import_fallback_rejects_foreign_named_destination(
         assert parked.read_bytes() == GIT_BYTES
 
 
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="requires POSIX import root")
+@pytest.mark.parametrize("component", ["git", "rust"])
+def test_native_toolchain_import_rejects_marker_drift_during_root_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    component: str,
+) -> None:
+    """A root-descriptor close callback cannot complete a corrupt import."""
+    destination = tmp_path / "installed" / component
+    name = (
+        project.GIT_IMPORT_MARKER if component == "git" else project.RUST_IMPORT_MARKER
+    )
+    marker = destination / name
+    native_close = project._close_local_state_parent
+    mutated = False
+
+    def change_marker_on_root_close(fd: int) -> None:
+        nonlocal mutated
+        original = os.fstat(fd)
+        is_root = (
+            marker.exists()
+            and not mutated
+            and (original.st_dev, original.st_ino)
+            == (destination.lstat().st_dev, destination.lstat().st_ino)
+        )
+        native_close(fd)
+        if is_root:
+            _ = marker.write_bytes(b"X" * marker.stat().st_size)
+            mutated = True
+
+    if component == "git":
+        source = tmp_path / "host-git"
+        _ = source.write_bytes(GIT_BYTES)
+        source.chmod(0o700)
+        helpers = tmp_path / "host-git-core"
+        helpers.mkdir()
+    else:
+        source = _make_rust_import_source(tmp_path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            project, "_close_local_state_parent", change_marker_on_root_close
+        )
+        with pytest.raises(project.InitializationError, match="marker.*changed"):
+            if component == "git":
+                _ = project.import_git_installation(
+                    source, helpers, destination, windows=False
+                )
+            else:
+                _ = project.import_rust_toolchain(
+                    source, destination, tool_ids=("cargo",), windows=False
+                )
+    assert mutated
+    assert marker.read_bytes().startswith(b"X")
+
+
 def test_git_import_preserves_runtime_tree_and_neutral_alias(
     tmp_path: Path,
 ) -> None:
@@ -5596,6 +5652,55 @@ def test_import_completion_rejects_hardlinked_marker(
     except (OSError, NotImplementedError) as error:
         pytest.skip(f"hardlinks unavailable: {error}")
     assert not check(tmp_path)
+
+
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="requires POSIX parent close")
+@pytest.mark.parametrize(
+    "marker_name", [project.GIT_IMPORT_MARKER, project.RUST_IMPORT_MARKER]
+)
+def test_import_marker_writer_rejects_post_parent_close_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    marker_name: str,
+) -> None:
+    """A late parent close callback cannot validate an overwritten marker."""
+    marker = tmp_path / marker_name
+    content = b"malbolge-git-import/v1\n"
+    native_open = os.open
+    native_close = os.close
+    parent_fd: int | None = None
+    mutated = False
+
+    def record_parent_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal parent_fd
+        fd = native_open(path, flags, mode, dir_fd=dir_fd)
+        if path == tmp_path:
+            parent_fd = fd
+        return fd
+
+    def change_marker_on_parent_close(fd: int) -> None:
+        nonlocal mutated
+        native_close(fd)
+        if fd == parent_fd and not mutated and marker.exists():
+            _ = marker.write_bytes(b"X" * len(content))
+            mutated = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", record_parent_open)
+        isolated.setattr(os, "close", change_marker_on_parent_close)
+        with pytest.raises(project.InitializationError, match="marker.*changed"):
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, content.decode("ascii")
+            )
+    assert parent_fd is not None
+    assert mutated
+    assert marker.read_bytes() == b"X" * len(content)
 
 
 @pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)

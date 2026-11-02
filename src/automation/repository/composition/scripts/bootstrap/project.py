@@ -1238,6 +1238,8 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
             os.close(parent_fd)
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             raise InitializationError("import marker parent close failed") from error
+    if not _import_completion_marker_matches(marker, content.encode("ascii")):
+        _fail("import marker changed after parent close")
 
 
 def _write_import_completion_marker_at_parent(
@@ -1865,6 +1867,8 @@ def import_git_installation(
         _import_portable_git_installation(
             git, exec_path, destination, windows=windows
         )
+    if not git_import_complete(destination):
+        _fail("Git import marker changed after root close")
     return destination / "bin/git.bin"
 
 
@@ -2489,6 +2493,8 @@ def import_rust_toolchain(
             destination / RUST_IMPORT_MARKER,
             "malbolge-rust-toolchain-import/v1\n",
         )
+    if not rust_toolchain_import_complete(destination):
+        _fail("Rust import marker changed after root close")
     return aliases
 
 
