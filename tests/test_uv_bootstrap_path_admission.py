@@ -1115,6 +1115,47 @@ def test_uv_zip_rejects_short_member_with_forged_declared_length(
         _ = python_validation._zip_member_bytes(bytes(encoded), "uv.exe")
 
 
+
+@pytest.mark.parametrize("forgery", ["object", "subclass"])
+def test_uv_tar_rejects_foreign_candidate_before_name_access(
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """TAR scanning cannot invoke foreign member-name hooks before admission."""
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+        info = tarfile.TarInfo("uv-release/uv")
+        info.size = len(BINARY)
+        archive.addfile(info, io.BytesIO(BINARY))
+
+    class Trap:
+        @property
+        def name(self) -> str:
+            raise AssertionError("foreign TAR member name evaluated")
+
+    class TarInfoTrap(tarfile.TarInfo):
+        def __getattribute__(self, name: str) -> object:
+            if name == "name":
+                raise AssertionError("foreign TAR member name evaluated")
+            return super().__getattribute__(name)
+
+    replacement = Trap() if forgery == "object" else TarInfoTrap("unused")
+    original_next = tarfile.TarFile.next
+    called = 0
+
+    def injected_next(archive: tarfile.TarFile) -> object:
+        nonlocal called
+        called += 1
+        if called == 1:
+            return original_next(archive)
+        return replacement
+
+    monkeypatch.setattr(tarfile.TarFile, "next", injected_next)
+    with pytest.raises(python_validation.ProvisionError, match="native size metadata"):
+        _ = python_validation._tar_member_bytes(output.getvalue(), "uv-release/uv")
+    assert called > 1
+
+
 def test_uv_tar_rejects_duplicate_selected_executable() -> None:
     """A tar archive with conflicting selected names is not unambiguous."""
     member_name = "uv-release/uv"
