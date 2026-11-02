@@ -123,7 +123,10 @@ exception subclasses. Staged RPM and completion-marker writes additionally
 require a previously unused, unlinked physical file path with nonredirected
 parent directories. Existing regular files, symlinks, hardlinks, and nonnative
 host status cannot be overwritten through the staging writer; preflights do
-not make concurrent pathname replacement atomic.
+not make concurrent pathname replacement atomic. Publication also admits
+each required extracted header only through the physical regular-file check
+used for readiness: linked header leaves, redirected ancestors, missing files,
+and forged `is_file` results cannot complete an extracted development kit.
 
 The Linux plugin CMake builder likewise converts native process launch faults
 into typed build failures with their original causes. Host diagnostics are

@@ -38,6 +38,7 @@ from contextlib import suppress
 from dataclasses import replace
 import hashlib
 import os
+import shutil
 from pathlib import Path
 import subprocess as sp
 from types import SimpleNamespace
@@ -1256,3 +1257,97 @@ def test_development_staging_file_rejects_non_native_leaf_status(
                 target, PACKAGE_BYTES
             )
     assert not target.exists()
+
+
+@pytest.mark.parametrize("alias_kind", ["leaf", "parent"])
+def test_development_provision_rejects_linked_required_header(
+    tmp_path: Path,
+    alias_kind: str,
+) -> None:
+    """A linked extracted header cannot become a published development kit."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    external, sentinel = _external_sentinel(tmp_path)
+    foreign_header = external / "AST.h"
+    _ = foreign_header.write_bytes(HEADER_BYTES)
+
+    def linked_extractor(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        _extract_headers(data, asset, destination, staging=staging)
+        header = destination / identity.required_development_files[0]
+        if alias_kind == "leaf":
+            header.unlink()
+            alias = header
+            target = foreign_header
+        else:
+            parent = header.parent
+            shutil.rmtree(parent)
+            alias = parent
+            target = external
+        try:
+            _ = alias.symlink_to(target, target_is_directory=(alias_kind == "parent"))
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"file aliases unavailable: {error}")
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="missing",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            root,
+            identity,
+            downloader=_downloader([]),
+            extractor=linked_extractor,
+        )
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert foreign_header.read_bytes() == HEADER_BYTES
+    assert not identity.development_root.exists()
+
+
+def test_development_provision_rejects_forged_missing_header_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A false file-existence witness must not complete a headerless kit."""
+    identity = _identity(tmp_path)
+    staged_header = (
+        tmp_path
+        / ".temp"
+        / f"llvm-development-provision-{LINUX_PLATFORM}"
+        / "development"
+        / identity.required_development_files[0]
+    )
+    native = Path.is_file
+
+    def forged_file_status(path: Path) -> object:
+        return True if path == staged_header else native(path)
+
+    def missing_header_extractor(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        del destination, staging
+        llvm_development_validation.verify_development_asset(data, asset)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_file", forged_file_status)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="missing",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path,
+                identity,
+                downloader=_downloader([]),
+                extractor=missing_header_extractor,
+            )
+    assert not identity.development_root.exists()

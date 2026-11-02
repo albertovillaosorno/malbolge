@@ -518,7 +518,7 @@ def _stage_development_assets(
     missing = tuple(
         relative
         for relative in identity.required_development_files
-        if not (staged_root / relative).is_file()
+        if not _direct_regular(staged_root / relative)
     )
     if missing:
         joined = ", ".join(path.as_posix() for path in missing)
