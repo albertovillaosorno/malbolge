@@ -624,6 +624,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   red-first tests cover 14 forged raw/stream receipts and one native-number
   switch without invoking OS functions on rejected descriptors. This remains
   local dependency admission, not an atomic filesystem snapshot.
+  The retained-evidence `fdopen` handoff now requires an exact native buffered
+  and raw file over the original descriptor. Three red-first stream forgeries
+  rejected after this fix; 943 selected arena tests passed postcommit.
+  Neither local stream identity nor matched source bytes attest host origin.
   Linked evidence now also consumes the complete admitted inode size across
   bounded short chunks; truncated streams fail rather than authenticating a
   valid-looking CSV/manifest prefix under otherwise stable file metadata.

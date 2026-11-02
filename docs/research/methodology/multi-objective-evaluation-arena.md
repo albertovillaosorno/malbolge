@@ -1220,9 +1220,15 @@ The original study records remain the result authority.
 - The retained evidence file reader applies the same descriptor ownership rule:
   injected stream-constructor exceptions have a typed evidence rejection,
   release the raw descriptor, and preserve any cleanup error as secondary
-  diagnostics without replacing the original failure. Reader-close failures
-  likewise become typed rejections; when a read already failed, its original
-  cause is retained and the close error is only a secondary diagnostic.
+  diagnostics without replacing the original failure. Its `os.fdopen`
+  handoff now also binds exact native buffer/raw-file types to the original
+  descriptor: three red-first forgeries of stream bytes, raw-reader identity,
+  and an alternate native same-inode descriptor reject before a read. A
+  943-test postcommit arena integration subset passed. This is local stream
+  provenance admission, not host attestation or a filesystem snapshot.
+  Reader-close failures likewise become typed rejections. When a read already
+  failed, its original cause remains primary and the close error is only a
+  secondary diagnostic.
   Evidence admission still checks observable file identity only, not an
   atomic filesystem snapshot.
 - `benchmarks/arena/multiplicity.py` optionally applies exact study-wide
