@@ -328,7 +328,7 @@ def _exclusive_import_target(
 ) -> BufferedRandom:
     """Open a new destination below a pinned parent without path redirection."""
     if parent_descriptor is None:
-        return cast("BufferedRandom", destination.open("x+b"))
+        return destination.open("x+b")
     flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(destination.name, flags, 0o600, dir_fd=parent_descriptor)
     if type(cast("object", descriptor)) is not int or descriptor < 0:
@@ -379,8 +379,9 @@ def _link_or_copy(
                 ):
                     _fail("LLVM import destination parent changed during opening")
             except (OSError, ValueError, TypeError, RuntimeError) as error:
+                error_type = type(error).__name__
                 raise LlvmImportError(
-                    f"LLVM import destination parent status failed: {type(error).__name__}"
+                    f"LLVM import destination parent status failed: {error_type}"
                 ) from error
         return _link_or_copy_in_parent(source_path, destination_path, parent_descriptor)
     finally:
@@ -388,8 +389,9 @@ def _link_or_copy(
             try:
                 os.close(parent_descriptor)
             except (OSError, ValueError, TypeError, RuntimeError) as error:
+                error_type = type(error).__name__
                 raise LlvmImportError(
-                    f"LLVM import destination parent close failed: {type(error).__name__}"
+                    f"LLVM import destination parent close failed: {error_type}"
                 ) from error
 
 
@@ -497,8 +499,9 @@ def _link_or_copy_in_parent(
             ):
                 _fail("LLVM import destination parent identity changed")
         except (OSError, ValueError, TypeError, RuntimeError) as error:
+            error_type = type(error).__name__
             raise LlvmImportError(
-                f"LLVM import destination parent status failed: {type(error).__name__}"
+                f"LLVM import destination parent status failed: {error_type}"
             ) from error
     return destination
 
@@ -628,7 +631,7 @@ def _verify_linux_alias_bytes(path: Path, descriptor: int, content: bytes) -> No
         if not chunk:
             break
         observed.extend(chunk)
-    if observed != content:
+    if bytes(observed) != content:
         _fail("LLVM wrapper content does not match the intended script")
     if (
         not _physical_file(path)
@@ -857,8 +860,9 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
             try:
                 _discard_owned_file(marker, owned_inode)
             except (OSError, ValueError, TypeError, RuntimeError) as error:
+                error_type = type(error).__name__
                 raise LlvmImportError(
-                    f"LLVM marker write count mismatch; cleanup failed: {type(error).__name__}"
+                    f"LLVM marker write count mismatch; cleanup failed: {error_type}"
                 ) from error
         _fail("LLVM marker write count or content verification mismatch")
 
@@ -1041,8 +1045,9 @@ def _ensure_physical_import_parent(root: Path) -> Path:
         except FileExistsError:
             pass
         except (OSError, ValueError, TypeError, RuntimeError) as error:
+            error_type = type(error).__name__
             raise LlvmImportError(
-                f"LLVM import destination parent creation failed: {type(error).__name__}"
+                f"LLVM import destination parent creation failed: {error_type}"
             ) from error
         if not _physical_directory(parent):
             _fail("LLVM import destination parent must be physical")
@@ -1156,8 +1161,9 @@ def _publish_linux_import(root: Path, staged: Path, destination: Path) -> None:
             try:
                 os.close(source_parent_fd)
             except (OSError, ValueError, TypeError, RuntimeError) as error:
+                error_type = type(error).__name__
                 raise LlvmImportError(
-                    f"LLVM import staging source parent close failed: {type(error).__name__}"
+                    f"LLVM import staging source parent close failed: {error_type}"
                 ) from error
         if _native_directory_inode(parent) != (opened.st_dev, opened.st_ino):
             _fail("LLVM import destination parent changed during publication")
@@ -1177,8 +1183,9 @@ def _publish_linux_import(root: Path, staged: Path, destination: Path) -> None:
         try:
             os.close(descriptor)
         except (OSError, ValueError, TypeError, RuntimeError) as error:
+            error_type = type(error).__name__
             raise LlvmImportError(
-                f"LLVM import destination parent close failed: {type(error).__name__}"
+                f"LLVM import destination parent close failed: {error_type}"
             ) from error
 
 

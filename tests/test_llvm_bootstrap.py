@@ -542,9 +542,7 @@ def test_llvm_marker_reader_rejects_nonnative_open_descriptor(
     marker = root / llvm_validation.LLVM_IMPORT_MARKER
     native_open = os.open
 
-    def false_open(
-        path: str | os.PathLike[str], flags: int, mode: int = 0o777
-    ) -> int:
+    def false_open(path: str | os.PathLike[str], flags: int, mode: int = 0o777) -> int:
         if Path(path) == marker:
             return cast("int", invalid_descriptor)
         return native_open(path, flags, mode)
@@ -732,7 +730,6 @@ def test_linux_import_rejects_untrusted_staging_before_copy(
         _ = llvm_validation.import_linux_llvm(tmp_path, observation)
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
     assert not tuple(outside.iterdir())
-
 
 
 def test_linux_import_preserves_occupied_staging_directory(tmp_path: Path) -> None:
@@ -2168,7 +2165,8 @@ def test_llvm_import_hardlink_does_not_follow_late_destination_parent_swap(
                 _ = foreign.rename(parent)
             swapped = True
         native_link(
-            src, dst,
+            src,
+            dst,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
             follow_symlinks=follow_symlinks,
@@ -2327,14 +2325,19 @@ def test_llvm_import_fallback_copy_does_not_write_to_swapped_parent(
         )
 
     def racing_os_open(
-        path: str | os.PathLike[str], flags: int, mode: int = 0o777,
-        *, dir_fd: int | None = None,
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
         if path == destination.name and dir_fd is not None:
             swap_parent()
         return native_open(path, flags, mode, dir_fd=dir_fd)
 
-    def record_copy(source_stream: BufferedReader, target: BufferedRandom, length: int = 0) -> None:
+    def record_copy(
+        source_stream: BufferedReader, target: BufferedRandom, length: int = 0
+    ) -> None:
         nonlocal foreign_written
         native_copy(source_stream, target, length)
         foreign_tree = foreign if replacement == "symlink" else parent
@@ -2403,7 +2406,6 @@ def test_windows_aliases_reject_linked_existing_alias(tmp_path: Path) -> None:
     with pytest.raises(llvm_validation.LlvmImportError, match=r"alias|redirect"):
         _ = llvm_validation.write_windows_llvm_aliases(root)
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
-
 
 
 @pytest.mark.parametrize("borrowed", ("alias", "source"))
