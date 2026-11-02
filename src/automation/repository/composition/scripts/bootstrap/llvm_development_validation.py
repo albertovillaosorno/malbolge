@@ -90,6 +90,8 @@ def verify_development_asset(
     asset: tidy_toolchain.DevelopmentAsset,
 ) -> None:
     """Reject RPM bytes that drift from exact tracked size or SHA-256."""
+    if type(data) is not bytes:
+        _fail("LLVM development package requires native bytes")
     if len(data) != asset.size_bytes:
         _fail(
             "".join((

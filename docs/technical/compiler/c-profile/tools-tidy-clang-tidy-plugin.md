@@ -134,7 +134,10 @@ package headers outside the staging trust boundary. Pinned RPM download
 admission requires an exact native byte response before size and SHA-256
 verification. Network and response-read faults become typed provisioning
 errors that retain native causes, without invoking foreign host exception
-formatters.
+formatters. All package byte-verification entrypoints also require exact native
+`bytes` before checking the pinned size and SHA-256, including when a custom
+downloader is injected; bytearrays and byte subclasses cannot authorize RPM
+extraction or publication.
 
 The Linux plugin CMake builder likewise converts native process launch faults
 into typed build failures with their original causes. Host diagnostics are

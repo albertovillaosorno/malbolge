@@ -1565,3 +1565,66 @@ def test_llvm_development_download_accepts_native_bytes(
         )
         == PACKAGE_BYTES
     )
+
+
+@pytest.mark.parametrize("foreign", [None, "rpm", bytearray(PACKAGE_BYTES)])
+def test_development_package_verification_rejects_foreign_byte_object(
+    foreign: object,
+) -> None:
+    """Exact size and digest never admit an untrusted nonbyte RPM object."""
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="native bytes",
+    ):
+        llvm_development_validation.verify_development_asset(
+            cast("bytes", foreign), _asset()
+        )
+
+
+def test_development_package_verification_rejects_bytes_subclass() -> None:
+    """An input subclass cannot forge byte length while retaining a digest."""
+
+    class ForeignBytes(bytes):
+        pass
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="native bytes",
+    ):
+        llvm_development_validation.verify_development_asset(
+            ForeignBytes(PACKAGE_BYTES), _asset()
+        )
+
+
+def test_development_provision_rejects_foreign_downloader_payload(
+    tmp_path: Path,
+) -> None:
+    """A custom downloader returning bytearray cannot authorize publishing."""
+    identity = _identity(tmp_path)
+    extracted: list[str] = []
+
+    def nonnative_download(_url: str) -> bytes:
+        return cast("bytes", cast("object", bytearray(PACKAGE_BYTES)))
+
+    def record_extraction(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        extracted.append(asset.name)
+        _extract_headers(data, asset, destination, staging=staging)
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="native bytes",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path,
+            identity,
+            downloader=nonnative_download,
+            extractor=record_extraction,
+        )
+    assert not extracted
+    assert not identity.development_root.exists()
