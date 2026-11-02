@@ -175,10 +175,11 @@ and preserves any previously committed alias or launcher. Before replacement,
 stage identity, regular-file type, exclusive link count and exact byte size are
 rechecked against the admitted
 original descriptor. The writable stage stream must be a native buffered writer
-backed by the owned file descriptor, and promotion requires a bounded native
-readback equal to the selected alias bytes from that same single-link inode.
-Cleanup unlinks only the original owned inode, leaving
-foreign symlink or hardlink replacements untouched on rejection.
+backed by the owned file descriptor. Host write, permission, and stream-close
+faults become typed failures with their original causes before any replacement.
+Promotion requires a bounded native readback equal to the selected alias bytes
+from that same single-link inode. Cleanup unlinks only the original owned
+inode, leaving foreign symlink or hardlink replacements untouched on rejection.
 Jig tool-source and alias ancestry checks require native physical `lstat`
 receipts and reject masked redirects, foreign stat proxies, and untyped host
 inspection faults. Temporary descriptor and pathname status receipts must

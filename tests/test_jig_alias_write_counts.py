@@ -34,10 +34,8 @@
 
 from __future__ import annotations
 
-from typing import BinaryIO
-from typing import Self
-from typing import TYPE_CHECKING
-from typing import cast
+import os
+from typing import TYPE_CHECKING, BinaryIO, Self, cast
 
 import pytest
 from scripts.bootstrap import python_validation
@@ -168,3 +166,60 @@ def test_alias_publication_rejects_incomplete_descriptor_write(
     assert not any(
         path.name.startswith(f".{target.name}.") for path in parent.iterdir()
     )
+
+
+class _CloseFaultWriter:
+    """Model a stage whose native writer fails on final close."""
+
+    def __init__(self, stream: BinaryIO, fault: OSError) -> None:
+        self._stream: BinaryIO = stream
+        self._fault: OSError = fault
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_details: object) -> None:
+        self._stream.close()
+        raise self._fault
+
+    def fileno(self) -> int:
+        return self._stream.fileno()
+
+    def write(self, payload: bytes) -> int:
+        return self._stream.write(payload)
+
+
+@pytest.mark.parametrize("phase", ["chmod", "close"])
+def test_jig_alias_stage_host_fault_preserves_prior_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """A native stage chmod or close failure remains typed and unpublished."""
+    target = tmp_path / "jig-bin" / "ruff.bin"
+    target.parent.mkdir()
+    _ = target.write_bytes(_STABLE_BYTES)
+    fault = PermissionError(f"native {phase} failure")
+    if phase == "chmod":
+        def deny_chmod(_descriptor: int, _mode: int) -> None:
+            raise fault
+
+        monkeypatch.setattr(os, "fchmod", deny_chmod)
+    else:
+        native_open = python_validation._open_jig_alias_write_stream  # pyright: ignore[reportPrivateUsage]
+
+        def fail_close(descriptor: int) -> BinaryIO:
+            return cast(
+                "BinaryIO",
+                cast("object", _CloseFaultWriter(native_open(descriptor), fault)),
+            )
+
+        monkeypatch.setattr(python_validation, "_open_jig_alias_write_stream", fail_close)
+
+    with pytest.raises(
+        python_validation.ProvisionError, match="Jig alias staged write or close"
+    ) as caught:
+        python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+            target, b"new verified alias", windows=False
+        )
+    assert caught.value.__cause__ is fault
+    assert target.read_bytes() == _STABLE_BYTES
+    assert not list(target.parent.glob(".ruff.bin.*"))
