@@ -106,19 +106,25 @@ metadata across the pinned `--version` probe. Accepted version banners are the
 exact pinned release or that release with the selected archive's native target
 triple in parentheses; arbitrary suffixes and multiline output are rejected.
 Changed identity or contents mutation rejects the tool even when a version
-matches. These checks do not make arbitrary concurrent ancestor directory
-swaps atomic.
+matches. A relative checkout root is anchored without resolving symlinks
+before download or version-probe callbacks, so changing the process working
+directory cannot move an installed or staged uv executable. These checks do
+not make arbitrary concurrent ancestor directory swaps atomic.
 UV manifest and Jig tool-source readers require a native buffered binary
 reader backed by the original native raw file descriptor. A foreign stream
 wrapper or a native reader bound to a substitute descriptor cannot supply
 bootstrap authority bytes.
 
-Python environment provisioning binds its entire tool layout to the selected
-checkout and checks the venv and interpreter through native physical path
+Python environment provisioning anchors relative checkout roots before
+constructing interpreter, tool, or launcher paths, and binds the entire layout
+to that checkout. The venv and interpreter require native physical path
 receipts before invoking `uv pip sync` or creating the environment. Redirected
 parents/interpreters, non-directory environments, and externally hardlinked
-interpreters fail closed; these preflight checks do not make later concurrent
-ancestor swaps atomic.
+interpreters fail closed. Interpreter identity is rechecked after uv bootstrap,
+after virtual-environment creation, and between pip sync, pip uninstall and
+launcher publication: changed inodes, injected links, or late substitutions
+fail before subsequent commands. These checks narrow callback mutation windows
+but do not make concurrent ancestor swaps atomic.
 
 Python keeps native platform launchers and publishes neutral Jig aliases below
 `.dependencies`. On POSIX, BasedPyright and pytest aliases answer only the exact

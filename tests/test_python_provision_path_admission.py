@@ -234,6 +234,83 @@ def test_python_provision_rechecks_interpreter_between_pip_commands(
     assert outside.read_bytes() == PAYLOAD
 
 
+def test_python_provision_rejects_builder_introduced_link_before_pip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A venv builder cannot supply a redirected Python to the pip runner."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    foreign = tmp_path / "foreign-python"
+    _ = foreign.write_bytes(PAYLOAD)
+    reached_pip = False
+
+    class LinkedBuilder:
+        def __init__(self, *, with_pip: bool, clear: bool) -> None:
+            assert not with_pip and not clear
+
+        def create(self, environment: Path) -> None:
+            assert environment == layout.environment
+            layout.scripts.mkdir(parents=True)
+            _ = layout.python.symlink_to(foreign)
+
+    def forbidden_pip(_command: list[str]) -> Never:
+        nonlocal reached_pip
+        reached_pip = True
+        raise AssertionError("redirected builder Python reached pip")
+
+    monkeypatch.setattr(python_validation, "ensure_uv", lambda _root: root / "uv")
+    monkeypatch.setattr(python_validation.venv, "EnvBuilder", LinkedBuilder)
+    monkeypatch.setattr(python_validation, "_run", forbidden_pip)
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        python_validation._provision(layout, root=root)
+    assert not reached_pip
+    assert foreign.read_bytes() == PAYLOAD
+
+
+def test_python_provision_rechecks_after_pip_uninstall_before_launchers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uninstall cannot hand a substituted interpreter to launchers."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python.write_bytes(PAYLOAD)
+    foreign = tmp_path / "foreign-python"
+    _ = foreign.write_bytes(PAYLOAD)
+    commands: list[list[str]] = []
+    launched = False
+
+    def change_after_uninstall(command: list[str]) -> str:
+        commands.append(command)
+        if command[1:3] == ["pip", "uninstall"]:
+            _ = layout.python.unlink()
+            _ = layout.python.symlink_to(foreign)
+        return ""
+
+    def forbidden_launchers(
+        _layout: python_validation.ValidationEnvironmentLayout,
+        *,
+        windows: bool,
+    ) -> None:
+        nonlocal launched
+        _ = windows
+        launched = True
+        raise AssertionError("uninstall mutation reached launcher publication")
+
+    monkeypatch.setattr(python_validation, "ensure_uv", lambda _root: root / "uv")
+    monkeypatch.setattr(python_validation, "_run", change_after_uninstall)
+    monkeypatch.setattr(python_validation, "write_launchers", forbidden_launchers)
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        python_validation._provision(layout, root=root)
+    assert [command[1:3] for command in commands] == [
+        ["pip", "sync"], ["pip", "uninstall"]
+    ]
+    assert not launched
+    assert foreign.read_bytes() == PAYLOAD
+
+
 def test_python_provision_rejects_late_installed_interpreter_before_builder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
