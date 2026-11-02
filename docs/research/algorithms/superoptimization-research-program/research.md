@@ -211,7 +211,10 @@ repeated workload: baseline median strategy time is 1,617,672,749 ns versus
 851,323,429 ns reuse, with reuse winning all five pairs. The workload fixes a
 100% second-pass hit rate by construction, so the result does not estimate
 production hit rate, reuse distance, persistent-cache invalidation, or benefit
-on novel synthesis work.
+on novel synthesis work. The frozen two-pass workload fingerprint now compares
+the public JSON rendering of corpus/parent identities to the import-bound native
+encoder before hashing. A forged public writer cannot conceal a changed corpus
+under the preregistered SHA-256; underlying Python encoder integrity is assumed.
 
 Independent structural evidence now proves one nontrivial basis:
 for the `Q` prefix, position-zero decode is halt and entry termination occurs

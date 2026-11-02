@@ -36,10 +36,10 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
-import json
 from typing import Final
 
 from algorithms.superoptimization import challenge
@@ -49,6 +49,7 @@ BASELINE_ID: Final = "per-request-independent-verification-v1"
 TECHNIQUE_ID: Final = "exact-candidate-verified-result-reuse-v1"
 SEMANTIC_EQUIVALENCE_ID: Final = "exact-request-index-quality-map-v1"
 WORKLOAD_ID: Final = "classic-two-pass-verified-block-reuse-v1"
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 WORKLOAD_SHA256: Final = (
     "d86f190a512b64724b9546c72f2ee56973292e6ef5707378f8c9a9ba2050bbc7"
 )
@@ -113,8 +114,20 @@ def _workload_sha256() -> str:
         "passes": _PASSES,
         "request_encoding": "two-complete-lexicographic-passes-v1",
     }
-    payload = json.dumps(document, sort_keys=True, separators=(",", ":"))
-    return sha256(payload.encode("utf-8")).hexdigest()
+    try:
+        # The public JSON writer or its mutable encoder must not conceal drift
+        # in the frozen candidate corpus or preregistered base workload.
+        source_text = _SOURCE_JSON_ENCODER(
+            sort_keys=True, separators=(",", ":"),
+        ).encode(document)
+        rendered = json.dumps(document, sort_keys=True, separators=(",", ":"))
+    except Exception as error:
+        message = f"workload JSON serializer failed: {type(error).__name__}"
+        raise VerifiedBlockReuseComparisonError(message) from error
+    if type(rendered) is not str or rendered != source_text:
+        message = "workload JSON serializer disagrees with source"
+        raise VerifiedBlockReuseComparisonError(message)
+    return sha256(source_text.encode("utf-8")).hexdigest()
 
 
 def _map_digest(qualities: QualityMap) -> str:

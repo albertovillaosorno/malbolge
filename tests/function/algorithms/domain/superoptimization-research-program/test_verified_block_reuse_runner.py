@@ -32,11 +32,14 @@
 
 """Exhaustive runner evidence for exact repeated-batch verified-result reuse."""
 
+import json
+from hashlib import sha256
+from types import SimpleNamespace
 from typing import cast
 
+import pytest
 from algorithms.superoptimization import challenge
 from algorithms.superoptimization import verified_block_reuse_runner as runner
-import pytest
 
 _REQUESTS = 17_672
 _UNIQUE = 8_836
@@ -116,3 +119,92 @@ def test_reuse_runner_rejects_malformed_quality(malformed: object) -> None:
         match=_MALFORMED,
     ):
         _ = runner.run_reuse_strategy(verifier)
+
+
+@pytest.mark.parametrize("provider", ("writer", "encoder", "joint"))
+def test_reuse_workload_rejects_forged_json_source_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    """A provider cannot hide a changed frozen corpus behind old JSON bytes."""
+    original_count = challenge.CLASSIC_BLOCK_SEARCH_CANDIDATE_COUNT
+    original_document = {
+        "base_candidate_count": original_count,
+        "base_workload_sha256": challenge.workload_sha256(),
+        "passes": 2,
+        "request_encoding": "two-complete-lexicographic-passes-v1",
+    }
+    original_text = json.dumps(
+        original_document, sort_keys=True, separators=(",", ":"),
+    )
+    assert runner.WORKLOAD_SHA256 == sha256(
+        original_text.encode("utf-8")
+    ).hexdigest()
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return original_text
+
+    def forged_writer(*_args: object, **_kwargs: object) -> str:
+        return original_text
+
+    def forged_encoder_writer(*_args: object, **_kwargs: object) -> str:
+        return ForgedEncoder().encode(None)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            challenge, "CLASSIC_BLOCK_SEARCH_CANDIDATE_COUNT", original_count + 1
+        )
+        selected_writer = (
+            forged_encoder_writer if provider == "encoder" else forged_writer
+        )
+        patch.setattr(
+            runner, "json", SimpleNamespace(
+                JSONEncoder=ForgedEncoder if provider != "writer" else json.JSONEncoder,
+                dumps=selected_writer,
+            ),
+        )
+        with pytest.raises(
+            runner.VerifiedBlockReuseComparisonError,
+            match="workload JSON serializer disagrees with source",
+        ):
+            _ = runner.run_reuse_strategy(lambda _candidate: None)
+
+
+@pytest.mark.parametrize("fault", (RuntimeError, OverflowError))
+def test_reuse_workload_wraps_public_json_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """External JSON faults cannot escape as unrelated exception types."""
+    failure = fault("bad provider")
+
+    def failing_writer(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(runner, "json", SimpleNamespace(dumps=failing_writer))
+        with pytest.raises(
+            runner.VerifiedBlockReuseComparisonError,
+            match="workload JSON serializer failed",
+        ) as caught:
+            _ = runner.run_reuse_strategy(lambda _candidate: None)
+        assert caught.value.__cause__ is failure
+
+
+def test_reuse_workload_accepts_equivalent_json_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equivalent public writer preserves exact frozen workload identity."""
+    original_writer = json.dumps
+
+    def equivalent_writer(*args: object, **kwargs: object) -> str:
+        return original_writer(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(runner, "json", SimpleNamespace(dumps=equivalent_writer))
+        result = runner.run_reuse_strategy(lambda _candidate: None)
+        assert result.request_count == _REQUESTS
