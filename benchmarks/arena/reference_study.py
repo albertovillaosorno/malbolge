@@ -135,9 +135,12 @@ def _commit() -> str:
         message = "host-C reference study Git environment unavailable"
         raise ReferenceStudyError(message) from error
     command = [executable, "rev-parse", "HEAD"]
+    # Bind the completed process to the exact list passed to the Git child.
+    # Equivalent copied argv cannot authenticate which invocation returned.
+    prepared = command.copy()
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command.copy(),
+            prepared,
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             env=clean_env,
@@ -158,6 +161,7 @@ def _commit() -> str:
         _fail("host reference study has invalid source commit exit status")
     if (
         type(completed.args) is not list
+        or completed.args is not prepared
         or any(type(argument) is not str for argument in completed.args)
         or completed.args != command
         or type(completed.stderr) is not str

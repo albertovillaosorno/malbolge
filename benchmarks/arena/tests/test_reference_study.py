@@ -973,6 +973,21 @@ def test_reference_git_accepts_exact_zero_exit_and_revision(
     assert reference_study._commit() == expected  # ruff: ignore[private-member-access]
 
 
+def test_reference_git_rejects_copied_successful_command_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A copied Git completion argv cannot impersonate the launched request."""
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        return reference_study.sp.CompletedProcess(
+            command.copy(), 0, stdout="a" * 40 + "\n", stderr=""
+        )
+
+    monkeypatch.setattr(reference_study.sp, "run", forged)
+    with pytest.raises(reference_study.ReferenceStudyError, match="Git completion"):
+        reference_study._commit()  # ruff: ignore[private-member-access]
+
+
 class _HostileGitArgumentList(list[str]):
     """Foreign command collection cannot supply its own equality semantics."""
 
