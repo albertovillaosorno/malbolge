@@ -4969,6 +4969,31 @@ def test_llvm_resource_preflight_rejects_directory_misclassified_as_file(
     assert header.read_bytes() == RESOURCE_BYTES
 
 
+def test_llvm_resource_preflight_rejects_missing_directory_visit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Listing a physical directory without visiting it cannot hide headers."""
+    root = tmp_path / "resources"
+    nested = root / "include"
+    nested.mkdir(parents=True)
+    header = nested / "stddef.h"
+    _ = header.write_bytes(RESOURCE_BYTES)
+    native_walk = Path.walk
+
+    def skip_directory_visit(path: Path, **kwargs: object):  # type: ignore[no-untyped-def]
+        for directory, folders, files in native_walk(path, **kwargs):  # type: ignore[arg-type]
+            if directory == root:
+                yield directory, folders, files
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "walk", skip_directory_visit)
+        with pytest.raises(llvm_validation.LlvmImportError, match="resource"):
+            llvm_validation._require_physical_resources(  # pyright: ignore[reportPrivateUsage]
+                root
+            )
+    assert header.read_bytes() == RESOURCE_BYTES
+
+
 @pytest.mark.parametrize("kind", ["file", "directory", "foreign-type", "dotdot"])
 def test_llvm_resource_copy_refuses_foreign_iterator_members(
     tmp_path: Path,

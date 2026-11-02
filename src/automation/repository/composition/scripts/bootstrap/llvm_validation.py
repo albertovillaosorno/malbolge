@@ -741,6 +741,8 @@ def _require_physical_resources(root: Path) -> dict[Path, tuple[int, ...]]:
 
     try:
         inventory = {Path(): _resource_member_receipt(root)}
+        expected_directories = {root}
+        visited_directories: set[Path] = set()
         # Path.rglob silently suppresses scandir failures. Readiness and
         # preflight must reject a subtree whose members cannot be inspected.
         for directory, folders, files in root.walk(on_error=fail_scan):
@@ -751,6 +753,12 @@ def _require_physical_resources(root: Path) -> dict[Path, tuple[int, ...]]:
                 or not _physical_directory(directory)
             ):
                 _fail("host LLVM resource member directory must be physical")
+            if (
+                directory not in expected_directories
+                or directory in visited_directories
+            ):
+                _fail("host LLVM resource directory traversal is not complete")
+            visited_directories.add(directory)
             # A recursive walk may supply a native-looking but incomplete
             # folders/files list. Independently enumerate the direct children
             # so omitted headers or empty directories cannot become ready.
@@ -789,10 +797,14 @@ def _require_physical_resources(root: Path) -> dict[Path, tuple[int, ...]]:
                     name in file_names and not _physical_file(member)
                 ):
                     _fail("host LLVM resource member walk category is incorrect")
+                if name in folder_names:
+                    expected_directories.add(member)
                 relative = member.relative_to(root)
                 if relative in inventory:
                     _fail("host LLVM resource member enumeration is duplicate")
                 inventory[relative] = _resource_member_receipt(member)
+        if visited_directories != expected_directories:
+            _fail("host LLVM resource directory traversal omitted a member")
         return inventory
     except LlvmImportError:
         raise
