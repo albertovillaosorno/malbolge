@@ -1498,7 +1498,7 @@ def test_benchmark_cli_requires_complete_native_output_delivery(
 
     sink = Sink(failure)
     if failure == "missing-flush":
-        setattr(sink, "flush", None)
+        monkeypatch.delattr(Sink, "flush")
     native = Sink("native")
     monkeypatch.setattr(
         validator,
