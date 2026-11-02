@@ -144,6 +144,8 @@ def _manifest_identity(status: os.stat_result, label: str) -> tuple[int, ...]:
         The device, inode, size, and mutation-sensitive timestamps.
 
     """
+    if type(status) is not os.stat_result:
+        _fail(f"{label} must provide native file status")
     if not S_ISREG(status.st_mode):
         _fail(f"{label} must be a regular file")
     return (
@@ -156,10 +158,8 @@ def _manifest_identity(status: os.stat_result, label: str) -> tuple[int, ...]:
 
 
 def _check_manifest_parents(path: Path, label: str) -> None:
-    """Reject symlink or junction redirects in manifest ancestry."""
-    for parent in path.parents:
-        if parent.is_symlink() or parent.is_junction():
-            _fail(f"{label} path must not redirect")
+    """Admit only physically verified authority-file ancestry."""
+    _require_physical_directories(path.parent, label.removeprefix("CUDA "))
 
 
 def _read_manifest_source(

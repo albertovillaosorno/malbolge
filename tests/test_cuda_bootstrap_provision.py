@@ -1341,3 +1341,88 @@ def test_cuda_directory_types_host_stat_failure(
         with pytest.raises(cuda_validation.CudaProvisionError, match="status") as caught:
             cuda_validation._require_physical_directories(root, "staging")
     assert caught.value.__cause__ is failure
+
+
+def test_cuda_manifest_rejects_masked_linked_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Source ancestry must rely on physical metadata, not Path predicates."""
+    real = tmp_path / "real"
+    real.mkdir()
+    source = _manifest(real, _payload())
+    alias = tmp_path / "alias"
+    try:
+        _ = alias.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory links unavailable: {error}")
+    native = Path.is_symlink
+
+    def hidden(path: Path) -> bool:
+        return False if path == alias else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_symlink", hidden)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="redirect"):
+            _ = cuda_validation.load_cuda_provision_manifest(
+                tmp_path, alias / source.name, LINUX_PLATFORM
+            )
+    assert alias.is_symlink()
+
+
+def test_cuda_marker_cannot_certify_masked_linked_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A matching marker reached through an alias cannot assert readiness."""
+    payload = _payload()
+    source = _manifest(tmp_path, payload)
+    real = tmp_path / "real"
+    _ = cuda_validation.provision_cuda_manifest(
+        real, source, LINUX_PLATFORM, downloader=_download_fixture(payload)
+    )
+    alias = tmp_path / "alias"
+    try:
+        _ = alias.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory links unavailable: {error}")
+    manifest = cuda_validation.load_cuda_provision_manifest(
+        alias, source, LINUX_PLATFORM
+    )
+    native = Path.is_symlink
+
+    def hidden(path: Path) -> bool:
+        return False if path == alias else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_symlink", hidden)
+        assert not cuda_validation._completed_toolkit_matches(manifest)
+    assert alias.is_symlink()
+
+
+def test_cuda_manifest_rejects_foreign_stat_proxy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A duck-typed stat proxy cannot testify to a named authority inode."""
+    source = _manifest(tmp_path, _payload())
+    native = Path.lstat
+    observed = source.lstat()
+
+    class _StatProxy:
+        def __getattr__(self, name: str) -> object:
+            return getattr(observed, name)
+
+    def fake(path: Path) -> os.stat_result:
+        return (
+            cast("os.stat_result", cast("object", _StatProxy()))
+            if path == source
+            else native(path)
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", fake)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="native"):
+            _ = cuda_validation.load_cuda_provision_manifest(
+                tmp_path, source, LINUX_PLATFORM
+            )
