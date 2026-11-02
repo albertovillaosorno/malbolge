@@ -1925,11 +1925,18 @@ def _ldd_library(executable: Path, soname: str) -> Path | None:
     if parsed is None:
         return None
     try:
-        path = Path(parsed.group(1))
+        path_text = parsed.group(1)
+        if not path_text.isprintable():
+            return None
+        path = Path(path_text)
         if not path.is_absolute():
             return None
         resolved = path.resolve(strict=True)
-        return resolved if _physical_file(resolved) else None
+        return (
+            resolved
+            if str(resolved).isprintable() and _physical_file(resolved)
+            else None
+        )
     except (OSError, ValueError, TypeError, RuntimeError):
         return None
 

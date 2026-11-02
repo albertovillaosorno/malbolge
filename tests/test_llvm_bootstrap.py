@@ -3260,6 +3260,53 @@ def test_llvm_ldd_rejects_malformed_loader_mapping(
     assert resolve(tmp_path / "clang", "libLLVM.so.22.1") is None
 
 
+def test_llvm_ldd_rejects_nonprintable_library_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Indentation tabs in a loader line cannot become path authority."""
+    library = tmp_path / "libLLVM.so.22.1\tforged"
+    _ = library.write_bytes(LLVM_BYTES)
+    clang = tmp_path / "clang"
+    output = f"libLLVM.so.22.1 => {library} (0x1234)"
+
+    def capture(args: list[str]) -> str:
+        assert args == ["ldd", str(clang)]
+        return output
+
+    monkeypatch.setattr(llvm_validation, "_capture", capture)
+    assert (
+        llvm_validation._ldd_library(  # pyright: ignore[reportPrivateUsage]
+            clang, "libLLVM.so.22.1"
+        )
+        is None
+    )
+
+
+def test_llvm_ldd_rejects_hidden_resolved_library_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A printable loader alias cannot hide a control-bearing target name."""
+    hidden = tmp_path / "libLLVM.so.22.1\tshadow"
+    _ = hidden.write_bytes(LLVM_BYTES)
+    alias = tmp_path / "libLLVM.so.22.1"
+    try:
+        _ = alias.symlink_to(hidden)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"library symlinks unavailable: {error}")
+    clang = tmp_path / "clang"
+    monkeypatch.setattr(
+        llvm_validation,
+        "_capture",
+        lambda _args: f"libLLVM.so.22.1 => {alias} (0x1234)",
+    )
+    assert (
+        llvm_validation._ldd_library(  # pyright: ignore[reportPrivateUsage]
+            clang, "libLLVM.so.22.1"
+        )
+        is None
+    )
+
+
 def test_llvm_ldd_accepts_parenthesized_library_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
