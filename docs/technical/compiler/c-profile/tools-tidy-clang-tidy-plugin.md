@@ -109,6 +109,10 @@ Readiness checks admit only exact native symlink/junction decisions and
 regular-file stat results with bounded integer modes for the completion marker,
 required headers, and their physical ancestors. False-like foreign statuses or
 duck-typed stat objects cannot certify a reusable development root.
+Before staging writes or destination publication, directory and leaf preflights
+also require native boolean symlink, junction, existence, and directory status.
+Malformed status results fail closed; host status exceptions retain their
+original causes as typed provisioning errors without foreign formatter calls.
 RPM extraction invokes `rpm2cpio` and CPIO only with separate expected and
 launched command arguments. A successful tool receipt must be a native
 `CompletedProcess` with the exact argument vector, integer exit status, and

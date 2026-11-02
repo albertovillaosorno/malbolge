@@ -1008,3 +1008,167 @@ def test_development_readiness_rejects_out_of_range_native_stat_mode(
     with monkeypatch.context() as isolated:
         isolated.setattr(Path, "lstat", forged_lstat)
         assert not llvm_development_validation.development_root_matches(identity)
+
+
+@pytest.mark.parametrize("operation", ["is_symlink", "is_junction", "exists", "is_dir"])
+@pytest.mark.parametrize("foreign", [None, 0, "", 0.0])
+def test_development_staging_rejects_foreign_path_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    foreign: object,
+) -> None:
+    """No foreign false-like host result can certify a physical directory."""
+    native = getattr(Path, operation)
+
+    def foreign_status(path: Path) -> object:
+        return foreign if path == tmp_path else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, foreign_status)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="status",
+        ):
+            llvm_development_validation._require_physical_directories(
+                tmp_path, "staging"
+            )
+
+
+@pytest.mark.parametrize("operation", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("foreign", [None, 0, "", 0.0])
+def test_development_destination_rejects_foreign_leaf_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    foreign: object,
+) -> None:
+    """An absent target needs native no-redirect evidence at its leaf."""
+    target = tmp_path / "unpublished"
+    native = getattr(Path, operation)
+
+    def foreign_status(path: Path) -> object:
+        return foreign if path == target else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, foreign_status)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="status",
+        ):
+            llvm_development_validation._require_development_destination(target)
+
+
+@pytest.mark.parametrize("operation", ["is_symlink", "is_junction", "exists", "is_dir"])
+@pytest.mark.parametrize("failure", [OSError, ValueError, TypeError, RuntimeError])
+def test_development_preflight_wraps_native_host_status_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    failure: type[Exception],
+) -> None:
+    """A failed host path probe cannot escape the typed provision boundary."""
+    fault = failure("host status unavailable")
+    native = getattr(Path, operation)
+
+    def failed_status(path: Path) -> bool:
+        if path == tmp_path:
+            raise fault
+        return native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, failed_status)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="status",
+        ) as observed:
+            llvm_development_validation._require_physical_directories(
+                tmp_path, "staging"
+            )
+    assert observed.value.__cause__ is fault
+
+
+def test_development_staging_rejects_foreign_existence_before_mkdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign false-like staging status cannot authorize mkdir."""
+    target = tmp_path / "staging"
+    native = Path.exists
+
+    def foreign_exists(path: Path) -> object:
+        return None if path == target else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "exists", foreign_exists)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="status",
+        ):
+            llvm_development_validation._prepare_staging(target)
+    assert not target.exists()
+
+
+@pytest.mark.parametrize("target_kind", ["destination", "staging"])
+def test_development_provision_rejects_foreign_existence_before_download(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+) -> None:
+    """A false-like host existence receipt cannot authorize publication."""
+    identity = _identity(tmp_path)
+    target = (
+        identity.development_root
+        if target_kind == "destination"
+        else tmp_path / ".temp" / f"llvm-development-provision-{LINUX_PLATFORM}"
+    )
+    original = Path.exists
+
+    def foreign_exists(path: Path) -> object:
+        return None if path == target else original(path)
+
+    calls: list[str] = []
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "exists", foreign_exists)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="invalid status",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path,
+                identity,
+                downloader=_downloader(calls),
+                extractor=_extract_headers,
+            )
+    assert not calls
+    assert not identity.development_root.exists()
+
+
+def test_development_preflight_does_not_format_foreign_host_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Path-status host errors preserve cause without formatting subclasses."""
+
+    class ForeignHostError(OSError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign path status exception was formatted")
+
+    fault = ForeignHostError("foreign status")
+    native = Path.is_junction
+
+    def foreign_status(path: Path) -> bool:
+        if path == tmp_path:
+            raise fault
+        return native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_junction", foreign_status)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="ForeignHostError",
+        ) as observed:
+            llvm_development_validation._require_physical_directories(
+                tmp_path, "staging"
+            )
+    assert observed.value.__cause__ is fault

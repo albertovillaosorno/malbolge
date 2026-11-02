@@ -434,27 +434,53 @@ def development_root_matches(
     )
 
 
+def _preflight_path_status(
+    path: Path,
+    observation: Callable[[], bool],
+    label: str,
+) -> bool:
+    """Require an exact native path decision before provisioning writes."""
+    try:
+        observed = observation()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = (
+            str(error)
+            if type(error) in (OSError, ValueError, TypeError, RuntimeError)
+            else type(error).__name__
+        )
+        raise LlvmDevelopmentProvisionError(
+            f"LLVM development {label} path status failed: {path}: {detail}"
+        ) from error
+    if type(observed) is not bool:
+        _fail(f"LLVM development {label} path has invalid status: {path}")
+    return observed
+
+
 def _require_physical_directories(path: Path, label: str) -> None:
     """Admit only real directory ancestry before filesystem mutations."""
     for component in (path, *path.parents):
-        if component.is_symlink() or component.is_junction():
-            _fail(
-                f"LLVM development {label} path must not redirect: {component}"
-            )
-        if component.exists() and not component.is_dir():
+        linked = _preflight_path_status(component, component.is_symlink, label)
+        junction = _preflight_path_status(component, component.is_junction, label)
+        if linked or junction:
+            _fail(f"LLVM development {label} path must not redirect: {component}")
+        if _preflight_path_status(component, component.exists, label) and not (
+            _preflight_path_status(component, component.is_dir, label)
+        ):
             _fail(f"LLVM {label} path must be a directory: {component}")
 
 
 def _require_development_destination(path: Path) -> None:
     """Forbid redirected ancestors or a redirected development root leaf."""
     _require_physical_directories(path.parent, "destination")
-    if path.is_symlink() or path.is_junction():
+    linked = _preflight_path_status(path, path.is_symlink, "destination")
+    junction = _preflight_path_status(path, path.is_junction, "destination")
+    if linked or junction:
         _fail(f"LLVM development destination must not redirect: {path}")
 
 
 def _prepare_staging(staging: Path) -> None:
     _require_physical_directories(staging, "staging")
-    if staging.exists():
+    if _preflight_path_status(staging, staging.exists, "staging"):
         _fail(f"LLVM development staging already exists: {staging}")
     staging.mkdir(parents=True)
     _require_physical_directories(staging, "staging")
@@ -507,7 +533,11 @@ def provision_development_identity(
     if development_root_matches(identity):
         return identity.development_root
     _require_development_destination(identity.development_root)
-    if identity.development_root.exists():
+    if _preflight_path_status(
+        identity.development_root,
+        identity.development_root.exists,
+        "destination",
+    ):
         _fail("LLVM development root exists without the exact provision marker")
     staging = (
         root / ".temp" / (f"llvm-development-provision-{identity.platform_id}")
@@ -537,7 +567,7 @@ def provision_development_identity(
         _ = staged_root.replace(identity.development_root)
     finally:
         _require_physical_directories(staging, "staging")
-        if staging.exists():
+        if _preflight_path_status(staging, staging.exists, "staging"):
             shutil.rmtree(staging)
     return identity.development_root
 
