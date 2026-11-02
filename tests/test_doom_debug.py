@@ -630,3 +630,75 @@ def test_doom_build_probe_host_failure_is_typed_with_original_cause(
         assert type(fault).__name__ in str(caught.value)
     elif failure == "oserror":
         assert "native Clang launch denied" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "foreign-completion",
+        "boolean-exit",
+        "foreign-exit",
+        "wrong-command",
+        "foreign-argv",
+        "unexpected-stdout",
+        "unexpected-stderr",
+    ],
+)
+def test_doom_lldb_probe_rejects_malformed_host_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    """No forged LLDB status or launched argv can certify a debugger run."""
+    config = _configuration(tmp_path)
+    expected = (str(doom.LLDB), "-o", "run", "--", str(config.executable), "--probe")
+
+    class ForeignZero(int):
+        pass
+
+    @final
+    class ForeignProcess:
+        returncode = 0
+
+    def forged_run(command: tuple[str, ...], **_kwargs: object) -> object:
+        assert command == expected
+        if fault == "foreign-completion":
+            return ForeignProcess()
+        status: object = 0
+        argv: object = command
+        stdout: object = None
+        stderr: object = None
+        if fault == "boolean-exit":
+            status = False
+        elif fault == "foreign-exit":
+            status = ForeignZero(0)
+        elif fault == "wrong-command":
+            argv = (*command[:-1], "--wrong")
+        elif fault == "foreign-argv":
+            argv = list(command)
+        elif fault == "unexpected-stdout":
+            stdout = "unexpected stdout"
+        elif fault == "unexpected-stderr":
+            stderr = "unexpected stderr"
+        return sp.CompletedProcess(
+            cast("tuple[str, ...]", argv), cast("int", status), stdout, stderr
+        )
+
+    monkeypatch.setattr(sp, "run", forged_run)
+    with pytest.raises(doom.DoomDebugError, match="invalid LLDB process receipt"):
+        _ = doom._run_lldb(config)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_doom_lldb_preserves_native_nonzero_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A genuine debugger run forwards its exact native process status."""
+    config = _configuration(tmp_path)
+
+    def valid_run(
+        command: tuple[str, ...], **_kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(command, 13)
+
+    monkeypatch.setattr(sp, "run", valid_run)
+    assert doom._run_lldb(config) == 13  # pyright: ignore[reportPrivateUsage]

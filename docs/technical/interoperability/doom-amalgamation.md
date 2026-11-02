@@ -93,7 +93,9 @@ path nor its output bytes may be substituted after process execution; these
 local admission checks do not make arbitrary concurrent parent replacement
 atomic. Console summaries and bounded log echoes must receive an exact native
 write count and successful flush before the debug runner proceeds; incomplete
-or foreign output delivery raises a typed DOOM debug error.
+or foreign output delivery raises a typed DOOM debug error. Optional LLDB
+execution likewise requires native exact-argv and integer-status process
+receipts before forwarding the debugger's exit code.
 
 A no-CRT deterministic harness produced identical multi-TU and single-TU
 framebuffer/audio transcripts:

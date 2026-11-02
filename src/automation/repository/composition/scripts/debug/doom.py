@@ -556,7 +556,23 @@ def _run_lldb(configuration: LaunchConfiguration) -> int:
         check=False,
         shell=False,
     )
-    return completed.returncode
+    if type(completed) is not subprocess.CompletedProcess:
+        _fail("invalid LLDB process receipt")
+    native = cast("subprocess.CompletedProcess[object]", completed)
+    argv = cast("object", native.args)
+    if type(argv) is not tuple:
+        _fail("invalid LLDB process receipt")
+    observed = cast("tuple[object, ...]", argv)
+    if (
+        type(native.returncode) is not int
+        or len(observed) != len(command)
+        or any(type(argument) is not str for argument in observed)
+        or observed != command
+        or native.stdout is not None
+        or native.stderr is not None
+    ):
+        _fail("invalid LLDB process receipt")
+    return native.returncode
 
 
 def _parser() -> argparse.ArgumentParser:
