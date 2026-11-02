@@ -55,7 +55,11 @@ process results, altered arguments, and untrusted output hooks cannot
 impersonate a successful validation. Host execution failures retain their
 original causes without invoking foreign exception formatters. Canonical
 ABI/libc contract failures and final CLI diagnostics obey the same safe error
-reporting boundary.
+reporting boundary. Operator output requires exact native text write counts
+and a completed flush for each success record and emitted tool diagnostic;
+missing, short, boolean, or overstated write receipts cannot certify a clean
+preflight or manual validation result. A failed stderr report retains nonzero
+validation status even when its own write or flush fails.
 
 Recursive discovery is reserved for an explicitly selected `doom` directory.
 This convenience rejects linked or junction directory roots and descendants

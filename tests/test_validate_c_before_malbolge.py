@@ -456,3 +456,140 @@ def test_preflight_rejects_unverified_pinned_tool_path_status(
         else:
             with pytest.raises(preflight.ValidationInputError, match="status receipt"):
                 preflight._require_directory(tmp_path, "test guest headers")
+
+
+@pytest.mark.parametrize("receipt", ["short", "boolean", "overlong", "bad-flush"])
+def test_preflight_success_requires_complete_stdout_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """Incomplete or foreign stdout receipts must not certify clean C."""
+
+    class Output:
+        def __init__(self) -> None:
+            self.flushed: bool = False
+
+        def write(self, message: str) -> object:
+            if receipt == "short":
+                return len(message) - 1
+            if receipt == "boolean":
+                return True
+            if receipt == "overlong":
+                return len(message) + 1
+            return len(message)
+
+        def flush(self) -> object:
+            self.flushed = True
+            return 1 if receipt == "bad-flush" else None
+
+    output = Output()
+    monkeypatch.setattr(sys, "stdout", output)
+    with pytest.raises(preflight.ValidationInputError, match="output"):
+        preflight._success_message(  # pyright: ignore[reportPrivateUsage]
+            "pre-Malbolge Clang preflight clean", 1
+        )
+    assert output.flushed is (receipt == "bad-flush")
+
+
+@pytest.mark.parametrize("field", ["stdout", "stderr"])
+def test_preflight_tool_output_rejects_short_writes(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Delegated tool output must not be silently lost on success."""
+
+    class ShortWriter:
+        def write(self, message: str) -> int:
+            return len(message) - 1
+
+        def flush(self) -> None:
+            raise AssertionError("partial write must not be flushed")
+
+    monkeypatch.setattr(sys, field, ShortWriter())
+    output = sp.CompletedProcess(
+        ["clang"], 0,
+        stdout="tool output" if field == "stdout" else "",
+        stderr="tool diagnostics" if field == "stderr" else "",
+    )
+    with pytest.raises(preflight.ValidationInputError, match="output"):
+        preflight._write_tool_output(output)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("failure", ["write", "flush"])
+def test_preflight_main_remains_nonzero_when_stderr_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """A failed diagnostic sink cannot turn rejected C into an exit-zero result."""
+
+    class FailingStream:
+        def write(self, message: str) -> int:
+            if failure == "write":
+                raise OSError("stderr unavailable")
+            return len(message)
+
+        def flush(self) -> None:
+            raise OSError("stderr flush unavailable")
+
+    def invalid_arguments() -> None:
+        raise preflight.ValidationInputError("rejected input")
+
+    monkeypatch.setattr(preflight, "_parse_arguments", invalid_arguments)
+    monkeypatch.setattr(sys, "stderr", FailingStream())
+    assert preflight.main() == preflight.CONFIGURATION_ERROR
+
+
+def test_preflight_main_rejects_incomplete_clean_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful validation result needs its complete stdout record."""
+
+    class ShortStream:
+        def write(self, message: str) -> int:
+            return len(message) - 1
+
+        def flush(self) -> None:
+            raise AssertionError("a short write must not be flushed")
+
+    monkeypatch.setattr(sys, "stdout", ShortStream())
+    monkeypatch.setattr(preflight, "_parse_arguments", lambda: object())
+
+    def pretend_clean(_arguments: object) -> int:
+        preflight._success_message(  # pyright: ignore[reportPrivateUsage]
+            "pre-Malbolge guest-C validation clean", 1
+        )
+        return 0
+
+    monkeypatch.setattr(preflight, "_run_validation", pretend_clean)
+    assert preflight.main() == preflight.CONFIGURATION_ERROR
+
+
+def test_preflight_valid_tool_output_flushes_complete_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native complete streams still permit ordinary Clang result forwarding."""
+    received: list[tuple[str, str]] = []
+
+    class CompleteStream:
+        def __init__(self, name: str) -> None:
+            self.name: str = name
+
+        def write(self, message: str) -> int:
+            received.append((self.name, message))
+            return len(message)
+
+        def flush(self) -> None:
+            received.append((self.name, "flush"))
+
+    monkeypatch.setattr(sys, "stdout", CompleteStream("stdout"))
+    monkeypatch.setattr(sys, "stderr", CompleteStream("stderr"))
+    completed = sp.CompletedProcess(
+        ["clang"], 0, stdout="accepted output", stderr="warning output"
+    )
+    preflight._write_tool_output(completed)  # pyright: ignore[reportPrivateUsage]
+    assert received == [
+        ("stdout", "accepted output"),
+        ("stdout", "flush"),
+        ("stderr", "warning output"),
+        ("stderr", "flush"),
+    ]

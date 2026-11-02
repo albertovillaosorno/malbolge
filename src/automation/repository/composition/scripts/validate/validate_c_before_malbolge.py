@@ -43,7 +43,7 @@ import argparse
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import Never, cast
+from typing import Never, TextIO, cast
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -121,6 +121,36 @@ def _safe_error_detail(error: Exception) -> str:
     ):
         return str(error)
     return type(error).__name__
+
+
+def _write_record(stream: TextIO, message: str) -> bool:
+    """Require an exact native text write and completed flush.
+
+    Returns:
+        Whether the full diagnostic or result record reached its stream.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        LookupError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
+def _require_output(stream: TextIO, message: str) -> None:
+    if not _write_record(stream, message):
+        _fail("pre-Malbolge output write or flush failed")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -328,9 +358,9 @@ def strict_clang_command(source: Path, abi: c_abi.CAbiProjection) -> list[str]:
 
 def _write_tool_output(completed: sp.CompletedProcess[str]) -> None:
     if completed.stdout:
-        _ = sys.stdout.write(completed.stdout)
+        _require_output(sys.stdout, completed.stdout)
     if completed.stderr:
-        _ = sys.stderr.write(completed.stderr)
+        _require_output(sys.stderr, completed.stderr)
 
 
 def _strict_preflight(
@@ -348,7 +378,7 @@ def _strict_preflight(
                     "deterministic pre-lowering Clang validation failed\n",
                 )
             )
-            _ = sys.stderr.write(message)
+            _require_output(sys.stderr, message)
             _write_tool_output(completed)
             status = 1
     return status
@@ -366,7 +396,7 @@ def _canonical_validator(sources: tuple[Path, ...]) -> int:
 
 
 def _success_message(label: str, count: int) -> None:
-    _ = sys.stdout.write(f"{label}: {count} translation unit(s)\n")
+    _require_output(sys.stdout, f"{label}: {count} translation unit(s)\n")
 
 
 def _run_validation(arguments: _Arguments) -> int:
@@ -397,7 +427,7 @@ def main() -> int:
         arguments = _parse_arguments()
         status = _run_validation(arguments)
     except ValidationInputError as error:
-        _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
+        _ = _write_record(sys.stderr, f"error: {_safe_error_detail(error)}\n")
         status = CONFIGURATION_ERROR
     return status
 
