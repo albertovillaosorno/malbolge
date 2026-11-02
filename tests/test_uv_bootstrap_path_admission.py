@@ -85,6 +85,48 @@ def _mock_uv(monkeypatch: pytest.MonkeyPatch) -> python_validation.UvArtifact:
     return artifact
 
 
+@pytest.mark.parametrize("reuse", [False, True])
+def test_uv_relative_root_stays_pinned_when_callback_changes_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, reuse: bool
+) -> None:
+    """A callback cannot redirect a relative checkout's uv target or receipt."""
+    artifact = _mock_uv(monkeypatch)
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    expected = python_validation.uv_executable(artifact, checkout)
+    if reuse:
+        expected.parent.mkdir(parents=True)
+        _ = expected.write_bytes(BINARY)
+        callback = python_validation._run
+
+        def change_during_probe(command: list[str]) -> str:
+            output = callback(command)
+            monkeypatch.chdir(outside)
+            return output
+
+        monkeypatch.setattr(python_validation, "_run", change_during_probe)
+    else:
+        callback_download = python_validation._download_uv_archive
+
+        def change_during_download(
+            selected: python_validation.UvArtifact,
+        ) -> bytes:
+            content = callback_download(selected)
+            monkeypatch.chdir(outside)
+            return content
+
+        monkeypatch.setattr(
+            python_validation, "_download_uv_archive", change_during_download
+        )
+    monkeypatch.chdir(tmp_path)
+    result = python_validation.ensure_uv(Path("checkout"), platform_id=PLATFORM_ID)
+    assert result == expected
+    assert expected.read_bytes() == BINARY
+    assert not (outside / "checkout").exists()
+
+
 def _symlink(link: Path, destination: Path, *, directory: bool) -> None:
     try:
         _ = link.symlink_to(destination, target_is_directory=directory)

@@ -1237,9 +1237,12 @@ def ensure_uv(
         Verified repository-local uv executable.
 
     """
+    # Freeze relative checkout identity before download or version callbacks.
+    # absolute() does not resolve aliases; path admission still rejects them.
+    selected_root = root.absolute()
     selected = platform_id or uv_platform_id()
     artifact = uv_artifact(selected)
-    executable = uv_executable(artifact, root)
+    executable = uv_executable(artifact, selected_root)
     installed = _admit_uv_provision_path(executable)
     if installed is not None:
         original = _uv_executable_identity(installed)
