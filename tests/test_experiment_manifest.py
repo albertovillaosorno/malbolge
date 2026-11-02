@@ -42,7 +42,8 @@ from typing import TYPE_CHECKING, Never, Self, cast, final, override
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
+    from typing import BinaryIO
 
 from scripts.validate import experiment_manifest as validator
 
@@ -458,6 +459,76 @@ class _ForeignDescriptor(int):
         raise AssertionError("foreign manifest descriptor formatted")
 
 
+@pytest.fixture
+def borrowed_manifest_streams() -> Iterator[list[BinaryIO]]:
+    """Close duplicated file handles owned by adversarial test wrappers."""
+    handles: list[BinaryIO] = []
+    yield handles
+    for handle in reversed(handles):
+        handle.close()
+
+
+def test_manifest_rejects_same_length_forged_toml_from_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    borrowed_manifest_streams: list[BinaryIO],
+) -> None:
+    """File metadata cannot authorize bytes fabricated by an fdopen wrapper."""
+    source = tmp_path / "experiment.toml"
+    expected = b"schema_version = 1\n"
+    _ = source.write_bytes(b"!" * len(expected))
+    native_fdopen = os.fdopen
+
+    @final
+    class ForgedStream:
+        def __init__(self, descriptor: int, mode: str) -> None:
+            self.descriptor = descriptor
+            self.wrapped = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+            borrowed_manifest_streams.append(self.wrapped)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def fileno(self) -> int:
+            return self.descriptor
+
+        def read(self, _size: int) -> bytes:
+            return expected
+
+    monkeypatch.setattr(os, "fdopen", ForgedStream)
+    with pytest.raises(validator.ExperimentManifestError, match="native stream"):
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_manifest_rejects_native_reader_of_other_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    borrowed_manifest_streams: list[BinaryIO],
+) -> None:
+    """A native reader on a duplicate fd cannot replace the opened handle."""
+    source = tmp_path / "experiment.toml"
+    _ = source.write_bytes(b"schema_version = 1\n")
+    native_fdopen = os.fdopen
+    native_fstat = os.fstat
+    opened: list[int] = []
+
+    def substituted_fdopen(descriptor: int, mode: str) -> BinaryIO:
+        opened.append(descriptor)
+        stream = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        borrowed_manifest_streams.append(stream)
+        return stream
+
+    monkeypatch.setattr(os, "fdopen", substituted_fdopen)
+    with pytest.raises(validator.ExperimentManifestError, match="native stream"):
+        _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = native_fstat(opened[0])
+
+
 @pytest.mark.parametrize(
     "receipt",
     [
@@ -511,6 +582,7 @@ def test_manifest_open_requires_native_descriptor(
 def test_manifest_stream_requires_bound_native_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    borrowed_manifest_streams: list[BinaryIO],
     receipt: object,
 ) -> None:
     """A forged stream fileno cannot authorize fstat or manifest reads."""
@@ -523,7 +595,10 @@ def test_manifest_stream_requires_bound_native_descriptor(
     @final
     class ForgedStream:
         def __init__(self, descriptor: int, mode: str) -> None:
-            self.stream = real_fdopen(descriptor, mode)
+            self.stream: BinaryIO = cast(
+                "BinaryIO", real_fdopen(os.dup(descriptor), mode)
+            )
+            borrowed_manifest_streams.append(self.stream)
             opened.append(descriptor)
 
         def __enter__(self) -> Self:
@@ -545,18 +620,19 @@ def test_manifest_stream_requires_bound_native_descriptor(
 
     monkeypatch.setattr(os, "fdopen", ForgedStream)
     monkeypatch.setattr(os, "fstat", guarded_fstat)
-    with pytest.raises(validator.ExperimentManifestError, match="stream descriptor"):
+    with pytest.raises(validator.ExperimentManifestError, match="native stream"):
         _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
     assert len(opened) == 1
     with pytest.raises(OSError):
         _ = real_fstat(opened[0])
 
 
-def test_manifest_stream_rejects_handle_swap_after_read(
+def test_manifest_rejects_switching_stream_before_read(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    borrowed_manifest_streams: list[BinaryIO],
 ) -> None:
-    """Stream identity remains bound after collecting all manifest bytes."""
+    """A switchable foreign wrapper cannot reach its descriptor hooks."""
     source = tmp_path / "experiment.toml"
     _ = source.write_bytes(b"schema_version = 1\n")
     real_fdopen = os.fdopen
@@ -567,7 +643,10 @@ def test_manifest_stream_rejects_handle_swap_after_read(
     @final
     class SwitchingStream:
         def __init__(self, descriptor: int, mode: str) -> None:
-            self.stream = real_fdopen(descriptor, mode)
+            self.stream: BinaryIO = cast(
+                "BinaryIO", real_fdopen(os.dup(descriptor), mode)
+            )
+            borrowed_manifest_streams.append(self.stream)
             opened.append(descriptor)
 
         def __enter__(self) -> Self:
@@ -590,18 +669,19 @@ def test_manifest_stream_rejects_handle_swap_after_read(
 
     monkeypatch.setattr(os, "fdopen", SwitchingStream)
     monkeypatch.setattr(os, "fstat", guarded_fstat)
-    with pytest.raises(validator.ExperimentManifestError, match="stream descriptor"):
+    with pytest.raises(validator.ExperimentManifestError, match="native stream"):
         _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
-    assert len(calls) == 2
+    assert not calls
 
 
 @pytest.mark.parametrize("receipt_kind", ("subclass", "text", "bytearray", "none"))
-def test_manifest_stream_read_requires_native_bytes(
+def test_manifest_rejects_foreign_read_implementation_before_use(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    borrowed_manifest_streams: list[BinaryIO],
     receipt_kind: str,
 ) -> None:
-    """A forged read receipt cannot execute length or decoding hooks."""
+    """A foreign read implementation cannot execute its byte receipt hooks."""
     source = tmp_path / "experiment.toml"
     _ = source.write_bytes(b"schema_version = 1\n")
     real_fdopen = os.fdopen
@@ -615,7 +695,10 @@ def test_manifest_stream_read_requires_native_bytes(
     @final
     class ForgedStream:
         def __init__(self, descriptor: int, mode: str) -> None:
-            self.stream = real_fdopen(descriptor, mode)
+            self.stream: BinaryIO = cast(
+                "BinaryIO", real_fdopen(os.dup(descriptor), mode)
+            )
+            borrowed_manifest_streams.append(self.stream)
 
         def __enter__(self) -> Self:
             return self
@@ -637,7 +720,7 @@ def test_manifest_stream_read_requires_native_bytes(
             return cast("bytes", receipts[receipt_kind])
 
     monkeypatch.setattr(os, "fdopen", ForgedStream)
-    with pytest.raises(validator.ExperimentManifestError, match="native byte receipt"):
+    with pytest.raises(validator.ExperimentManifestError, match="native stream"):
         _ = validator._read_utf8(source)  # pyright: ignore[reportPrivateUsage]
 
 

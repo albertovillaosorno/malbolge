@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import io
 import ntpath
 import os
 import re
@@ -533,7 +534,7 @@ def _validate_repository_identity(
 
 
 def _manifest_identity(
-    status: os.stat_result,
+    status: object,
 ) -> tuple[int, int, int, int, int]:
     """Require a bounded regular manifest and retain its source identity.
 
@@ -612,6 +613,28 @@ def _read_manifest_bytes(path: Path) -> bytes:
         except OSError:
             pass
         raise
+    # Even an apparently correct fileno on a foreign stream can conceal
+    # substituted bytes. Bind the native buffered reader to this opened fd.
+    if type(stream) is not io.BufferedReader:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        _fail("experiment manifest requires native stream receipt")
+    raw_stream = stream.raw
+    if (
+        type(raw_stream) is not io.FileIO
+        or type(raw_stream.name) is not int
+        or raw_stream.name != descriptor
+        or raw_stream.fileno() != descriptor
+        or stream.fileno() != descriptor
+    ):
+        # Only our descriptor is owned; never close another stream's raw fd.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        _fail("experiment manifest requires native stream receipt")
     with stream:
         opened = stream.fileno()
         if type(opened) is not int or opened != descriptor:

@@ -46,20 +46,28 @@ Prior-work claims must resolve through canonical records under
 Experiment manifest schema v1 is validated by
 `src/automation/repository/composition/scripts/validate/experiment_manifest.py`.
 Manifest file loading rejects invalid UTF-8 through the stable experiment error
-boundary before TOML admission. It admits only physical, non-redirected regular
+boundary before TOML admission.
+
+It admits only physical, non-redirected regular
 files under a 1 MiB limit, reads through a no-follow/nonblocking descriptor
 where available. Raw opening receipts must be exact native signed file
-descriptors; the wrapped stream must retain that same descriptor before and
-after reading. Initial and post-read status checks require exact native stat
+descriptors; the buffered reader and raw file object must be exact native
+wrappers bound to the opened descriptor, which must remain unchanged before and
+after reading.
+
+Initial and post-read status checks require exact native stat
 receipts and native integer mode, device, inode, size, and nanosecond
 timestamps before interpreting filesystem identity. The initial file
 verdict is an exact native boolean, not a host-supplied truthiness result.
-Parent and leaf
-symbolic-link and junction verdicts must also be exact native booleans, on both
+
+Parent and leaf symbolic-link and junction verdicts must also be exact
+native booleans, on both
 initial and post-read inspection; foreign truthiness hooks never run. Stream
 reads must provide exact native bytes before any length inspection, and UTF-8
 decoder failures retain their original cause without formatting foreign
-exception subclasses. The reader rejects replacement or modification by
+exception subclasses.
+
+The reader rejects replacement or modification by
 rechecking
 device, inode, extent, and timestamps after reading. Repository-manifest
 validation accepts working-directory-relative and absolute in-root paths without
@@ -68,10 +76,12 @@ away symbolic-link aliases; parent traversal is rejected. After source bytes
 are admitted, repository identity must bind to the registered physical
 research algorithm directory and the canonical `experiment.toml` leaf; neither
 a matching directory basename nor rewritten provenance can mint a new ID.
+
 TOML parser capacity errors, including oversized decimal integer tokens,
 return typed manifest errors instead of host exceptions. TOML remains the
 checked-in serialization, but the schema owns semantics independently of that
 format.
+
 Shared research discovery also rejects IDs that collide under Unicode case
 folding, including a domain ID that aliases the composition state-graph ID.
 The experiment and lifecycle validators receive this fail-closed discovery
@@ -94,7 +104,9 @@ additionally requires a lowercase 40-hex Git commit, lowercase SHA-256 workload
 hash, host identity, accelerator identity, toolchain identity, a closed outcome,
 and the repository-relative raw-output path. Repository-relative paths reject
 absolute, Windows drive/root, parent-traversal, and TOML-escaped NUL forms
-before filesystem consumers receive them, independent of host. Backslash path
+before filesystem consumers receive them, independent of host.
+
+Backslash path
 separators are also rejected: evidence names use portable forward slashes so
 Linux and Windows resolve the same repository-relative identity. Paths
 containing Windows-reserved components, including device names, NTFS alternate
