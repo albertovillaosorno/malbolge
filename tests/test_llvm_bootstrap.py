@@ -3712,6 +3712,52 @@ def test_llvm_resource_byte_verification_rejects_postclose_drift(
         assert target.read_bytes() == b"foreign header bytes"
 
 
+@pytest.mark.parametrize("mutation", ("overwrite", "replace"))
+def test_llvm_resource_byte_comparison_pins_identity_before_final_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A final receipt callback cannot replace verified contents or identity."""
+    source = tmp_path / "host-resource"
+    target = tmp_path / "imported-resource"
+    original = b"matching resource content"
+    _ = source.write_bytes(original)
+    _ = target.write_bytes(original)
+    parked = tmp_path / "parked-resource"
+    native_receipt = llvm_validation._resource_member_receipt  # pyright: ignore[reportPrivateUsage]
+    calls = 0
+
+    def mutate_on_final_receipt(path: Path) -> tuple[int, ...]:
+        nonlocal calls
+        receipt = native_receipt(path)
+        if path == target:
+            calls += 1
+            if calls == 2:
+                if mutation == "overwrite":
+                    before = target.stat()
+                    _ = target.write_bytes(b"!" + original[1:])
+                    os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+                else:
+                    target.rename(parked)
+                    _ = target.write_bytes(b"foreign resource content")
+        return receipt
+
+    source_receipt = native_receipt(source)
+    target_receipt = native_receipt(target)
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_resource_member_receipt", mutate_on_final_receipt
+        )
+        with pytest.raises(llvm_validation.LlvmImportError, match="resource|identity"):
+            llvm_validation._require_matching_resource_bytes(  # pyright: ignore[reportPrivateUsage]
+                source, target, source_receipt, target_receipt
+            )
+    assert calls == 2
+    assert source.read_bytes() == original
+    if mutation == "replace":
+        assert parked.read_bytes() == original
+        assert target.read_bytes() == b"foreign resource content"
+
+
 def test_llvm_import_fallback_reads_native_source_not_foreign_path_stream(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

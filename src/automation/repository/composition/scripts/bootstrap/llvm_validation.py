@@ -908,6 +908,10 @@ def _require_matching_resource_bytes(
             and _matches_open_import_file(destination, imported, size)
         ):
             _fail("LLVM resource copy opened a substituted file")
+        # Identity must be pinned before comparison. A later receipt callback
+        # cannot redefine the file identity against which bytes were checked.
+        admitted_source = _marker_identity(os.fstat(original))
+        admitted_destination = _marker_identity(os.fstat(imported))
 
         def read_exact(descriptor: int, count: int) -> bytes:
             content = bytearray()
@@ -931,12 +935,10 @@ def _require_matching_resource_bytes(
             and _matches_open_import_file(destination, imported, size)
             and _resource_member_receipt(source) == source_receipt
             and _resource_member_receipt(destination) == destination_receipt
+            and _marker_identity(os.fstat(original)) == admitted_source
+            and _marker_identity(os.fstat(imported)) == admitted_destination
         ):
             _fail("LLVM resource copy changed during byte verification")
-        # Descriptor close callbacks remain untrusted even after byte-for-byte
-        # comparison. Capture ctime-bearing physical identities while open.
-        admitted_source = _marker_identity(os.fstat(original))
-        admitted_destination = _marker_identity(os.fstat(imported))
     except LlvmImportError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
