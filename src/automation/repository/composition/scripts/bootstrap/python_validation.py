@@ -451,9 +451,21 @@ def _bounded_uv_member_bytes(content: bytes) -> bytes:
 def _zip_member_bytes(data: bytes, member: str) -> bytes:
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         info = archive.getinfo(member)
-        if type(info) is not zipfile.ZipInfo or type(info.file_size) is not int:
-            _fail("uv zip member requires native size metadata")
-        if info.is_dir():
+        if sum(item.filename == member for item in archive.infolist()) != 1:
+            _fail("duplicate uv zip member name")
+        if (
+            type(info) is not zipfile.ZipInfo
+            or type(info.file_size) is not int
+            or type(info.external_attr) is not int
+        ):
+            _fail("uv zip member requires native size and type metadata")
+        unix_type = stat.S_IFMT(info.external_attr >> 16)
+        dos_directory = bool(info.external_attr & 0x10)
+        if (
+            info.is_dir()
+            or dos_directory
+            or unix_type not in (0, stat.S_IFREG)
+        ):
             _fail("uv zip member must be a regular file")
         if info.file_size < 0 or info.file_size > MAX_UV_BINARY_BYTES:
             _fail("uv extracted member exceeds byte limit")

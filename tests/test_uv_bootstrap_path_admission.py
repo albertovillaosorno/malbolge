@@ -28,8 +28,12 @@
 
 from __future__ import annotations
 
+import io
 import os
 from pathlib import Path
+import stat
+import warnings
+import zipfile
 from typing import BinaryIO
 from typing import Self
 from typing import cast
@@ -581,6 +585,51 @@ def test_uv_rejects_executable_change_during_version_probe(
         assert executable.read_bytes() == BINARY
     else:
         assert executable.read_bytes() != BINARY
+
+
+@pytest.mark.parametrize("member_type", [stat.S_IFLNK, stat.S_IFDIR, stat.S_IFIFO])
+def test_uv_zip_rejects_nonregular_member_with_file_name(
+    member_type: int,
+) -> None:
+    """ZIP members named like executables still need regular file metadata."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        member = zipfile.ZipInfo("uv.exe")
+        member.create_system = 3
+        member.external_attr = (member_type | 0o755) << 16
+        archive.writestr(member, BINARY)
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv zip member must be a regular file"
+    ):
+        _ = python_validation._zip_member_bytes(output.getvalue(), "uv.exe")
+
+
+def test_uv_zip_rejects_dos_directory_attribute_without_trailing_slash() -> None:
+    """A DOS ZIP directory is not regular merely because its name is a file."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        member = zipfile.ZipInfo("uv.exe")
+        member.create_system = 0
+        member.external_attr = 0x10
+        archive.writestr(member, BINARY)
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv zip member must be a regular file"
+    ):
+        _ = python_validation._zip_member_bytes(output.getvalue(), "uv.exe")
+
+
+def test_uv_zip_rejects_duplicate_selected_executable() -> None:
+    """Ambiguous duplicate ZIP names cannot select executable contents."""
+    output = io.BytesIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("uv.exe", b"first-uv")
+            archive.writestr("uv.exe", b"second-uv")
+    with pytest.raises(
+        python_validation.ProvisionError, match="duplicate uv zip member"
+    ):
+        _ = python_validation._zip_member_bytes(output.getvalue(), "uv.exe")
 
 
 @pytest.mark.parametrize("authority", ["uv-manifest", "jig-binary"])

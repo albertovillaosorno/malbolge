@@ -60,7 +60,11 @@ typed provisioning errors that preserve their original cause without evaluating
 foreign exception formatters. Selected tar.gz and ZIP executable members also
 require native size receipts and bounded 128-MiB reads before installation; tar
 links and oversized extracted executables are rejected without a full read.
-The executable writer independently requires native bounded bytes before it
+ZIP entries must also have regular-file Unix type metadata when encoded, and
+may not advertise directory status through their DOS attributes even if their
+archive names resemble executable files. Duplicate names for the selected
+ZIP executable are rejected as ambiguous. The executable writer independently
+requires native bounded bytes before it
 creates its exclusive staging file, even if called with an injected extractor.
 Pinned uv executable provisioning rejects symlinked, junction, non-directory,
 and multiply linked executable paths before executing an already-installed
