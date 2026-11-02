@@ -13408,6 +13408,7 @@ def test_progress_limiter_rejects_false_committed_path_receipt(
     expected = Path(candidate.progress_path)
 
     class ForeignPath(type(expected)):
+        @override
         def __eq__(self, other: object) -> bool:
             del other
             pytest.fail("foreign path equality hook executed")
