@@ -34,12 +34,15 @@ configuration, and Git-ignored local `out/`. Define the explicit exception for
 ordinary product algorithms such as DOOM interoperability transformations, which
 require engineering evidence but not artificial academic capsules.
 
-
 **Current implementation.**
 
+- 2026-11-02 follow-up: both mirror ID comparison and executable product-suite
+  exclusion now admit only exact native immutable sets of native strings before
+  identity arithmetic. Fifteen red-first malformed container/member cases
+  establish typed rejection without foreign equality or iterator callbacks.
 - The accepted research ADR fixes the stable two-sided identity and the product
   engineering exception.
-- The repository currently contains eight exact mirrored IDs (seven research
+- The repository currently contains nine exact mirrored IDs (eight research
   topics plus `template`) under `docs/research/algorithms/` and `algorithms/`.
 - `src/automation/repository/composition/scripts/validate/research_mirror.py`
   fails closed on one-sided IDs, missing
@@ -50,7 +53,7 @@ require engineering evidence but not artificial academic capsules.
 - The local-output check uses `git check-ignore --no-index` on a virtual probe,
   so
   an absent generated `out/` directory is still checked against real Git policy.
-- `tests/test_research_mirror.py` locks the current eight IDs and deliberately
+- `tests/test_research_mirror.py` locks the current nine IDs and deliberately
   proves documentation-only/executable-only/empty failures plus the explicit
   exclusion of the non-research `diff` and `doom` suites.
 - The academic record remains responsible for question/hypothesis/evidence and

@@ -152,6 +152,64 @@ def test_unportable_research_ids_fail_closed(identifier: str) -> None:
         _ = validator.validate_id_sets(frozenset({identifier}), frozenset({identifier}))
 
 
+@pytest.mark.parametrize("side", ("document", "executable"))
+@pytest.mark.parametrize("kind", ("list", "set", "foreign-frozenset"))
+def test_mirror_id_sets_require_exact_native_frozensets(
+    side: str, kind: str
+) -> None:
+    """Malformed ID-set containers cannot enter difference or sorting hooks."""
+
+    class ForeignSet(frozenset[str]):
+        @override
+        def __iter__(self) -> Never:
+            raise AssertionError("foreign ID-set iteration called")
+
+    foreign: object = {
+        "list": ["alpha"],
+        "set": {"alpha"},
+        "foreign-frozenset": ForeignSet({"alpha"}),
+    }[kind]
+    document_ids = foreign if side == "document" else frozenset({"alpha"})
+    executable_ids = foreign if side == "executable" else frozenset({"alpha"})
+    with pytest.raises(validator.ResearchMirrorError, match="native immutable ID set"):
+        _ = validator.validate_id_sets(
+            cast("frozenset[str]", document_ids),
+            cast("frozenset[str]", executable_ids),
+        )
+
+
+@pytest.mark.parametrize("side", ("document", "executable"))
+@pytest.mark.parametrize("kind", ("foreign-string", "integer", "none"))
+def test_mirror_id_sets_reject_foreign_members_before_equality(
+    side: str, kind: str
+) -> None:
+    """Foreign members never execute their hashing, sorting or equality hooks."""
+
+    class ForeignId(str):  # ruff: ignore[subclass-builtin]
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> Never:
+            del other
+            raise AssertionError("foreign research ID equality called")
+
+    member: object = {
+        "foreign-string": ForeignId("alpha"),
+        "integer": 4,
+        "none": None,
+    }[kind]
+    foreign = frozenset({member})
+    document_ids = foreign if side == "document" else frozenset({"alpha"})
+    executable_ids = foreign if side == "executable" else frozenset({"alpha"})
+    with pytest.raises(validator.ResearchMirrorError, match="native research ID"):
+        _ = validator.validate_id_sets(
+            cast("frozenset[str]", document_ids),
+            cast("frozenset[str]", executable_ids),
+        )
+
+
 def test_empty_research_mirror_fails_closed() -> None:
     """Deleting both halves cannot turn the mirror contract into a no-op."""
     _expect_id_failure(frozenset(), frozenset())
@@ -162,6 +220,34 @@ def test_non_research_algorithm_suites_are_explicitly_excluded() -> None:
     executable_ids = frozenset((*EXPECTED_IDS, "diff", "doom"))
     assert validator.executable_research_ids(executable_ids) == frozenset(EXPECTED_IDS)
     assert frozenset({"diff", "doom"}) == validator.NON_RESEARCH_ALGORITHM_IDS
+
+
+@pytest.mark.parametrize("kind", ("list", "foreign-set", "foreign-id"))
+def test_research_product_exclusions_require_native_ids(kind: str) -> None:
+    """Product exclusions cannot launder a foreign executable identity set."""
+
+    class ForeignSet(frozenset[str]):
+        @override
+        def __iter__(self) -> Never:
+            raise AssertionError("foreign executable set iteration called")
+
+    class ForeignId(str):  # ruff: ignore[subclass-builtin]
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> Never:
+            del other
+            raise AssertionError("foreign executable ID equality called")
+
+    received: object = {
+        "list": ["diff"],
+        "foreign-set": ForeignSet({"diff"}),
+        "foreign-id": frozenset({ForeignId("diff")}),
+    }[kind]
+    with pytest.raises(validator.ResearchMirrorError, match="native"):
+        _ = validator.executable_research_ids(cast("frozenset[str]", received))
 
 
 def test_unknown_executable_algorithm_still_fails_closed() -> None:

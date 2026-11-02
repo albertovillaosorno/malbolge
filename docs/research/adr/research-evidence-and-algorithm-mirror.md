@@ -46,7 +46,10 @@ untrusted directory iterator. Shared discovery receipts must be native tuples
 of distinct IDs and canonical executable paths; duplicated or redirected ID
 projections cannot satisfy the mirror contract. Both directory scanners
 reject repeated entries before sets or maps can silently collapse their
-identity.
+identity. Both public ID-set operations admit exact native frozensets of
+native strings before subtracting, sorting, or excluding product IDs. Foreign
+containers and subclassed IDs cannot run equality or iteration hooks inside
+the mirror identity decision.
 
 Every direct research ID under either mirror root must exist on both sides.
 The special composition state-graph experiment and domain algorithm
@@ -127,6 +130,7 @@ Rejected because it would force routine engineering transformations into fake
 papers and obscure their actual product owner.
 
 ### Keep research documentation separate from executable experiments without a
+
 stable identity
 
 Rejected because results, code, and later papers would lose deterministic

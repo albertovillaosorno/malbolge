@@ -175,6 +175,21 @@ def _directory_ids(root: Path) -> frozenset[str]:
     return frozenset(identifiers)
 
 
+def _native_research_id_set(value: object, context: str) -> frozenset[str]:
+    """Admit exact immutable string sets before set comparisons or sorting.
+
+    Returns:
+        The native set of research identity strings.
+
+    """
+    if type(value) is not frozenset:
+        _fail(f"{context} requires native immutable ID set")
+    identifiers = cast("frozenset[object]", value)
+    if any(type(identifier) is not str for identifier in identifiers):
+        _fail(f"{context} contains non-native research ID")
+    return cast("frozenset[str]", value)
+
+
 def validate_id_sets(
     document_ids: frozenset[str],
     executable_ids: frozenset[str],
@@ -185,6 +200,8 @@ def validate_id_sets(
         Sorted stable research IDs when both mirror roots contain the same set.
 
     """
+    document_ids = _native_research_id_set(document_ids, "document mirror")
+    executable_ids = _native_research_id_set(executable_ids, "executable mirror")
     document_only = sorted(document_ids - executable_ids)
     executable_only = sorted(executable_ids - document_ids)
     if document_only or executable_only:
@@ -213,7 +230,8 @@ def executable_research_ids(executable_ids: frozenset[str]) -> frozenset[str]:
         Executable IDs that remain subject to the academic mirror contract.
 
     """
-    return executable_ids - NON_RESEARCH_ALGORITHM_IDS
+    native_ids = _native_research_id_set(executable_ids, "executable research")
+    return native_ids - NON_RESEARCH_ALGORITHM_IDS
 
 
 def _entries() -> tuple[MirrorEntry, ...]:
