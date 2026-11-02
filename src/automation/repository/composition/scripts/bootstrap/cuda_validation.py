@@ -366,6 +366,8 @@ def load_cuda_provision_manifest(
 
 def verify_cuda_package(data: bytes, package: CudaPackageArtifact) -> None:
     """Reject package bytes that drift from tracked size or SHA-256 identity."""
+    if type(data) is not bytes:
+        _fail("CUDA package must be native bytes")
     if len(data) != package.size:
         _fail(
             "".join((

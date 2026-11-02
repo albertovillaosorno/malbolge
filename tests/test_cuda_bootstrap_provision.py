@@ -207,6 +207,56 @@ def test_package_verification_rejects_size_and_sha_drift(
         cuda_validation.verify_cuda_package(payload, sha_package)
 
 
+class _BytesSubclass(bytes):
+    """A digest-matching value with a foreign runtime type."""
+
+
+@pytest.mark.parametrize("kind", ["mutable", "subclass", "buffer", "string", "missing"])
+def test_cuda_package_rejects_foreign_byte_values(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    """Only native bytes may enter the pinned archive verification boundary."""
+    payload = _payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM
+    ).packages[0]
+    values: dict[str, object] = {
+        "mutable": bytearray(payload),
+        "subclass": _BytesSubclass(payload),
+        "buffer": memoryview(payload),
+        "string": "x" * len(payload),
+        "missing": None,
+    }
+    with pytest.raises(cuda_validation.CudaProvisionError, match="native bytes"):
+        cuda_validation.verify_cuda_package(cast("bytes", values[kind]), package)
+
+
+@pytest.mark.parametrize("kind", ["mutable", "subclass", "buffer"])
+def test_cuda_provision_rejects_foreign_download_bytes(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    """A custom downloader cannot pass byte-compatible foreign objects."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    values: dict[str, object] = {
+        "mutable": bytearray(payload),
+        "subclass": _BytesSubclass(payload),
+        "buffer": memoryview(payload),
+    }
+
+    def download(url: str) -> bytes:
+        assert url == cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH
+        return cast("bytes", values[kind])
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match="native bytes"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path, manifest, LINUX_PLATFORM, downloader=download
+        )
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
 def test_tar_extraction_strips_single_archive_root(tmp_path: Path) -> None:
     """Strip the NVIDIA archive root while retaining toolkit-relative files."""
     payload = _payload()

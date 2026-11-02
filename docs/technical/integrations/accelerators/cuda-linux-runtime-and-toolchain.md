@@ -45,9 +45,10 @@ filename. The selected host manifest is admitted only as bounded,
 nonredirected regular bytes with stable device, inode, size, and timestamps
 across each read. It downloads only
 the package identities in the selected host manifest, validates tracked byte
-size and SHA-256 before extraction, rejects archive traversal, stages inside the
-repository, and atomically publishes a completion-marker-bound toolkit. The
-completion marker must likewise be a bounded stable regular file, with no
+size and SHA-256 before extraction, requires native `bytes` from any downloader
+rather than a mutable buffer or foreign payload, rejects archive traversal,
+stages inside the repository, and atomically publishes a completion-marker-bound
+toolkit. The completion marker must be a bounded stable regular file, with no
 symlinked leaf or parent; invalid markers cannot assert an installed toolkit.
 The completion marker is bootstrap-owned: a package archive cannot provide a
 regular, linked, or dangling marker leaf for the provisioner to overwrite.
