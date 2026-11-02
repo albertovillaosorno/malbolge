@@ -29,6 +29,8 @@
 from __future__ import annotations
 
 import subprocess
+import sys
+from pathlib import Path
 from typing import Never
 from typing import override
 
@@ -146,3 +148,71 @@ def test_python_validation_cli_rejects_nonstring_native_error_payload(
     monkeypatch.setattr(python_validation, "initialize", fail_initialize)
     assert python_validation.main() == 1
     assert capsys.readouterr().err == "error: ProvisionError\n"
+
+
+@pytest.mark.parametrize("receipt", ["short", "boolean", "flush"])
+def test_python_validation_cli_rejects_incomplete_report_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    receipt: str,
+) -> None:
+    """Success requires complete and flushed readiness output."""
+    layout = python_validation.validation_layout(tmp_path)
+    message = (
+        f"python validation environment ready: {layout.environment}\n"
+    )
+    written: list[str] = []
+
+    class BrokenStdout:
+        def write(self, value: str) -> int:
+            written.append(value)
+            if receipt == "short":
+                return len(value) - 1
+            if receipt == "boolean":
+                return True
+            return len(value)
+
+        def flush(self) -> None:
+            if receipt == "flush":
+                raise OSError("cannot flush")
+
+    def fake_initialize() -> python_validation.ValidationEnvironmentLayout:
+        return layout
+
+    monkeypatch.setattr(python_validation, "initialize", fake_initialize)
+    with monkeypatch.context() as isolated:
+        isolated.setattr(sys, "stdout", BrokenStdout())
+        assert python_validation.main() == 1
+    assert written == [message]
+    captured = capsys.readouterr()
+    assert "error:" in captured.err
+
+
+def test_python_validation_cli_flushes_complete_readiness_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Successful readiness output must be complete and visibly flushed."""
+    layout = python_validation.validation_layout(tmp_path)
+    calls: list[str] = []
+
+    class CapturingStdout:
+        def write(self, text: str) -> int:
+            calls.append(text)
+            return len(text)
+
+        def flush(self) -> None:
+            calls.append("flush")
+
+    def fake_initialize() -> python_validation.ValidationEnvironmentLayout:
+        return layout
+
+    monkeypatch.setattr(python_validation, "initialize", fake_initialize)
+    with monkeypatch.context() as isolated:
+        isolated.setattr(sys, "stdout", CapturingStdout())
+        assert python_validation.main() == 0
+    assert calls == [
+        f"python validation environment ready: {layout.environment}\n",
+        "flush",
+    ]
