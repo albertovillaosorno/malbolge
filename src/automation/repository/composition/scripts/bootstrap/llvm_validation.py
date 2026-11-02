@@ -126,6 +126,8 @@ def _marker_bytes(platform_id: str) -> bytes:
 
 
 def _marker_identity(status: os.stat_result) -> tuple[int, ...]:
+    if type(cast("object", status)) is not os.stat_result:
+        raise TypeError("LLVM import marker requires native stat evidence")
     return (
         status.st_dev,
         status.st_ino,
@@ -161,7 +163,12 @@ def _stable_marker_descriptor(
         before = _marker_identity(os.fstat(stream.fileno()))
         content = stream.read(len(expected) + 1)
         after = _marker_identity(os.fstat(stream.fileno()))
-    return before == admitted and after == admitted and content == expected
+    return (
+        before == admitted
+        and after == admitted
+        and type(content) is bytes
+        and content == expected
+    )
 
 
 def _valid_marker(root: Path, platform_id: str) -> bool:

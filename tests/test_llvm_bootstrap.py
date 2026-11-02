@@ -37,7 +37,7 @@ from __future__ import annotations
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from pathlib import Path
-from typing import cast, override
+from typing import Self, cast, final, override
 
 import pytest
 from scripts.bootstrap import llvm_validation
@@ -129,6 +129,87 @@ def test_llvm_marker_fdopen_failure_closes_owned_descriptor(
     for descriptor in owned:
         with pytest.raises(OSError):
             _ = os.fstat(descriptor)
+
+
+class _ForeignMarkerBytes(bytes):
+    """Digest-matching contents are not evidence from a native byte read."""
+
+
+@pytest.mark.parametrize("kind", ("mutable", "view", "subclass"))
+def test_llvm_marker_rejects_nonnative_stream_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """An injected stream cannot certify marker bytes via lookalike types."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    original = os.fdopen
+    raw = marker.read_bytes()
+    values: dict[str, object] = {
+        "mutable": bytearray(raw),
+        "view": memoryview(raw),
+        "subclass": _ForeignMarkerBytes(raw),
+    }
+
+    @final
+    class ForeignRead:
+        def __init__(self, descriptor: int, mode: str) -> None:
+            self.original = original(descriptor, mode)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_arguments: object) -> None:
+            self.original.close()
+
+        def fileno(self) -> int:
+            return self.original.fileno()
+
+        def read(self, _size: int) -> object:
+            return values[kind]
+
+    monkeypatch.setattr(os, "fdopen", ForeignRead)
+    assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
+@pytest.mark.parametrize("kind", ("descriptor", "path"))
+def test_llvm_marker_rejects_foreign_status_proxy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Matching numeric attributes on a proxy are not native inode evidence."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    native = marker.lstat()
+
+    @final
+    class ForgedStatus:
+        st_mode = native.st_mode
+        st_dev = native.st_dev
+        st_ino = native.st_ino
+        st_size = native.st_size
+        st_nlink = native.st_nlink
+        st_mtime_ns = native.st_mtime_ns
+        st_ctime_ns = native.st_ctime_ns
+
+    if kind == "path":
+        original_lstat = Path.lstat
+
+        def forged_lstat(path: Path) -> object:
+            return ForgedStatus() if path == marker else original_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", forged_lstat)
+    else:
+        original_fstat = os.fstat
+
+        def forged_fstat(descriptor: int) -> object:
+            _ = original_fstat(descriptor)
+            return ForgedStatus()
+
+        monkeypatch.setattr(os, "fstat", forged_fstat)
+    assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
 
 
 @pytest.mark.parametrize(
