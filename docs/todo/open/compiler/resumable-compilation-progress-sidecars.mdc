@@ -807,6 +807,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   naming, but does not attest independent cryptography or protect against
   both constructors being compromised together.
 
+  Three red-first direct, file-reader, and operator CLI regressions reject a
+  forged valid native progress JSON mapping returned by substituted
+  `json.loads` while the original source names another operation. Bounded
+  progress metadata now receives a second validated `json.JSONDecoder` parse
+  and admits only agreeing records; the shared host parser remains a trust
+  limitation, and these checks do not attest simultaneous provider tampering.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact

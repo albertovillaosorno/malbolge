@@ -5478,6 +5478,39 @@ def test_progress_json_decoders_reject_foreign_mapping_without_dispatch(
     assert not invoked
 
 
+@pytest.mark.parametrize("mode", ["direct", "file", "operator"])
+def test_progress_json_rejects_substituted_native_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+) -> None:
+    """Decoded progress fields must agree with the physical JSON source."""
+    authentic = _sidecar(tmp_path)
+    text = progress.encode(authentic).decode("utf-8")
+    destination = Path(authentic.progress_path)
+    _ = destination.write_text(text, encoding="utf-8")
+    forged = progress.to_document(replace(authentic, operation_id="swapped-operation"))
+
+    def substituted_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as context:
+        context.setattr(json, "loads", substituted_loads)
+        if mode == "operator":
+            assert progress.main([str(destination)]) == 1
+        else:
+            with pytest.raises(ERROR, match="JSON decoder providers disagree"):
+                if mode == "file":
+                    _ = progress.read(destination)
+                else:
+                    _ = progress.loads(text)
+    if mode == "operator":
+        captured = capsys.readouterr()
+        assert not captured.out
+        assert "JSON decoder providers disagree" in captured.err
+
+
 def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:
     """JSON transport cannot overwrite authority or extend v1 silently."""
     sidecar = _sidecar(tmp_path)

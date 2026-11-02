@@ -62,6 +62,16 @@ and a false streaming digest. The tests show local constructor-consistency
 rejection, not independent cryptographic implementations, trusted OS state,
 or protection from jointly compromised hash constructors.
 
+Direct progress JSON parsing, filesystem reads, and operator inspection now
+reject a substituted `json.loads` result that fabricates valid native-looking
+progress identity fields. The original (at most 1 MiB) source is decoded through
+`json.JSONDecoder` as a separate entrypoint with duplicate-key rejection and
+record validation; both admitted records must match before operator or resume
+use. Three red-first direct/file/CLI regressions demonstrate fail-closed
+rejection. These entrypoints share the host JSON implementation: this is a
+local-consistency check, not independent source authentication or defense
+against simultaneous tampering with both decoders.
+
 Both immutable payload and
 mutable pointer writes require an exact integer byte count before sync or
 publication. Boolean reports, including `True` for a single byte and `False`

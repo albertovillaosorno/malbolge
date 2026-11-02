@@ -1818,6 +1818,23 @@ def loads(text: str) -> ProgressSidecar:
     except (ValueError, RecursionError) as error:
         _fail(f"invalid progress JSON: {_host_error_detail(error)}")
     sidecar = validate(_from_document(_mapping(parsed, "progress sidecar")))
+    # A substituted convenience decoder can return a native-looking record
+    # unrelated to the source. Independently decode the original wire text
+    # through the JSONDecoder object before accepting its identity fields.
+    try:
+        independent = cast(
+            "object",
+            json.JSONDecoder(object_pairs_hook=_reject_duplicate_pairs).decode(text),
+        )
+    except ProgressSidecarError:
+        raise
+    except (ValueError, RecursionError) as error:
+        _fail(f"invalid progress JSON: {_host_error_detail(error)}")
+    reference = validate(
+        _from_document(_mapping(independent, "progress sidecar"))
+    )
+    if sidecar != reference:
+        _fail("progress JSON decoder providers disagree")
     # A short noncanonical UTF-8 spelling may expand beyond the canonical
     # ensure-ASCII pointer budget after decoding (e.g. multibyte text).
     _ = _admit_sidecar_wire_size(sidecar)
