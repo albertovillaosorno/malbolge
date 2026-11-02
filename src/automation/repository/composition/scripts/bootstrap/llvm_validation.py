@@ -592,6 +592,13 @@ def _require_physical_resources(root: Path) -> None:
         _fail("host LLVM resource directory must not redirect")
     try:
         for member in root.rglob("*"):
+            if (
+                type(member) is not type(root)
+                or member == root
+                or not member.is_relative_to(root)
+                or ".." in member.relative_to(root).parts
+            ):
+                _fail("host LLVM resource member must be inside its root")
             if not (_physical_file(member) or _physical_directory(member)):
                 _fail(f"host LLVM resource member must be physical: {member}")
     except LlvmImportError:
@@ -643,6 +650,14 @@ def _copy_resource_tree(source: Path, destination: Path) -> None:
             for member in source_directory.iterdir():
                 if _native_directory_inode(source_directory) != expected_source_inode:
                     _fail("host LLVM resource directory changed during copying")
+                if (
+                    type(member) is not type(source_directory)
+                    or member.parent != source_directory
+                    or member.name in ("", ".", "..")
+                    or "/" in member.name
+                    or "\\" in member.name
+                ):
+                    _fail("host LLVM resource member must be a direct native child")
                 target = destination_directory / member.name
                 if _physical_directory(member):
                     child_inode = _native_directory_inode(member)

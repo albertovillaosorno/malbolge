@@ -3890,6 +3890,81 @@ def test_llvm_resource_copy_rejects_file_swapped_at_hardlink(
     assert foreign_path.read_bytes() == b"foreign resource bytes"
 
 
+@pytest.mark.parametrize("forgery", ["outside", "dotdot", "foreign-type"])
+def test_llvm_resource_preflight_rejects_forged_recursive_members(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """A recursive status walk must not admit outside or nonpath receipts."""
+    root = tmp_path / "host-resources"
+    root.mkdir()
+    outside = tmp_path / "outside.h"
+    _ = outside.write_bytes(b"foreign resource content")
+    member: Path | str
+    if forgery == "dotdot":
+        member = root / ".." / outside.name
+    elif forgery == "foreign-type":
+        member = str(outside)
+    else:
+        member = outside
+    native_rglob = Path.rglob
+
+    def forged_rglob(path: Path, pattern: str):  # type: ignore[no-untyped-def]
+        if path == root and pattern == "*":
+            return iter((member,))
+        return native_rglob(path, pattern)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "rglob", forged_rglob)
+        with pytest.raises(llvm_validation.LlvmImportError, match="resource member"):
+            llvm_validation._require_physical_resources(  # pyright: ignore[reportPrivateUsage]
+                root
+            )
+    assert outside.read_bytes() == b"foreign resource content"
+
+
+@pytest.mark.parametrize("kind", ["file", "directory", "foreign-type", "dotdot"])
+def test_llvm_resource_copy_refuses_foreign_iterator_members(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """An iterator may not nominate resources outside its source directory."""
+    source = tmp_path / "host-resources"
+    source.mkdir()
+    stage = tmp_path / "staged/lib/clang"
+    stage.mkdir(parents=True)
+    destination = stage / "22"
+    outside = tmp_path / "foreign-resource"
+    if kind == "directory":
+        outside.mkdir()
+        _ = (outside / "sentinel.h").write_bytes(b"untrusted header")
+    else:
+        _ = outside.write_bytes(b"untrusted header")
+    native_iterdir = Path.iterdir
+
+    def forged_iterdir(path: Path):  # type: ignore[no-untyped-def]
+        if path == source:
+            member: Path | str = outside
+            if kind == "foreign-type":
+                member = str(outside)
+            elif kind == "dotdot":
+                member = source / ".." / outside.name
+            return iter((member,))
+        return native_iterdir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "iterdir", forged_iterdir)
+        with pytest.raises(llvm_validation.LlvmImportError, match="resource member"):
+            llvm_validation._copy_resource_tree(  # pyright: ignore[reportPrivateUsage]
+                source, destination
+            )
+    expected = outside / "sentinel.h" if kind == "directory" else outside
+    assert expected.read_bytes() == b"untrusted header"
+    assert not (destination / outside.name).exists()
+
+
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX physical inodes")
 def test_linux_import_does_not_publish_late_substituted_host_resource(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
