@@ -642,6 +642,24 @@ def _copy_rpm_include_tree(include_root: Path, destination_include: Path) -> Non
         raise LlvmDevelopmentProvisionError(detail) from error
 
 
+def _require_listed_extracted_headers(
+    include_root: Path, listed_members: frozenset[PurePosixPath]
+) -> None:
+    """Admit listed CPIO members plus their implicit parent directories."""
+    include_prefix = PurePosixPath("usr/include")
+    allowed = set(listed_members)
+    for member in listed_members:
+        for parent in member.parents:
+            if parent == include_prefix:
+                break
+            if parent.is_relative_to(include_prefix):
+                allowed.add(parent)
+    for relative in _header_tree_receipt(include_root):
+        expected = include_prefix.joinpath(*relative.parts)
+        if expected not in allowed:
+            _fail(f"LLVM RPM extraction contains unlisted header member: {expected}")
+
+
 def _extract_rpm_headers(
     data: bytes,
     asset: tidy_toolchain.DevelopmentAsset,
@@ -686,7 +704,9 @@ def _extract_rpm_headers(
         _write_verified_staging_bytes(rpm_path, data)
         payload = _cpio_payload(rpm_path, data)
         require_owned_package()
-        _ = _cpio_members(payload)
+        listed_members = frozenset(
+            _safe_member_path(member) for member in _cpio_members(payload)
+        )
         require_owned_package()
         _extract_cpio_headers(payload, package_staging)
         require_owned_package()
@@ -694,6 +714,7 @@ def _extract_rpm_headers(
         if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
             _fail(f"LLVM development package has no /usr/include: {asset.name}")
         _reject_include_symlinks(include_root, require_single_link=True)
+        _require_listed_extracted_headers(include_root, listed_members)
         destination_include = destination / "include"
         _require_physical_directories(destination_include, "staging")
         if _preflight_path_status(
@@ -704,6 +725,7 @@ def _extract_rpm_headers(
             )
         _copy_rpm_include_tree(include_root, destination_include)
         _reject_include_symlinks(include_root, require_single_link=True)
+        _require_listed_extracted_headers(include_root, listed_members)
     finally:
         require_owned_package()
     try:

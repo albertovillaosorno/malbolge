@@ -919,6 +919,126 @@ def test_rpm_overlay_rejects_late_source_header_drift(
             )
 
 
+def test_rpm_extraction_accepts_listed_optional_members(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Listed optional headers and empty directories remain valid package output."""
+    identity = _identity(tmp_path)
+
+    def synthetic_cpio(
+        arguments: list[str], *, cwd: Path | None = None, **_kwargs: object
+    ) -> bytes:
+        if arguments[0] == "cpio" and cwd is not None:
+            include = cwd / "usr/include"
+            directory = include / "clang/AST"
+            directory.mkdir(parents=True)
+            _ = (directory / "AST.h").write_bytes(HEADER_BYTES)
+            _ = (directory / "Optional.h").write_bytes(FOREIGN_CONTENT_BYTES)
+            (include / "empty-dir").mkdir()
+        return b""
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation, "_cpio_payload", _synthetic_hardlinked_payload
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            lambda _payload: (
+                "./usr/include/clang/AST/AST.h",
+                "usr/include/clang/AST/Optional.h",
+                "usr/include/empty-dir/",
+            ),
+        )
+        isolated.setattr(llvm_development_validation, "_command_bytes", synthetic_cpio)
+        published = llvm_development_validation.provision_development_identity(
+            tmp_path, identity, downloader=_downloader([])
+        )
+    assert llvm_development_validation.development_root_matches(identity)
+    assert (published / "include/clang/AST/Optional.h").read_bytes() == FOREIGN_CONTENT_BYTES
+    assert (published / "include/empty-dir").is_dir()
+
+
+def test_rpm_extraction_rejects_unlisted_empty_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An extraction may create implicit parents, not unlisted empty trees."""
+    identity = _identity(tmp_path)
+
+    def synthetic_cpio(
+        arguments: list[str], *, cwd: Path | None = None, **_kwargs: object
+    ) -> bytes:
+        if arguments[0] == "cpio" and cwd is not None:
+            include = cwd / "usr/include"
+            header = include / "clang/AST/AST.h"
+            header.parent.mkdir(parents=True)
+            _ = header.write_bytes(HEADER_BYTES)
+            (include / "unlisted-empty").mkdir()
+        return b""
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation, "_cpio_payload", _synthetic_hardlinked_payload
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            lambda _payload: ("usr/include/clang/AST/AST.h",),
+        )
+        isolated.setattr(llvm_development_validation, "_command_bytes", synthetic_cpio)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="unlisted",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert not identity.development_root.exists()
+
+
+@pytest.mark.parametrize(
+    "unlisted",
+    ["clang/AST/Surprise.h", "outside-list.h"],
+)
+def test_rpm_extraction_rejects_unlisted_header_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unlisted: str
+) -> None:
+    """A native CPIO listing must account for every extracted header file."""
+    identity = _identity(tmp_path)
+
+    def synthetic_cpio(
+        arguments: list[str], *, cwd: Path | None = None, **_kwargs: object
+    ) -> bytes:
+        if arguments[0] == "cpio" and cwd is not None:
+            include = cwd / "usr/include"
+            included = include / "clang/AST/AST.h"
+            included.parent.mkdir(parents=True)
+            _ = included.write_bytes(HEADER_BYTES)
+            unexpected = include / unlisted
+            unexpected.parent.mkdir(parents=True, exist_ok=True)
+            _ = unexpected.write_bytes(FOREIGN_CONTENT_BYTES)
+        return b""
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation, "_cpio_payload", _synthetic_hardlinked_payload
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            lambda _payload: ("./usr/include/clang/AST/AST.h",),
+        )
+        isolated.setattr(llvm_development_validation, "_command_bytes", synthetic_cpio)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="unlisted header",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert not identity.development_root.exists()
+
+
 def test_development_provision_rejects_missing_optional_copied_header(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

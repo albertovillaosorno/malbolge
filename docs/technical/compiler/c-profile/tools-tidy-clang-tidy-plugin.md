@@ -141,9 +141,12 @@ check used for readiness: linked header leaves, redirected ancestors,
 missing files, and forged `is_file` results cannot complete an extracted
 development kit.
 CPIO extraction also admits only a physical `/usr/include` root and native
-symlink/junction decisions for each enumerated include member. Linked include
-roots, junctions, and false-like foreign path status cannot authorize copying
-package headers outside the staging trust boundary. Pinned RPM download
+symlink/junction decisions for each enumerated include member. Extracted
+headers and explicit directories must occur in the validated RPM CPIO listing;
+implicit parents of listed members are also allowed. Membership is rechecked
+after overlay copying, so unlisted output cannot become a published header.
+Linked include roots, junctions, and false-like foreign path status cannot
+authorize copying package headers outside the staging trust boundary. Pinned RPM
 reads are bounded to the declared package size plus one byte, with a 128 MiB
 absolute ceiling. Oversized responses fail before hashing or extraction, and
 admission requires an exact native byte response before size and SHA-256
