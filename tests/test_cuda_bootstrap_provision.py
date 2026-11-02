@@ -2494,6 +2494,48 @@ def test_cuda_publication_does_not_trust_omitted_path_iterator_member(
     assert not (tmp_path / TOOLKIT_ROOT).exists()
 
 
+@pytest.mark.parametrize("mutation", ("overwrite", "remove", "extra"))
+def test_cuda_publication_rejects_staged_mutation_during_destination_preparation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """Creating the final destination parent cannot invalidate staged bytes."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    native_prepare = cuda_validation._ensure_toolkit_destination_parent
+    mutated = False
+
+    def prepare_and_mutate(path: Path) -> None:
+        nonlocal mutated
+        native_prepare(path)
+        if path != (tmp_path / TOOLKIT_ROOT).parent:
+            return
+        member = (
+            tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}/toolkit"
+            / "lib64/libnvrtc.so.13"
+        )
+        assert member.is_file()
+        if mutation == "overwrite":
+            original = member.stat()
+            _ = member.write_bytes(b"!" * len(NVRTC_BYTES))
+            os.utime(member, ns=(original.st_atime_ns, original.st_mtime_ns))
+        elif mutation == "remove":
+            member.unlink()
+        else:
+            _ = (member.parent / "injected.so").write_bytes(b"unverified")
+        mutated = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            cuda_validation, "_ensure_toolkit_destination_parent", prepare_and_mutate
+        )
+        with pytest.raises(cuda_validation.CudaProvisionError, match="toolkit"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert mutated
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
 def _tar_symlink_payload() -> bytes:
     """Build a synthetic archive with a contained library symlink."""
     output = io.BytesIO()

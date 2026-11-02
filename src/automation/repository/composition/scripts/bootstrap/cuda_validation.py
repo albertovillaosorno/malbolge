@@ -2286,7 +2286,8 @@ def provision_cuda_manifest(
             or _completion_marker_identity(marker) != marker_identity
         ):
             _fail("CUDA completion marker changed before publication")
-        toolkit_after_marker = _cuda_overlay_destination_members(staged_toolkit)
+        toolkit_full_after_marker = _cuda_overlay_destination_members(staged_toolkit)
+        toolkit_after_marker = toolkit_full_after_marker.copy()
         if (
             toolkit_after_marker.pop(Path(CUDA_PROVISION_MARKER), None) is None
             or toolkit_after_marker != toolkit_before_marker
@@ -2295,6 +2296,8 @@ def provision_cuda_manifest(
         _require_toolkit_destination(manifest.toolkit_root)
         _ensure_toolkit_destination_parent(manifest.toolkit_root.parent)
         _require_toolkit_destination(manifest.toolkit_root)
+        if _cuda_overlay_destination_members(staged_toolkit) != toolkit_full_after_marker:
+            _fail("CUDA staged toolkit changed while preparing publication")
         _publish_cuda_toolkit(staged_toolkit, manifest.toolkit_root)
     finally:
         _cleanup_owned_staging(staging, staging_identity)
