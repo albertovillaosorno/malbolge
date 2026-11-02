@@ -92,7 +92,10 @@ source inspection, and archive hashing preserve the original host or UTF-8
 failure as the typed error cause. Native error text is retained; foreign
 exception formatters are never consulted. The toolchain CLI similarly prints
 exact local `ToolchainError` messages but only the exception class name for
-untrusted subclasses, avoiding their custom formatting hooks.
+untrusted subclasses, avoiding their custom formatting hooks. CLI readiness
+and argparse help require an exact native text-write count and completed
+flush; short, boolean, foreign, or failed output receipts cannot report
+success. Failed diagnostic delivery retains a nonzero validator status.
 
 Linux LLVM development RPM publication also requires a physical, unlinked
 completion marker and physical regular required headers under the tracked

@@ -51,9 +51,11 @@ from typing import Final
 from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 if TYPE_CHECKING:
     from typing import BinaryIO
+    from typing import TextIO
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -893,8 +895,44 @@ def verify_archive(path: Path, identity: ToolchainIdentity) -> None:
         _fail(f"{prefix}{identity.asset_sha256}; observed {observed}")
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Admit only a complete native text write followed by a successful flush.
+
+    Returns:
+        Whether the entire CLI record was written and flushed.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
+class _ToolchainArgumentParser(argparse.ArgumentParser):
+    """Apply the CLI delivery contract to argparse help and diagnostics."""
+
+    @override
+    def _print_message(self, message: str, file: object = None) -> None:
+        if not message:
+            return
+        stream = sys.stderr if file is None else file
+        if not _write_cli_record(cast("TextIO", stream), message):
+            _fail("clang-tidy toolchain argument output write or flush failed")
+
+
 def _arguments(argv: list[str] | None) -> Path | None:
-    parser = argparse.ArgumentParser(
+    parser = _ToolchainArgumentParser(
         description="Validate the pinned clang-tidy development toolchain.",
     )
     _ = parser.add_argument(
@@ -907,6 +945,24 @@ def _arguments(argv: list[str] | None) -> Path | None:
     return value if isinstance(value, Path) else None
 
 
+def _verified_installation_message(argv: list[str] | None) -> str:
+    """Verify the selected toolchain and build the deterministic status record.
+
+    Returns:
+        CLI readiness record for fully validated installation evidence.
+
+    """
+    archive = _arguments(argv)
+    identity = load_identity()
+    validate_installation(identity)
+    if archive is not None:
+        verify_archive(archive, identity)
+    return (
+        "clang-tidy development toolchain ready: LLVM "
+        f"{identity.llvm_version} ({identity.platform_id})\n"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Validate local clang-tidy development evidence.
 
@@ -915,19 +971,13 @@ def main(argv: list[str] | None = None) -> int:
 
     """
     try:
-        archive = _arguments(argv)
-        identity = load_identity()
-        validate_installation(identity)
-        if archive is not None:
-            verify_archive(archive, identity)
+        message = _verified_installation_message(argv)
+        if not _write_cli_record(sys.stdout, message):
+            _fail("clang-tidy toolchain output write or flush failed")
     except ToolchainError as error:
-        _ = sys.stderr.write(f"error: {_host_error_detail(error)}\n")
+        diagnostic = f"error: {_host_error_detail(error)}\n"
+        _ = _write_cli_record(sys.stderr, diagnostic)
         return 1
-    message = (
-        "clang-tidy development toolchain ready: LLVM "
-         f"{identity.llvm_version} ({identity.platform_id})"
-    )
-    _ = sys.stdout.write(message + chr(10))
     return 0
 
 

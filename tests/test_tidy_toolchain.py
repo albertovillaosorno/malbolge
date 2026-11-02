@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -1638,3 +1639,125 @@ def test_llvm_version_probe_bounds_unresponsive_host(
     ) as caught:
         _ = tidy_toolchain._tool_output(Path("clang"))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     assert caught.value.__cause__ is fault
+
+
+CLI_SHORT = "short"
+CLI_FOREIGN = "foreign"
+CLI_BOOLEAN = "boolean"
+CLI_MISSING = "missing"
+CLI_FLUSH = "flush"
+CLI_WRITE_ERROR = "write-error"
+CLI_READY_PREFIX = "clang-tidy development toolchain ready:"
+CLI_ARCHIVE_FLAG = "--archive"
+
+
+class _ForeignCliCount(int):
+    """A nonnative write result that must not certify CLI output."""
+
+
+class _BrokenCliStream(io.StringIO):
+    """Emulate a bad host output receipt at one deterministic stage."""
+
+    def __init__(self, failure: str) -> None:
+        super().__init__()
+        self.failure: str = failure
+
+    @override
+    def write(self, message: str) -> int:
+        if self.failure == CLI_WRITE_ERROR:
+            detail = "injected CLI write failure"
+            raise OSError(detail)
+        forged: object = {
+            CLI_SHORT: len(message) - 1,
+            CLI_FOREIGN: _ForeignCliCount(len(message)),
+            CLI_BOOLEAN: True,
+            CLI_MISSING: None,
+        }.get(self.failure, len(message))
+        return cast("int", forged)
+
+    @override
+    def flush(self) -> None:
+        if self.failure == CLI_FLUSH:
+            return cast("None", object())
+        return super().flush()
+
+
+def _accept_toolchain_installation(
+    _identity: tidy_toolchain.ToolchainIdentity,
+) -> None:
+    """Stand in for local optional LLVM installation during CLI tests."""
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        CLI_SHORT,
+        CLI_FOREIGN,
+        CLI_BOOLEAN,
+        CLI_MISSING,
+        CLI_FLUSH,
+        CLI_WRITE_ERROR,
+    ],
+)
+def test_toolchain_cli_rejects_incomplete_success_output(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """Readiness cannot be reported after unverified stdout delivery."""
+    identity = tidy_toolchain.load_identity()
+    monkeypatch.setattr(tidy_toolchain, "load_identity", lambda: identity)
+    monkeypatch.setattr(
+        tidy_toolchain, "validate_installation", _accept_toolchain_installation
+    )
+    monkeypatch.setattr(sys, "stdout", _BrokenCliStream(failure))
+    assert tidy_toolchain.main([]) == 1
+
+
+@pytest.mark.parametrize("failure", [CLI_SHORT, CLI_FLUSH, CLI_WRITE_ERROR])
+def test_toolchain_cli_diagnostic_failure_stays_nonzero(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """A bad diagnostic stream must not replace the toolchain status."""
+
+    def fail_load() -> None:
+        detail = "invalid installation"
+        raise tidy_toolchain.ToolchainError(detail)
+
+    monkeypatch.setattr(tidy_toolchain, "load_identity", fail_load)
+    monkeypatch.setattr(sys, "stderr", _BrokenCliStream(failure))
+    assert tidy_toolchain.main([]) == 1
+
+
+def test_toolchain_cli_native_output_still_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A complete ordinary text receipt remains a successful CLI result."""
+    identity = tidy_toolchain.load_identity()
+    monkeypatch.setattr(tidy_toolchain, "load_identity", lambda: identity)
+    monkeypatch.setattr(
+        tidy_toolchain, "validate_installation", _accept_toolchain_installation
+    )
+    assert tidy_toolchain.main([]) == 0
+    assert CLI_READY_PREFIX in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("failure", [CLI_SHORT, CLI_FLUSH, CLI_WRITE_ERROR])
+def test_toolchain_cli_help_requires_complete_output(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """Argparse help cannot return success without an authentic delivery."""
+    monkeypatch.setattr(sys, "stdout", _BrokenCliStream(failure))
+    assert tidy_toolchain.main(["--help"]) == 1
+
+
+def test_toolchain_cli_help_native_output(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Normal --help remains a successful argparse request."""
+    with pytest.raises(SystemExit) as caught:
+        _ = tidy_toolchain.main(["--help"])
+    assert caught.value.code == 0
+    assert CLI_ARCHIVE_FLAG in capsys.readouterr().out
