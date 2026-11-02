@@ -851,7 +851,13 @@ def _open_physical_publication_parent(
                 child = os.open(component, flags, dir_fd=descriptor)
             if type(child) is not int or child < 0:
                 _fail(f"LLVM development {label} parent returned invalid descriptor")
-            os.close(descriptor)
+            try:
+                os.close(descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError):
+                # The new child is not yet owned by the outer cleanup block.
+                with suppress(OSError):
+                    os.close(child)
+                raise
             descriptor = child
         opened = os.fstat(descriptor)
         physical = parent.lstat()

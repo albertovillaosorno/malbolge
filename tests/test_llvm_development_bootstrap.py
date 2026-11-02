@@ -3614,3 +3614,59 @@ def test_development_provision_rejects_identity_from_other_checkout(
     assert not (checkout / ".temp").exists()
     if not previously_provisioned:
         assert not identity.development_root.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("close_before_fault", [False, True])
+def test_development_parent_walk_close_fault_closes_new_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, close_before_fault: bool
+) -> None:
+    """A parent close fault cannot leak the newly opened next directory."""
+    target = tmp_path / "nested" / "kit"
+    target.parent.mkdir()
+    native_open = os.open
+    native_close = os.close
+    new_children: list[int] = []
+    old_parents: set[int] = set()
+    fault = OSError("synthetic parent-walk close failure")
+
+    def track_child_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        child = native_open(path, flags, mode, dir_fd=dir_fd)
+        if path == "nested" and dir_fd is not None:
+            new_children.append(child)
+            old_parents.add(dir_fd)
+        return child
+
+    def fail_old_parent_close(descriptor: int) -> None:
+        if descriptor in old_parents:
+            old_parents.remove(descriptor)
+            if close_before_fault:
+                native_close(descriptor)
+            raise fault
+        native_close(descriptor)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", track_child_open)
+        isolated.setattr(os, "close", fail_old_parent_close)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="physical parent descriptor failed",
+        ) as observed:
+            _ = llvm_development_validation._open_physical_publication_parent(  # pyright: ignore[reportPrivateUsage]
+                target, "staging"
+            )
+    assert observed.value.__cause__ is fault
+    assert len(new_children) == 1
+    assert not old_parents
+    try:
+        with pytest.raises(OSError):
+            _ = os.fstat(new_children[0])
+    finally:
+        with suppress(OSError):
+            native_close(new_children[0])
