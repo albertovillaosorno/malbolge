@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import] - mocked; no processes run.
 import sys
-from typing import TYPE_CHECKING, TextIO, cast
+from typing import TYPE_CHECKING, TextIO, cast, override
 
 import pytest
 
@@ -404,3 +404,93 @@ def test_linux_frontend_rejects_mutated_cmake_launch_command(
     ):
         c_frontend_build_linux._checked_run(command, "CMake")
     assert command == ["cmake", "--version"]
+
+
+@pytest.mark.parametrize("capture", (False, True))
+@pytest.mark.parametrize(
+    "receipt",
+    ("wrong-argv", "false-exit", "invalid-output", "foreign-process", "mutated-argv"),
+)
+def test_frontend_launcher_rejects_forged_process_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    capture: bool,
+    receipt: str,
+) -> None:
+    """Windows build and version probes require native immutable command evidence."""
+    command = ["frontend", "--version"]
+
+    class ForeignCompletion(sp.CompletedProcess[str]):
+        pass
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        if receipt == "mutated-argv":
+            args[0] = "/foreign/frontend"
+        received = [*args, "--forged"] if receipt == "wrong-argv" else args
+        status = cast("int", False) if receipt == "false-exit" else 0
+        stdout = "expected" if capture else None
+        stderr = "" if capture else None
+        if receipt == "invalid-output":
+            stdout = cast("str", cast("object", b"unexpected"))
+        if receipt == "foreign-process":
+            return ForeignCompletion(received, status, stdout=stdout, stderr=stderr)
+        return sp.CompletedProcess(received, status, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(sp, "run", run)
+    with pytest.raises(c_frontend_build.FrontendBuildError, match="process receipt"):
+        _ = c_frontend_build._run(command, capture=capture)  # pyright: ignore[reportPrivateUsage]
+    assert command == ["frontend", "--version"]
+
+
+@pytest.mark.parametrize("capture", (False, True))
+def test_frontend_launcher_accepts_native_process_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    capture: bool,
+) -> None:
+    """Authentic build and version receipts retain both capture modes."""
+    command = ["frontend", "--version"]
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(
+            args, 0, stdout="expected" if capture else None,
+            stderr="" if capture else None,
+        )
+
+    monkeypatch.setattr(sp, "run", run)
+    result = c_frontend_build._run(command, capture=capture)  # pyright: ignore[reportPrivateUsage]
+    assert result.args == command
+    assert result.returncode == 0
+    assert result.stdout == ("expected" if capture else None)
+    assert result.stderr == ("" if capture else None)
+
+
+@pytest.mark.parametrize("fault", ("os", "foreign-os", "value", "type", "runtime"))
+def test_frontend_launcher_types_host_failures_without_foreign_formatters(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    """Host launch exceptions cannot bypass build diagnostics or run hooks."""
+
+    class ForeignOSError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign host error formatter invoked")
+
+    failures: dict[str, Exception] = {
+        "os": OSError("native host failure"),
+        "foreign-os": ForeignOSError("hostile"),
+        "value": ValueError("invalid launch"),
+        "type": TypeError("invalid argv"),
+        "runtime": RuntimeError("invalid runner"),
+    }
+    expected = failures[fault]
+
+    def raise_host_error(_args: list[str], **_kwargs: object) -> None:
+        raise expected
+
+    monkeypatch.setattr(sp, "run", raise_host_error)
+    with pytest.raises(
+        c_frontend_build.FrontendBuildError, match="failed to execute frontend"
+    ) as caught:
+        _ = c_frontend_build._run(["frontend"], capture=True)  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is expected
+    assert ("ForeignOSError" in str(caught.value)) == (fault == "foreign-os")

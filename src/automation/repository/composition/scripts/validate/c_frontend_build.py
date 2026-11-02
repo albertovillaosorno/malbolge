@@ -95,8 +95,8 @@ def _run(
     capture: bool = False,
 ) -> sp.CompletedProcess[str]:
     try:
-        return sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command,
+        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            command.copy(),
             cwd=ROOT,
             check=False,
             capture_output=capture,
@@ -104,8 +104,34 @@ def _run(
             errors="replace",
             shell=False,
         )
-    except OSError as error:
-        _fail(f"failed to execute {command[0]}: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        native_types = {
+            OSError,
+            FileNotFoundError,
+            PermissionError,
+            ValueError,
+            TypeError,
+            RuntimeError,
+        }
+        detail = str(error) if type(error) in native_types else type(error).__name__
+        raise FrontendBuildError(
+            f"failed to execute {command[0]}: {detail}"
+        ) from error
+    if (
+        type(completed) is not sp.CompletedProcess
+        or type(completed.args) is not list
+        or len(completed.args) != len(command)
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != command
+        or type(completed.returncode) is not int
+        or (
+            capture
+            and (type(completed.stdout) is not str or type(completed.stderr) is not str)
+        )
+        or (not capture and (completed.stdout is not None or completed.stderr is not None))
+    ):
+        _fail("C frontend build returned malformed process receipt")
+    return completed
 
 
 def _require_physical_directory(path: Path, label: str) -> None:
