@@ -879,7 +879,16 @@ def main() -> int:
         )
         if not _write_cli_record(sys.stdout, message):
             _fail("bibliography CLI output write or flush failed")
-    except (BibliographyValidationError, OSError) as error:
+    except (
+        AttributeError,
+        BibliographyValidationError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
         _ = _write_cli_record(sys.stderr, f"error: {_host_error_detail(error)}\n")
         return 1
     return 0

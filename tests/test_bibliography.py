@@ -710,6 +710,44 @@ def test_bibliography_cli_never_formats_foreign_errors(
     assert not output.out
 
 
+@pytest.mark.parametrize(
+    "fault_type",
+    (AttributeError, IndexError, OverflowError, TypeError, ValueError, RuntimeError),
+)
+def test_bibliography_cli_contains_ordinary_dependency_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fault_type: type[Exception],
+) -> None:
+    """Unexpected host faults must still produce a nonzero operator status."""
+
+    def fail_repository() -> Never:
+        raise fault_type("unavailable bibliography dependency")
+
+    monkeypatch.setattr(validator, "validate_repository", fail_repository)
+    assert validator.main() == 1
+    assert "error:" in capsys.readouterr().err
+
+
+def test_bibliography_cli_never_formats_foreign_dependency_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A foreign host exception cannot run its own diagnostic formatter."""
+
+    class ForeignHostError(AttributeError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign diagnostic formatter executed")
+
+    def fail_repository() -> Never:
+        raise ForeignHostError("foreign dependency failure")
+
+    monkeypatch.setattr(validator, "validate_repository", fail_repository)
+    assert validator.main() == 1
+    assert "ForeignHostError" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("receipt", [None, True, False, -1, 0, "full"])
 def test_bibliography_cli_rejects_unproven_stdout_delivery(
     monkeypatch: pytest.MonkeyPatch,

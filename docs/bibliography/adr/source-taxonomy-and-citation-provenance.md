@@ -107,3 +107,5 @@ root-bound directory walk before discovered paths may supply evidence. The
 first-level taxonomy enumeration likewise rejects foreign or repeated paths.
 The operator CLI returns success only after a complete native text write and
 flush; failed diagnostics cannot turn rejection into a successful exit.
+Unexpected ordinary dependency failures also return status one, without
+executing foreign exception formatting hooks.
