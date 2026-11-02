@@ -120,7 +120,10 @@ wrapper likewise closes its descriptor, retains the original host error as the
 cause of a typed bootstrap failure, and preserves any previously committed
 alias or launcher. Before replacement, stage identity, regular-file type,
 exclusive link count and exact byte size are rechecked against the admitted
-original descriptor. Cleanup unlinks only the original owned inode, leaving
+original descriptor. The writable stage stream must be a native buffered writer
+backed by the owned file descriptor, and promotion requires a bounded native
+readback equal to the selected alias bytes from that same single-link inode.
+Cleanup unlinks only the original owned inode, leaving
 foreign symlink or hardlink replacements untouched on rejection.
 Jig tool-source and alias ancestry checks require native physical `lstat`
 receipts and reject masked redirects, foreign stat proxies, and untyped host

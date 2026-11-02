@@ -1315,8 +1315,9 @@ def _open_owned_binary_stream(descriptor: int, *, mode: str = "rb") -> BinaryIO:
         with suppress(OSError):
             os.close(descriptor)
         raise
-    if mode == "rb" and not (
-        type(stream) is io.BufferedReader
+    required_stream_type = io.BufferedReader if mode == "rb" else io.BufferedWriter
+    if not (
+        type(stream) is required_stream_type
         and type(stream.raw) is io.FileIO
         and stream.fileno() == descriptor
         and stream.raw.fileno() == descriptor
@@ -1489,9 +1490,91 @@ def _open_jig_alias_write_stream(descriptor: int) -> BinaryIO:
     """
     try:
         return _open_owned_binary_stream(descriptor, mode="wb")
+    except ProvisionError:
+        raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = f"Jig alias temporary stream failed: {type(error).__name__}"
         raise ProvisionError(message) from error
+
+
+def _jig_stage_descriptor_identity(
+    status: os.stat_result, identity: tuple[int, int], size: int
+) -> tuple[int, int]:
+    """Admit stable native physical metadata for a staged Jig alias."""
+    if (
+        type(status) is not os.stat_result
+        or any(
+            type(field) is not int
+            for field in (
+                status.st_mode,
+                status.st_nlink,
+                status.st_dev,
+                status.st_ino,
+                status.st_size,
+                status.st_mtime_ns,
+                status.st_ctime_ns,
+            )
+        )
+        or not stat.S_ISREG(status.st_mode)
+        or status.st_nlink != 1
+        or (status.st_dev, status.st_ino) != identity
+        or status.st_size != size
+    ):
+        _fail("Jig alias stage requires stable native descriptor metadata")
+    return status.st_mtime_ns, status.st_ctime_ns
+
+
+def _verify_jig_alias_stage_bytes(
+    temporary: Path, identity: tuple[int, int], payload: bytes
+) -> None:
+    """Require the final private stage bytes to equal the selected alias."""
+    if not _jig_alias_stage_is_owned(
+        temporary, identity, expected_size=len(payload)
+    ):
+        _fail("Jig alias stage changed before byte verification")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    try:
+        descriptor = os.open(temporary, flags)
+        if type(descriptor) is not int or descriptor < 0:
+            _fail("Jig alias stage read descriptor must be native")
+        try:
+            initial = _jig_stage_descriptor_identity(
+                os.fstat(descriptor), identity, len(payload)
+            )
+            offset = 0
+            while offset < len(payload):
+                chunk = os.read(descriptor, min(1_048_576, len(payload) - offset))
+                if (
+                    type(chunk) is not bytes
+                    or not chunk
+                    or chunk != payload[offset : offset + len(chunk)]
+                ):
+                    _fail("Jig alias staged bytes differ from payload")
+                offset += len(chunk)
+            terminator = os.read(descriptor, 1)
+            if type(terminator) is not bytes or terminator:
+                _fail("Jig alias staged bytes exceed payload")
+            final = _jig_stage_descriptor_identity(
+                os.fstat(descriptor), identity, len(payload)
+            )
+            if final != initial:
+                _fail("Jig alias stage metadata changed during byte verification")
+        finally:
+            os.close(descriptor)
+    except ProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = "Jig alias staged bytes verification failed"
+        raise ProvisionError(message) from error
+    if not _jig_alias_stage_is_owned(
+        temporary, identity, expected_size=len(payload)
+    ):
+        _fail("Jig alias stage changed during byte verification")
 
 
 def _publish_owned_jig_alias_stage(
@@ -1515,6 +1598,7 @@ def _publish_owned_jig_alias_stage(
         temporary, identity, expected_size=len(payload)
     ):
         _fail("Jig alias temporary changed before publication")
+    _verify_jig_alias_stage_bytes(temporary, identity, payload)
     _ = temporary.replace(target)
 
 
