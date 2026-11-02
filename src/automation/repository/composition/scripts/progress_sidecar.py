@@ -2711,6 +2711,131 @@ def _temporary_stage_prefix(destination: Path) -> str:
     return f".progress-{digest[:_STAGING_DIGEST_HEX_CHARS]}."
 
 
+def _close_mutable_parent(
+    descriptor: int, destination: Path, *, replaced: bool
+) -> None:
+    """Retain commit evidence if a pinned-directory close reports failure.
+
+    Raises:
+        ProgressSidecarCommittedError: If a completed replacement cannot close.
+
+    """
+    primary = sys.exception()
+    if primary is not None:
+        _close_raw_descriptor_preserving_primary(
+            descriptor, primary, "progress mutable parent close"
+        )
+        return
+    try:
+        if os.close(descriptor) is not None:
+            _fail("progress mutable parent close receipt must be None")
+    except Exception as error:
+        message = (
+            "progress mutable parent close failed: "
+            f"{_host_error_detail(error)}"
+        )
+        if replaced:
+            raise ProgressSidecarCommittedError(message, destination) from error
+        _fail_with_source(message, error)
+
+
+def _replace_pinned_mutable_stage(
+    temporary: Path,
+    destination: Path,
+    stage_receipt: tuple[tuple[int, int], int],
+    *,
+    parent_descriptor: int,
+) -> None:
+    """Verify staged inode then rename both leaves under the same dirfd.
+
+    Raises:
+        ProgressSidecarCommittedError: If the rename gives a bad receipt.
+
+    """
+    identity, payload_size = stage_receipt
+    _verify_durability_directory(destination.parent, parent_descriptor)
+    observed = _admit_native_stat(
+        os.stat(
+            temporary.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        ),
+        "progress mutable staged inode",
+    )
+    _admit_temporary_inode(observed, identity, payload_size)
+    _verify_durability_directory(destination.parent, parent_descriptor)
+    receipt = os.replace(
+        temporary.name,
+        destination.name,
+        src_dir_fd=parent_descriptor,
+        dst_dir_fd=parent_descriptor,
+    )
+    if receipt is not None:
+        message = "progress mutable replacement returned a noncanonical receipt"
+        raise ProgressSidecarCommittedError(message, destination)
+
+
+def _open_mutable_parent(destination: Path) -> int:
+    """Open the physical POSIX destination before any leaf replacement.
+
+    Returns:
+        Native directory descriptor for anchored stage and pointer admission.
+
+    Raises:
+        ProgressSidecarError: If the parent cannot be opened and admitted.
+
+    """
+    try:
+        return _open_durability_directory(destination.parent)
+    except ProgressSidecarError:
+        raise
+    except Exception as error:  # ruff: ignore[blind-except]
+        _fail_with_source(
+            f"progress mutable parent open failed: {_host_error_detail(error)}",
+            error,
+        )
+
+
+def _replace_mutable_pointer(
+    temporary: Path,
+    destination: Path,
+    identity: tuple[int, int],
+    *,
+    payload_size: int,
+) -> None:
+    """Replace a verified stage relative to one pinned POSIX parent inode.
+
+    Raises:
+        ProgressSidecarError: When staging or replacement cannot be admitted.
+
+    """
+    if os.name == WINDOWS_PLATFORM:
+        _ = temporary.replace(destination)
+        return
+    expected_parent = Path(os.path.abspath(destination.parent))  # ruff: ignore[os-path-abspath]
+    if temporary.parent != expected_parent:
+        _fail("progress mutable stage requires its destination parent")
+    parent_descriptor = _open_mutable_parent(destination)
+    replaced = False
+    try:
+        _replace_pinned_mutable_stage(
+            temporary,
+            destination,
+            (identity, payload_size),
+            parent_descriptor=parent_descriptor,
+        )
+        replaced = True
+    except ProgressSidecarError:
+        raise
+    except Exception as error:  # ruff: ignore[blind-except]
+        _fail_with_source(
+            f"progress mutable replacement failed: {_host_error_detail(error)}",
+            error,
+        )
+    finally:
+        _close_mutable_parent(parent_descriptor, destination, replaced=replaced)
+
+
 def _write_atomic_bytes(
     destination: Path,
     payload: bytes,
@@ -2736,7 +2861,12 @@ def _write_atomic_bytes(
             _verify_acquired_writer_lock(
                 _writer_lock_path(destination), held_lock
             )
-        _ = temporary.replace(destination)
+        _replace_mutable_pointer(
+            temporary,
+            destination,
+            temporary_identity,
+            payload_size=len(payload),
+        )
         replaced = True
         _confirm_publication_durability(
             destination,

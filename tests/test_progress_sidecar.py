@@ -119,6 +119,9 @@ NONCANONICAL_NO_NEWLINE = "no-newline"
 NONCANONICAL_ESCAPE = "escaped"
 CRASH_EXIT = 73
 MUTABLE_PARENT_MKDIR_CALLS = 2
+DURABILITY_DIRECTORY_OPEN_COUNT = 2
+DURABILITY_OPEN_SITE = "open"
+DURABILITY_CLOSE_SITE = "close"
 AFTER_CHECKPOINT = "after-checkpoint"
 AFTER_CHECKPOINT_PUBLISH = "after-checkpoint-publish"
 AFTER_CHECKPOINT_SYNC = "after-checkpoint-sync"
@@ -237,7 +240,7 @@ original_publish_immutable_payload = progress._publish_immutable_payload
 original_confirm_durability = progress._confirm_publication_durability
 original_cleanup_immutable = progress._cleanup_immutable_temporary
 original_fsync = os.fsync
-original_replace = Path.replace
+original_replace = progress._replace_mutable_pointer
 publication_count = 0
 regular_sync_count = 0
 
@@ -309,10 +312,12 @@ def cleanup_then_maybe_crash(temporary, destination, *, durable, identity):
 def crash_before_sidecar(_sidecar):
     os._exit(exit_code)
 
-def replace_then_maybe_crash(source, destination):
+def replace_then_maybe_crash(source, destination, identity, *, payload_size):
     if boundary == "before-sidecar-replace":
         os._exit(exit_code)
-    result = original_replace(source, destination)
+    result = original_replace(
+        source, destination, identity, payload_size=payload_size
+    )
     if boundary == "after-sidecar-replace":
         os._exit(exit_code)
     return result
@@ -325,7 +330,7 @@ os.fsync = fsync_then_maybe_crash
 if boundary == "before-sidecar":
     progress.write_atomic = crash_before_sidecar
 elif boundary in {"before-sidecar-replace", "after-sidecar-replace"}:
-    Path.replace = replace_then_maybe_crash
+    progress._replace_mutable_pointer = replace_then_maybe_crash
 progress.write_checkpoint_generation(sidecar, checkpoint, partial)
 raise AssertionError("configured crash boundary was not reached")
 """.strip()
@@ -2399,9 +2404,17 @@ def test_durability_directory_open_unexpected_type_fault_keeps_commit(
     original_open = os.open
     directory_flag = cast("int", getattr(os, "O_DIRECTORY", 0))
 
+    parent_opens = 0
+
     def fail_directory_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        nonlocal parent_opens
         if Path(path) == tmp_path and flags & directory_flag:
-            raise failure
+            parent_opens += 1
+            if (
+                publication != POINTER_READER_MEMBER
+                or parent_opens == DURABILITY_DIRECTORY_OPEN_COUNT
+            ):
+                raise failure
         return original_open(path, flags, mode)
 
     with monkeypatch.context() as context:
@@ -2731,13 +2744,19 @@ def test_publication_retains_committed_path_on_non_native_directory_descriptor(
     checkpoint = b"opaque state"
     original_open = os.open
     substituted = 0
+    parent_opens = 0
 
     def forged_directory_open(path: Path, flags: int, mode: int = 0o777) -> int:
-        nonlocal substituted
+        nonlocal parent_opens, substituted
         directory_flag = cast("int", getattr(os, "O_DIRECTORY", 0))
         if Path(path) == tmp_path and flags & directory_flag:
-            substituted += 1
-            return False
+            parent_opens += 1
+            if (
+                publisher != POINTER_READER_MEMBER
+                or parent_opens == DURABILITY_DIRECTORY_OPEN_COUNT
+            ):
+                substituted += 1
+                return False
         return original_open(path, flags, mode)
 
     with monkeypatch.context() as context:
@@ -6021,22 +6040,6 @@ def _swap_real_parent(parent: Path, detached: Path) -> None:
     parent.mkdir()
 
 
-def _open_then_swap_real_parent(
-    parent: Path, detached: Path
-) -> Callable[..., int]:
-    original_open = os.open
-
-    def open_then_swap(
-        path: Path, flags: int, mode: int = 0o777, *, dir_fd: int | None = None
-    ) -> int:
-        descriptor = original_open(path, flags, mode, dir_fd=dir_fd)
-        if Path(path) == parent:
-            _swap_real_parent(parent, detached)
-        return descriptor
-
-    return open_then_swap
-
-
 def _sync_then_swap_real_parent(
     parent: Path, detached: Path
 ) -> Callable[[int], None]:
@@ -6070,9 +6073,22 @@ def test_sidecar_durability_rejects_real_parent_inode_replacement(
 
     with monkeypatch.context() as context:
         if after_open:
-            context.setattr(
-                os, "open", _open_then_swap_real_parent(parent, detached)
-            )
+            original_open = os.open
+            parent_opens = 0
+
+            def swap_during_durability_open(
+                path: Path, flags: int, mode: int = 0o777
+            ) -> int:
+                nonlocal parent_opens
+                descriptor = original_open(path, flags, mode)
+                directory_flag = cast("int", getattr(os, "O_DIRECTORY", 0))
+                if Path(path) == parent and flags & directory_flag:
+                    parent_opens += 1
+                    if parent_opens == DURABILITY_DIRECTORY_OPEN_COUNT:
+                        _swap_real_parent(parent, detached)
+                return descriptor
+
+            context.setattr(os, "open", swap_during_durability_open)
         else:
             context.setattr(
                 os, "fsync", _sync_then_swap_real_parent(parent, detached)
@@ -6145,6 +6161,11 @@ def test_durability_rejects_foreign_directory_metadata(
     original_fstat = os.fstat
     original_stat = Path.stat
     receipts = 0
+    target_phase = phase + (
+        DURABILITY_DIRECTORY_OPEN_COUNT
+        if publication == POINTER_READER_MEMBER
+        else 0
+    )
 
     class ForeignStat:
         def __getattr__(self, field: str) -> object:
@@ -6155,7 +6176,7 @@ def test_durability_rejects_foreign_directory_metadata(
         native = original_fstat(descriptor)
         if stat.S_ISDIR(native.st_mode):
             receipts += 1
-            if receipts == phase:
+            if receipts == target_phase:
                 return cast("os.stat_result", cast("object", ForeignStat()))
         return native
 
@@ -6166,7 +6187,7 @@ def test_durability_rejects_foreign_directory_metadata(
         native = original_stat(path, follow_symlinks=follow_symlinks)
         if path == parent and not follow_symlinks:
             receipts += 1
-            if receipts == phase:
+            if receipts == target_phase:
                 return cast("os.stat_result", cast("object", ForeignStat()))
         return native
 
@@ -6183,7 +6204,7 @@ def test_durability_rejects_foreign_directory_metadata(
                 _ = progress.write_atomic(sidecar)
             else:
                 _ = progress.write_checkpoint_generation(candidate, checkpoint)
-    assert receipts == phase
+    assert receipts == target_phase
     assert captured.value.published_path == destination
     assert destination.is_file()
     if publication == "checkpoint":
@@ -11224,8 +11245,14 @@ def test_write_atomic_preserves_primary_before_cleanup_failure(
     replace_failure = "injected mutable replace failure"
     cleanup_failure = "injected mutable temporary cleanup failure"
 
-    def fail_replace(path: Path, destination: Path) -> Path:
-        del path, destination
+    def fail_replace(
+        path: Path,
+        destination: Path,
+        identity: tuple[int, int],
+        *,
+        payload_size: int,
+    ) -> None:
+        del path, destination, identity, payload_size
         raise OSError(replace_failure)
 
     def fail_temporary_unlink(
@@ -11238,7 +11265,7 @@ def test_write_atomic_preserves_primary_before_cleanup_failure(
         original_unlink(path, missing_ok=missing_ok)
 
     with monkeypatch.context() as context:
-        context.setattr(Path, "replace", fail_replace)
+        context.setattr(progress, "_replace_mutable_pointer", fail_replace)
         context.setattr(Path, "unlink", fail_temporary_unlink)
         with pytest.raises(
             ERROR,
@@ -14671,12 +14698,19 @@ def test_unexpected_directory_durability_fault_keeps_published_path(
     directory_flag = cast("int", getattr(os, "O_DIRECTORY", 0))
     saw_sync = False
     injected = False
+    parent_opens = 0
+    parent_closes = 0
 
     def failing_open(path: Path, flags: int, mode: int = 0o777) -> int:
-        nonlocal injected
-        if site == "open" and Path(path) == tmp_path and flags & directory_flag:
-            injected = True
-            raise failure
+        nonlocal injected, parent_opens
+        if Path(path) == tmp_path and flags & directory_flag:
+            parent_opens += 1
+            if site == DURABILITY_OPEN_SITE and (
+                publication != POINTER_READER_MEMBER
+                or parent_opens == DURABILITY_DIRECTORY_OPEN_COUNT
+            ):
+                injected = True
+                raise failure
         return original_open(path, flags, mode)
 
     def failing_fsync(descriptor: int) -> None:
@@ -14691,12 +14725,17 @@ def test_unexpected_directory_durability_fault_keeps_published_path(
         return original_fsync(descriptor)
 
     def failing_close(descriptor: int) -> None:
-        nonlocal injected
+        nonlocal injected, parent_closes
         directory = stat.S_ISDIR(os.fstat(descriptor).st_mode)
         result = original_close(descriptor)
-        if site == "close" and directory:
-            injected = True
-            raise failure
+        if directory:
+            parent_closes += 1
+            if site == DURABILITY_CLOSE_SITE and (
+                publication != POINTER_READER_MEMBER
+                or parent_closes == DURABILITY_DIRECTORY_OPEN_COUNT
+            ):
+                injected = True
+                raise failure
         return result
 
     def failing_stat(
@@ -14767,6 +14806,7 @@ def test_unexpected_directory_close_fault_preserves_failed_sync(
     original_fsync = os.fsync
     original_close = os.close
     observed: list[str] = []
+    parent_closes = 0
 
     def failing_fsync(descriptor: int) -> None:
         if stat.S_ISDIR(os.fstat(descriptor).st_mode):
@@ -14775,11 +14815,17 @@ def test_unexpected_directory_close_fault_preserves_failed_sync(
         return original_fsync(descriptor)
 
     def failing_close(descriptor: int) -> None:
+        nonlocal parent_closes
         directory = stat.S_ISDIR(os.fstat(descriptor).st_mode)
         result = original_close(descriptor)
         if directory:
-            observed.append("close")
-            raise secondary
+            parent_closes += 1
+            if (
+                publication != POINTER_READER_MEMBER
+                or parent_closes == DURABILITY_DIRECTORY_OPEN_COUNT
+            ):
+                observed.append("close")
+                raise secondary
         return result
 
     with monkeypatch.context() as context:
@@ -15525,3 +15571,199 @@ def test_progress_link_probe_host_fault_preserves_typed_admission(
     assert captured.value.__cause__ is fault
     assert observed == [destination]
     assert destination.exists() is read
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX parent publication race"
+)
+def test_pointer_parent_link_swap(  # ruff: ignore[too-many-statements]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late parent alias must not overwrite a foreign progress pointer."""
+    parent = tmp_path / "job"
+    parent.mkdir()
+    destination = parent / PROGRESS_NAME
+    original = b"old-pointer"
+    _ = destination.write_bytes(original)
+    retained = tmp_path / "retained-job"
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    sentinel = b"foreign-pointer"
+    _ = (foreign / PROGRESS_NAME).write_bytes(sentinel)
+    original_verify = cast(
+        "Callable[[Path, tuple[int, int], bytes], None]",
+        vars(progress)["_verify_written_temporary"],
+    )
+    swapped = False
+
+    def swap_after_verification(
+        temporary: Path, identity: tuple[int, int], payload: bytes
+    ) -> None:
+        nonlocal swapped
+        original_verify(temporary, identity, payload)
+        if not swapped:
+            _ = parent.rename(retained)
+            _ = (foreign / temporary.name).write_bytes(b"substituted-stage")
+            _ = parent.symlink_to(foreign, target_is_directory=True)
+            swapped = True
+
+    monkeypatch.setattr(
+        progress, "_verify_written_temporary", swap_after_verification
+    )
+    writer = cast("AtomicByteWriter", vars(progress)["_write_atomic_bytes"])
+    with pytest.raises(ERROR):
+        _ = writer(destination, b"updated-pointer")
+    assert swapped
+    assert (foreign / PROGRESS_NAME).read_bytes() == sentinel
+    assert (retained / PROGRESS_NAME).read_bytes() == original
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX parent publication race"
+)
+def test_pointer_parent_exchange(  # ruff: ignore[too-many-statements]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replace must act on the verified original directory descriptor."""
+    parent = tmp_path / "job"
+    parent.mkdir()
+    destination = parent / PROGRESS_NAME
+    original = b"old-pointer"
+    _ = destination.write_bytes(original)
+    retained = tmp_path / "retained-job"
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    sentinel = b"foreign-pointer"
+    _ = (foreign / PROGRESS_NAME).write_bytes(sentinel)
+    native_replace = os.replace
+    swapped = False
+
+    def exchange_on_replace(
+        source: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        target: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped:
+            _ = (foreign / Path(os.fsdecode(source)).name).write_bytes(
+                b"substituted-stage"
+            )
+            _ = parent.rename(retained)
+            _ = foreign.rename(parent)
+            swapped = True
+        native_replace(
+            source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
+        )
+
+    monkeypatch.setattr(os, "replace", exchange_on_replace)
+    writer = cast("AtomicByteWriter", vars(progress)["_write_atomic_bytes"])
+    with pytest.raises(ERROR):
+        _ = writer(destination, b"updated-pointer")
+    assert swapped
+    assert destination.read_bytes() == sentinel
+    assert (retained / PROGRESS_NAME).read_bytes() in {
+        original, b"updated-pointer"
+    }
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX parent publication race"
+)
+def test_mutable_pointer_rejects_substituted_stage_before_replace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A same-sized rogue stage is not eligible for pointer replacement."""
+    destination = tmp_path / PROGRESS_NAME
+    original = b"old-pointer"
+    _ = destination.write_bytes(original)
+    retained = tmp_path / "retained-stage"
+    payload = b"updated-pointer"
+    original_verify = cast(
+        "Callable[[Path, tuple[int, int], bytes], None]",
+        vars(progress)["_verify_written_temporary"],
+    )
+    swapped = False
+
+    def substitute_after_check(
+        temporary: Path, identity: tuple[int, int], data: bytes
+    ) -> None:
+        nonlocal swapped
+        original_verify(temporary, identity, data)
+        if not swapped:
+            _ = temporary.replace(retained)
+            _ = temporary.write_bytes(b"x" * len(payload))
+            swapped = True
+
+    monkeypatch.setattr(
+        progress, "_verify_written_temporary", substitute_after_check
+    )
+    writer = cast("AtomicByteWriter", vars(progress)["_write_atomic_bytes"])
+    with pytest.raises(ERROR):
+        _ = writer(destination, payload)
+    assert swapped
+    assert destination.read_bytes() == original
+    assert retained.read_bytes() == payload
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX parent pin"
+)
+def test_mutable_pointer_parent_descriptor_fault_rejects_before_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed pinned-parent admission cannot change the existing pointer."""
+    destination = tmp_path / PROGRESS_NAME
+    previous = b"previous-pointer"
+    _ = destination.write_bytes(previous)
+    original_open = os.open
+    fault = PermissionError("pinned parent unavailable")
+    directory_flag = cast("int", getattr(os, "O_DIRECTORY", 0))
+
+    def fail_parent_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        if Path(path) == tmp_path and flags & directory_flag:
+            raise fault
+        return original_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", fail_parent_open)
+    writer = cast("AtomicByteWriter", vars(progress)["_write_atomic_bytes"])
+    with pytest.raises(ERROR, match="mutable parent open failed") as captured:
+        _ = writer(destination, b"updated-pointer")
+    assert captured.value.__cause__ is fault
+    assert destination.read_bytes() == previous
+
+
+@pytest.mark.skipif(
+    os.name == progress.WINDOWS_PLATFORM, reason="POSIX parent pin"
+)
+def test_mutable_pointer_parent_descriptor_close_keeps_committed_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late descriptor close fault cannot erase an atomic commit receipt."""
+    destination = tmp_path / PROGRESS_NAME
+    payload = b"updated-pointer"
+    native_close = os.close
+    fault = OSError("pinned parent close failed")
+    injected = False
+
+    def fail_parent_close(descriptor: int) -> None:
+        nonlocal injected
+        is_directory = stat.S_ISDIR(os.fstat(descriptor).st_mode)
+        result = native_close(descriptor)
+        if is_directory and not injected:
+            injected = True
+            raise fault
+        return result
+
+    monkeypatch.setattr(os, "close", fail_parent_close)
+    writer = cast("AtomicByteWriter", vars(progress)["_write_atomic_bytes"])
+    with pytest.raises(
+        progress.ProgressSidecarCommittedError,
+        match="mutable parent close failed",
+    ) as captured:
+        _ = writer(destination, payload)
+    assert injected
+    assert captured.value.published_path == destination
+    assert captured.value.__cause__ is fault
+    assert destination.read_bytes() == payload
