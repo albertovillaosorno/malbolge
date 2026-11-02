@@ -535,14 +535,50 @@ def _write_tar_member(
     _ensure_toolkit_destination_parent(destination.parent)
     if member.issym():
         target = _archive_member_path(member.linkname).as_posix()
-        destination.symlink_to(target)
-        try:
-            status = destination.lstat()
-            observed = os.readlink(destination)
-        except (OSError, TypeError, ValueError, RuntimeError) as error:
-            raise CudaProvisionError(
-                "CUDA archive symlink status failed"
-            ) from error
+        if os.name != "posix":
+            try:
+                destination.symlink_to(target)
+                status = destination.lstat()
+                observed = os.readlink(destination)
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError("CUDA archive symlink status failed") from error
+        else:
+            parent_descriptor = _open_staging_parent(destination.parent)
+            if parent_descriptor is None:
+                _fail("CUDA archive symlink requires native parent descriptor")
+            try:
+                _ = _require_staging_parent_unchanged(
+                    destination.parent, parent_descriptor
+                )
+                try:
+                    os.symlink(target, destination.name, dir_fd=parent_descriptor)
+                    _ = _require_staging_parent_unchanged(
+                        destination.parent, parent_descriptor
+                    )
+                    status = os.stat(
+                        destination.name, dir_fd=parent_descriptor,
+                        follow_symlinks=False,
+                    )
+                    named = destination.lstat()
+                    observed = os.readlink(destination.name, dir_fd=parent_descriptor)
+                except CudaProvisionError:
+                    raise
+                except (OSError, TypeError, ValueError, RuntimeError) as error:
+                    raise CudaProvisionError("CUDA archive symlink status failed") from error
+                if (
+                    type(named) is not os.stat_result
+                    or type(status) is not os.stat_result
+                    or (status.st_dev, status.st_ino) != (named.st_dev, named.st_ino)
+                ):
+                    _fail("CUDA archive symlink parent receipt mismatch")
+                _ = _require_staging_parent_unchanged(
+                    destination.parent, parent_descriptor
+                )
+            finally:
+                try:
+                    os.close(parent_descriptor)
+                except (OSError, TypeError, ValueError, RuntimeError) as error:
+                    raise CudaProvisionError("CUDA archive symlink parent close failed") from error
         if (
             type(status) is not os.stat_result
             or not S_ISLNK(status.st_mode)

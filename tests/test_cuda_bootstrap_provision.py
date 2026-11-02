@@ -1906,24 +1906,37 @@ def test_cuda_tar_rejects_substituted_symlink_after_creation(
     manifest_path = _manifest(tmp_path, payload)
     outside = tmp_path / "external-binary"
     _ = outside.write_bytes(b"do not import this external library")
-    native_symlink = Path.symlink_to
+    native_symlink = os.symlink
     injected = False
 
     def substitute_link(
-        path: Path, target: str | Path, target_is_directory: bool = False
+        src: str | bytes | os.PathLike[str],
+        dst: str | bytes | os.PathLike[str],
+        target_is_directory: bool = False,
+        *,
+        dir_fd: int | None = None,
     ) -> None:
         nonlocal injected
-        if path.name == "libnvrtc.so.13":
+        if Path(dst).name == "libnvrtc.so.13":
             injected = True
             if substitution == "external-link":
-                native_symlink(path, outside)
+                native_symlink(outside, dst, dir_fd=dir_fd)
             else:
-                _ = path.write_bytes(b"not a symlink")
+                descriptor = os.open(
+                    dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600,
+                    dir_fd=dir_fd,
+                )
+                try:
+                    _ = os.write(descriptor, b"not a symlink")
+                finally:
+                    os.close(descriptor)
             return
-        native_symlink(path, target, target_is_directory=target_is_directory)
+        native_symlink(
+            src, dst, target_is_directory=target_is_directory, dir_fd=dir_fd
+        )
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(Path, "symlink_to", substitute_link)
+        isolated.setattr(os, "symlink", substitute_link)
         with pytest.raises(cuda_validation.CudaProvisionError, match="symlink"):
             _ = cuda_validation.provision_cuda_manifest(
                 tmp_path,
@@ -3704,3 +3717,52 @@ def test_cuda_overlay_copy_rejects_source_directory_swapped_at_member_status(
     assert swapped
     observed = destination / "lib64/libnvrtc.so.13"
     assert not observed.exists() or observed.read_bytes() != b"untrusted library"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("swap_kind", ["physical", "symlink"])
+def test_cuda_tar_symlink_creation_rejects_swapped_archive_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, swap_kind: str
+) -> None:
+    """Archive symlink creation must not target a foreign replacement parent."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    payload = _tar_symlink_payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        root, _manifest(root, payload), LINUX_PLATFORM
+    ).packages[0]
+    parent = root / "stage" / PACKAGE_NAME / ARCHIVE_ROOT / "lib64"
+    parked = root / "parked-archive-parent"
+    foreign = tmp_path / "foreign-archive-parent"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"foreign data")
+    native_symlink = os.symlink
+    swapped = False
+
+    def swap_at_symlink(
+        src: str | bytes | os.PathLike[str],
+        dst: str | bytes | os.PathLike[str],
+        target_is_directory: bool = False,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and Path(dst).name == "libnvrtc.so.13":
+            swapped = True
+            _ = parent.rename(parked)
+            if swap_kind == "symlink":
+                _ = parent.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(parent)
+        native_symlink(src, dst, target_is_directory=target_is_directory, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "symlink", swap_at_symlink)
+        with pytest.raises(cuda_validation.CudaProvisionError):
+            cuda_validation.extract_cuda_package(
+                payload, package, root / "toolkit", staging=root / "stage"
+            )
+    assert swapped
+    replacement = foreign if swap_kind == "symlink" else parent
+    assert (replacement / "sentinel").read_bytes() == b"foreign data"
+    assert not (replacement / "libnvrtc.so.13").exists()
