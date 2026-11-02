@@ -1160,9 +1160,11 @@ def _copy_cuda_overlay(
             detail = f"CUDA staged overlay preflight failed: {_native_error_name(error)}"
             raise CudaProvisionError(detail) from error
 
-        def destination_members() -> set[Path]:
-            """Inventory physical target entries without following copied links."""
-            known: set[Path] = set()
+        def destination_members() -> dict[
+            Path, tuple[int, int, int, bytes | str | None]
+        ]:
+            """Attest both membership and prior-package bytes across a copy."""
+            known: dict[Path, tuple[int, int, int, bytes | str | None]] = {}
             pending = [destination]
             while pending:
                 folder = pending.pop()
@@ -1193,9 +1195,30 @@ def _copy_cuda_overlay(
                         or PARENT_SEGMENT in relative.parts
                     ):
                         _fail("CUDA staged overlay destination member has unsafe status")
-                    known.add(relative)
+                    kind = S_IFMT(status.st_mode)
+                    content: bytes | str | None = None
                     if S_ISDIR(status.st_mode):
                         pending.append(child)
+                    elif S_ISREG(status.st_mode):
+                        content = hashlib.sha256(
+                            _read_manifest_source(
+                                child, "CUDA staged overlay prior package member",
+                                max_bytes=_MAX_CUDA_ARCHIVE_MEMBER_BYTES,
+                            )
+                        ).digest()
+                    elif S_ISLNK(status.st_mode):
+                        try:
+                            content = os.readlink(child)
+                        except (OSError, TypeError, ValueError, RuntimeError) as error:
+                            raise CudaProvisionError(
+                                "CUDA staged overlay prior package link read failed"
+                            ) from error
+                        if type(content) is not str:
+                            _fail("CUDA staged overlay prior package link requires text")
+                        _ = _archive_member_path(content)
+                    else:
+                        _fail("CUDA staged overlay destination has special member")
+                    known[relative] = (status.st_dev, status.st_ino, kind, content)
             return known
 
         destination_before = destination_members()
@@ -1283,11 +1306,18 @@ def _copy_cuda_overlay(
             _fail("CUDA staged overlay source members changed during copy")
         _require_owned_staging(source, source_identity)
         _require_physical_directories(destination, "staged overlay destination")
+        destination_after = destination_members()
         unexpected = (
-            destination_members() - destination_before - source_inventory.keys()
+            destination_after.keys() - destination_before.keys()
+            - source_inventory.keys()
         )
         if unexpected:
             _fail("CUDA staged overlay has unexpected destination member")
+        if any(
+            destination_after.get(relative) != receipt
+            for relative, receipt in destination_before.items()
+        ):
+            _fail("CUDA staged overlay prior package member changed during copy")
         # shutil.copytree can return without copying every source member. Check
         # the final target contents rather than trusting that success receipt.
         for relative, expected in source_inventory.items():

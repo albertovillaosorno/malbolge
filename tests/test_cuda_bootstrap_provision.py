@@ -4902,6 +4902,87 @@ def test_cuda_nonposix_overlay_rejects_unlisted_destination_addition(
     assert retained.read_bytes() == b"prior verified package"
 
 
+@pytest.mark.parametrize("tamper", ("delete", "overwrite", "replace-link"))
+def test_cuda_nonposix_overlay_rejects_changes_to_prior_package_members(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str,
+) -> None:
+    """Copying a later package cannot silently remove or corrupt earlier bytes."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    _ = (source / "lib64" / "new.dll").write_bytes(b"later verified package")
+    destination = tmp_path / "destination"
+    (destination / "bin").mkdir(parents=True)
+    retained = destination / "bin" / "prior.exe"
+    _ = retained.write_bytes(b"prior verified package")
+    native_copytree = shutil.copytree
+    copied = False
+    status = source.stat()
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def mutate_old_member(
+        src: Path, dst: Path, *args: object, **kwargs: object
+    ) -> Path:
+        nonlocal copied
+        result = native_copytree(src, dst, *args, **kwargs)
+        if not copied and Path(src) == source:
+            copied = True
+            if tamper == "delete":
+                retained.unlink()
+            elif tamper == "overwrite":
+                _ = retained.write_bytes(b"altered verified pack")
+            else:
+                retained.unlink()
+                _ = retained.symlink_to("safe-copy.exe")
+        return result
+
+    if tamper == "replace-link" and os.name != "posix":
+        pytest.skip("requires symlink fixture")
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(shutil, "copytree", mutate_old_member)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="prior.*member"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino),
+            )
+    assert copied
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires symlink fixture")
+def test_cuda_nonposix_overlay_preserves_prior_package_symlinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A previously verified relative link is allowed to survive an overlay."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _ = (source / "new.dll").write_bytes(b"later verified package")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    _ = (destination / "prior.dll").write_bytes(b"prior verified package")
+    retained = destination / "prior-alias.dll"
+    _ = retained.symlink_to("prior.dll")
+    status = source.stat()
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+            source, destination, (status.st_dev, status.st_ino),
+        )
+    assert os.readlink(retained) == "prior.dll"
+    assert retained.read_bytes() == b"prior verified package"
+    assert (destination / "new.dll").read_bytes() == b"later verified package"
+
+
 @pytest.mark.parametrize("existing", [b"matching", b"different"])
 def test_cuda_nonposix_overlay_preserves_existing_file_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bytes,
