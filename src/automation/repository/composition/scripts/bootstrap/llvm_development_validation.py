@@ -654,10 +654,21 @@ def _require_listed_extracted_headers(
                 break
             if parent.is_relative_to(include_prefix):
                 allowed.add(parent)
-    for relative in _header_tree_receipt(include_root):
-        expected = include_prefix.joinpath(*relative.parts)
-        if expected not in allowed:
-            _fail(f"LLVM RPM extraction contains unlisted header member: {expected}")
+    observed = {
+        include_prefix.joinpath(*relative.parts)
+        for relative in _header_tree_receipt(include_root)
+    }
+    if not observed.issubset(allowed):
+        missing_listing = min(observed - allowed)
+        _fail(f"LLVM RPM extraction contains unlisted header member: {missing_listing}")
+    listed_includes = {
+        member
+        for member in listed_members
+        if member.is_relative_to(include_prefix) and member != include_prefix
+    }
+    if not listed_includes.issubset(observed):
+        missing_extraction = min(listed_includes - observed)
+        _fail(f"LLVM RPM extraction is missing listed header member: {missing_extraction}")
 
 
 def _extract_rpm_headers(

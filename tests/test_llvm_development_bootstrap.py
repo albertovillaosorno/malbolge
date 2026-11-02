@@ -919,6 +919,47 @@ def test_rpm_overlay_rejects_late_source_header_drift(
             )
 
 
+@pytest.mark.parametrize("missing", ["optional-file", "listed-empty-dir"])
+def test_rpm_extraction_rejects_missing_listed_members(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing: str
+) -> None:
+    """CPIO must extract every listed include member before publication."""
+    identity = _identity(tmp_path)
+
+    def synthetic_cpio(
+        arguments: list[str], *, cwd: Path | None = None, **_kwargs: object
+    ) -> bytes:
+        if arguments[0] == "cpio" and cwd is not None:
+            header = cwd / "usr/include/clang/AST/AST.h"
+            header.parent.mkdir(parents=True)
+            _ = header.write_bytes(HEADER_BYTES)
+        return b""
+
+    additional = (
+        "usr/include/clang/AST/Optional.h"
+        if missing == "optional-file"
+        else "usr/include/other-empty-dir/"
+    )
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation, "_cpio_payload", _synthetic_hardlinked_payload
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            lambda _payload: ("usr/include/clang/AST/AST.h", additional),
+        )
+        isolated.setattr(llvm_development_validation, "_command_bytes", synthetic_cpio)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="missing listed",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert not identity.development_root.exists()
+
+
 def test_rpm_extraction_accepts_listed_optional_members(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

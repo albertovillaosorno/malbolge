@@ -143,8 +143,9 @@ development kit.
 CPIO extraction also admits only a physical `/usr/include` root and native
 symlink/junction decisions for each enumerated include member. Extracted
 headers and explicit directories must occur in the validated RPM CPIO listing;
-implicit parents of listed members are also allowed. Membership is rechecked
-after overlay copying, so unlisted output cannot become a published header.
+implicit parents of listed members are also allowed. Listed include members
+must also be present after extraction. Membership is rechecked after overlay
+copying, so omitted or unlisted output cannot become published headers.
 Linked include roots, junctions, and false-like foreign path status cannot
 authorize copying package headers outside the staging trust boundary. Pinned RPM
 reads are bounded to the declared package size plus one byte, with a 128 MiB
