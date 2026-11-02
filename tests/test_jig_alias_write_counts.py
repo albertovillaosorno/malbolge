@@ -23,7 +23,7 @@
 # - Summary:
 #   - Exercise fail-closed binary writes before Jig alias publication.
 # - Description:
-#   - Inject invalid write counts at the private descriptor boundary.
+#   - Inject invalid write counts after the native writer has been admitted.
 # - Usage:
 #   - Collected by the repository Python test suite.
 # - Defaults:
@@ -34,7 +34,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import BinaryIO
 from typing import Self
 from typing import TYPE_CHECKING
@@ -51,7 +50,6 @@ _BAD_RESULTS = ("short", "overlong", "boolean", "missing")
 _TOOL_ALIAS = "tool"
 _PYTHON_LAUNCHER = "launcher"
 _STABLE_BYTES = b"previously-verified-alias"
-_BINARY_WRITE_MODE = "wb"
 
 
 def _invalid_count(kind: str, expected: int) -> int:
@@ -104,18 +102,20 @@ class _BrokenWriter:
         return _invalid_count(self._result_kind, len(payload))
 
 
-def _inject_defective_fdopen(
+def _inject_defective_jig_writer(
     monkeypatch: pytest.MonkeyPatch, result_kind: str
 ) -> None:
-    real_fdopen = os.fdopen
+    """Inject a faulty write only after native stream ownership is admitted."""
+    native_open = python_validation._open_jig_alias_write_stream
 
-    def fdopen(fd: int, mode: str) -> BinaryIO | _BrokenWriter:
-        stream = cast("BinaryIO", real_fdopen(fd, mode))
-        if mode == _BINARY_WRITE_MODE:
-            return _BrokenWriter(stream, result_kind)
-        return stream
+    def defective_writer(descriptor: int) -> BinaryIO:
+        return cast(
+            "BinaryIO", cast("object", _BrokenWriter(native_open(descriptor), result_kind))
+        )
 
-    monkeypatch.setattr(os, "fdopen", fdopen)
+    monkeypatch.setattr(
+        python_validation, "_open_jig_alias_write_stream", defective_writer
+    )
 
 
 @pytest.mark.parametrize("result_kind", list(_BAD_RESULTS))
@@ -152,7 +152,7 @@ def test_alias_publication_rejects_incomplete_descriptor_write(
         target = layout.python_launcher
         parent = target.parent
     _ = target.write_bytes(_STABLE_BYTES)
-    _inject_defective_fdopen(monkeypatch, result_kind)
+    _inject_defective_jig_writer(monkeypatch, result_kind)
 
     def publish() -> None:
         if kind == _TOOL_ALIAS:
