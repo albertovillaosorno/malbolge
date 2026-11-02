@@ -996,6 +996,104 @@ def test_writer_preserves_primary_error_after_invalid_cleanup(
     attempted[0].unlink()
 
 
+def test_writer_rejects_staged_bytes_modified_during_stream_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful text-stream close cannot certify rewritten Rust bytes."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    original_open = Path.open
+    changed = False
+
+    @contextmanager
+    def change_staged_bytes_on_close(
+        path: Path,
+        mode: str = "r",
+        buffering: int = -1,
+        *,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> Generator[IO[str]]:
+        nonlocal changed
+        with original_open(
+            path,
+            mode,
+            buffering=buffering,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
+        ) as stream:
+            yield cast("IO[str]", stream)
+        if mode == _EXCLUSIVE_CREATE_MODE:
+            before = path.stat()
+            content = path.read_bytes()
+            _ = path.write_bytes(b"!" + content[1:])
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+            changed = True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", change_staged_bytes_on_close)
+        with pytest.raises(RustEmissionError, match="staged Rust source"):
+            write_rust_transform(protected, _PROFILE, output)
+    assert changed
+    assert not output.exists()
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
+
+
+@pytest.mark.parametrize("preexisting", [False, True])
+def test_writer_rejects_forged_noop_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, preexisting: bool
+) -> None:
+    """An unconsumed stage cannot pass even if old output matches exactly."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    if preexisting:
+        _ = output.write_text(emit_rust_transform(protected, _PROFILE))
+    attempted = False
+    original_replace = Path.replace
+
+    def skip_replace(path: Path, target: Path) -> Path:
+        nonlocal attempted
+        if target == output:
+            attempted = True
+            return target
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", skip_replace)
+    with pytest.raises(RustEmissionError, match="published Rust source"):
+        write_rust_transform(protected, _PROFILE, output)
+    assert attempted
+    assert output.exists() is preexisting
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
+
+
+def test_writer_rejects_published_bytes_modified_during_replace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A post-rename mutation must not be reported as successful emission."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    original_replace = Path.replace
+    modified = False
+
+    def tamper_with_published(path: Path, target: Path) -> Path:
+        nonlocal modified
+        result = original_replace(path, target)
+        if target == output:
+            content = target.read_bytes()
+            _ = target.write_bytes(b"!" + content[1:])
+            modified = True
+        return result
+
+    monkeypatch.setattr(Path, "replace", tamper_with_published)
+    with pytest.raises(RustEmissionError, match="published Rust source"):
+        write_rust_transform(protected, _PROFILE, output)
+    assert modified
+    assert output.is_file()
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
+
+
 def test_writer_preserves_legacy_fixed_temporary_file(tmp_path: Path) -> None:
     """A stale legacy temp cannot be deleted by a new Rust emission."""
     _, _, _, protected = _fixture(tmp_path)

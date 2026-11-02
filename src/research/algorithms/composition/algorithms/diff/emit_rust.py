@@ -42,6 +42,8 @@ from stat import S_ISLNK
 from stat import S_ISREG
 from typing import TYPE_CHECKING
 
+from algorithms.diff.exact import ExactTreeError
+from algorithms.diff.exact import read_exact_regular_file
 from algorithms.diff.protected import ProtectedExactPlan
 from algorithms.diff.protected import ProtectedMetadata
 from algorithms.diff.protected import protected_plan_aad
@@ -378,6 +380,18 @@ def _raise_publication_error(
     raise RustEmissionError(message) from error
 
 
+def _verify_rust_source_bytes(path: Path, expected: bytes, phase: str) -> None:
+    """Reattest the physical UTF-8 source before trusting publication."""
+    try:
+        actual = read_exact_regular_file(path, f"{phase} Rust source")
+    except ExactTreeError as error:
+        message = f"{phase} Rust source verification failed: {error}"
+        raise RustEmissionError(message) from error
+    if actual != expected:
+        message = f"{phase} Rust source differs from rendered bytes: {path}"
+        raise RustEmissionError(message)
+
+
 def write_rust_transform(
     plan: ProtectedExactPlan,
     profile: str,
@@ -386,7 +400,8 @@ def write_rust_transform(
     """Write one generated transform atomically.
 
     Raises:
-        RustEmissionError: Emission or publication validation fails.
+        RustEmissionError: Emission or publication validation fails. A late
+            mutation after rename may leave an untrusted output file present.
 
     """
     source = emit_rust_transform(plan, profile, output_path)
@@ -396,10 +411,19 @@ def write_rust_transform(
         _claim_and_write_temporary(temporary, source)
     except (OSError, ValueError, RuntimeError) as error:
         _raise_publication_error(error)
+    expected = source.encode("utf-8")
     try:
+        _verify_rust_source_bytes(temporary, expected, "staged")
         _validate_output_leaf(prepared_output)
         _validate_output_parent_chain(prepared_output.parent)
-        _ = temporary.replace(prepared_output)
+        published = temporary.replace(prepared_output)
+        if type(published) is not type(Path()) or published != prepared_output:
+            message = "published Rust source returned an invalid rename receipt"
+            raise RustEmissionError(message)
+        if _output_mode(temporary, "temporary") is not None:
+            message = "published Rust source left the temporary file in place"
+            raise RustEmissionError(message)
+        _verify_rust_source_bytes(prepared_output, expected, "published")
     except RustEmissionError as error:
         cleanup_error = _cleanup_owned_temporary(temporary)
         if cleanup_error is not None:
