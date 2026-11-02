@@ -38,6 +38,11 @@ uses the same one-MiB physical regular-file admission and stable descriptor
 checks before its URL, version, artifact, and digest fields are interpreted.
 Failed uv manifest stream wrapping closes its owned descriptor and surfaces
 a typed bootstrap error with the original host failure as its cause.
+Pinned uv release downloads accept only exact native byte responses; an
+otherwise matching digest on a bytearray, view, or bytes subclass cannot
+satisfy archive verification. Network and response-read host failures become
+typed provisioning errors that preserve their original cause without evaluating
+foreign exception formatters.
 Pinned uv executable provisioning rejects symlinked, junction, non-directory,
 and multiply linked executable paths before executing an already-installed
 binary or creating new files. New uv payloads use an exclusively created

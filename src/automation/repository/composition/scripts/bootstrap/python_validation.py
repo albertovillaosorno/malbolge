@@ -367,7 +367,9 @@ def uv_executable(
 
 
 def verify_uv_archive(data: bytes, expected_sha256: str) -> None:
-    """Reject uv archive bytes that do not match the tracked SHA-256."""
+    """Require native uv archive bytes with the exact tracked SHA-256."""
+    if type(data) is not bytes:
+        _fail("uv archive must contain native bytes")
     observed = hashlib.sha256(data).hexdigest()
     if observed != expected_sha256:
         _fail(
@@ -396,8 +398,9 @@ def _download_uv_archive(artifact: UvArtifact) -> bytes:
         )
         with response:
             data = response.read()
-    except (OSError, urllib.error.URLError) as error:
-        _fail(f"cannot download pinned uv artifact: {error}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = f"cannot download pinned uv artifact: {type(error).__name__}"
+        raise ProvisionError(message) from error
     verify_uv_archive(data, artifact.sha256)
     return data
 

@@ -43,8 +43,9 @@ from pathlib import Path
 import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import tempfile
+import urllib.request
 from typing import TYPE_CHECKING
-from typing import Never, cast, override
+from typing import Never, Self, cast, override
 
 import pytest
 from scripts.bootstrap import llvm_development_validation
@@ -549,6 +550,132 @@ def test_uv_archive_hash_verification_fails_closed() -> None:
         match="SHA-256 mismatch",
     ):
         python_validation.verify_uv_archive(b"forged", digest)
+
+
+def test_uv_download_accepts_native_verified_archive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A normal network response returns the checked native archive bytes."""
+    payload = b"verified uv payload"
+    artifact = replace(
+        python_validation.uv_artifact(LINUX_PLATFORM),
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+
+    class Response:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return payload
+
+    def fake_urlopen(*_args: object, **_kwargs: object) -> Response:
+        return Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert python_validation._download_uv_archive(artifact) == payload
+
+
+class _UvArchiveBytesSubclass(bytes):
+    """A bytes lookalike is not native network evidence."""
+
+
+@pytest.mark.parametrize(
+    "archive",
+    [
+        bytearray(b"uv package"),
+        memoryview(b"uv package"),
+        _UvArchiveBytesSubclass(b"uv package"),
+    ],
+)
+def test_uv_download_rejects_nonnative_archive_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    archive: object,
+) -> None:
+    """Matching digest alone does not authorize foreign response payloads."""
+    artifact = replace(
+        python_validation.uv_artifact(LINUX_PLATFORM),
+        sha256=hashlib.sha256(b"uv package").hexdigest(),
+    )
+
+    class Response:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> object:
+            return archive
+
+    def fake_urlopen(*_args: object, **_kwargs: object) -> Response:
+        return Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(python_validation.ProvisionError, match="native bytes"):
+        _ = python_validation._download_uv_archive(artifact)
+
+
+@pytest.mark.parametrize(
+    "archive",
+    [
+        bytearray(b"uv package"),
+        memoryview(b"uv package"),
+        _UvArchiveBytesSubclass(b"uv package"),
+    ],
+)
+def test_uv_archive_verifier_rejects_nonnative_bytes(archive: object) -> None:
+    """Callers cannot bypass native-byte admission by injecting a downloader."""
+    digest = hashlib.sha256(b"uv package").hexdigest()
+    with pytest.raises(python_validation.ProvisionError, match="native bytes"):
+        python_validation.verify_uv_archive(cast("bytes", archive), digest)
+
+
+class _UvHostError(OSError):
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("host exception formatter must not be evaluated")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        _UvHostError("unsafe"),
+        ValueError("invalid response"),
+        TypeError("malformed response"),
+        RuntimeError("response failed"),
+    ],
+)
+def test_uv_download_normalizes_host_faults_without_foreign_formatting(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    """Network boundary failures retain a typed cause but no foreign message."""
+    artifact = python_validation.uv_artifact(LINUX_PLATFORM)
+
+    class Response:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            raise failure
+
+    def fake_urlopen(*_args: object, **_kwargs: object) -> Response:
+        return Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(
+        python_validation.ProvisionError, match="cannot download pinned uv artifact"
+    ) as raised:
+        _ = python_validation._download_uv_archive(artifact)
+    assert raised.value.__cause__ is failure
+    assert type(failure).__name__ in str(raised.value)
 
 
 def test_validation_requirements_do_not_install_pip() -> None:
