@@ -284,10 +284,14 @@ def _cpio_payload(rpm: Path, expected: bytes) -> bytes:
 
 
 def _cpio_members(payload: bytes) -> tuple[str, ...]:
-    listing = _command_bytes(["cpio", "-it", "--quiet"], stdin=payload)
+    # GNU CPIO's --null makes listing unambiguous for embedded newlines.
+    listing = _command_bytes(["cpio", "-it", "--quiet", "--null"], stdin=payload)
+    if not listing:
+        _fail("LLVM RPM payload contains no CPIO members")
+    if not listing.endswith(b"\0"):
+        _fail("LLVM RPM CPIO listing is missing its NUL terminator")
     try:
-        names = listing.decode("utf-8").removesuffix("\n")
-        members = tuple(names.split("\n")) if names else ()
+        members = tuple(listing[:-1].decode("utf-8").split("\0"))
     except UnicodeDecodeError as error:
         _fail(f"LLVM RPM CPIO member names are not UTF-8: {error}")
     validate_rpm_members(members)

@@ -205,15 +205,16 @@ def test_rpm_member_validation_rejects_hidden_path_characters(member: str) -> No
 @pytest.mark.parametrize(
     "listing",
     [
-        b"usr/include/AST.h\r\n",
-        "usr/include/foo\u2028bar.h\n".encode(),
+        b"usr/include/AST.h\r\0",
+        "usr/include/foo\u2028bar.h\0".encode(),
+        b"usr/include/name\ncontinued.h\0",
     ],
 )
 def test_cpio_listing_rejects_hidden_member_separators(
     monkeypatch: pytest.MonkeyPatch,
     listing: bytes,
 ) -> None:
-    """Only LF is an RPM listing delimiter; other line controls are filename data."""
+    """CPIO NUL delimiters preserve embedded newline and format controls."""
 
     def synthetic_list(_argv: list[str], **_kwargs: object) -> bytes:
         return listing
@@ -232,26 +233,51 @@ def test_cpio_listing_rejects_hidden_member_separators(
     "listing, expected",
     [
         (
-            b"usr/include/one.h\nusr/include/two.h\n",
+            b"usr/include/one.h\0usr/include/two.h\0",
             ("usr/include/one.h", "usr/include/two.h"),
         ),
-        (b"./usr/include/single.h", ("./usr/include/single.h",)),
+        (b"./usr/include/single.h\0", ("./usr/include/single.h",)),
     ],
 )
-def test_cpio_listing_accepts_plain_lf_member_names(
+def test_cpio_listing_accepts_null_delimited_member_names(
     monkeypatch: pytest.MonkeyPatch,
     listing: bytes,
     expected: tuple[str, ...],
 ) -> None:
-    """Ordinary newline-delimited CPIO listings remain usable."""
+    """NUL-delimited CPIO listings retain exact printable path names."""
 
-    def synthetic_list(_argv: list[str], **_kwargs: object) -> bytes:
+    def synthetic_list(argv: list[str], **_kwargs: object) -> bytes:
+        assert argv == ["cpio", "-it", "--quiet", "--null"]
         return listing
 
     monkeypatch.setattr(
         llvm_development_validation, "_command_bytes", synthetic_list
     )
     assert llvm_development_validation._cpio_members(b"payload") == expected
+
+
+@pytest.mark.parametrize(
+    "listing",
+    [b"usr/include/missing-nul.h", b"usr/include/one.h\0extra"],
+)
+def test_cpio_listing_requires_complete_null_termination(
+    monkeypatch: pytest.MonkeyPatch,
+    listing: bytes,
+) -> None:
+    """Truncated CPIO listing output cannot authorize an incomplete member."""
+
+    def synthetic_list(argv: list[str], **_kwargs: object) -> bytes:
+        assert argv == ["cpio", "-it", "--quiet", "--null"]
+        return listing
+
+    monkeypatch.setattr(
+        llvm_development_validation, "_command_bytes", synthetic_list
+    )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="terminator",
+    ):
+        _ = llvm_development_validation._cpio_members(b"payload")
 
 
 def test_rpm_control_character_listing_rejects_before_extraction(
@@ -262,8 +288,8 @@ def test_rpm_control_character_listing_rejects_before_extraction(
     identity = _identity(tmp_path)
 
     def synthetic_list(argv: list[str], **_kwargs: object) -> bytes:
-        assert argv == ["cpio", "-it", "--quiet"]
-        return b"usr/include/clang/AST/AST.h\r\n"
+        assert argv == ["cpio", "-it", "--quiet", "--null"]
+        return b"usr/include/clang/AST/AST.h\r\0"
 
     with monkeypatch.context() as isolated:
         isolated.setattr(
@@ -770,7 +796,7 @@ def _cpio_stage_swap_process(
             _ = header.write_bytes(HEADER_BYTES)
         stdout = {
             RPM2CPIO_NAME: b"mock CPIO payload",
-            "cpio": b"./usr/include/clang/AST/AST.h\n",
+            "cpio": b"./usr/include/clang/AST/AST.h\0",
         }.get(arguments[0], b"")
         return sp.CompletedProcess(arguments, 0, stdout, b"")
 
