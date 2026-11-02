@@ -2513,6 +2513,131 @@ def test_cuda_publication_rejects_false_full_write_with_corrupt_bytes(
     assert not (tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
 
 
+@pytest.mark.parametrize("mutation", ("overwrite", "remove", "extra", "marker"))
+def test_cuda_cleanup_cannot_certify_mutated_published_toolkit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """Cleanup after rename must not leave a trusted marker on changed content."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    destination = tmp_path / TOOLKIT_ROOT
+    staging = tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}"
+    original_cleanup = cuda_validation._cleanup_owned_staging  # pyright: ignore[reportPrivateUsage]
+    mutated = False
+
+    def cleanup_then_mutate(path: Path, identity: tuple[int, int]) -> None:
+        nonlocal mutated
+        original_cleanup(path, identity)
+        if path != staging or not destination.exists():
+            return
+        member = destination / "lib64/libnvrtc.so.13"
+        if mutation == "overwrite":
+            _ = member.write_bytes(b"!" * len(NVRTC_BYTES))
+        elif mutation == "remove":
+            member.unlink()
+        elif mutation == "extra":
+            _ = (destination / "lib64/untrusted.so").write_bytes(b"foreign")
+        else:
+            marker = destination / cuda_validation.CUDA_PROVISION_MARKER
+            content = marker.read_bytes()
+            _ = marker.write_bytes(b"!" + content[1:])
+        mutated = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_cleanup_owned_staging", cleanup_then_mutate)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="published toolkit"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert mutated
+    assert destination.is_dir()
+    with pytest.raises(cuda_validation.CudaProvisionError, match="without the exact"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+        )
+    if mutation == "extra":
+        assert (destination / "lib64/untrusted.so").read_bytes() == b"foreign"
+
+
+@pytest.mark.parametrize("substitution", ("foreign-inode", "foreign-link"))
+def test_cuda_cleanup_revocation_preserves_substituted_foreign_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: str
+) -> None:
+    """A foreign completion-marker inode must never be removed during revoke."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    stage = tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}"
+    marker = tmp_path / TOOLKIT_ROOT / cuda_validation.CUDA_PROVISION_MARKER
+    foreign = tmp_path / "foreign-marker"
+    sentinel = b"foreign marker must remain intact"
+    _ = foreign.write_bytes(sentinel)
+    native_cleanup = cuda_validation._cleanup_owned_staging  # pyright: ignore[reportPrivateUsage]
+    substituted = False
+
+    def swap_marker_after_cleanup(path: Path, identity: tuple[int, int]) -> None:
+        nonlocal substituted
+        native_cleanup(path, identity)
+        if path == stage and marker.exists():
+            marker.unlink()
+            if substitution == "foreign-link":
+                marker.symlink_to(foreign)
+            else:
+                _ = marker.write_bytes(sentinel)
+            substituted = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_cleanup_owned_staging", swap_marker_after_cleanup)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="published toolkit"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert substituted
+    assert marker.read_bytes() == sentinel
+    assert marker.is_symlink() == (substitution == "foreign-link")
+    assert foreign.read_bytes() == sentinel
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires marker dirfd")
+def test_cuda_cleanup_revocation_rejects_false_unlink_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unchanged linked name cannot pass marker revocation receipt."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    stage = tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}"
+    toolkit = tmp_path / TOOLKIT_ROOT
+    member = toolkit / "lib64/libnvrtc.so.13"
+    native_cleanup = cuda_validation._cleanup_owned_staging  # pyright: ignore[reportPrivateUsage]
+    native_unlink = os.unlink
+    suppressed = False
+
+    def corrupt_after_cleanup(path: Path, identity: tuple[int, int]) -> None:
+        native_cleanup(path, identity)
+        if path == stage and member.exists():
+            _ = member.write_bytes(b"untrusted")
+
+    def suppress_marker_unlink(
+        path: str | os.PathLike[str], *, dir_fd: int | None = None
+    ) -> None:
+        nonlocal suppressed
+        if path == cuda_validation.CUDA_PROVISION_MARKER and dir_fd is not None:
+            suppressed = True
+            return
+        native_unlink(path, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_cleanup_owned_staging", corrupt_after_cleanup)
+        isolated.setattr(os, "unlink", suppress_marker_unlink)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="revocation did not remove"
+        ):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert suppressed
+    assert (toolkit / cuda_validation.CUDA_PROVISION_MARKER).is_file()
+
+
 @pytest.mark.parametrize("mutation", ("overwrite", "remove", "extra"))
 def test_cuda_publication_rejects_toolkit_mutation_during_marker_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str

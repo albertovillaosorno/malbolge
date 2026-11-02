@@ -2240,6 +2240,71 @@ def _publish_cuda_toolkit(
             ) from error
 
 
+def _invalidate_published_cuda_marker(
+    toolkit: Path,
+    toolkit_identity: tuple[int, int],
+    marker_identity: tuple[int, int],
+) -> None:
+    """Revoke only the original marker after a failed published-tree receipt."""
+    _require_owned_staging(toolkit, toolkit_identity)
+    marker = toolkit / CUDA_PROVISION_MARKER
+    descriptor = _open_staging_parent(toolkit)
+    try:
+        _require_owned_staging(toolkit, toolkit_identity)
+        try:
+            if descriptor is None:
+                observed = marker.lstat()
+            else:
+                observed = os.stat(
+                    marker.name, dir_fd=descriptor, follow_symlinks=False
+                )
+        except FileNotFoundError:
+            return
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA published toolkit marker revocation status failed"
+            ) from error
+        if (
+            type(observed) is not os.stat_result
+            or not S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+            or (observed.st_dev, observed.st_ino) != marker_identity
+        ):
+            _fail("CUDA published toolkit marker changed before revocation")
+        try:
+            if descriptor is None:
+                marker.unlink()
+            else:
+                _ = _require_staging_parent_unchanged(toolkit, descriptor)
+                os.unlink(marker.name, dir_fd=descriptor)
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA published toolkit marker revocation failed"
+            ) from error
+        try:
+            if descriptor is None:
+                _ = marker.lstat()
+            else:
+                _ = os.stat(
+                    marker.name, dir_fd=descriptor, follow_symlinks=False
+                )
+        except FileNotFoundError:
+            return
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA published toolkit marker revocation receipt failed"
+            ) from error
+        _fail("CUDA published toolkit marker revocation did not remove marker")
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA published toolkit marker parent close failed"
+                ) from error
+
+
 def provision_cuda_manifest(
     root: Path,
     manifest_path: Path,
@@ -2356,4 +2421,18 @@ def provision_cuda_manifest(
         )
     finally:
         _cleanup_owned_staging(staging, staging_identity)
+    # Cleanup is itself a host callback after the final atomic rename. Never
+    # return a marker that certifies changed bytes or additional members.
+    try:
+        published_members = _cuda_overlay_destination_members(manifest.toolkit_root)
+    except CudaProvisionError:
+        _invalidate_published_cuda_marker(
+            manifest.toolkit_root, toolkit_identity, marker_written_identity
+        )
+        raise
+    if published_members != toolkit_full_after_marker:
+        _invalidate_published_cuda_marker(
+            manifest.toolkit_root, toolkit_identity, marker_written_identity
+        )
+        _fail("CUDA published toolkit changed during cleanup")
     return manifest.toolkit_root
