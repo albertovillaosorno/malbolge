@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
@@ -994,3 +995,87 @@ def test_runner_rejects_mutated_child_command(
         jig_runner.JigRunnerError, match="invalid process completion"
     ):
         _ = jig_runner.run_jig("check", root=tmp_path)
+
+
+CLI_SHORT_RECEIPT = "short"
+CLI_FOREIGN_RECEIPT = "foreign"
+CLI_WRITE_FAILURE = "write-error"
+CLI_FLUSH_FAILURE = "flush"
+CLI_HELP_VISIBLE = "validate"
+
+
+class _ForeignJigCount(int):
+    """Nonnative output receipt with an otherwise matching character count."""
+
+
+class _BrokenJigOutput(io.StringIO):
+    """Inject deterministic stdout or stderr delivery failure."""
+
+    def __init__(self, failure: str) -> None:
+        """Select the output boundary to disrupt."""
+        super().__init__()
+        self.failure: str = failure
+
+    @override
+    def write(self, message: str) -> int:
+        if self.failure == CLI_WRITE_FAILURE:
+            detail = "injected stdout or stderr failure"
+            raise OSError(detail)
+        forged: object = {
+            CLI_SHORT_RECEIPT: len(message) - 1,
+            CLI_FOREIGN_RECEIPT: _ForeignJigCount(len(message)),
+        }.get(self.failure, len(message))
+        return cast("int", forged)
+
+    @override
+    def flush(self) -> None:
+        if self.failure == CLI_FLUSH_FAILURE:
+            return cast("None", object())
+        return super().flush()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        CLI_SHORT_RECEIPT,
+        CLI_FOREIGN_RECEIPT,
+        CLI_WRITE_FAILURE,
+        CLI_FLUSH_FAILURE,
+    ],
+)
+def test_runner_help_rejects_incomplete_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """Argparse help may not succeed after incomplete stdout delivery."""
+    monkeypatch.setattr(sys, "stdout", _BrokenJigOutput(failure))
+    assert jig_runner.main(["--help"]) == 1
+
+
+def test_runner_help_native_stdout_still_succeeds(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Normal Jig runner help is a successful argparse request."""
+    with pytest.raises(SystemExit) as caught:
+        _ = jig_runner.main(["--help"])
+    assert caught.value.code == 0
+    assert CLI_HELP_VISIBLE in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "failure", [CLI_SHORT_RECEIPT, CLI_WRITE_FAILURE, CLI_FLUSH_FAILURE]
+)
+def test_runner_failed_diagnostic_remains_nonzero(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """A bad stderr stream must not replace Jig's validation error."""
+
+    def rejected(_command: str) -> None:
+        del _command
+        detail = "missing required validator"
+        raise jig_runner.JigRunnerError(detail)
+
+    monkeypatch.setattr(jig_runner, "run_jig", rejected)
+    monkeypatch.setattr(sys, "stderr", _BrokenJigOutput(failure))
+    assert jig_runner.main(["check"]) == 1

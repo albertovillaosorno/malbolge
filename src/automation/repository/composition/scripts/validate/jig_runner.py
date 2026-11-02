@@ -41,7 +41,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
 from stat import S_ISREG
-from typing import cast
+from typing import TextIO, cast, override
 
 from scripts.repository_root import repository_root
 
@@ -240,6 +240,43 @@ def run_jig(command: str, *, root: Path = ROOT) -> int:
     return result.returncode
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Accept only an exact text-write count followed by a completed flush.
+
+    Returns:
+        Whether the full Jig runner record was successfully delivered.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
+class _JigArgumentParser(argparse.ArgumentParser):
+    """Reject successful help exits without complete output delivery."""
+
+    @override
+    def _print_message(self, message: str, file: object = None) -> None:
+        if not message:
+            return
+        stream = sys.stderr if file is None else file
+        if not _write_cli_record(cast("TextIO", stream), message):
+            detail = "Jig runner argument output write or flush failed"
+            raise JigRunnerError(detail)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse one repository-local Jig command.
 
@@ -247,14 +284,18 @@ def main(argv: list[str] | None = None) -> int:
         Jig's status or one for unavailable prerequisites.
 
     """
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = _JigArgumentParser(description=__doc__)
     _ = parser.add_argument("command", choices=COMMANDS)
-    arguments = parser.parse_args(argv)
     try:
+        arguments = parser.parse_args(argv)
         return run_jig(cast("str", arguments.command))
     except JigRunnerError as error:
-        detail = str(error) if type(error) is JigRunnerError else type(error).__name__
-        _ = sys.stderr.write(f"jig runner: {detail}\n")
+        detail = (
+            str(error)
+            if type(error) is JigRunnerError
+            else type(error).__name__
+        )
+        _ = _write_cli_record(sys.stderr, f"jig runner: {detail}\n")
         return 1
 
 

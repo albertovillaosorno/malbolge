@@ -138,7 +138,10 @@ additional user-local commands should not be visible to Jig.
 Direct runner calls require one exact native command string (`check`,
 `doctor`, or `validate`) before any equality comparison or tool discovery.
 Foreign command objects cannot execute comparison or formatting hooks while
-being rejected.
+being rejected. The runner authenticates the complete native text write and
+flush for CLI help, usage, and its own diagnostics; malformed delivery cannot
+claim a successful help exit, and failed stderr delivery preserves nonzero
+validation status.
 
 The same entrypoint supports `doctor` and `validate` and fails if either pinned
 ChkTeX or LaTeXmk launcher is missing. The runner preflights its configured
