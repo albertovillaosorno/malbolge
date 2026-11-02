@@ -39,6 +39,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from json import dumps
 from json import loads
 from typing import TYPE_CHECKING
@@ -268,6 +269,68 @@ def test_genesis_round_trip_and_verification_are_stable() -> None:
         ticket_admission_telemetry_lineage_attestation_fingerprint(attestation)
         == verified.attestation_fingerprint
     )
+
+
+@pytest.mark.parametrize("providers", ("encoder-only", "encoder-and-dumps"))
+def test_lineage_rejects_forged_canonical_json_encoder(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Mutable JSONEncoder cannot rewrite authenticated canonical payloads."""
+    document = _empty_document()
+    claim = _claim(GENESIS_SEQUENCE_ID)
+    attestation = _attestation(document, claim)
+    canonical = encode_ticket_admission_telemetry_lineage_attestation(attestation)
+    forged = encode_ticket_admission_telemetry_lineage_attestation(
+        replace(attestation, recorder_id=OTHER_RECORDER_ID)
+    ).decode("utf-8")
+    assert forged.encode("utf-8") != canonical
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _mapping: object) -> str:
+            return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers == "encoder-and-dumps":
+            patch.setattr(lineage_module, "dumps", lambda *_args, **_kwargs: forged)
+        with pytest.raises(
+            TicketAdmissionTelemetryLineageError,
+            match="JSON serializer disagrees with source",
+        ):
+            _ = encode_ticket_admission_telemetry_lineage_attestation(attestation)
+        with pytest.raises(
+            TicketAdmissionTelemetryLineageError,
+            match="JSON serializer disagrees with source",
+        ):
+            _ = decode_ticket_admission_telemetry_lineage_attestation(canonical)
+        with pytest.raises(
+            TicketAdmissionTelemetryLineageError,
+            match="JSON serializer disagrees with source",
+        ):
+            _ = _attestation(document, claim)
+
+
+def test_lineage_accepts_equivalent_public_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent public JSON encoders keep exact HMAC payloads stable."""
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        document = _empty_document()
+        claim = _claim(GENESIS_SEQUENCE_ID)
+        attestation = _attestation(document, claim)
+        encoded = encode_ticket_admission_telemetry_lineage_attestation(attestation)
+        assert decode_ticket_admission_telemetry_lineage_attestation(encoded) == (
+            attestation
+        )
 
 
 def test_creation_is_deterministic_and_never_persists_secret_key() -> None:

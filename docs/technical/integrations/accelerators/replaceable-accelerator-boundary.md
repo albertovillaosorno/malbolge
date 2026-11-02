@@ -757,7 +757,9 @@ document fingerprint to caller-supplied recorder, completed/failed stream,
 capture
 sequence, key, and optional immediate-predecessor identities. Canonical
 HMAC-SHA-256 uses at least 32 caller-owned secret bytes; the secret is never
-stored.
+stored. Canonical HMAC input and attestation fingerprints use the import-bound
+`JSONEncoder` class, rejecting a substituted public writer or encoder rather
+than signing, accepting, or identifying fabricated bytes.
 
 Verification requires an explicit trusted key identity and secret. Same-sequence
 forks, adjacent predecessor mismatch, nonadjacent direct links, MAC mismatch,

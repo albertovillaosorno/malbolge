@@ -47,6 +47,7 @@ from hashlib import sha256
 from hmac import compare_digest
 from hmac import digest as hmac_digest
 from json import JSONDecodeError
+from json import JSONEncoder as _SOURCE_JSON_ENCODER
 from json import dumps
 from json import loads
 from re import compile as compile_pattern
@@ -769,12 +770,26 @@ def _attestation_mapping(
 
 
 def _canonical_json_bytes(mapping: dict[str, object]) -> bytes:
-    return dumps(
-        mapping,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
+    """Bind HMAC and fingerprint inputs to an import-time JSON encoder."""
+    try:
+        # An import-bound json.dumps still resolves the public JSONEncoder.
+        source_text = _SOURCE_JSON_ENCODER(
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode(mapping)
+        rendered = dumps(
+            mapping,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except Exception as error:
+        message = f"lineage JSON serializer failed: {type(error).__name__}"
+        raise TicketAdmissionTelemetryLineageError(message) from error
+    if type(rendered) is not str or rendered != source_text:
+        _raise_lineage("lineage JSON serializer disagrees with source")
+    return source_text.encode("utf-8")
 
 
 def _mac_hex(secret_key: bytes, payload: bytes) -> str:
