@@ -712,6 +712,30 @@ def _retained_write_failure(path: Path, error: Exception) -> Never:
     raise ReferenceStudyError(message) from error
 
 
+def _confirm_retained_bytes(path: Path, expected: bytes) -> None:
+    """Read back the exact physical bytes before crediting a retained write.
+
+    A native full-length write count only acknowledges the host writer. It
+    cannot prove that the named file exists or contains the claimed payload.
+    This is a bounded local observation, not a durable fsync or atomic-snapshot
+    guarantee.
+    """
+    if (
+        type(expected) is not bytes
+        or not 0 < len(expected) <= evidence.MAX_EVIDENCE_BYTES
+    ):
+        _fail(f"host-C retained {path.name} requires bounded exact bytes")
+    try:
+        actual = evidence.read_bounded_regular(
+            path.parent, path.name, limit=evidence.MAX_EVIDENCE_BYTES
+        )
+    except Exception as error:
+        message = f"host-C retained {path.name} cannot confirm written bytes"
+        raise ReferenceStudyError(message) from error
+    if type(actual) is not bytes or actual != expected:
+        _fail(f"host-C retained {path.name} written bytes differ from claim")
+
+
 def _write_retained_bytes(path: Path, content: bytes) -> None:
     """Reject short or foreign byte acknowledgements for retained evidence."""
     try:
@@ -720,6 +744,7 @@ def _write_retained_bytes(path: Path, content: bytes) -> None:
         _retained_write_failure(path, error)
     if type(written) is not int or written != len(content):
         _fail(f"host-C retained {path.name} has invalid write count")
+    _confirm_retained_bytes(path, content)
 
 
 def _write_retained_text(path: Path, content: str) -> None:
@@ -730,6 +755,7 @@ def _write_retained_text(path: Path, content: str) -> None:
         _retained_write_failure(path, error)
     if type(written) is not int or written != len(content):
         _fail(f"host-C retained {path.name} has invalid write count")
+    _confirm_retained_bytes(path, content.encode("utf-8"))
 
 
 MAX_HOST_COMPONENT_LENGTH = 256

@@ -305,6 +305,110 @@ def test_retained_host_c_writer_errors_are_typed_and_preserve_causes(
         assert str(caught.value) == "host-C retained retained write failed"
 
 
+@pytest.mark.parametrize("kind", ["binary", "text"])
+@pytest.mark.parametrize("fault", ["missing", "altered"])
+def test_retained_writer_does_not_trust_complete_count_without_matching_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    fault: str,
+) -> None:
+    """Exact host write counts cannot certify a missing or corrupted sidecar."""
+    path = tmp_path / "study.json"
+    payload = b"original study evidence" if kind == "binary" else "study Ω evidence"
+    actual = b"X" * len(payload) if kind == "binary" else "X" * len(payload)
+    original_write_bytes = type(tmp_path).write_bytes
+    original_write_text = type(tmp_path).write_text
+
+    def fake_bytes(target: Path, content: bytes) -> int:
+        if fault == "altered":
+            _ = original_write_bytes(target, cast("bytes", actual))
+        return len(content)
+
+    def fake_text(
+        target: Path, content: str, encoding: str | None = None
+    ) -> int:
+        if fault == "altered":
+            _ = original_write_text(target, cast("str", actual), encoding=encoding)
+        return len(content)
+
+    if kind == "binary":
+        monkeypatch.setattr(type(tmp_path), "write_bytes", fake_bytes)
+    else:
+        monkeypatch.setattr(type(tmp_path), "write_text", fake_text)
+    with pytest.raises(reference_study.ReferenceStudyError, match="retained"):
+        if kind == "binary":
+            reference_study._write_retained_bytes(  # ruff: ignore[private-member-access]
+                path, cast("bytes", payload)
+            )
+        else:
+            reference_study._write_retained_text(  # ruff: ignore[private-member-access]
+                path, cast("str", payload)
+            )
+
+
+@pytest.mark.parametrize("kind", ["binary", "text"])
+def test_retained_writer_accepts_exact_file_bytes(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    """A real completed write remains usable, including non-ASCII UTF-8."""
+    path = tmp_path / "study.json"
+    if kind == "binary":
+        reference_study._write_retained_bytes(  # ruff: ignore[private-member-access]
+            path, b"\x00\xff completed artifact"
+        )
+        assert path.read_bytes() == b"\x00\xff completed artifact"
+    else:
+        reference_study._write_retained_text(  # ruff: ignore[private-member-access]
+            path, "completed Ω 🦉 record"
+        )
+        assert path.read_bytes() == "completed Ω 🦉 record".encode()
+
+
+@pytest.mark.parametrize(
+    "sidecar",
+    ["failures.json", "resource-controls.json", "artifacts.json", "study.json"],
+)
+@pytest.mark.parametrize("fault", ["missing", "altered"])
+def test_host_c_study_never_completes_after_forged_sidecar_write_count(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    sidecar: str,
+    fault: str,
+) -> None:
+    """A terminal study sidecar needs real byte agreement before publication."""
+    root = tmp_path / "study"
+    root.mkdir()
+    original_write = type(root).write_text
+    attempted = 0
+
+    def fake_write(
+        path: Path, content: str, encoding: str | None = None
+    ) -> int:
+        nonlocal attempted
+        if path.name == sidecar:
+            attempted += 1
+            if fault == "altered":
+                _ = original_write(path, "X" * len(content), encoding=encoding)
+            return len(content)
+        return original_write(path, content, encoding=encoding)
+
+    monkeypatch.setattr(reference_study, "_ROOT", tmp_path)
+    monkeypatch.setattr(type(root), "write_text", fake_write)
+    monkeypatch.setattr(reference_study, "_write_case", lambda *_: ([], {}))
+    monkeypatch.setattr(reference_study, "_verify_report", lambda *_: None)
+    monkeypatch.setattr(reference_study, "check_retained_artifacts", lambda *_: 0)
+    monkeypatch.setattr(reference_study, "check_retained_failures", lambda *_: 0)
+    with pytest.raises(reference_study.ReferenceStudyError, match="retained"):
+        _ = reference_study._run_study(  # ruff: ignore[private-member-access]
+            root,
+            reference_study.StudyPlan(FAMILY, (4,), 7, 1),
+            commit="0" * 40,
+        )
+    assert attempted == 1
+
+
 def test_retained_host_c_writer_bounds_native_diagnostic_text(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

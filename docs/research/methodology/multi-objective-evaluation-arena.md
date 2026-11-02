@@ -798,6 +798,14 @@ same-device comparison claims against silent heterogeneous arms while leaving
 explicit cross-accelerator comparisons permitted without this mode. Even
 matching declarations do not attest actual hardware or accelerator utilization.
 
+The host-C reference producer now reads back every retained binary, bundle,
+raw CSV, run manifest and final JSON sidecar before crediting a native write
+count. Both binary and UTF-8 text writers require exact bounded bytes from the
+named ordinary file; fabricated full-count acknowledgements with missing or
+altered bytes reject, including the final `study.json` emitted after analysis.
+This checks the contents observed at read-back time, not `fsync` durability,
+atomic multi-file publication, or authenticated source provenance.
+
 The host-C reference-study producer now also uses that same checked stdout
 publisher. A short text write or flush failure causes a nonzero operator exit
 rather than claiming the local study summary was delivered successfully;
