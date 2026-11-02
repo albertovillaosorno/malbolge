@@ -1039,12 +1039,15 @@ def _copy_cuda_overlay(
         # the Windows fallback; POSIX uses descriptor-relative writes below.
         _require_owned_staging(source, source_identity)
         _require_physical_directories(destination, "staged overlay destination")
-        def admit_source_member(path: Path, *, directory: bool) -> None:
+        def admit_source_member(
+            path: Path, *, directory: bool
+        ) -> tuple[int, int, int, int, int, int, int, str]:
             # copytree(symlinks=True) can copy a substituted source link even
             # when the corresponding destination did not exist at preflight.
             status = path.lstat()
             if type(status) is not os.stat_result:
                 _fail("CUDA staged overlay source member requires native status")
+            target = ""
             if S_ISLNK(status.st_mode):
                 target = os.readlink(path)
                 if type(target) is not str:
@@ -1060,16 +1063,35 @@ def _copy_cuda_overlay(
                     _fail("CUDA staged overlay source member is not a directory")
             elif not S_ISREG(status.st_mode) or status.st_nlink != 1:
                 _fail("CUDA staged overlay source member must be singly linked")
+            return (
+                status.st_dev,
+                status.st_ino,
+                status.st_mode,
+                status.st_nlink,
+                status.st_size,
+                status.st_mtime_ns,
+                status.st_ctime_ns,
+                target,
+            )
 
+        source_inventory: dict[
+            Path, tuple[int, int, int, int, int, int, int, str]
+        ] = {}
         try:
             for source_dir, dirnames, filenames in source.walk(follow_symlinks=False):
                 _require_physical_directories(source_dir, "staged overlay source")
                 target_dir = destination / source_dir.relative_to(source)
                 _require_physical_directories(target_dir, "staged overlay destination")
                 for name in dirnames:
-                    admit_source_member(source_dir / name, directory=True)
+                    member = source_dir / name
+                    source_inventory[member.relative_to(source)] = admit_source_member(
+                        member, directory=True
+                    )
                 for name in filenames:
-                    admit_source_member(source_dir / name, directory=False)
+                    member = source_dir / name
+                    source_inventory[member.relative_to(source)] = admit_source_member(
+                        member, directory=False
+                    )
                     target = target_dir / name
                     try:
                         status = target.lstat()
@@ -1149,6 +1171,33 @@ def _copy_cuda_overlay(
         except (OSError, TypeError, ValueError, RuntimeError) as error:
             detail = f"CUDA staged overlay copy failed: {_native_error_name(error)}"
             raise CudaProvisionError(detail) from error
+        # The copytree implementation can observe a different source after
+        # preflight, including a newly substituted symlink that bypasses the
+        # regular-file copy callback. Compare exact native member receipts.
+        observed_inventory: dict[
+            Path, tuple[int, int, int, int, int, int, int, str]
+        ] = {}
+        try:
+            for source_dir, dirnames, filenames in source.walk(follow_symlinks=False):
+                _require_physical_directories(source_dir, "staged overlay source")
+                for name in dirnames:
+                    member = source_dir / name
+                    observed_inventory[member.relative_to(source)] = admit_source_member(
+                        member, directory=True
+                    )
+                for name in filenames:
+                    member = source_dir / name
+                    observed_inventory[member.relative_to(source)] = admit_source_member(
+                        member, directory=False
+                    )
+        except CudaProvisionError:
+            raise
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA staged overlay source member recheck failed"
+            ) from error
+        if observed_inventory != source_inventory:
+            _fail("CUDA staged overlay source members changed during copy")
         _require_owned_staging(source, source_identity)
         _require_physical_directories(destination, "staged overlay destination")
         return

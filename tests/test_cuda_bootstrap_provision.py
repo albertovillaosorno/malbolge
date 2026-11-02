@@ -4489,6 +4489,143 @@ def test_cuda_nonposix_overlay_does_not_rewrite_identical_existing_file(
     )
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX symlink fixtures")
+@pytest.mark.parametrize("link_kind", ("file", "directory"))
+def test_cuda_nonposix_overlay_rejects_source_link_swapped_during_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, link_kind: str
+) -> None:
+    """A substituted source link after preflight cannot reach publication."""
+    source = tmp_path / "source"
+    leaf = source / "lib64" / "real"
+    if link_kind == "file":
+        leaf = source / "lib64" / "nvrtc.dll"
+        leaf.parent.mkdir(parents=True)
+        _ = leaf.write_bytes(b"trusted source")
+    else:
+        leaf.mkdir(parents=True)
+        _ = (leaf / "nvrtc.dll").write_bytes(b"trusted source")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    _ = (foreign / "nvrtc.dll").write_bytes(b"outside archive")
+    original_copytree = shutil.copytree
+    swapped = False
+    status = source.stat()
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def exchange_source(
+        src: Path, dst: Path, *args: object, **options: object
+    ) -> Path:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            if leaf.is_dir():
+                shutil.rmtree(leaf)
+            else:
+                leaf.unlink()
+            _ = leaf.symlink_to(
+                foreign if link_kind == "directory" else foreign / "nvrtc.dll",
+                target_is_directory=(link_kind == "directory"),
+            )
+        return original_copytree(src, dst, *args, **options)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(shutil, "copytree", exchange_source)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="source member"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino)
+            )
+    assert swapped
+    assert (foreign / "nvrtc.dll").read_bytes() == b"outside archive"
+
+
+def test_cuda_nonposix_overlay_rejects_same_byte_source_inode_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced archive member inode cannot pass merely by matching bytes."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    member = source / "lib64" / "nvrtc.dll"
+    _ = member.write_bytes(b"trusted source")
+    parked = tmp_path / "parked"
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    identity = source.stat()
+    native_copytree = shutil.copytree
+    swapped = False
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def swap_source(
+        src: Path, dst: Path, *args: object, **kwargs: object
+    ) -> Path:
+        nonlocal swapped
+        if not swapped:
+            _ = member.rename(parked)
+            _ = member.write_bytes(b"trusted source")
+            swapped = True
+        return native_copytree(src, dst, *args, **kwargs)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(shutil, "copytree", swap_source)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="source member"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (identity.st_dev, identity.st_ino)
+            )
+    assert swapped
+    assert parked.read_bytes() == b"trusted source"
+
+
+def test_cuda_nonposix_overlay_rejects_member_added_during_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """New files after archive preflight cannot enter the verified toolkit."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    _ = (source / "lib64" / "nvrtc.dll").write_bytes(b"trusted")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    source_identity = source.stat()
+    original_copytree = shutil.copytree
+    added = False
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def add_member(
+        src: Path, dst: Path, *args: object, **kwargs: object
+    ) -> Path:
+        nonlocal added
+        if not added:
+            _ = (source / "lib64" / "injected.dll").write_bytes(b"untracked")
+            added = True
+        return original_copytree(src, dst, *args, **kwargs)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(shutil, "copytree", add_member)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="source members changed"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (source_identity.st_dev, source_identity.st_ino)
+            )
+    assert added
+
+
 @pytest.mark.parametrize("existing", [b"matching", b"different"])
 def test_cuda_nonposix_overlay_preserves_existing_file_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bytes,
