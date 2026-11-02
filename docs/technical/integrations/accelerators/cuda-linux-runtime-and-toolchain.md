@@ -72,6 +72,21 @@ contents fail closed.
 The HTTP downloader also requires native response bytes and raises typed CUDA
 provision errors for network-open and body-read host faults, preserving the
 original cause without invoking foreign exception formatting.
+The downloader no longer delegates error handling to replaceable response
+context-manager exit hooks: it closes responses explicitly, rejects non-native
+close receipts, and retains the original read rejection if close also fails.
+A response hook cannot suppress a failed read and report an uninitialized body.
+TAR and ZIP member streams likewise require explicit close and native close
+receipts before successful extraction; substituted exit hooks cannot suppress a
+short member read or staging write failure. The archive objects themselves
+also bypass replaceable enter and exit hooks, so authenticated package bytes
+cannot be redirected to another archive after digest verification, and a
+failed member inventory cannot be accepted through context suppression.
+These safeguards have 21 injected red-first regressions (eight member-stream,
+five network-response, eight archive-object cases), plus a passing CUDA
+provisioning suite of 399 cases, project bootstrap 730, and LLVM bootstrap 465.
+They defend these adapter substitution boundaries; they do not attest native
+filesystem drivers or make concurrent external mutations atomic.
 Tar archive hardlink targets must remain under their package root; unresolved
 hardlinks become typed extraction errors instead of escaping as host key errors.
 Direct package extraction also preflights the toolkit overlay destination and
