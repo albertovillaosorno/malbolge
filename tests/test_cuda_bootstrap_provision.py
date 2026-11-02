@@ -4332,6 +4332,83 @@ def test_cuda_nonposix_overlay_rejects_linked_destination_directory(
         pytest.fail("non-POSIX overlay copied bytes through a destination symlink")
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires test host link fixtures")
+@pytest.mark.parametrize("link_kind", ("file", "directory", "hardlink"))
+def test_cuda_nonposix_overlay_rejects_foreign_source_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, link_kind: str
+) -> None:
+    """Post-extraction link substitution cannot publish foreign data on Windows."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"outside archive")
+    member = source / "lib64" / "unexpected"
+    if link_kind == "file":
+        _ = member.symlink_to(sentinel)
+    elif link_kind == "directory":
+        _ = member.symlink_to(foreign, target_is_directory=True)
+    else:
+        os.link(sentinel, member)
+    status = source.stat()
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        with pytest.raises(cuda_validation.CudaProvisionError, match="source member"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino)
+            )
+    assert sentinel.read_bytes() == b"outside archive"
+    assert not (destination / "lib64" / "unexpected").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX symlink fixtures")
+@pytest.mark.parametrize("link_kind", ("file", "directory"))
+def test_cuda_nonposix_overlay_preserves_contained_source_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, link_kind: str
+) -> None:
+    """A safe relative source symlink remains eligible in portable overlays."""
+    source = tmp_path / "source"
+    (source / "lib64" / "real").mkdir(parents=True)
+    _ = (source / "lib64" / "real" / "nvrtc.dll").write_bytes(b"trusted")
+    link = source / "lib64" / "alias"
+    if link_kind == "file":
+        link = source / "lib64" / "alias.dll"
+        _ = link.symlink_to("real/nvrtc.dll")
+    else:
+        _ = link.symlink_to("real", target_is_directory=True)
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    status = source.stat()
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+            source, destination, (status.st_dev, status.st_ino)
+        )
+    copied = destination / link.relative_to(source)
+    assert copied.is_symlink()
+    if link_kind == "file":
+        assert copied.read_bytes() == b"trusted"
+    else:
+        assert (copied / "nvrtc.dll").read_bytes() == b"trusted"
+
+
 @pytest.mark.parametrize("existing", [b"matching", b"different"])
 def test_cuda_nonposix_overlay_preserves_existing_file_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bytes,

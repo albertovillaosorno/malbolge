@@ -1039,12 +1039,37 @@ def _copy_cuda_overlay(
         # the Windows fallback; POSIX uses descriptor-relative writes below.
         _require_owned_staging(source, source_identity)
         _require_physical_directories(destination, "staged overlay destination")
+        def admit_source_member(path: Path, *, directory: bool) -> None:
+            # copytree(symlinks=True) can copy a substituted source link even
+            # when the corresponding destination did not exist at preflight.
+            status = path.lstat()
+            if type(status) is not os.stat_result:
+                _fail("CUDA staged overlay source member requires native status")
+            if S_ISLNK(status.st_mode):
+                target = os.readlink(path)
+                if type(target) is not str:
+                    _fail("CUDA staged overlay source member link requires text")
+                try:
+                    _archive_member_path(target)
+                except CudaProvisionError as error:
+                    raise CudaProvisionError(
+                        "CUDA staged overlay source member link is unsafe"
+                    ) from error
+            elif directory:
+                if not S_ISDIR(status.st_mode):
+                    _fail("CUDA staged overlay source member is not a directory")
+            elif not S_ISREG(status.st_mode) or status.st_nlink != 1:
+                _fail("CUDA staged overlay source member must be singly linked")
+
         try:
-            for source_dir, _, filenames in source.walk(follow_symlinks=False):
+            for source_dir, dirnames, filenames in source.walk(follow_symlinks=False):
                 _require_physical_directories(source_dir, "staged overlay source")
                 target_dir = destination / source_dir.relative_to(source)
                 _require_physical_directories(target_dir, "staged overlay destination")
+                for name in dirnames:
+                    admit_source_member(source_dir / name, directory=True)
                 for name in filenames:
+                    admit_source_member(source_dir / name, directory=False)
                     target = target_dir / name
                     try:
                         status = target.lstat()
