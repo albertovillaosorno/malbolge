@@ -978,7 +978,9 @@ def _write_rust_validation_alias(
     return alias
 
 
-def _admit_rust_adapter_write_target(path: Path) -> None:
+def _admit_rust_adapter_write_target(
+    path: Path, *, allow_hardlink: bool = False
+) -> None:
     _reject_authority_parent_redirects(path)
     if path.is_symlink() or path.is_junction():
         _fail(f"Rust adapter write target must not redirect: {path}")
@@ -986,8 +988,12 @@ def _admit_rust_adapter_write_target(path: Path) -> None:
         metadata = path.lstat()
     except FileNotFoundError:
         return
+    if type(metadata) is not os.stat_result:
+        _fail(f"Rust adapter write target requires native file status: {path}")
     if not stat.S_ISREG(metadata.st_mode):
         _fail(f"Rust adapter write target must be regular: {path}")
+    if not allow_hardlink and metadata.st_nlink != 1:
+        _fail(f"Rust adapter write target must not be hardlinked: {path}")
 
 
 def _write_verified_rust_adapter_marker(marker: Path) -> None:
@@ -1014,8 +1020,12 @@ def _write_rust_toolchain_linker_adapters(
         toolchain_root / "bin" / f"{tool_id}.bin"
         for tool_id in _rust_validation_tool_ids(toolchain_root)
     )
-    for destination in (adapter, marker, *aliases):
-        _admit_rust_adapter_write_target(destination)
+    _admit_rust_adapter_write_target(adapter)
+    _admit_rust_adapter_write_target(marker)
+    for alias in aliases:
+        # Imported neutral aliases can hardlink native tools. They are unlinked
+        # before writing wrapper scripts, so their source inodes are not edited.
+        _admit_rust_adapter_write_target(alias, allow_hardlink=True)
     _write_verified_rust_adapter_script(
         adapter, f'#!/bin/sh\nexec {linker_path} "$@"\n'
     )

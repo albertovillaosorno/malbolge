@@ -2199,6 +2199,53 @@ def test_rust_adapter_writer_rejects_linked_cc_target(tmp_path: Path) -> None:
     assert not (root / project.RUST_LINUX_ADAPTER_MARKER).exists()
 
 
+@pytest.mark.parametrize("target", ["bin/cc", project.RUST_LINUX_ADAPTER_MARKER])
+def test_rust_adapter_writer_rejects_hardlinked_output(
+    tmp_path: Path, target: str
+) -> None:
+    """A wrapper or marker must not rewrite an unrelated hardlinked file."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    external = tmp_path / "unrelated-rust-file"
+    original = b"unrelated Rust-adjacent content"
+    _ = external.write_bytes(original)
+    try:
+        os.link(external, root / target)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+
+    with pytest.raises(project.InitializationError, match="hardlink"):
+        _ = project.write_rust_linker_adapters(
+            (root,), LINUX_PLATFORM, linker=linker
+        )
+
+    assert external.read_bytes() == original
+    assert (root / target).read_bytes() == original
+    if target != "bin/cc":
+        assert not (root / "bin/cc").exists()
+
+
+def test_rust_adapter_replaces_native_hardlinked_alias_without_mutating_tool(
+    tmp_path: Path,
+) -> None:
+    """Imported Cargo aliases are removed before the linker wrapper is written."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    native = root / "bin/cargo"
+    alias = root / "bin/cargo.bin"
+    try:
+        os.link(native, alias)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+
+    adapters = project.write_rust_linker_adapters(
+        (root,), LINUX_PLATFORM, linker=linker
+    )
+
+    assert adapters == (root / "bin/cc",)
+    assert native.read_bytes() == RUST_CARGO_BYTES
+    assert alias.stat().st_ino != native.stat().st_ino
+    assert alias.read_text(encoding="ascii").startswith("#!/bin/sh\n")
+
+
 @pytest.mark.parametrize("bad_write_count", [1, None, True, -1, 1_000_000])
 def test_rust_adapter_marker_requires_complete_staging_write(
     tmp_path: Path,
