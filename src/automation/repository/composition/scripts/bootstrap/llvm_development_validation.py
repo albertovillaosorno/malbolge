@@ -1259,7 +1259,7 @@ def provision_development_identity(
     ):
         _fail("LLVM development root exists without the exact provision marker")
     staging = (
-        root / ".temp" / (f"llvm-development-provision-{identity.platform_id}")
+        selected_root / ".temp" / (f"llvm-development-provision-{identity.platform_id}")
     )
     staged_root = staging / "development"
     _prepare_staging(staging)

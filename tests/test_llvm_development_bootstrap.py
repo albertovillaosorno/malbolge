@@ -1429,6 +1429,45 @@ def _redirect_development_destination(
         pytest.skip(f"directory links unavailable: {error}")
 
 
+@pytest.mark.parametrize("change_phase", ["download", "extract"])
+def test_development_provision_relative_root_survives_cwd_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change_phase: str,
+) -> None:
+    """A callback cannot redirect repository staging by changing host cwd."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    identity = _identity(checkout)
+    monkeypatch.chdir(tmp_path)
+
+    def download(_url: str) -> bytes:
+        if change_phase == "download":
+            monkeypatch.chdir(elsewhere)
+        return PACKAGE_BYTES
+
+    def extract(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        _extract_headers(data, asset, destination, staging=staging)
+        if change_phase == "extract":
+            monkeypatch.chdir(elsewhere)
+
+    result = llvm_development_validation.provision_development_identity(
+        Path("checkout"), identity, downloader=download, extractor=extract
+    )
+    assert result == identity.development_root
+    assert (result / "include/clang/AST/AST.h").read_bytes() == HEADER_BYTES
+    assert not (elsewhere / "checkout").exists()
+    assert not (checkout / ".temp/llvm-development-provision-linux-x86_64").exists()
+
+
 @pytest.mark.parametrize(
     "stage_kind",
     [STAGE_LINKED_PARENT, STAGE_LINKED_LEAF, STAGE_NONDIRECTORY_PARENT],
