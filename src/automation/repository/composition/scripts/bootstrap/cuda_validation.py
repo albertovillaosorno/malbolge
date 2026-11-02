@@ -48,6 +48,7 @@ import os
 import shutil
 import sys
 import tarfile
+import unicodedata
 import urllib.request
 import zipfile
 from contextlib import suppress
@@ -561,6 +562,8 @@ def _tar_members(
     archive: tarfile.TarFile,
 ) -> tuple[str, tuple[tarfile.TarInfo, ...]]:
     members = tuple(archive.getmembers())
+    if len(members) > _MAX_CUDA_ARCHIVE_MEMBERS:
+        _fail("CUDA archive member count exceeds limit")
     names = tuple(member.name for member in members)
     root_name = _common_archive_root(names)
     for member in members:
@@ -706,8 +709,15 @@ def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
         tuple(info.file_size if not info.is_dir() else 0 for info in infos)
     )
     root_name = _common_archive_root(tuple(info.filename for info in infos))
+    seen_paths: set[str] = set()
     for info in infos:
         _admit_zip_member_type(info)
+        portable_name = unicodedata.normalize(
+            "NFC", _archive_member_path(info.filename).as_posix().casefold()
+        )
+        if portable_name in seen_paths:
+            _fail("CUDA ZIP member path alias is ambiguous across platforms")
+        seen_paths.add(portable_name)
     for info in infos:
         relative = _archive_member_path(info.filename)
         destination = staging.joinpath(*relative.parts)

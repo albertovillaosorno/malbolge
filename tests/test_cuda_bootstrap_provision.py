@@ -1735,6 +1735,59 @@ def _zip_payload() -> bytes:
 
 
 
+def test_cuda_tar_rejects_excess_member_count_before_link_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An overpopulated archive cannot trigger unbounded hardlink traversal."""
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:xz") as archive:
+        for index in range(3):
+            member = tarfile.TarInfo(f"{ARCHIVE_ROOT}/lib64/link-{index}")
+            member.type = tarfile.LNKTYPE
+            member.linkname = f"{ARCHIVE_ROOT}/lib64/missing"
+            archive.addfile(member)
+    payload = stream.getvalue()
+    manifest = _manifest(tmp_path, payload)
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    monkeypatch.setattr(cuda_validation, "_MAX_CUDA_ARCHIVE_MEMBERS", 2)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="member count"):
+        cuda_validation.extract_cuda_package(
+            payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+        )
+    assert not (tmp_path / "toolkit/lib64").exists()
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("nvrtc.dll", "NVRTC.dll"),
+        ("subdir/nvrtc.dll", "subdir/./nvrtc.dll"),
+        ("subdir/nvrtc.dll", "subdir//nvrtc.dll"),
+        ("s\u00e4mple.dll", "sa\u0308mple.dll"),
+    ],
+)
+def test_cuda_zip_rejects_cross_platform_path_aliases(
+    tmp_path: Path, first: str, second: str
+) -> None:
+    """Case or lexical aliases must not materialize different Windows files."""
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, mode="w") as archive:
+        archive.writestr(f"{ARCHIVE_ROOT}/lib64/{first}", b"one")
+        archive.writestr(f"{ARCHIVE_ROOT}/lib64/{second}", b"two")
+    payload = stream.getvalue()
+    manifest = _manifest(tmp_path, payload, {"relative_path": _ZIP_PACKAGE_PATH})
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    with pytest.raises(cuda_validation.CudaProvisionError, match="ZIP member path alias"):
+        cuda_validation.extract_cuda_package(
+            payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+        )
+    assert not (tmp_path / "toolkit/lib64").exists()
+
+
 @pytest.mark.parametrize(
     ("create_system", "external_attr", "name_suffix"),
     [
