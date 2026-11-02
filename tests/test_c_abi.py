@@ -257,6 +257,44 @@ def test_c_abi_parser_corroborates_nested_array_values(
         _ = c_abi.validate_text(changed)
 
 
+@pytest.mark.parametrize(
+    "providers", ("decoder-only", "joint", "self-restoring-decoder")
+)
+def test_c_abi_json_decoder_reference_cannot_be_forged(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """A public JSONDecoder must not fabricate ABI identity for trusted bytes."""
+    canonical = _canonical_text()
+    changed = canonical.replace(
+        '"abi_id": "malbolge-c32-v1"', '"abi_id": "untrusted-abi"', 1
+    )
+    assert changed != canonical
+    forged = cast("c_abi.JsonObject", json.loads(canonical))
+    assert c_abi.validate_document(forged).abi_id == c_abi.ABI_ID
+    native_decoder = json.JSONDecoder
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring-decoder":
+                patch.setattr(json, "JSONDecoder", native_decoder)
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "joint":
+            patch.setattr(json, "loads", forged_loads)
+        with pytest.raises(
+            c_abi.CAbiValidationError,
+            match="JSON decoder provider differs from source",
+        ):
+            _ = c_abi.loads_document(changed)
+
+
 def test_c_abi_parser_allows_equivalent_delegating_loader(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

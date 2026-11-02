@@ -67,7 +67,7 @@ POINTER_ALIGNMENT = 4
 STACK_ALIGNMENT = 16
 FRAME_HEADER_BYTES = 32
 MAX_DOCUMENT_BYTES = 1024 * 1024
-_NATIVE_JSON_LOADS = json.loads
+_NATIVE_JSON_DECODER = json.JSONDecoder
 
 TOP_LEVEL_KEYS = frozenset(
     {
@@ -330,32 +330,31 @@ def loads_document(text: str) -> JsonObject:
         raise CAbiValidationError(
             f"invalid JSON host parser failure: {_safe_error_detail(error)}"
         ) from error
-    # The public loader may have been substituted by a wrapper or a forged
-    # provider. Admit equivalent native receipts, but independently prove that
-    # every nested value came from the source text before schema validation.
-    if decoder is not _NATIVE_JSON_LOADS:
-        try:
-            original = cast(
-                "object",
-                _NATIVE_JSON_LOADS(text, object_pairs_hook=_reject_duplicate_pairs),
-            )
-            equivalent = _same_native_json(parsed, original)
-        except CAbiValidationError:
-            raise
-        except json.JSONDecodeError as error:
-            raise CAbiValidationError(
-                f"invalid JSON: {_safe_error_detail(error)}"
-            ) from error
-        except (TypeError, ValueError, RuntimeError, RecursionError) as error:
-            raise CAbiValidationError(
-                "C ABI JSON decoder provider differs from source"
-            ) from error
-        if not equivalent:
-            _fail("C ABI JSON decoder provider differs from source")
-        # Never expose the wrapper's object graph: it may retain and mutate a
-        # nested mapping after receipt validation has completed.
-        parsed = original
-    return _mapping(parsed, "C ABI document")
+    # The import-bound json.loads still consults a mutable JSONDecoder class.
+    # Decode through the originally selected class on every call, including
+    # when the public providers jointly substitute or restore each other.
+    try:
+        original = cast(
+            "object",
+            _NATIVE_JSON_DECODER(object_pairs_hook=_reject_duplicate_pairs).decode(
+                text
+            ),
+        )
+        equivalent = _same_native_json(parsed, original)
+    except CAbiValidationError:
+        raise
+    except json.JSONDecodeError as error:
+        raise CAbiValidationError(
+            f"invalid JSON: {_safe_error_detail(error)}"
+        ) from error
+    except (TypeError, ValueError, RuntimeError, RecursionError) as error:
+        raise CAbiValidationError(
+            "C ABI JSON decoder provider differs from source"
+        ) from error
+    if not equivalent:
+        _fail("C ABI JSON decoder provider differs from source")
+    # Do not expose the public loader's mutable nested aliases.
+    return _mapping(original, "C ABI document")
 
 
 def _document_identity(

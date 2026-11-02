@@ -336,11 +336,14 @@ shapes. A failed stream wrapper releases its descriptor. Forged or nonnative
 read evidence fails closed instead of invoking foreign formatting or decoding
 hooks. These checks supplement the bounded no-follow read and pre/post file
 identity comparison; they do not replace canonical ABI schema validation.
-When a public JSON loader is substituted, the ABI parser independently
-corroborates the result against a parse by the original import-bound loader.
-Every nested value and exact native key must agree with the source; colliding
-foreign keys cannot invoke equality hooks. Equivalent delegating decoders remain
-admissible. This is a source/loader substitution boundary, not a guarantee
+The ABI parser independently corroborates every decoded tree with the
+import-bound `JSONDecoder` class, not merely the original `json.loads`
+function: even an import-bound loader still resolves the mutable public
+decoder class at call time. Jointly replaced or mid-call restoring providers
+cannot fabricate ABI fields absent from source bytes. Every nested value and
+exact native key must agree; colliding foreign keys cannot invoke equality
+hooks. Equivalent delegating decoders remain admissible, and returned data is
+source-owned rather than a mutable public-parser alias. This does not protect
 against arbitrary modification of Python interpreter internals. Unexpected JSON
 host decoder faults remain typed and preserve their causes without invoking
 foreign exception formatters.

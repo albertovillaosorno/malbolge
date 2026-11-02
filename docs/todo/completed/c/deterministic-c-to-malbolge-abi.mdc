@@ -71,6 +71,11 @@ policy for undefined or target-dependent C behavior.
   retaining mutable nested aliases. The direct, text, and disk paths fail
   closed; source-equivalent wrappers remain admissible.
   Unexpected host decoder errors are typed with causes and safe diagnostics.
+- 2026-11-02 import-bound `JSONDecoder` follow-up: three red-first cases
+  reject a substituted decoder, jointly substituted JSON providers, and a
+  decoder restoring the public attribute mid-call. An import-bound `json.loads`
+  alone was not independent; source-owned decoder results now establish ABI
+  correspondence on every invocation.
 - `src/automation/repository/composition/scripts/validate/c_abi_source.py` emits
   source-located `MALBOLGE-ABI-001` through `MALBOLGE-ABI-008` diagnostics for
   v1 layout exclusions and requires pinned Clang 22.1.8. Its AST JSON parser
