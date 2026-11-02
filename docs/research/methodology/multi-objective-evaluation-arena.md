@@ -261,12 +261,18 @@ physically enforced study-wide budget. The pilot requires POSIX for this
 subprocess boundary and makes no Windows process-supervision claim.
 
 The target-echo producer also checks each native completed emitter and VM
-receipt against the full original launch command. This rejects a process
+receipt against the exact prepared guest command. This rejects a process
 result with a foreign, nonstring, or unrelated argument list; an emitter
-cannot mutate its input command to change what was requested. Ten new
+cannot mutate its input command to change what was requested. Ten original
 regression/positive cases and 412 post-commit target-echo tests cover native
-EOF, patterned stdin, and instruction-reporting command shapes. It confirms
-local launch/receipt consistency, not independent process or OS attestation.
+EOF, patterned stdin, and instruction-reporting command shapes. A further
+red-first compatibility regression exposed legitimate GNU-time/prlimit
+measured children, whose native transport receipts contain wrapper arguments.
+The producer now admits their exact guest-command suffix only after a wrapper
+separator, rejecting swapped, mutated, missing-separator or bare receipts.
+Eight focused wrapper cases and 513 post-commit producer/measured-integration
+tests pass at `c9d6f33e5`. These are local receipt consistency checks, not
+independent process or OS attestation.
 
 The cleanup signal path now requires one exact positive native child PID
 distinct from the caller's positive native process group before any group
@@ -439,8 +445,12 @@ The audit now admits only native VM subprocess receipts with an exact string
 argument list, integer status and byte-string stdout/stderr before trusting
 replayed guest or step equality. Its retained replay path also rejects foreign
 expected-output byte subclasses. Nine forged-receipt regressions and one
-native positive control exercise these checks, without asserting independent
-process provenance or authentication of the original measured run.
+native positive control exercise these checks. A follow-up at `77a3b4081`
+binds retained EOF, patterned and step-counted replay receipts to the exact
+requested VM command; direct measured replay binds the guest suffix after
+the GNU-time wrapper. Twelve red-first swapped/mutated receipt cases and four
+native positives pass, alongside 313 post-commit audit tests. These checks
+do not independently attest process provenance or the originally measured run.
 
 A separate v4 target study adds **actually enforced per-child Linux
 resource ceilings** to the measured source-plus-second-VM replay protocol.

@@ -139,11 +139,16 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   these three boundaries. None independently attests OS execution, detached
   descendant cleanup, or the authenticity of guest measurements.
 - The target producer now binds native emitter and VM completion argument
-  lists to exact prepared launch commands before interpreting their output;
+  lists to exact prepared guest commands before interpreting their output;
   the emitter receives a copy so in-place mutation cannot rewrite the expected
   command. Eight swapped/foreign-argv negatives, one mutated-command negative
   and one patterned-input/steps positive pass in 412 post-commit target tests.
-  This is local receipt consistency, not independent child attestation.
+  Measured GNU-time/prlimit children legitimately return wrapped native argv:
+  red-first compatibility tests now require the exact VM/emitter suffix after
+  the wrapper separator, rejecting unrelated or missing-wrapper receipts.
+  Eight focused cases, 420 producer tests and 93 measured replay integration
+  tests pass after `c9d6f33e5`. This is local receipt consistency, not
+  independent child attestation or original-measurement authentication.
 - Before asking a selector to register either child pipe, transport now
   requires native signed C-int stdout/stderr descriptors that are distinct;
   registration and later stream receipts must retain the same identities.
@@ -328,8 +333,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   Both read-only target VM replay modes now require native child receipt
   arguments/status/stdout/stderr before comparing expected bytes and steps;
   the general replay also rejects a foreign expected-output byte subclass.
-  Nine forged-receipt cases and one native control pass, preserving the
-  limitation that local replay does not attest prior measured execution.
+  Nine forged-receipt cases and one native control pass. The follow-up
+  `77a3b4081` binds each native replay completion to its prepared VM argv,
+  including exact GNU-time measured suffixes; twelve red-first forged receipts,
+  four positive controls and 313 post-commit auditor tests pass. Local replay
+  does not attest historical or original measured execution.
   The offline auditor additionally pins complete study JSON and per-trial
   manifest/raw byte digests before linked-evidence admission, checks them
   again before returning a report, and rescans run/raw/candidate inventories.
