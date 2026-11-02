@@ -1007,7 +1007,53 @@ def _copy_cuda_overlay(
 ) -> None:
     """Copy verified archive members through pinned POSIX source and target directories."""
     if os.name != "posix":
-        _ = shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True)
+        # copytree("dirs_exist_ok") follows preexisting destination links
+        # and overwrites conflicting files. Reject those paths before invoking
+        # the Windows fallback; POSIX uses descriptor-relative writes below.
+        _require_owned_staging(source, source_identity)
+        _require_physical_directories(destination, "staged overlay destination")
+        try:
+            for source_dir, _, filenames in source.walk(follow_symlinks=False):
+                _require_physical_directories(source_dir, "staged overlay source")
+                target_dir = destination / source_dir.relative_to(source)
+                _require_physical_directories(target_dir, "staged overlay destination")
+                for name in filenames:
+                    target = target_dir / name
+                    try:
+                        status = target.lstat()
+                    except FileNotFoundError:
+                        continue
+                    if (
+                        type(status) is not os.stat_result
+                        or not S_ISREG(status.st_mode)
+                    ):
+                        _fail("CUDA staged overlay member collision")
+                    original = _read_manifest_source(
+                        source_dir / name,
+                        "CUDA staged overlay source",
+                        max_bytes=_MAX_CUDA_ARCHIVE_MEMBER_BYTES,
+                    )
+                    existing = _read_manifest_source(
+                        target,
+                        "CUDA staged overlay destination",
+                        max_bytes=_MAX_CUDA_ARCHIVE_MEMBER_BYTES,
+                    )
+                    if original != existing:
+                        _fail("CUDA staged overlay member collision")
+        except CudaProvisionError:
+            raise
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            detail = f"CUDA staged overlay preflight failed: {type(error).__name__}"
+            raise CudaProvisionError(detail) from error
+        try:
+            _ = shutil.copytree(
+                source, destination, dirs_exist_ok=True, symlinks=True,
+            )
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            detail = f"CUDA staged overlay copy failed: {type(error).__name__}"
+            raise CudaProvisionError(detail) from error
+        _require_owned_staging(source, source_identity)
+        _require_physical_directories(destination, "staged overlay destination")
         return
 
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)

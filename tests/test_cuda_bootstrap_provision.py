@@ -4158,6 +4158,73 @@ def test_cuda_tar_symlink_creation_rejects_swapped_archive_parent(
     assert not (replacement / "libnvrtc.so.13").exists()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX symlink fixture")
+def test_cuda_nonposix_overlay_rejects_linked_destination_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Windows fallback may not copy through existing linked toolkit paths."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    _ = (source / "lib64" / "nvrtc.dll").write_bytes(b"trusted")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    _ = (destination / "lib64").symlink_to(foreign, target_is_directory=True)
+    status = source.stat()
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        with pytest.raises(cuda_validation.CudaProvisionError, match="redirect"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino),
+            )
+    if (foreign / "nvrtc.dll").exists():
+        pytest.fail("non-POSIX overlay copied bytes through a destination symlink")
+
+
+@pytest.mark.parametrize("existing", [b"matching", b"different"])
+def test_cuda_nonposix_overlay_preserves_existing_file_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bytes,
+) -> None:
+    """Windows-compatible overlays can merge only byte-identical files."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    _ = (source / "lib64" / "nvrtc.dll").write_bytes(b"matching")
+    destination = tmp_path / "destination"
+    (destination / "lib64").mkdir(parents=True)
+    target = destination / "lib64" / "nvrtc.dll"
+    _ = target.write_bytes(existing)
+    status = source.stat()
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        if existing != b"matching":
+            with pytest.raises(cuda_validation.CudaProvisionError, match="collision"):
+                cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                    source, destination, (status.st_dev, status.st_ino),
+                )
+        else:
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino),
+            )
+    expected = existing
+    if target.read_bytes() != expected:
+        pytest.fail("non-POSIX overlay changed an existing incompatible file")
+
+
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
 @pytest.mark.parametrize("cleanup_kind", ["package", "provision"])
 @pytest.mark.parametrize("swap_kind", ["physical", "symlink"])
