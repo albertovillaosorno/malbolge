@@ -100,7 +100,8 @@ single-occurrence standalone uncertainty headings, source bullets with
 nonempty content, unique stable identities,
 exact validation-package pins, durable external-reference coverage, and the
 required baseline. A source-record marker counts only outside fenced or indented
-Markdown code and HTML comments; URL-only literal examples and comments do not
+Markdown code and HTML comments; removing inline comments also cannot invent
+standalone headings or list entries. Literal examples and comments do not
 establish external-source catalog coverage. `tests/test_bibliography.py`
 exercises those fail-closed boundaries. The validator checks repository evidence
 shape and coverage; it does not independently re-fetch or re-prove external

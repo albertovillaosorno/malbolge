@@ -82,7 +82,8 @@ repository policy merely because they are cited.
   fail-closed uncertainty, placeholder, date, source-list, and heading-order
   cases. Fenced code, indented code, and HTML comments cannot impersonate
   Markdown section headings, stable IDs, review dates, source entries, or
-  externally cataloged URLs; visible evidence surrounding literal examples
-  remains valid. Empty `legal-and-regulatory/` and `libraries/` categories remain
-  honest catalogs instead of fabricated evidence.
+  externally cataloged URLs; inline comment removal cannot synthesize headings
+  or bullets. Visible evidence surrounding literal examples remains valid.
+  Empty `legal-and-regulatory/` and `libraries/` categories remain honest
+  catalogs instead of fabricated evidence.
 - Prerequisite completion evidence: `documentation-authority-taxonomy`.

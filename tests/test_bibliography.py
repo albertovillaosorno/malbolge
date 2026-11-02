@@ -296,6 +296,45 @@ def test_source_record_rejects_indented_code_review_date() -> None:
     _expect_failure(text, "lacks a dated retrieval/review provenance marker")
 
 
+def test_source_record_rejects_heading_after_inline_comment() -> None:
+    """Removing a leading HTML comment cannot synthesize a Markdown heading."""
+    text = _c_record().replace("## Subject", "<!-- example -->## Subject", 1)
+    _expect_failure(text, "missing required heading: ## Subject")
+
+
+def test_source_record_rejects_uncertainty_after_inline_comment() -> None:
+    """The uncertainty marker needs its own Markdown heading line."""
+    text = _c_record().replace("### Unresolved", "<!-- example -->### Unresolved", 1)
+    _expect_failure(text, "lacks explicit unresolved/uncertainty evidence")
+
+
+def test_source_record_rejects_source_bullet_after_inline_comment() -> None:
+    """A bullet cannot be manufactured by deleting its line prefix."""
+    text = _c_record().split("## Sources", 1)[0]
+    text = text.replace("## Provenance", "## Provenance\n\nReviewed 2026-11-02", 1)
+    text += "## Sources\n\n<!-- example -->- <https://example.com/hidden>\n"
+    _expect_failure(text, "Sources section contains no source entries")
+
+
+def test_source_record_rejects_indented_first_source_bullet() -> None:
+    """Section trimming must not turn an indented line into a source entry."""
+    text = _c_record().split("## Sources", 1)[0]
+    text = text.replace("## Provenance", "## Provenance\n\nReviewed 2026-11-02", 1)
+    text += "## Sources\n\n  - <https://example.com/indented>\n"
+    _expect_failure(text, "Sources section contains no source entries")
+
+
+def test_source_record_rejects_identifier_after_inline_comment() -> None:
+    """A canonical identity must use a genuine list entry."""
+    identifier = "- Stable identifier: ISO/IEC 9899:2024"
+    text = _c_record().replace(identifier, "<!-- example -->" + identifier)
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match="must declare exactly one stable identifier",
+    ):
+        validator.validate_unique_stable_identifiers((("fixture", text),))
+
+
 def test_source_record_accepts_real_evidence_around_literal_examples() -> None:
     """Quoted Markdown examples cannot duplicate actual record headings."""
     text = _c_record().replace(

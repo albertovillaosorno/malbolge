@@ -585,6 +585,9 @@ def _visible_source_text(text: str) -> str:
                 end = line.find("-->", cursor)
                 if end < 0:
                     break
+                # Preserve the boundary before visible trailing text. Without
+                # it, deleting a comment can manufacture a heading or bullet.
+                pieces.append(" ")
                 in_comment = False
                 cursor = end + 3
             else:
@@ -593,6 +596,7 @@ def _visible_source_text(text: str) -> str:
                     pieces.append(line[cursor:])
                     break
                 pieces.append(line[cursor:start])
+                pieces.append(" ")
                 in_comment = True
                 cursor = start + 4
         visible.append("".join(pieces))
@@ -628,7 +632,10 @@ def _section(text: str, heading: str) -> str:
         ),
         len(lines),
     )
-    return "\n".join(lines[start + 1 : stop]).strip()
+    content = "\n".join(lines[start + 1 : stop])
+    # Preserve indentation on the first substantive line. Full .strip()
+    # manufactures an apparent flush-left source bullet from indented text.
+    return content.strip("\n") if content.strip() else ""
 
 
 def _validate_placeholders(text: str, label: str) -> None:
