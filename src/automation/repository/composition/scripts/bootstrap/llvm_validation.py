@@ -731,6 +731,73 @@ def _require_absent_import_destination(destination: Path) -> None:
     _fail("LLVM import destination became occupied before publication")
 
 
+def _ensure_physical_import_parent(root: Path) -> Path:
+    """Create and admit the final destination without following parent aliases."""
+    if not _physical_directory(root):
+        _fail("LLVM import destination repository root must be physical")
+    parent = root
+    for component in (".dependencies", "llvm"):
+        parent = parent / component
+        try:
+            parent.mkdir()
+        except FileExistsError:
+            pass
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM import destination parent creation failed: {type(error).__name__}"
+            ) from error
+        if not _physical_directory(parent):
+            _fail("LLVM import destination parent must be physical")
+    return parent
+
+
+def _publish_linux_import(root: Path, staged: Path, destination: Path) -> None:
+    """Pin the physical destination directory across the final rename."""
+    parent = _ensure_physical_import_parent(root)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(parent, flags)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM import destination parent open failed: {type(error).__name__}"
+        ) from error
+    if type(cast("object", descriptor)) is not int or descriptor < 0:
+        _fail("LLVM import destination parent descriptor must be native")
+    try:
+        opened = os.fstat(descriptor)
+        named = parent.lstat()
+        if (
+            not _physical_directory(parent)
+            or type(opened) is not os.stat_result
+            or type(named) is not os.stat_result
+            or not S_ISDIR(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            _fail("LLVM import destination parent descriptor mismatch")
+        _require_absent_import_destination(destination)
+        try:
+            _ = os.stat(destination.name, dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM import destination status failed: {type(error).__name__}"
+            ) from error
+        else:
+            _fail("LLVM import destination became occupied before publication")
+        _ = os.replace(staged, destination.name, dst_dir_fd=descriptor)
+        if not _physical_directory(parent):
+            _fail("LLVM import destination parent changed during publication")
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM import destination publication failed: {type(error).__name__}"
+        ) from error
+    finally:
+        os.close(descriptor)
+
+
 def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     """Import one exact Linux LLVM runtime into repository-local state.
 
@@ -768,14 +835,7 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
             or _native_directory_inode(staged) != owned_child
         ):
             _fail("LLVM import staging identity changed before publication")
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        _require_absent_import_destination(destination)
-        if (
-            _native_directory_inode(staging) != owned_staging
-            or _native_directory_inode(staged) != owned_child
-        ):
-            _fail("LLVM import staging identity changed during publication")
-        _ = staged.replace(destination)
+        _publish_linux_import(root, staged, destination)
     finally:
         if owned_staging is not None and _owned_staging_safe_to_clean(
             staging, staged, owned_staging, owned_child

@@ -524,6 +524,99 @@ def test_linux_import_rejects_untrusted_staging_before_copy(
     assert not tuple(outside.iterdir())
 
 
+@pytest.mark.parametrize("redirected", ("dependencies", "llvm-parent"))
+def test_linux_import_rejects_redirected_final_parent(
+    tmp_path: Path, redirected: str
+) -> None:
+    """Final LLVM publishing must not escape through a redirected parent."""
+    observation = _host_observation(tmp_path)
+    outside = tmp_path / "foreign-destination"
+    outside.mkdir()
+    dependencies = tmp_path / ".dependencies"
+    if redirected == "dependencies":
+        linked_parent = dependencies
+    else:
+        dependencies.mkdir()
+        linked_parent = dependencies / "llvm"
+    try:
+        linked_parent.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory links unavailable: {error}")
+    with pytest.raises(llvm_validation.LlvmImportError, match="destination"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert not tuple(outside.iterdir())
+    assert linked_parent.is_symlink()
+
+
+def test_linux_import_does_not_publish_through_late_parent_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Final publication uses the opened physical parent, not its raced name."""
+    observation = _host_observation(tmp_path)
+    outside = tmp_path / "outside-publish"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"foreign data")
+    parent = tmp_path / ".dependencies/llvm"
+    parked = tmp_path / "parked-owned-parent"
+    staged = tmp_path / ".temp/llvm-import-linux-x86_64/llvm"
+    native_replace = os.replace
+    swapped = False
+
+    def swapping_replace(
+        source: str | os.PathLike[str],
+        destination: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if Path(source) == staged:
+            _ = parent.rename(parked)
+            _ = parent.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        native_replace(
+            source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
+        )
+
+    monkeypatch.setattr(os, "replace", swapping_replace)
+    with pytest.raises(llvm_validation.LlvmImportError, match="parent"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert swapped
+    assert sentinel.read_bytes() == b"foreign data"
+    assert not (outside / LLVM_VERSION).exists()
+    assert (parked / LLVM_VERSION).is_dir()
+    assert parent.is_symlink()
+
+
+def test_linux_import_rejects_substituted_parent_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An open receipt for another directory cannot redirect publication."""
+    observation = _host_observation(tmp_path)
+    outside = tmp_path / "outside-descriptor"
+    outside.mkdir()
+    parent = tmp_path / ".dependencies/llvm"
+    native_open = os.open
+
+    def substituted_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if Path(path) == parent:
+            return native_open(outside, flags, mode)
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", substituted_open)
+    with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert not tuple(outside.iterdir())
+    assert not (parent / LLVM_VERSION).exists()
+
+
 def test_linux_import_does_not_overwrite_late_occupied_destination(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
