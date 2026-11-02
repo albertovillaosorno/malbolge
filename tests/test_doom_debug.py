@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Never, cast, final, override
 
@@ -157,7 +158,7 @@ def test_doom_debug_rejects_forged_named_temporary_file(
     def unexpected_process(*_args: object, **_kwargs: object) -> None:
         pytest.fail("unadmitted sanitizer log reached guest execution")
 
-    monkeypatch.setattr(doom.tempfile, "NamedTemporaryFile", fake_temporary_file)
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", fake_temporary_file)
     monkeypatch.setattr(sp, "run", unexpected_process)
     with pytest.raises(doom.DoomDebugError, match="sanitizer log.*stage"):
         _ = RUN_DIRECT(config)
@@ -196,7 +197,7 @@ def test_doom_debug_rejects_hardlinked_named_temporary_file(
     def unexpected_process(*_args: object, **_kwargs: object) -> None:
         pytest.fail("multiply linked sanitizer log reached guest execution")
 
-    monkeypatch.setattr(doom.tempfile, "NamedTemporaryFile", fake_temporary_file)
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", fake_temporary_file)
     monkeypatch.setattr(sp, "run", unexpected_process)
     with pytest.raises(doom.DoomDebugError, match="sanitizer log stage"):
         _ = RUN_DIRECT(config)
