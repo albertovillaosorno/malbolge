@@ -447,6 +447,59 @@ def test_telemetry_persistence_rejects_joint_json_provider_substitution(
         _ = decode_ticket_admission_telemetry_document(empty_payload)
 
 
+@pytest.mark.parametrize("providers", ("encoder-only", "encoder-and-dumps"))
+def test_telemetry_persistence_rejects_forged_json_encoder(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Mutable JSONEncoder cannot erase source-recorded FIFO events."""
+    empty = capture_ticket_admission_telemetry_document(_attempts())
+    forged = encode_ticket_admission_telemetry_document(empty).decode().rstrip("\n")
+    attempts = _attempts()
+    _ = attempts.record_completed(_report(), elapsed_ns=FIRST_ELAPSED_NS)
+    recorded = capture_ticket_admission_telemetry_document(attempts)
+    original = encode_ticket_admission_telemetry_document(recorded)
+    assert original != f"{forged}\n".encode()
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _document: object) -> str:
+            return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers == "encoder-and-dumps":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: forged)
+        with pytest.raises(
+            TicketAdmissionTelemetryPersistenceError,
+            match="serializer disagrees with source",
+        ):
+            _ = encode_ticket_admission_telemetry_document(recorded)
+        with pytest.raises(
+            TicketAdmissionTelemetryPersistenceError,
+            match="serializer disagrees with source",
+        ):
+            _ = decode_ticket_admission_telemetry_document(original)
+
+
+def test_telemetry_persistence_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equivalent public encoder class retains canonical v1 behavior."""
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        document = capture_ticket_admission_telemetry_document(_attempts())
+        assert decode_ticket_admission_telemetry_document(
+            encode_ticket_admission_telemetry_document(document)
+        ) == document
+
+
 def test_telemetry_persistence_rejects_modified_json_serialization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

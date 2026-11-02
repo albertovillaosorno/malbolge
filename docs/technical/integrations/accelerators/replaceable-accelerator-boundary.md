@@ -680,11 +680,12 @@ completion-only executors remain unchanged.
 sorted-key schema-v1 JSON. Decoding defaults to a 1 MiB byte limit and 4,096
 observations per FIFO, rejects duplicate, unknown, oversized, and noncanonical
 input, and restores exact sequence and eviction state. Canonical encoding and
-decoding now corroborate the public JSON writer against the standard-library
-writer bound at import, capturing source-owned bytes before any public writer
-mutation. Joint substitution of public decoder and writer cannot invent
-recorded FIFO events absent from exact stored bytes. This does not protect
-against compromise of the shared underlying JSON implementation. File reads
+decoding now corroborate the public JSON writer against the import-bound
+standard-library `JSONEncoder` class, capturing source-owned bytes before any
+public writer mutation. Binding `json.dumps` alone still resolves a mutable
+public encoder class; encoder-only or jointly substituted providers cannot
+erase recorded FIFO events or invent them from exact stored bytes. This does
+not defend modification of the underlying Python implementation. File reads
 and writes are explicit; writes use a same-directory temporary file and atomic
 replacement.
 `caller-owned-ticket-admission-telemetry-store-v1` defines an explicit

@@ -40,7 +40,6 @@ from __future__ import annotations
 from dataclasses import asdict
 from dataclasses import dataclass
 import json
-from json import dumps as _SOURCE_JSON_DUMPS
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -67,6 +66,8 @@ from accelerator.ticket_admission_telemetry import TicketAdmissionTelemetryError
 from accelerator.ticket_admission_telemetry import (
     TicketAdmissionTelemetrySnapshot,
 )
+
+_SOURCE_JSON_ENCODER = json.JSONEncoder
 
 TICKET_ADMISSION_TELEMETRY_DOCUMENT_ID: Final = (
     "ticket-admission-telemetry-document-v1"
@@ -208,13 +209,14 @@ def _canonical_json(document: dict[str, object]) -> str:
     try:
         # Establish canonical bytes before a public writer can mutate the
         # validated tree in-place, or return an unrelated document's text.
-        source_text = _SOURCE_JSON_DUMPS(
-            document,
+        # Import-bound json.dumps still consults the mutable public
+        # JSONEncoder class; bind that class to retain independent bytes.
+        source_text = _SOURCE_JSON_ENCODER(
             allow_nan=False,
             ensure_ascii=True,
             separators=(",", ":"),
             sort_keys=True,
-        )
+        ).encode(document)
         rendered = json.dumps(
             document,
             allow_nan=False,
