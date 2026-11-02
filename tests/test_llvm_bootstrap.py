@@ -195,6 +195,52 @@ def test_linux_import_refuses_late_replaced_host_tool(
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
 
 
+@pytest.mark.parametrize("member", ["clang", "resource"])
+def test_linux_import_rejects_hardlinked_source_rewritten_with_restored_mtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, member: str
+) -> None:
+    """Same-inode bytes mutated during link cannot inherit the import marker."""
+    observation = _host_observation(tmp_path)
+    source = (
+        observation.clang
+        if member == "clang"
+        else observation.resource_dir / "stddef.h"
+    )
+    original = source.read_bytes()
+    changed = b"x" * len(original)
+    admitted = source.stat()
+    native_link = os.link
+    altered: list[Path] = []
+
+    def link_and_rewrite(
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        native_link(
+            src,
+            dst,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+        if Path(src) == source:
+            _ = source.write_bytes(changed)
+            os.utime(source, ns=(admitted.st_atime_ns, admitted.st_mtime_ns))
+            altered.append(source)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", link_and_rewrite)
+        with pytest.raises(llvm_validation.LlvmImportError, match="source"):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert altered == [source]
+    assert source.read_bytes() == changed
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
 def test_linux_import_materializes_local_runtime_and_neutral_aliases(
     tmp_path: Path,
 ) -> None:

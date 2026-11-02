@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import ctypes
 import errno
+import hashlib
 import os
 import re
 import shutil
@@ -622,27 +623,58 @@ def _link_or_copy_in_parent(
     return destination
 
 
-def _import_source_identity(path: Path) -> tuple[int, int, int, int]:
-    """Pin source inode, size, and mtime across link or fallback copy.
+def _import_source_identity(path: Path) -> tuple[int, int, int, int, bytes]:
+    """Pin source inode and bytes across link or fallback copy.
+
+    Link creation changes st_nlink and ctime, so those cannot serve as
+    stable cross-link identities. A digest detects writes followed by an
+    explicit restoration of the original mtime and size.
 
     Returns:
-        Native identity components unaffected by adding hardlinks.
+        Native file identity and its pinned SHA-256 content digest.
 
     Raises:
-        LlvmImportError: If the host source is not a physical regular file.
+        LlvmImportError: If the host source changes or is not physical.
 
     """
     if not _physical_file(path):
         _fail("LLVM import source file must be physical")
     try:
         status = path.lstat()
+        if type(status) is not os.stat_result or not S_ISREG(status.st_mode):
+            _fail("LLVM import source status must be a native regular file")
+        with _open_pinned_import_source(path) as stream:
+            descriptor = stream.fileno()
+            if _marker_identity(os.fstat(descriptor)) != _marker_identity(status):
+                _fail("LLVM import source changed before digest read")
+            digest = hashlib.sha256()
+            remaining = status.st_size
+            while remaining:
+                chunk = os.read(descriptor, min(65536, remaining))
+                if type(chunk) is not bytes or not chunk or len(chunk) > remaining:
+                    _fail("LLVM import source digest read was truncated or nonnative")
+                digest.update(chunk)
+                remaining -= len(chunk)
+            trailing = os.read(descriptor, 1)
+            if (
+                type(trailing) is not bytes
+                or trailing != b""
+                or not _matches_open_import_file(path, descriptor, status.st_size)
+                or _marker_identity(path.lstat()) != _marker_identity(status)
+            ):
+                _fail("LLVM import source changed during digest read")
+        return (
+            status.st_dev,
+            status.st_ino,
+            status.st_size,
+            status.st_mtime_ns,
+            digest.digest(),
+        )
+    except LlvmImportError:
+        raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
-        message = f"LLVM import source status failed: {type(error).__name__}"
+        message = f"LLVM import source digest failed: {type(error).__name__}"
         raise LlvmImportError(message) from error
-    if type(status) is not os.stat_result or not S_ISREG(status.st_mode):
-        _fail("LLVM import source status must be a native regular file")
-    # Link creation changes st_nlink and ctime, not admitted file contents.
-    return status.st_dev, status.st_ino, status.st_size, status.st_mtime_ns
 
 
 def _copy_file(
