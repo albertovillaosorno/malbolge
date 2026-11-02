@@ -170,7 +170,9 @@ def verify_bundle(
         )
     try:
         source_hash = sha256(produced.source).hexdigest()
-        independent_hash = hashlib.sha256(produced.source).hexdigest()
+        # The public hashlib.sha256 attribute can share the replaced callable
+        # above. Hash through the separate algorithm-name constructor instead.
+        independent_hash = hashlib.new("sha256", produced.source).hexdigest()
     except Exception as error:
         # The hashing dependency must not publish a foreign failure or rely
         # on caller-owned exception formatters for source authentication.

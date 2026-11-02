@@ -42,6 +42,7 @@ import json
 import sys
 from hashlib import sha256
 from io import StringIO
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -449,6 +450,36 @@ def test_bundle_replay_rejects_fabricated_equal_source_hash_receipt(
 
     monkeypatch.setattr(challenge_bundles, "sha256", lambda _source: ForgedHash())
     with pytest.raises(challenge_bundles.ChallengeBundleError, match="SHA-256"):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+def test_bundle_replay_rejects_jointly_substituted_sha256_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two aliases of one substituted provider cannot attest source bytes."""
+    case, files = _direct_bundle()
+    false_digest = "0" * challenge_bundles.SHA256_HEX_LENGTH
+    assert case["workload_sha256"] != false_digest
+    case["workload_sha256"] = false_digest
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    def forged_hash(_source: bytes) -> ForgedHash:
+        return ForgedHash()
+
+    # Substitute the module's mutable stdlib alias without affecting the
+    # canonical challenge generator's own hash implementation.
+    monkeypatch.setattr(challenge_bundles, "sha256", forged_hash)
+    monkeypatch.setattr(
+        challenge_bundles,
+        "hashlib",
+        SimpleNamespace(sha256=forged_hash, new=challenge_bundles.hashlib.new),
+    )
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="source SHA-256 receipt differs"
+    ):
         challenge_bundles.verify_bundle(case, PROFILE, files)
 
 
