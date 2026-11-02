@@ -447,6 +447,19 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   the caller's process-group ID also rejects before signaling, and seven
   forged caller-group lookup receipts cannot authorize a signal. These guards
   do not certify historical child identity or other process ancestry.
+- Arena scratch-directory preflight now inspects `os.scandir` iterators
+  directly, without trusting replaceable context `__enter__`/`__exit__`
+  hooks to prove emptiness. The bounded subprocess GNU-time RSS workspace,
+  native host-C replay workspace, host-C reference study directory, and
+  classic target-echo study directory all require an observed empty scan
+  and exact `None` completion from scanner cleanup before accepting the
+  proposed output location. The host-C oracle's temporary-directory
+  cleanup also rejects nonvoid completion on success and annotates an
+  invalid cleanup receipt without concealing an original failure.
+  Twenty-one red-first regressions reject suppressed iterator errors,
+  redirected scan entry, forged cleanup responses, and retained foreign
+  scratch contents. This is local process-dependency admission, not
+  proof of race-free ownership, deletion, or historical evidence provenance.
 - Linux host-C reference compile/link/oracle children now require
   util-linux `prlimit`, inherit kernel per-process limits on virtual address
   space, CPU seconds, and output-file size, and execute in separate sessions
