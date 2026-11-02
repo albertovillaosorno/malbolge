@@ -54,7 +54,7 @@ from typing import TYPE_CHECKING, Final, Never, cast
 from scripts.validate import tidy_toolchain
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from typing import BinaryIO
 
 FEDORA_UPDATES_PACKAGE_BASE: Final = (
@@ -312,6 +312,67 @@ def _cpio_members(payload: bytes) -> tuple[str, ...]:
     return members
 
 
+def _physical_header_walk(
+    root: Path,
+) -> Iterator[tuple[Path, list[str], list[str]]]:
+    """Crosscheck every walked child and visited directory against native names."""
+    expected_directories = {root}
+    visited: set[Path] = set()
+
+    def fail_scan(error: OSError) -> Never:
+        raise LlvmDevelopmentProvisionError(
+            "LLVM RPM include walk scan failed"
+        ) from error
+
+    for directory, folders, files in root.walk(on_error=fail_scan):
+        if (
+            type(directory) is not type(root)
+            or type(folders) is not list
+            or type(files) is not list
+            or directory not in expected_directories
+            or directory in visited
+            or any(type(name) is not str for name in (*folders, *files))
+        ):
+            _fail("LLVM RPM include walk inventory mismatch")
+        try:
+            physical_names = os.listdir(directory)
+            if type(physical_names) is not list or any(
+                type(name) is not str for name in physical_names
+            ):
+                _fail("LLVM RPM include walk requires native directory names")
+            physical_folders: set[str] = set()
+            physical_files: set[str] = set()
+            for name in physical_names:
+                status = (directory / name).lstat()
+                if type(status) is not os.stat_result:
+                    _fail(
+                        "LLVM RPM include walk requires native physical member status"
+                    )
+                if _native_directory_status(status):
+                    physical_folders.add(name)
+                else:
+                    physical_files.add(name)
+        except LlvmDevelopmentProvisionError:
+            raise
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                "LLVM RPM include walk physical scan failed"
+            ) from error
+        if (
+            len(physical_names) != len(physical_folders | physical_files)
+            or physical_folders != set(folders)
+            or physical_files != set(files)
+            or len(folders) != len(physical_folders)
+            or len(files) != len(physical_files)
+        ):
+            _fail("LLVM RPM include walk inventory mismatch")
+        visited.add(directory)
+        expected_directories.update(directory / name for name in physical_folders)
+        yield directory, folders, files
+    if visited != expected_directories:
+        _fail("LLVM RPM include walk skipped physical directories")
+
+
 def _reject_include_symlinks(
     include_root: Path, *, require_single_link: bool = False
 ) -> None:
@@ -319,12 +380,7 @@ def _reject_include_symlinks(
     _require_physical_directories(include_root, "staging")
     if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
         _fail(f"LLVM RPM include root is not a directory: {include_root}")
-    def fail_scan(error: OSError) -> Never:
-        raise LlvmDevelopmentProvisionError(
-            "LLVM RPM include tree scan failed"
-        ) from error
-
-    for directory, folders, files in include_root.walk(on_error=fail_scan):
+    for directory, folders, files in _physical_header_walk(include_root):
         _require_physical_directories(directory, "staging")
         for name in (*folders, *files):
             candidate = directory / name
@@ -620,12 +676,7 @@ def _header_tree_receipt(
     _reject_include_symlinks(root, require_single_link=True)
     receipt: dict[Path, tuple[str, bytes | None, int, int]] = {}
 
-    def fail_scan(error: OSError) -> Never:
-        raise LlvmDevelopmentProvisionError(
-            "LLVM RPM header overlay copy receipt scan failed"
-        ) from error
-
-    for directory, folders, files in root.walk(on_error=fail_scan):
+    for directory, folders, files in _physical_header_walk(root):
         for name in (*folders, *files):
             member = directory / name
             relative = member.relative_to(root)

@@ -52,7 +52,7 @@ from scripts.bootstrap import llvm_development_validation
 from scripts.validate import tidy_toolchain
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from typing import BinaryIO
 
 LINUX_PLATFORM = "linux-x86_64"
@@ -2653,6 +2653,39 @@ def test_development_provision_rejects_swapped_staged_root(
     }
     assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
     assert not identity.development_root.exists()
+
+
+@pytest.mark.parametrize("omission", ["child", "visit"])
+def test_rpm_header_receipt_rejects_incomplete_native_walk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    omission: str,
+) -> None:
+    """Physical RPM headers cannot disappear from the walk used for admission."""
+    include = tmp_path / "include"
+    directory = include / "clang/AST"
+    directory.mkdir(parents=True)
+    _ = (directory / "AST.h").write_bytes(HEADER_BYTES)
+    _ = (include / "surprise.h").write_bytes(FOREIGN_CONTENT_BYTES)
+    native_walk = Path.walk
+
+    def omit_member(
+        self: Path, *, on_error: Callable[[OSError], object] | None = None
+    ) -> Iterator[tuple[Path, list[str], list[str]]]:
+        for walked, folders, files in native_walk(self, on_error=on_error):
+            if omission == "child" and walked == include:
+                files.remove("surprise.h")
+            if omission == "visit" and walked != include:
+                continue
+            yield walked, folders, files
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "walk", omit_member)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="walk|scan|inventory|missing",
+        ):
+            _ = llvm_development_validation._header_tree_receipt(include)
 
 
 def test_development_readiness_rejects_suppressed_directory_scan_failure(

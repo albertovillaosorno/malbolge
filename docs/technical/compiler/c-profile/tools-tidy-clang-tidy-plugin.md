@@ -138,8 +138,13 @@ require a previously unused, unlinked physical file path with nonredirected
 parent directories. Existing regular files, symlinks, hardlinks, and nonnative
 host status cannot be overwritten through the staging writer. Header overlays
 also compare physical source and destination member inventories, file digests,
-and existing inode identities before and after copy. Digest reads pin a native
-nonblocking, no-follow descriptor and verify its inode, extent, and mutation
+and existing inode identities before and after copy. Both the initial include
+preflight and the overlay receipt independently enumerate physical directory
+children, check file/directory classification against the reported walk, and
+require every physical child directory to be visited. Suppressed walk entries
+or skipped subtree visits cannot certify an otherwise incomplete inventory.
+Digest reads pin a native nonblocking, no-follow descriptor and verify its
+inode, extent, and mutation
 metadata against the physical path, rejecting foreign pathname streams and
 late descriptor substitution. A copy that reports success
 but omits, mutates, or adds a member fails before the completion marker is
