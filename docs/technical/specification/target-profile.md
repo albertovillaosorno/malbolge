@@ -77,10 +77,16 @@ delivery does not turn an invalid profile into success.
 Decoder failures retain their original cause, and only native decoder errors
 contribute diagnostic text; foreign exception formatters are never invoked.
 Parser capacity failures, including integer-token digit limits, also produce a
-typed profile-validation error without hiding duplicate-key diagnostics. It
-enforces exact schema keys, ternary word consistency, single-word memory
-consistency, EOF at the
-maximum profile word, the frozen 1998 machine envelope, exactly one selected
+typed profile-validation error without hiding duplicate-key diagnostics.
+When the public JSON loader is substituted, the parser corroborates its
+native-looking result against an independent parse by the original import-bound
+loader. Every nested value and native key must agree with the source before
+profile admission, and foreign equality hooks are not invoked. Delegating
+loaders that preserve every source value remain supported; this check protects
+against loader substitution, not arbitrary modification of Python
+internals. The validator also enforces exact schema keys, ternary word
+consistency, single-word memory consistency, EOF at the maximum profile
+word, the frozen 1998 machine envelope, exactly one selected
 current identity, preservation of the sequential deterministic
 self-modifying semantic core across schema-v2 profiles, and an exact
 one-to-one assignment of `<` and `/` to versioned input/output roles.
@@ -152,6 +158,7 @@ selecting an implicit repository policy.
 - Prerequisite completion evidence:
   `historical-malbolge-semantics-specification`,
   `historical-undefined-behavior-catalogue`.
+
 ## References
 
 - [Specification Authority And Malbolge

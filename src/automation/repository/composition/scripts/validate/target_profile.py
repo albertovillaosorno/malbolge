@@ -40,6 +40,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from math import isnan
 from pathlib import Path
 from stat import S_ISREG
 from typing import TYPE_CHECKING, Never, cast
@@ -69,6 +70,7 @@ CURRENT_PROFILE_ID = "malbolge-2026"
 CURRENT_VERSION = "2026"
 SCHEMA_VERSION = 2
 MAX_DOCUMENT_BYTES = 1024 * 1024
+_NATIVE_JSON_LOADS = json.loads
 CURRENT_KIND = "current"
 HISTORICAL_KIND = "historical-conformance"
 VERSIONED_KIND = "versioned"
@@ -306,6 +308,38 @@ def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> JsonObject:
     return result
 
 
+def _same_native_json(actual: object, expected: object) -> bool:
+    """Compare source-derived JSON values without invoking foreign hooks."""
+    kind = type(expected)
+    if type(actual) is not kind:
+        if kind is dict and isinstance(actual, dict):
+            _fail(
+                "target profile nested value must be an object (exact native dict required)"
+            )
+        return False
+    if kind is dict:
+        native_actual = cast("dict[object, object]", actual)
+        native_expected = cast("dict[object, object]", expected)
+        # Never probe an untrusted key before rejecting non-native key types:
+        # a colliding subclass could execute foreign __eq__ during lookup.
+        if any(type(key) is not str for key in native_actual):
+            _fail("target profile document contains a non-native string key")
+        return len(native_actual) == len(native_expected) and all(
+            key in native_actual and _same_native_json(native_actual[key], item)
+            for key, item in native_expected.items()
+        )
+    if kind is list:
+        native_actual = cast("list[object]", actual)
+        native_expected = cast("list[object]", expected)
+        return len(native_actual) == len(native_expected) and all(
+            _same_native_json(left, right)
+            for left, right in zip(native_actual, native_expected, strict=True)
+        )
+    if kind is float and isnan(cast("float", expected)):
+        return isnan(cast("float", actual))
+    return kind in (bool, int, float, str, type(None)) and actual == expected
+
+
 def loads_document(text: str) -> JsonObject:
     """Parse one profile document while rejecting duplicate object keys.
 
@@ -334,7 +368,25 @@ def loads_document(text: str) -> JsonObject:
     except (TypeError, RuntimeError) as error:
         message = "invalid JSON host parser failure"
         raise ProfileValidationError(message) from error
-    return _expect_mapping(parsed, "target profile document")
+    document = _expect_mapping(parsed, "target profile document")
+    # A substituted public decoder can return an entirely native, schema-valid
+    # document that was never present in the source. Independently parse with
+    # the import-bound provider before accepting any such receipt.
+    if json.loads is not _NATIVE_JSON_LOADS:
+        try:
+            source = cast(
+                "object",
+                _NATIVE_JSON_LOADS(text, object_pairs_hook=_reject_duplicate_pairs),
+            )
+            equivalent = _same_native_json(document, source)
+        except ProfileValidationError:
+            raise
+        except (TypeError, ValueError, RecursionError, RuntimeError) as error:
+            message = "target profile JSON decoder provider differs from source"
+            raise ProfileValidationError(message) from error
+        if not equivalent:
+            _fail("target profile JSON decoder provider differs from source")
+    return document
 
 
 def _validated_profile_path(value: object) -> Path:

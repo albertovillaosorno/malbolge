@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -823,6 +824,84 @@ def test_profile_json_parser_never_formats_foreign_errors(
     ) as caught:
         validator.loads_document(_canonical_text())
     assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("entrypoint", ["text", "file", "parser"])
+def test_profile_json_parser_binds_native_receipts_to_original_text(
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    """A substituted JSON decoder cannot alter an accepted width contract."""
+    source = _canonical_text()
+    native_loads = json.loads
+    forged = cast("validator.JsonObject", native_loads(source))
+    width = cast("dict[str, object]", forged["semantic_width_model"])
+    width["maximum_trits"] = 100
+    # The forged document is still a valid profile, so schema validation
+    # alone cannot establish the bytes that the validator actually parsed.
+    validator.validate_document(forged)
+
+    def forged_loads(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return forged
+
+    monkeypatch.setattr(json, "loads", forged_loads)
+
+    with pytest.raises(
+        validator.ProfileValidationError,
+        match="JSON decoder provider differs from source",
+    ):
+        if entrypoint == "text":
+            validator.validate_text(source)
+        elif entrypoint == "file":
+            _ = validator.load_document(PROFILE_PATH)
+        else:
+            _ = validator.loads_document(source)
+
+
+def test_profile_json_parser_allows_equivalent_delegating_decoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equivalent adapter does not alter source-bound profile evidence."""
+    native_loads = json.loads
+
+    def delegated(text: str, *, object_pairs_hook: object) -> object:
+        return native_loads(
+            text,
+            object_pairs_hook=cast(
+                "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+            ),
+        )
+
+    monkeypatch.setattr(json, "loads", delegated)
+    validator.validate_text(_canonical_text())
+
+
+def test_profile_json_parser_rejects_foreign_nested_key_before_equality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A colliding foreign key cannot run hooks during source comparison."""
+
+    class ForeignKey(str):
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign profile key equality executed")
+
+    source = _canonical_text()
+    native = cast("dict[str, object]", json.loads(source))
+    profiles = cast("dict[str, object]", native["profiles"]).copy()
+    current = profiles.pop("malbolge-2026")
+    profiles[ForeignKey("malbolge-2026")] = current
+    native["profiles"] = profiles
+    monkeypatch.setattr(json, "loads", lambda _text, **_kwargs: native)
+
+    with pytest.raises(validator.ProfileValidationError, match="non-native string key"):
+        _ = validator.loads_document(source)
 
 
 def test_native_profile_json_syntax_diagnostic_keeps_position_and_cause() -> None:

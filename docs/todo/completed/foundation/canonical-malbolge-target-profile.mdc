@@ -56,6 +56,11 @@ current Malbolge language.
 - `tests/test_target_profile.py` and
   `tests/compatibility/test_scalable_memory.py` provide fail-closed schema and
   scalable-geometry evidence.
+- The target-profile parser independently corroborates altered public JSON
+  loader providers against original source values, retaining exact native
+  mapping/key admission and error causes. Three red-first direct/text/file
+  substitutions that silently changed the semantic-width limit now reject,
+  while delegating loaders and a colliding foreign-key case remain safe.
 - Every implemented VM, runtime, native, accelerator, decompiler, optimizer,
   and performance consumer reads this authority or a checked projection. Future
   compiler, tidy, and verifier work owns adoption before becoming executable.
