@@ -439,6 +439,39 @@ def test_wrong_host_version_is_not_admitted() -> None:
     assert llvm_validation.llvm_version_matches("clang version 22.1.7") is False
 
 
+@pytest.mark.parametrize(
+    "banner",
+    (
+        "clang version 22.1.80",
+        "clang version 122.1.8",
+        "clang version 22.1.8.1",
+        "clang version 22.1.8rc1",
+        "clang version 22.1.8-rc1",
+        "clang version 22.1.8+dirty",
+        "clang version 22.1.8_untested",
+        "clang version 22.1.8.0\nclang version 22.1.7",
+    ),
+)
+def test_llvm_host_version_rejects_embedded_or_qualified_release(
+    banner: str,
+) -> None:
+    """Version 22.1.8 must be an exact token, not a prefix or suffix."""
+    assert not llvm_validation.llvm_version_matches(banner)
+
+
+@pytest.mark.parametrize(
+    "banner",
+    (
+        "clang version 22.1.8",
+        "Ubuntu clang version 22.1.8 (https://llvm.org/)",
+        "clang-format version 22.1.8\nTarget: x86_64-pc-linux-gnu",
+    ),
+)
+def test_llvm_host_version_preserves_exact_native_banner(banner: str) -> None:
+    """Normal full-release tool banners remain accepted."""
+    assert llvm_validation.llvm_version_matches(banner)
+
+
 def test_linux_import_rejects_forged_existing_marker(tmp_path: Path) -> None:
     """A marker's presence cannot authorize an incomplete imported tree."""
     observation = _host_observation(tmp_path)

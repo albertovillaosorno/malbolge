@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import filecmp
 import os
+import re
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from dataclasses import dataclass
@@ -90,7 +91,8 @@ def llvm_version_matches(version_text: str) -> bool:
         Whether the banner contains the exact pinned release identity.
 
     """
-    return any(LLVM_VERSION in line for line in version_text.splitlines())
+    exact = re.compile(r"(?<![\w.+-])" + re.escape(LLVM_VERSION) + r"(?![\w.+-])")
+    return any(exact.search(line) is not None for line in version_text.splitlines())
 
 
 def _unlinked_path(path: Path) -> bool:
