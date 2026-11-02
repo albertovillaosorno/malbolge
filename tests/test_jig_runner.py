@@ -124,6 +124,43 @@ def test_external_tool_bin_rejects_ambiguous_paths(
         )
 
 
+@pytest.mark.parametrize("forgery", ["null", "foreign-string", "foreign-pathlike"])
+def test_external_tool_bin_requires_native_present_value(
+    tmp_path: Path,
+    forgery: str,
+) -> None:
+    """An explicit malformed opt-in cannot fall back or run foreign hooks."""
+    _ = _pinned_launchers(tmp_path)
+    external = tmp_path.parent / f"external-native-{tmp_path.name}"
+    external.mkdir()
+    tool = external / "chktex"
+    _ = tool.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    tool.chmod(0o700)
+
+    class ForeignString(str):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign environment string formatter executed")
+
+    class ForeignPathLike(os.PathLike[str]):
+        @override
+        def __fspath__(self) -> str:
+            raise AssertionError("foreign environment path hook executed")
+
+    values: dict[str, object] = {
+        "null": None,
+        "foreign-string": ForeignString(str(external)),
+        "foreign-pathlike": ForeignPathLike(),
+    }
+    inherited = {
+        jig_runner.EXTERNAL_TOOL_BIN_VARIABLE: cast(
+            "str", cast("object", values[forgery])
+        )
+    }
+    with pytest.raises(jig_runner.JigRunnerError, match="external.*directory"):
+        _ = jig_runner.jig_environment(tmp_path, inherited)
+
+
 def test_external_tool_bin_rejects_repository_and_linked_locations(
     tmp_path: Path,
 ) -> None:

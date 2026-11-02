@@ -111,6 +111,8 @@ def _external_tool_bin(root: Path, directory: str) -> Path:
 
     """
     message = "invalid external Jig validation tool directory"
+    if type(directory) is not str:
+        raise JigRunnerError(message)
     try:
         candidate = Path(directory)
         if (
@@ -168,12 +170,11 @@ def jig_environment(root: Path, inherited: dict[str, str]) -> dict[str, str]:
     # its generated launcher lives inside .dependencies/bin. Keep untrusted
     # ambient aliases out; allow only one explicitly selected external bin
     # before the ordinary system lookup. Jig owns the actual version proof.
-    external = inherited.get(EXTERNAL_TOOL_BIN_VARIABLE)
-    approved = (
-        f"{_external_tool_bin(root, external)}{os.pathsep}"
-        if external is not None
-        else ""
-    )
+    if EXTERNAL_TOOL_BIN_VARIABLE in inherited:
+        external = inherited[EXTERNAL_TOOL_BIN_VARIABLE]
+        approved = f"{_external_tool_bin(root, external)}{os.pathsep}"
+    else:
+        approved = ""
     environment["PATH"] = f"{pinned_bin}{os.pathsep}{approved}{os.defpath}"
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["RUFF_CACHE_DIR"] = str(root / ".cache/ruff")

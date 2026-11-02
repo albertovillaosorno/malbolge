@@ -107,11 +107,15 @@ python3.14 -B -m scripts.validate.jig_runner check
 
 The runner admits only one absolute, nonredirected external directory with a
 physical executable `chktex`; it rejects symlinks in either path, missing
-executables, path-list injection and directories inside the repository. Native
-filesystem evidence is required: redirect checks and directory/executable-mode
-queries must yield exact booleans, and file status must be an exact native
-`os.stat_result` with a native unsigned 32-bit file-mode integer. Foreign mode
-objects and negative or oversized mode values fail before file-type checks.
+executables, path-list injection and directories inside the repository.
+An explicitly supplied opt-in must be an exact native string; missing values
+use normal fallback, but explicit nulls, foreign string subclasses, and path-
+like objects cannot silently select default tools or execute their own hooks.
+Native filesystem evidence is required: redirect checks and directory and
+executable-mode queries must yield exact booleans, and file status must be an
+exact native `os.stat_result` with an unsigned 32-bit file-mode integer.
+Foreign mode objects and negative or oversized mode values fail before
+file-type checks.
 A foreign resolved-path object cannot supply path authority.
 The explicit directory sits after `.dependencies/bin` and before the system
 default on the child `PATH`. If host filesystem status or path resolution
